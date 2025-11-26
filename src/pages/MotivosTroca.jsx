@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { ArrowLeftRight } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
+import { ArrowLeftRight, Upload } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge';
 export default function MotivosTroca() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({ descricao: '', codigo: '', categoria: '' });
 
@@ -55,6 +57,27 @@ export default function MotivosTroca() {
     else { createMutation.mutate(formData); }
   };
 
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    for (const item of data) {
+      await base44.entities.MotivoTroca.create(item);
+    }
+    queryClient.invalidateQueries(['motivosTroca']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
+
+  const bulkColumns = [
+    { key: 'descricao', label: 'Descrição', required: true },
+    { key: 'codigo', label: 'Código', required: true },
+    { key: 'categoria', label: 'Categoria' }
+  ];
+
+  const bulkExampleData = [
+    { descricao: 'Produto danificado', codigo: 'DAN', categoria: 'defeito' },
+    { descricao: 'Troca por preferência', codigo: 'PREF', categoria: 'cliente_solicitou' }
+  ];
+
   const categoriaLabels = {
     defeito: 'Defeito',
     cliente_solicitou: 'Cliente Solicitou',
@@ -71,7 +94,23 @@ export default function MotivosTroca() {
 
   return (
     <div>
-      <PageHeader title="Motivos de Troca" subtitle="Razões para trocas de produtos" icon={ArrowLeftRight} action={handleNew} actionLabel="Novo Motivo" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <ArrowLeftRight className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Motivos de Troca</h1>
+            <p className="text-slate-500 mt-0.5">Razões para trocas de produtos</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+            <Upload className="w-4 h-4 mr-2" />Importar em Massa
+          </Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Motivo</Button>
+        </div>
+      </div>
       <DataTable data={motivos} columns={columns} searchFields={['descricao', 'codigo']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
       
       <FormModal open={formOpen} onOpenChange={setFormOpen} title={selected ? 'Editar Motivo' : 'Novo Motivo'}>
@@ -101,6 +140,17 @@ export default function MotivosTroca() {
       </FormModal>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={() => deleteMutation.mutate(selected?.id)} isDeleting={deleteMutation.isPending} />
+      
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Motivos em Massa"
+        description="Importe vários motivos de uma vez"
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
+      />
     </div>
   );
 }

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Tag } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
+import { Tag, Upload } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 export default function Segmentos() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({ nome: '', codigo: '', descricao: '' });
 
@@ -73,6 +75,27 @@ export default function Segmentos() {
     }
   };
 
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    for (const item of data) {
+      await base44.entities.Segmento.create(item);
+    }
+    queryClient.invalidateQueries(['segmentos']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
+
+  const bulkColumns = [
+    { key: 'nome', label: 'Nome', required: true },
+    { key: 'codigo', label: 'Código', required: true },
+    { key: 'descricao', label: 'Descrição' }
+  ];
+
+  const bulkExampleData = [
+    { nome: 'Varejo', codigo: 'VAR', descricao: 'Lojas de varejo' },
+    { nome: 'Atacado', codigo: 'ATA', descricao: 'Atacadistas e distribuidores' }
+  ];
+
   const columns = [
     { key: 'codigo', label: 'Código', sortable: true },
     { key: 'nome', label: 'Nome', sortable: true },
@@ -81,7 +104,23 @@ export default function Segmentos() {
 
   return (
     <div>
-      <PageHeader title="Segmentos" subtitle="Categorização de clientes" icon={Tag} action={handleNew} actionLabel="Novo Segmento" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Tag className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Segmentos</h1>
+            <p className="text-slate-500 mt-0.5">Categorização de clientes</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+            <Upload className="w-4 h-4 mr-2" />Importar em Massa
+          </Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Segmento</Button>
+        </div>
+      </div>
       <DataTable data={segmentos} columns={columns} searchFields={['nome', 'codigo']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
       
       <FormModal open={formOpen} onOpenChange={setFormOpen} title={selected ? 'Editar Segmento' : 'Novo Segmento'}>
@@ -99,6 +138,17 @@ export default function Segmentos() {
       </FormModal>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={() => deleteMutation.mutate(selected?.id)} isDeleting={deleteMutation.isPending} />
+      
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Segmentos em Massa"
+        description="Importe vários segmentos de uma vez"
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
+      />
     </div>
   );
 }

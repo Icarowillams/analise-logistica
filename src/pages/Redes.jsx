@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Network } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
+import { Network, Upload } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 export default function Redes() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({ nome: '', cnpj: '', contato: '', email: '', telefone: '', raio_atuacao: '' });
 
@@ -60,6 +62,30 @@ export default function Redes() {
     }
   };
 
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    for (const item of data) {
+      await base44.entities.Rede.create(item);
+    }
+    queryClient.invalidateQueries(['redes']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
+
+  const bulkColumns = [
+    { key: 'nome', label: 'Nome', required: true },
+    { key: 'cnpj', label: 'CNPJ' },
+    { key: 'contato', label: 'Contato' },
+    { key: 'email', label: 'Email' },
+    { key: 'telefone', label: 'Telefone' },
+    { key: 'raio_atuacao', label: 'Raio de Atuação' }
+  ];
+
+  const bulkExampleData = [
+    { nome: 'Rede Exemplo 1', cnpj: '11.111.111/0001-01', contato: 'João Silva', email: 'joao@rede1.com', telefone: '(11) 3333-0001', raio_atuacao: 'Grande São Paulo' },
+    { nome: 'Rede Exemplo 2', cnpj: '22.222.222/0001-02', contato: 'Maria Santos', email: 'maria@rede2.com', telefone: '(11) 3333-0002', raio_atuacao: 'Interior SP' }
+  ];
+
   const columns = [
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'cnpj', label: 'CNPJ' },
@@ -70,7 +96,23 @@ export default function Redes() {
 
   return (
     <div>
-      <PageHeader title="Redes/Franquias" subtitle="Grupos empresariais" icon={Network} action={handleNew} actionLabel="Nova Rede" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Network className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Redes/Franquias</h1>
+            <p className="text-slate-500 mt-0.5">Grupos empresariais</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+            <Upload className="w-4 h-4 mr-2" />Importar em Massa
+          </Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Rede</Button>
+        </div>
+      </div>
       <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
       
       <FormModal open={formOpen} onOpenChange={setFormOpen} title={selected ? 'Editar Rede' : 'Nova Rede'}>
@@ -93,6 +135,17 @@ export default function Redes() {
       </FormModal>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={() => deleteMutation.mutate(selected?.id)} isDeleting={deleteMutation.isPending} />
+      
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Redes em Massa"
+        description="Importe várias redes de uma vez"
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
+      />
     </div>
   );
 }
