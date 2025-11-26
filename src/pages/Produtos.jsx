@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Package, CheckCircle, XCircle } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Upload } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +16,8 @@ import { Badge } from '@/components/ui/badge';
 export default function Produtos() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     nome: '', sku: '', categoria: '', preco_custo: '', preco_venda: '', estoque_atual: 0, status: 'ativo'
@@ -98,6 +101,37 @@ export default function Produtos() {
     }
   };
 
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    for (const item of data) {
+      await base44.entities.Produto.create({
+        ...item,
+        preco_custo: parseFloat(item.preco_custo) || 0,
+        preco_venda: parseFloat(item.preco_venda) || 0,
+        estoque_atual: parseInt(item.estoque_atual) || 0,
+        status: item.status || 'ativo'
+      });
+    }
+    queryClient.invalidateQueries(['produtos']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
+
+  const bulkColumns = [
+    { key: 'nome', label: 'Nome', required: true },
+    { key: 'sku', label: 'SKU', required: true },
+    { key: 'categoria', label: 'Categoria' },
+    { key: 'preco_custo', label: 'Preço Custo', type: 'number' },
+    { key: 'preco_venda', label: 'Preço Venda', type: 'number' },
+    { key: 'estoque_atual', label: 'Estoque', type: 'number' },
+    { key: 'status', label: 'Status' }
+  ];
+
+  const bulkExampleData = [
+    { nome: 'Produto Exemplo 1', sku: 'SKU-001', categoria: 'Categoria A', preco_custo: '25.00', preco_venda: '45.00', estoque_atual: '100', status: 'ativo' },
+    { nome: 'Produto Exemplo 2', sku: 'SKU-002', categoria: 'Categoria B', preco_custo: '18.50', preco_venda: '32.00', estoque_atual: '200', status: 'ativo' }
+  ];
+
   const columns = [
     { key: 'sku', label: 'SKU', sortable: true },
     { key: 'nome', label: 'Nome', sortable: true },
@@ -130,13 +164,33 @@ export default function Produtos() {
 
   return (
     <div>
-      <PageHeader
-        title="Produtos"
-        subtitle="Catálogo de produtos"
-        icon={Package}
-        action={handleNew}
-        actionLabel="Novo Produto"
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Package className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Produtos</h1>
+            <p className="text-slate-500 mt-0.5">Catálogo de produtos</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setBulkOpen(true)}
+            variant="outline"
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Importar em Massa
+          </Button>
+          <Button
+            onClick={handleNew}
+            className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/30"
+          >
+            Novo Produto
+          </Button>
+        </div>
+      </div>
 
       <DataTable
         data={produtos}
@@ -238,6 +292,17 @@ export default function Produtos() {
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate(selected?.id)}
         isDeleting={deleteMutation.isPending}
+      />
+
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Produtos em Massa"
+        description="Importe vários produtos de uma vez usando CSV ou colando dados do Excel"
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
       />
     </div>
   );

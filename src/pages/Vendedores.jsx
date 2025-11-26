@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Users, CheckCircle, XCircle } from 'lucide-react';
+import { Users, CheckCircle, XCircle, Upload } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,8 @@ import { format } from 'date-fns';
 export default function Vendedores() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     nome: '', cpf: '', email: '', telefone: '', data_admissao: '', status: 'ativo'
@@ -92,6 +95,33 @@ export default function Vendedores() {
     }
   };
 
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    for (const item of data) {
+      await base44.entities.Vendedor.create({
+        ...item,
+        status: item.status || 'ativo'
+      });
+    }
+    queryClient.invalidateQueries(['vendedores']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
+
+  const bulkColumns = [
+    { key: 'nome', label: 'Nome', required: true },
+    { key: 'cpf', label: 'CPF' },
+    { key: 'email', label: 'Email', required: true },
+    { key: 'telefone', label: 'Telefone' },
+    { key: 'data_admissao', label: 'Data Admissão' },
+    { key: 'status', label: 'Status' }
+  ];
+
+  const bulkExampleData = [
+    { nome: 'João Silva', cpf: '123.456.789-00', email: 'joao@empresa.com', telefone: '(11) 99999-0001', data_admissao: '2024-01-15', status: 'ativo' },
+    { nome: 'Maria Santos', cpf: '987.654.321-00', email: 'maria@empresa.com', telefone: '(11) 99999-0002', data_admissao: '2024-02-20', status: 'ativo' }
+  ];
+
   const columns = [
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'cpf', label: 'CPF' },
@@ -119,13 +149,33 @@ export default function Vendedores() {
 
   return (
     <div>
-      <PageHeader
-        title="Vendedores"
-        subtitle="Gerencie sua equipe comercial"
-        icon={Users}
-        action={handleNew}
-        actionLabel="Novo Vendedor"
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Users className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Vendedores</h1>
+            <p className="text-slate-500 mt-0.5">Gerencie sua equipe comercial</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setBulkOpen(true)}
+            variant="outline"
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Importar em Massa
+          </Button>
+          <Button
+            onClick={handleNew}
+            className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/30"
+          >
+            Novo Vendedor
+          </Button>
+        </div>
+      </div>
 
       <DataTable
         data={vendedores}
@@ -217,6 +267,17 @@ export default function Vendedores() {
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate(selected?.id)}
         isDeleting={deleteMutation.isPending}
+      />
+
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Vendedores em Massa"
+        description="Importe vários vendedores de uma vez usando CSV ou colando dados do Excel"
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
       />
     </div>
   );
