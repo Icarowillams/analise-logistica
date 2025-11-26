@@ -118,17 +118,27 @@ export default function ImportarVendas() {
         <Card className="border-2 border-dashed border-slate-200 hover:border-indigo-400 transition-colors">
           <CardContent className="p-8">
             {!file ? (
-              <label className="flex flex-col items-center justify-center cursor-pointer">
+              <div className="flex flex-col items-center justify-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mb-4">
                   <FileSpreadsheet className="w-8 h-8 text-indigo-600" />
                 </div>
-                <p className="text-lg font-medium text-slate-700 mb-2">Arraste ou clique para selecionar</p>
+                <p className="text-lg font-medium text-slate-700 mb-2">Selecione um arquivo para importar</p>
                 <p className="text-sm text-slate-500 mb-4">Arquivos CSV com colunas: Data, Vendedor, Cliente, Produto, Quantidade, Valor, Margem</p>
-                <input type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-                <Button className="bg-gradient-to-r from-indigo-500 to-purple-600">
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  id="vendas-file-input"
+                  className="hidden" 
+                  onChange={handleFileChange} 
+                />
+                <Button 
+                  type="button"
+                  onClick={() => document.getElementById('vendas-file-input').click()}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600"
+                >
                   Selecionar Arquivo
                 </Button>
-              </label>
+              </div>
             ) : (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">

@@ -123,17 +123,27 @@ export default function ImportarTrocas() {
         <Card className="border-2 border-dashed border-slate-200 hover:border-indigo-400 transition-colors">
           <CardContent className="p-8">
             {!file ? (
-              <label className="flex flex-col items-center justify-center cursor-pointer">
+              <div className="flex flex-col items-center justify-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center mb-4">
                   <FileSpreadsheet className="w-8 h-8 text-orange-600" />
                 </div>
-                <p className="text-lg font-medium text-slate-700 mb-2">Arraste ou clique para selecionar</p>
+                <p className="text-lg font-medium text-slate-700 mb-2">Selecione um arquivo para importar</p>
                 <p className="text-sm text-slate-500 mb-4">CSV: Data, Cliente, Produto_Original, Produto_Novo, Motivo, Vendedor</p>
-                <input type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-                <Button className="bg-gradient-to-r from-orange-500 to-amber-500">
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  id="trocas-file-input"
+                  className="hidden" 
+                  onChange={handleFileChange} 
+                />
+                <Button 
+                  type="button"
+                  onClick={() => document.getElementById('trocas-file-input').click()}
+                  className="bg-gradient-to-r from-orange-500 to-amber-500"
+                >
                   Selecionar Arquivo
                 </Button>
-              </label>
+              </div>
             ) : (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
