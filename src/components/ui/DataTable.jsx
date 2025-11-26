@@ -84,7 +84,7 @@ export default function DataTable({
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className="font-semibold text-slate-700"
+                  className="font-semibold text-neutral-700"
                   style={{ width: col.width }}
                 >
                   {col.sortable ? (
@@ -101,7 +101,7 @@ export default function DataTable({
                 </TableHead>
               ))}
               {(onEdit || onDelete) && (
-                <TableHead className="w-24 text-right font-semibold text-slate-700">Ações</TableHead>
+                <TableHead className="w-24 text-right font-semibold text-neutral-700">Ações</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -119,7 +119,7 @@ export default function DataTable({
               paginatedData.map((item, idx) => (
                 <TableRow key={item.id || idx} className="hover:bg-slate-50/50 transition-colors">
                   {columns.map((col) => (
-                    <TableCell key={col.key} className="text-slate-600">
+                    <TableCell key={col.key} className="text-neutral-600">
                       {col.render ? col.render(item[col.key], item) : item[col.key]}
                     </TableCell>
                   ))}
@@ -131,7 +131,7 @@ export default function DataTable({
                             variant="ghost"
                             size="icon"
                             onClick={() => onEdit(item)}
-                            className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+                            className="h-8 w-8 text-neutral-500 hover:text-amber-600 hover:bg-amber-50"
                           >
                             <Pencil className="w-4 h-4" />
                           </Button>
