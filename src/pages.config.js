@@ -14,6 +14,10 @@ import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
 import MetasCadastro from './pages/MetasCadastro';
 import MetasTroca from './pages/MetasTroca';
+import PainelRodrigosM from './pages/PainelRodrigosM';
+import DashboardVendedor from './pages/DashboardVendedor';
+import DashboardTrocas from './pages/DashboardTrocas';
+import DashboardClientes from './pages/DashboardClientes';
 import __Layout from './Layout.jsx';
 
 
@@ -34,6 +38,10 @@ export const PAGES = {
     "MetasPrecoMedio": MetasPrecoMedio,
     "MetasCadastro": MetasCadastro,
     "MetasTroca": MetasTroca,
+    "PainelRodrigosM": PainelRodrigosM,
+    "DashboardVendedor": DashboardVendedor,
+    "DashboardTrocas": DashboardTrocas,
+    "DashboardClientes": DashboardClientes,
 }
 
 export const pagesConfig = {
