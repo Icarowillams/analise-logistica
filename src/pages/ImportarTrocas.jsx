@@ -120,7 +120,7 @@ export default function ImportarTrocas() {
       <PageHeader title="Importar Trocas" subtitle="Importe trocas de produtos via CSV" icon={ArrowLeftRight} />
 
       <div className="grid gap-6">
-        <Card className="border-2 border-dashed border-slate-200 hover:border-indigo-400 transition-colors">
+        <Card className="border-2 border-dashed border-slate-200 hover:border-amber-400 transition-colors">
           <CardContent className="p-8">
             {!file ? (
               <div className="flex flex-col items-center justify-center">

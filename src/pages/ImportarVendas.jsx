@@ -115,12 +115,12 @@ export default function ImportarVendas() {
 
       <div className="grid gap-6">
         {/* Upload Area */}
-        <Card className="border-2 border-dashed border-slate-200 hover:border-indigo-400 transition-colors">
+        <Card className="border-2 border-dashed border-slate-200 hover:border-amber-400 transition-colors">
           <CardContent className="p-8">
             {!file ? (
               <div className="flex flex-col items-center justify-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mb-4">
-                  <FileSpreadsheet className="w-8 h-8 text-indigo-600" />
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-100 to-amber-100 flex items-center justify-center mb-4">
+                  <FileSpreadsheet className="w-8 h-8 text-amber-600" />
                 </div>
                 <p className="text-lg font-medium text-slate-700 mb-2">Selecione um arquivo para importar</p>
                 <p className="text-sm text-slate-500 mb-4">Arquivos CSV com colunas: Data, Vendedor, Cliente, Produto, Quantidade, Valor, Margem</p>
@@ -134,7 +134,7 @@ export default function ImportarVendas() {
                 <Button 
                   type="button"
                   onClick={() => document.getElementById('vendas-file-input').click()}
-                  className="bg-gradient-to-r from-indigo-500 to-purple-600"
+                  className="bg-gradient-to-r from-yellow-400 to-amber-500 text-neutral-900 font-semibold hover:from-yellow-500 hover:to-amber-600"
                 >
                   Selecionar Arquivo
                 </Button>
