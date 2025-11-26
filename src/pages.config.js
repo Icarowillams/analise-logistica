@@ -7,6 +7,13 @@ import Redes from './pages/Redes';
 import MotivosTroca from './pages/MotivosTroca';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Rotas from './pages/Rotas';
+import ImportarVendas from './pages/ImportarVendas';
+import ImportarTrocas from './pages/ImportarTrocas';
+import MetasProduto from './pages/MetasProduto';
+import MetasPositivacao from './pages/MetasPositivacao';
+import MetasPrecoMedio from './pages/MetasPrecoMedio';
+import MetasCadastro from './pages/MetasCadastro';
+import MetasTroca from './pages/MetasTroca';
 import __Layout from './Layout.jsx';
 
 
@@ -20,6 +27,13 @@ export const PAGES = {
     "MotivosTroca": MotivosTroca,
     "PlanosPagamento": PlanosPagamento,
     "Rotas": Rotas,
+    "ImportarVendas": ImportarVendas,
+    "ImportarTrocas": ImportarTrocas,
+    "MetasProduto": MetasProduto,
+    "MetasPositivacao": MetasPositivacao,
+    "MetasPrecoMedio": MetasPrecoMedio,
+    "MetasCadastro": MetasCadastro,
+    "MetasTroca": MetasTroca,
 }
 
 export const pagesConfig = {
