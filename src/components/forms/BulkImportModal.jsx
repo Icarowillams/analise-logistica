@@ -126,7 +126,7 @@ export default function BulkImportModal({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <FileSpreadsheet className="w-6 h-6 text-indigo-600" />
+            <FileSpreadsheet className="w-6 h-6 text-amber-600" />
             {title}
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -134,12 +134,12 @@ export default function BulkImportModal({
 
         <div className="space-y-6 mt-4">
           {/* Baixar modelo */}
-          <div className="flex items-center justify-between p-4 bg-indigo-50 rounded-xl">
+          <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl">
             <div>
-              <p className="font-medium text-indigo-900">Baixe o modelo de importação</p>
-              <p className="text-sm text-indigo-700">Arquivo CSV com as colunas corretas e exemplos</p>
+              <p className="font-medium text-amber-900">Baixe o modelo de importação</p>
+              <p className="text-sm text-amber-700">Arquivo CSV com as colunas corretas e exemplos</p>
             </div>
-            <Button variant="outline" onClick={downloadTemplate} className="border-indigo-300 text-indigo-700 hover:bg-indigo-100">
+            <Button variant="outline" onClick={downloadTemplate} className="border-amber-300 text-amber-700 hover:bg-amber-100">
               <Download className="w-4 h-4 mr-2" />
               Baixar Modelo
             </Button>
@@ -150,7 +150,7 @@ export default function BulkImportModal({
             <Button
               variant={mode === 'upload' ? 'default' : 'outline'}
               onClick={() => setMode('upload')}
-              className={mode === 'upload' ? 'bg-indigo-600' : ''}
+              className={mode === 'upload' ? 'bg-amber-500 hover:bg-amber-600 text-neutral-900' : ''}
             >
               <Upload className="w-4 h-4 mr-2" />
               Upload de Arquivo
@@ -158,7 +158,7 @@ export default function BulkImportModal({
             <Button
               variant={mode === 'paste' ? 'default' : 'outline'}
               onClick={() => setMode('paste')}
-              className={mode === 'paste' ? 'bg-indigo-600' : ''}
+              className={mode === 'paste' ? 'bg-amber-500 hover:bg-amber-600 text-neutral-900' : ''}
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Colar Dados
