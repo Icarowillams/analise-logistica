@@ -88,25 +88,25 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50">
       <style>{`
         :root {
-          --primary: 220 90% 56%;
-          --primary-foreground: 0 0% 100%;
-          --accent: 262 83% 58%;
+          --primary: 45 100% 51%;
+          --primary-foreground: 0 0% 0%;
+          --accent: 0 72% 51%;
         }
         
         .sidebar-gradient {
-          background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+          background: linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 50%, #3d3d3d 100%);
         }
         
         .menu-item-active {
-          background: linear-gradient(90deg, rgba(99,102,241,0.2) 0%, rgba(99,102,241,0.1) 100%);
-          border-left: 3px solid #6366f1;
+          background: linear-gradient(90deg, rgba(250,204,21,0.25) 0%, rgba(250,204,21,0.1) 100%);
+          border-left: 3px solid #facc15;
         }
         
         .menu-item-hover:hover {
-          background: linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+          background: linear-gradient(90deg, rgba(250,204,21,0.15) 0%, rgba(250,204,21,0.05) 100%);
         }
         
         @keyframes fadeIn {
@@ -117,21 +117,31 @@ export default function Layout({ children, currentPageName }) {
         .animate-fade-in {
           animation: fadeIn 0.3s ease-out;
         }
+        
+        .btn-pao-mel {
+          background: linear-gradient(135deg, #facc15 0%, #f59e0b 100%);
+          color: #1a1a1a;
+        }
+        
+        .btn-pao-mel:hover {
+          background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+        }
       `}</style>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 z-50 flex items-center justify-between px-4 shadow-xl">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-neutral-900 z-50 flex items-center justify-between px-4 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-            <TrendingUp className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-white font-bold text-lg">Análise Comercial</span>
+          <img 
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
+            alt="Pão & Mel" 
+            className="h-10 w-auto"
+          />
         </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="text-white hover:bg-slate-800"
+          className="text-white hover:bg-neutral-800"
         >
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </Button>
@@ -145,18 +155,16 @@ export default function Layout({ children, currentPageName }) {
         shadow-2xl
       `}>
         {/* Logo */}
-        <div className="h-20 flex items-center gap-3 px-6 border-b border-slate-700/50">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <TrendingUp className="w-7 h-7 text-white" />
-          </div>
-          <div>
-            <h1 className="text-white font-bold text-lg tracking-tight">Análise</h1>
-            <p className="text-slate-400 text-xs">Comercial</p>
-          </div>
+        <div className="h-24 flex items-center justify-center px-6 border-b border-neutral-700/50 bg-white/5">
+          <img 
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
+            alt="Pão & Mel" 
+            className="h-16 w-auto"
+          />
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 h-[calc(100%-5rem)] overflow-y-auto">
+        <nav className="p-4 h-[calc(100%-6rem)] overflow-y-auto">
           <ul className="space-y-1">
             {menuItems.map((item) => (
               <li key={item.title}>
@@ -168,8 +176,8 @@ export default function Layout({ children, currentPageName }) {
                       flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
                       transition-all duration-200 menu-item-hover
                       ${isActiveRoute(item.path)
-                        ? 'menu-item-active text-white'
-                        : 'text-slate-300 hover:text-white'
+                        ? 'menu-item-active text-yellow-400'
+                        : 'text-neutral-300 hover:text-yellow-300'
                       }
                     `}
                   >
@@ -180,7 +188,7 @@ export default function Layout({ children, currentPageName }) {
                   <>
                     <button
                       onClick={() => toggleSubmenu(item.title)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-slate-300 hover:text-white menu-item-hover transition-all duration-200"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-neutral-300 hover:text-yellow-300 menu-item-hover transition-all duration-200"
                     >
                       <div className="flex items-center gap-3">
                         <item.icon className="w-5 h-5" />
@@ -192,7 +200,7 @@ export default function Layout({ children, currentPageName }) {
                       }
                     </button>
                     {expandedMenus.includes(item.title) && (
-                      <ul className="mt-1 ml-4 pl-4 border-l border-slate-700/50 space-y-1">
+                      <ul className="mt-1 ml-4 pl-4 border-l border-neutral-700/50 space-y-1">
                         {item.submenu.map((subItem) => (
                           <li key={subItem.path}>
                             <Link
@@ -202,8 +210,8 @@ export default function Layout({ children, currentPageName }) {
                                 block px-4 py-2.5 rounded-lg text-sm
                                 transition-all duration-200
                                 ${isActiveRoute(subItem.path)
-                                  ? 'text-indigo-400 bg-indigo-500/10 font-medium'
-                                  : 'text-slate-400 hover:text-white hover:bg-slate-700/30'
+                                  ? 'text-yellow-400 bg-yellow-500/15 font-medium'
+                                  : 'text-neutral-400 hover:text-yellow-300 hover:bg-neutral-700/30'
                                 }
                               `}
                             >
