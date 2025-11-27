@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function ClienteConsulta() {
+export default function ClienteConsulta({ onEdit, onDelete }) {
   const [filters, setFilters] = useState({
     vendedor_id: 'all',
     supervisor_id: 'all',
@@ -316,6 +316,8 @@ export default function ClienteConsulta() {
             searchable={false} // We have custom search
             pageSize={20}
             emptyMessage="Nenhum cliente encontrado com os filtros selecionados."
+            onEdit={onEdit}
+            onDelete={onDelete}
           />
         </div>
       </div>

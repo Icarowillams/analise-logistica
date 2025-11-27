@@ -1,23 +1,22 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Users, List } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Users, List, Save, Ban } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import DataTable from '@/components/ui/DataTable';
-import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClienteConsulta from '@/components/clientes/ClienteConsulta';
 
 export default function Clientes() {
-  const [formOpen, setFormOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("cadastro");
+  const [isEditing, setIsEditing] = useState(false);
+  
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -30,11 +29,6 @@ export default function Clientes() {
   });
 
   const queryClient = useQueryClient();
-
-  const { data: clientes = [], isLoading } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
@@ -70,8 +64,8 @@ export default function Clientes() {
     mutationFn: (data) => base44.entities.Cliente.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['clientes']);
-      setFormOpen(false);
       resetForm();
+      setIsEditing(false);
     }
   });
 
@@ -79,8 +73,8 @@ export default function Clientes() {
     mutationFn: ({ id, data }) => base44.entities.Cliente.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['clientes']);
-      setFormOpen(false);
       resetForm();
+      setIsEditing(false);
     }
   });
 
@@ -105,7 +99,8 @@ export default function Clientes() {
 
   const handleNew = () => {
     resetForm();
-    setFormOpen(true);
+    setIsEditing(true);
+    setActiveTab("cadastro");
   };
 
   const handleEdit = (item) => {
@@ -131,12 +126,18 @@ export default function Clientes() {
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
-    setFormOpen(true);
+    setIsEditing(true);
+    setActiveTab("cadastro");
   };
 
   const handleDelete = (item) => {
     setSelected(item);
     setDeleteOpen(true);
+  };
+
+  const handleCancel = () => {
+    resetForm();
+    setIsEditing(false);
   };
 
   const handleSubmit = (e) => {
@@ -187,70 +188,6 @@ export default function Clientes() {
     { razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', email: 'contato@xyz.com', telefone: '(11) 88888-0000', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
   ];
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      ativo: { class: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle },
-      inativo: { class: 'bg-slate-100 text-slate-600 border-slate-200', icon: XCircle },
-      prospecto: { class: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock }
-    };
-    const s = styles[status] || styles.ativo;
-    return (
-      <Badge className={s.class}>
-        <s.icon className="w-3 h-3 mr-1" />
-        {status}
-      </Badge>
-    );
-  };
-
-  const getName = (list, id) => {
-    if (!id) return '-';
-    const item = list.find(i => i.id === id);
-    return item ? item.nome : '-';
-  };
-
-  const getVendedorAndSupervisor = (vendedorId) => {
-    if (!vendedorId) return { vendedor: '-', supervisor: '-' };
-    const vendedor = vendedores.find(v => v.id === vendedorId);
-    if (!vendedor) return { vendedor: '-', supervisor: '-' };
-    
-    const supervisor = vendedores.find(s => s.id === vendedor.supervisor_id);
-    return {
-      vendedor: vendedor.nome,
-      supervisor: supervisor ? supervisor.nome : '-'
-    };
-  };
-
-  const columns = [
-    { key: 'razao_social', label: 'Razão Social', sortable: true },
-    { key: 'nome_fantasia', label: 'Nome Fantasia' },
-    { key: 'cpf_cnpj', label: 'CPF/CNPJ', render: (val, item) => val || item.cnpj || '-' },
-    { key: 'plano_pagamento_id', label: 'Plano Pag.', render: (val) => getName(planosPagamento, val) },
-    { key: 'segmento_id', label: 'Segmento', render: (val) => getName(segmentos, val) },
-    { key: 'rede_id', label: 'Rede', render: (val) => getName(redes, val) },
-    { 
-      key: 'vendedor_id', 
-      label: 'Vendedor', 
-      render: (val) => getVendedorAndSupervisor(val).vendedor
-    },
-    { 
-      key: 'supervisor_id', 
-      label: 'Supervisor', 
-      render: (_, item) => getVendedorAndSupervisor(item.vendedor_id).supervisor
-    },
-    { key: 'cidade', label: 'Cidade' },
-    { key: 'bairro', label: 'Bairro' },
-    { key: 'estado', label: 'UF' },
-    { key: 'endereco', label: 'Endereço' },
-    { key: 'numero', label: 'Número' },
-    { key: 'rota_id', label: 'Rota', render: (val) => getName(rotas, val) },
-    { key: 'telefone', label: 'Telefone' },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (val) => getStatusBadge(val)
-    }
-  ];
-
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -281,7 +218,7 @@ export default function Clientes() {
         </div>
       </div>
 
-      <Tabs defaultValue="cadastro" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
           <TabsTrigger value="cadastro" className="flex items-center gap-2">
             <Building2 className="w-4 h-4" />
@@ -294,275 +231,269 @@ export default function Clientes() {
         </TabsList>
         
         <TabsContent value="cadastro" className="space-y-6 animate-in fade-in-50 duration-300">
-          {/* Grid View for better visual organization */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {clientes.map((cliente) => (
-              <div key={cliente.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold text-slate-900 line-clamp-1" title={cliente.razao_social}>
-                      {cliente.razao_social}
-                    </h3>
-                    <p className="text-sm text-slate-500 line-clamp-1">{cliente.nome_fantasia || '-'}</p>
-                  </div>
-                  {getStatusBadge(cliente.status)}
-                </div>
-                
-                <div className="space-y-2 text-sm text-slate-600 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-slate-400" />
-                    <span className="truncate">{cliente.cidade || '-'} / {cliente.estado || '-'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-slate-400" />
-                    <span className="truncate">{getVendedorAndSupervisor(cliente.vendedor_id).vendedor}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-slate-400" />
-                    <span className="truncate">Contato: {cliente.telefone || '-'}</span>
-                  </div>
-                </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">
+                {selected ? 'Editar Cliente' : 'Novo Cliente'}
+              </h2>
+              {!isEditing && (
+                <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                  Modo Visualização
+                </Badge>
+              )}
+            </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-50">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleEdit(cliente)}
-                    className="text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <Label>Razão Social *</Label>
+                  <Input
+                    value={formData.razao_social}
+                    onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
+                    required
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Nome Fantasia</Label>
+                  <Input
+                    value={formData.nome_fantasia}
+                    onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>CPF/CNPJ</Label>
+                  <Input
+                    value={formData.cpf_cnpj}
+                    onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
+                    placeholder="CPF ou CNPJ"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Plano de Pagamento</Label>
+                  <Select 
+                    value={formData.plano_pagamento_id} 
+                    onValueChange={(v) => setFormData({ ...formData, plano_pagamento_id: v })}
+                    disabled={!isEditing}
                   >
-                    Editar
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleDelete(cliente)}
-                    className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {planosPagamento.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Tabela de Preço</Label>
+                  <Select 
+                    value={formData.tabela_id} 
+                    onValueChange={(v) => setFormData({ ...formData, tabela_id: v })}
+                    disabled={!isEditing}
                   >
-                    Excluir
-                  </Button>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tabelas.map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Segmento</Label>
+                  <Select 
+                    value={formData.segmento_id} 
+                    onValueChange={(v) => setFormData({ ...formData, segmento_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {segmentos.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Rede/Franquia</Label>
+                  <Select 
+                    value={formData.rede_id} 
+                    onValueChange={(v) => setFormData({ ...formData, rede_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {redes.map(r => (
+                        <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Vendedor</Label>
+                  <Select 
+                    value={formData.vendedor_id} 
+                    onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vendedores.map(v => (
+                        <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Rota</Label>
+                  <Select 
+                    value={formData.rota_id} 
+                    onValueChange={(v) => setFormData({ ...formData, rota_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rotas.map(r => (
+                        <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input
+                    value={formData.telefone}
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Endereço</Label>
+                  <Textarea
+                    value={formData.endereco}
+                    onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                    rows={2}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Número</Label>
+                  <Input
+                    value={formData.numero}
+                    onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Bairro</Label>
+                  <Input
+                    value={formData.bairro}
+                    onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Cidade</Label>
+                  <Input
+                    value={formData.cidade}
+                    onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Estado (UF)</Label>
+                  <Input
+                    value={formData.estado}
+                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                    placeholder="UF"
+                    maxLength={2}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>CEP</Label>
+                  <Input
+                    value={formData.cep}
+                    onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                    placeholder="00000-000"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Data Primeiro Contato</Label>
+                  <Input
+                    type="date"
+                    value={formData.data_primeiro_contato}
+                    onChange={(e) => setFormData({ ...formData, data_primeiro_contato: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select 
+                    value={formData.status} 
+                    onValueChange={(v) => setFormData({ ...formData, status: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                      <SelectItem value="prospecto">Prospecto</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            ))}
+              
+              {isEditing && (
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <Button type="button" variant="outline" onClick={handleCancel}>
+                    <Ban className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </div>
+              )}
+            </form>
           </div>
-          
-          {clientes.length === 0 && !isLoading && (
-            <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
-              <p>Nenhum cliente cadastrado.</p>
-            </div>
-          )}
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <ClienteConsulta />
+          <ClienteConsulta onEdit={handleEdit} onDelete={handleDelete} />
         </TabsContent>
       </Tabs>
-
-      <FormModal
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={selected ? 'Editar Cliente' : 'Novo Cliente'}
-        size="lg"
-      >
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Label>Razão Social *</Label>
-              <Input
-                value={formData.razao_social}
-                onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>Nome Fantasia</Label>
-              <Input
-                value={formData.nome_fantasia}
-                onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>CPF/CNPJ</Label>
-              <Input
-                value={formData.cpf_cnpj}
-                onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
-                placeholder="CPF ou CNPJ"
-              />
-            </div>
-            <div>
-              <Label>Plano de Pagamento</Label>
-              <Select value={formData.plano_pagamento_id} onValueChange={(v) => setFormData({ ...formData, plano_pagamento_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {planosPagamento.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Tabela de Preço</Label>
-              <Select value={formData.tabela_id} onValueChange={(v) => setFormData({ ...formData, tabela_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {tabelas.map(t => (
-                    <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Segmento</Label>
-              <Select value={formData.segmento_id} onValueChange={(v) => setFormData({ ...formData, segmento_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {segmentos.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Rede/Franquia</Label>
-              <Select value={formData.rede_id} onValueChange={(v) => setFormData({ ...formData, rede_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {redes.map(r => (
-                    <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Vendedor</Label>
-              <Select value={formData.vendedor_id} onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendedores.map(v => (
-                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Rota</Label>
-              <Select value={formData.rota_id} onValueChange={(v) => setFormData({ ...formData, rota_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {rotas.map(r => (
-                    <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={formData.telefone}
-                onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <Label>Endereço</Label>
-              <Textarea
-                value={formData.endereco}
-                onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
-                rows={2}
-              />
-            </div>
-            <div>
-              <Label>Número</Label>
-              <Input
-                value={formData.numero}
-                onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Bairro</Label>
-              <Input
-                value={formData.bairro}
-                onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Cidade</Label>
-              <Input
-                value={formData.cidade}
-                onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Estado (UF)</Label>
-              <Input
-                value={formData.estado}
-                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                placeholder="UF"
-                maxLength={2}
-              />
-            </div>
-            <div>
-              <Label>CEP</Label>
-              <Input
-                value={formData.cep}
-                onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                placeholder="00000-000"
-              />
-            </div>
-            <div>
-              <Label>Data Primeiro Contato</Label>
-              <Input
-                type="date"
-                value={formData.data_primeiro_contato}
-                onChange={(e) => setFormData({ ...formData, data_primeiro_contato: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="inativo">Inativo</SelectItem>
-                  <SelectItem value="prospecto">Prospecto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
-            >
-              {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </div>
-        </form>
-      </FormModal>
 
       <DeleteConfirmDialog
         open={deleteOpen}
