@@ -275,7 +275,7 @@ export default function Clientes() {
       <DataTable
         data={clientes}
         columns={columns}
-        searchFields={['razao_social', 'nome_fantasia', 'cnpj', 'cidade']}
+        searchFields={['razao_social', 'nome_fantasia', 'cpf_cnpj', 'cidade', 'email']}
         onEdit={handleEdit}
         onDelete={handleDelete}
         isLoading={isLoading}
@@ -305,59 +305,25 @@ export default function Clientes() {
               />
             </div>
             <div>
-              <Label>CNPJ</Label>
+              <Label>CPF/CNPJ</Label>
               <Input
-                value={formData.cnpj}
-                onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
-                placeholder="00.000.000/0000-00"
+                value={formData.cpf_cnpj}
+                onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
+                placeholder="CPF ou CNPJ"
               />
             </div>
             <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={formData.telefone}
-                onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <Label>Endereço</Label>
-              <Textarea
-                value={formData.endereco}
-                onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
-                rows={2}
-              />
-            </div>
-            <div>
-              <Label>Cidade</Label>
-              <Input
-                value={formData.cidade}
-                onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Estado</Label>
-              <Input
-                value={formData.estado}
-                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                placeholder="UF"
-                maxLength={2}
-              />
-            </div>
-            <div>
-              <Label>CEP</Label>
-              <Input
-                value={formData.cep}
-                onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                placeholder="00000-000"
-              />
+              <Label>Plano de Pagamento</Label>
+              <Select value={formData.plano_pagamento_id} onValueChange={(v) => setFormData({ ...formData, plano_pagamento_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {planosPagamento.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Segmento</Label>
@@ -384,6 +350,93 @@ export default function Clientes() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Vendedor</Label>
+              <Select value={formData.vendedor_id} onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {vendedores.map(v => (
+                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Rota</Label>
+              <Select value={formData.rota_id} onValueChange={(v) => setFormData({ ...formData, rota_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {rotas.map(r => (
+                    <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Telefone</Label>
+              <Input
+                value={formData.telefone}
+                onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Endereço</Label>
+              <Textarea
+                value={formData.endereco}
+                onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                rows={2}
+              />
+            </div>
+            <div>
+              <Label>Número</Label>
+              <Input
+                value={formData.numero}
+                onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Bairro</Label>
+              <Input
+                value={formData.bairro}
+                onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Cidade</Label>
+              <Input
+                value={formData.cidade}
+                onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Estado (UF)</Label>
+              <Input
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                placeholder="UF"
+                maxLength={2}
+              />
+            </div>
+            <div>
+              <Label>CEP</Label>
+              <Input
+                value={formData.cep}
+                onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                placeholder="00000-000"
+              />
             </div>
             <div>
               <Label>Data Primeiro Contato</Label>
