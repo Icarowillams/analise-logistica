@@ -21,9 +21,10 @@ export default function Clientes() {
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
-    razao_social: '', nome_fantasia: '', cnpj: '', email: '', telefone: '',
-    endereco: '', cidade: '', estado: '', cep: '',
-    segmento_id: '', rede_id: '', data_primeiro_contato: '', status: 'ativo'
+    razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
+    endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+    segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '',
+    data_primeiro_contato: '', status: 'ativo'
   });
 
   const queryClient = useQueryClient();
@@ -41,6 +42,21 @@ export default function Clientes() {
   const { data: redes = [] } = useQuery({
     queryKey: ['redes'],
     queryFn: () => base44.entities.Rede.list()
+  });
+
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
+  });
+
+  const { data: planosPagamento = [] } = useQuery({
+    queryKey: ['planosPagamento'],
+    queryFn: () => base44.entities.PlanoPagamento.list()
+  });
+
+  const { data: rotas = [] } = useQuery({
+    queryKey: ['rotas'],
+    queryFn: () => base44.entities.Rota.list()
   });
 
   const createMutation = useMutation({
@@ -72,9 +88,10 @@ export default function Clientes() {
 
   const resetForm = () => {
     setFormData({
-      razao_social: '', nome_fantasia: '', cnpj: '', email: '', telefone: '',
-      endereco: '', cidade: '', estado: '', cep: '',
-      segmento_id: '', rede_id: '', data_primeiro_contato: '', status: 'ativo'
+      razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
+      endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+      segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '',
+      data_primeiro_contato: '', status: 'ativo'
     });
     setSelected(null);
   };
@@ -89,15 +106,20 @@ export default function Clientes() {
     setFormData({
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
-      cnpj: item.cnpj || '',
+      cpf_cnpj: item.cpf_cnpj || item.cnpj || '',
       email: item.email || '',
       telefone: item.telefone || '',
       endereco: item.endereco || '',
+      numero: item.numero || '',
+      bairro: item.bairro || '',
       cidade: item.cidade || '',
       estado: item.estado || '',
       cep: item.cep || '',
       segmento_id: item.segmento_id || '',
       rede_id: item.rede_id || '',
+      vendedor_id: item.vendedor_id || '',
+      rota_id: item.rota_id || '',
+      plano_pagamento_id: item.plano_pagamento_id || '',
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
@@ -134,10 +156,17 @@ export default function Clientes() {
   const bulkColumns = [
     { key: 'razao_social', label: 'Razão Social', required: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
-    { key: 'cnpj', label: 'CNPJ' },
+    { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+    { key: 'plano_pagamento_id', label: 'ID Plano Pag.' },
+    { key: 'segmento_id', label: 'ID Segmento' },
+    { key: 'rede_id', label: 'ID Rede' },
+    { key: 'vendedor_id', label: 'ID Vendedor' },
+    { key: 'rota_id', label: 'ID Rota' },
     { key: 'email', label: 'Email' },
     { key: 'telefone', label: 'Telefone' },
     { key: 'endereco', label: 'Endereço' },
+    { key: 'numero', label: 'Número' },
+    { key: 'bairro', label: 'Bairro' },
     { key: 'cidade', label: 'Cidade' },
     { key: 'estado', label: 'Estado' },
     { key: 'cep', label: 'CEP' },
@@ -145,8 +174,8 @@ export default function Clientes() {
   ];
 
   const bulkExampleData = [
-    { razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cnpj: '12.345.678/0001-90', email: 'contato@abc.com', telefone: '(11) 99999-0000', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
-    { razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cnpj: '98.765.432/0001-10', email: 'contato@xyz.com', telefone: '(11) 88888-0000', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
+    { razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', email: 'contato@abc.com', telefone: '(11) 99999-0000', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
+    { razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', email: 'contato@xyz.com', telefone: '(11) 88888-0000', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
   ];
 
   const getStatusBadge = (status) => {
@@ -164,11 +193,47 @@ export default function Clientes() {
     );
   };
 
+  const getName = (list, id) => {
+    if (!id) return '-';
+    const item = list.find(i => i.id === id);
+    return item ? item.nome : '-';
+  };
+
+  const getVendedorAndSupervisor = (vendedorId) => {
+    if (!vendedorId) return { vendedor: '-', supervisor: '-' };
+    const vendedor = vendedores.find(v => v.id === vendedorId);
+    if (!vendedor) return { vendedor: '-', supervisor: '-' };
+    
+    const supervisor = vendedores.find(s => s.id === vendedor.supervisor_id);
+    return {
+      vendedor: vendedor.nome,
+      supervisor: supervisor ? supervisor.nome : '-'
+    };
+  };
+
   const columns = [
     { key: 'razao_social', label: 'Razão Social', sortable: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
-    { key: 'cnpj', label: 'CNPJ' },
+    { key: 'cpf_cnpj', label: 'CPF/CNPJ', render: (val, item) => val || item.cnpj || '-' },
+    { key: 'plano_pagamento_id', label: 'Plano Pag.', render: (val) => getName(planosPagamento, val) },
+    { key: 'segmento_id', label: 'Segmento', render: (val) => getName(segmentos, val) },
+    { key: 'rede_id', label: 'Rede', render: (val) => getName(redes, val) },
+    { 
+      key: 'vendedor_id', 
+      label: 'Vendedor', 
+      render: (val) => getVendedorAndSupervisor(val).vendedor
+    },
+    { 
+      key: 'supervisor_id', 
+      label: 'Supervisor', 
+      render: (_, item) => getVendedorAndSupervisor(item.vendedor_id).supervisor
+    },
     { key: 'cidade', label: 'Cidade' },
+    { key: 'bairro', label: 'Bairro' },
+    { key: 'estado', label: 'UF' },
+    { key: 'endereco', label: 'Endereço' },
+    { key: 'numero', label: 'Número' },
+    { key: 'rota_id', label: 'Rota', render: (val) => getName(rotas, val) },
     { key: 'telefone', label: 'Telefone' },
     {
       key: 'status',
