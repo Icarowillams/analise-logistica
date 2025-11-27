@@ -42,7 +42,7 @@ const menuItems = [
     title: 'Cadastros',
     icon: Settings,
     submenu: [
-      { title: 'Vendedores', path: 'Vendedores' },
+      { title: 'Funcionários', path: 'Funcionarios' },
       { title: 'Produtos', path: 'Produtos' },
       { title: 'Clientes', path: 'Clientes' },
       { title: 'Segmentos', path: 'Segmentos' },
