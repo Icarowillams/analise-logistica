@@ -1,5 +1,4 @@
 import Dashboard from './pages/Dashboard';
-import Vendedores from './pages/Vendedores';
 import Produtos from './pages/Produtos';
 import Clientes from './pages/Clientes';
 import Segmentos from './pages/Segmentos';
@@ -18,12 +17,12 @@ import PainelRodrigosM from './pages/PainelRodrigosM';
 import DashboardVendedor from './pages/DashboardVendedor';
 import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardClientes from './pages/DashboardClientes';
+import Funcionarios from './pages/Funcionarios';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "Dashboard": Dashboard,
-    "Vendedores": Vendedores,
     "Produtos": Produtos,
     "Clientes": Clientes,
     "Segmentos": Segmentos,
@@ -42,6 +41,7 @@ export const PAGES = {
     "DashboardVendedor": DashboardVendedor,
     "DashboardTrocas": DashboardTrocas,
     "DashboardClientes": DashboardClientes,
+    "Funcionarios": Funcionarios,
 }
 
 export const pagesConfig = {
