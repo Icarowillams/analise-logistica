@@ -1,0 +1,194 @@
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Search, Filter, Tag, Package, List } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable from '@/components/ui/DataTable';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+export default function ProdutoConsulta() {
+  const [filters, setFilters] = useState({
+    categoria_id: 'all',
+    status: 'all',
+    search: ''
+  });
+
+  const { data: produtos = [], isLoading } = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => base44.entities.Produto.list()
+  });
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => base44.entities.Categoria.list()
+  });
+
+  const filteredProdutos = useMemo(() => {
+    return produtos.filter(produto => {
+      // Filter by Categoria
+      if (filters.categoria_id !== 'all' && produto.categoria_id !== filters.categoria_id) return false;
+      
+      // Filter by Status
+      if (filters.status !== 'all' && produto.status !== filters.status) return false;
+
+      // General Search
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const match = [
+          produto.nome,
+          produto.sku,
+          produto.cod_barras
+        ].some(val => val && String(val).toLowerCase().includes(searchLower));
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [produtos, filters]);
+
+  const getCategoryName = (id) => {
+    if (!id) return '-';
+    const cat = categorias.find(c => c.id === id);
+    return cat ? cat.nome : '-';
+  };
+
+  const columns = [
+    { 
+      key: 'imagem_url', 
+      label: 'Imagem',
+      render: (val) => val ? (
+        <img src={val} alt="Produto" className="w-10 h-10 rounded-lg object-cover border border-slate-200" />
+      ) : (
+        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+          <Package className="w-5 h-5" />
+        </div>
+      )
+    },
+    { key: 'nome', label: 'Nome', sortable: true },
+    { key: 'sku', label: 'SKU', sortable: true },
+    { key: 'cod_barras', label: 'Cód. Barras' },
+    { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
+    { 
+      key: 'preco_venda', 
+      label: 'Preço Venda',
+      render: (val) => val ? `R$ ${parseFloat(val).toFixed(2)}` : '-'
+    },
+    { key: 'estoque_atual', label: 'Estoque' },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (val) => (
+        <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
+          {val}
+        </Badge>
+      )
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <Card className="bg-white shadow-sm border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-medium flex items-center gap-2">
+            <Filter className="w-5 h-5 text-amber-500" />
+            Filtros Avançados
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* Categoria */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Categoria</label>
+              <Select 
+                value={filters.categoria_id} 
+                onValueChange={(v) => setFilters({...filters, categoria_id: v})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {categorias.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Status</label>
+              <Select 
+                value={filters.status} 
+                onValueChange={(v) => setFilters({...filters, status: v})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="inativo">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* General Search */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Busca Geral</label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                <Input 
+                  placeholder="Nome, SKU, Cód. Barras..." 
+                  value={filters.search}
+                  onChange={(e) => setFilters({...filters, search: e.target.value})}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+
+          </div>
+          
+          <div className="mt-4 flex justify-end">
+            <Button 
+              variant="outline" 
+              onClick={() => setFilters({
+                categoria_id: 'all',
+                status: 'all',
+                search: ''
+              })}
+              className="text-slate-600 hover:text-slate-900"
+            >
+              Limpar Filtros
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Results Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+            <List className="w-4 h-4" />
+            Resultados ({filteredProdutos.length})
+          </h3>
+        </div>
+        <div className="p-0">
+          <DataTable 
+            data={filteredProdutos} 
+            columns={columns}
+            searchable={false}
+            pageSize={20}
+            emptyMessage="Nenhum produto encontrado."
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
