@@ -19,6 +19,8 @@ import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardClientes from './pages/DashboardClientes';
 import Funcionarios from './pages/Funcionarios';
 import Funcoes from './pages/Funcoes';
+import Categorias from './pages/Categorias';
+import TabelasPreco from './pages/TabelasPreco';
 import __Layout from './Layout.jsx';
 
 
@@ -44,6 +46,8 @@ export const PAGES = {
     "DashboardClientes": DashboardClientes,
     "Funcionarios": Funcionarios,
     "Funcoes": Funcoes,
+    "Categorias": Categorias,
+    "TabelasPreco": TabelasPreco,
 }
 
 export const pagesConfig = {
