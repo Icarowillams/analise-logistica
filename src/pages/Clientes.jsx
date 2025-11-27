@@ -272,14 +272,62 @@ export default function Clientes() {
         </div>
       </div>
 
-      <DataTable
-        data={clientes}
-        columns={columns}
-        searchFields={['razao_social', 'nome_fantasia', 'cpf_cnpj', 'cidade', 'email']}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        isLoading={isLoading}
-      />
+      {/* Grid View for better visual organization */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {clientes.map((cliente) => (
+          <div key={cliente.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 line-clamp-1" title={cliente.razao_social}>
+                  {cliente.razao_social}
+                </h3>
+                <p className="text-sm text-slate-500 line-clamp-1">{cliente.nome_fantasia || '-'}</p>
+              </div>
+              {getStatusBadge(cliente.status)}
+            </div>
+            
+            <div className="space-y-2 text-sm text-slate-600 mb-4">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-slate-400" />
+                <span className="truncate">{cliente.cidade || '-'} / {cliente.estado || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-slate-400" />
+                <span className="truncate">{getVendedorAndSupervisor(cliente.vendedor_id).vendedor}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-slate-400" />
+                <span className="truncate">Contato: {cliente.telefone || '-'}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-50">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => handleEdit(cliente)}
+                className="text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+              >
+                Editar
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => handleDelete(cliente)}
+                className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {clientes.length === 0 && !isLoading && (
+        <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
+          <p>Nenhum cliente cadastrado.</p>
+        </div>
+      )}
 
       <FormModal
         open={formOpen}

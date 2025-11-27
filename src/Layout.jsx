@@ -44,7 +44,8 @@ const menuItems = [
     submenu: [
       { title: 'Funcionários', path: 'Funcionarios' },
       { title: 'Produtos', path: 'Produtos' },
-      { title: 'Clientes', path: 'Clientes' },
+      { title: 'Clientes (Cadastro)', path: 'Clientes' },
+      { title: 'Consulta Clientes', path: 'ConsultaClientes' },
       { title: 'Segmentos', path: 'Segmentos' },
       { title: 'Redes/Franquias', path: 'Redes' },
       { title: 'Motivos de Troca', path: 'MotivosTroca' },
