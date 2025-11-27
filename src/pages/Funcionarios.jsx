@@ -24,6 +24,7 @@ export default function Funcionarios() {
     cpf: '', 
     email: '', 
     funcao: '', 
+    departamento_id: '',
     supervisor_id: '',
     telefone: '', 
     data_admissao: '', 
@@ -40,6 +41,11 @@ export default function Funcionarios() {
   const { data: funcoes = [] } = useQuery({
     queryKey: ['funcoes'],
     queryFn: () => base44.entities.Funcao.list()
+  });
+
+  const { data: departamentos = [] } = useQuery({
+    queryKey: ['departamentos'],
+    queryFn: () => base44.entities.Departamento.list()
   });
 
   const createMutation = useMutation({
@@ -75,11 +81,12 @@ export default function Funcionarios() {
       cpf: '', 
       email: '', 
       funcao: '', 
+      departamento_id: '',
       supervisor_id: '',
       telefone: '', 
       data_admissao: '', 
       status: 'ativo' 
-    });
+      });
     setSelected(null);
   };
 
@@ -95,6 +102,7 @@ export default function Funcionarios() {
       cpf: item.cpf || '',
       email: item.email || '',
       funcao: item.funcao || '',
+      departamento_id: item.departamento_id || '',
       supervisor_id: item.supervisor_id || '',
       telefone: item.telefone || '',
       data_admissao: item.data_admissao || '',
@@ -136,11 +144,18 @@ export default function Funcionarios() {
     return supervisor ? supervisor.nome : '-';
   };
 
+  const getDepartmentName = (id) => {
+    if (!id) return '-';
+    const dept = departamentos.find(d => d.id === id);
+    return dept ? dept.nome : '-';
+  };
+
   const bulkColumns = [
     { key: 'nome', label: 'Nome', required: true },
     { key: 'cpf', label: 'CPF' },
     { key: 'email', label: 'Email', required: true },
     { key: 'funcao', label: 'Função' },
+    { key: 'departamento_id', label: 'ID Departamento' },
     { key: 'supervisor_id', label: 'ID Supervisor' },
     { key: 'telefone', label: 'Telefone' },
     { key: 'data_admissao', label: 'Data Admissão' },
@@ -157,6 +172,7 @@ export default function Funcionarios() {
     { key: 'cpf', label: 'CPF' },
     { key: 'email', label: 'Email' },
     { key: 'funcao', label: 'Função' },
+    { key: 'departamento_id', label: 'Departamento', render: (val) => getDepartmentName(val) },
     { 
       key: 'supervisor_id', 
       label: 'Supervisor',
@@ -254,6 +270,22 @@ export default function Funcionarios() {
                 <SelectContent>
                   {funcoes.map(f => (
                     <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Departamento</Label>
+              <Select 
+                value={formData.departamento_id} 
+                onValueChange={(v) => setFormData({ ...formData, departamento_id: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o departamento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {departamentos.map(d => (
+                    <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -275,24 +275,7 @@ export default function Produtos() {
                    </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-slate-50">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleEdit(produto)}
-                    className="text-slate-500 hover:text-amber-600 hover:bg-amber-50 h-8 px-2"
-                  >
-                    Editar
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleDelete(produto)}
-                    className="text-slate-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
-                  >
-                    Excluir
-                  </Button>
-                </div>
+                {/* Edit and Delete buttons removed from here as requested */}
               </div>
             ))}
           </div>
@@ -305,7 +288,7 @@ export default function Produtos() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <ProdutoConsulta />
+          <ProdutoConsulta onEdit={handleEdit} onDelete={handleDelete} />
         </TabsContent>
       </Tabs>
 
