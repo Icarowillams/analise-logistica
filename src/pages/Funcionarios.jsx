@@ -37,6 +37,11 @@ export default function Funcionarios() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Vendedor.create(data),
     onSuccess: () => {
@@ -239,11 +244,19 @@ export default function Funcionarios() {
             </div>
             <div>
               <Label>Função</Label>
-              <Input
-                value={formData.funcao}
-                onChange={(e) => setFormData({ ...formData, funcao: e.target.value })}
-                placeholder="Ex: Vendedor, Gerente"
-              />
+              <Select 
+                value={formData.funcao} 
+                onValueChange={(v) => setFormData({ ...formData, funcao: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a função..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {funcoes.map(f => (
+                    <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Supervisor</Label>

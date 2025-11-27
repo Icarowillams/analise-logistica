@@ -43,9 +43,9 @@ const menuItems = [
     icon: Settings,
     submenu: [
       { title: 'Funcionários', path: 'Funcionarios' },
+      { title: 'Funções', path: 'Funcoes' },
       { title: 'Produtos', path: 'Produtos' },
-      { title: 'Clientes (Cadastro)', path: 'Clientes' },
-      { title: 'Consulta Clientes', path: 'ConsultaClientes' },
+      { title: 'Clientes', path: 'Clientes' },
       { title: 'Segmentos', path: 'Segmentos' },
       { title: 'Redes/Franquias', path: 'Redes' },
       { title: 'Motivos de Troca', path: 'MotivosTroca' },
