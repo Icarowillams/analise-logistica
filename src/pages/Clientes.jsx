@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Building2, CheckCircle, XCircle, Clock, Upload } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Users, List } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ClienteConsulta from '@/components/clientes/ClienteConsulta';
 
 export default function Clientes() {
   const [formOpen, setFormOpen] = useState(false);
@@ -246,88 +248,107 @@ export default function Clientes() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Building2 className="h-6 w-6 text-white" />
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+            <Building2 className="h-6 w-6 text-neutral-900" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clientes</h1>
-            <p className="text-slate-500 mt-0.5">Base de clientes cadastrados</p>
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Clientes</h1>
+            <p className="text-neutral-500 mt-0.5">Gestão de base de clientes</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
-            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            className="border-amber-200 text-amber-700 hover:bg-amber-50"
           >
             <Upload className="w-4 h-4 mr-2" />
             Importar em Massa
           </Button>
           <Button
             onClick={handleNew}
-            className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/30"
+            className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
           >
             Novo Cliente
           </Button>
         </div>
       </div>
 
-      {/* Grid View for better visual organization */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {clientes.map((cliente) => (
-          <div key={cliente.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="font-bold text-slate-900 line-clamp-1" title={cliente.razao_social}>
-                  {cliente.razao_social}
-                </h3>
-                <p className="text-sm text-slate-500 line-clamp-1">{cliente.nome_fantasia || '-'}</p>
-              </div>
-              {getStatusBadge(cliente.status)}
-            </div>
-            
-            <div className="space-y-2 text-sm text-slate-600 mb-4">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-slate-400" />
-                <span className="truncate">{cliente.cidade || '-'} / {cliente.estado || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-slate-400" />
-                <span className="truncate">{getVendedorAndSupervisor(cliente.vendedor_id).vendedor}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-slate-400" />
-                <span className="truncate">Contato: {cliente.telefone || '-'}</span>
-              </div>
-            </div>
+      <Tabs defaultValue="cadastro" className="w-full">
+        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+          <TabsTrigger value="cadastro" className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" />
+            Cadastro
+          </TabsTrigger>
+          <TabsTrigger value="consulta" className="flex items-center gap-2">
+            <List className="w-4 h-4" />
+            Consulta
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="cadastro" className="space-y-6 animate-in fade-in-50 duration-300">
+          {/* Grid View for better visual organization */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {clientes.map((cliente) => (
+              <div key={cliente.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900 line-clamp-1" title={cliente.razao_social}>
+                      {cliente.razao_social}
+                    </h3>
+                    <p className="text-sm text-slate-500 line-clamp-1">{cliente.nome_fantasia || '-'}</p>
+                  </div>
+                  {getStatusBadge(cliente.status)}
+                </div>
+                
+                <div className="space-y-2 text-sm text-slate-600 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-slate-400" />
+                    <span className="truncate">{cliente.cidade || '-'} / {cliente.estado || '-'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-slate-400" />
+                    <span className="truncate">{getVendedorAndSupervisor(cliente.vendedor_id).vendedor}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-slate-400" />
+                    <span className="truncate">Contato: {cliente.telefone || '-'}</span>
+                  </div>
+                </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-50">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => handleEdit(cliente)}
-                className="text-slate-500 hover:text-amber-600 hover:bg-amber-50"
-              >
-                Editar
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => handleDelete(cliente)}
-                className="text-slate-500 hover:text-red-600 hover:bg-red-50"
-              >
-                Excluir
-              </Button>
-            </div>
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-50">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleEdit(cliente)}
+                    className="text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+                  >
+                    Editar
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleDelete(cliente)}
+                    className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+                  >
+                    Excluir
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      
-      {clientes.length === 0 && !isLoading && (
-        <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
-          <p>Nenhum cliente cadastrado.</p>
-        </div>
-      )}
+          
+          {clientes.length === 0 && !isLoading && (
+            <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
+              <p>Nenhum cliente cadastrado.</p>
+            </div>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
+          <ClienteConsulta />
+        </TabsContent>
+      </Tabs>
 
       <FormModal
         open={formOpen}

@@ -19,6 +19,7 @@ import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardClientes from './pages/DashboardClientes';
 import Funcionarios from './pages/Funcionarios';
 import ConsultaClientes from './pages/ConsultaClientes';
+import Funcoes from './pages/Funcoes';
 import __Layout from './Layout.jsx';
 
 
@@ -44,6 +45,7 @@ export const PAGES = {
     "DashboardClientes": DashboardClientes,
     "Funcionarios": Funcionarios,
     "ConsultaClientes": ConsultaClientes,
+    "Funcoes": Funcoes,
 }
 
 export const pagesConfig = {
