@@ -45,6 +45,8 @@ const menuItems = [
       { title: 'Funcionários', path: 'Funcionarios' },
       { title: 'Funções', path: 'Funcoes' },
       { title: 'Produtos', path: 'Produtos' },
+      { title: 'Categorias', path: 'Categorias' },
+      { title: 'Tabelas de Preço', path: 'TabelasPreco' },
       { title: 'Clientes', path: 'Clientes' },
       { title: 'Segmentos', path: 'Segmentos' },
       { title: 'Redes/Franquias', path: 'Redes' },

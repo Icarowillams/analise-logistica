@@ -20,7 +20,7 @@ export default function Produtos() {
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
-    nome: '', sku: '', categoria: '', preco_custo: '', preco_venda: '', estoque_atual: 0, status: 'ativo'
+    nome: '', sku: '', categoria_id: '', preco_custo: '', preco_venda: '', estoque_atual: 0, status: 'ativo'
   });
 
   const queryClient = useQueryClient();
@@ -28,6 +28,11 @@ export default function Produtos() {
   const { data: produtos = [], isLoading } = useQuery({
     queryKey: ['produtos'],
     queryFn: () => base44.entities.Produto.list()
+  });
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => base44.entities.Categoria.list()
   });
 
   const createMutation = useMutation({
@@ -58,7 +63,7 @@ export default function Produtos() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: '', sku: '', categoria: '', preco_custo: '', preco_venda: '', estoque_atual: 0, status: 'ativo' });
+    setFormData({ nome: '', sku: '', categoria_id: '', preco_custo: '', preco_venda: '', estoque_atual: 0, status: 'ativo' });
     setSelected(null);
   };
 
@@ -72,7 +77,7 @@ export default function Produtos() {
     setFormData({
       nome: item.nome || '',
       sku: item.sku || '',
-      categoria: item.categoria || '',
+      categoria_id: item.categoria_id || '',
       preco_custo: item.preco_custo || '',
       preco_venda: item.preco_venda || '',
       estoque_atual: item.estoque_atual || 0,
@@ -120,7 +125,7 @@ export default function Produtos() {
   const bulkColumns = [
     { key: 'nome', label: 'Nome', required: true },
     { key: 'sku', label: 'SKU', required: true },
-    { key: 'categoria', label: 'Categoria' },
+    { key: 'categoria_id', label: 'ID Categoria' },
     { key: 'preco_custo', label: 'Preço Custo', type: 'number' },
     { key: 'preco_venda', label: 'Preço Venda', type: 'number' },
     { key: 'estoque_atual', label: 'Estoque', type: 'number' },
@@ -128,14 +133,20 @@ export default function Produtos() {
   ];
 
   const bulkExampleData = [
-    { nome: 'Produto Exemplo 1', sku: 'SKU-001', categoria: 'Categoria A', preco_custo: '25.00', preco_venda: '45.00', estoque_atual: '100', status: 'ativo' },
-    { nome: 'Produto Exemplo 2', sku: 'SKU-002', categoria: 'Categoria B', preco_custo: '18.50', preco_venda: '32.00', estoque_atual: '200', status: 'ativo' }
+    { nome: 'Produto Exemplo 1', sku: 'SKU-001', categoria_id: 'CAT-ID-1', preco_custo: '25.00', preco_venda: '45.00', estoque_atual: '100', status: 'ativo' },
+    { nome: 'Produto Exemplo 2', sku: 'SKU-002', categoria_id: 'CAT-ID-2', preco_custo: '18.50', preco_venda: '32.00', estoque_atual: '200', status: 'ativo' }
   ];
+
+  const getCategoryName = (id) => {
+    if (!id) return '-';
+    const cat = categorias.find(c => c.id === id);
+    return cat ? cat.nome : '-';
+  };
 
   const columns = [
     { key: 'sku', label: 'SKU', sortable: true },
     { key: 'nome', label: 'Nome', sortable: true },
-    { key: 'categoria', label: 'Categoria' },
+    { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
     { 
       key: 'preco_custo', 
       label: 'Custo',
@@ -226,10 +237,19 @@ export default function Produtos() {
             </div>
             <div>
               <Label>Categoria</Label>
-              <Input
-                value={formData.categoria}
-                onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-              />
+              <Select 
+                value={formData.categoria_id} 
+                onValueChange={(v) => setFormData({ ...formData, categoria_id: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorias.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Estoque Atual</Label>

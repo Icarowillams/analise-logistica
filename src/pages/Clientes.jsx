@@ -25,7 +25,7 @@ export default function Clientes() {
   const [formData, setFormData] = useState({
     razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
-    segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '',
+    segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
     data_primeiro_contato: '', status: 'ativo'
   });
 
@@ -61,6 +61,11 @@ export default function Clientes() {
     queryFn: () => base44.entities.Rota.list()
   });
 
+  const { data: tabelas = [] } = useQuery({
+    queryKey: ['tabelasPreco'],
+    queryFn: () => base44.entities.TabelaPreco.list()
+  });
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
     onSuccess: () => {
@@ -92,7 +97,7 @@ export default function Clientes() {
     setFormData({
       razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
-      segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '',
+      segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
       data_primeiro_contato: '', status: 'ativo'
     });
     setSelected(null);
@@ -122,6 +127,7 @@ export default function Clientes() {
       vendedor_id: item.vendedor_id || '',
       rota_id: item.rota_id || '',
       plano_pagamento_id: item.plano_pagamento_id || '',
+      tabela_id: item.tabela_id || '',
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
@@ -160,6 +166,7 @@ export default function Clientes() {
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
     { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
     { key: 'plano_pagamento_id', label: 'ID Plano Pag.' },
+    { key: 'tabela_id', label: 'ID Tabela Preço' },
     { key: 'segmento_id', label: 'ID Segmento' },
     { key: 'rede_id', label: 'ID Rede' },
     { key: 'vendedor_id', label: 'ID Vendedor' },
@@ -390,6 +397,19 @@ export default function Clientes() {
                 <SelectContent>
                   {planosPagamento.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Tabela de Preço</Label>
+              <Select value={formData.tabela_id} onValueChange={(v) => setFormData({ ...formData, tabela_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tabelas.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
