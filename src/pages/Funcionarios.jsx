@@ -29,7 +29,6 @@ export default function Funcionarios() {
     departamento_id: '',
     supervisor_id: '',
     telefone: '', 
-    data_admissao: '', 
     status: 'ativo'
   });
 
@@ -86,7 +85,6 @@ export default function Funcionarios() {
       departamento_id: '',
       supervisor_id: '',
       telefone: '', 
-      data_admissao: '', 
       status: 'ativo' 
     });
     setSelected(null);
@@ -108,7 +106,6 @@ export default function Funcionarios() {
       departamento_id: item.departamento_id || '',
       supervisor_id: item.supervisor_id || '',
       telefone: item.telefone || '',
-      data_admissao: item.data_admissao || '',
       status: item.status || 'ativo'
     });
     setIsEditing(true);
@@ -167,7 +164,6 @@ export default function Funcionarios() {
     { key: 'departamento_id', label: 'ID Departamento' },
     { key: 'supervisor_id', label: 'ID Supervisor' },
     { key: 'telefone', label: 'Telefone' },
-    { key: 'data_admissao', label: 'Data Admissão' },
     { key: 'status', label: 'Status' }
   ];
 
@@ -347,15 +343,7 @@ export default function Funcionarios() {
                     disabled={!isEditing}
                   />
                 </div>
-                <div>
-                  <Label>Data de Admissão</Label>
-                  <Input
-                    type="date"
-                    value={formData.data_admissao}
-                    onChange={(e) => setFormData({ ...formData, data_admissao: e.target.value })}
-                    disabled={!isEditing}
-                  />
-                </div>
+
                 <div>
                   <Label>Status</Label>
                   <Select 
