@@ -62,6 +62,13 @@ export default function Redes() {
 
   const handleNew = () => {
     resetForm();
+    
+    const maxCod = redes.reduce((max, item) => {
+      const cod = parseInt(item.cod) || 0;
+      return cod > max ? cod : max;
+    }, 0);
+    
+    setFormData(prev => ({ ...prev, cod: String(maxCod + 1) }));
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -161,9 +168,9 @@ export default function Redes() {
                   <Label>Cód *</Label>
                   <Input 
                     value={formData.cod} 
-                    onChange={(e) => setFormData({ ...formData, cod: e.target.value })} 
-                    required 
-                    disabled={!isEditing}
+                    readOnly
+                    disabled
+                    className="bg-slate-100 text-slate-500"
                   />
                 </div>
                 <div>
