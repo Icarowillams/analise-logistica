@@ -7,7 +7,6 @@ import MotivosTroca from './pages/MotivosTroca';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Rotas from './pages/Rotas';
 import ImportarVendas from './pages/ImportarVendas';
-import ImportarTrocas from './pages/ImportarTrocas';
 import MetasProduto from './pages/MetasProduto';
 import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
@@ -34,7 +33,6 @@ export const PAGES = {
     "PlanosPagamento": PlanosPagamento,
     "Rotas": Rotas,
     "ImportarVendas": ImportarVendas,
-    "ImportarTrocas": ImportarTrocas,
     "MetasProduto": MetasProduto,
     "MetasPositivacao": MetasPositivacao,
     "MetasPrecoMedio": MetasPrecoMedio,

@@ -34,8 +34,7 @@ const menuItems = [
     title: 'Importações',
     icon: Upload,
     submenu: [
-      { title: 'Importar Vendas', path: 'ImportarVendas' },
-      { title: 'Importar Trocas', path: 'ImportarTrocas' }
+      { title: 'Importar Vendas', path: 'ImportarVendas' }
     ]
   },
   {
