@@ -228,7 +228,7 @@ export default function PlanosPagamento() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={planos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={planos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 

@@ -155,6 +155,7 @@ function GerenciarFuncoes() {
         searchFields={['nome', 'descricao']}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        pageSize={1000}
         isLoading={isLoading}
       />
 
@@ -323,6 +324,7 @@ function GerenciarDepartamentos() {
         searchFields={['nome', 'descricao']}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        pageSize={1000}
         isLoading={isLoading}
       />
 

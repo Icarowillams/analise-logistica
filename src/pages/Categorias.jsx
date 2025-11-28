@@ -155,6 +155,7 @@ function GerenciarCategorias() {
         searchFields={['nome', 'descricao']}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        pageSize={1000}
         isLoading={isLoading}
       />
 
@@ -339,6 +340,7 @@ function GerenciarSubCategorias() {
         searchFields={['nome', 'descricao']}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        pageSize={1000}
         isLoading={isLoading}
       />
 

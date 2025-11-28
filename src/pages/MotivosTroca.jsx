@@ -189,7 +189,7 @@ export default function MotivosTroca() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={motivos} columns={columns} searchFields={['descricao']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={motivos} columns={columns} searchFields={['descricao']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 

@@ -314,7 +314,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
             data={filteredClientes} 
             columns={columns}
             searchable={false} // We have custom search
-            pageSize={20}
+            pageSize={1000}
             emptyMessage="Nenhum cliente encontrado com os filtros selecionados."
             onEdit={onEdit}
             onDelete={onDelete}

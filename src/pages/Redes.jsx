@@ -238,7 +238,7 @@ export default function Redes() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 

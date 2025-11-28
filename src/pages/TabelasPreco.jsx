@@ -148,6 +148,7 @@ function GerenciarTabelas() {
         searchFields={['nome']}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        pageSize={1000}
         isLoading={isLoading}
       />
 

@@ -198,7 +198,7 @@ export default function Segmentos() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={segmentos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={segmentos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 

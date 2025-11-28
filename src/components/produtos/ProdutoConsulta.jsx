@@ -213,7 +213,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
             data={filteredProdutos} 
             columns={columns}
             searchable={false}
-            pageSize={20}
+            pageSize={1000}
             emptyMessage="Nenhum produto encontrado."
           />
         </div>
