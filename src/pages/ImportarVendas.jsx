@@ -20,9 +20,6 @@ export default function ImportarVendas() {
   const [errors, setErrors] = useState([]);
   const [importing, setImporting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [importDate, setImportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [selectedVendedor, setSelectedVendedor] = useState('');
-  
   const queryClient = useQueryClient();
 
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
@@ -36,22 +33,17 @@ export default function ImportarVendas() {
       setPreview([]);
       setErrors([]);
     }
-  }, [pasteData, importDate, selectedVendedor, clientes, produtos]);
+  }, [pasteData, clientes, produtos, vendedores]);
 
   const processData = (text) => {
     // Split lines and remove empty ones
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length === 0) return;
 
-    // Assuming first line is header or data? The user said "seguindo as colunas configuradas".
-    // It's safer to assume the user pastes WITH headers or WITHOUT.
-    // Usually paste from Excel has headers if copied, or not. 
-    // The user specified the columns: "COD" "COD PRODUTO" "VALOR LIQ" "QUANTIDADE LIQUIDA" "BONIFICAÇÃO" "TROCA"
-    // We'll try to detect if the first line matches headers. If so, skip it.
-    
     let startIdx = 0;
     const firstLine = lines[0].toLowerCase();
-    if (firstLine.includes('cod') && firstLine.includes('valor')) {
+    // Adjusted for new column: DATA
+    if (firstLine.includes('data') && firstLine.includes('cod')) {
       startIdx = 1;
     }
 
@@ -59,16 +51,27 @@ export default function ImportarVendas() {
     const processedRows = lines.slice(startIdx).map((line, idx) => {
       const values = line.split(/\t/); // Assuming tab separated from Excel copy
       
-      // Fallback to comma/semicolon if no tabs found in a line with content
       const splitValues = values.length > 1 ? values : line.split(/[,;]/);
       
-      // Map columns based on order: COD, COD PRODUTO, VALOR LIQ, QUANTIDADE LIQUIDA, BONIFICAÇÃO, TROCA
-      const codCliente = splitValues[0]?.trim();
-      const codProduto = splitValues[1]?.trim();
-      const valorLiq = parseFloat(splitValues[2]?.replace('R$', '').replace('.', '').replace(',', '.') || '0');
-      const qtdLiq = parseFloat(splitValues[3]?.replace(',', '.') || '0');
-      const bonificacao = parseFloat(splitValues[4]?.replace(',', '.') || '0');
-      const troca = parseFloat(splitValues[5]?.replace(',', '.') || '0');
+      // New Order: DATA | COD | COD PRODUTO | VALOR LIQ | QTD LIQ | BONIF | TROCA
+      const dataRaw = splitValues[0]?.trim();
+      const codCliente = splitValues[1]?.trim();
+      const codProduto = splitValues[2]?.trim();
+      const valorLiq = parseFloat(splitValues[3]?.replace('R$', '').replace('.', '').replace(',', '.') || '0');
+      const qtdLiq = parseFloat(splitValues[4]?.replace(',', '.') || '0');
+      const bonificacao = parseFloat(splitValues[5]?.replace(',', '.') || '0');
+      const troca = parseFloat(splitValues[6]?.replace(',', '.') || '0');
+
+      // Format Date (assuming input DD/MM/YYYY or similar, need YYYY-MM-DD for entity)
+      let dataVenda = null;
+      if (dataRaw) {
+        if (dataRaw.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+          const [day, month, year] = dataRaw.split('/');
+          dataVenda = `${year}-${month}-${day}`;
+        } else if (dataRaw.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          dataVenda = dataRaw;
+        }
+      }
 
       const cliente = clientes.find(c => 
         c.codigo === codCliente || 
@@ -82,62 +85,70 @@ export default function ImportarVendas() {
 
       const rowNum = idx + 1 + startIdx;
 
+      if (!dataRaw) validationErrors.push(`Linha ${rowNum}: Data vazia`);
+      if (dataRaw && !dataVenda) validationErrors.push(`Linha ${rowNum}: Formato de data inválido (use DD/MM/AAAA)`);
       if (!codCliente) validationErrors.push(`Linha ${rowNum}: Código do cliente vazio`);
       if (codCliente && !cliente) validationErrors.push(`Linha ${rowNum}: Cliente não encontrado (Código: ${codCliente})`);
       if (!codProduto) validationErrors.push(`Linha ${rowNum}: Código do produto vazio`);
       if (codProduto && !produto) validationErrors.push(`Linha ${rowNum}: Produto não encontrado (Código: ${codProduto})`);
-      if (!selectedVendedor) validationErrors.push(`Linha ${rowNum}: Vendedor não selecionado para a importação`);
+      
+      // Validation for Vendedor linked to Cliente
+      if (cliente && !cliente.vendedor_id) validationErrors.push(`Linha ${rowNum}: Cliente ${cliente.razao_social} não tem vendedor vinculado`);
 
       return {
         _rowNum: rowNum,
+        data: dataVenda,
         cod_cliente: codCliente,
-        cliente_id: cliente?.id,
-        cliente_nome: cliente?.razao_social || cliente?.nome_fantasia,
-        cod_produto: codProduto,
-        produto_id: produto?.id,
-        produto_nome: produto?.nome,
+        cliente: cliente, // Pass full objects to use in handleImport
+        produto: produto,
         valor_liq: valorLiq,
         qtd_liq: qtdLiq,
         bonificacao: bonificacao,
         troca: troca,
-        valid: !!(cliente && produto && selectedVendedor && importDate)
+        valid: !!(cliente && produto && dataVenda && cliente.vendedor_id)
       };
     });
 
     setPreview(processedRows);
-    setErrors([...new Set(validationErrors)]); // remove duplicates
+    setErrors([...new Set(validationErrors)]); 
   };
 
   const handleImport = async () => {
     setImporting(true);
     const validRows = preview.filter(r => r.valid);
-    const vendedor = vendedores.find(v => v.id === selectedVendedor);
 
     try {
-      const vendasData = validRows.map(r => ({
-        data: importDate,
-        vendedor_id: selectedVendedor,
-        vendedor_nome: vendedor?.nome,
-        cliente_id: r.cliente_id,
-        cliente_nome: r.cliente_nome,
-        produto_id: r.produto_id,
-        produto_nome: r.produto_nome,
-        quantidade: r.qtd_liq,
-        valor_total: r.valor_liq,
-        valor_unitario: r.qtd_liq > 0 ? r.valor_liq / r.qtd_liq : 0,
-        margem: 0, // Default or calculated if possible
-        bonificacao: r.bonificacao,
-        troca: r.troca
-      }));
+      const vendasData = validRows.map(r => {
+        const cli = r.cliente;
+        const prod = r.produto;
+        const vend = vendedores.find(v => v.id === cli.vendedor_id);
+        const supervisorId = vend?.supervisor_id; // Assuming Vendor entity has supervisor_id
 
-      // Batch creation could be better but simple loop for now to ensure safety
-      // Or use bulkCreate if available (sdk usually supports it? prompt says base44.entities.Todo.bulkCreate)
-      // Using bulkCreate for efficiency
-      await base44.entities.Venda.create_entity_records(vendasData); // Wait, prompt says create_entity_records is a TOOL, not SDK method.
-      // SDK method is base44.entities.Entity.create (single) or base44.entities.Entity.bulkCreate (if available).
-      // The instructions say: "base44.entities.Todo.bulkCreate(...) will create 2 new todos."
-      // So I can use bulkCreate.
-      
+        return {
+          data: r.data,
+          vendedor_id: cli.vendedor_id,
+          vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
+          supervisor_id: supervisorId,
+          cliente_id: cli.id,
+          cliente_nome: cli.razao_social || cli.nome_fantasia,
+          produto_id: prod.id,
+          produto_nome: prod.nome,
+          categoria_id: prod.categoria_id,
+          sub_categoria_id: prod.sub_categoria_id,
+          segmento_id: cli.segmento_id,
+          rede_id: cli.rede_id,
+          rota_id: cli.rota_id,
+          tabela_id: cli.tabela_id,
+          plano_pagamento_id: cli.plano_pagamento_id,
+          quantidade: r.qtd_liq,
+          valor_total: r.valor_liq,
+          valor_unitario: r.qtd_liq > 0 ? r.valor_liq / r.qtd_liq : 0,
+          margem: 0,
+          bonificacao: r.bonificacao,
+          troca: r.troca
+        };
+      });
+
       await base44.entities.Venda.bulkCreate(vendasData);
 
       setImporting(false);
@@ -162,38 +173,8 @@ export default function ImportarVendas() {
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column: Configuration and Input */}
+        {/* Left Column: Input */}
         <div className="lg:col-span-1 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Configuração da Importação</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Data da Venda</Label>
-                <Input 
-                  type="date" 
-                  value={importDate}
-                  onChange={(e) => setImportDate(e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label>Vendedor Responsável</Label>
-                <Select value={selectedVendedor} onValueChange={setSelectedVendedor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o vendedor..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendedores.map(v => (
-                      <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card className="h-full">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -203,12 +184,16 @@ export default function ImportarVendas() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <Label className="text-xs text-slate-500">
-                  Colunas: COD | COD PRODUTO | VALOR LIQ | QTD LIQ | BONIF | TROCA
+                <Label className="text-xs text-slate-500 font-semibold block mb-2">
+                  Ordem das Colunas:
+                  <br/>
+                  DATA | COD CLI | COD PROD | VALOR LIQ | QTD LIQ | BONIF | TROCA
                 </Label>
                 <Textarea 
-                  placeholder={`Cole aqui os dados do Excel...\nExemplo:\n001\t789123\t150,00\t10\t0\t0`}
-                  className="min-h-[300px] font-mono text-xs"
+                  placeholder={`Cole aqui os dados do Excel...
+Exemplo:
+01/01/2024\tC001\tP123\t150,00\t10\t0\t0`}
+                  className="min-h-[400px] font-mono text-xs"
                   value={pasteData}
                   onChange={(e) => {
                     setPasteData(e.target.value);
