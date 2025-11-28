@@ -198,8 +198,11 @@ export default function Funcionarios() {
     }
   ];
 
-  // Filter out current user from supervisor list to avoid self-reference loop
-  const potentialSupervisors = funcionarios.filter(f => f.id !== selected?.id);
+  // Filter for supervisors: exclude self AND check for 'supervisor' or 'gerente' in function name
+  const potentialSupervisors = funcionarios.filter(f => 
+    f.id !== selected?.id && 
+    (f.funcao?.toLowerCase().includes('supervisor') || f.funcao?.toLowerCase().includes('gerente'))
+  );
 
   return (
     <div>
