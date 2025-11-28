@@ -19,7 +19,7 @@ export default function Redes() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ nome: '', cnpj: '', contato: '', email: '', telefone: '', raio_atuacao: '' });
+  const [formData, setFormData] = useState({ nome: '', cod: '' });
 
   const queryClient = useQueryClient();
 
@@ -56,7 +56,7 @@ export default function Redes() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: '', cnpj: '', contato: '', email: '', telefone: '', raio_atuacao: '' });
+    setFormData({ nome: '', cod: '' });
     setSelected(null);
   };
 
@@ -68,7 +68,7 @@ export default function Redes() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ nome: item.nome || '', cnpj: item.cnpj || '', contato: item.contato || '', email: item.email || '', telefone: item.telefone || '', raio_atuacao: item.raio_atuacao || '' });
+    setFormData({ nome: item.nome || '', cod: item.cod || '' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -100,25 +100,18 @@ export default function Redes() {
   };
 
   const bulkColumns = [
-    { key: 'nome', label: 'Nome', required: true },
-    { key: 'cnpj', label: 'CNPJ' },
-    { key: 'contato', label: 'Contato' },
-    { key: 'email', label: 'Email' },
-    { key: 'telefone', label: 'Telefone' },
-    { key: 'raio_atuacao', label: 'Raio de Atuação' }
+    { key: 'cod', label: 'Cód', required: true },
+    { key: 'nome', label: 'Nome', required: true }
   ];
 
   const bulkExampleData = [
-    { nome: 'Rede Exemplo 1', cnpj: '11.111.111/0001-01', contato: 'João Silva', email: 'joao@rede1.com', telefone: '(11) 3333-0001', raio_atuacao: 'Grande São Paulo' },
-    { nome: 'Rede Exemplo 2', cnpj: '22.222.222/0001-02', contato: 'Maria Santos', email: 'maria@rede2.com', telefone: '(11) 3333-0002', raio_atuacao: 'Interior SP' }
+    { cod: '001', nome: 'Rede Exemplo 1' },
+    { cod: '002', nome: 'Rede Exemplo 2' }
   ];
 
   const columns = [
-    { key: 'nome', label: 'Nome', sortable: true },
-    { key: 'cnpj', label: 'CNPJ' },
-    { key: 'contato', label: 'Contato' },
-    { key: 'email', label: 'Email' },
-    { key: 'raio_atuacao', label: 'Raio de Atuação' }
+    { key: 'cod', label: 'Cód', sortable: true },
+    { key: 'nome', label: 'Nome', sortable: true }
   ];
 
   return (
@@ -164,54 +157,21 @@ export default function Redes() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <Label>Nome *</Label>
+                <div>
+                  <Label>Cód *</Label>
                   <Input 
-                    value={formData.nome} 
-                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })} 
+                    value={formData.cod} 
+                    onChange={(e) => setFormData({ ...formData, cod: e.target.value })} 
                     required 
                     disabled={!isEditing}
                   />
                 </div>
                 <div>
-                  <Label>CNPJ</Label>
+                  <Label>Nome *</Label>
                   <Input 
-                    value={formData.cnpj} 
-                    onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })} 
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Contato</Label>
-                  <Input 
-                    value={formData.contato} 
-                    onChange={(e) => setFormData({ ...formData, contato: e.target.value })} 
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input 
-                    type="email" 
-                    value={formData.email} 
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Telefone</Label>
-                  <Input 
-                    value={formData.telefone} 
-                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} 
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>Raio de Atuação</Label>
-                  <Input 
-                    value={formData.raio_atuacao} 
-                    onChange={(e) => setFormData({ ...formData, raio_atuacao: e.target.value })} 
-                    placeholder="Ex: Grande São Paulo" 
+                    value={formData.nome} 
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })} 
+                    required 
                     disabled={!isEditing}
                   />
                 </div>
@@ -238,7 +198,7 @@ export default function Redes() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
+          <DataTable data={redes} columns={columns} searchFields={['nome', 'cod']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 
