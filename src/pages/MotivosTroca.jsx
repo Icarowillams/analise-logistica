@@ -20,7 +20,7 @@ export default function MotivosTroca() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ descricao: '', categoria: '' });
+  const [formData, setFormData] = useState({ descricao: '' });
 
   const queryClient = useQueryClient();
 
@@ -57,7 +57,7 @@ export default function MotivosTroca() {
   });
 
   const resetForm = () => {
-    setFormData({ descricao: '', categoria: '' });
+    setFormData({ descricao: '' });
     setSelected(null);
   };
 
@@ -69,7 +69,7 @@ export default function MotivosTroca() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ descricao: item.descricao || '', categoria: item.categoria || '' });
+    setFormData({ descricao: item.descricao || '' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -101,26 +101,16 @@ export default function MotivosTroca() {
   };
 
   const bulkColumns = [
-    { key: 'descricao', label: 'Ocorrência', required: true },
-    { key: 'categoria', label: 'Categoria' }
+    { key: 'descricao', label: 'Ocorrência', required: true }
   ];
 
   const bulkExampleData = [
-    { descricao: 'Produto danificado', categoria: 'defeito' },
-    { descricao: 'Troca por preferência', categoria: 'cliente_solicitou' }
+    { descricao: 'Produto danificado' },
+    { descricao: 'Troca por preferência' }
   ];
 
-  const categoriaLabels = {
-    defeito: 'Defeito',
-    cliente_solicitou: 'Cliente Solicitou',
-    vencimento: 'Vencimento',
-    estoque: 'Estoque',
-    outro: 'Outro'
-  };
-
   const columns = [
-    { key: 'descricao', label: 'Ocorrência', sortable: true },
-    { key: 'categoria', label: 'Categoria', render: (val) => <Badge variant="secondary">{categoriaLabels[val] || val}</Badge> }
+    { key: 'descricao', label: 'Ocorrência', sortable: true }
   ];
 
   return (
@@ -175,23 +165,6 @@ export default function MotivosTroca() {
                     disabled={!isEditing}
                     placeholder="Descreva a ocorrência..."
                   />
-                </div>
-                <div>
-                  <Label>Categoria</Label>
-                  <Select 
-                    value={formData.categoria} 
-                    onValueChange={(v) => setFormData({ ...formData, categoria: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="defeito">Defeito</SelectItem>
-                      <SelectItem value="cliente_solicitou">Cliente Solicitou</SelectItem>
-                      <SelectItem value="vencimento">Vencimento</SelectItem>
-                      <SelectItem value="estoque">Estoque</SelectItem>
-                      <SelectItem value="outro">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
               
