@@ -20,7 +20,7 @@ export default function Segmentos() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ nome: '', codigo: '', descricao: '' });
+  const [formData, setFormData] = useState({ nome: '', descricao: '' });
 
   const queryClient = useQueryClient();
 
@@ -57,7 +57,7 @@ export default function Segmentos() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: '', codigo: '', descricao: '' });
+    setFormData({ nome: '', descricao: '' });
     setSelected(null);
   };
 
@@ -69,7 +69,7 @@ export default function Segmentos() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ nome: item.nome || '', codigo: item.codigo || '', descricao: item.descricao || '' });
+    setFormData({ nome: item.nome || '', descricao: item.descricao || '' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -102,17 +102,15 @@ export default function Segmentos() {
 
   const bulkColumns = [
     { key: 'nome', label: 'Nome', required: true },
-    { key: 'codigo', label: 'Código', required: true },
     { key: 'descricao', label: 'Descrição' }
   ];
 
   const bulkExampleData = [
-    { nome: 'Varejo', codigo: 'VAR', descricao: 'Lojas de varejo' },
-    { nome: 'Atacado', codigo: 'ATA', descricao: 'Atacadistas e distribuidores' }
+    { nome: 'Varejo', descricao: 'Lojas de varejo' },
+    { nome: 'Atacado', descricao: 'Atacadistas e distribuidores' }
   ];
 
   const columns = [
-    { key: 'codigo', label: 'Código', sortable: true },
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'descricao', label: 'Descrição' }
   ];
@@ -160,20 +158,11 @@ export default function Segmentos() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="md:col-span-2">
                   <Label>Nome *</Label>
                   <Input 
                     value={formData.nome} 
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })} 
-                    required 
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Código *</Label>
-                  <Input 
-                    value={formData.codigo} 
-                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} 
                     required 
                     disabled={!isEditing}
                   />
@@ -209,7 +198,7 @@ export default function Segmentos() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={segmentos} columns={columns} searchFields={['nome', 'codigo']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={segmentos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 
