@@ -27,6 +27,7 @@ export default function Produtos() {
     sku: '', 
     cod_barras: '',
     categoria_id: '', 
+    sub_categoria_id: '',
     imagem_url: '',
     preco_custo: '', 
     preco_venda: '', 
@@ -39,6 +40,11 @@ export default function Produtos() {
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias'],
     queryFn: () => base44.entities.Categoria.list()
+  });
+
+  const { data: subCategorias = [] } = useQuery({
+    queryKey: ['subCategorias'],
+    queryFn: () => base44.entities.SubCategoria.list()
   });
 
   const createMutation = useMutation({
@@ -74,6 +80,7 @@ export default function Produtos() {
       sku: '', 
       cod_barras: '',
       categoria_id: '', 
+      sub_categoria_id: '',
       imagem_url: '',
       preco_custo: '', 
       preco_venda: '', 
@@ -96,6 +103,7 @@ export default function Produtos() {
       sku: item.sku || '',
       cod_barras: item.cod_barras || '',
       categoria_id: item.categoria_id || '',
+      sub_categoria_id: item.sub_categoria_id || '',
       imagem_url: item.imagem_url || '',
       preco_custo: item.preco_custo || '',
       preco_venda: item.preco_venda || '',
@@ -309,6 +317,27 @@ export default function Produtos() {
                       {categorias.map(c => (
                         <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Subcategoria</Label>
+                  <Select 
+                    value={formData.sub_categoria_id} 
+                    onValueChange={(v) => setFormData({ ...formData, sub_categoria_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subCategorias
+                        .filter(sc => !formData.categoria_id || sc.categoria_id === formData.categoria_id)
+                        .map(sc => (
+                          <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
+                        ))
+                      }
                     </SelectContent>
                   </Select>
                 </div>
