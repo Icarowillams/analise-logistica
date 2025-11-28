@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Network, Upload } from 'lucide-react';
+import { Network, Upload, List, Save, Ban, CheckCircle, XCircle } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
-import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from '@/components/ui/badge';
 
 export default function Redes() {
-  const [formOpen, setFormOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("cadastro");
+  const [isEditing, setIsEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -27,17 +30,29 @@ export default function Redes() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Rede.create(data),
-    onSuccess: () => { queryClient.invalidateQueries(['redes']); setFormOpen(false); resetForm(); }
+    onSuccess: () => {
+      queryClient.invalidateQueries(['redes']);
+      resetForm();
+      setIsEditing(false);
+    }
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Rede.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries(['redes']); setFormOpen(false); resetForm(); }
+    onSuccess: () => {
+      queryClient.invalidateQueries(['redes']);
+      resetForm();
+      setIsEditing(false);
+    }
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Rede.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries(['redes']); setDeleteOpen(false); setSelected(null); }
+    onSuccess: () => {
+      queryClient.invalidateQueries(['redes']);
+      setDeleteOpen(false);
+      setSelected(null);
+    }
   });
 
   const resetForm = () => {
@@ -45,12 +60,24 @@ export default function Redes() {
     setSelected(null);
   };
 
-  const handleNew = () => { resetForm(); setFormOpen(true); };
+  const handleNew = () => {
+    resetForm();
+    setIsEditing(true);
+    setActiveTab("cadastro");
+  };
+
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({ nome: item.nome || '', cnpj: item.cnpj || '', contato: item.contato || '', email: item.email || '', telefone: item.telefone || '', raio_atuacao: item.raio_atuacao || '' });
-    setFormOpen(true);
+    setIsEditing(true);
+    setActiveTab("cadastro");
   };
+
+  const handleCancel = () => {
+    resetForm();
+    setIsEditing(false);
+  };
+
   const handleDelete = (item) => { setSelected(item); setDeleteOpen(true); };
 
   const handleSubmit = (e) => {
@@ -97,15 +124,11 @@ export default function Redes() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Network className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Redes/Franquias</h1>
-            <p className="text-slate-500 mt-0.5">Grupos empresariais</p>
-          </div>
-        </div>
+        <PageHeader 
+          title="Redes" 
+          subtitle="Grupos empresariais"
+          icon={Network}
+        />
         <div className="flex gap-2">
           <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
             <Upload className="w-4 h-4 mr-2" />Importar em Massa
@@ -113,26 +136,111 @@ export default function Redes() {
           <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Rede</Button>
         </div>
       </div>
-      <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
-      
-      <FormModal open={formOpen} onOpenChange={setFormOpen} title={selected ? 'Editar Rede' : 'Nova Rede'}>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2"><Label>Nome *</Label><Input value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} required /></div>
-            <div><Label>CNPJ</Label><Input value={formData.cnpj} onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })} /></div>
-            <div><Label>Contato</Label><Input value={formData.contato} onChange={(e) => setFormData({ ...formData, contato: e.target.value })} /></div>
-            <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
-            <div><Label>Telefone</Label><Input value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>Raio de Atuação</Label><Input value={formData.raio_atuacao} onChange={(e) => setFormData({ ...formData, raio_atuacao: e.target.value })} placeholder="Ex: Grande São Paulo" /></div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+          <TabsTrigger value="cadastro" className="flex items-center gap-2">
+            <Network className="w-4 h-4" />
+            Cadastro
+          </TabsTrigger>
+          <TabsTrigger value="consulta" className="flex items-center gap-2">
+            <List className="w-4 h-4" />
+            Consulta
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="cadastro" className="space-y-6 animate-in fade-in-50 duration-300">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">
+                {selected ? 'Editar Rede' : 'Nova Rede'}
+              </h2>
+              {!isEditing && (
+                <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                  Modo Visualização
+                </Badge>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <Label>Nome *</Label>
+                  <Input 
+                    value={formData.nome} 
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })} 
+                    required 
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>CNPJ</Label>
+                  <Input 
+                    value={formData.cnpj} 
+                    onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })} 
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Contato</Label>
+                  <Input 
+                    value={formData.contato} 
+                    onChange={(e) => setFormData({ ...formData, contato: e.target.value })} 
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input 
+                    type="email" 
+                    value={formData.email} 
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input 
+                    value={formData.telefone} 
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} 
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Raio de Atuação</Label>
+                  <Input 
+                    value={formData.raio_atuacao} 
+                    onChange={(e) => setFormData({ ...formData, raio_atuacao: e.target.value })} 
+                    placeholder="Ex: Grande São Paulo" 
+                    disabled={!isEditing}
+                  />
+                </div>
+              </div>
+              
+              {isEditing && (
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <Button type="button" variant="outline" onClick={handleCancel}>
+                    <Ban className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={createMutation.isPending || updateMutation.isPending} 
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </div>
+              )}
+            </form>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="bg-gradient-to-r from-indigo-500 to-purple-600">
-              {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </div>
-        </form>
-      </FormModal>
+        </TabsContent>
+        
+        <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
+          <DataTable data={redes} columns={columns} searchFields={['nome', 'cnpj']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+        </TabsContent>
+      </Tabs>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={() => deleteMutation.mutate(selected?.id)} isDeleting={deleteMutation.isPending} />
       

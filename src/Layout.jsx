@@ -48,7 +48,7 @@ const menuItems = [
       { title: 'Tabelas de Preço', path: 'TabelasPreco' },
       { title: 'Clientes', path: 'Clientes' },
       { title: 'Segmentos', path: 'Segmentos' },
-      { title: 'Redes/Franquias', path: 'Redes' },
+      { title: 'Redes', path: 'Redes' },
       { title: 'Motivos de Troca', path: 'MotivosTroca' },
       { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
       { title: 'Rotas', path: 'Rotas' }
