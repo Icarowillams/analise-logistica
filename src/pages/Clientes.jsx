@@ -23,7 +23,7 @@ export default function Clientes() {
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
-    razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
+    codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
     data_primeiro_contato: '', status: 'ativo'
@@ -90,7 +90,7 @@ export default function Clientes() {
 
   const resetForm = () => {
     setFormData({
-      razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '', telefone: '',
+      codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
       data_primeiro_contato: '', status: 'ativo'
@@ -107,11 +107,10 @@ export default function Clientes() {
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({
+      codigo: item.codigo || '',
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
       cpf_cnpj: item.cpf_cnpj || item.cnpj || '',
-      email: item.email || '',
-      telefone: item.telefone || '',
       endereco: item.endereco || '',
       numero: item.numero || '',
       bairro: item.bairro || '',
@@ -173,8 +172,6 @@ export default function Clientes() {
     { key: 'rede_id', label: 'ID Rede' },
     { key: 'vendedor_id', label: 'ID Vendedor' },
     { key: 'rota_id', label: 'ID Rota' },
-    { key: 'email', label: 'Email' },
-    { key: 'telefone', label: 'Telefone' },
     { key: 'endereco', label: 'Endereço' },
     { key: 'numero', label: 'Número' },
     { key: 'bairro', label: 'Bairro' },
@@ -185,8 +182,8 @@ export default function Clientes() {
   ];
 
   const bulkExampleData = [
-    { razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', email: 'contato@abc.com', telefone: '(11) 99999-0000', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
-    { razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', email: 'contato@xyz.com', telefone: '(11) 88888-0000', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
+    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
+    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
   ];
 
   return (
@@ -246,7 +243,16 @@ export default function Clientes() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
+                <div>
+                   <Label>Código</Label>
+                   <Input
+                     value={formData.codigo}
+                     onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                     disabled={!isEditing}
+                     placeholder="Código interno"
+                   />
+                </div>
+                <div>
                   <Label>Razão Social *</Label>
                   <Input
                     value={formData.razao_social}
@@ -374,23 +380,7 @@ export default function Clientes() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Telefone</Label>
-                  <Input
-                    value={formData.telefone}
-                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-                    disabled={!isEditing}
-                  />
-                </div>
+
                 <div className="md:col-span-2">
                   <Label>Endereço</Label>
                   <Textarea

@@ -84,11 +84,10 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const match = [
+          cliente.codigo,
           cliente.razao_social,
           cliente.nome_fantasia,
           cliente.cpf_cnpj,
-          cliente.email,
-          cliente.telefone,
           cliente.endereco,
           cliente.numero
         ].some(val => val && String(val).toLowerCase().includes(searchLower));
@@ -112,6 +111,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
   };
 
   const columns = [
+    { key: 'codigo', label: 'Cód.', sortable: true },
     { key: 'razao_social', label: 'Razão Social', sortable: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
     { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
