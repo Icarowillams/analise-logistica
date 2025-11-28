@@ -49,7 +49,7 @@ const menuItems = [
       { title: 'Clientes', path: 'Clientes' },
       { title: 'Segmentos', path: 'Segmentos' },
       { title: 'Redes', path: 'Redes' },
-      { title: 'Motivos de Troca', path: 'MotivosTroca' },
+      { title: 'Ocorrência de Troca', path: 'MotivosTroca' },
       { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
       { title: 'Rotas', path: 'Rotas' }
     ]

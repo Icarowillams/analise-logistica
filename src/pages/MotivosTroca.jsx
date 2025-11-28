@@ -20,7 +20,7 @@ export default function MotivosTroca() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ descricao: '', codigo: '', categoria: '' });
+  const [formData, setFormData] = useState({ descricao: '', categoria: '' });
 
   const queryClient = useQueryClient();
 
@@ -57,7 +57,7 @@ export default function MotivosTroca() {
   });
 
   const resetForm = () => {
-    setFormData({ descricao: '', codigo: '', categoria: '' });
+    setFormData({ descricao: '', categoria: '' });
     setSelected(null);
   };
 
@@ -69,7 +69,7 @@ export default function MotivosTroca() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ descricao: item.descricao || '', codigo: item.codigo || '', categoria: item.categoria || '' });
+    setFormData({ descricao: item.descricao || '', categoria: item.categoria || '' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -101,14 +101,13 @@ export default function MotivosTroca() {
   };
 
   const bulkColumns = [
-    { key: 'descricao', label: 'Descrição', required: true },
-    { key: 'codigo', label: 'Código', required: true },
+    { key: 'descricao', label: 'Ocorrência', required: true },
     { key: 'categoria', label: 'Categoria' }
   ];
 
   const bulkExampleData = [
-    { descricao: 'Produto danificado', codigo: 'DAN', categoria: 'defeito' },
-    { descricao: 'Troca por preferência', codigo: 'PREF', categoria: 'cliente_solicitou' }
+    { descricao: 'Produto danificado', categoria: 'defeito' },
+    { descricao: 'Troca por preferência', categoria: 'cliente_solicitou' }
   ];
 
   const categoriaLabels = {
@@ -120,8 +119,7 @@ export default function MotivosTroca() {
   };
 
   const columns = [
-    { key: 'codigo', label: 'Código', sortable: true },
-    { key: 'descricao', label: 'Descrição', sortable: true },
+    { key: 'descricao', label: 'Ocorrência', sortable: true },
     { key: 'categoria', label: 'Categoria', render: (val) => <Badge variant="secondary">{categoriaLabels[val] || val}</Badge> }
   ];
 
@@ -129,15 +127,15 @@ export default function MotivosTroca() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <PageHeader 
-          title="Motivos de Troca" 
-          subtitle="Razões para trocas de produtos"
+          title="Ocorrência de Troca" 
+          subtitle="Gerenciamento de ocorrências para trocas"
           icon={ArrowLeftRight}
         />
         <div className="flex gap-2">
           <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
             <Upload className="w-4 h-4 mr-2" />Importar em Massa
           </Button>
-          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Motivo</Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Ocorrência</Button>
         </div>
       </div>
 
@@ -157,7 +155,7 @@ export default function MotivosTroca() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Motivo' : 'Novo Motivo'}
+                {selected ? 'Editar Ocorrência' : 'Nova Ocorrência'}
               </h2>
               {!isEditing && (
                 <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
@@ -169,21 +167,13 @@ export default function MotivosTroca() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <Label>Descrição *</Label>
+                  <Label>Ocorrência *</Label>
                   <Input 
                     value={formData.descricao} 
                     onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} 
                     required 
                     disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Código *</Label>
-                  <Input 
-                    value={formData.codigo} 
-                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} 
-                    required 
-                    disabled={!isEditing}
+                    placeholder="Descreva a ocorrência..."
                   />
                 </div>
                 <div>
@@ -226,7 +216,7 @@ export default function MotivosTroca() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={motivos} columns={columns} searchFields={['descricao', 'codigo']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
+          <DataTable data={motivos} columns={columns} searchFields={['descricao']} onEdit={handleEdit} onDelete={handleDelete} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 
@@ -235,8 +225,8 @@ export default function MotivosTroca() {
       <BulkImportModal
         open={bulkOpen}
         onOpenChange={setBulkOpen}
-        title="Importar Motivos em Massa"
-        description="Importe vários motivos de uma vez"
+        title="Importar Ocorrências em Massa"
+        description="Importe várias ocorrências de uma vez"
         columns={bulkColumns}
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
