@@ -19,7 +19,7 @@ export default function Redes() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ nome: '', cod: '' });
+  const [formData, setFormData] = useState({ nome: '', cod: '', status: 'ativo' });
 
   const queryClient = useQueryClient();
 
@@ -56,7 +56,7 @@ export default function Redes() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: '', cod: '' });
+    setFormData({ nome: '', cod: '', status: 'ativo' });
     setSelected(null);
   };
 
@@ -118,7 +118,12 @@ export default function Redes() {
 
   const columns = [
     { key: 'cod', label: 'Cód', sortable: true },
-    { key: 'nome', label: 'Nome', sortable: true }
+    { key: 'nome', label: 'Nome', sortable: true },
+    { key: 'status', label: 'Status', render: (val) => (
+      <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
+        {val === 'ativo' ? <CheckCircle className="w-3 h-3 mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}{val}
+      </Badge>
+    )}
   ];
 
   return (
@@ -181,6 +186,20 @@ export default function Redes() {
                     required 
                     disabled={!isEditing}
                   />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select 
+                    value={formData.status} 
+                    onValueChange={(v) => setFormData({ ...formData, status: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               
