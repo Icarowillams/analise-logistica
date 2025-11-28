@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Users, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Users, CheckCircle, XCircle, Upload, List, Ban, Save } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
-import FormModal from '@/components/forms/FormModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
@@ -12,9 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Funcionarios() {
-  const [formOpen, setFormOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("cadastro");
+  const [isEditing, setIsEditing] = useState(false);
+  
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -52,8 +54,8 @@ export default function Funcionarios() {
     mutationFn: (data) => base44.entities.Vendedor.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['vendedores']);
-      setFormOpen(false);
       resetForm();
+      setIsEditing(false);
     }
   });
 
@@ -61,8 +63,8 @@ export default function Funcionarios() {
     mutationFn: ({ id, data }) => base44.entities.Vendedor.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['vendedores']);
-      setFormOpen(false);
       resetForm();
+      setIsEditing(false);
     }
   });
 
@@ -86,13 +88,14 @@ export default function Funcionarios() {
       telefone: '', 
       data_admissao: '', 
       status: 'ativo' 
-      });
+    });
     setSelected(null);
   };
 
   const handleNew = () => {
     resetForm();
-    setFormOpen(true);
+    setIsEditing(true);
+    setActiveTab("cadastro");
   };
 
   const handleEdit = (item) => {
@@ -108,7 +111,13 @@ export default function Funcionarios() {
       data_admissao: item.data_admissao || '',
       status: item.status || 'ativo'
     });
-    setFormOpen(true);
+    setIsEditing(true);
+    setActiveTab("cadastro");
+  };
+
+  const handleCancel = () => {
+    resetForm();
+    setIsEditing(false);
   };
 
   const handleDelete = (item) => {
@@ -193,163 +202,209 @@ export default function Funcionarios() {
     }
   ];
 
-  // Filter out current user from supervisor list to avoid self-reference loop (simple check)
+  // Filter out current user from supervisor list to avoid self-reference loop
   const potentialSupervisors = funcionarios.filter(f => f.id !== selected?.id);
 
   return (
     <div>
-      <PageHeader 
-        title="Funcionários" 
-        subtitle="Gerencie sua equipe"
-        icon={Users}
-        action={handleNew}
-        actionLabel="Novo Funcionário"
-      />
-
-      <div className="flex justify-end mb-4">
-        <Button
-          onClick={() => setBulkOpen(true)}
-          variant="outline"
-          className="border-amber-200 text-amber-700 hover:bg-amber-50"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Importar em Massa
-        </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <PageHeader 
+          title="Funcionários" 
+          subtitle="Gerencie sua equipe"
+          icon={Users}
+        />
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setBulkOpen(true)}
+            variant="outline"
+            className="border-amber-200 text-amber-700 hover:bg-amber-50"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Importar em Massa
+          </Button>
+          <Button
+            onClick={handleNew}
+            className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
+          >
+            Novo Funcionário
+          </Button>
+        </div>
       </div>
 
-      <DataTable
-        data={funcionarios}
-        columns={columns}
-        searchFields={['nome', 'email', 'cpf', 'funcao']}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        isLoading={isLoading}
-      />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+          <TabsTrigger value="cadastro" className="flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            Cadastro
+          </TabsTrigger>
+          <TabsTrigger value="consulta" className="flex items-center gap-2">
+            <List className="w-4 h-4" />
+            Consulta
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="cadastro" className="space-y-6 animate-in fade-in-50 duration-300">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">
+                {selected ? 'Editar Funcionário' : 'Novo Funcionário'}
+              </h2>
+              {!isEditing && (
+                <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                  Modo Visualização
+                </Badge>
+              )}
+            </div>
 
-      <FormModal
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={selected ? 'Editar Funcionário' : 'Novo Funcionário'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Label>Nome *</Label>
-              <Input
-                value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>CPF</Label>
-              <Input
-                value={formData.cpf}
-                onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
-                placeholder="000.000.000-00"
-              />
-            </div>
-            <div>
-              <Label>Email *</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>Função</Label>
-              <Select 
-                value={formData.funcao} 
-                onValueChange={(v) => setFormData({ ...formData, funcao: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a função..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {funcoes.map(f => (
-                    <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Departamento</Label>
-              <Select 
-                value={formData.departamento_id} 
-                onValueChange={(v) => setFormData({ ...formData, departamento_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o departamento..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {departamentos.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Supervisor</Label>
-              <Select 
-                value={formData.supervisor_id} 
-                onValueChange={(v) => setFormData({ ...formData, supervisor_id: v === 'none' ? '' : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um supervisor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum</SelectItem>
-                  {potentialSupervisors.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={formData.telefone}
-                onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-            <div>
-              <Label>Data de Admissão</Label>
-              <Input
-                type="date"
-                value={formData.data_admissao}
-                onChange={(e) => setFormData({ ...formData, data_admissao: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="inativo">Inativo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <Label>Nome *</Label>
+                  <Input
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    required
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>CPF</Label>
+                  <Input
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    placeholder="000.000.000-00"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Email *</Label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Função</Label>
+                  <Select 
+                    value={formData.funcao} 
+                    onValueChange={(v) => setFormData({ ...formData, funcao: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a função..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {funcoes.map(f => (
+                        <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Departamento</Label>
+                  <Select 
+                    value={formData.departamento_id} 
+                    onValueChange={(v) => setFormData({ ...formData, departamento_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o departamento..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departamentos.map(d => (
+                        <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Supervisor</Label>
+                  <Select 
+                    value={formData.supervisor_id} 
+                    onValueChange={(v) => setFormData({ ...formData, supervisor_id: v === 'none' ? '' : v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um supervisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhum</SelectItem>
+                      {potentialSupervisors.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input
+                    value={formData.telefone}
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                    placeholder="(00) 00000-0000"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Data de Admissão</Label>
+                  <Input
+                    type="date"
+                    value={formData.data_admissao}
+                    onChange={(e) => setFormData({ ...formData, data_admissao: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select 
+                    value={formData.status} 
+                    onValueChange={(v) => setFormData({ ...formData, status: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <Button type="button" variant="outline" onClick={handleCancel}>
+                    <Ban className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </div>
+              )}
+            </form>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold"
-            >
-              {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </div>
-        </form>
-      </FormModal>
+        </TabsContent>
+        
+        <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
+          <DataTable
+            data={funcionarios}
+            columns={columns}
+            searchFields={['nome', 'email', 'cpf', 'funcao']}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            isLoading={isLoading}
+          />
+        </TabsContent>
+      </Tabs>
 
       <DeleteConfirmDialog
         open={deleteOpen}
