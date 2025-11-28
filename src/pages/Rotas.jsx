@@ -17,12 +17,11 @@ export default function Rotas() {
   const [isEditing, setIsEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [formData, setFormData] = useState({ nome: '', vendedor_id: '', frequencia: 'semanal', dia_semana: '', status: 'ativo' });
+  const [formData, setFormData] = useState({ nome: '', status: 'ativo' });
 
   const queryClient = useQueryClient();
 
   const { data: rotas = [], isLoading } = useQuery({ queryKey: ['rotas'], queryFn: () => base44.entities.Rota.list() });
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Rota.create(data),
@@ -52,7 +51,7 @@ export default function Rotas() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: '', vendedor_id: '', frequencia: 'semanal', dia_semana: '', status: 'ativo' });
+    setFormData({ nome: '', status: 'ativo' });
     setSelected(null);
   };
 
@@ -64,7 +63,7 @@ export default function Rotas() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ nome: item.nome || '', vendedor_id: item.vendedor_id || '', frequencia: item.frequencia || 'semanal', dia_semana: item.dia_semana || '', status: item.status || 'ativo' });
+    setFormData({ nome: item.nome || '', status: item.status || 'ativo' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -85,16 +84,8 @@ export default function Rotas() {
     }
   };
 
-  const getVendedorNome = (id) => vendedores.find(v => v.id === id)?.nome || '-';
-
-  const diasSemana = { segunda: 'Segunda', terca: 'Terça', quarta: 'Quarta', quinta: 'Quinta', sexta: 'Sexta', sabado: 'Sábado' };
-  const frequencias = { semanal: 'Semanal', quinzenal: 'Quinzenal', mensal: 'Mensal' };
-
   const columns = [
     { key: 'nome', label: 'Nome', sortable: true },
-    { key: 'vendedor_id', label: 'Vendedor', render: (v) => getVendedorNome(v) },
-    { key: 'frequencia', label: 'Frequência', render: (v) => frequencias[v] || v },
-    { key: 'dia_semana', label: 'Dia', render: (v) => diasSemana[v] || v },
     { key: 'status', label: 'Status', render: (val) => (
       <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
         {val === 'ativo' ? <CheckCircle className="w-3 h-3 mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}{val}
@@ -141,8 +132,8 @@ export default function Rotas() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
                   <Label>Nome *</Label>
                   <Input 
                     value={formData.nome} 
@@ -150,46 +141,6 @@ export default function Rotas() {
                     required 
                     disabled={!isEditing}
                   />
-                </div>
-                <div>
-                  <Label>Vendedor *</Label>
-                  <Select 
-                    value={formData.vendedor_id} 
-                    onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>{vendedores.filter(v => v.status === 'ativo').map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Frequência</Label>
-                  <Select 
-                    value={formData.frequencia} 
-                    onValueChange={(v) => setFormData({ ...formData, frequencia: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="quinzenal">Quinzenal</SelectItem>
-                      <SelectItem value="mensal">Mensal</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Dia da Semana</Label>
-                  <Select 
-                    value={formData.dia_semana} 
-                    onValueChange={(v) => setFormData({ ...formData, dia_semana: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="segunda">Segunda</SelectItem><SelectItem value="terca">Terça</SelectItem><SelectItem value="quarta">Quarta</SelectItem>
-                      <SelectItem value="quinta">Quinta</SelectItem><SelectItem value="sexta">Sexta</SelectItem><SelectItem value="sabado">Sábado</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div>
                   <Label>Status</Label>
