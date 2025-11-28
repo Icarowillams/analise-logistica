@@ -257,6 +257,7 @@ Exemplo:
                   <TableHeader>
                     <TableRow className="bg-slate-50 sticky top-0">
                       <TableHead className="w-12">Status</TableHead>
+                      <TableHead>Data</TableHead>
                       <TableHead>COD Cli</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>COD Prod</TableHead>
@@ -270,7 +271,7 @@ Exemplo:
                   <TableBody>
                     {preview.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-slate-500">
+                        <TableCell colSpan={10} className="text-center py-8 text-slate-500">
                           Cole os dados na área de texto para visualizar
                         </TableCell>
                       </TableRow>
@@ -284,13 +285,14 @@ Exemplo:
                               <AlertCircle className="w-4 h-4 text-red-500" />
                             )}
                           </TableCell>
+                          <TableCell className="text-xs">{row.data ? format(new Date(row.data), 'dd/MM/yyyy') : '-'}</TableCell>
                           <TableCell className="font-mono text-xs">{row.cod_cliente}</TableCell>
-                          <TableCell className="truncate max-w-[150px]" title={row.cliente_nome}>
-                            {row.cliente_nome || <span className="text-red-500 italic">Não encontrado</span>}
+                          <TableCell className="truncate max-w-[150px]" title={row.cliente?.razao_social}>
+                            {row.cliente?.razao_social || <span className="text-red-500 italic">Não encontrado</span>}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{row.cod_produto}</TableCell>
-                          <TableCell className="truncate max-w-[150px]" title={row.produto_nome}>
-                            {row.produto_nome || <span className="text-red-500 italic">Não encontrado</span>}
+                          <TableCell className="font-mono text-xs">{row.produto?.sku || row.produto?.cod_barras || '-'}</TableCell>
+                          <TableCell className="truncate max-w-[150px]" title={row.produto?.nome}>
+                            {row.produto?.nome || <span className="text-red-500 italic">Não encontrado</span>}
                           </TableCell>
                           <TableCell className="text-right">
                             {row.valor_liq?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
