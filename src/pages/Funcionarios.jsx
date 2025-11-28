@@ -390,6 +390,7 @@ export default function Funcionarios() {
             data={funcionarios}
             columns={columns}
             searchFields={['nome', 'email', 'cpf', 'funcao']}
+            pageSize={1000}
             onEdit={handleEdit}
             onDelete={handleDelete}
             isLoading={isLoading}
