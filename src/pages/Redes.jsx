@@ -75,7 +75,7 @@ export default function Redes() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    setFormData({ nome: item.nome || '', cod: item.cod || '' });
+    setFormData({ nome: item.nome || '', cod: item.cod || '', status: item.status || 'ativo' });
     setIsEditing(true);
     setActiveTab("cadastro");
   };
