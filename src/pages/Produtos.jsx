@@ -164,6 +164,7 @@ export default function Produtos() {
     setIsImporting(true);
     for (const item of data) {
       const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
+      const subCat = subCategorias.find(sc => sc.nome.toLowerCase() === (item.sub_categoria_nome || '').toLowerCase());
       const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
       
       await base44.entities.Produto.create({
@@ -171,6 +172,7 @@ export default function Produtos() {
         nome: item.nome,
         cod_barras: item.cod_barras,
         categoria_id: cat ? cat.id : null,
+        sub_categoria_id: subCat ? subCat.id : null,
         unidade_medida_id: unidade ? unidade.id : null,
         peso: parseFloat(item.peso) || 0,
         status: item.status || 'ativo',
@@ -187,14 +189,15 @@ export default function Produtos() {
     { key: 'nome', label: 'Nome', required: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_nome', label: 'Nome da Categoria' },
+    { key: 'sub_categoria_nome', label: 'Nome da Subcategoria' },
     { key: 'unidade_medida_nome', label: 'Nome da Unidade de Medida' },
     { key: 'peso', label: 'Peso', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_nome: 'Bebidas', unidade_medida_nome: 'UN', peso: '1.5', status: 'ativo' },
-    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_nome: 'Alimentos', unidade_medida_nome: 'KG', peso: '0.5', status: 'ativo' }
+    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', peso: '1.5', status: 'ativo' },
+    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', peso: '0.5', status: 'ativo' }
   ];
 
   return (
