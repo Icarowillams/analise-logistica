@@ -151,11 +151,34 @@ export default function Clientes() {
 
   const handleBulkImport = async (data) => {
     setIsImporting(true);
+    
+    const findId = (list, name) => {
+      if (!name) return null;
+      const found = list.find(i => i.nome?.toLowerCase() === String(name).toLowerCase().trim());
+      return found ? found.id : null;
+    };
+
     for (const item of data) {
-      await base44.entities.Cliente.create({
+      const clienteData = {
         ...item,
+        plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
+        tabela_id: findId(tabelas, item.tabela_preco),
+        segmento_id: findId(segmentos, item.segmento),
+        rede_id: findId(redes, item.rede),
+        vendedor_id: findId(vendedores, item.vendedor),
+        rota_id: findId(rotas, item.rota),
         status: item.status || 'ativo'
-      });
+      };
+
+      // Remove temporary name fields
+      delete clienteData.plano_pagamento;
+      delete clienteData.tabela_preco;
+      delete clienteData.segmento;
+      delete clienteData.rede;
+      delete clienteData.vendedor;
+      delete clienteData.rota;
+
+      await base44.entities.Cliente.create(clienteData);
     }
     queryClient.invalidateQueries(['clientes']);
     setIsImporting(false);
@@ -167,12 +190,12 @@ export default function Clientes() {
     { key: 'razao_social', label: 'Razão Social', required: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
     { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
-    { key: 'plano_pagamento_id', label: 'ID Plano Pag.' },
-    { key: 'tabela_id', label: 'ID Tabela Preço' },
-    { key: 'segmento_id', label: 'ID Segmento' },
-    { key: 'rede_id', label: 'ID Rede' },
-    { key: 'vendedor_id', label: 'ID Vendedor' },
-    { key: 'rota_id', label: 'ID Rota' },
+    { key: 'plano_pagamento', label: 'Plano Pagamento' },
+    { key: 'tabela_preco', label: 'Tabela Preço' },
+    { key: 'segmento', label: 'Segmento' },
+    { key: 'rede', label: 'Rede' },
+    { key: 'vendedor', label: 'Vendedor' },
+    { key: 'rota', label: 'Rota' },
     { key: 'endereco', label: 'Endereço' },
     { key: 'numero', label: 'Número' },
     { key: 'bairro', label: 'Bairro' },
@@ -183,8 +206,8 @@ export default function Clientes() {
   ];
 
   const bulkExampleData = [
-    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
-    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
+    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', tabela_preco: 'Tabela 1', vendedor: 'João Silva', cidade: 'São Paulo', estado: 'SP', status: 'ativo' },
+    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', status: 'ativo' }
   ];
 
   return (
