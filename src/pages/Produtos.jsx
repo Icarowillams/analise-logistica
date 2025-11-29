@@ -31,7 +31,7 @@ export default function Produtos() {
     estoque_atual: 0, 
     status: 'ativo',
     unidade_medida_id: '',
-    fator_conversao: 1
+    peso: ''
   });
 
   const queryClient = useQueryClient();
@@ -88,7 +88,7 @@ export default function Produtos() {
       estoque_atual: 0, 
       status: 'ativo',
       unidade_medida_id: '',
-      fator_conversao: 1
+      peso: ''
     });
     setSelected(null);
   };
@@ -110,7 +110,7 @@ export default function Produtos() {
       estoque_atual: item.estoque_atual || 0,
       status: item.status || 'ativo',
       unidade_medida_id: item.unidade_medida_id || '',
-      fator_conversao: item.fator_conversao || 1
+      peso: item.peso || ''
     });
     setIsEditing(true);
     setActiveTab("cadastro");
@@ -131,7 +131,7 @@ export default function Produtos() {
     const data = {
       ...formData,
       estoque_atual: parseInt(formData.estoque_atual) || 0,
-      fator_conversao: parseFloat(formData.fator_conversao) || 1
+      peso: parseFloat(formData.peso) || 0
     };
     if (selected) {
       updateMutation.mutate({ id: selected.id, data });
@@ -164,7 +164,7 @@ export default function Produtos() {
         ...item,
         estoque_atual: parseInt(item.estoque_atual) || 0,
         status: item.status || 'ativo',
-        fator_conversao: parseFloat(item.fator_conversao) || 1
+        peso: parseFloat(item.peso) || 0
       });
     }
     queryClient.invalidateQueries(['produtos']);
@@ -177,14 +177,14 @@ export default function Produtos() {
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'ID Categoria' },
     { key: 'unidade_medida_id', label: 'ID Unidade' },
-    { key: 'fator_conversao', label: 'Conversão', type: 'number' },
+    { key: 'peso', label: 'Peso', type: 'number' },
     { key: 'estoque_atual', label: 'Estoque', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', unidade_medida_id: 'UN-ID-1', fator_conversao: '1', estoque_atual: '100', status: 'ativo' },
-    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', unidade_medida_id: 'UN-ID-2', fator_conversao: '12', estoque_atual: '200', status: 'ativo' }
+    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', unidade_medida_id: 'UN-ID-1', peso: '1.5', estoque_atual: '100', status: 'ativo' },
+    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', unidade_medida_id: 'UN-ID-2', peso: '0.5', estoque_atual: '200', status: 'ativo' }
   ];
 
   return (
@@ -369,13 +369,13 @@ export default function Produtos() {
                 </div>
 
                 <div>
-                  <Label>Fator de Conversão</Label>
+                  <Label>Peso</Label>
                   <Input
                     type="number"
                     step="0.01"
-                    value={formData.fator_conversao}
-                    onChange={(e) => setFormData({ ...formData, fator_conversao: e.target.value })}
-                    placeholder="1"
+                    value={formData.peso}
+                    onChange={(e) => setFormData({ ...formData, peso: e.target.value })}
+                    placeholder="0.00"
                     disabled={!isEditing}
                   />
                 </div>
