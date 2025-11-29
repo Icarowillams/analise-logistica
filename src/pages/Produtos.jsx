@@ -24,13 +24,10 @@ export default function Produtos() {
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     nome: '', 
-    sku: '', 
     cod_barras: '',
     categoria_id: '', 
     sub_categoria_id: '',
     imagem_url: '',
-    preco_custo: '', 
-    preco_venda: '', 
     estoque_atual: 0, 
     status: 'ativo'
   });
@@ -77,13 +74,10 @@ export default function Produtos() {
   const resetForm = () => {
     setFormData({ 
       nome: '', 
-      sku: '', 
       cod_barras: '',
       categoria_id: '', 
       sub_categoria_id: '',
       imagem_url: '',
-      preco_custo: '', 
-      preco_venda: '', 
       estoque_atual: 0, 
       status: 'ativo' 
     });
@@ -100,13 +94,10 @@ export default function Produtos() {
     setSelected(item);
     setFormData({
       nome: item.nome || '',
-      sku: item.sku || '',
       cod_barras: item.cod_barras || '',
       categoria_id: item.categoria_id || '',
       sub_categoria_id: item.sub_categoria_id || '',
       imagem_url: item.imagem_url || '',
-      preco_custo: item.preco_custo || '',
-      preco_venda: item.preco_venda || '',
       estoque_atual: item.estoque_atual || 0,
       status: item.status || 'ativo'
     });
@@ -128,8 +119,6 @@ export default function Produtos() {
     e.preventDefault();
     const data = {
       ...formData,
-      preco_custo: parseFloat(formData.preco_custo) || 0,
-      preco_venda: parseFloat(formData.preco_venda) || 0,
       estoque_atual: parseInt(formData.estoque_atual) || 0
     };
     if (selected) {
@@ -161,8 +150,6 @@ export default function Produtos() {
     for (const item of data) {
       await base44.entities.Produto.create({
         ...item,
-        preco_custo: parseFloat(item.preco_custo) || 0,
-        preco_venda: parseFloat(item.preco_venda) || 0,
         estoque_atual: parseInt(item.estoque_atual) || 0,
         status: item.status || 'ativo'
       });
@@ -174,18 +161,15 @@ export default function Produtos() {
 
   const bulkColumns = [
     { key: 'nome', label: 'Nome', required: true },
-    { key: 'sku', label: 'SKU', required: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'ID Categoria' },
-    { key: 'preco_custo', label: 'Preço Custo', type: 'number' },
-    { key: 'preco_venda', label: 'Preço Venda', type: 'number' },
     { key: 'estoque_atual', label: 'Estoque', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { nome: 'Produto Exemplo 1', sku: 'SKU-001', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', preco_custo: '25.00', preco_venda: '45.00', estoque_atual: '100', status: 'ativo' },
-    { nome: 'Produto Exemplo 2', sku: 'SKU-002', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', preco_custo: '18.50', preco_venda: '32.00', estoque_atual: '200', status: 'ativo' }
+    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', estoque_atual: '100', status: 'ativo' },
+    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', estoque_atual: '200', status: 'ativo' }
   ];
 
   return (
@@ -293,15 +277,7 @@ export default function Produtos() {
                   />
                 </div>
 
-                <div>
-                  <Label>SKU *</Label>
-                  <Input
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    required
-                    disabled={!isEditing}
-                  />
-                </div>
+
 
                 <div>
                   <Label>Categoria</Label>
@@ -368,28 +344,7 @@ export default function Produtos() {
                     disabled={!isEditing}
                   />
                 </div>
-                <div>
-                  <Label>Preço de Custo</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.preco_custo}
-                    onChange={(e) => setFormData({ ...formData, preco_custo: e.target.value })}
-                    placeholder="0.00"
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div>
-                  <Label>Preço de Venda</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.preco_venda}
-                    onChange={(e) => setFormData({ ...formData, preco_venda: e.target.value })}
-                    placeholder="0.00"
-                    disabled={!isEditing}
-                  />
-                </div>
+
               </div>
               
               {isEditing && (
