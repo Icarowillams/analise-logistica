@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Clipboard, Save, Plus, Calendar, Filter, Search, ChevronDown, ChevronRight, Package } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
+import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -55,33 +56,158 @@ export default function ImportarVendas() {
 }
 
 function ImportacaoTab() {
-  const [mode, setMode] = useState('manual'); // 'manual' | 'text'
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
+  const { data: produtos = [] } = useQuery({ queryKey: ['produtos'], queryFn: () => base44.entities.Produto.list() });
+  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+
+  const bulkColumns = [
+    { key: 'data', label: 'Data (AAAA-MM-DD)', required: true },
+    { key: 'cod_cliente', label: 'Cód. Cliente', required: true },
+    { key: 'cod_produto', label: 'Cód. Produto', required: true },
+    { key: 'quantidade', label: 'Quantidade', type: 'number', required: true },
+    { key: 'valor_total', label: 'Valor Total', type: 'number', required: true },
+    { key: 'bonificacao', label: 'Bonificação', type: 'number' },
+    { key: 'troca', label: 'Troca', type: 'number' }
+  ];
+
+  const bulkExampleData = [
+    { data: '2024-01-15', cod_cliente: 'C001', cod_produto: 'P001', quantidade: 10, valor_total: 150.50, bonificacao: 0, troca: 0 },
+    { data: '2024-01-15', cod_cliente: 'C002', cod_produto: 'P002', quantidade: 5, valor_total: 75.00, bonificacao: 1, troca: 0 }
+  ];
+
+  const handleBulkImport = async (data) => {
+    setIsImporting(true);
+    
+    // Group rows by (data + cliente_id) to generate order numbers
+    const validRows = [];
+    
+    for (const row of data) {
+        let dataVenda = null;
+        const dataRaw = row.data;
+        
+        if (dataRaw) {
+            // Try flexible date parsing
+            if (String(dataRaw).match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                const [day, month, year] = dataRaw.split('/');
+                dataVenda = `${year}-${month}-${day}`;
+            } else if (String(dataRaw).match(/^\d{4}-\d{2}-\d{2}$/)) {
+                dataVenda = dataRaw;
+            } else {
+                 try {
+                     const parsed = new Date(dataRaw);
+                     if (!isNaN(parsed)) dataVenda = format(parsed, 'yyyy-MM-dd');
+                 } catch (e) {}
+            }
+        }
+        
+        const cliente = clientes.find(c => 
+            String(c.codigo) === String(row.cod_cliente) || 
+            c.cpf_cnpj?.replace(/\D/g, '') === String(row.cod_cliente)?.replace(/\D/g, '')
+        );
+        
+        const produto = produtos.find(p => 
+            String(p.codigo) === String(row.cod_produto) || 
+            String(p.cod_barras) === String(row.cod_produto)
+        );
+
+        if (cliente && produto && dataVenda) {
+            validRows.push({
+                ...row,
+                data: dataVenda,
+                cliente,
+                produto
+            });
+        }
+    }
+
+    // Generate order numbers
+    const groupedOrders = {};
+    validRows.forEach(r => {
+      const key = `${r.data}-${r.cliente.id}`;
+      if (!groupedOrders[key]) {
+        groupedOrders[key] = `PED-${format(new Date(), 'yyyyMMdd')}-${Math.floor(Math.random() * 100000)}`;
+      }
+    });
+
+    const vendasData = validRows.map(r => {
+        const cli = r.cliente;
+        const prod = r.produto;
+        const vend = vendedores.find(v => v.id === cli.vendedor_id);
+        const orderNum = groupedOrders[`${r.data}-${cli.id}`];
+        const qtd = parseFloat(r.quantidade) || 0;
+        const valor = parseFloat(r.valor_total) || 0;
+
+        return {
+          numero_pedido: orderNum,
+          data: r.data,
+          vendedor_id: cli.vendedor_id,
+          vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
+          supervisor_id: vend?.supervisor_id,
+          cliente_id: cli.id,
+          cliente_nome: cli.razao_social || cli.nome_fantasia,
+          produto_id: prod.id,
+          produto_nome: prod.nome,
+          categoria_id: prod.categoria_id,
+          sub_categoria_id: prod.sub_categoria_id,
+          segmento_id: cli.segmento_id,
+          rede_id: cli.rede_id,
+          rota_id: cli.rota_id,
+          tabela_id: cli.tabela_id,
+          plano_pagamento_id: cli.plano_pagamento_id,
+          quantidade: qtd,
+          valor_total: valor,
+          valor_unitario: qtd > 0 ? valor / qtd : 0,
+          margem: 0,
+          bonificacao: parseFloat(r.bonificacao) || 0,
+          troca: parseFloat(r.troca) || 0
+        };
+    });
+
+    if (vendasData.length > 0) {
+        await base44.entities.Venda.bulkCreate(vendasData);
+    }
+    
+    queryClient.invalidateQueries(['vendas']);
+    setIsImporting(false);
+    setBulkOpen(false);
+  };
   
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">
-            {mode === 'manual' ? 'Nova Venda Manual' : 'Importação em Massa'}
+            Nova Venda
           </h3>
           <p className="text-sm text-slate-500">
-            {mode === 'manual' ? 'Registre uma venda individualmente' : 'Copie e cole dados de uma planilha'}
+            Registre uma venda individualmente ou importe em massa
           </p>
         </div>
         <Button 
           variant="outline" 
-          onClick={() => setMode(mode === 'manual' ? 'text' : 'manual')}
-          className="gap-2"
+          onClick={() => setBulkOpen(true)}
+          className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
         >
-          {mode === 'manual' ? (
-            <><Clipboard className="w-4 h-4" /> Importar por Texto</>
-          ) : (
-            <><Plus className="w-4 h-4" /> Inserir Manualmente</>
-          )}
+          <Clipboard className="w-4 h-4" /> Importar em Massa
         </Button>
       </div>
 
-      {mode === 'manual' ? <ManualEntryForm /> : <TextImportForm />}
+      <ManualEntryForm />
+      
+      <BulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Importar Vendas em Massa"
+        description="Copie e cole os dados das vendas (Excel/CSV). As colunas devem seguir a ordem ou cabeçalho."
+        columns={bulkColumns}
+        exampleData={bulkExampleData}
+        onImport={handleBulkImport}
+        isImporting={isImporting}
+      />
     </div>
   );
 }
@@ -271,258 +397,6 @@ function ManualEntryForm() {
         </form>
       </CardContent>
     </Card>
-  );
-}
-
-function TextImportForm() {
-  const [pasteData, setPasteData] = useState('');
-  const [preview, setPreview] = useState([]);
-  const [errors, setErrors] = useState([]);
-  const [importing, setImporting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const queryClient = useQueryClient();
-
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
-  const { data: produtos = [] } = useQuery({ queryKey: ['produtos'], queryFn: () => base44.entities.Produto.list() });
-
-  useEffect(() => {
-    if (pasteData) {
-      processData(pasteData);
-    } else {
-      setPreview([]);
-      setErrors([]);
-    }
-  }, [pasteData, clientes, produtos, vendedores]);
-
-  const processData = (text) => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length === 0) return;
-
-    let startIdx = 0;
-    const firstLine = lines[0].toLowerCase();
-    if (firstLine.includes('data') && firstLine.includes('cod')) {
-      startIdx = 1;
-    }
-
-    const validationErrors = [];
-    const processedRows = lines.slice(startIdx).map((line, idx) => {
-      const values = line.split(/\t/); 
-      const splitValues = values.length > 1 ? values : line.split(/[,;]/);
-      
-      // Order: DATA | COD CLI | COD PROD | VALOR LIQ | QTD LIQ | BONIF | TROCA
-      const dataRaw = splitValues[0]?.trim();
-      const codCliente = splitValues[1]?.trim();
-      const codProduto = splitValues[2]?.trim();
-      const valorLiq = parseFloat(splitValues[3]?.replace('R$', '').replace('.', '').replace(',', '.') || '0');
-      const qtdLiq = parseFloat(splitValues[4]?.replace(',', '.') || '0');
-      const bonificacao = parseFloat(splitValues[5]?.replace(',', '.') || '0');
-      const troca = parseFloat(splitValues[6]?.replace(',', '.') || '0');
-
-      let dataVenda = null;
-      if (dataRaw) {
-        if (dataRaw.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-          const [day, month, year] = dataRaw.split('/');
-          dataVenda = `${year}-${month}-${day}`;
-        } else if (dataRaw.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dataVenda = dataRaw;
-        }
-      }
-
-      const cliente = clientes.find(c => 
-        c.codigo === codCliente || 
-        c.cpf_cnpj?.replace(/\D/g, '') === codCliente?.replace(/\D/g, '')
-      );
-      
-      const produto = produtos.find(p => 
-        p.sku === codProduto || 
-        p.cod_barras === codProduto
-      );
-
-      const rowNum = idx + 1 + startIdx;
-
-      if (!dataRaw) validationErrors.push(`Linha ${rowNum}: Data vazia`);
-      if (dataRaw && !dataVenda) validationErrors.push(`Linha ${rowNum}: Formato de data inválido`);
-      if (!codCliente) validationErrors.push(`Linha ${rowNum}: Código do cliente vazio`);
-      if (codCliente && !cliente) validationErrors.push(`Linha ${rowNum}: Cliente não encontrado (${codCliente})`);
-      if (!codProduto) validationErrors.push(`Linha ${rowNum}: Código do produto vazio`);
-      if (codProduto && !produto) validationErrors.push(`Linha ${rowNum}: Produto não encontrado (${codProduto})`);
-      if (cliente && !cliente.vendedor_id) validationErrors.push(`Linha ${rowNum}: Cliente sem vendedor vinculado`);
-
-      return {
-        _rowNum: rowNum,
-        data: dataVenda,
-        cod_cliente: codCliente,
-        cliente: cliente,
-        produto: produto,
-        valor_liq: valorLiq,
-        qtd_liq: qtdLiq,
-        bonificacao: bonificacao,
-        troca: troca,
-        valid: !!(cliente && produto && dataVenda && cliente?.vendedor_id)
-      };
-    });
-
-    setPreview(processedRows);
-    setErrors([...new Set(validationErrors)]); 
-  };
-
-  const handleImport = async () => {
-    setImporting(true);
-    const validRows = preview.filter(r => r.valid);
-
-    try {
-      // Group rows by (data + cliente_id) to generate order numbers
-      const groupedOrders = {};
-      validRows.forEach(r => {
-        const key = `${r.data}-${r.cliente.id}`;
-        if (!groupedOrders[key]) {
-          groupedOrders[key] = `PED-${format(new Date(), 'yyyyMMdd')}-${Math.floor(Math.random() * 10000)}`;
-        }
-      });
-
-      const vendasData = validRows.map(r => {
-        const cli = r.cliente;
-        const prod = r.produto;
-        const vend = vendedores.find(v => v.id === cli.vendedor_id);
-        const orderNum = groupedOrders[`${r.data}-${cli.id}`];
-        
-        return {
-          numero_pedido: orderNum,
-          data: r.data,
-          vendedor_id: cli.vendedor_id,
-          vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
-          supervisor_id: vend?.supervisor_id,
-          cliente_id: cli.id,
-          cliente_nome: cli.razao_social || cli.nome_fantasia,
-          produto_id: prod.id,
-          produto_nome: prod.nome,
-          categoria_id: prod.categoria_id,
-          sub_categoria_id: prod.sub_categoria_id,
-          segmento_id: cli.segmento_id,
-          rede_id: cli.rede_id,
-          rota_id: cli.rota_id,
-          tabela_id: cli.tabela_id,
-          plano_pagamento_id: cli.plano_pagamento_id,
-          quantidade: r.qtd_liq,
-          valor_total: r.valor_liq,
-          valor_unitario: r.qtd_liq > 0 ? r.valor_liq / r.qtd_liq : 0,
-          margem: 0,
-          bonificacao: r.bonificacao,
-          troca: r.troca
-        };
-      });
-
-      await base44.entities.Venda.bulkCreate(vendasData);
-
-      setImporting(false);
-      setSuccess(true);
-      setPasteData('');
-      setPreview([]);
-      setErrors([]);
-      queryClient.invalidateQueries(['vendas']);
-    } catch (error) {
-      console.error(error);
-      setErrors(['Erro ao salvar vendas.']);
-      setImporting(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="lg:col-span-1">
-        <Card className="h-full">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clipboard className="w-4 h-4" /> Área de Transferência
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Colunas: DATA | COD CLI | COD PROD | VALOR LIQ | QTD LIQ | BONIF | TROCA
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea 
-              placeholder={`Exemplo:\n01/01/2024\tC001\tP123\t150,00\t10\t0\t0`}
-              className="min-h-[400px] font-mono text-xs"
-              value={pasteData}
-              onChange={(e) => { setPasteData(e.target.value); setSuccess(false); }}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="lg:col-span-2 space-y-6">
-        {success && (
-          <Alert className="bg-emerald-50 border-emerald-200">
-            <CheckCircle className="w-5 h-5 text-emerald-600" />
-            <AlertDescription className="text-emerald-700 font-medium">
-              Vendas importadas com sucesso!
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {errors.length > 0 && (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-amber-700 flex items-center gap-2 text-base">
-                <AlertCircle className="w-5 h-5" /> {errors.length} pendências
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <ul className="text-sm text-amber-700 space-y-1 max-h-40 overflow-y-auto">
-                {errors.slice(0, 10).map((e, i) => <li key={i}>{e}</li>)}
-                {errors.length > 10 && <li>...e mais {errors.length - 10} avisos</li>}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between py-4">
-            <CardTitle className="text-base">Pré-visualização ({preview.length})</CardTitle>
-            <Button 
-              onClick={handleImport} 
-              disabled={importing || preview.length === 0 || preview.some(r => !r.valid)}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white"
-            >
-              {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</> : <><Save className="w-4 h-4 mr-2" /> Confirmar Importação</>}
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto max-h-[500px]">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50 sticky top-0">
-                    <TableHead className="w-12">St</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {preview.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500">Cole os dados para visualizar</TableCell></TableRow>
-                  ) : (
-                    preview.map((row, idx) => (
-                      <TableRow key={idx} className={!row.valid ? 'bg-red-50' : ''}>
-                        <TableCell>{row.valid ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <AlertCircle className="w-4 h-4 text-red-500" />}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{row.data ? format(parseISO(row.data), 'dd/MM/yy') : '-'}</TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate" title={row.cliente?.razao_social}>{row.cliente?.razao_social || row.cod_cliente}</TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate" title={row.produto?.nome}>{row.produto?.nome || row.cod_produto}</TableCell>
-                        <TableCell className="text-right text-xs">{row.valor_liq?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                        <TableCell className="text-right text-xs">{row.qtd_liq}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
   );
 }
 
