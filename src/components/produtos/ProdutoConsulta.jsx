@@ -42,7 +42,6 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
         const searchLower = filters.search.toLowerCase();
         const match = [
           produto.nome,
-          produto.sku,
           produto.cod_barras
         ].some(val => val && String(val).toLowerCase().includes(searchLower));
         if (!match) return false;
@@ -74,14 +73,8 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
       )
     },
     { key: 'nome', label: 'Nome', sortable: true },
-    { key: 'sku', label: 'SKU', sortable: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
-    { 
-      key: 'preco_venda', 
-      label: 'Preço Venda',
-      render: (val) => val ? `R$ ${parseFloat(val).toFixed(2)}` : '-'
-    },
     { key: 'estoque_atual', label: 'Estoque' },
     {
       key: 'status',
@@ -174,7 +167,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
                 <Input 
-                  placeholder="Nome, SKU, Cód. Barras..." 
+                  placeholder="Nome, Cód. Barras..." 
                   value={filters.search}
                   onChange={(e) => setFilters({...filters, search: e.target.value})}
                   className="pl-8"
