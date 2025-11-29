@@ -29,7 +29,9 @@ export default function Produtos() {
     sub_categoria_id: '',
     imagem_url: '',
     estoque_atual: 0, 
-    status: 'ativo'
+    status: 'ativo',
+    unidade_medida_id: '',
+    fator_conversao: 1
   });
 
   const queryClient = useQueryClient();
@@ -42,6 +44,11 @@ export default function Produtos() {
   const { data: subCategorias = [] } = useQuery({
     queryKey: ['subCategorias'],
     queryFn: () => base44.entities.SubCategoria.list()
+  });
+
+  const { data: unidadesMedida = [] } = useQuery({
+    queryKey: ['unidadesMedida'],
+    queryFn: () => base44.entities.UnidadeMedida.list()
   });
 
   const createMutation = useMutation({
@@ -79,7 +86,9 @@ export default function Produtos() {
       sub_categoria_id: '',
       imagem_url: '',
       estoque_atual: 0, 
-      status: 'ativo' 
+      status: 'ativo',
+      unidade_medida_id: '',
+      fator_conversao: 1
     });
     setSelected(null);
   };
@@ -99,7 +108,9 @@ export default function Produtos() {
       sub_categoria_id: item.sub_categoria_id || '',
       imagem_url: item.imagem_url || '',
       estoque_atual: item.estoque_atual || 0,
-      status: item.status || 'ativo'
+      status: item.status || 'ativo',
+      unidade_medida_id: item.unidade_medida_id || '',
+      fator_conversao: item.fator_conversao || 1
     });
     setIsEditing(true);
     setActiveTab("cadastro");
@@ -119,7 +130,8 @@ export default function Produtos() {
     e.preventDefault();
     const data = {
       ...formData,
-      estoque_atual: parseInt(formData.estoque_atual) || 0
+      estoque_atual: parseInt(formData.estoque_atual) || 0,
+      fator_conversao: parseFloat(formData.fator_conversao) || 1
     };
     if (selected) {
       updateMutation.mutate({ id: selected.id, data });
@@ -151,7 +163,8 @@ export default function Produtos() {
       await base44.entities.Produto.create({
         ...item,
         estoque_atual: parseInt(item.estoque_atual) || 0,
-        status: item.status || 'ativo'
+        status: item.status || 'ativo',
+        fator_conversao: parseFloat(item.fator_conversao) || 1
       });
     }
     queryClient.invalidateQueries(['produtos']);
@@ -163,13 +176,15 @@ export default function Produtos() {
     { key: 'nome', label: 'Nome', required: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'ID Categoria' },
+    { key: 'unidade_medida_id', label: 'ID Unidade' },
+    { key: 'fator_conversao', label: 'Conversão', type: 'number' },
     { key: 'estoque_atual', label: 'Estoque', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', estoque_atual: '100', status: 'ativo' },
-    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', estoque_atual: '200', status: 'ativo' }
+    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', unidade_medida_id: 'UN-ID-1', fator_conversao: '1', estoque_atual: '100', status: 'ativo' },
+    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', unidade_medida_id: 'UN-ID-2', fator_conversao: '12', estoque_atual: '200', status: 'ativo' }
   ];
 
   return (
@@ -333,6 +348,36 @@ export default function Produtos() {
                       <SelectItem value="inativo">Inativo</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div>
+                  <Label>Unidade de Medida</Label>
+                  <Select 
+                    value={formData.unidade_medida_id} 
+                    onValueChange={(v) => setFormData({ ...formData, unidade_medida_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unidadesMedida.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Fator de Conversão</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.fator_conversao}
+                    onChange={(e) => setFormData({ ...formData, fator_conversao: e.target.value })}
+                    placeholder="1"
+                    disabled={!isEditing}
+                  />
                 </div>
                 
                 <div>

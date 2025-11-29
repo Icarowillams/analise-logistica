@@ -20,6 +20,7 @@ import Funcionarios from './pages/Funcionarios';
 import Funcoes from './pages/Funcoes';
 import Categorias from './pages/Categorias';
 import TabelasPreco from './pages/TabelasPreco';
+import UnidadesMedida from './pages/UnidadesMedida';
 import __Layout from './Layout.jsx';
 
 
@@ -46,6 +47,7 @@ export const PAGES = {
     "Funcoes": Funcoes,
     "Categorias": Categorias,
     "TabelasPreco": TabelasPreco,
+    "UnidadesMedida": UnidadesMedida,
 }
 
 export const pagesConfig = {
