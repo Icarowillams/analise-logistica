@@ -41,6 +41,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const match = [
+          produto.codigo,
           produto.nome,
           produto.cod_barras
         ].some(val => val && String(val).toLowerCase().includes(searchLower));
@@ -72,6 +73,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
         </div>
       )
     },
+    { key: 'codigo', label: 'Cód.', sortable: true },
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },

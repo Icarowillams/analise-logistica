@@ -23,6 +23,7 @@ export default function Produtos() {
   const [isUploading, setIsUploading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
+    codigo: '',
     nome: '', 
     cod_barras: '',
     categoria_id: '', 
@@ -80,6 +81,7 @@ export default function Produtos() {
 
   const resetForm = () => {
     setFormData({ 
+      codigo: '',
       nome: '', 
       cod_barras: '',
       categoria_id: '', 
@@ -102,6 +104,7 @@ export default function Produtos() {
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({
+      codigo: item.codigo || '',
       nome: item.nome || '',
       cod_barras: item.cod_barras || '',
       categoria_id: item.categoria_id || '',
@@ -160,11 +163,18 @@ export default function Produtos() {
   const handleBulkImport = async (data) => {
     setIsImporting(true);
     for (const item of data) {
+      const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
+      const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
+      
       await base44.entities.Produto.create({
-        ...item,
-        estoque_atual: parseInt(item.estoque_atual) || 0,
+        codigo: item.codigo,
+        nome: item.nome,
+        cod_barras: item.cod_barras,
+        categoria_id: cat ? cat.id : null,
+        unidade_medida_id: unidade ? unidade.id : null,
+        peso: parseFloat(item.peso) || 0,
         status: item.status || 'ativo',
-        peso: parseFloat(item.peso) || 0
+        estoque_atual: 0 // Default to 0 since removed from import
       });
     }
     queryClient.invalidateQueries(['produtos']);
@@ -173,18 +183,18 @@ export default function Produtos() {
   };
 
   const bulkColumns = [
+    { key: 'codigo', label: 'Código', required: true },
     { key: 'nome', label: 'Nome', required: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
-    { key: 'categoria_id', label: 'ID Categoria' },
-    { key: 'unidade_medida_id', label: 'ID Unidade' },
+    { key: 'categoria_nome', label: 'Nome da Categoria' },
+    { key: 'unidade_medida_nome', label: 'Nome da Unidade de Medida' },
     { key: 'peso', label: 'Peso', type: 'number' },
-    { key: 'estoque_atual', label: 'Estoque', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_id: 'CAT-ID-1', unidade_medida_id: 'UN-ID-1', peso: '1.5', estoque_atual: '100', status: 'ativo' },
-    { nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_id: 'CAT-ID-2', unidade_medida_id: 'UN-ID-2', peso: '0.5', estoque_atual: '200', status: 'ativo' }
+    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_nome: 'Bebidas', unidade_medida_nome: 'UN', peso: '1.5', status: 'ativo' },
+    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_nome: 'Alimentos', unidade_medida_nome: 'KG', peso: '0.5', status: 'ativo' }
   ];
 
   return (
@@ -272,7 +282,17 @@ export default function Produtos() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2">
+                <div>
+                  <Label>Código *</Label>
+                  <Input
+                    value={formData.codigo}
+                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                    required
+                    disabled={!isEditing}
+                  />
+                </div>
+                
+                <div>
                   <Label>Nome do Produto *</Label>
                   <Input
                     value={formData.nome}
