@@ -65,26 +65,33 @@ function ImportacaoTab() {
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
 
   const bulkColumns = [
-    { key: 'data', label: 'Data (AAAA-MM-DD)', required: true },
-    { key: 'cod_cliente', label: 'Cód. Cliente', required: true },
-    { key: 'cod_produto', label: 'Cód. Produto', required: true },
-    { key: 'quantidade', label: 'Quantidade', type: 'number', required: true },
-    { key: 'valor_total', label: 'Valor Total', type: 'number', required: true },
-    { key: 'bonificacao', label: 'Bonificação', type: 'number' },
-    { key: 'troca', label: 'Troca', type: 'number' }
+    { key: 'numpedido', label: 'NUMPEDIDO', required: true },
+    { key: 'codproduto', label: 'CODPRODUTO', required: true },
+    { key: 'qtd', label: 'QTD', required: true },
+    { key: 'codcliente', label: 'CODCLIENTE', required: true },
+    { key: 'rota', label: 'ROTA' },
+    { key: 'data', label: 'DATA', required: true },
+    { key: 'vl_unitario', label: 'VL_UNITARIO', required: true },
+    { key: 'troca', label: 'TROCA (SIM/NÃO)' }
   ];
 
   const bulkExampleData = [
-    { data: '2024-01-15', cod_cliente: 'C001', cod_produto: 'P001', quantidade: 10, valor_total: 150.50, bonificacao: 0, troca: 0 },
-    { data: '2024-01-15', cod_cliente: 'C002', cod_produto: 'P002', quantidade: 5, valor_total: 75.00, bonificacao: 1, troca: 0 }
+    { numpedido: '267862', codproduto: '1', qtd: '100', codcliente: '3362', rota: 'ROTA 01 -MIGUEL', data: '01/10/2025', vl_unitario: '4,00', troca: 'NÃO' },
+    { numpedido: '268040', codproduto: '1', qtd: '8', codcliente: '3362', rota: 'ROTA 01 -MIGUEL', data: '02/10/2025', vl_unitario: '4,00', troca: 'SIM' }
   ];
 
   const handleBulkImport = async (data) => {
     setIsImporting(true);
     
-    // Group rows by (data + cliente_id) to generate order numbers
     const validRows = [];
     
+    // Helper para converter valores monetários brasileiros (ex: "4,00" -> 4.00)
+    const parseBRLValues = (val) => {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        return parseFloat(String(val).replace(/\./g, '').replace(',', '.')) || 0;
+    };
+
     for (const row of data) {
         let dataVenda = null;
         const dataRaw = row.data;
@@ -105,13 +112,13 @@ function ImportacaoTab() {
         }
         
         const cliente = clientes.find(c => 
-            String(c.codigo) === String(row.cod_cliente) || 
-            c.cpf_cnpj?.replace(/\D/g, '') === String(row.cod_cliente)?.replace(/\D/g, '')
+            String(c.codigo) === String(row.codcliente) || 
+            c.cpf_cnpj?.replace(/\D/g, '') === String(row.codcliente)?.replace(/\D/g, '')
         );
         
         const produto = produtos.find(p => 
-            String(p.codigo) === String(row.cod_produto) || 
-            String(p.cod_barras) === String(row.cod_produto)
+            String(p.codigo) === String(row.codproduto) || 
+            String(p.cod_barras) === String(row.codproduto)
         );
 
         if (cliente && produto && dataVenda) {
@@ -124,25 +131,25 @@ function ImportacaoTab() {
         }
     }
 
-    // Generate order numbers
-    const groupedOrders = {};
-    validRows.forEach(r => {
-      const key = `${r.data}-${r.cliente.id}`;
-      if (!groupedOrders[key]) {
-        groupedOrders[key] = `PED-${format(new Date(), 'yyyyMMdd')}-${Math.floor(Math.random() * 100000)}`;
-      }
-    });
-
     const vendasData = validRows.map(r => {
         const cli = r.cliente;
         const prod = r.produto;
         const vend = vendedores.find(v => v.id === cli.vendedor_id);
-        const orderNum = groupedOrders[`${r.data}-${cli.id}`];
-        const qtd = parseFloat(r.quantidade) || 0;
-        const valor = parseFloat(r.valor_total) || 0;
+        
+        // Lógica de valores
+        const qtdRaw = parseBRLValues(r.qtd);
+        const vlUnit = parseBRLValues(r.vl_unitario);
+        const isTroca = String(r.troca || '').toUpperCase().trim() === 'SIM';
+        
+        // Se for troca: Quantidade vai para campo troca, e quantidade da venda é 0 (ou mantém para histórico? 
+        // Geralmente se separa. Assumindo: SIM -> é troca, NÃO -> é venda normal)
+        const qtdVenda = isTroca ? 0 : qtdRaw;
+        const qtdTroca = isTroca ? qtdRaw : 0;
+        
+        const valorTotal = qtdRaw * vlUnit; // Valor total da linha, independente se é troca ou venda
 
         return {
-          numero_pedido: orderNum,
+          numero_pedido: r.numpedido || `S/N-${r.data}-${cli.id}`,
           data: r.data,
           vendedor_id: cli.vendedor_id,
           vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
@@ -158,12 +165,12 @@ function ImportacaoTab() {
           rota_id: cli.rota_id,
           tabela_id: cli.tabela_id,
           plano_pagamento_id: cli.plano_pagamento_id,
-          quantidade: qtd,
-          valor_total: valor,
-          valor_unitario: qtd > 0 ? valor / qtd : 0,
+          quantidade: qtdVenda,
+          valor_total: valorTotal,
+          valor_unitario: vlUnit,
           margem: 0,
-          bonificacao: parseFloat(r.bonificacao) || 0,
-          troca: parseFloat(r.troca) || 0
+          bonificacao: 0, // Coluna bonificação não existe no exemplo, assumindo 0
+          troca: qtdTroca
         };
     });
 
