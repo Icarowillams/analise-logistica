@@ -163,6 +163,7 @@ export default function Clientes() {
   };
 
   const bulkColumns = [
+    { key: 'codigo', label: 'Código' },
     { key: 'razao_social', label: 'Razão Social', required: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
     { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
