@@ -32,6 +32,7 @@ export default function Produtos() {
     estoque_atual: 0, 
     status: 'ativo',
     unidade_medida_id: '',
+    unidade_produto_id: '',
     peso: ''
   });
 
@@ -50,6 +51,11 @@ export default function Produtos() {
   const { data: unidadesMedida = [] } = useQuery({
     queryKey: ['unidadesMedida'],
     queryFn: () => base44.entities.UnidadeMedida.list()
+  });
+
+  const { data: unidadesProduto = [] } = useQuery({
+    queryKey: ['unidadesProduto'],
+    queryFn: () => base44.entities.UnidadeProduto.list()
   });
 
   const createMutation = useMutation({
@@ -113,6 +119,7 @@ export default function Produtos() {
       estoque_atual: item.estoque_atual || 0,
       status: item.status || 'ativo',
       unidade_medida_id: item.unidade_medida_id || '',
+      unidade_produto_id: item.unidade_produto_id || '',
       peso: item.peso || ''
     });
     setIsEditing(true);
@@ -166,6 +173,7 @@ export default function Produtos() {
       const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
       const subCat = subCategorias.find(sc => sc.nome.toLowerCase() === (item.sub_categoria_nome || '').toLowerCase());
       const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
+      const unidadeProd = unidadesProduto.find(u => u.nome.toLowerCase() === (item.unidade_produto_nome || '').toLowerCase());
       
       await base44.entities.Produto.create({
         codigo: item.codigo,
@@ -174,6 +182,7 @@ export default function Produtos() {
         categoria_id: cat ? cat.id : null,
         sub_categoria_id: subCat ? subCat.id : null,
         unidade_medida_id: unidade ? unidade.id : null,
+        unidade_produto_id: unidadeProd ? unidadeProd.id : null,
         peso: parseFloat(item.peso) || 0,
         status: item.status || 'ativo',
         estoque_atual: 0 // Default to 0 since removed from import
@@ -191,13 +200,14 @@ export default function Produtos() {
     { key: 'categoria_nome', label: 'Nome da Categoria' },
     { key: 'sub_categoria_nome', label: 'Nome da Subcategoria' },
     { key: 'unidade_medida_nome', label: 'Nome da Unidade de Medida' },
+    { key: 'unidade_produto_nome', label: 'Nome da Unidade de Produto' },
     { key: 'peso', label: 'Peso', type: 'number' },
     { key: 'status', label: 'Status' }
   ];
 
   const bulkExampleData = [
-    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', peso: '1.5', status: 'ativo' },
-    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', peso: '0.5', status: 'ativo' }
+    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', unidade_produto_nome: 'FD', peso: '1.5', status: 'ativo' },
+    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', unidade_produto_nome: 'UN', peso: '0.5', status: 'ativo' }
   ];
 
   return (
@@ -385,6 +395,24 @@ export default function Produtos() {
                     </SelectTrigger>
                     <SelectContent>
                       {unidadesMedida.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Unidade de Produto</Label>
+                  <Select 
+                    value={formData.unidade_produto_id} 
+                    onValueChange={(v) => setFormData({ ...formData, unidade_produto_id: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unidadesProduto.map(u => (
                         <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                       ))}
                     </SelectContent>

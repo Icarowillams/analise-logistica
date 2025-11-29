@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Scale, List, Save, Ban, Pencil, Trash2 } from 'lucide-react';
+import { Scale, List, Save, Ban, Package } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 
 export default function UnidadesMedida() {
-  const [activeTab, setActiveTab] = useState("cadastro");
+  const [activeMainTab, setActiveMainTab] = useState("medida"); // medida | produto
+  const [activeSubTab, setActiveSubTab] = useState("cadastro");
   const [isEditing, setIsEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -20,12 +21,19 @@ export default function UnidadesMedida() {
 
   const queryClient = useQueryClient();
 
-  const { data: unidades = [], isLoading } = useQuery({
+  // Queries
+  const { data: unidadesMedida = [], isLoading: isLoadingMedida } = useQuery({
     queryKey: ['unidadesMedida'],
     queryFn: () => base44.entities.UnidadeMedida.list()
   });
 
-  const createMutation = useMutation({
+  const { data: unidadesProduto = [], isLoading: isLoadingProduto } = useQuery({
+    queryKey: ['unidadesProduto'],
+    queryFn: () => base44.entities.UnidadeProduto.list()
+  });
+
+  // Mutations - Medida
+  const createMedidaMutation = useMutation({
     mutationFn: (data) => base44.entities.UnidadeMedida.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['unidadesMedida']);
@@ -34,7 +42,7 @@ export default function UnidadesMedida() {
     }
   });
 
-  const updateMutation = useMutation({
+  const updateMedidaMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.UnidadeMedida.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['unidadesMedida']);
@@ -43,10 +51,38 @@ export default function UnidadesMedida() {
     }
   });
 
-  const deleteMutation = useMutation({
+  const deleteMedidaMutation = useMutation({
     mutationFn: (id) => base44.entities.UnidadeMedida.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['unidadesMedida']);
+      setDeleteOpen(false);
+      setSelected(null);
+    }
+  });
+
+  // Mutations - Produto
+  const createProdutoMutation = useMutation({
+    mutationFn: (data) => base44.entities.UnidadeProduto.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['unidadesProduto']);
+      resetForm();
+      setIsEditing(false);
+    }
+  });
+
+  const updateProdutoMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.UnidadeProduto.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['unidadesProduto']);
+      resetForm();
+      setIsEditing(false);
+    }
+  });
+
+  const deleteProdutoMutation = useMutation({
+    mutationFn: (id) => base44.entities.UnidadeProduto.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['unidadesProduto']);
       setDeleteOpen(false);
       setSelected(null);
     }
@@ -60,14 +96,14 @@ export default function UnidadesMedida() {
   const handleNew = () => {
     resetForm();
     setIsEditing(true);
-    setActiveTab("cadastro");
+    setActiveSubTab("cadastro");
   };
 
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({ nome: item.nome || '' });
     setIsEditing(true);
-    setActiveTab("cadastro");
+    setActiveSubTab("cadastro");
   };
 
   const handleCancel = () => {
@@ -79,32 +115,56 @@ export default function UnidadesMedida() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (selected) {
-      updateMutation.mutate({ id: selected.id, data: formData });
+    if (activeMainTab === 'medida') {
+      if (selected) updateMedidaMutation.mutate({ id: selected.id, data: formData });
+      else createMedidaMutation.mutate(formData);
     } else {
-      createMutation.mutate(formData);
+      if (selected) updateProdutoMutation.mutate({ id: selected.id, data: formData });
+      else createProdutoMutation.mutate(formData);
     }
+  };
+
+  const confirmDelete = () => {
+    if (activeMainTab === 'medida') deleteMedidaMutation.mutate(selected?.id);
+    else deleteProdutoMutation.mutate(selected?.id);
   };
 
   const columns = [
     { key: 'nome', label: 'Nome', sortable: true }
   ];
 
+  const isProcessing = 
+    createMedidaMutation.isPending || 
+    updateMedidaMutation.isPending || 
+    deleteMedidaMutation.isPending ||
+    createProdutoMutation.isPending ||
+    updateProdutoMutation.isPending ||
+    deleteProdutoMutation.isPending;
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <PageHeader 
-          title="Unidades de Medida" 
-          subtitle="Gerenciamento de unidades (KG, UN, CX...)"
+          title="Configurações de Unidades" 
+          subtitle="Gerencie unidades de medida e tipos de produto"
           icon={Scale}
         />
-        <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Unidade</Button>
+        <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+          Nova {activeMainTab === 'medida' ? 'Unidade de Medida' : 'Unidade de Produto'}
+        </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeMainTab} onValueChange={(v) => { setActiveMainTab(v); resetForm(); setIsEditing(false); }} className="w-full mb-6">
+        <TabsList className="w-full max-w-[400px] grid grid-cols-2">
+          <TabsTrigger value="medida">Unidade de Medida</TabsTrigger>
+          <TabsTrigger value="produto">Unidade de Produto</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
         <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
           <TabsTrigger value="cadastro" className="flex items-center gap-2">
-            <Scale className="w-4 h-4" />
+            {activeMainTab === 'medida' ? <Scale className="w-4 h-4" /> : <Package className="w-4 h-4" />}
             Cadastro
           </TabsTrigger>
           <TabsTrigger value="consulta" className="flex items-center gap-2">
@@ -117,7 +177,7 @@ export default function UnidadesMedida() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Unidade' : 'Nova Unidade'}
+                {selected ? 'Editar' : 'Nova'} {activeMainTab === 'medida' ? 'Unidade de Medida' : 'Unidade de Produto'}
               </h2>
               {!isEditing && (
                 <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
@@ -134,7 +194,7 @@ export default function UnidadesMedida() {
                   onChange={(e) => setFormData({ ...formData, nome: e.target.value })} 
                   required 
                   disabled={!isEditing}
-                  placeholder="Ex: UN, KG, CX"
+                  placeholder={activeMainTab === 'medida' ? "Ex: KG, UN, CX" : "Ex: CX, UN, FARDO"}
                 />
               </div>
               
@@ -146,11 +206,11 @@ export default function UnidadesMedida() {
                   </Button>
                   <Button 
                     type="submit" 
-                    disabled={createMutation.isPending || updateMutation.isPending} 
+                    disabled={isProcessing} 
                     className="bg-gradient-to-r from-indigo-500 to-purple-600"
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    {createMutation.isPending || updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+                    {isProcessing ? 'Salvando...' : 'Salvar'}
                   </Button>
                 </div>
               )}
@@ -160,13 +220,13 @@ export default function UnidadesMedida() {
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
           <DataTable 
-            data={unidades} 
+            data={activeMainTab === 'medida' ? unidadesMedida : unidadesProduto} 
             columns={columns} 
             searchFields={['nome']} 
             onEdit={handleEdit} 
             onDelete={handleDelete} 
             pageSize={50} 
-            isLoading={isLoading} 
+            isLoading={activeMainTab === 'medida' ? isLoadingMedida : isLoadingProduto} 
           />
         </TabsContent>
       </Tabs>
@@ -174,8 +234,8 @@ export default function UnidadesMedida() {
       <DeleteConfirmDialog 
         open={deleteOpen} 
         onOpenChange={setDeleteOpen} 
-        onConfirm={() => deleteMutation.mutate(selected?.id)} 
-        isDeleting={deleteMutation.isPending} 
+        onConfirm={confirmDelete} 
+        isDeleting={isProcessing} 
       />
     </div>
   );
