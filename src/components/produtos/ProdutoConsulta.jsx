@@ -15,6 +15,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 export default function ProdutoConsulta({ onEdit, onDelete }) {
   const [filters, setFilters] = useState({
     categoria_id: 'all',
+    sub_categoria_id: 'all',
     status: 'all',
     search: ''
   });
@@ -29,10 +30,18 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
     queryFn: () => base44.entities.Categoria.list()
   });
 
+  const { data: subCategorias = [] } = useQuery({
+    queryKey: ['subCategorias'],
+    queryFn: () => base44.entities.SubCategoria.list()
+  });
+
   const filteredProdutos = useMemo(() => {
     return produtos.filter(produto => {
       // Filter by Categoria
       if (filters.categoria_id !== 'all' && produto.categoria_id !== filters.categoria_id) return false;
+
+      // Filter by SubCategoria
+      if (filters.sub_categoria_id !== 'all' && produto.sub_categoria_id !== filters.sub_categoria_id) return false;
       
       // Filter by Status
       if (filters.status !== 'all' && produto.status !== filters.status) return false;
@@ -58,6 +67,12 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
     return cat ? cat.nome : '-';
   };
 
+  const getSubCategoryName = (id) => {
+    if (!id) return '-';
+    const sub = subCategorias.find(s => s.id === id);
+    return sub ? sub.nome : '-';
+  };
+
   const columns = [
     { 
       key: 'imagem_url', 
@@ -77,6 +92,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
+    { key: 'sub_categoria_id', label: 'Subcategoria', render: (val) => getSubCategoryName(val) },
     { key: 'estoque_atual', label: 'Estoque' },
     {
       key: 'status',
@@ -128,21 +144,42 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
             
             {/* Categoria */}
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Categoria</label>
-              <Select 
-                value={filters.categoria_id} 
-                onValueChange={(v) => setFilters({...filters, categoria_id: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {categorias.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <label className="text-sm font-medium text-slate-700">Categoria</label>
+            <Select 
+              value={filters.categoria_id} 
+              onValueChange={(v) => setFilters({...filters, categoria_id: v, sub_categoria_id: 'all'})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {categorias.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            </div>
+
+            {/* SubCategoria */}
+            <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Subcategoria</label>
+            <Select 
+              value={filters.sub_categoria_id} 
+              onValueChange={(v) => setFilters({...filters, sub_categoria_id: v})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {subCategorias
+                  .filter(s => filters.categoria_id === 'all' || s.categoria_id === filters.categoria_id)
+                  .map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             </div>
 
             {/* Status */}
@@ -184,6 +221,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
               variant="outline" 
               onClick={() => setFilters({
                 categoria_id: 'all',
+                sub_categoria_id: 'all',
                 status: 'all',
                 search: ''
               })}
