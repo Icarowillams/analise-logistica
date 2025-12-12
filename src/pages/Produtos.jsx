@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
@@ -19,6 +20,7 @@ export default function Produtos() {
   
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -292,6 +294,35 @@ export default function Produtos() {
                       />
                     </Label>
                     <p className="text-xs text-slate-500">JPG, PNG ou GIF. Máx 5MB.</p>
+                    {formData.imagem_url && (
+                      <div className="flex gap-2 mt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setImagePreviewOpen(true)}
+                          className="text-xs"
+                        >
+                          <ZoomIn className="w-3 h-3 mr-1" />
+                          Visualizar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = formData.imagem_url;
+                            link.download = `produto_${formData.codigo || 'imagem'}.jpg`;
+                            link.click();
+                          }}
+                          className="text-xs"
+                        >
+                          <Download className="w-3 h-3 mr-1" />
+                          Baixar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -485,6 +516,39 @@ export default function Produtos() {
         onImport={handleBulkImport}
         isImporting={isImporting}
       />
+
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Imagem do Produto</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {formData.imagem_url ? (
+              <>
+                <img 
+                  src={formData.imagem_url} 
+                  alt={formData.nome || 'Produto'} 
+                  className="max-w-full max-h-[70vh] object-contain rounded-lg border"
+                />
+                <Button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = formData.imagem_url;
+                    link.download = `produto_${formData.codigo || 'imagem'}.jpg`;
+                    link.click();
+                  }}
+                  className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Baixar Imagem
+                </Button>
+              </>
+            ) : (
+              <p className="text-slate-500 py-8">Nenhuma imagem disponível</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
