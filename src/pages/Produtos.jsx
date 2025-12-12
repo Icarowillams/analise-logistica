@@ -124,8 +124,12 @@ export default function Produtos() {
       unidade_produto_id: item.unidade_produto_id || '',
       peso: item.peso || ''
     });
-    setIsEditing(true);
+    setIsEditing(false);
     setActiveTab("cadastro");
+  };
+
+  const handleStartEdit = () => {
+    setIsEditing(true);
   };
 
   const handleDelete = (item) => {
@@ -258,13 +262,25 @@ export default function Produtos() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Produto' : 'Novo Produto'}
+                {!isEditing && selected ? 'Visualizar Produto' : selected ? 'Editar Produto' : 'Novo Produto'}
               </h2>
-              {!isEditing && (
-                <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
-                  Modo Visualização
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {!isEditing && selected && (
+                  <Button
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Iniciar Edição
+                  </Button>
+                )}
+                {!isEditing && !selected && (
+                  <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                    Modo Visualização
+                  </Badge>
+                )}
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
