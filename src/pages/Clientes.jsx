@@ -159,6 +159,16 @@ export default function Clientes() {
     };
 
     const clientesData = data.map(item => {
+      // Validate and normalize status
+      const validStatuses = ['ativo', 'inativo', 'prospecto'];
+      let normalizedStatus = 'ativo';
+      if (item.status && typeof item.status === 'string') {
+        const statusLower = item.status.toLowerCase().trim();
+        if (validStatuses.includes(statusLower)) {
+          normalizedStatus = statusLower;
+        }
+      }
+
       const clienteData = {
         ...item,
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
@@ -167,7 +177,7 @@ export default function Clientes() {
         rede_id: findId(redes, item.rede),
         vendedor_id: findId(vendedores, item.vendedor),
         rota_id: findId(rotas, item.rota),
-        status: item.status || 'ativo'
+        status: normalizedStatus
       };
 
       // Remove temporary name fields
