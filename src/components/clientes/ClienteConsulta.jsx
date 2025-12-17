@@ -61,19 +61,35 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
   const filteredClientes = useMemo(() => {
     return clientes.filter(cliente => {
       // Filter by Vendedor
-      if (filters.vendedor_id !== 'all' && cliente.vendedor_id !== filters.vendedor_id) return false;
+      if (filters.vendedor_id === 'empty') {
+        if (cliente.vendedor_id) return false;
+      } else if (filters.vendedor_id !== 'all' && cliente.vendedor_id !== filters.vendedor_id) {
+        return false;
+      }
       
       // Filter by Supervisor
       if (filters.supervisor_id !== 'all') {
         const supId = getSupervisorId(cliente);
-        if (supId !== filters.supervisor_id) return false;
+        if (filters.supervisor_id === 'empty') {
+          if (supId) return false;
+        } else if (supId !== filters.supervisor_id) {
+          return false;
+        }
       }
 
       // Filter by Rede
-      if (filters.rede_id !== 'all' && cliente.rede_id !== filters.rede_id) return false;
+      if (filters.rede_id === 'empty') {
+        if (cliente.rede_id) return false;
+      } else if (filters.rede_id !== 'all' && cliente.rede_id !== filters.rede_id) {
+        return false;
+      }
 
       // Filter by Segmento
-      if (filters.segmento_id !== 'all' && cliente.segmento_id !== filters.segmento_id) return false;
+      if (filters.segmento_id === 'empty') {
+        if (cliente.segmento_id) return false;
+      } else if (filters.segmento_id !== 'all' && cliente.segmento_id !== filters.segmento_id) {
+        return false;
+      }
 
       // Filter by Status
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
@@ -165,6 +181,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Vendedor</SelectItem>
                   {vendedores.map(v => (
                     <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
                   ))}
@@ -184,6 +201,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Supervisor</SelectItem>
                   {supervisors.map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                   ))}
@@ -203,6 +221,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Rede</SelectItem>
                   {redes.map(r => (
                     <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
                   ))}
@@ -222,6 +241,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Segmento</SelectItem>
                   {segmentos.map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                   ))}
