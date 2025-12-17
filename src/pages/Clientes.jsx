@@ -150,6 +150,35 @@ export default function Clientes() {
   };
 
   const handleBulkImport = async (data) => {
+    // Validar campos importantes em branco
+    const warnings = [];
+    let emptyCodigoCount = 0;
+    let emptyCidadeCount = 0;
+    let emptyVendedorCount = 0;
+    let emptySegmentoCount = 0;
+    let emptyStatusCount = 0;
+
+    data.forEach((item) => {
+      if (!item.codigo || item.codigo.trim() === '') emptyCodigoCount++;
+      if (!item.cidade || item.cidade.trim() === '') emptyCidadeCount++;
+      if (!item.vendedor || item.vendedor.trim() === '') emptyVendedorCount++;
+      if (!item.segmento || item.segmento.trim() === '') emptySegmentoCount++;
+      if (!item.status || item.status.trim() === '') emptyStatusCount++;
+    });
+
+    if (emptyCodigoCount > 0) warnings.push(`${emptyCodigoCount} cliente(s) sem código`);
+    if (emptyCidadeCount > 0) warnings.push(`${emptyCidadeCount} cliente(s) sem cidade`);
+    if (emptyVendedorCount > 0) warnings.push(`${emptyVendedorCount} cliente(s) sem vendedor`);
+    if (emptySegmentoCount > 0) warnings.push(`${emptySegmentoCount} cliente(s) sem segmento`);
+    if (emptyStatusCount > 0) warnings.push(`${emptyStatusCount} cliente(s) sem status`);
+
+    if (warnings.length > 0) {
+      const confirmImport = window.confirm(
+        `⚠️ ATENÇÃO: Campos importantes em branco detectados!\n\n${warnings.join('\n')}\n\nDeseja continuar mesmo assim?`
+      );
+      if (!confirmImport) return;
+    }
+
     setIsImporting(true);
     
     const findId = (list, name) => {
