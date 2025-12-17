@@ -28,6 +28,7 @@ export default function Clientes() {
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
     data_primeiro_contato: '', status: 'ativo'
   });
+  const [supervisorNome, setSupervisorNome] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -95,6 +96,7 @@ export default function Clientes() {
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
       data_primeiro_contato: '', status: 'ativo'
     });
+    setSupervisorNome('');
     setSelected(null);
   };
 
@@ -126,6 +128,18 @@ export default function Clientes() {
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
+    // Buscar supervisor do vendedor
+    if (item.vendedor_id) {
+      const vendedor = vendedores.find(v => v.id === item.vendedor_id);
+      if (vendedor && vendedor.supervisor_id) {
+        const supervisor = vendedores.find(v => v.id === vendedor.supervisor_id);
+        setSupervisorNome(supervisor ? supervisor.nome : '');
+      } else {
+        setSupervisorNome('');
+      }
+    } else {
+      setSupervisorNome('');
+    }
     setIsEditing(true);
     setActiveTab("cadastro");
   };
@@ -415,7 +429,17 @@ export default function Clientes() {
                   <Label>Vendedor</Label>
                   <Select 
                     value={formData.vendedor_id} 
-                    onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}
+                    onValueChange={(v) => {
+                      setFormData({ ...formData, vendedor_id: v });
+                      // Buscar supervisor do vendedor selecionado
+                      const vendedor = vendedores.find(vend => vend.id === v);
+                      if (vendedor && vendedor.supervisor_id) {
+                        const supervisor = vendedores.find(sup => sup.id === vendedor.supervisor_id);
+                        setSupervisorNome(supervisor ? supervisor.nome : '');
+                      } else {
+                        setSupervisorNome('');
+                      }
+                    }}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
@@ -427,6 +451,15 @@ export default function Clientes() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label>Supervisor (automático)</Label>
+                  <Input
+                    value={supervisorNome}
+                    disabled
+                    placeholder="Selecionado automaticamente"
+                    className="bg-slate-50"
+                  />
                 </div>
                 <div>
                   <Label>Rota</Label>
