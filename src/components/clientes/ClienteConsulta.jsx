@@ -15,6 +15,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
     supervisor_id: 'all',
     rede_id: 'all',
     segmento_id: 'all',
+    status: 'all',
     cidade: '',
     bairro: '',
     search: ''
@@ -73,6 +74,9 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
 
       // Filter by Segmento
       if (filters.segmento_id !== 'all' && cliente.segmento_id !== filters.segmento_id) return false;
+
+      // Filter by Status
+      if (filters.status !== 'all' && cliente.status !== filters.status) return false;
 
       // Filter by Cidade (partial match)
       if (filters.cidade && !cliente.cidade?.toLowerCase().includes(filters.cidade.toLowerCase())) return false;
@@ -225,6 +229,25 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
               </Select>
             </div>
 
+            {/* Status */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Status</label>
+              <Select 
+                value={filters.status} 
+                onValueChange={(v) => setFilters({...filters, status: v})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="inativo">Inativo</SelectItem>
+                  <SelectItem value="prospecto">Prospecto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Cidade */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Cidade</label>
@@ -277,6 +300,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 supervisor_id: 'all',
                 rede_id: 'all',
                 segmento_id: 'all',
+                status: 'all',
                 cidade: '',
                 bairro: '',
                 search: ''
