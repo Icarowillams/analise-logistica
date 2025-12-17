@@ -69,15 +69,14 @@ function ImportacaoTab() {
     { key: 'codproduto', label: 'CODPRODUTO', required: true },
     { key: 'qtd', label: 'QTD', required: true },
     { key: 'codcliente', label: 'CODCLIENTE', required: true },
-    { key: 'rota', label: 'ROTA' },
     { key: 'data', label: 'DATA', required: true },
     { key: 'vl_unitario', label: 'VL_UNITARIO', required: true },
     { key: 'troca', label: 'TROCA (SIM/NÃO)' }
   ];
 
   const bulkExampleData = [
-    { numpedido: '267862', codproduto: '1', qtd: '100', codcliente: '3362', rota: 'ROTA 01 -MIGUEL', data: '01/10/2025', vl_unitario: '4,00', troca: 'NÃO' },
-    { numpedido: '268040', codproduto: '1', qtd: '8', codcliente: '3362', rota: 'ROTA 01 -MIGUEL', data: '02/10/2025', vl_unitario: '4,00', troca: 'SIM' }
+    { numpedido: '267862', codproduto: '1', qtd: '100', codcliente: '3362', data: '01/10/2025', vl_unitario: '4,00', troca: 'NÃO' },
+    { numpedido: '268040', codproduto: '1', qtd: '8', codcliente: '3362', data: '02/10/2025', vl_unitario: '4,00', troca: 'SIM' }
   ];
 
   const handleBulkImport = async (data) => {

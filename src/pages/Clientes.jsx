@@ -156,10 +156,19 @@ export default function Clientes() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Buscar supervisor_id do vendedor selecionado
+    let dataToSave = { ...formData };
+    if (formData.vendedor_id) {
+      const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
+      if (vendedor && vendedor.supervisor_id) {
+        dataToSave.supervisor_id = vendedor.supervisor_id;
+      }
+    }
+    
     if (selected) {
-      updateMutation.mutate({ id: selected.id, data: formData });
+      updateMutation.mutate({ id: selected.id, data: dataToSave });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(dataToSave);
     }
   };
 
@@ -212,13 +221,25 @@ export default function Clientes() {
         }
       }
 
+      const vendedorId = findId(vendedores, item.vendedor);
+      let supervisorId = null;
+      
+      // Buscar supervisor do vendedor
+      if (vendedorId) {
+        const vendedor = vendedores.find(v => v.id === vendedorId);
+        if (vendedor && vendedor.supervisor_id) {
+          supervisorId = vendedor.supervisor_id;
+        }
+      }
+
       const clienteData = {
         ...item,
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
         tabela_id: findId(tabelas, item.tabela_preco),
         segmento_id: findId(segmentos, item.segmento),
         rede_id: findId(redes, item.rede),
-        vendedor_id: findId(vendedores, item.vendedor),
+        vendedor_id: vendedorId,
+        supervisor_id: supervisorId,
         rota_id: findId(rotas, item.rota),
         status: normalizedStatus
       };
