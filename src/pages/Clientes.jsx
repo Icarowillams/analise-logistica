@@ -158,7 +158,7 @@ export default function Clientes() {
       return found ? found.id : null;
     };
 
-    for (const item of data) {
+    const clientesData = data.map(item => {
       const clienteData = {
         ...item,
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
@@ -178,8 +178,10 @@ export default function Clientes() {
       delete clienteData.vendedor;
       delete clienteData.rota;
 
-      await base44.entities.Cliente.create(clienteData);
-    }
+      return clienteData;
+    });
+
+    await base44.entities.Cliente.bulkCreate(clientesData);
     queryClient.invalidateQueries(['clientes']);
     setIsImporting(false);
     setBulkOpen(false);
