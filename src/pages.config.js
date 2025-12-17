@@ -21,6 +21,7 @@ import Funcoes from './pages/Funcoes';
 import Categorias from './pages/Categorias';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import AtualizarSupervisores from './pages/AtualizarSupervisores';
 import __Layout from './Layout.jsx';
 
 
@@ -48,6 +49,7 @@ export const PAGES = {
     "Categorias": Categorias,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "AtualizarSupervisores": AtualizarSupervisores,
 }
 
 export const pagesConfig = {
