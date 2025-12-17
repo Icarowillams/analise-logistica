@@ -26,6 +26,7 @@ export default function BulkImportModal({
   const [file, setFile] = useState(null);
   const [pasteData, setPasteData] = useState('');
   const [preview, setPreview] = useState([]);
+  const [allRows, setAllRows] = useState([]);
   const [errors, setErrors] = useState([]);
 
   const parseCSV = (text) => {
@@ -61,12 +62,13 @@ export default function BulkImportModal({
 
   const processData = (text) => {
     const rows = parseCSV(text);
+    setAllRows(rows);
     setPreview(rows.slice(0, 10));
-    
+
     // Validação básica
     const errs = [];
     const requiredCols = columns.filter(c => c.required).map(c => c.key);
-    
+
     rows.forEach((row, idx) => {
       requiredCols.forEach(col => {
         if (!row[col]) {
@@ -74,16 +76,13 @@ export default function BulkImportModal({
         }
       });
     });
-    
+
     setErrors(errs.slice(0, 5));
   };
 
   const handleImport = async () => {
-    const text = mode === 'upload' && file ? await file.text() : pasteData;
-    const rows = parseCSV(text);
-    
     // Mapear para o formato correto
-    const data = rows.map(row => {
+    const data = allRows.map(row => {
       const item = {};
       columns.forEach(col => {
         if (row[col.key] !== undefined && row[col.key] !== '') {
@@ -105,6 +104,7 @@ export default function BulkImportModal({
     setFile(null);
     setPasteData('');
     setPreview([]);
+    setAllRows([]);
     setErrors([]);
     setMode('upload');
   };
@@ -231,7 +231,7 @@ export default function BulkImportModal({
           {/* Preview */}
           {preview.length > 0 && (
             <div>
-              <p className="font-medium text-slate-700 mb-2">Pré-visualização ({preview.length} primeiros registros):</p>
+              <p className="font-medium text-slate-700 mb-2">Pré-visualização (10 primeiros de {allRows.length} registros):</p>
               <div className="overflow-x-auto border rounded-xl">
                 <Table>
                   <TableHeader>
@@ -262,13 +262,13 @@ export default function BulkImportModal({
             </Button>
             <Button
               onClick={handleImport}
-              disabled={isImporting || preview.length === 0}
+              disabled={isImporting || allRows.length === 0}
               className="bg-gradient-to-r from-emerald-500 to-teal-600"
             >
               {isImporting ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</>
               ) : (
-                <><CheckCircle className="w-4 h-4 mr-2" />Importar {preview.length > 0 ? `${parseCSV(mode === 'upload' && file ? '' : pasteData).length || preview.length} registros` : ''}</>
+                <><CheckCircle className="w-4 h-4 mr-2" />Importar {allRows.length} registros</>
               )}
             </Button>
           </div>
