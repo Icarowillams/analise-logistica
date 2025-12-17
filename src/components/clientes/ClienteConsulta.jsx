@@ -111,35 +111,23 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
   };
 
   const columns = [
-    { key: 'codigo', label: 'Cód.', sortable: true },
+    { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
     { key: 'razao_social', label: 'Razão Social', sortable: true },
-    { key: 'nome_fantasia', label: 'Nome Fantasia' },
-    { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
     { key: 'cidade', label: 'Cidade' },
-    { key: 'bairro', label: 'Bairro' },
     { 
       key: 'vendedor_id', 
       label: 'Vendedor',
       render: (val) => getVendedorName(val)
     },
     { 
-      key: 'supervisor', 
-      label: 'Supervisor',
-      render: (_, item) => getSupervisorNameForClient(item)
-    },
-    { 
       key: 'rede_id', 
       label: 'Rede',
       render: (val) => getName(redes, val)
     },
-    { 
-      key: 'segmento_id', 
-      label: 'Segmento',
-      render: (val) => getName(segmentos, val)
-    },
     {
       key: 'status',
       label: 'Status',
+      width: '100px',
       render: (val) => (
         <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
           {val}

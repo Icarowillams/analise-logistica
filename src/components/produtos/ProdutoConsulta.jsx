@@ -79,52 +79,27 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
       label: 'Imagem',
       width: '80px',
       render: (val) => val ? (
-        <div className="h-16 w-16 rounded-lg overflow-hidden border border-slate-200">
+        <div className="h-12 w-12 rounded-lg overflow-hidden border border-slate-200">
            <img src={val} alt="Produto" className="w-full h-full object-cover" />
         </div>
       ) : (
-        <div className="h-16 w-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-          <Package className="w-8 h-8" />
+        <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+          <Package className="w-6 h-6" />
         </div>
       )
     },
-    { key: 'codigo', label: 'Cód.', sortable: true },
+    { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
     { key: 'nome', label: 'Nome', sortable: true },
-    { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
-    { key: 'sub_categoria_id', label: 'Subcategoria', render: (val) => getSubCategoryName(val) },
-    { key: 'estoque_atual', label: 'Estoque' },
+    { key: 'estoque_atual', label: 'Estoque', width: '100px' },
     {
       key: 'status',
       label: 'Status',
+      width: '100px',
       render: (val) => (
         <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
           {val}
         </Badge>
-      )
-    },
-    {
-      key: 'actions',
-      label: 'Ações',
-      render: (_, item) => (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onEdit && onEdit(item)}
-            className="h-8 w-8 text-neutral-500 hover:text-amber-600 hover:bg-amber-50"
-          >
-            <Pencil className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete && onDelete(item)}
-            className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
       )
     }
   ];
