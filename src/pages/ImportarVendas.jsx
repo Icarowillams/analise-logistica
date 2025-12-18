@@ -186,11 +186,40 @@ function ImportacaoTab() {
         });
     }
 
+    // Separar vendas e trocas
+    const trocasData = [];
+    
+    for (const venda of vendasData) {
+      if (venda.troca > 0) {
+        // Criar registro de troca
+        trocasData.push({
+          data: venda.data_troca || venda.data,
+          cliente_id: venda.cliente_id,
+          cliente_nome: venda.cliente_nome,
+          produto_original_id: venda.produto_id,
+          produto_original_nome: venda.produto_nome,
+          produto_novo_id: null,
+          produto_novo_nome: null,
+          motivo_id: null,
+          motivo_descricao: 'Troca importada via sistema',
+          vendedor_id: venda.vendedor_id,
+          vendedor_nome: venda.vendedor_nome,
+          quantidade: venda.troca,
+          observacoes: `Pedido: ${venda.numero_pedido}`
+        });
+      }
+    }
+
     if (vendasData.length > 0) {
         await base44.entities.Venda.bulkCreate(vendasData);
     }
     
+    if (trocasData.length > 0) {
+        await base44.entities.Troca.bulkCreate(trocasData);
+    }
+    
     queryClient.invalidateQueries(['vendas']);
+    queryClient.invalidateQueries(['trocas']);
     setIsImporting(false);
     setBulkOpen(false);
   };
@@ -293,10 +322,33 @@ function ManualEntryForm() {
         numero_pedido: `MANUAL-${Date.now()}`
       };
 
-      return base44.entities.Venda.create(vendaPayload);
+      const venda = await base44.entities.Venda.create(vendaPayload);
+      
+      // Se tem troca, criar registro na entidade Troca
+      if (parseFloat(data.troca) > 0) {
+        await base44.entities.Troca.create({
+          data: dataTroca || data.data,
+          cliente_id: cliente.id,
+          cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+          produto_original_id: produto.id,
+          produto_original_nome: produto.nome,
+          produto_novo_id: null,
+          produto_novo_nome: null,
+          motivo_id: null,
+          motivo_descricao: 'Troca registrada manualmente via sistema',
+          vendedor_id: cliente.vendedor_id,
+          vendedor_nome: vendedor?.nome || 'Vendedor Desconhecido',
+          quantidade: parseFloat(data.troca),
+          observacoes: `Venda manual: ${vendaPayload.numero_pedido}`,
+          venda_original_id: venda.id
+        });
+      }
+      
+      return venda;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['vendas']);
+      queryClient.invalidateQueries(['trocas']);
       setSuccessMsg('Venda registrada com sucesso!');
       setFormData(prev => ({ ...prev, quantidade: '', valor_total: '', bonificacao: '0', troca: '0' }));
       setTimeout(() => setSuccessMsg(''), 3000);
