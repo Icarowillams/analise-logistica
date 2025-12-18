@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Clipboard, Save, Plus, Calendar, Filter, Search, ChevronDown, ChevronRight, Package } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import BulkImportModal from '@/components/forms/BulkImportModal';
+import TrocasNaoCadastradasTab from '@/components/ImportarVendas/TrocasNaoCadastradasTab';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
