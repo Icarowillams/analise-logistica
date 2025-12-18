@@ -82,7 +82,23 @@ function ImportacaoTab() {
   const handleBulkImport = async (data) => {
     setIsImporting(true);
     
-    const validRows = [];
+    // PRÉ-PROCESSAMENTO: Criar Maps para busca O(1) ao invés de find O(n)
+    const clientesPorCodigo = new Map();
+    const clientesPorCNPJ = new Map();
+    clientes.forEach(c => {
+      if (c.codigo) clientesPorCodigo.set(String(c.codigo), c);
+      if (c.cpf_cnpj) clientesPorCNPJ.set(c.cpf_cnpj.replace(/\D/g, ''), c);
+    });
+
+    const produtosPorCodigo = new Map();
+    const produtosPorBarras = new Map();
+    produtos.forEach(p => {
+      if (p.codigo) produtosPorCodigo.set(String(p.codigo), p);
+      if (p.cod_barras) produtosPorBarras.set(String(p.cod_barras), p);
+    });
+
+    const vendedoresPorId = new Map();
+    vendedores.forEach(v => vendedoresPorId.set(v.id, v));
     
     // Helper para converter valores monetários brasileiros (ex: "4,00" -> 4.00)
     const parseBRLValues = (val) => {
@@ -91,12 +107,15 @@ function ImportacaoTab() {
         return parseFloat(String(val).replace(/\./g, '').replace(',', '.')) || 0;
     };
 
+    // PROCESSAMENTO RÁPIDO
+    const vendasData = [];
+    
     for (const row of data) {
+        // Parse date
         let dataVenda = null;
         const dataRaw = row.data;
         
         if (dataRaw) {
-            // Try flexible date parsing
             if (String(dataRaw).match(/^\d{2}\/\d{2}\/\d{4}$/)) {
                 const [day, month, year] = dataRaw.split('/');
                 dataVenda = `${year}-${month}-${day}`;
@@ -110,68 +129,53 @@ function ImportacaoTab() {
             }
         }
         
-        const cliente = clientes.find(c => 
-            String(c.codigo) === String(row.codcliente) || 
-            c.cpf_cnpj?.replace(/\D/g, '') === String(row.codcliente)?.replace(/\D/g, '')
-        );
+        if (!dataVenda) continue;
         
-        const produto = produtos.find(p => 
-            String(p.codigo) === String(row.codproduto) || 
-            String(p.cod_barras) === String(row.codproduto)
-        );
+        // Busca otimizada O(1) ao invés de O(n)
+        const cliente = clientesPorCodigo.get(String(row.codcliente)) || 
+                       clientesPorCNPJ.get(String(row.codcliente)?.replace(/\D/g, ''));
+        
+        const produto = produtosPorCodigo.get(String(row.codproduto)) || 
+                       produtosPorBarras.get(String(row.codproduto));
 
-        if (cliente && produto && dataVenda) {
-            validRows.push({
-                ...row,
-                data: dataVenda,
-                cliente,
-                produto
-            });
-        }
-    }
-
-    const vendasData = validRows.map(r => {
-        const cli = r.cliente;
-        const prod = r.produto;
-        const vend = vendedores.find(v => v.id === cli.vendedor_id);
+        if (!cliente || !produto) continue;
+        
+        const vend = vendedoresPorId.get(cliente.vendedor_id);
         
         // Lógica de valores
-        const qtdRaw = parseBRLValues(r.qtd);
-        const vlUnit = parseBRLValues(r.vl_unitario);
-        const isTroca = String(r.troca || '').toUpperCase().trim() === 'SIM';
+        const qtdRaw = parseBRLValues(row.qtd);
+        const vlUnit = parseBRLValues(row.vl_unitario);
+        const isTroca = String(row.troca || '').toUpperCase().trim() === 'SIM';
         
-        // Se for troca: Quantidade vai para campo troca, e quantidade da venda é 0 (ou mantém para histórico? 
-        // Geralmente se separa. Assumindo: SIM -> é troca, NÃO -> é venda normal)
         const qtdVenda = isTroca ? 0 : qtdRaw;
         const qtdTroca = isTroca ? qtdRaw : 0;
-        
-        const valorTotal = qtdRaw * vlUnit; // Valor total da linha, independente se é troca ou venda
+        const valorTotal = qtdRaw * vlUnit;
 
-        return {
-          numero_pedido: r.numpedido || `S/N-${r.data}-${cli.id}`,
-          data: r.data,
-          vendedor_id: cli.vendedor_id,
+        vendasData.push({
+          numero_pedido: row.numpedido || `S/N-${dataVenda}-${cliente.id}`,
+          data: dataVenda,
+          vendedor_id: cliente.vendedor_id,
           vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
           supervisor_id: vend?.supervisor_id,
-          cliente_id: cli.id,
-          cliente_nome: cli.razao_social || cli.nome_fantasia,
-          produto_id: prod.id,
-          produto_nome: prod.nome,
-          categoria_id: prod.categoria_id,
-          sub_categoria_id: prod.sub_categoria_id,
-          segmento_id: cli.segmento_id,
-          rede_id: cli.rede_id,
-          rota_id: cli.rota_id,
-          tabela_id: cli.tabela_id,
-          plano_pagamento_id: cli.plano_pagamento_id,
+          cliente_id: cliente.id,
+          cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+          produto_id: produto.id,
+          produto_nome: produto.nome,
+          categoria_id: produto.categoria_id,
+          sub_categoria_id: produto.sub_categoria_id,
+          segmento_id: cliente.segmento_id,
+          rede_id: cliente.rede_id,
+          rota_id: cliente.rota_id,
+          tabela_id: cliente.tabela_id,
+          plano_pagamento_id: cliente.plano_pagamento_id,
           quantidade: qtdVenda,
           valor_total: valorTotal,
           valor_unitario: vlUnit,
           margem: 0,
-          bonificacao: 0, // Coluna bonificação não existe no exemplo, assumindo 0
+          bonificacao: 0,
           troca: qtdTroca
-        };
-    });
+        });
+    }
 
     if (vendasData.length > 0) {
         await base44.entities.Venda.bulkCreate(vendasData);
