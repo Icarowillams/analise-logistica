@@ -82,23 +82,34 @@ function ImportacaoTab() {
   const handleBulkImport = async (data) => {
     setIsImporting(true);
     
-    // PRÉ-PROCESSAMENTO: Criar Maps para busca O(1) ao invés de find O(n)
-    const clientesPorCodigo = new Map();
-    const clientesPorCNPJ = new Map();
-    clientes.forEach(c => {
-      if (c.codigo) clientesPorCodigo.set(String(c.codigo), c);
-      if (c.cpf_cnpj) clientesPorCNPJ.set(c.cpf_cnpj.replace(/\D/g, ''), c);
-    });
+    try {
+      // Buscar ou criar motivo padrão para trocas importadas
+      let motivoTrocaId = motivosTroca.find(m => m.descricao?.toLowerCase().includes('import'))?.id;
+      
+      if (!motivoTrocaId) {
+        const novoMotivo = await base44.entities.MotivoTroca.create({
+          descricao: 'Troca importada via sistema'
+        });
+        motivoTrocaId = novoMotivo.id;
+      }
+    
+      // PRÉ-PROCESSAMENTO: Criar Maps para busca O(1) ao invés de find O(n)
+      const clientesPorCodigo = new Map();
+      const clientesPorCNPJ = new Map();
+      clientes.forEach(c => {
+        if (c.codigo) clientesPorCodigo.set(String(c.codigo), c);
+        if (c.cpf_cnpj) clientesPorCNPJ.set(c.cpf_cnpj.replace(/\D/g, ''), c);
+      });
 
-    const produtosPorCodigo = new Map();
-    const produtosPorBarras = new Map();
-    produtos.forEach(p => {
-      if (p.codigo) produtosPorCodigo.set(String(p.codigo), p);
-      if (p.cod_barras) produtosPorBarras.set(String(p.cod_barras), p);
-    });
+      const produtosPorCodigo = new Map();
+      const produtosPorBarras = new Map();
+      produtos.forEach(p => {
+        if (p.codigo) produtosPorCodigo.set(String(p.codigo), p);
+        if (p.cod_barras) produtosPorBarras.set(String(p.cod_barras), p);
+      });
 
-    const vendedoresPorId = new Map();
-    vendedores.forEach(v => vendedoresPorId.set(v.id, v));
+      const vendedoresPorId = new Map();
+      vendedores.forEach(v => vendedoresPorId.set(v.id, v));
     
     // Helper para converter valores monetários brasileiros (ex: "4,00" -> 4.00)
     const parseBRLValues = (val) => {
@@ -186,42 +197,47 @@ function ImportacaoTab() {
         });
     }
 
-    // Separar vendas e trocas
-    const trocasData = [];
-    
-    for (const venda of vendasData) {
-      if (venda.troca > 0) {
-        // Criar registro de troca
-        trocasData.push({
-          data: venda.data_troca || venda.data,
-          cliente_id: venda.cliente_id,
-          cliente_nome: venda.cliente_nome,
-          produto_original_id: venda.produto_id,
-          produto_original_nome: venda.produto_nome,
-          produto_novo_id: null,
-          produto_novo_nome: null,
-          motivo_id: null,
-          motivo_descricao: 'Troca importada via sistema',
-          vendedor_id: venda.vendedor_id,
-          vendedor_nome: venda.vendedor_nome,
-          quantidade: venda.troca,
-          observacoes: `Pedido: ${venda.numero_pedido}`
-        });
+      // Separar vendas e trocas
+      const trocasData = [];
+      
+      for (const venda of vendasData) {
+        if (venda.troca > 0) {
+          // Criar registro de troca
+          trocasData.push({
+            data: venda.data_troca || venda.data,
+            cliente_id: venda.cliente_id,
+            cliente_nome: venda.cliente_nome,
+            produto_original_id: venda.produto_id,
+            produto_original_nome: venda.produto_nome,
+            produto_novo_id: null,
+            produto_novo_nome: null,
+            motivo_id: motivoTrocaId,
+            motivo_descricao: 'Troca importada via sistema',
+            vendedor_id: venda.vendedor_id,
+            vendedor_nome: venda.vendedor_nome,
+            quantidade: venda.troca,
+            observacoes: `Pedido: ${venda.numero_pedido}`
+          });
+        }
       }
-    }
 
-    if (vendasData.length > 0) {
-        await base44.entities.Venda.bulkCreate(vendasData);
+      if (vendasData.length > 0) {
+          await base44.entities.Venda.bulkCreate(vendasData);
+      }
+      
+      if (trocasData.length > 0) {
+          await base44.entities.Troca.bulkCreate(trocasData);
+      }
+      
+      queryClient.invalidateQueries(['vendas']);
+      queryClient.invalidateQueries(['trocas']);
+      setIsImporting(false);
+      setBulkOpen(false);
+    } catch (error) {
+      console.error('Erro na importação:', error);
+      alert('Erro ao importar vendas: ' + error.message);
+      setIsImporting(false);
     }
-    
-    if (trocasData.length > 0) {
-        await base44.entities.Troca.bulkCreate(trocasData);
-    }
-    
-    queryClient.invalidateQueries(['vendas']);
-    queryClient.invalidateQueries(['trocas']);
-    setIsImporting(false);
-    setBulkOpen(false);
   };
   
   return (
@@ -295,6 +311,16 @@ function ManualEntryForm() {
         d.setDate(d.getDate() - 1);
         dataTroca = format(d, 'yyyy-MM-dd');
       }
+      
+      // Buscar ou criar motivo padrão para trocas manuais
+      let motivoTrocaId = motivosTroca.find(m => m.descricao?.toLowerCase().includes('manual'))?.id;
+      
+      if (!motivoTrocaId && isTrocaManual) {
+        const novoMotivo = await base44.entities.MotivoTroca.create({
+          descricao: 'Troca registrada manualmente'
+        });
+        motivoTrocaId = novoMotivo.id;
+      }
 
       const vendaPayload = {
         data: data.data,
@@ -325,7 +351,7 @@ function ManualEntryForm() {
       const venda = await base44.entities.Venda.create(vendaPayload);
       
       // Se tem troca, criar registro na entidade Troca
-      if (parseFloat(data.troca) > 0) {
+      if (parseFloat(data.troca) > 0 && motivoTrocaId) {
         await base44.entities.Troca.create({
           data: dataTroca || data.data,
           cliente_id: cliente.id,
@@ -334,7 +360,7 @@ function ManualEntryForm() {
           produto_original_nome: produto.nome,
           produto_novo_id: null,
           produto_novo_nome: null,
-          motivo_id: null,
+          motivo_id: motivoTrocaId,
           motivo_descricao: 'Troca registrada manualmente via sistema',
           vendedor_id: cliente.vendedor_id,
           vendedor_nome: vendedor?.nome || 'Vendedor Desconhecido',
