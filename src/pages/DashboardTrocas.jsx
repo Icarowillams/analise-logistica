@@ -231,7 +231,7 @@ export default function DashboardTrocas() {
     return Object.entries(grouped)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([mes, qtd]) => ({
-        mes: new Date(mes + '-01').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        mes: mes.substring(5) + '/' + mes.substring(0, 4),
         qtd
       }));
   }, [trocasFiltradas]);
@@ -441,7 +441,14 @@ export default function DashboardTrocas() {
                       <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 12 }} />
                       <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
                       <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
-                      <Line type="monotone" dataKey="qtd" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 5 }} />
+                      <Line 
+                        type="monotone" 
+                        dataKey="qtd" 
+                        stroke="#ef4444" 
+                        strokeWidth={3} 
+                        dot={{ fill: '#ef4444', r: 5 }}
+                        label={{ position: 'top', fill: '#ef4444', fontSize: 12, fontWeight: 600 }}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -459,7 +466,12 @@ export default function DashboardTrocas() {
                       <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 12 }} />
                       <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
                       <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
-                      <Bar dataKey="qtd" fill="#f97316" radius={[8, 8, 0, 0]} />
+                      <Bar 
+                        dataKey="qtd" 
+                        fill="#f97316" 
+                        radius={[8, 8, 0, 0]}
+                        label={{ position: 'top', fill: '#f97316', fontSize: 12, fontWeight: 600 }}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
