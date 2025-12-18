@@ -20,8 +20,13 @@ export default function TrocasNaoCadastradasTab() {
     queryFn: async () => {
       const allTrocas = await base44.entities.Troca.list('-data', 5000);
       
-      // Filtrar apenas trocas sem cliente cadastrado
-      let filtradas = allTrocas.filter(t => !t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado'));
+      // Filtrar apenas trocas sem cliente cadastrado ou sem vendedor
+      let filtradas = allTrocas.filter(t => 
+        !t.cliente_id || 
+        !t.vendedor_id || 
+        t.cliente_nome?.includes('Cliente Não Cadastrado') ||
+        t.vendedor_nome === 'N/A'
+      );
       
       // Aplicar filtro de data se necessário
       if (dates.start || dates.end) {
