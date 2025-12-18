@@ -28,11 +28,12 @@ export default function ImportarVendas() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-4xl grid-cols-4 mb-6">
+        <TabsList className="grid w-full max-w-5xl grid-cols-5 mb-6">
           <TabsTrigger value="importacao">Importar Vendas</TabsTrigger>
           <TabsTrigger value="faturamento_produto">Faturamento Produto</TabsTrigger>
           <TabsTrigger value="faturamento_cliente">Faturamento Cliente</TabsTrigger>
           <TabsTrigger value="pedidos">Pedidos Importados</TabsTrigger>
+          <TabsTrigger value="trocas_nao_cadastradas">Trocas S/ Cadastro</TabsTrigger>
         </TabsList>
 
         <TabsContent value="importacao" className="space-y-6">
@@ -49,6 +50,10 @@ export default function ImportarVendas() {
 
         <TabsContent value="pedidos" className="space-y-6">
           <PedidosTab />
+        </TabsContent>
+
+        <TabsContent value="trocas_nao_cadastradas" className="space-y-6">
+          <TrocasNaoCadastradasTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -121,6 +126,7 @@ function ImportacaoTab() {
 
     // PROCESSAMENTO RÁPIDO
     const vendasData = [];
+    const trocasNaoCadastradas = [];
     
     for (const row of data) {
         // Parse date
@@ -150,14 +156,31 @@ function ImportacaoTab() {
         const produto = produtosPorCodigo.get(String(row.codproduto)) || 
                        produtosPorBarras.get(String(row.codproduto));
 
-        if (!cliente || !produto) continue;
-        
-        const vend = vendedoresPorId.get(cliente.vendedor_id);
-        
         // Lógica de valores
         const qtdRaw = parseBRLValues(row.qtd);
         const vlUnit = parseBRLValues(row.vl_unitario);
         const isTroca = String(row.troca || '').toUpperCase().trim() === 'SIM';
+
+        // Se é troca e cliente não cadastrado, armazenar separadamente
+        if (isTroca && !cliente && produto) {
+          const d = new Date(dataVenda);
+          d.setDate(d.getDate() - 1);
+          const dataTroca = format(d, 'yyyy-MM-dd');
+          
+          trocasNaoCadastradas.push({
+            data: dataTroca,
+            codigo_cliente: String(row.codcliente),
+            produto_original_id: produto.id,
+            produto_original_nome: produto.nome,
+            quantidade: qtdRaw,
+            observacoes: `Pedido: ${row.numpedido || 'S/N'} - Cliente não cadastrado: ${row.codcliente}`
+          });
+          continue;
+        }
+
+        if (!cliente || !produto) continue;
+        
+        const vend = vendedoresPorId.get(cliente.vendedor_id);
         
         const qtdVenda = isTroca ? 0 : qtdRaw;
         const qtdTroca = isTroca ? qtdRaw : 0;
@@ -198,12 +221,12 @@ function ImportacaoTab() {
         });
     }
 
-      // Separar vendas e trocas
+      // Separar vendas e trocas cadastradas
       const trocasData = [];
       
       for (const venda of vendasData) {
         if (venda.troca > 0) {
-          // Criar registro de troca
+          // Criar registro de troca para clientes cadastrados
           trocasData.push({
             data: venda.data_troca || venda.data,
             cliente_id: venda.cliente_id,
@@ -222,6 +245,25 @@ function ImportacaoTab() {
         }
       }
 
+      // Adicionar trocas de clientes não cadastrados (sem vendedor_id, apenas código)
+      for (const troca of trocasNaoCadastradas) {
+        trocasData.push({
+          data: troca.data,
+          cliente_id: null,
+          cliente_nome: `Cliente Não Cadastrado: ${troca.codigo_cliente}`,
+          produto_original_id: troca.produto_original_id,
+          produto_original_nome: troca.produto_original_nome,
+          produto_novo_id: null,
+          produto_novo_nome: null,
+          motivo_id: motivoTrocaId,
+          motivo_descricao: 'Troca importada - Cliente não cadastrado',
+          vendedor_id: null,
+          vendedor_nome: 'N/A',
+          quantidade: troca.quantidade,
+          observacoes: troca.observacoes
+        });
+      }
+
       if (vendasData.length > 0) {
           await base44.entities.Venda.bulkCreate(vendasData);
       }
@@ -232,6 +274,17 @@ function ImportacaoTab() {
       
       queryClient.invalidateQueries(['vendas']);
       queryClient.invalidateQueries(['trocas']);
+      
+      // Mostrar resumo da importação
+      const msgResumo = [];
+      if (vendasData.length > 0) msgResumo.push(`${vendasData.length} vendas`);
+      if (trocasData.length > 0) msgResumo.push(`${trocasData.length} trocas`);
+      if (trocasNaoCadastradas.length > 0) msgResumo.push(`${trocasNaoCadastradas.length} trocas sem cliente cadastrado`);
+      
+      if (msgResumo.length > 0) {
+        alert(`✅ Importação concluída:\n${msgResumo.join('\n')}`);
+      }
+      
       setIsImporting(false);
       setBulkOpen(false);
     } catch (error) {
