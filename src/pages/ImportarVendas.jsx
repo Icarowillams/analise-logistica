@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Clipboard, Save, Plus, Calendar, Filter, Search, ChevronDown, ChevronRight, Package } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Clipboard, Save, Plus, Calendar, Filter, Search, ChevronDown, ChevronRight, Package, ArrowLeftRight } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import TrocasNaoCadastradasTab from '@/components/ImportarVendas/TrocasNaoCadastradasTab';
@@ -29,11 +29,12 @@ export default function ImportarVendas() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-5xl grid-cols-5 mb-6">
+        <TabsList className="grid w-full max-w-6xl grid-cols-6 mb-6">
           <TabsTrigger value="importacao">Importar Vendas</TabsTrigger>
           <TabsTrigger value="faturamento_produto">Faturamento Produto</TabsTrigger>
           <TabsTrigger value="faturamento_cliente">Faturamento Cliente</TabsTrigger>
           <TabsTrigger value="pedidos">Pedidos Importados</TabsTrigger>
+          <TabsTrigger value="trocas_importadas">Trocas Importadas</TabsTrigger>
           <TabsTrigger value="trocas_nao_cadastradas">Trocas S/ Cadastro</TabsTrigger>
         </TabsList>
 
@@ -53,10 +54,14 @@ export default function ImportarVendas() {
           <PedidosTab />
         </TabsContent>
 
+        <TabsContent value="trocas_importadas" className="space-y-6">
+          <TrocasImportadasTab />
+        </TabsContent>
+
         <TabsContent value="trocas_nao_cadastradas" className="space-y-6">
           <TrocasNaoCadastradasTab />
         </TabsContent>
-      </Tabs>
+        </Tabs>
     </div>
   );
 }
