@@ -11,19 +11,28 @@ import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 
 export default function TrocasNaoCadastradasTab() {
   const [dates, setDates] = useState({
-    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+    start: '',
+    end: ''
   });
 
   const { data: trocas = [], isLoading } = useQuery({
     queryKey: ['trocas_nao_cadastradas', dates.start, dates.end],
     queryFn: async () => {
-      const allTrocas = await base44.entities.Troca.filter({
-        data: { '$gte': dates.start, '$lte': dates.end }
-      }, { limit: 2000 });
+      const allTrocas = await base44.entities.Troca.list('-data', 5000);
       
       // Filtrar apenas trocas sem cliente cadastrado
-      return allTrocas.filter(t => !t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado'));
+      let filtradas = allTrocas.filter(t => !t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado'));
+      
+      // Aplicar filtro de data se necessário
+      if (dates.start || dates.end) {
+        filtradas = filtradas.filter(t => {
+          if (dates.start && t.data < dates.start) return false;
+          if (dates.end && t.data > dates.end) return false;
+          return true;
+        });
+      }
+      
+      return filtradas;
     }
   });
 

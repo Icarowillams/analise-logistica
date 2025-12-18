@@ -68,17 +68,34 @@ export default function ImportarVendas() {
 
 function TrocasImportadasTab() {
   const [dates, setDates] = useState({
-    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+    start: '',
+    end: ''
   });
   const [busca, setBusca] = useState('');
 
   const { data: trocas = [], isLoading } = useQuery({
     queryKey: ['trocas_todas', dates.start, dates.end],
     queryFn: async () => {
-      const allTrocas = await base44.entities.Troca.filter({
-        data: { '$gte': dates.start, '$lte': dates.end }
-      }, { limit: 2000, sort: { data: -1 } });
+      let query = {};
+      if (dates.start && dates.end) {
+        query.data = { '$gte': dates.start, '$lte': dates.end };
+      } else if (dates.start) {
+        query.data = { '$gte': dates.start };
+      } else if (dates.end) {
+        query.data = { '$lte': dates.end };
+      }
+      
+      const allTrocas = await base44.entities.Troca.list('-data', 5000);
+      
+      // Aplicar filtro de data se necessário
+      if (Object.keys(query).length > 0 && query.data) {
+        return allTrocas.filter(t => {
+          if (query.data.$gte && t.data < query.data.$gte) return false;
+          if (query.data.$lte && t.data > query.data.$lte) return false;
+          return true;
+        });
+      }
+      
       return allTrocas;
     }
   });
