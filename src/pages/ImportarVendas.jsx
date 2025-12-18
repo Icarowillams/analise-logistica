@@ -151,9 +151,18 @@ function ImportacaoTab() {
         const qtdTroca = isTroca ? qtdRaw : 0;
         const valorTotal = qtdRaw * vlUnit;
 
+        // Calcular data_troca: se for troca, data_troca = data - 1 dia
+        let dataTroca = null;
+        if (isTroca) {
+          const d = new Date(dataVenda);
+          d.setDate(d.getDate() - 1);
+          dataTroca = format(d, 'yyyy-MM-dd');
+        }
+
         vendasData.push({
           numero_pedido: row.numpedido || `S/N-${dataVenda}-${cliente.id}`,
           data: dataVenda,
+          data_troca: dataTroca,
           vendedor_id: cliente.vendedor_id,
           vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
           supervisor_id: vend?.supervisor_id,
@@ -250,8 +259,17 @@ function ManualEntryForm() {
       const qtd = parseFloat(data.quantidade);
       const valor = parseFloat(data.valor_total);
 
+      const isTrocaManual = parseFloat(data.troca) > 0;
+      let dataTroca = null;
+      if (isTrocaManual) {
+        const d = new Date(data.data);
+        d.setDate(d.getDate() - 1);
+        dataTroca = format(d, 'yyyy-MM-dd');
+      }
+
       const vendaPayload = {
         data: data.data,
+        data_troca: dataTroca,
         vendedor_id: cliente.vendedor_id,
         vendedor_nome: vendedor?.nome || 'Vendedor Desconhecido',
         supervisor_id: vendedor?.supervisor_id,
