@@ -66,6 +66,176 @@ export default function ImportarVendas() {
   );
 }
 
+function TrocasImportadasTab() {
+  const [dates, setDates] = useState({
+    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  });
+  const [busca, setBusca] = useState('');
+
+  const { data: trocas = [], isLoading } = useQuery({
+    queryKey: ['trocas_todas', dates.start, dates.end],
+    queryFn: async () => {
+      const allTrocas = await base44.entities.Troca.filter({
+        data: { '$gte': dates.start, '$lte': dates.end }
+      }, { limit: 2000, sort: { data: -1 } });
+      return allTrocas;
+    }
+  });
+
+  const trocasFiltradas = useMemo(() => {
+    if (!busca.trim()) return trocas;
+    const termo = busca.toLowerCase();
+    return trocas.filter(t => 
+      t.cliente_nome?.toLowerCase().includes(termo) ||
+      t.produto_original_nome?.toLowerCase().includes(termo) ||
+      t.vendedor_nome?.toLowerCase().includes(termo) ||
+      t.motivo_descricao?.toLowerCase().includes(termo) ||
+      t.observacoes?.toLowerCase().includes(termo)
+    );
+  }, [trocas, busca]);
+
+  const totalQuantidade = trocasFiltradas.reduce((acc, t) => acc + (t.quantidade || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Filtros</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label>Data Inicial</Label>
+              <Input 
+                type="date" 
+                value={dates.start} 
+                onChange={e => setDates(d => ({ ...d, start: e.target.value }))} 
+              />
+            </div>
+            <div>
+              <Label>Data Final</Label>
+              <Input 
+                type="date" 
+                value={dates.end} 
+                onChange={e => setDates(d => ({ ...d, end: e.target.value }))} 
+              />
+            </div>
+            <div>
+              <Label>Buscar</Label>
+              <Input 
+                type="text"
+                placeholder="Cliente, produto, vendedor..."
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="w-5 h-5 text-orange-500" />
+              Todas as Trocas Importadas
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Total de {trocasFiltradas.length} registros encontrados
+            </CardDescription>
+          </div>
+          <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-full font-medium">
+            Qtd Total: {totalQuantidade.toLocaleString('pt-BR')}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <div className="max-h-[600px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-slate-50 z-10">
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Produto Original</TableHead>
+                      <TableHead>Produto Novo</TableHead>
+                      <TableHead>Vendedor</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead className="text-right">Quantidade</TableHead>
+                      <TableHead>Observações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {trocasFiltradas.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-slate-500">
+                          Nenhuma troca encontrada no período
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      trocasFiltradas.map((troca, idx) => (
+                        <TableRow key={idx} className="hover:bg-slate-50">
+                          <TableCell className="font-mono text-sm">
+                            {format(parseISO(troca.data), 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[200px]">
+                              <p className="font-medium text-slate-900 truncate">{troca.cliente_nome || 'N/A'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[200px]">
+                              <p className="text-sm truncate">{troca.produto_original_nome || 'N/A'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[200px]">
+                              <p className="text-sm text-slate-600 truncate">
+                                {troca.produto_novo_nome || '-'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[150px]">
+                              <p className="text-sm truncate">{troca.vendedor_nome || 'N/A'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[150px]">
+                              <p className="text-xs text-slate-600 truncate">
+                                {troca.motivo_descricao || 'N/A'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge className="bg-orange-100 text-orange-700">
+                              {troca.quantidade || 0}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[200px]">
+                              <p className="text-xs text-slate-500 truncate">
+                                {troca.observacoes || '-'}
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function ImportacaoTab() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
