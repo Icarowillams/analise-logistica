@@ -15,6 +15,11 @@ export default function TrocasNaoCadastradasTab() {
     end: ''
   });
 
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
   const { data: trocas = [], isLoading } = useQuery({
     queryKey: ['trocas_nao_cadastradas', dates.start, dates.end],
     queryFn: async () => {
@@ -45,9 +50,17 @@ export default function TrocasNaoCadastradasTab() {
     const agrupado = {};
     
     trocas.forEach(troca => {
-      // Extrair código do cliente do nome
-      const match = troca.cliente_nome?.match(/Cliente Não Cadastrado: (.+)/);
-      const codigoCliente = match ? match[1] : 'N/A';
+      let codigoCliente = 'N/A';
+      
+      // Se tiver cliente_id, buscar o código do cliente
+      if (troca.cliente_id) {
+        const cliente = clientes.find(c => c.id === troca.cliente_id);
+        codigoCliente = cliente?.codigo || 'N/A';
+      } else {
+        // Extrair código do cliente do nome se não cadastrado
+        const match = troca.cliente_nome?.match(/Cliente Não Cadastrado: (.+)/);
+        codigoCliente = match ? match[1] : 'N/A';
+      }
       
       if (!agrupado[codigoCliente]) {
         agrupado[codigoCliente] = {
@@ -62,7 +75,7 @@ export default function TrocasNaoCadastradasTab() {
     });
 
     return Object.values(agrupado).sort((a, b) => b.total_qtd - a.total_qtd);
-  }, [trocas]);
+  }, [trocas, clientes]);
 
   const totalGeral = relatorio.reduce((acc, curr) => acc + curr.total_qtd, 0);
 
