@@ -1,108 +1,297 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, LineChart, Line
+  LineChart, Line
 } from 'recharts';
-import { ArrowLeftRight, TrendingDown, Package, Users, AlertTriangle } from 'lucide-react';
+import { ArrowLeftRight, Package, Users, ShoppingCart, UserCheck, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import StatsCard from '@/components/ui/StatsCard';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatsCard from '@/components/ui/StatsCard';
+import FiltrosDashboard from '@/components/DashboardTrocas/FiltrosDashboard';
+import PedidoTab from '@/components/DashboardTrocas/PedidoTab';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
 
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#6366f1'];
+const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#6366f1', '#a855f7', '#ec4899'];
 
 export default function DashboardTrocas() {
-  const [periodo, setPeriodo] = useState(new Date().toISOString().slice(0, 7));
+  const [filtros, setFiltros] = useState({
+    vendedor: 'todos',
+    supervisor: 'todos',
+    dataInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    dataFim: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+    segmento: 'todos',
+    rota: 'todos',
+    numPedido: '',
+    busca: '',
+    rede: 'todos',
+    produto: 'todos',
+    motivo: 'todos'
+  });
 
-  const { data: trocas = [], isLoading: lT } = useQuery({ queryKey: ['trocas'], queryFn: () => base44.entities.Troca.list('-data', 5000) });
-  const { data: motivos = [] } = useQuery({ queryKey: ['motivosTroca'], queryFn: () => base44.entities.MotivoTroca.list() });
-  const { data: vendas = [] } = useQuery({ queryKey: ['vendas'], queryFn: () => base44.entities.Venda.list('-data', 5000) });
+  const { data: trocas = [], isLoading: lT } = useQuery({ 
+    queryKey: ['trocas'], 
+    queryFn: () => base44.entities.Troca.list('-data', 5000) 
+  });
+  const { data: vendas = [], isLoading: lV } = useQuery({ 
+    queryKey: ['vendas'], 
+    queryFn: () => base44.entities.Venda.list('-data', 5000) 
+  });
+  const { data: clientes = [] } = useQuery({ 
+    queryKey: ['clientes'], 
+    queryFn: () => base44.entities.Cliente.list() 
+  });
+  const { data: vendedores = [] } = useQuery({ 
+    queryKey: ['vendedores'], 
+    queryFn: () => base44.entities.Vendedor.list() 
+  });
+  const { data: produtos = [] } = useQuery({ 
+    queryKey: ['produtos'], 
+    queryFn: () => base44.entities.Produto.list() 
+  });
+  const { data: segmentos = [] } = useQuery({ 
+    queryKey: ['segmentos'], 
+    queryFn: () => base44.entities.Segmento.list() 
+  });
+  const { data: rotas = [] } = useQuery({ 
+    queryKey: ['rotas'], 
+    queryFn: () => base44.entities.Rota.list() 
+  });
+  const { data: redes = [] } = useQuery({ 
+    queryKey: ['redes'], 
+    queryFn: () => base44.entities.Rede.list() 
+  });
+  const { data: motivos = [] } = useQuery({ 
+    queryKey: ['motivosTroca'], 
+    queryFn: () => base44.entities.MotivoTroca.list() 
+  });
 
-  const isLoading = lT;
+  const isLoading = lT || lV;
 
-  const trocasPeriodo = trocas.filter(t => t.data?.startsWith(periodo));
-  const vendasPeriodo = vendas.filter(v => v.data?.startsWith(periodo));
+  // Supervisores únicos
+  const supervisores = useMemo(() => {
+    const uniqueSup = new Map();
+    vendedores.forEach(v => {
+      if (v.supervisor_id) {
+        const sup = vendedores.find(s => s.id === v.supervisor_id);
+        if (sup) uniqueSup.set(sup.id, sup);
+      }
+    });
+    return Array.from(uniqueSup.values());
+  }, [vendedores]);
+
+  // Trocas Filtradas
+  const trocasFiltradas = useMemo(() => {
+    return trocas.filter(t => {
+      // Filtro de data
+      if (filtros.dataInicio && t.data < filtros.dataInicio) return false;
+      if (filtros.dataFim && t.data > filtros.dataFim) return false;
+
+      // Filtro de vendedor
+      if (filtros.vendedor !== 'todos' && t.vendedor_id !== filtros.vendedor) return false;
+
+      // Filtro de supervisor
+      if (filtros.supervisor !== 'todos') {
+        const vendedor = vendedores.find(v => v.id === t.vendedor_id);
+        if (!vendedor || vendedor.supervisor_id !== filtros.supervisor) return false;
+      }
+
+      // Filtro de produto
+      if (filtros.produto !== 'todos' && t.produto_original_id !== filtros.produto) return false;
+
+      // Filtro de motivo
+      if (filtros.motivo !== 'todos' && t.motivo_id !== filtros.motivo) return false;
+
+      // Filtro de número de pedido (busca em observações ou venda_original_id)
+      if (filtros.numPedido) {
+        const temPedido = t.observacoes?.includes(filtros.numPedido) || 
+                         t.venda_original_id?.includes(filtros.numPedido);
+        if (!temPedido) return false;
+      }
+
+      // Filtro por cliente para pegar segmento, rede, rota
+      if (filtros.segmento !== 'todos' || filtros.rede !== 'todos' || filtros.rota !== 'todos') {
+        const cliente = clientes.find(c => c.id === t.cliente_id);
+        if (!cliente) return false;
+        
+        if (filtros.segmento !== 'todos' && cliente.segmento_id !== filtros.segmento) return false;
+        if (filtros.rede !== 'todos' && cliente.rede_id !== filtros.rede) return false;
+        if (filtros.rota !== 'todos' && cliente.rota_id !== filtros.rota) return false;
+      }
+
+      // Busca geral
+      if (filtros.busca) {
+        const termo = filtros.busca.toLowerCase();
+        const match = 
+          t.cliente_nome?.toLowerCase().includes(termo) ||
+          t.produto_original_nome?.toLowerCase().includes(termo) ||
+          t.vendedor_nome?.toLowerCase().includes(termo) ||
+          t.motivo_descricao?.toLowerCase().includes(termo) ||
+          t.observacoes?.toLowerCase().includes(termo);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [trocas, filtros, vendedores, clientes]);
 
   // Métricas
-  const totalTrocas = trocasPeriodo.length;
-  const taxaTroca = vendasPeriodo.length > 0 ? ((totalTrocas / vendasPeriodo.length) * 100) : 0;
+  const quantidadeTotal = useMemo(() => {
+    return trocasFiltradas.reduce((acc, t) => acc + (t.quantidade || 0), 0);
+  }, [trocasFiltradas]);
 
-  // Trocas por motivo
-  const trocasPorMotivo = React.useMemo(() => {
+  const valorTotal = useMemo(() => {
+    let total = 0;
+    trocasFiltradas.forEach(t => {
+      // Buscar valor do produto nas vendas
+      const venda = vendas.find(v => 
+        v.produto_id === t.produto_original_id && 
+        v.cliente_id === t.cliente_id &&
+        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000 // 7 dias
+      );
+      const valorUnit = venda?.valor_unitario || 0;
+      total += (t.quantidade || 0) * valorUnit;
+    });
+    return total;
+  }, [trocasFiltradas, vendas]);
+
+  const pedidosUnicos = useMemo(() => {
+    const pedidos = new Set();
+    trocasFiltradas.forEach(t => {
+      if (t.venda_original_id) pedidos.add(t.venda_original_id);
+      // Extrair número de pedido das observações
+      const match = t.observacoes?.match(/Pedido:\s*(\S+)/);
+      if (match) pedidos.add(match[1]);
+    });
+    return pedidos.size;
+  }, [trocasFiltradas]);
+
+  const clientesUnicos = useMemo(() => {
+    const clientesSet = new Set();
+    trocasFiltradas.forEach(t => {
+      if (t.cliente_id) clientesSet.add(t.cliente_id);
+    });
+    return clientesSet.size;
+  }, [trocasFiltradas]);
+
+  // Trocas por Vendedor
+  const trocasPorVendedor = useMemo(() => {
     const grouped = {};
-    trocasPeriodo.forEach(t => {
-      const motivo = t.motivo_descricao || 'Não informado';
-      if (!grouped[motivo]) grouped[motivo] = 0;
-      grouped[motivo] += 1;
+    trocasFiltradas.forEach(t => {
+      const nome = t.vendedor_nome || 'Sem Vendedor';
+      if (!grouped[nome]) grouped[nome] = 0;
+      grouped[nome] += t.quantidade || 0;
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([name, value]) => ({ name, value }));
-  }, [trocasPeriodo]);
-
-  // Trocas por cliente
-  const trocasPorCliente = React.useMemo(() => {
-    const grouped = {};
-    trocasPeriodo.forEach(t => {
-      const cliente = t.cliente_nome || 'Desconhecido';
-      if (!grouped[cliente]) grouped[cliente] = 0;
-      grouped[cliente] += 1;
-    });
-    return Object.entries(grouped)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
       .map(([nome, qtd]) => ({ nome, qtd }));
-  }, [trocasPeriodo]);
+  }, [trocasFiltradas]);
 
-  // Trocas por produto
-  const trocasPorProduto = React.useMemo(() => {
+  // Trocas por Produto (Top 10 com scroll)
+  const trocasPorProduto = useMemo(() => {
     const grouped = {};
-    trocasPeriodo.forEach(t => {
-      const produto = t.produto_original_nome || 'Desconhecido';
-      if (!grouped[produto]) grouped[produto] = 0;
-      grouped[produto] += 1;
+    trocasFiltradas.forEach(t => {
+      const nome = t.produto_original_nome || 'Desconhecido';
+      if (!grouped[nome]) grouped[nome] = 0;
+      grouped[nome] += t.quantidade || 0;
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
       .map(([nome, qtd]) => ({ nome, qtd }));
-  }, [trocasPeriodo]);
+  }, [trocasFiltradas]);
 
-  // Histórico mensal
-  const historicoMensal = React.useMemo(() => {
+  // Trocas por Cliente (Top 10 com scroll)
+  const trocasPorCliente = useMemo(() => {
     const grouped = {};
-    trocas.forEach(t => {
+    trocasFiltradas.forEach(t => {
+      const nome = t.cliente_nome || 'Desconhecido';
+      if (!grouped[nome]) grouped[nome] = 0;
+      grouped[nome] += t.quantidade || 0;
+    });
+    return Object.entries(grouped)
+      .sort(([, a], [, b]) => b - a)
+      .map(([nome, qtd]) => ({ nome, qtd }));
+  }, [trocasFiltradas]);
+
+  // Evolução Mensal
+  const evolucaoMensal = useMemo(() => {
+    const grouped = {};
+    trocasFiltradas.forEach(t => {
       if (!t.data) return;
-      const month = t.data.substring(0, 7);
-      if (!grouped[month]) grouped[month] = 0;
-      grouped[month] += 1;
+      const mes = t.data.substring(0, 7);
+      if (!grouped[mes]) grouped[mes] = 0;
+      grouped[mes] += t.quantidade || 0;
     });
     return Object.entries(grouped)
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([month, qtd]) => ({
-        mes: new Date(month + '-01').toLocaleDateString('pt-BR', { month: 'short' }),
+      .map(([mes, qtd]) => ({
+        mes: new Date(mes + '-01').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
         qtd
       }));
-  }, [trocas]);
+  }, [trocasFiltradas]);
 
-  const periodos = [];
-  for (let i = 0; i < 12; i++) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    periodos.push(d.toISOString().slice(0, 7));
-  }
+  // Trocas por Dia da Semana
+  const trocasPorDiaSemana = useMemo(() => {
+    const dias = {
+      'Segunda': 0,
+      'Terça': 0,
+      'Quarta': 0,
+      'Quinta': 0,
+      'Sexta': 0,
+      'Sábado': 0
+    };
+    
+    trocasFiltradas.forEach(t => {
+      if (!t.data) return;
+      const date = new Date(t.data + 'T00:00:00');
+      const diaSemana = date.getDay();
+      
+      const nomeDia = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][diaSemana - 1];
+      if (nomeDia && dias[nomeDia] !== undefined) {
+        dias[nomeDia] += t.quantidade || 0;
+      }
+    });
+
+    return Object.entries(dias).map(([dia, qtd]) => ({ dia, qtd }));
+  }, [trocasFiltradas]);
+
+  const exportarDashboard = async () => {
+    const element = document.getElementById('dashboard-content');
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL('image/png');
+    
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgWidth = 210;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= 297;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= 297;
+    }
+    
+    pdf.save(`Dashboard_Trocas_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
 
   if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-12 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
         </div>
       </div>
     );
@@ -118,149 +307,171 @@ export default function DashboardTrocas() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Dashboard de Trocas</h1>
-            <p className="text-slate-500">Análise de trocas de produtos</p>
+            <p className="text-slate-500">Análise completa de trocas de produtos</p>
           </div>
         </div>
-        <Select value={periodo} onValueChange={setPeriodo}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {periodos.map(p => (
-              <SelectItem key={p} value={p}>
-                {new Date(p + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatsCard
-          title="Total de Trocas"
-          value={totalTrocas}
-          subtitle="no período selecionado"
-          icon={ArrowLeftRight}
-          gradient="from-orange-500 to-red-600"
-        />
-        <StatsCard
-          title="Taxa de Troca"
-          value={`${taxaTroca.toFixed(1)}%`}
-          subtitle="em relação às vendas"
-          icon={TrendingDown}
-          gradient="from-amber-500 to-orange-500"
-        />
-        <StatsCard
-          title="Motivos Diferentes"
-          value={trocasPorMotivo.length}
-          subtitle="identificados"
-          icon={AlertTriangle}
-          gradient="from-purple-500 to-pink-600"
-        />
-      </div>
+      {/* Filtros */}
+      <FiltrosDashboard
+        filtros={filtros}
+        setFiltros={setFiltros}
+        vendedores={vendedores}
+        supervisores={supervisores}
+        segmentos={segmentos}
+        rotas={rotas}
+        redes={redes}
+        produtos={produtos}
+        motivos={motivos}
+      />
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle>Trocas por Motivo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={trocasPorMotivo}
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {trocasPorMotivo.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* Tabs */}
+      <Tabs defaultValue="dashboard" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="pedido">Consultar Pedido</TabsTrigger>
+        </TabsList>
 
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle>Evolução Mensal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={historicoMensal}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 12 }} />
-                <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="qtd" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="dashboard" className="space-y-6">
+          <div className="flex justify-end">
+            <Button onClick={exportarDashboard} variant="outline" className="gap-2">
+              <Download className="w-4 h-4" />
+              Exportar Dashboard
+            </Button>
+          </div>
 
-      {/* Tabelas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Clientes com Mais Trocas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {trocasPorCliente.map((c, idx) => (
-                <div key={c.nome} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 font-semibold text-sm">
-                      {idx + 1}
-                    </div>
-                    <span className="font-medium text-slate-700">{c.nome}</span>
-                  </div>
-                  <Badge className="bg-red-100 text-red-700">{c.qtd} trocas</Badge>
-                </div>
-              ))}
-              {trocasPorCliente.length === 0 && (
-                <p className="text-slate-500 text-center py-4">Nenhuma troca encontrada</p>
-              )}
+          <div id="dashboard-content" className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <StatsCard
+                title="Quantidade Total"
+                value={quantidadeTotal.toLocaleString('pt-BR')}
+                subtitle="produtos trocados"
+                icon={Package}
+                gradient="from-orange-500 to-red-600"
+              />
+              <StatsCard
+                title="Valor Total"
+                value={valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                subtitle="em trocas"
+                icon={ShoppingCart}
+                gradient="from-red-500 to-pink-600"
+              />
+              <StatsCard
+                title="Pedidos de Troca"
+                value={pedidosUnicos}
+                subtitle="solicitações únicas"
+                icon={ArrowLeftRight}
+                gradient="from-amber-500 to-orange-500"
+              />
+              <StatsCard
+                title="Clientes com Trocas"
+                value={clientesUnicos}
+                subtitle="clientes distintos"
+                icon={UserCheck}
+                gradient="from-purple-500 to-pink-600"
+              />
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Produtos com Mais Trocas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {trocasPorProduto.map((p, idx) => (
-                <div key={p.nome} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 font-semibold text-sm">
-                      {idx + 1}
-                    </div>
-                    <span className="font-medium text-slate-700">{p.nome}</span>
+            {/* Listas */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Vendedor */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-base">Total por Vendedor</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                    {trocasPorVendedor.map((v, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                        <span className="text-sm font-medium text-slate-700 truncate">{v.nome}</span>
+                        <Badge className="bg-red-100 text-red-700 text-xs">{v.qtd}</Badge>
+                      </div>
+                    ))}
                   </div>
-                  <Badge className="bg-orange-100 text-orange-700">{p.qtd} trocas</Badge>
-                </div>
-              ))}
-              {trocasPorProduto.length === 0 && (
-                <p className="text-slate-500 text-center py-4">Nenhuma troca encontrada</p>
-              )}
+                </CardContent>
+              </Card>
+
+              {/* Produto */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-base">Total por Produto (Top 10)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                    {trocasPorProduto.slice(0, 10).map((p, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                        <span className="text-sm font-medium text-slate-700 truncate">{p.nome}</span>
+                        <Badge className="bg-orange-100 text-orange-700 text-xs">{p.qtd}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Cliente */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-base">Total por Cliente (Top 10)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                    {trocasPorCliente.slice(0, 10).map((c, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                        <span className="text-sm font-medium text-slate-700 truncate">{c.nome}</span>
+                        <Badge className="bg-purple-100 text-purple-700 text-xs">{c.qtd}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+
+            {/* Gráficos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Evolução Mensal */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle>Evolução Mensal de Trocas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={evolucaoMensal}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 12 }} />
+                      <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
+                      <Line type="monotone" dataKey="qtd" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Por Dia da Semana */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle>Trocas por Dia da Semana</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={trocasPorDiaSemana}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 12 }} />
+                      <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }} />
+                      <Bar dataKey="qtd" fill="#f97316" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pedido">
+          <PedidoTab vendas={vendas} clientes={clientes} produtos={produtos} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
