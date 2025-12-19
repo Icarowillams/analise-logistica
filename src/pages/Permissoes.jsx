@@ -109,10 +109,21 @@ export default function Permissoes() {
 
   const salvarPermissoes = () => {
     if (!permissaoAtual) return;
+
+    const dataToSave = {
+      usuario_id: permissaoAtual.usuario_id,
+      usuario_email: permissaoAtual.usuario_email,
+      abas_visiveis: permissaoAtual.abas_visiveis || [],
+      permissoes_metas: permissaoAtual.permissoes_metas || {},
+      permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
+      permissoes_importar: permissaoAtual.permissoes_importar || {},
+      permissoes_analises: permissaoAtual.permissoes_analises || {}
+    };
+
     if (permissaoAtual.id) {
-      updateMutation.mutate({ id: permissaoAtual.id, data: permissaoAtual });
+      updateMutation.mutate({ id: permissaoAtual.id, data: dataToSave });
     } else {
-      createMutation.mutate(permissaoAtual);
+      createMutation.mutate(dataToSave);
     }
   };
 
