@@ -379,11 +379,17 @@ function ImportacaoTab() {
         const qtdTroca = isTroca ? qtdRaw : 0;
         const valorTotal = qtdRaw * vlUnit;
 
-        // Calcular data_troca: se for troca, data_troca = data - 1 dia
+        // Calcular data_troca: se for troca, data_troca = data - 1 dia (exceto segunda que é -2 dias)
         let dataTroca = null;
         if (isTroca) {
-          const d = new Date(dataVenda);
-          d.setDate(d.getDate() - 1);
+          const d = new Date(dataVenda + 'T00:00:00');
+          const dayOfWeek = d.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+
+          if (dayOfWeek === 1) { // Se for segunda-feira
+            d.setDate(d.getDate() - 2); // Subtrai 2 dias (cai no sábado)
+          } else { // Para os outros dias
+            d.setDate(d.getDate() - 1); // Subtrai 1 dia
+          }
           dataTroca = format(d, 'yyyy-MM-dd');
         }
 
