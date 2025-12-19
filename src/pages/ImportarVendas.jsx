@@ -354,6 +354,9 @@ function ImportacaoTab() {
         const vlUnit = parseBRLValues(row.vl_unitario);
         const isTroca = String(row.troca || '').toUpperCase().trim() === 'SIM';
 
+        // Debug log
+        console.log(`Pedido: ${row.numpedido}, Coluna 'troca': '${row.troca}', isTroca: ${isTroca}, qtdRaw: ${qtdRaw}`);
+
         // Se é troca e cliente não cadastrado, armazenar separadamente
         if (isTroca && !cliente && produto) {
           const d = new Date(dataVenda);
