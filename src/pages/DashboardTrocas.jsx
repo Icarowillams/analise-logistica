@@ -294,9 +294,17 @@ export default function DashboardTrocas() {
   const trocasPorProduto = useMemo(() => {
     const grouped = {};
     trocasFiltradas.forEach(t => {
+      const produtoId = t.produto_original_id || 'sem-id';
       const nome = t.produto_original_nome || 'Desconhecido';
-      if (!grouped[nome]) {
-        grouped[nome] = { qtd: 0, valor: 0 };
+      
+      if (!grouped[produtoId]) {
+        const produto = produtos.find(p => p.id === produtoId);
+        grouped[produtoId] = { 
+          codigo: produto?.codigo || 'N/A',
+          nome, 
+          qtd: 0, 
+          valor: 0 
+        };
       }
       const venda = vendas.find(v => 
         v.produto_id === t.produto_original_id && 
@@ -304,18 +312,16 @@ export default function DashboardTrocas() {
         Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
       );
       const valorUnit = venda?.valor_unitario || 0;
-      grouped[nome].qtd += t.quantidade || 0;
-      grouped[nome].valor += (t.quantidade || 0) * valorUnit;
+      grouped[produtoId].qtd += t.quantidade || 0;
+      grouped[produtoId].valor += (t.quantidade || 0) * valorUnit;
     });
-    return Object.entries(grouped)
-      .sort(([, a], [, b]) => b.qtd - a.qtd)
-      .map(([nome, data]) => ({ 
-        nome, 
-        qtd: data.qtd, 
-        valor: data.valor,
+    return Object.values(grouped)
+      .sort((a, b) => b.qtd - a.qtd)
+      .map(data => ({ 
+        ...data,
         precoMedio: data.qtd > 0 ? data.valor / data.qtd : 0
       }));
-  }, [trocasFiltradas, vendas]);
+  }, [trocasFiltradas, vendas, produtos]);
 
   // Trocas por Cliente com detalhes
   const trocasPorCliente = useMemo(() => {
@@ -564,7 +570,7 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Vendedor</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
                     {trocasPorVendedor.map((v, idx) => (
                       <div key={idx} className="p-3 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200">
                         <div className="flex items-start justify-between mb-2">
@@ -586,19 +592,33 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Produto</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {trocasPorProduto.map((p, idx) => (
-                      <div key={idx} className="p-3 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200">
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="text-sm font-semibold text-orange-900 truncate flex-1">{p.nome}</span>
-                          <Badge className="bg-orange-200 text-orange-800 text-xs ml-2">{p.qtd}</Badge>
+                  <div className="max-h-[500px] overflow-y-auto pr-2">
+                    <div className="space-y-2">
+                      {trocasPorProduto.map((p, idx) => (
+                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200 text-xs">
+                          <div className="col-span-2 font-mono text-orange-800 font-semibold truncate">{p.codigo}</div>
+                          <div className="col-span-4 font-medium text-orange-900 truncate" title={p.nome}>
+                            {p.nome.length > 25 ? p.nome.substring(0, 25) + '...' : p.nome}
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <Badge className="bg-orange-200 text-orange-800 text-xs">{p.qtd}</Badge>
+                          </div>
+                          <div className="col-span-2 text-right text-orange-700 font-semibold">
+                            {p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </div>
+                          <div className="col-span-2 text-right text-orange-600">
+                            {p.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </div>
                         </div>
-                        <div className="text-xs text-orange-700 space-y-0.5">
-                          <div>Valor: {p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
-                          <div>Médio: {p.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800">
+                    <div className="col-span-2">Cód</div>
+                    <div className="col-span-4">Descrição</div>
+                    <div className="col-span-2 text-right">Qtd</div>
+                    <div className="col-span-2 text-right">Valor Total</div>
+                    <div className="col-span-2 text-right">Preço Médio</div>
                   </div>
                 </CardContent>
               </Card>
