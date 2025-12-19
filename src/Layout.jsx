@@ -27,78 +27,6 @@ import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 
-const allMenuItems = [
-  {
-    title: 'Dashboard',
-    icon: LayoutDashboard,
-    path: 'Dashboard'
-  },
-  {
-    title: 'Importações',
-    icon: Upload,
-    submenu: [
-      { title: 'Importar Vendas', path: 'ImportarVendas' }
-    ]
-  },
-  {
-    title: 'Cadastros',
-    icon: Settings,
-    submenu: [
-      { title: 'Funcionários', path: 'Funcionarios' },
-      { title: 'Funções/Departamentos', path: 'Funcoes' },
-      { title: 'Produtos', path: 'Produtos' },
-      { title: 'Categorias', path: 'Categorias' },
-      { title: 'Tabelas de Preço', path: 'TabelasPreco' },
-      { title: 'Clientes', path: 'Clientes' },
-      { title: 'Segmentos', path: 'Segmentos' },
-      { title: 'Redes', path: 'Redes' },
-      { title: 'Ocorrência de Troca', path: 'MotivosTroca' },
-      { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
-      { title: 'Unidades de Medida', path: 'UnidadesMedida' },
-      { title: 'Rotas', path: 'Rotas' }
-    ]
-  },
-  {
-    title: 'Metas',
-    icon: Target,
-    submenu: [
-      { title: 'Meta por Produto', path: 'MetasProduto' },
-      { title: 'Meta por Positivação', path: 'MetasPositivacao' },
-      { title: 'Meta por Preço Médio', path: 'MetasPrecoMedio' },
-      { title: 'Meta por Cadastro', path: 'MetasCadastro' },
-      { title: 'Meta por Troca', path: 'MetasTroca' },
-      { title: 'Painel Rodrigos', path: 'PainelRodrigosM' }
-    ]
-  },
-  {
-    title: 'Análises',
-    icon: BarChart3,
-    submenu: [
-      { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
-      { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
-      { title: 'Dashboard Clientes', path: 'DashboardClientes' }
-    ]
-  }
-];
-
-if (isAdmin) {
-  allMenuItems.push({
-    title: 'Permissões',
-    icon: Shield,
-    path: 'Permissoes'
-  });
-}
-
-const menuItems = useMemo(() => {
-  return allMenuItems.map(item => {
-    if (item.submenu) {
-      const filteredSubmenu = item.submenu.filter(sub => canViewPage(sub.path));
-      return filteredSubmenu.length > 0 ? { ...item, submenu: filteredSubmenu } : null;
-    }
-    return canViewPage(item.path) ? item : null;
-  }).filter(Boolean);
-}, [allMenuItems, userPermissions, isAdmin]);
-
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState(['Cadastros', 'Metas', 'Análises', 'Importações']);
@@ -125,6 +53,78 @@ export default function Layout({ children, currentPageName }) {
     if (!userPermissions) return false;
     return userPermissions.abas_visiveis?.includes(pagePath) || false;
   };
+
+  const menuItems = useMemo(() => {
+    const allMenuItems = [
+      {
+        title: 'Dashboard',
+        icon: LayoutDashboard,
+        path: 'Dashboard'
+      },
+      {
+        title: 'Importações',
+        icon: Upload,
+        submenu: [
+          { title: 'Importar Vendas', path: 'ImportarVendas' }
+        ]
+      },
+      {
+        title: 'Cadastros',
+        icon: Settings,
+        submenu: [
+          { title: 'Funcionários', path: 'Funcionarios' },
+          { title: 'Funções/Departamentos', path: 'Funcoes' },
+          { title: 'Produtos', path: 'Produtos' },
+          { title: 'Categorias', path: 'Categorias' },
+          { title: 'Tabelas de Preço', path: 'TabelasPreco' },
+          { title: 'Clientes', path: 'Clientes' },
+          { title: 'Segmentos', path: 'Segmentos' },
+          { title: 'Redes', path: 'Redes' },
+          { title: 'Ocorrência de Troca', path: 'MotivosTroca' },
+          { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
+          { title: 'Unidades de Medida', path: 'UnidadesMedida' },
+          { title: 'Rotas', path: 'Rotas' }
+        ]
+      },
+      {
+        title: 'Metas',
+        icon: Target,
+        submenu: [
+          { title: 'Meta por Produto', path: 'MetasProduto' },
+          { title: 'Meta por Positivação', path: 'MetasPositivacao' },
+          { title: 'Meta por Preço Médio', path: 'MetasPrecoMedio' },
+          { title: 'Meta por Cadastro', path: 'MetasCadastro' },
+          { title: 'Meta por Troca', path: 'MetasTroca' },
+          { title: 'Painel Rodrigos', path: 'PainelRodrigosM' }
+        ]
+      },
+      {
+        title: 'Análises',
+        icon: BarChart3,
+        submenu: [
+          { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
+          { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
+          { title: 'Dashboard Clientes', path: 'DashboardClientes' }
+        ]
+      }
+    ];
+
+    if (isAdmin) {
+      allMenuItems.push({
+        title: 'Permissões',
+        icon: Shield,
+        path: 'Permissoes'
+      });
+    }
+
+    return allMenuItems.map(item => {
+      if (item.submenu) {
+        const filteredSubmenu = item.submenu.filter(sub => canViewPage(sub.path));
+        return filteredSubmenu.length > 0 ? { ...item, submenu: filteredSubmenu } : null;
+      }
+      return canViewPage(item.path) ? item : null;
+    }).filter(Boolean);
+  }, [userPermissions, isAdmin]);
 
   const toggleSubmenu = (title) => {
     setExpandedMenus(prev =>
