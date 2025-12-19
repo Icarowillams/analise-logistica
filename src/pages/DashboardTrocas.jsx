@@ -575,24 +575,24 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Vendedor</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-2 pb-2 border-b border-slate-200 grid grid-cols-12 gap-2 text-xs font-semibold text-slate-800">
+                  <div className="mb-2 pb-2 border-b border-slate-200 grid grid-cols-12 gap-2 text-xs font-semibold text-slate-800 items-center">
                     <div className="col-span-5">Nome</div>
-                    <div className="col-span-2 text-right flex justify-end">Qtd</div>
-                    <div className="col-span-3 text-right flex justify-end">Valor Total</div>
-                    <div className="col-span-2 text-right flex justify-end">Preço Médio</div>
+                    <div className="col-span-2 text-center">Qtd</div>
+                    <div className="col-span-3 text-right pr-1">Valor Total</div>
+                    <div className="col-span-2 text-right pr-1">Preço Médio</div>
                   </div>
                   <div className="max-h-[500px] overflow-y-auto pr-2">
                     <div className="space-y-2">
                       {trocasPorVendedor.map((v, idx) => (
-                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 text-xs">
+                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 text-xs items-center">
                           <div className="col-span-5 font-medium text-slate-800 truncate" title={v.nome}>{v.nome}</div>
-                          <div className="col-span-2 flex justify-end">
+                          <div className="col-span-2 flex justify-center">
                             <Badge className="bg-red-100 text-red-700 text-xs">{v.qtd}</Badge>
                           </div>
-                          <div className="col-span-3 text-right text-slate-700 font-semibold">
+                          <div className="col-span-3 text-right text-slate-700 font-semibold pr-1">
                             {v.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </div>
-                          <div className="col-span-2 text-right text-slate-600">
+                          <div className="col-span-2 text-right text-slate-600 pr-1">
                             {v.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </div>
                         </div>
@@ -608,28 +608,28 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Produto</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-2 pb-2 border-b border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800">
+                  <div className="mb-2 pb-2 border-b border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800 items-center">
                     <div className="col-span-1">Cód</div>
                     <div className="col-span-5">Descrição</div>
-                    <div className="col-span-2 text-right flex justify-end">Qtd</div>
-                    <div className="col-span-2 text-right flex justify-end">Valor Total</div>
-                    <div className="col-span-2 text-right flex justify-end">Preço Médio</div>
+                    <div className="col-span-2 text-center">Qtd</div>
+                    <div className="col-span-2 text-right pr-1">Valor Total</div>
+                    <div className="col-span-2 text-right pr-1">Preço Médio</div>
                   </div>
                   <div className="max-h-[500px] overflow-y-auto pr-2">
                     <div className="space-y-2">
                       {trocasPorProduto.map((p, idx) => (
-                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200 text-xs">
+                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200 text-xs items-center">
                           <div className="col-span-1 font-mono text-orange-800 font-semibold truncate">{p.codigo}</div>
                           <div className="col-span-5 font-medium text-orange-900 truncate" title={p.nome}>
                             {p.nome.length > 35 ? p.nome.substring(0, 35) + '...' : p.nome}
                           </div>
-                          <div className="col-span-2 flex justify-end">
+                          <div className="col-span-2 flex justify-center">
                             <Badge className="bg-orange-200 text-orange-800 text-xs">{p.qtd}</Badge>
                           </div>
-                          <div className="col-span-2 text-right text-orange-700 font-semibold">
+                          <div className="col-span-2 text-right text-orange-700 font-semibold pr-1">
                             {p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </div>
-                          <div className="col-span-2 text-right text-orange-600">
+                          <div className="col-span-2 text-right text-orange-600 pr-1">
                             {p.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </div>
                         </div>
