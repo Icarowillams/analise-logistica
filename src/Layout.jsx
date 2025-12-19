@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import {
@@ -20,11 +20,14 @@ import {
   ChevronRight,
   Upload,
   Settings,
-  TrendingUp
+  TrendingUp,
+  Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
 
-const menuItems = [
+const allMenuItems = [
   {
     title: 'Dashboard',
     icon: LayoutDashboard,
@@ -78,9 +81,50 @@ const menuItems = [
   }
 ];
 
+if (isAdmin) {
+  allMenuItems.push({
+    title: 'Permissões',
+    icon: Shield,
+    path: 'Permissoes'
+  });
+}
+
+const menuItems = useMemo(() => {
+  return allMenuItems.map(item => {
+    if (item.submenu) {
+      const filteredSubmenu = item.submenu.filter(sub => canViewPage(sub.path));
+      return filteredSubmenu.length > 0 ? { ...item, submenu: filteredSubmenu } : null;
+    }
+    return canViewPage(item.path) ? item : null;
+  }).filter(Boolean);
+}, [allMenuItems, userPermissions, isAdmin]);
+
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState(['Cadastros', 'Metas', 'Análises', 'Importações']);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userPermissions, setUserPermissions] = useState(null);
+
+  const { data: permissoes = [] } = useQuery({
+    queryKey: ['permissoes'],
+    queryFn: () => base44.entities.Permissao.list()
+  });
+
+  useEffect(() => {
+    base44.auth.me().then(user => {
+      setCurrentUser(user);
+      const perm = permissoes.find(p => p.usuario_id === user.id);
+      setUserPermissions(perm);
+    }).catch(() => {});
+  }, [permissoes]);
+
+  const isAdmin = currentUser?.role === 'admin';
+  
+  const canViewPage = (pagePath) => {
+    if (isAdmin) return true;
+    if (!userPermissions) return false;
+    return userPermissions.abas_visiveis?.includes(pagePath) || false;
+  };
 
   const toggleSubmenu = (title) => {
     setExpandedMenus(prev =>
