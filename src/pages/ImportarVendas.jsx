@@ -352,7 +352,9 @@ function ImportacaoTab() {
         // Lógica de valores
         const qtdRaw = parseBRLValues(row.qtd);
         const vlUnit = parseBRLValues(row.vl_unitario);
-        const isTroca = String(row.troca || '').toUpperCase().trim() === 'SIM';
+        const trocaValue = String(row.troca || '').toUpperCase().trim();
+        // Considera como troca: 'SIM' ou qualquer valor não vazio que não seja 'NÃO' ou 'NAO'
+        const isTroca = trocaValue && trocaValue !== 'NÃO' && trocaValue !== 'NAO';
 
         // Debug log
         console.log(`Pedido: ${row.numpedido}, Coluna 'troca': '${row.troca}', isTroca: ${isTroca}, qtdRaw: ${qtdRaw}`);
