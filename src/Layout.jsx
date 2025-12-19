@@ -29,22 +29,32 @@ import { useQuery } from '@tanstack/react-query';
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedMenus, setExpandedMenus] = useState(['Cadastros', 'Metas', 'Análises', 'Importações']);
+  const [expandedMenus, setExpandedMenus] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [userPermissions, setUserPermissions] = useState(null);
+  const [funcionarioAtual, setFuncionarioAtual] = useState(null);
 
   const { data: permissoes = [] } = useQuery({
     queryKey: ['permissoes'],
     queryFn: () => base44.entities.Permissao.list()
   });
 
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
+  });
+
   useEffect(() => {
     base44.auth.me().then(user => {
       setCurrentUser(user);
-      const perm = permissoes.find(p => p.usuario_id === user.id);
-      setUserPermissions(perm);
+      const funcionario = vendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+      setFuncionarioAtual(funcionario);
+      if (funcionario) {
+        const perm = permissoes.find(p => p.vendedor_id === funcionario.id);
+        setUserPermissions(perm);
+      }
     }).catch(() => {});
-  }, [permissoes]);
+  }, [permissoes, vendedores]);
 
   const isAdmin = currentUser?.role === 'admin';
   

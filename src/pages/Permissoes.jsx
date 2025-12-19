@@ -38,12 +38,12 @@ const ABAS_SISTEMA = [
 
 export default function Permissoes() {
   const queryClient = useQueryClient();
-  const [usuarioSelecionado, setUsuarioSelecionado] = useState('');
+  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
   const [permissaoAtual, setPermissaoAtual] = useState(null);
 
-  const { data: usuarios = [] } = useQuery({
-    queryKey: ['usuarios'],
-    queryFn: () => base44.entities.User.list()
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
   });
 
   const { data: permissoes = [] } = useQuery({
@@ -68,15 +68,15 @@ export default function Permissoes() {
   });
 
   useEffect(() => {
-    if (usuarioSelecionado) {
-      const perm = permissoes.find(p => p.usuario_id === usuarioSelecionado);
+    if (funcionarioSelecionado) {
+      const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
       if (perm) {
         setPermissaoAtual(perm);
       } else {
-        const usuario = usuarios.find(u => u.id === usuarioSelecionado);
+        const vendedor = vendedores.find(v => v.id === funcionarioSelecionado);
         setPermissaoAtual({
-          usuario_id: usuarioSelecionado,
-          usuario_email: usuario?.email || '',
+          vendedor_id: funcionarioSelecionado,
+          vendedor_email: vendedor?.email || '',
           abas_visiveis: [],
           permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
           permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
@@ -85,7 +85,7 @@ export default function Permissoes() {
         });
       }
     }
-  }, [usuarioSelecionado, permissoes, usuarios]);
+  }, [funcionarioSelecionado, permissoes, vendedores]);
 
   const toggleAba = (abaId) => {
     if (!permissaoAtual) return;
@@ -111,8 +111,8 @@ export default function Permissoes() {
     if (!permissaoAtual) return;
 
     const dataToSave = {
-      usuario_id: permissaoAtual.usuario_id,
-      usuario_email: permissaoAtual.usuario_email,
+      vendedor_id: permissaoAtual.vendedor_id,
+      vendedor_email: permissaoAtual.vendedor_email,
       abas_visiveis: permissaoAtual.abas_visiveis || [],
       permissoes_metas: permissaoAtual.permissoes_metas || {},
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
@@ -151,18 +151,18 @@ export default function Permissoes() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5" />
-            Selecionar Usuário
+            Selecionar Funcionário
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={usuarioSelecionado} onValueChange={setUsuarioSelecionado}>
+          <Select value={funcionarioSelecionado} onValueChange={setFuncionarioSelecionado}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Selecione um usuário..." />
+              <SelectValue placeholder="Selecione um funcionário..." />
             </SelectTrigger>
             <SelectContent>
-              {usuarios.map(u => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.full_name} ({u.email})
+              {vendedores.map(v => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.nome} ({v.email || 'Sem email'})
                 </SelectItem>
               ))}
             </SelectContent>
