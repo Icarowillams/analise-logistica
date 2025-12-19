@@ -287,7 +287,12 @@ export default function DashboardTrocas() {
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b.qtd - a.qtd)
-      .map(([nome, data]) => ({ nome, ...data }));
+      .map(([nome, data]) => ({ 
+        nome, 
+        qtd: data.qtd,
+        valor: data.valor,
+        precoMedio: data.qtd > 0 ? data.valor / data.qtd : 0
+      }));
   }, [trocasFiltradas, vendas]);
 
   // Trocas por Produto
@@ -570,18 +575,29 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Vendedor</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {trocasPorVendedor.map((v, idx) => (
-                      <div key={idx} className="p-3 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200">
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="text-sm font-semibold text-slate-800 truncate flex-1">{v.nome}</span>
-                          <Badge className="bg-red-100 text-red-700 text-xs ml-2">{v.qtd}</Badge>
+                  <div className="mb-2 pb-2 border-b border-slate-200 grid grid-cols-12 gap-2 text-xs font-semibold text-slate-800">
+                    <div className="col-span-5">Nome</div>
+                    <div className="col-span-2 text-right">Qtd</div>
+                    <div className="col-span-3 text-right">Valor Total</div>
+                    <div className="col-span-2 text-right">Preço Médio</div>
+                  </div>
+                  <div className="max-h-[500px] overflow-y-auto pr-2">
+                    <div className="space-y-2">
+                      {trocasPorVendedor.map((v, idx) => (
+                        <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 text-xs">
+                          <div className="col-span-5 font-medium text-slate-800 truncate" title={v.nome}>{v.nome}</div>
+                          <div className="col-span-2 text-right">
+                            <Badge className="bg-red-100 text-red-700 text-xs">{v.qtd}</Badge>
+                          </div>
+                          <div className="col-span-3 text-right text-slate-700 font-semibold">
+                            {v.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </div>
+                          <div className="col-span-2 text-right text-slate-600">
+                            {v.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-600">
-                          Valor: {v.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -592,6 +608,13 @@ export default function DashboardTrocas() {
                   <CardTitle className="text-base">Total por Produto</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-2 pb-2 border-b border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800">
+                    <div className="col-span-2">Cód</div>
+                    <div className="col-span-4">Descrição</div>
+                    <div className="col-span-2 text-right">Qtd</div>
+                    <div className="col-span-2 text-right">Valor Total</div>
+                    <div className="col-span-2 text-right">Preço Médio</div>
+                  </div>
                   <div className="max-h-[500px] overflow-y-auto pr-2">
                     <div className="space-y-2">
                       {trocasPorProduto.map((p, idx) => (
@@ -612,13 +635,6 @@ export default function DashboardTrocas() {
                         </div>
                       ))}
                     </div>
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800">
-                    <div className="col-span-2">Cód</div>
-                    <div className="col-span-4">Descrição</div>
-                    <div className="col-span-2 text-right">Qtd</div>
-                    <div className="col-span-2 text-right">Valor Total</div>
-                    <div className="col-span-2 text-right">Preço Médio</div>
                   </div>
                 </CardContent>
               </Card>
