@@ -609,8 +609,8 @@ export default function DashboardTrocas() {
                 </CardHeader>
                 <CardContent>
                   <div className="mb-2 pb-2 border-b border-orange-200 grid grid-cols-12 gap-2 text-xs font-semibold text-orange-800">
-                    <div className="col-span-2">Cód</div>
-                    <div className="col-span-4">Descrição</div>
+                    <div className="col-span-1">Cód</div>
+                    <div className="col-span-5">Descrição</div>
                     <div className="col-span-2 text-right">Qtd</div>
                     <div className="col-span-2 text-right">Valor Total</div>
                     <div className="col-span-2 text-right">Preço Médio</div>
@@ -619,9 +619,9 @@ export default function DashboardTrocas() {
                     <div className="space-y-2">
                       {trocasPorProduto.map((p, idx) => (
                         <div key={idx} className="grid grid-cols-12 gap-2 p-2 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200 text-xs">
-                          <div className="col-span-2 font-mono text-orange-800 font-semibold truncate">{p.codigo}</div>
-                          <div className="col-span-4 font-medium text-orange-900 truncate" title={p.nome}>
-                            {p.nome.length > 25 ? p.nome.substring(0, 25) + '...' : p.nome}
+                          <div className="col-span-1 font-mono text-orange-800 font-semibold truncate">{p.codigo}</div>
+                          <div className="col-span-5 font-medium text-orange-900 truncate" title={p.nome}>
+                            {p.nome.length > 35 ? p.nome.substring(0, 35) + '...' : p.nome}
                           </div>
                           <div className="col-span-2 text-right">
                             <Badge className="bg-orange-200 text-orange-800 text-xs">{p.qtd}</Badge>
