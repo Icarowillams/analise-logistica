@@ -5,12 +5,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line
 } from 'recharts';
-import { ArrowLeftRight, Package, Users, ShoppingCart, UserCheck, Download } from 'lucide-react';
+import { ArrowLeftRight, Package, Users, ShoppingCart, UserCheck, Download, DollarSign, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import StatsCard from '@/components/ui/StatsCard';
 import FiltrosDashboard from '@/components/DashboardTrocas/FiltrosDashboard';
 import PedidoTab from '@/components/DashboardTrocas/PedidoTab';
@@ -19,6 +21,85 @@ import jsPDF from 'jspdf';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#6366f1', '#a855f7', '#ec4899'];
+
+function ClienteAccordion({ cliente }) {
+  const [openCliente, setOpenCliente] = useState(false);
+  const [openPedidos, setOpenPedidos] = useState({});
+
+  const togglePedido = (numPedido) => {
+    setOpenPedidos(prev => ({
+      ...prev,
+      [numPedido]: !prev[numPedido]
+    }));
+  };
+
+  return (
+    <Collapsible open={openCliente} onOpenChange={setOpenCliente}>
+      <div className="border border-slate-200 rounded-lg bg-white hover:shadow-md transition-shadow">
+        <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-slate-50">
+          <div className="flex items-center gap-3 flex-1">
+            {openCliente ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
+            <div className="text-left flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-slate-500">{cliente.codigo}</span>
+                <span className="text-sm font-semibold text-slate-800">{cliente.nome}</span>
+              </div>
+              <div className="flex gap-4 mt-1 text-xs text-slate-600">
+                <span>Qtd: <strong className="text-purple-700">{cliente.qtdTotal}</strong></span>
+                <span>Valor: <strong className="text-purple-700">{cliente.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></span>
+              </div>
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        
+        <CollapsibleContent>
+          <div className="px-4 pb-4 space-y-2 bg-slate-50">
+            {cliente.pedidos.map((pedido, pIdx) => (
+              <div key={pIdx} className="border border-slate-300 rounded-md bg-white">
+                <button
+                  onClick={() => togglePedido(pedido.numero)}
+                  className="w-full p-3 flex items-center justify-between hover:bg-slate-50"
+                >
+                  <div className="flex items-center gap-2 flex-1">
+                    {openPedidos[pedido.numero] ? <ChevronDown className="w-3 h-3 text-slate-500" /> : <ChevronRight className="w-3 h-3 text-slate-500" />}
+                    <div className="text-left flex-1">
+                      <div className="text-xs font-semibold text-slate-700">Pedido: {pedido.numero}</div>
+                      <div className="flex gap-3 mt-0.5 text-xs text-slate-600">
+                        <span>Qtd: {pedido.qtdTotal}</span>
+                        <span>Valor: {pedido.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        <span>Médio: {pedido.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+                
+                {openPedidos[pedido.numero] && (
+                  <div className="px-3 pb-3 space-y-1.5 bg-slate-50">
+                    {pedido.itens.map((item, iIdx) => (
+                      <div key={iIdx} className="p-2 bg-white rounded border border-slate-200 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-slate-500">{item.codProduto}</span>
+                            <span className="font-medium text-slate-700">{item.nomeProduto}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-3 mt-1 text-slate-600">
+                          <span>Qtd: <strong>{item.qtd}</strong></span>
+                          <span>Unit: {item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                          <span>Total: <strong className="text-red-600">{item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
 
 export default function DashboardTrocas() {
   const [filtros, setFiltros] = useState({
@@ -34,6 +115,7 @@ export default function DashboardTrocas() {
     produto: 'todos',
     motivo: 'todos'
   });
+  const [buscaCliente, setBuscaCliente] = useState('');
 
   const { data: trocas = [], isLoading: lT } = useQuery({ 
     queryKey: ['trocas'], 
@@ -180,44 +262,138 @@ export default function DashboardTrocas() {
     return clientesSet.size;
   }, [trocasFiltradas]);
 
+  // Preço Médio do Período
+  const precoMedio = useMemo(() => {
+    if (quantidadeTotal === 0) return 0;
+    return valorTotal / quantidadeTotal;
+  }, [valorTotal, quantidadeTotal]);
+
   // Trocas por Vendedor
   const trocasPorVendedor = useMemo(() => {
     const grouped = {};
     trocasFiltradas.forEach(t => {
       const nome = t.vendedor_nome || 'Sem Vendedor';
-      if (!grouped[nome]) grouped[nome] = 0;
-      grouped[nome] += t.quantidade || 0;
+      if (!grouped[nome]) {
+        grouped[nome] = { qtd: 0, valor: 0 };
+      }
+      const venda = vendas.find(v => 
+        v.produto_id === t.produto_original_id && 
+        v.cliente_id === t.cliente_id &&
+        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+      );
+      const valorUnit = venda?.valor_unitario || 0;
+      grouped[nome].qtd += t.quantidade || 0;
+      grouped[nome].valor += (t.quantidade || 0) * valorUnit;
     });
     return Object.entries(grouped)
-      .sort(([, a], [, b]) => b - a)
-      .map(([nome, qtd]) => ({ nome, qtd }));
-  }, [trocasFiltradas]);
+      .sort(([, a], [, b]) => b.qtd - a.qtd)
+      .map(([nome, data]) => ({ nome, ...data }));
+  }, [trocasFiltradas, vendas]);
 
-  // Trocas por Produto (Top 10 com scroll)
+  // Trocas por Produto
   const trocasPorProduto = useMemo(() => {
     const grouped = {};
     trocasFiltradas.forEach(t => {
       const nome = t.produto_original_nome || 'Desconhecido';
-      if (!grouped[nome]) grouped[nome] = 0;
-      grouped[nome] += t.quantidade || 0;
+      if (!grouped[nome]) {
+        grouped[nome] = { qtd: 0, valor: 0 };
+      }
+      const venda = vendas.find(v => 
+        v.produto_id === t.produto_original_id && 
+        v.cliente_id === t.cliente_id &&
+        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+      );
+      const valorUnit = venda?.valor_unitario || 0;
+      grouped[nome].qtd += t.quantidade || 0;
+      grouped[nome].valor += (t.quantidade || 0) * valorUnit;
     });
     return Object.entries(grouped)
-      .sort(([, a], [, b]) => b - a)
-      .map(([nome, qtd]) => ({ nome, qtd }));
-  }, [trocasFiltradas]);
+      .sort(([, a], [, b]) => b.qtd - a.qtd)
+      .map(([nome, data]) => ({ 
+        nome, 
+        qtd: data.qtd, 
+        valor: data.valor,
+        precoMedio: data.qtd > 0 ? data.valor / data.qtd : 0
+      }));
+  }, [trocasFiltradas, vendas]);
 
-  // Trocas por Cliente (Top 10 com scroll)
+  // Trocas por Cliente com detalhes
   const trocasPorCliente = useMemo(() => {
     const grouped = {};
+    
     trocasFiltradas.forEach(t => {
-      const nome = t.cliente_nome || 'Desconhecido';
-      if (!grouped[nome]) grouped[nome] = 0;
-      grouped[nome] += t.quantidade || 0;
+      const clienteId = t.cliente_id || 'sem-id';
+      const clienteNome = t.cliente_nome || 'Desconhecido';
+      
+      if (!grouped[clienteId]) {
+        const cliente = clientes.find(c => c.id === clienteId);
+        grouped[clienteId] = {
+          id: clienteId,
+          codigo: cliente?.codigo || 'N/A',
+          nome: clienteNome,
+          qtdTotal: 0,
+          valorTotal: 0,
+          pedidos: {}
+        };
+      }
+      
+      const venda = vendas.find(v => 
+        v.produto_id === t.produto_original_id && 
+        v.cliente_id === t.cliente_id &&
+        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+      );
+      const valorUnit = venda?.valor_unitario || 0;
+      const valorItem = (t.quantidade || 0) * valorUnit;
+      
+      grouped[clienteId].qtdTotal += t.quantidade || 0;
+      grouped[clienteId].valorTotal += valorItem;
+      
+      // Extrair número do pedido
+      const match = t.observacoes?.match(/Pedido:\s*(\S+)/);
+      const numPedido = match ? match[1] : (t.venda_original_id || 'S/N');
+      
+      if (!grouped[clienteId].pedidos[numPedido]) {
+        grouped[clienteId].pedidos[numPedido] = {
+          numero: numPedido,
+          qtdTotal: 0,
+          valorTotal: 0,
+          itens: []
+        };
+      }
+      
+      grouped[clienteId].pedidos[numPedido].qtdTotal += t.quantidade || 0;
+      grouped[clienteId].pedidos[numPedido].valorTotal += valorItem;
+      
+      const produto = produtos.find(p => p.id === t.produto_original_id);
+      grouped[clienteId].pedidos[numPedido].itens.push({
+        codProduto: produto?.codigo || 'N/A',
+        nomeProduto: t.produto_original_nome || 'Desconhecido',
+        qtd: t.quantidade || 0,
+        valorUnitario: valorUnit,
+        valorTotal: valorItem
+      });
     });
-    return Object.entries(grouped)
-      .sort(([, a], [, b]) => b - a)
-      .map(([nome, qtd]) => ({ nome, qtd }));
-  }, [trocasFiltradas]);
+    
+    return Object.values(grouped)
+      .map(c => ({
+        ...c,
+        pedidos: Object.values(c.pedidos).map(p => ({
+          ...p,
+          precoMedio: p.qtdTotal > 0 ? p.valorTotal / p.qtdTotal : 0
+        }))
+      }))
+      .sort((a, b) => b.qtdTotal - a.qtdTotal);
+  }, [trocasFiltradas, clientes, vendas, produtos]);
+  
+  // Filtrar clientes pela busca
+  const clientesFiltrados = useMemo(() => {
+    if (!buscaCliente.trim()) return trocasPorCliente;
+    const termo = buscaCliente.toLowerCase();
+    return trocasPorCliente.filter(c => 
+      c.codigo.toLowerCase().includes(termo) ||
+      c.nome.toLowerCase().includes(termo)
+    );
+  }, [trocasPorCliente, buscaCliente]);
 
   // Evolução Mensal
   const evolucaoMensal = useMemo(() => {
@@ -342,7 +518,7 @@ export default function DashboardTrocas() {
 
           <div id="dashboard-content" className="space-y-6">
             {/* KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <StatsCard
                 title="Quantidade Total"
                 value={quantidadeTotal.toLocaleString('pt-BR')}
@@ -356,6 +532,13 @@ export default function DashboardTrocas() {
                 subtitle="em trocas"
                 icon={ShoppingCart}
                 gradient="from-red-500 to-pink-600"
+              />
+              <StatsCard
+                title="Preço Médio"
+                value={precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                subtitle="do período"
+                icon={DollarSign}
+                gradient="from-emerald-500 to-teal-600"
               />
               <StatsCard
                 title="Pedidos de Troca"
@@ -374,18 +557,23 @@ export default function DashboardTrocas() {
             </div>
 
             {/* Listas */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Vendedor */}
               <Card className="border-0 shadow-lg">
                 <CardHeader>
                   <CardTitle className="text-base">Total por Vendedor</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {trocasPorVendedor.map((v, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                        <span className="text-sm font-medium text-slate-700 truncate">{v.nome}</span>
-                        <Badge className="bg-red-100 text-red-700 text-xs">{v.qtd}</Badge>
+                      <div key={idx} className="p-3 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200">
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="text-sm font-semibold text-slate-800 truncate flex-1">{v.nome}</span>
+                          <Badge className="bg-red-100 text-red-700 text-xs ml-2">{v.qtd}</Badge>
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Valor: {v.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -395,37 +583,51 @@ export default function DashboardTrocas() {
               {/* Produto */}
               <Card className="border-0 shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-base">Total por Produto (Top 10)</CardTitle>
+                  <CardTitle className="text-base">Total por Produto</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-                    {trocasPorProduto.slice(0, 10).map((p, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                        <span className="text-sm font-medium text-slate-700 truncate">{p.nome}</span>
-                        <Badge className="bg-orange-100 text-orange-700 text-xs">{p.qtd}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Cliente */}
-              <Card className="border-0 shadow-lg">
-                <CardHeader>
-                  <CardTitle className="text-base">Total por Cliente (Top 10)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-                    {trocasPorCliente.slice(0, 10).map((c, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                        <span className="text-sm font-medium text-slate-700 truncate">{c.nome}</span>
-                        <Badge className="bg-purple-100 text-purple-700 text-xs">{c.qtd}</Badge>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {trocasPorProduto.map((p, idx) => (
+                      <div key={idx} className="p-3 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200">
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="text-sm font-semibold text-orange-900 truncate flex-1">{p.nome}</span>
+                          <Badge className="bg-orange-200 text-orange-800 text-xs ml-2">{p.qtd}</Badge>
+                        </div>
+                        <div className="text-xs text-orange-700 space-y-0.5">
+                          <div>Valor: {p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                          <div>Médio: {p.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Cliente com Accordion */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Total por Cliente</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <Input
+                      placeholder="Buscar cliente..."
+                      value={buscaCliente}
+                      onChange={(e) => setBuscaCliente(e.target.value)}
+                      className="w-64 h-9"
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2">
+                  {clientesFiltrados.map((cliente, idx) => (
+                    <ClienteAccordion key={idx} cliente={cliente} />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Gráficos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
