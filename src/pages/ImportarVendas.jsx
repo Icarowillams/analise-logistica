@@ -353,8 +353,8 @@ function ImportacaoTab() {
         const qtdRaw = parseBRLValues(row.qtd);
         const vlUnit = parseBRLValues(row.vl_unitario);
         const trocaValue = String(row.troca || '').toUpperCase().trim();
-        // Considera como troca: 'SIM' ou qualquer valor não vazio que não seja 'NÃO' ou 'NAO'
-        const isTroca = trocaValue && trocaValue !== 'NÃO' && trocaValue !== 'NAO';
+        // Se a coluna troca tiver qualquer preenchimento, é troca; se vazia, é venda
+        const isTroca = trocaValue !== '';
 
         // Debug log
         console.log(`Pedido: ${row.numpedido}, Coluna 'troca': '${row.troca}', isTroca: ${isTroca}, qtdRaw: ${qtdRaw}`);
