@@ -186,13 +186,13 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800">Top 5 Produtos</CardTitle>
           </CardHeader>
-          <CardContent className="flex justify-center">
-            <ResponsiveContainer width="100%" height={280}>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
                   data={vendasPorProduto}
                   cx="50%"
-                  cy="50%"
+                  cy="40%"
                   innerRadius={60}
                   outerRadius={100}
                   paddingAngle={5}
@@ -206,7 +206,11 @@ export default function Dashboard() {
                   formatter={(value) => [value, 'Quantidade']}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}
                 />
-                <Legend />
+                <Legend 
+                  verticalAlign="bottom" 
+                  align="center"
+                  wrapperStyle={{ paddingTop: '20px' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
