@@ -186,11 +186,13 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800">Top 5 Produtos</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex justify-center">
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={vendasPorProduto}
+                  cx="50%"
+                  cy="50%"
                   innerRadius={60}
                   outerRadius={100}
                   paddingAngle={5}
