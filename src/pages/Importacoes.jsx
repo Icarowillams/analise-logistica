@@ -1,19 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import { 
   Download, Database, CheckCircle, Clock, TrendingUp, 
-  Package, ArrowLeftRight, Eye, Info
+  Package, ArrowLeftRight, Eye, Info, Loader2
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 
 export default function Importacoes() {
   const [testando, setTestando] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState(null);
+  const [progresso, setProgresso] = useState(0);
+  const [statusAtual, setStatusAtual] = useState('');
 
   const { data: configs = [] } = useQuery({
     queryKey: ['configuracoes'],
@@ -38,14 +41,38 @@ export default function Importacoes() {
   const importarAgora = async () => {
     setTestando(true);
     setResultadoTeste(null);
+    setProgresso(0);
+    setStatusAtual('Iniciando importação...');
+
+    // Simular progresso enquanto importa
+    const interval = setInterval(() => {
+      setProgresso(prev => {
+        if (prev >= 95) return prev;
+        return prev + 5;
+      });
+    }, 2000);
+
+    // Status simulado
+    setTimeout(() => setStatusAtual('Buscando visitas do Gestor Visita...'), 1000);
+    setTimeout(() => setStatusAtual('Buscando estoques e trocas...'), 8000);
+    setTimeout(() => setStatusAtual('Processando dados de visitas...'), 15000);
+    setTimeout(() => setStatusAtual('Importando estoques em lotes...'), 30000);
+    setTimeout(() => setStatusAtual('Importando trocas em lotes...'), 50000);
+    setTimeout(() => setStatusAtual('Finalizando importação...'), 70000);
 
     try {
       const response = await base44.functions.invoke('importarVisitasGestorVisita', {});
+      clearInterval(interval);
+      setProgresso(100);
+      setStatusAtual('Importação concluída!');
       setResultadoTeste({
         success: true,
         data: response.data
       });
     } catch (error) {
+      clearInterval(interval);
+      setProgresso(0);
+      setStatusAtual('Erro na importação');
       setResultadoTeste({
         success: false,
         error: error.message
@@ -129,8 +156,23 @@ export default function Importacoes() {
               disabled={testando}
               className="w-full mt-4 bg-gradient-to-r from-blue-500 to-indigo-600"
             >
-              {testando ? 'Importando...' : 'Importar Agora'}
+              {testando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : 'Importar Agora'}
             </Button>
+            
+            {testando && (
+              <div className="mt-4 space-y-3">
+                <Progress value={progresso} className="h-2" />
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700">{statusAtual}</span>
+                  <span className="font-semibold text-blue-600">{progresso}%</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -175,15 +217,39 @@ export default function Importacoes() {
             )}
             <AlertDescription>
               {resultadoTeste.success ? (
-                <div className="space-y-2">
-                  <p className="font-semibold text-green-800">Conexão testada com sucesso!</p>
-                  <pre className="text-xs bg-white p-2 rounded border border-green-200 overflow-auto">
-                    {JSON.stringify(resultadoTeste.data, null, 2)}
-                  </pre>
+                <div className="space-y-3">
+                  <p className="font-semibold text-green-800">✅ Importação concluída com sucesso!</p>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className="bg-white p-3 rounded border border-green-200">
+                      <p className="text-xs text-slate-600">Visitas Buscadas</p>
+                      <p className="text-lg font-bold text-blue-600">{resultadoTeste.data?.total_visitas_buscadas || 0}</p>
+                      <p className="text-xs text-green-700">Importadas: {resultadoTeste.data?.visitas_importadas || 0}</p>
+                    </div>
+                    <div className="bg-white p-3 rounded border border-green-200">
+                      <p className="text-xs text-slate-600">Estoques Buscados</p>
+                      <p className="text-lg font-bold text-emerald-600">{resultadoTeste.data?.total_estoques_buscados || 0}</p>
+                      <p className="text-xs text-green-700">Importados: {resultadoTeste.data?.estoques_importados || 0}</p>
+                    </div>
+                    <div className="bg-white p-3 rounded border border-green-200">
+                      <p className="text-xs text-slate-600">Trocas Buscadas</p>
+                      <p className="text-lg font-bold text-orange-600">{resultadoTeste.data?.total_trocas_buscadas || 0}</p>
+                      <p className="text-xs text-green-700">Importadas: {resultadoTeste.data?.trocas_importadas || 0}</p>
+                    </div>
+                  </div>
+                  {resultadoTeste.data?.erros && resultadoTeste.data.erros.length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer font-medium text-orange-700">
+                        {resultadoTeste.data.erros.length} erro(s) encontrado(s) - clique para ver
+                      </summary>
+                      <pre className="mt-2 bg-white p-2 rounded border border-orange-200 overflow-auto max-h-40">
+                        {JSON.stringify(resultadoTeste.data.erros, null, 2)}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               ) : (
                 <div>
-                  <p className="font-semibold text-red-800">Erro ao testar conexão</p>
+                  <p className="font-semibold text-red-800">Erro ao importar dados</p>
                   <p className="text-sm text-red-700 mt-1">{resultadoTeste.error}</p>
                 </div>
               )}
