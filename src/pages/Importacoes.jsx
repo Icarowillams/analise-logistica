@@ -13,12 +13,27 @@ import {
 import StatsCard from '@/components/ui/StatsCard';
 
 export default function Importacoes() {
-  const [testando, setTestando] = useState(false);
-  const [resultadoTeste, setResultadoTeste] = useState(null);
-  const [progresso, setProgresso] = useState(0);
-  const [statusAtual, setStatusAtual] = useState('');
   const [removendoDuplicatas, setRemovendoDuplicatas] = useState(false);
   const queryClient = useQueryClient();
+
+  // Importação automática a cada 2 horas
+  const { data: resultadoImportacao, isLoading: importando } = useQuery({
+    queryKey: ['importacaoAutomatica'],
+    queryFn: async () => {
+      try {
+        const response = await base44.functions.invoke('importarVisitasGestorVisita', {});
+        queryClient.invalidateQueries(['relatorioVisitas']);
+        queryClient.invalidateQueries(['relatorioEstoques']);
+        queryClient.invalidateQueries(['relatorioTrocas']);
+        queryClient.invalidateQueries(['configuracoes']);
+        return response.data;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+    refetchInterval: 2 * 60 * 60 * 1000, // 2 horas
+    refetchOnWindowFocus: false
+  });
 
   const { data: configs = [] } = useQuery({
     queryKey: ['configuracoes'],
@@ -39,50 +54,6 @@ export default function Importacoes() {
     queryKey: ['relatorioTrocas'],
     queryFn: () => base44.entities.RelatorioTroca.list('-data_registro', 100)
   });
-
-  const importarAgora = async () => {
-    setTestando(true);
-    setResultadoTeste(null);
-    setProgresso(0);
-    setStatusAtual('Iniciando importação...');
-
-    // Simular progresso enquanto importa
-    const interval = setInterval(() => {
-      setProgresso(prev => {
-        if (prev >= 95) return prev;
-        return prev + 5;
-      });
-    }, 2000);
-
-    // Status simulado
-    setTimeout(() => setStatusAtual('Buscando visitas do Gestor Visita...'), 1000);
-    setTimeout(() => setStatusAtual('Buscando estoques e trocas...'), 8000);
-    setTimeout(() => setStatusAtual('Processando dados de visitas...'), 15000);
-    setTimeout(() => setStatusAtual('Importando estoques em lotes...'), 30000);
-    setTimeout(() => setStatusAtual('Importando trocas em lotes...'), 50000);
-    setTimeout(() => setStatusAtual('Finalizando importação...'), 70000);
-
-    try {
-      const response = await base44.functions.invoke('importarVisitasGestorVisita', {});
-      clearInterval(interval);
-      setProgresso(100);
-      setStatusAtual('Importação concluída!');
-      setResultadoTeste({
-        success: true,
-        data: response.data
-      });
-    } catch (error) {
-      clearInterval(interval);
-      setProgresso(0);
-      setStatusAtual('Erro na importação');
-      setResultadoTeste({
-        success: false,
-        error: error.message
-      });
-    } finally {
-      setTestando(false);
-    }
-  };
 
   const configAtiva = configs.find(c => c.status === 'ativo') || configs[0];
 
@@ -297,42 +268,21 @@ export default function Importacoes() {
             )}
             <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center gap-2 text-green-700">
-                <CheckCircle className="w-5 h-5" />
-                <span className="font-semibold">Sincronização Automática Ativa</span>
+                {importando ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-5 h-5" />
+                )}
+                <span className="font-semibold">
+                  {importando ? 'Importando dados...' : 'Integração Automática Ativa'}
+                </span>
               </div>
               <p className="text-sm text-green-600 mt-1">
-                Os dados são importados automaticamente a cada 2 horas
+                {importando 
+                  ? 'Buscando novos dados do Gestor Visita' 
+                  : 'Os dados são sincronizados automaticamente a cada 2 horas'}
               </p>
             </div>
-            
-            <Button 
-              onClick={importarAgora} 
-              disabled={testando}
-              variant="outline"
-              className="w-full mt-3"
-            >
-              {testando ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <Database className="w-4 h-4 mr-2" />
-                  Sincronizar Manualmente
-                </>
-              )}
-            </Button>
-            
-            {testando && (
-              <div className="mt-4 space-y-3">
-                <Progress value={progresso} className="h-2" />
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700">{statusAtual}</span>
-                  <span className="font-semibold text-blue-600">{progresso}%</span>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -366,51 +316,46 @@ export default function Importacoes() {
         </Card>
       </div>
 
-      {/* Resultado do Teste */}
-      {resultadoTeste && (
-        <Alert className={resultadoTeste.success ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}>
+      {/* Resultado da Última Importação */}
+      {resultadoImportacao && (
+        <Alert className={resultadoImportacao.success !== false ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}>
           <div className="flex items-start gap-3">
-            {resultadoTeste.success ? (
+            {resultadoImportacao.success !== false ? (
               <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
             ) : (
-              <Clock className="w-5 h-5 text-red-600 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
             )}
             <AlertDescription>
-              {resultadoTeste.success ? (
+              {resultadoImportacao.success !== false ? (
                 <div className="space-y-3">
-                  <p className="font-semibold text-green-800">✅ Importação concluída com sucesso!</p>
+                  <p className="font-semibold text-green-800">✅ Última sincronização concluída!</p>
                   <div className="grid grid-cols-3 gap-3 text-sm">
                     <div className="bg-white p-3 rounded border border-green-200">
                       <p className="text-xs text-slate-600">Visitas Buscadas</p>
-                      <p className="text-lg font-bold text-blue-600">{resultadoTeste.data?.total_visitas_buscadas || 0}</p>
-                      <p className="text-xs text-green-700">Importadas: {resultadoTeste.data?.visitas_importadas || 0}</p>
+                      <p className="text-lg font-bold text-blue-600">{resultadoImportacao?.total_visitas_buscadas || 0}</p>
+                      <p className="text-xs text-green-700">Importadas: {resultadoImportacao?.visitas_importadas || 0}</p>
                     </div>
                     <div className="bg-white p-3 rounded border border-green-200">
                       <p className="text-xs text-slate-600">Estoques Buscados</p>
-                      <p className="text-lg font-bold text-emerald-600">{resultadoTeste.data?.total_estoques_buscados || 0}</p>
-                      <p className="text-xs text-green-700">Importados: {resultadoTeste.data?.estoques_importados || 0}</p>
+                      <p className="text-lg font-bold text-emerald-600">{resultadoImportacao?.total_estoques_buscados || 0}</p>
+                      <p className="text-xs text-green-700">Importados: {resultadoImportacao?.estoques_importados || 0}</p>
                     </div>
                     <div className="bg-white p-3 rounded border border-green-200">
                       <p className="text-xs text-slate-600">Trocas Buscadas</p>
-                      <p className="text-lg font-bold text-orange-600">{resultadoTeste.data?.total_trocas_buscadas || 0}</p>
-                      <p className="text-xs text-green-700">Importadas: {resultadoTeste.data?.trocas_importadas || 0}</p>
+                      <p className="text-lg font-bold text-orange-600">{resultadoImportacao?.total_trocas_buscadas || 0}</p>
+                      <p className="text-xs text-green-700">Importadas: {resultadoImportacao?.trocas_importadas || 0}</p>
                     </div>
                   </div>
-                  {resultadoTeste.data?.erros && resultadoTeste.data.erros.length > 0 && (
-                    <details className="text-xs">
-                      <summary className="cursor-pointer font-medium text-orange-700">
-                        {resultadoTeste.data.erros.length} erro(s) encontrado(s) - clique para ver
-                      </summary>
-                      <pre className="mt-2 bg-white p-2 rounded border border-orange-200 overflow-auto max-h-40">
-                        {JSON.stringify(resultadoTeste.data.erros, null, 2)}
-                      </pre>
-                    </details>
+                  {resultadoImportacao?.duplicatas_ignoradas > 0 && (
+                    <p className="text-xs text-slate-600">
+                      {resultadoImportacao.duplicatas_ignoradas} duplicatas ignoradas
+                    </p>
                   )}
                 </div>
               ) : (
                 <div>
-                  <p className="font-semibold text-red-800">Erro ao importar dados</p>
-                  <p className="text-sm text-red-700 mt-1">{resultadoTeste.error}</p>
+                  <p className="font-semibold text-red-800">Erro na sincronização automática</p>
+                  <p className="text-sm text-red-700 mt-1">{resultadoImportacao.error}</p>
                 </div>
               )}
             </AlertDescription>
