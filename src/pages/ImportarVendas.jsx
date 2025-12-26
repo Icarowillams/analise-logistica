@@ -362,6 +362,7 @@ function TrocasImportadasTab() {
 function ImportacaoTab() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
@@ -606,6 +607,30 @@ function ImportacaoTab() {
   
   return (
     <div className="space-y-6">
+      <Alert className="bg-orange-50 border-orange-200">
+        <AlertCircle className="h-4 w-4 text-orange-600" />
+        <AlertDescription className="flex items-center justify-between">
+          <span className="text-orange-800">
+            <strong>Atenção:</strong> Vendas entre 01/01/2025 e 31/05/2025 sem valor total? 
+          </span>
+          <Button 
+            onClick={recalcularValores}
+            disabled={isRecalculating}
+            size="sm"
+            className="bg-orange-600 hover:bg-orange-700"
+          >
+            {isRecalculating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Recalculando...
+              </>
+            ) : (
+              'Recalcular Valores'
+            )}
+          </Button>
+        </AlertDescription>
+      </Alert>
+
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">
