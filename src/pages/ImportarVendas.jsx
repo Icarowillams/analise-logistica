@@ -209,6 +209,16 @@ function TrocasImportadasTab() {
             <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-full font-medium">
               Qtd Total: {totalQuantidade.toLocaleString('pt-BR')}
             </div>
+            <Button 
+              variant="outline" 
+              onClick={toggleSelectAll}
+              className="gap-2"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {selectedTrocas.length === trocasFiltradas.length && trocasFiltradas.length > 0 
+                ? 'Desmarcar Tudo' 
+                : 'Selecionar Tudo'}
+            </Button>
             {selectedTrocas.length > 0 && (
               <Button 
                 variant="destructive" 
