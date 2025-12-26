@@ -38,57 +38,34 @@ Deno.serve(async (req) => {
         const estoquesJaImportados = new Set(estoquesExistentes.map(e => e.origem_estoque_id));
         const trocasJaImportadas = new Set(trocasExistentes.map(t => t.origem_troca_id));
 
-        // Buscar TODOS os dados do Gestor Visita sem limite (buscar em páginas se necessário)
-        const fetchAllRecords = async (entityName) => {
-            let allRecords = [];
-            let skip = 0;
-            const limit = 1000;
-            let hasMore = true;
+        // Buscar apenas registros dos últimos 7 dias para otimizar
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - 7);
+        const dataLimiteISO = dataLimite.toISOString();
 
-            while (hasMore) {
-                const response = await fetch(
-                    `https://app.base44.com/api/apps/${GESTOR_VISITA_APP_ID}/entities/${entityName}?limit=${limit}&skip=${skip}`,
-                    { headers: { 'api_key': GESTOR_VISITA_API_KEY } }
-                );
-                const records = await response.json();
-                
-                if (records.length === 0) {
-                    hasMore = false;
-                } else {
-                    allRecords = allRecords.concat(records);
-                    skip += limit;
-                    if (records.length < limit) {
-                        hasMore = false;
-                    }
-                }
-            }
-            return allRecords;
+        const fetchRecentRecords = async (entityName, dateField = 'created_date') => {
+            const response = await fetch(
+                `https://app.base44.com/api/apps/${GESTOR_VISITA_APP_ID}/entities/${entityName}?limit=500&sort=-${dateField}`,
+                { headers: { 'api_key': GESTOR_VISITA_API_KEY } }
+            );
+            return await response.json();
         };
 
-        // Buscar todas as entidades em paralelo
+        // Buscar entidades recentes e dados de referência
         const [visitas, estoques, trocas, clientes, produtos, funcionarios, motivos] = await Promise.all([
-            fetchAllRecords('Visita'),
-            fetchAllRecords('EstoqueVisita'),
-            fetchAllRecords('TrocaVisita'),
-            fetchAllRecords('Cliente'),
-            fetchAllRecords('Produto'),
-            fetchAllRecords('Funcionario'),
-            fetchAllRecords('MotivoTroca')
+            fetchRecentRecords('Visita', 'checkin_time'),
+            fetchRecentRecords('EstoqueVisita', 'created_date'),
+            fetchRecentRecords('TrocaVisita', 'created_date'),
+            fetchRecentRecords('Cliente', 'created_date'),
+            fetchRecentRecords('Produto', 'created_date'),
+            fetchRecentRecords('Funcionario', 'created_date'),
+            fetchRecentRecords('MotivoTroca', 'created_date')
         ]);
-        
-        // Tentar buscar QualidadeTroca se existir
-        let qualidadeTrocas = [];
-        try {
-            qualidadeTrocas = await fetchAllRecords('QualidadeTroca');
-        } catch (error) {
-            resultado.erros.push({ tipo: 'qualidade_fetch', erro: 'Entidade QualidadeTroca não encontrada' });
-        }
 
         // Log de quantidades buscadas
         resultado.total_visitas_buscadas = visitas.length;
         resultado.total_estoques_buscados = estoques.length;
         resultado.total_trocas_buscadas = trocas.length;
-        resultado.total_qualidade_trocas_buscadas = qualidadeTrocas.length;
 
         // Mapear para fácil acesso
         const clientesMap = Object.fromEntries(clientes.map(c => [c.id, c]));
@@ -268,13 +245,6 @@ Deno.serve(async (req) => {
                 });
                 await sleep(DELAY_MS * 2); // delay maior em caso de erro
             }
-        }
-
-        // Qualidade de Trocas (se houver) - adicionar informação nas próprias trocas
-        if (qualidadeTrocas && qualidadeTrocas.length > 0) {
-            resultado.total_qualidade_trocas_buscadas = qualidadeTrocas.length;
-            resultado.qualidade_trocas_importadas = qualidadeTrocas.length;
-            // Dados de qualidade serão processados posteriormente se necessário
         }
 
         // Atualizar ConfiguracaoImportacao
