@@ -27,6 +27,7 @@ import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
 import Importacoes from './pages/Importacoes';
+import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
 import __Layout from './Layout.jsx';
 
 
@@ -60,6 +61,7 @@ export const PAGES = {
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
     "Importacoes": Importacoes,
+    "RelatoriosGestorVisita": RelatoriosGestorVisita,
 }
 
 export const pagesConfig = {
