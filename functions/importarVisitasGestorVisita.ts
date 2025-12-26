@@ -69,8 +69,11 @@ Deno.serve(async (req) => {
         const funcionariosMap = Object.fromEntries(funcionarios.map(f => [f.id, f]));
         const motivosMap = Object.fromEntries(motivos.map(m => [m.id, m]));
 
-        // Importar em lotes (batch) para melhor performance
+        // Importar em lotes (batch) com delay para evitar rate limit
         const BATCH_SIZE = 50;
+        const DELAY_MS = 1000; // 1 segundo entre lotes
+        
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         
         // Importar Visitas em lotes
         const visitasParaImportar = [];
@@ -99,14 +102,18 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Criar visitas em lotes
+        // Criar visitas em lotes com delay
         for (let i = 0; i < visitasParaImportar.length; i += BATCH_SIZE) {
             const batch = visitasParaImportar.slice(i, i + BATCH_SIZE);
             try {
                 await base44.asServiceRole.entities.RelatorioVisita.bulkCreate(batch);
                 resultado.visitas_importadas += batch.length;
+                if (i + BATCH_SIZE < visitasParaImportar.length) {
+                    await sleep(DELAY_MS);
+                }
             } catch (error) {
-                resultado.erros.push({ tipo: 'visita_batch', erro: error.message });
+                resultado.erros.push({ tipo: 'visita_batch', lote: i, erro: error.message });
+                await sleep(DELAY_MS * 2); // delay maior em caso de erro
             }
         }
 
@@ -141,8 +148,12 @@ Deno.serve(async (req) => {
             try {
                 await base44.asServiceRole.entities.RelatorioEstoque.bulkCreate(batch);
                 resultado.estoques_importados += batch.length;
+                if (i + BATCH_SIZE < estoquesParaImportar.length) {
+                    await sleep(DELAY_MS);
+                }
             } catch (error) {
-                resultado.erros.push({ tipo: 'estoque_batch', erro: error.message });
+                resultado.erros.push({ tipo: 'estoque_batch', lote: i, erro: error.message });
+                await sleep(DELAY_MS * 2); // delay maior em caso de erro
             }
         }
 
@@ -201,13 +212,16 @@ Deno.serve(async (req) => {
             try {
                 await base44.asServiceRole.entities.RelatorioTroca.bulkCreate(batch);
                 resultado.trocas_importadas += batch.length;
+                if (i + BATCH_SIZE < trocasParaImportar.length) {
+                    await sleep(DELAY_MS);
+                }
             } catch (error) {
                 resultado.erros.push({ 
                     tipo: 'troca_batch', 
                     lote: i, 
-                    erro: error.message,
-                    stack: error.stack 
+                    erro: error.message
                 });
+                await sleep(DELAY_MS * 2); // delay maior em caso de erro
             }
         }
 
