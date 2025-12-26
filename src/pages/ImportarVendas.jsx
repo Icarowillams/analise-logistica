@@ -67,11 +67,14 @@ export default function ImportarVendas() {
 }
 
 function TrocasImportadasTab() {
+  const queryClient = useQueryClient();
   const [dates, setDates] = useState({
     start: '',
     end: ''
   });
   const [busca, setBusca] = useState('');
+  const [selectedTrocas, setSelectedTrocas] = useState([]);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: trocas = [], isLoading } = useQuery({
     queryKey: ['trocas_todas', dates.start, dates.end],
@@ -113,6 +116,45 @@ function TrocasImportadasTab() {
   }, [trocas, busca]);
 
   const totalQuantidade = trocasFiltradas.reduce((acc, t) => acc + (t.quantidade || 0), 0);
+
+  const toggleSelectTroca = (id) => {
+    setSelectedTrocas(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTrocas.length === trocasFiltradas.length) {
+      setSelectedTrocas([]);
+    } else {
+      setSelectedTrocas(trocasFiltradas.map(t => t.id));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (selectedTrocas.length === 0) {
+      alert('Selecione pelo menos uma troca para excluir');
+      return;
+    }
+
+    if (!confirm(`Deseja realmente excluir ${selectedTrocas.length} troca(s) selecionada(s)?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      for (const id of selectedTrocas) {
+        await base44.entities.Troca.delete(id);
+      }
+      queryClient.invalidateQueries(['trocas_todas']);
+      setSelectedTrocas([]);
+      alert(`✅ ${selectedTrocas.length} troca(s) excluída(s) com sucesso!`);
+    } catch (error) {
+      alert('Erro ao excluir trocas: ' + error.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -160,10 +202,24 @@ function TrocasImportadasTab() {
             </CardTitle>
             <CardDescription className="mt-1">
               Total de {trocasFiltradas.length} registros encontrados
+              {selectedTrocas.length > 0 && ` • ${selectedTrocas.length} selecionada(s)`}
             </CardDescription>
           </div>
-          <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-full font-medium">
-            Qtd Total: {totalQuantidade.toLocaleString('pt-BR')}
+          <div className="flex items-center gap-3">
+            <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-full font-medium">
+              Qtd Total: {totalQuantidade.toLocaleString('pt-BR')}
+            </div>
+            {selectedTrocas.length > 0 && (
+              <Button 
+                variant="destructive" 
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
+                Excluir Selecionadas ({selectedTrocas.length})
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -175,6 +231,14 @@ function TrocasImportadasTab() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-slate-50 z-10">
                     <TableRow>
+                      <TableHead className="w-10">
+                        <input 
+                          type="checkbox"
+                          checked={trocasFiltradas.length > 0 && selectedTrocas.length === trocasFiltradas.length}
+                          onChange={toggleSelectAll}
+                          className="cursor-pointer w-4 h-4"
+                        />
+                      </TableHead>
                       <TableHead>Data</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Produto Original</TableHead>
@@ -188,13 +252,21 @@ function TrocasImportadasTab() {
                   <TableBody>
                     {trocasFiltradas.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-slate-500">
+                        <TableCell colSpan={9} className="text-center py-8 text-slate-500">
                           Nenhuma troca encontrada no período
                         </TableCell>
                       </TableRow>
                     ) : (
                       trocasFiltradas.map((troca, idx) => (
                         <TableRow key={idx} className="hover:bg-slate-50">
+                          <TableCell>
+                            <input 
+                              type="checkbox"
+                              checked={selectedTrocas.includes(troca.id)}
+                              onChange={() => toggleSelectTroca(troca.id)}
+                              className="cursor-pointer w-4 h-4"
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-sm">
                             {format(parseISO(troca.data), 'dd/MM/yyyy')}
                           </TableCell>
@@ -353,8 +425,8 @@ function ImportacaoTab() {
         const qtdRaw = parseBRLValues(row.qtd);
         const vlUnit = parseBRLValues(row.vl_unitario);
         const trocaValue = String(row.troca || '').toUpperCase().trim();
-        // Se a coluna troca tiver qualquer preenchimento, é troca; se vazia, é venda
-        const isTroca = trocaValue !== '';
+        // É troca apenas se a coluna estiver preenchida com 'SIM'
+        const isTroca = trocaValue === 'SIM';
 
         // Debug log
         console.log(`Pedido: ${row.numpedido}, Coluna 'troca': '${row.troca}', isTroca: ${isTroca}, qtdRaw: ${qtdRaw}`);

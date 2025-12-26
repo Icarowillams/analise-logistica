@@ -8,6 +8,7 @@ import DashboardVendedor from './pages/DashboardVendedor';
 import Funcionarios from './pages/Funcionarios';
 import Funcoes from './pages/Funcoes';
 import Home from './pages/Home';
+import Importacoes from './pages/Importacoes';
 import ImportarVendas from './pages/ImportarVendas';
 import MetasCadastro from './pages/MetasCadastro';
 import MetasPositivacao from './pages/MetasPositivacao';
@@ -21,13 +22,12 @@ import Permissoes from './pages/Permissoes';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Produtos from './pages/Produtos';
 import Redes from './pages/Redes';
+import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
 import Rotas from './pages/Rotas';
 import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import Importacoes from './pages/Importacoes';
-import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
 import __Layout from './Layout.jsx';
 
 
@@ -42,6 +42,7 @@ export const PAGES = {
     "Funcionarios": Funcionarios,
     "Funcoes": Funcoes,
     "Home": Home,
+    "Importacoes": Importacoes,
     "ImportarVendas": ImportarVendas,
     "MetasCadastro": MetasCadastro,
     "MetasPositivacao": MetasPositivacao,
@@ -55,13 +56,12 @@ export const PAGES = {
     "PlanosPagamento": PlanosPagamento,
     "Produtos": Produtos,
     "Redes": Redes,
+    "RelatoriosGestorVisita": RelatoriosGestorVisita,
     "Rotas": Rotas,
     "Segmentos": Segmentos,
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "Importacoes": Importacoes,
-    "RelatoriosGestorVisita": RelatoriosGestorVisita,
 }
 
 export const pagesConfig = {
