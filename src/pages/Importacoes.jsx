@@ -150,22 +150,37 @@ export default function Importacoes() {
         return;
       }
 
-      // Remover em lotes
-      const BATCH_SIZE = 50;
+      // Remover em lotes menores com delay maior para evitar rate limit
+      const BATCH_SIZE = 20;
+      const DELAY_MS = 2000;
+      
       const removerEmLotes = async (ids, entidade) => {
         for (let i = 0; i < ids.length; i += BATCH_SIZE) {
           const batch = ids.slice(i, i + BATCH_SIZE);
-          await Promise.all(batch.map(id => base44.entities[entidade].delete(id)));
-          totalRemovido += batch.length;
-          if (i + BATCH_SIZE < ids.length) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            await Promise.all(batch.map(id => base44.entities[entidade].delete(id)));
+            totalRemovido += batch.length;
+          } catch (error) {
+            console.error(`Erro ao remover lote de ${entidade}:`, error);
           }
+          // Delay entre todos os lotes
+          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
         }
       };
 
-      await removerEmLotes(visitasParaRemover, 'RelatorioVisita');
-      await removerEmLotes(estoquesParaRemover, 'RelatorioEstoque');
-      await removerEmLotes(trocasParaRemover, 'RelatorioTroca');
+      if (visitasParaRemover.length > 0) {
+        await removerEmLotes(visitasParaRemover, 'RelatorioVisita');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Delay extra entre entidades
+      }
+      
+      if (estoquesParaRemover.length > 0) {
+        await removerEmLotes(estoquesParaRemover, 'RelatorioEstoque');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Delay extra entre entidades
+      }
+      
+      if (trocasParaRemover.length > 0) {
+        await removerEmLotes(trocasParaRemover, 'RelatorioTroca');
+      }
 
       queryClient.invalidateQueries(['relatorioVisitas']);
       queryClient.invalidateQueries(['relatorioEstoques']);
