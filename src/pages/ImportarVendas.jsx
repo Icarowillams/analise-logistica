@@ -73,19 +73,24 @@ function TrocasImportadasTab() {
     end: ''
   });
   const [busca, setBusca] = useState('');
+  const [appliedDates, setAppliedDates] = useState({
+    start: '',
+    end: ''
+  });
+  const [appliedBusca, setAppliedBusca] = useState('');
   const [selectedTrocas, setSelectedTrocas] = useState([]);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: trocas = [], isLoading } = useQuery({
-    queryKey: ['trocas_todas', dates.start, dates.end],
+    queryKey: ['trocas_todas', appliedDates.start, appliedDates.end],
     queryFn: async () => {
       let query = {};
-      if (dates.start && dates.end) {
-        query.data = { '$gte': dates.start, '$lte': dates.end };
-      } else if (dates.start) {
-        query.data = { '$gte': dates.start };
-      } else if (dates.end) {
-        query.data = { '$lte': dates.end };
+      if (appliedDates.start && appliedDates.end) {
+        query.data = { '$gte': appliedDates.start, '$lte': appliedDates.end };
+      } else if (appliedDates.start) {
+        query.data = { '$gte': appliedDates.start };
+      } else if (appliedDates.end) {
+        query.data = { '$lte': appliedDates.end };
       }
       
       const allTrocas = await base44.entities.Troca.list('-data', 5000);
@@ -104,8 +109,8 @@ function TrocasImportadasTab() {
   });
 
   const trocasFiltradas = useMemo(() => {
-    if (!busca.trim()) return trocas;
-    const termo = busca.toLowerCase();
+    if (!appliedBusca.trim()) return trocas;
+    const termo = appliedBusca.toLowerCase();
     return trocas.filter(t => 
       t.cliente_nome?.toLowerCase().includes(termo) ||
       t.produto_original_nome?.toLowerCase().includes(termo) ||
@@ -113,7 +118,19 @@ function TrocasImportadasTab() {
       t.motivo_descricao?.toLowerCase().includes(termo) ||
       t.observacoes?.toLowerCase().includes(termo)
     );
-  }, [trocas, busca]);
+  }, [trocas, appliedBusca]);
+
+  const handleAtualizar = () => {
+    setAppliedDates(dates);
+    setAppliedBusca(busca);
+  };
+
+  const handleLimpar = () => {
+    setDates({ start: '', end: '' });
+    setBusca('');
+    setAppliedDates({ start: '', end: '' });
+    setAppliedBusca('');
+  };
 
   const totalQuantidade = trocasFiltradas.reduce((acc, t) => acc + (t.quantidade || 0), 0);
 
@@ -187,6 +204,15 @@ function TrocasImportadasTab() {
                 onChange={e => setBusca(e.target.value)}
               />
             </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button onClick={handleAtualizar} className="bg-blue-600 hover:bg-blue-700">
+              <Search className="w-4 h-4 mr-2" />
+              Atualizar
+            </Button>
+            <Button onClick={handleLimpar} variant="outline">
+              Limpar Filtros
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -870,9 +896,17 @@ function RelatorioFaturamento({ tipo }) {
     start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
   });
+  const [appliedDates, setAppliedDates] = useState({
+    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  });
+
+  const handleAtualizar = () => {
+    setAppliedDates(dates);
+  };
 
   const { data: vendas = [], isLoading } = useQuery({
-    queryKey: ['vendas_relatorio', dates.start, dates.end],
+    queryKey: ['vendas_relatorio', appliedDates.start, appliedDates.end],
     queryFn: () => base44.entities.Venda.filter({
       data: { '$gte': dates.start, '$lte': dates.end }
     }, { limit: 2000 }) 
@@ -928,8 +962,8 @@ function RelatorioFaturamento({ tipo }) {
                 onChange={e => setDates(d => ({ ...d, end: e.target.value }))} 
               />
             </div>
-            <Button variant="outline" className="mb-[2px]">
-              <Filter className="w-4 h-4 mr-2" /> Filtrar
+            <Button onClick={handleAtualizar} className="mb-[2px] bg-blue-600 hover:bg-blue-700">
+              <Search className="w-4 h-4 mr-2" /> Atualizar
             </Button>
           </div>
         </CardContent>
@@ -991,10 +1025,18 @@ function PedidosTab() {
     start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
   });
+  const [appliedDates, setAppliedDates] = useState({
+    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  });
   const [expandedOrders, setExpandedOrders] = useState([]);
 
+  const handleAtualizar = () => {
+    setAppliedDates(dates);
+  };
+
   const { data: vendas = [], isLoading } = useQuery({
-    queryKey: ['vendas_pedidos', dates.start, dates.end],
+    queryKey: ['vendas_pedidos', appliedDates.start, appliedDates.end],
     queryFn: () => base44.entities.Venda.filter({
       data: { '$gte': dates.start, '$lte': dates.end }
     }, { limit: 2000, sort: { data: -1 } }) 
@@ -1064,6 +1106,9 @@ function PedidosTab() {
                 onChange={e => setDates(d => ({ ...d, end: e.target.value }))} 
               />
             </div>
+            <Button onClick={handleAtualizar} className="bg-blue-600 hover:bg-blue-700">
+              <Search className="w-4 h-4 mr-2" /> Atualizar
+            </Button>
           </div>
         </CardContent>
       </Card>
