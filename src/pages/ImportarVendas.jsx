@@ -415,6 +415,71 @@ function ImportacaoTab() {
     }
   };
 
+  const removerDuplicatas = async () => {
+    if (!confirm('Deseja identificar e remover vendas duplicadas?\n\nSerá mantida apenas a primeira ocorrência de cada venda.\n\nCritério: mesmo pedido + produto + cliente + data')) {
+      return;
+    }
+
+    setIsRecalculating(true);
+    try {
+      // Buscar todas as vendas
+      const todasVendas = await base44.entities.Venda.list('-created_date', 10000);
+
+      const duplicatasMap = new Map();
+      const idsParaRemover = [];
+
+      // Identificar duplicatas
+      todasVendas.forEach(venda => {
+        const chave = `${venda.numero_pedido}|${venda.produto_id}|${venda.cliente_id}|${venda.data}`;
+        
+        if (duplicatasMap.has(chave)) {
+          // É duplicata, marcar para remoção
+          idsParaRemover.push(venda.id);
+        } else {
+          // Primeira ocorrência, manter
+          duplicatasMap.set(chave, venda.id);
+        }
+      });
+
+      if (idsParaRemover.length === 0) {
+        alert('✅ Nenhuma duplicata encontrada!');
+        setIsRecalculating(false);
+        return;
+      }
+
+      if (!confirm(`Encontradas ${idsParaRemover.length} duplicatas.\n\nDeseja realmente excluir?`)) {
+        setIsRecalculating(false);
+        return;
+      }
+
+      // Remover em lotes
+      const BATCH_SIZE = 50;
+      let removidos = 0;
+
+      for (let i = 0; i < idsParaRemover.length; i += BATCH_SIZE) {
+        const batch = idsParaRemover.slice(i, i + BATCH_SIZE);
+        try {
+          await Promise.all(batch.map(id => base44.entities.Venda.delete(id)));
+          removidos += batch.length;
+        } catch (error) {
+          console.error('Erro ao remover lote:', error);
+        }
+        
+        // Delay entre lotes
+        if (i + BATCH_SIZE < idsParaRemover.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      queryClient.invalidateQueries(['vendas']);
+      alert(`✅ Limpeza concluída!\n\n${removidos} vendas duplicadas removidas`);
+    } catch (error) {
+      alert('Erro ao remover duplicatas: ' + error.message);
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   const bulkColumns = [
     { key: 'numpedido', label: 'NUMPEDIDO', required: true },
     { key: 'codproduto', label: 'CODPRODUTO', required: true },
@@ -652,29 +717,55 @@ function ImportacaoTab() {
   
   return (
     <div className="space-y-6">
-      <Alert className="bg-orange-50 border-orange-200">
-        <AlertCircle className="h-4 w-4 text-orange-600" />
-        <AlertDescription className="flex items-center justify-between">
-          <span className="text-orange-800">
-            <strong>Atenção:</strong> Vendas entre 01/01/2025 e 31/05/2025 sem valor total? 
-          </span>
-          <Button 
-            onClick={recalcularValores}
-            disabled={isRecalculating}
-            size="sm"
-            className="bg-orange-600 hover:bg-orange-700"
-          >
-            {isRecalculating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Recalculando...
-              </>
-            ) : (
-              'Recalcular Valores'
-            )}
-          </Button>
-        </AlertDescription>
-      </Alert>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Alert className="bg-orange-50 border-orange-200">
+          <AlertCircle className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-orange-800">
+              <strong>Valores zerados?</strong> Recalcular vendas 01/01 a 31/05/2025
+            </span>
+            <Button 
+              onClick={recalcularValores}
+              disabled={isRecalculating}
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isRecalculating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                'Recalcular'
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+
+        <Alert className="bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-red-800">
+              <strong>Duplicatas?</strong> Remover vendas duplicadas automaticamente
+            </span>
+            <Button 
+              onClick={removerDuplicatas}
+              disabled={isRecalculating}
+              size="sm"
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isRecalculating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                'Remover Duplicatas'
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
 
       <div className="flex justify-between items-center">
         <div>
