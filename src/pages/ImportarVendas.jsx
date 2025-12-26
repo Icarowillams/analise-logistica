@@ -370,6 +370,51 @@ function ImportacaoTab() {
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
   const { data: motivosTroca = [] } = useQuery({ queryKey: ['motivosTroca'], queryFn: () => base44.entities.MotivoTroca.list() });
 
+  const recalcularValores = async () => {
+    if (!confirm('Deseja recalcular os valores totais para vendas entre 01/01/2025 e 31/05/2025?\n\nIsso irá atualizar todos os registros que possuem quantidade e valor unitário mas não possuem valor total calculado.')) {
+      return;
+    }
+
+    setIsRecalculating(true);
+    try {
+      // Buscar todas as vendas no período
+      const vendasParaAtualizar = await base44.entities.Venda.filter({
+        data: { '$gte': '2025-01-01', '$lte': '2025-05-31' }
+      });
+
+      let atualizados = 0;
+      let erros = 0;
+
+      // Atualizar cada venda que precisa de recálculo
+      for (const venda of vendasParaAtualizar) {
+        try {
+          const qtd = parseFloat(venda.quantidade) || 0;
+          const vlUnit = parseFloat(venda.valor_unitario) || 0;
+          const vlTotal = parseFloat(venda.valor_total) || 0;
+
+          // Só atualiza se tem quantidade e valor unitário, mas não tem valor total
+          if (qtd > 0 && vlUnit > 0 && vlTotal === 0) {
+            const novoValorTotal = qtd * vlUnit;
+            await base44.entities.Venda.update(venda.id, {
+              valor_total: novoValorTotal
+            });
+            atualizados++;
+          }
+        } catch (error) {
+          console.error(`Erro ao atualizar venda ${venda.id}:`, error);
+          erros++;
+        }
+      }
+
+      queryClient.invalidateQueries(['vendas']);
+      alert(`✅ Recálculo concluído!\n\n${atualizados} vendas atualizadas\n${erros} erros encontrados`);
+    } catch (error) {
+      alert('Erro ao recalcular valores: ' + error.message);
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   const bulkColumns = [
     { key: 'numpedido', label: 'NUMPEDIDO', required: true },
     { key: 'codproduto', label: 'CODPRODUTO', required: true },
