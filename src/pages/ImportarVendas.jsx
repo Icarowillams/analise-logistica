@@ -143,9 +143,7 @@ function TrocasImportadasTab() {
 
     setIsDeleting(true);
     try {
-      for (const id of selectedTrocas) {
-        await base44.entities.Troca.delete(id);
-      }
+      await base44.functions.invoke('excluirTrocasEmMassa', { ids: selectedTrocas });
       queryClient.invalidateQueries(['trocas_todas']);
       setSelectedTrocas([]);
       alert(`✅ ${selectedTrocas.length} troca(s) excluída(s) com sucesso!`);
