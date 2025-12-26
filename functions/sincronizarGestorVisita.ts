@@ -10,23 +10,17 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Obter configurações do outro app
-        const gestorVisitaAppId = Deno.env.get("GESTOR_VISITA_APP_ID");
-        const gestorVisitaApiKey = Deno.env.get("GESTOR_VISITA_API_KEY");
+        // Configuração do app Gestor Visita
+        const gestorVisitaAppId = '68b1f50209adbcb52b0d911b';
+        const gestorVisitaApiKey = '60cf11f680fa4a83b1631326d3c773b1';
 
-        if (!gestorVisitaAppId || !gestorVisitaApiKey) {
-            return Response.json({ 
-                error: 'Configuração incompleta. Configure GESTOR_VISITA_APP_ID e GESTOR_VISITA_API_KEY nas variáveis de ambiente.' 
-            }, { status: 400 });
-        }
-
-        // Buscar dados do Gestor Visita
-        const gestorVisitaUrl = `https://api.base44.com/v1/apps/${gestorVisitaAppId}/entities/Lancamento`;
+        // Buscar dados de Roteiros do Gestor Visita
+        const gestorVisitaUrl = `https://app.base44.com/api/apps/${gestorVisitaAppId}/entities/Roteiro`;
         
         const response = await fetch(gestorVisitaUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${gestorVisitaApiKey}`,
+                'api_key': gestorVisitaApiKey,
                 'Content-Type': 'application/json'
             }
         });
@@ -38,35 +32,29 @@ Deno.serve(async (req) => {
             }, { status: response.status });
         }
 
-        const lancamentos = await response.json();
+        const roteiros = await response.json();
 
-        // Processar e importar lançamentos
+        // Processar e importar roteiros
         let importados = 0;
         let erros = [];
 
-        for (const lancamento of lancamentos) {
+        for (const roteiro of roteiros) {
             try {
-                // Mapear campos do lançamento para estrutura de Venda
+                // Mapear campos do roteiro para estrutura de Venda
+                // Ajuste os campos conforme a estrutura real do Roteiro
                 const vendaData = {
-                    data: lancamento.data,
-                    cliente_id: lancamento.cliente_id,
-                    cliente_nome: lancamento.cliente_nome,
-                    vendedor_id: lancamento.vendedor_id,
-                    vendedor_nome: lancamento.vendedor_nome,
-                    produto_id: lancamento.produto_id,
-                    produto_nome: lancamento.produto_nome,
-                    quantidade: lancamento.quantidade || 0,
-                    valor_unitario: lancamento.valor_unitario || 0,
-                    valor_total: lancamento.valor_total || 0,
-                    observacoes: lancamento.observacoes || '',
-                    // Adicione outros campos conforme necessário
+                    data: roteiro.data || new Date().toISOString().split('T')[0],
+                    vendedor_id: roteiro.promotor_id,
+                    vendedor_nome: roteiro.promotor_nome,
+                    observacoes: `Roteiro importado - Dia: ${roteiro.dia_semana}, Status: ${roteiro.status}`,
+                    // Adicione mapeamento de outros campos conforme necessário
                 };
 
                 await base44.asServiceRole.entities.Venda.create(vendaData);
                 importados++;
             } catch (error) {
                 erros.push({
-                    lancamento_id: lancamento.id,
+                    roteiro_id: roteiro.id,
                     erro: error.message
                 });
             }
@@ -74,7 +62,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             success: true,
-            total_lancamentos: lancamentos.length,
+            total_roteiros: roteiros.length,
             importados,
             erros: erros.length > 0 ? erros : null
         });
