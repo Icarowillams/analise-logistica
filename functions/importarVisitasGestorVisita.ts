@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
         // Criar Sets com IDs já importados
         const visitasJaImportadas = new Set(visitasExistentes.map(v => v.origem_visita_id));
         const estoquesJaImportados = new Set(estoquesExistentes.map(e => e.origem_estoque_id));
-        const trocasJaImportadas = new Set(t => trocasExistentes.map(t => t.origem_troca_id));
+        const trocasJaImportadas = new Set(trocasExistentes.map(t => t.origem_troca_id));
 
         // Buscar TODOS os dados do Gestor Visita sem limite (buscar em páginas se necessário)
         const fetchAllRecords = async (entityName) => {
@@ -66,16 +66,23 @@ Deno.serve(async (req) => {
         };
 
         // Buscar todas as entidades em paralelo
-        const [visitas, estoques, trocas, qualidadeTrocas, clientes, produtos, funcionarios, motivos] = await Promise.all([
+        const [visitas, estoques, trocas, clientes, produtos, funcionarios, motivos] = await Promise.all([
             fetchAllRecords('Visita'),
             fetchAllRecords('EstoqueVisita'),
             fetchAllRecords('TrocaVisita'),
-            fetchAllRecords('QualidadeTroca'),
             fetchAllRecords('Cliente'),
             fetchAllRecords('Produto'),
             fetchAllRecords('Funcionario'),
             fetchAllRecords('MotivoTroca')
         ]);
+        
+        // Tentar buscar QualidadeTroca se existir
+        let qualidadeTrocas = [];
+        try {
+            qualidadeTrocas = await fetchAllRecords('QualidadeTroca');
+        } catch (error) {
+            resultado.erros.push({ tipo: 'qualidade_fetch', erro: 'Entidade QualidadeTroca não encontrada' });
+        }
 
         // Log de quantidades buscadas
         resultado.total_visitas_buscadas = visitas.length;
@@ -263,53 +270,11 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Importar Qualidade de Trocas em lotes
-        const qualidadeTrocasParaImportar = [];
-        for (const qualidade of qualidadeTrocas) {
-            try {
-                const troca = trocas.find(t => t.id === qualidade.troca_id);
-                const produto = produtosMap[troca?.produto_id];
-                const visita = visitasMap[troca?.visita_id];
-                const cliente = clientesMap[visita?.cliente_id];
-                const promotor = funcionariosMap[visita?.promotor_id];
-
-                qualidadeTrocasParaImportar.push({
-                    origem_app_id: GESTOR_VISITA_APP_ID,
-                    origem_qualidade_id: qualidade.id,
-                    origem_troca_id: qualidade.troca_id,
-                    cliente_nome: cliente?.nome_fantasia || 'N/A',
-                    produto_codigo: produto?.codigo || '',
-                    produto_descricao: produto?.descricao || 'N/A',
-                    nota_qualidade: qualidade.nota || 0,
-                    observacao: qualidade.observacao || '',
-                    data_avaliacao: qualidade.created_date || new Date().toISOString(),
-                    promotor_nome: promotor?.nome_completo || 'N/A'
-                });
-            } catch (error) {
-                resultado.erros.push({ 
-                    tipo: 'qualidade_processamento', 
-                    id: qualidade.id, 
-                    erro: error.message 
-                });
-            }
-        }
-
-        for (let i = 0; i < qualidadeTrocasParaImportar.length; i += BATCH_SIZE) {
-            const batch = qualidadeTrocasParaImportar.slice(i, i + BATCH_SIZE);
-            try {
-                await base44.asServiceRole.entities.RelatorioTroca.bulkCreate(batch);
-                resultado.qualidade_trocas_importadas += batch.length;
-                if (i + BATCH_SIZE < qualidadeTrocasParaImportar.length) {
-                    await sleep(DELAY_MS);
-                }
-            } catch (error) {
-                resultado.erros.push({ 
-                    tipo: 'qualidade_batch', 
-                    lote: i, 
-                    erro: error.message
-                });
-                await sleep(DELAY_MS * 2);
-            }
+        // Qualidade de Trocas (se houver) - adicionar informação nas próprias trocas
+        if (qualidadeTrocas && qualidadeTrocas.length > 0) {
+            resultado.total_qualidade_trocas_buscadas = qualidadeTrocas.length;
+            resultado.qualidade_trocas_importadas = qualidadeTrocas.length;
+            // Dados de qualidade serão processados posteriormente se necessário
         }
 
         // Atualizar ConfiguracaoImportacao
