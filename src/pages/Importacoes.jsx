@@ -35,29 +35,12 @@ export default function Importacoes() {
     queryFn: () => base44.entities.RelatorioTroca.list('-data_registro', 100)
   });
 
-  const testarConexao = async () => {
+  const importarAgora = async () => {
     setTestando(true);
     setResultadoTeste(null);
 
     try {
-      const payload = {
-        app_origem_id: 'teste-conexao',
-        app_origem_nome: 'Teste Manual',
-        visitas: [
-          {
-            origem_visita_id: 'teste-' + Date.now(),
-            cliente_nome: 'Cliente Teste',
-            cliente_codigo: 'TST001',
-            data_visita: new Date().toISOString(),
-            status: 'realizada',
-            promotor_nome: 'Teste Sistema'
-          }
-        ],
-        estoques: [],
-        trocas: []
-      };
-
-      const response = await base44.functions.invoke('receberDadosGestorVisita', payload);
+      const response = await base44.functions.invoke('importarVisitasGestorVisita', {});
       setResultadoTeste({
         success: true,
         data: response.data
@@ -122,10 +105,10 @@ export default function Importacoes() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <p className="text-sm font-medium text-slate-700">Endpoint:</p>
-              <code className="text-xs bg-slate-100 px-2 py-1 rounded block mt-1 break-all">
-                POST /api/functions/receberDadosGestorVisita
-              </code>
+              <p className="text-sm font-medium text-slate-700">Modo:</p>
+              <Badge className="mt-1 bg-blue-100 text-blue-700">
+                Busca Automática no Gestor Visita
+              </Badge>
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">Status:</p>
@@ -142,11 +125,11 @@ export default function Importacoes() {
               </div>
             )}
             <Button 
-              onClick={testarConexao} 
+              onClick={importarAgora} 
               disabled={testando}
-              className="w-full mt-4"
+              className="w-full mt-4 bg-gradient-to-r from-blue-500 to-indigo-600"
             >
-              {testando ? 'Testando...' : 'Testar Conexão'}
+              {testando ? 'Importando...' : 'Importar Agora'}
             </Button>
           </CardContent>
         </Card>
