@@ -263,15 +263,23 @@ export default function Importacoes() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Info className="w-5 h-5" />
-              Informações da API
+              Integração Automática
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <p className="text-sm font-medium text-slate-700">Modo:</p>
-              <Badge className="mt-1 bg-blue-100 text-blue-700">
-                Busca Automática no Gestor Visita
+              <p className="text-sm font-medium text-slate-700">Modo de Integração:</p>
+              <Badge className="mt-1 bg-green-100 text-green-700">
+                Sincronização Automática (a cada 2h)
               </Badge>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-700">Próxima sincronização:</p>
+              <p className="text-sm text-slate-600 mt-1">
+                {configAtiva?.ultima_importacao 
+                  ? new Date(new Date(configAtiva.ultima_importacao).getTime() + 2 * 60 * 60 * 1000).toLocaleString('pt-BR')
+                  : 'Em breve'}
+              </p>
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">Status:</p>
@@ -287,17 +295,33 @@ export default function Importacoes() {
                 </p>
               </div>
             )}
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-semibold">Sincronização Automática Ativa</span>
+              </div>
+              <p className="text-sm text-green-600 mt-1">
+                Os dados são importados automaticamente a cada 2 horas
+              </p>
+            </div>
+            
             <Button 
               onClick={importarAgora} 
               disabled={testando}
-              className="w-full mt-4 bg-gradient-to-r from-blue-500 to-indigo-600"
+              variant="outline"
+              className="w-full mt-3"
             >
               {testando ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Importando...
+                  Sincronizando...
                 </>
-              ) : 'Importar Agora'}
+              ) : (
+                <>
+                  <Database className="w-4 h-4 mr-2" />
+                  Sincronizar Manualmente
+                </>
+              )}
             </Button>
             
             {testando && (

@@ -29,6 +29,7 @@ import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
 import ConfigurarWebhook from './pages/ConfigurarWebhook';
+import ConfigurarIntegracao from './pages/ConfigurarIntegracao';
 import __Layout from './Layout.jsx';
 
 
@@ -64,6 +65,7 @@ export const PAGES = {
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
     "ConfigurarWebhook": ConfigurarWebhook,
+    "ConfigurarIntegracao": ConfigurarIntegracao,
 }
 
 export const pagesConfig = {
