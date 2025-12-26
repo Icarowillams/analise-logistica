@@ -33,7 +33,8 @@ const ABAS_SISTEMA = [
   { id: 'PainelRodrigosM', nome: 'Painel Rodrigos', grupo: 'metas' },
   { id: 'DashboardVendedor', nome: 'Dashboard Vendedor', grupo: 'analises' },
   { id: 'DashboardTrocas', nome: 'Dashboard Trocas', grupo: 'analises' },
-  { id: 'DashboardClientes', nome: 'Dashboard Clientes', grupo: 'analises' }
+  { id: 'DashboardClientes', nome: 'Dashboard Clientes', grupo: 'analises' },
+  { id: 'PainelGestorVisita', nome: 'Painel Gestor Visita', grupo: 'analises' }
 ];
 
 export default function Permissoes() {
