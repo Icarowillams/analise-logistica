@@ -25,6 +25,7 @@ import Segmentos from './pages/Segmentos';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
+import PainelGestorVisita from './pages/PainelGestorVisita';
 import __Layout from './Layout.jsx';
 
 
@@ -56,6 +57,7 @@ export const PAGES = {
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
     "SincronizarGestorVisita": SincronizarGestorVisita,
+    "PainelGestorVisita": PainelGestorVisita,
 }
 
 export const pagesConfig = {
