@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { 
   Download, Database, CheckCircle, Clock, TrendingUp, 
-  Package, ArrowLeftRight, Eye, Info, Loader2
+  Package, ArrowLeftRight, Eye, Info, Loader2, AlertCircle
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 
@@ -17,6 +17,8 @@ export default function Importacoes() {
   const [resultadoTeste, setResultadoTeste] = useState(null);
   const [progresso, setProgresso] = useState(0);
   const [statusAtual, setStatusAtual] = useState('');
+  const [removendoDuplicatas, setRemovendoDuplicatas] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: configs = [] } = useQuery({
     queryKey: ['configuracoes'],
@@ -84,6 +86,100 @@ export default function Importacoes() {
 
   const configAtiva = configs.find(c => c.status === 'ativo') || configs[0];
 
+  const removerDuplicatasGestorVisita = async () => {
+    if (!confirm('Deseja identificar e remover registros duplicados do Gestor Visita?\n\nSerá mantida apenas a primeira ocorrência de cada registro.\n\nCritério: origem_app_id + origem_visita_id/estoque_id/troca_id')) {
+      return;
+    }
+
+    setRemovendoDuplicatas(true);
+    try {
+      let totalRemovido = 0;
+
+      // 1. Remover duplicatas de Visitas
+      const todasVisitas = await base44.entities.RelatorioVisita.list('-created_date', 10000);
+      const visitasMap = new Map();
+      const visitasParaRemover = [];
+      
+      todasVisitas.forEach(visita => {
+        const chave = `${visita.origem_app_id}|${visita.origem_visita_id}`;
+        if (visitasMap.has(chave)) {
+          visitasParaRemover.push(visita.id);
+        } else {
+          visitasMap.set(chave, visita.id);
+        }
+      });
+
+      // 2. Remover duplicatas de Estoques
+      const todosEstoques = await base44.entities.RelatorioEstoque.list('-created_date', 10000);
+      const estoquesMap = new Map();
+      const estoquesParaRemover = [];
+      
+      todosEstoques.forEach(estoque => {
+        const chave = `${estoque.origem_app_id}|${estoque.origem_estoque_id}`;
+        if (estoquesMap.has(chave)) {
+          estoquesParaRemover.push(estoque.id);
+        } else {
+          estoquesMap.set(chave, estoque.id);
+        }
+      });
+
+      // 3. Remover duplicatas de Trocas
+      const todasTrocas = await base44.entities.RelatorioTroca.list('-created_date', 10000);
+      const trocasMap = new Map();
+      const trocasParaRemover = [];
+      
+      todasTrocas.forEach(troca => {
+        const chave = `${troca.origem_app_id}|${troca.origem_troca_id}`;
+        if (trocasMap.has(chave)) {
+          trocasParaRemover.push(troca.id);
+        } else {
+          trocasMap.set(chave, troca.id);
+        }
+      });
+
+      const totalDuplicatas = visitasParaRemover.length + estoquesParaRemover.length + trocasParaRemover.length;
+
+      if (totalDuplicatas === 0) {
+        alert('✅ Nenhuma duplicata encontrada!');
+        setRemovendoDuplicatas(false);
+        return;
+      }
+
+      if (!confirm(`Encontradas ${totalDuplicatas} duplicatas:\n• ${visitasParaRemover.length} visitas\n• ${estoquesParaRemover.length} estoques\n• ${trocasParaRemover.length} trocas\n\nDeseja realmente excluir?`)) {
+        setRemovendoDuplicatas(false);
+        return;
+      }
+
+      // Remover em lotes
+      const BATCH_SIZE = 50;
+      const removerEmLotes = async (ids, entidade) => {
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch.map(id => base44.entities[entidade].delete(id)));
+          totalRemovido += batch.length;
+          if (i + BATCH_SIZE < ids.length) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      };
+
+      await removerEmLotes(visitasParaRemover, 'RelatorioVisita');
+      await removerEmLotes(estoquesParaRemover, 'RelatorioEstoque');
+      await removerEmLotes(trocasParaRemover, 'RelatorioTroca');
+
+      queryClient.invalidateQueries(['relatorioVisitas']);
+      queryClient.invalidateQueries(['relatorioEstoques']);
+      queryClient.invalidateQueries(['relatorioTrocas']);
+      queryClient.invalidateQueries(['configuracoes']);
+
+      alert(`✅ Limpeza concluída!\n\n${totalRemovido} registros duplicados removidos:\n• ${visitasParaRemover.length} visitas\n• ${estoquesParaRemover.length} estoques\n• ${trocasParaRemover.length} trocas`);
+    } catch (error) {
+      alert('Erro ao remover duplicatas: ' + error.message);
+    } finally {
+      setRemovendoDuplicatas(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -95,6 +191,31 @@ export default function Importacoes() {
           <p className="text-slate-500">Recebimento e análise de dados de visitas</p>
         </div>
       </div>
+
+      {/* Alerta de Duplicatas */}
+      <Alert className="bg-red-50 border-red-200">
+        <AlertCircle className="h-4 w-4 text-red-600" />
+        <AlertDescription className="flex items-center justify-between">
+          <span className="text-red-800">
+            <strong>Duplicatas?</strong> Remover registros duplicados do Gestor Visita automaticamente
+          </span>
+          <Button 
+            onClick={removerDuplicatasGestorVisita}
+            disabled={removendoDuplicatas}
+            size="sm"
+            className="bg-red-600 hover:bg-red-700"
+          >
+            {removendoDuplicatas ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processando...
+              </>
+            ) : (
+              'Remover Duplicatas'
+            )}
+          </Button>
+        </AlertDescription>
+      </Alert>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
