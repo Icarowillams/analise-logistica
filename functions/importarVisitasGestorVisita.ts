@@ -17,6 +17,9 @@ Deno.serve(async (req) => {
             visitas_importadas: 0,
             estoques_importados: 0,
             trocas_importadas: 0,
+            total_visitas_buscadas: 0,
+            total_estoques_buscados: 0,
+            total_trocas_buscadas: 0,
             erros: []
         };
 
@@ -54,6 +57,11 @@ Deno.serve(async (req) => {
             funcionariosRes.json(),
             motivosRes.json()
         ]);
+
+        // Log de quantidades buscadas
+        resultado.total_visitas_buscadas = visitas.length;
+        resultado.total_estoques_buscados = estoques.length;
+        resultado.total_trocas_buscadas = trocas.length;
 
         // Mapear para fácil acesso
         const clientesMap = Object.fromEntries(clientes.map(c => [c.id, c]));
@@ -140,40 +148,52 @@ Deno.serve(async (req) => {
 
         // Importar Trocas em lotes
         const trocasParaImportar = [];
+        
+        // Criar um Map de visitas para lookup mais rápido
+        const visitasMap = Object.fromEntries(visitas.map(v => [v.id, v]));
+        
         for (const troca of trocas) {
-            const produto = produtosMap[troca.produto_id];
-            const motivo = motivosMap[troca.motivo_troca_id];
-            const visita = visitas.find(v => v.id === troca.visita_id);
-            const cliente = clientesMap[visita?.cliente_id];
-            const promotor = funcionariosMap[visita?.promotor_id];
+            try {
+                const produto = produtosMap[troca.produto_id];
+                const motivo = motivosMap[troca.motivo_troca_id];
+                const visita = visitasMap[troca.visita_id];
+                const cliente = clientesMap[visita?.cliente_id];
+                const promotor = funcionariosMap[visita?.promotor_id];
 
-            let diasVidaUtil = null;
-            if (troca.data_validade && troca.data_fabricacao) {
-                const dataVal = new Date(troca.data_validade);
-                const dataFab = new Date(troca.data_fabricacao);
-                const diffDias = Math.floor((dataVal - dataFab) / (1000 * 60 * 60 * 24));
-                diasVidaUtil = 25 - diffDias;
+                let diasVidaUtil = null;
+                if (troca.data_validade && troca.data_fabricacao) {
+                    const dataVal = new Date(troca.data_validade);
+                    const dataFab = new Date(troca.data_fabricacao);
+                    const diffDias = Math.floor((dataVal - dataFab) / (1000 * 60 * 60 * 24));
+                    diasVidaUtil = 25 - diffDias;
+                }
+
+                trocasParaImportar.push({
+                    origem_app_id: GESTOR_VISITA_APP_ID,
+                    origem_troca_id: troca.id,
+                    origem_visita_id: troca.visita_id || '',
+                    cliente_nome: cliente?.nome_fantasia || 'N/A',
+                    cliente_codigo: cliente?.codigo_interno || '',
+                    produto_codigo: produto?.codigo || '',
+                    produto_descricao: produto?.descricao || troca.produto_descricao || 'N/A',
+                    motivo_troca: motivo?.motivo || 'N/A',
+                    quantidade: troca.quantidade || 0,
+                    data_validade: troca.data_validade || null,
+                    data_fabricacao: troca.data_fabricacao || null,
+                    horario_fabricacao: troca.horario_fabricacao || null,
+                    ja_informado_anteriormente: troca.ja_informado_anteriormente || false,
+                    foto_url: troca.foto_url || null,
+                    data_registro: troca.created_date || new Date().toISOString(),
+                    promotor_nome: promotor?.nome_completo || 'N/A',
+                    dias_vida_util: diasVidaUtil
+                });
+            } catch (error) {
+                resultado.erros.push({ 
+                    tipo: 'troca_processamento', 
+                    id: troca.id, 
+                    erro: error.message 
+                });
             }
-
-            trocasParaImportar.push({
-                origem_app_id: GESTOR_VISITA_APP_ID,
-                origem_troca_id: troca.id,
-                origem_visita_id: troca.visita_id,
-                cliente_nome: cliente?.nome_fantasia,
-                cliente_codigo: cliente?.codigo_interno,
-                produto_codigo: produto?.codigo,
-                produto_descricao: produto?.descricao,
-                motivo_troca: motivo?.motivo,
-                quantidade: troca.quantidade,
-                data_validade: troca.data_validade,
-                data_fabricacao: troca.data_fabricacao,
-                horario_fabricacao: troca.horario_fabricacao,
-                ja_informado_anteriormente: troca.ja_informado_anteriormente || false,
-                foto_url: troca.foto_url,
-                data_registro: troca.created_date,
-                promotor_nome: promotor?.nome_completo,
-                dias_vida_util: diasVidaUtil
-            });
         }
 
         for (let i = 0; i < trocasParaImportar.length; i += BATCH_SIZE) {
@@ -182,7 +202,12 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.RelatorioTroca.bulkCreate(batch);
                 resultado.trocas_importadas += batch.length;
             } catch (error) {
-                resultado.erros.push({ tipo: 'troca_batch', erro: error.message });
+                resultado.erros.push({ 
+                    tipo: 'troca_batch', 
+                    lote: i, 
+                    erro: error.message,
+                    stack: error.stack 
+                });
             }
         }
 
