@@ -3,17 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        
-        // Webhook não precisa de autenticação de usuário
-        // mas vamos validar a origem dos dados
-        
         const payload = await req.json();
         const { app_origem_id, visitas = [], estoques = [], trocas = [] } = payload;
 
         if (!app_origem_id) {
-            return Response.json({ 
-                error: 'app_origem_id é obrigatório' 
-            }, { status: 400 });
+            return Response.json({ error: 'app_origem_id é obrigatório' }, { status: 400 });
         }
 
         const resultado = {
@@ -21,132 +15,167 @@ Deno.serve(async (req) => {
             visitas_importadas: 0,
             estoques_importados: 0,
             trocas_importadas: 0,
+            duplicatas_ignoradas: 0,
             erros: []
         };
 
-        // Importar Visitas
-        for (const visita of visitas) {
-            try {
-                await base44.asServiceRole.entities.RelatorioVisita.create({
-                    origem_app_id: app_origem_id,
-                    origem_visita_id: visita.origem_visita_id || visita.id,
-                    cliente_nome: visita.cliente_nome,
-                    cliente_codigo: visita.cliente_codigo,
-                    cliente_cidade: visita.cliente_cidade,
-                    cliente_uf: visita.cliente_uf,
-                    cliente_segmento: visita.cliente_segmento,
-                    promotor_nome: visita.promotor_nome,
-                    promotor_funcao: visita.promotor_funcao,
-                    data_visita: visita.data_visita,
-                    checkin_time: visita.checkin_time,
-                    checkout_time: visita.checkout_time,
-                    status: visita.status || 'pendente',
-                    justificativa_nao_atendimento: visita.justificativa_nao_atendimento,
-                    pedido_solicitado: visita.pedido_solicitado || false,
-                    motivo_nao_solicitacao: visita.motivo_nao_solicitacao,
-                    dia_semana: visita.dia_semana
-                });
-                resultado.visitas_importadas++;
-            } catch (error) {
-                resultado.erros.push({
-                    tipo: 'visita',
-                    id: visita.id || visita.origem_visita_id,
-                    erro: error.message
-                });
+        // Buscar registros existentes para evitar duplicatas
+        const [visitasExistentes, estoquesExistentes, trocasExistentes] = await Promise.all([
+            base44.asServiceRole.entities.RelatorioVisita.filter({ origem_app_id }),
+            base44.asServiceRole.entities.RelatorioEstoque.filter({ origem_app_id }),
+            base44.asServiceRole.entities.RelatorioTroca.filter({ origem_app_id })
+        ]);
+
+        const visitasJaImportadas = new Set(visitasExistentes.map(v => v.origem_visita_id));
+        const estoquesJaImportados = new Set(estoquesExistentes.map(e => e.origem_estoque_id));
+        const trocasJaImportadas = new Set(trocasExistentes.map(t => t.origem_troca_id));
+
+        // Filtrar apenas registros novos
+        const visitasNovas = visitas.filter(v => {
+            const id = v.origem_visita_id || v.id;
+            if (visitasJaImportadas.has(id)) {
+                resultado.duplicatas_ignoradas++;
+                return false;
             }
-        }
-
-        // Importar Estoques
-        for (const estoque of estoques) {
-            try {
-                await base44.asServiceRole.entities.RelatorioEstoque.create({
-                    origem_app_id: app_origem_id,
-                    origem_estoque_id: estoque.origem_estoque_id || estoque.id,
-                    origem_visita_id: estoque.origem_visita_id,
-                    cliente_nome: estoque.cliente_nome,
-                    cliente_codigo: estoque.cliente_codigo,
-                    produto_codigo: estoque.produto_codigo,
-                    produto_descricao: estoque.produto_descricao,
-                    produto_gramatura: estoque.produto_gramatura,
-                    quantidade: estoque.quantidade,
-                    data_validade: estoque.data_validade,
-                    data_fabricacao: estoque.data_fabricacao,
-                    horario_fabricacao: estoque.horario_fabricacao,
-                    data_registro: estoque.data_registro || new Date().toISOString(),
-                    promotor_nome: estoque.promotor_nome
-                });
-                resultado.estoques_importados++;
-            } catch (error) {
-                resultado.erros.push({
-                    tipo: 'estoque',
-                    id: estoque.id || estoque.origem_estoque_id,
-                    erro: error.message
-                });
-            }
-        }
-
-        // Importar Trocas
-        for (const troca of trocas) {
-            try {
-                // Calcular dias de vida útil
-                let diasVidaUtil = null;
-                if (troca.data_validade && troca.data_fabricacao) {
-                    const dataVal = new Date(troca.data_validade);
-                    const dataFab = new Date(troca.data_fabricacao);
-                    const diffDias = Math.floor((dataVal - dataFab) / (1000 * 60 * 60 * 24));
-                    diasVidaUtil = 25 - diffDias;
-                }
-
-                await base44.asServiceRole.entities.RelatorioTroca.create({
-                    origem_app_id: app_origem_id,
-                    origem_troca_id: troca.origem_troca_id || troca.id,
-                    origem_visita_id: troca.origem_visita_id,
-                    cliente_nome: troca.cliente_nome,
-                    cliente_codigo: troca.cliente_codigo,
-                    produto_codigo: troca.produto_codigo,
-                    produto_descricao: troca.produto_descricao,
-                    motivo_troca: troca.motivo_troca,
-                    quantidade: troca.quantidade,
-                    data_validade: troca.data_validade,
-                    data_fabricacao: troca.data_fabricacao,
-                    horario_fabricacao: troca.horario_fabricacao,
-                    ja_informado_anteriormente: troca.ja_informado_anteriormente || false,
-                    foto_url: troca.foto_url,
-                    data_registro: troca.data_registro || new Date().toISOString(),
-                    promotor_nome: troca.promotor_nome,
-                    dias_vida_util: diasVidaUtil
-                });
-                resultado.trocas_importadas++;
-            } catch (error) {
-                resultado.erros.push({
-                    tipo: 'troca',
-                    id: troca.id || troca.origem_troca_id,
-                    erro: error.message
-                });
-            }
-        }
-
-        // Atualizar ou criar ConfiguracaoImportacao
-        const configsExistentes = await base44.asServiceRole.entities.ConfiguracaoImportacao.filter({
-            app_origem_id
+            return true;
         });
 
+        const estoquesNovos = estoques.filter(e => {
+            const id = e.origem_estoque_id || e.id;
+            if (estoquesJaImportados.has(id)) {
+                resultado.duplicatas_ignoradas++;
+                return false;
+            }
+            return true;
+        });
+
+        const trocasNovas = trocas.filter(t => {
+            const id = t.origem_troca_id || t.id;
+            if (trocasJaImportadas.has(id)) {
+                resultado.duplicatas_ignoradas++;
+                return false;
+            }
+            return true;
+        });
+
+        // Importar Visitas em lote
+        if (visitasNovas.length > 0) {
+            try {
+                const visitasFormatadas = visitasNovas.map(v => ({
+                    origem_app_id,
+                    origem_visita_id: v.origem_visita_id || v.id,
+                    cliente_nome: v.cliente_nome,
+                    cliente_codigo: v.cliente_codigo,
+                    cliente_cidade: v.cliente_cidade,
+                    cliente_uf: v.cliente_uf,
+                    cliente_segmento: v.cliente_segmento,
+                    promotor_nome: v.promotor_nome,
+                    promotor_funcao: v.promotor_funcao,
+                    data_visita: v.data_visita,
+                    checkin_time: v.checkin_time,
+                    checkout_time: v.checkout_time,
+                    status: v.status || 'pendente',
+                    justificativa_nao_atendimento: v.justificativa_nao_atendimento,
+                    pedido_solicitado: v.pedido_solicitado || false,
+                    motivo_nao_solicitacao: v.motivo_nao_solicitacao,
+                    dia_semana: v.dia_semana
+                }));
+                await base44.asServiceRole.entities.RelatorioVisita.bulkCreate(visitasFormatadas);
+                resultado.visitas_importadas = visitasFormatadas.length;
+            } catch (error) {
+                resultado.erros.push({ tipo: 'visitas_bulk', erro: error.message });
+            }
+        }
+
+        // Importar Estoques em lote
+        if (estoquesNovos.length > 0) {
+            try {
+                const estoquesFormatados = estoquesNovos.map(e => ({
+                    origem_app_id,
+                    origem_estoque_id: e.origem_estoque_id || e.id,
+                    origem_visita_id: e.origem_visita_id,
+                    cliente_nome: e.cliente_nome,
+                    cliente_codigo: e.cliente_codigo,
+                    produto_codigo: e.produto_codigo,
+                    produto_descricao: e.produto_descricao,
+                    produto_gramatura: e.produto_gramatura,
+                    quantidade: e.quantidade,
+                    data_validade: e.data_validade,
+                    data_fabricacao: e.data_fabricacao,
+                    horario_fabricacao: e.horario_fabricacao,
+                    data_registro: e.data_registro || new Date().toISOString(),
+                    promotor_nome: e.promotor_nome
+                }));
+                await base44.asServiceRole.entities.RelatorioEstoque.bulkCreate(estoquesFormatados);
+                resultado.estoques_importados = estoquesFormatados.length;
+            } catch (error) {
+                resultado.erros.push({ tipo: 'estoques_bulk', erro: error.message });
+            }
+        }
+
+        // Importar Trocas em lote
+        if (trocasNovas.length > 0) {
+            try {
+                const trocasFormatadas = trocasNovas.map(t => {
+                    let diasVidaUtil = null;
+                    if (t.data_validade && t.data_fabricacao) {
+                        const dataVal = new Date(t.data_validade);
+                        const dataFab = new Date(t.data_fabricacao);
+                        const diffDias = Math.floor((dataVal - dataFab) / (1000 * 60 * 60 * 24));
+                        diasVidaUtil = 25 - diffDias;
+                    }
+
+                    return {
+                        origem_app_id,
+                        origem_troca_id: t.origem_troca_id || t.id,
+                        origem_visita_id: t.origem_visita_id,
+                        cliente_nome: t.cliente_nome,
+                        cliente_codigo: t.cliente_codigo,
+                        produto_codigo: t.produto_codigo,
+                        produto_descricao: t.produto_descricao,
+                        motivo_troca: t.motivo_troca,
+                        quantidade: t.quantidade,
+                        data_validade: t.data_validade,
+                        data_fabricacao: t.data_fabricacao,
+                        horario_fabricacao: t.horario_fabricacao,
+                        ja_informado_anteriormente: t.ja_informado_anteriormente || false,
+                        foto_url: t.foto_url,
+                        data_registro: t.data_registro || new Date().toISOString(),
+                        promotor_nome: t.promotor_nome,
+                        dias_vida_util: diasVidaUtil
+                    };
+                });
+                await base44.asServiceRole.entities.RelatorioTroca.bulkCreate(trocasFormatadas);
+                resultado.trocas_importadas = trocasFormatadas.length;
+            } catch (error) {
+                resultado.erros.push({ tipo: 'trocas_bulk', erro: error.message });
+            }
+        }
+
+        // Atualizar configuração com totais reais
+        const [novoTotalVisitas, novoTotalEstoques, novoTotalTrocas] = await Promise.all([
+            base44.asServiceRole.entities.RelatorioVisita.filter({ origem_app_id }),
+            base44.asServiceRole.entities.RelatorioEstoque.filter({ origem_app_id }),
+            base44.asServiceRole.entities.RelatorioTroca.filter({ origem_app_id })
+        ]);
+
+        const configsExistentes = await base44.asServiceRole.entities.ConfiguracaoImportacao.filter({ app_origem_id });
+
         if (configsExistentes.length > 0) {
-            const config = configsExistentes[0];
-            await base44.asServiceRole.entities.ConfiguracaoImportacao.update(config.id, {
+            await base44.asServiceRole.entities.ConfiguracaoImportacao.update(configsExistentes[0].id, {
                 ultima_importacao: new Date().toISOString(),
-                total_visitas_importadas: (config.total_visitas_importadas || 0) + resultado.visitas_importadas,
-                total_estoques_importados: (config.total_estoques_importados || 0) + resultado.estoques_importados,
-                total_trocas_importadas: (config.total_trocas_importadas || 0) + resultado.trocas_importadas
+                total_visitas_importadas: novoTotalVisitas.length,
+                total_estoques_importados: novoTotalEstoques.length,
+                total_trocas_importadas: novoTotalTrocas.length
             });
         } else {
             await base44.asServiceRole.entities.ConfiguracaoImportacao.create({
                 app_origem_id,
                 app_origem_nome: payload.app_origem_nome || 'Gestor Visita',
                 ultima_importacao: new Date().toISOString(),
-                total_visitas_importadas: resultado.visitas_importadas,
-                total_estoques_importados: resultado.estoques_importados,
-                total_trocas_importadas: resultado.trocas_importadas,
+                total_visitas_importadas: novoTotalVisitas.length,
+                total_estoques_importados: novoTotalEstoques.length,
+                total_trocas_importadas: novoTotalTrocas.length,
                 status: 'ativo'
             });
         }
