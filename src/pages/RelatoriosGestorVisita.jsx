@@ -25,19 +25,22 @@ export default function RelatoriosGestorVisita() {
   const { data: visitas = [], isLoading: loadingVisitas, refetch: refetchVisitas } = useQuery({
     queryKey: ['relatorioVisitas'],
     queryFn: () => base44.entities.RelatorioVisita.list('-data_visita', 1000),
-    refetchInterval: 2 * 60 * 60 * 1000
+    refetchInterval: 2 * 60 * 60 * 1000, // Atualiza automaticamente a cada 2 horas
+    refetchOnWindowFocus: true // Atualiza quando voltar para a aba
   });
 
   const { data: estoques = [], isLoading: loadingEstoques } = useQuery({
     queryKey: ['relatorioEstoques'],
     queryFn: () => base44.entities.RelatorioEstoque.list('-data_registro', 1000),
-    refetchInterval: 2 * 60 * 60 * 1000
+    refetchInterval: 2 * 60 * 60 * 1000,
+    refetchOnWindowFocus: true
   });
 
   const { data: trocas = [], isLoading: loadingTrocas } = useQuery({
     queryKey: ['relatorioTrocas'],
     queryFn: () => base44.entities.RelatorioTroca.list('-data_registro', 1000),
-    refetchInterval: 2 * 60 * 60 * 1000
+    refetchInterval: 2 * 60 * 60 * 1000,
+    refetchOnWindowFocus: true
   });
 
   // Promotores únicos
