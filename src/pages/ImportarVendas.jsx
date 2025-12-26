@@ -621,11 +621,20 @@ function ManualEntryForm() {
     cliente_id: '',
     produto_id: '',
     quantidade: '',
+    valor_unitario: '',
     valor_total: '',
     bonificacao: '0',
     troca: '0'
   });
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Calcular valor total automaticamente
+  useEffect(() => {
+    const qtd = parseFloat(formData.quantidade) || 0;
+    const vlUnit = parseFloat(formData.valor_unitario) || 0;
+    const total = qtd * vlUnit;
+    setFormData(prev => ({ ...prev, valor_total: total.toFixed(2) }));
+  }, [formData.quantidade, formData.valor_unitario]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
   const { data: produtos = [] } = useQuery({ queryKey: ['produtos'], queryFn: () => base44.entities.Produto.list() });
@@ -715,7 +724,7 @@ function ManualEntryForm() {
       queryClient.invalidateQueries(['vendas']);
       queryClient.invalidateQueries(['trocas']);
       setSuccessMsg('Venda registrada com sucesso!');
-      setFormData(prev => ({ ...prev, quantidade: '', valor_total: '', bonificacao: '0', troca: '0' }));
+      setFormData(prev => ({ ...prev, quantidade: '', valor_unitario: '', valor_total: '', bonificacao: '0', troca: '0' }));
       setTimeout(() => setSuccessMsg(''), 3000);
     }
   });
@@ -786,7 +795,7 @@ function ManualEntryForm() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <Label>Quantidade Líquida</Label>
               <Input 
@@ -798,13 +807,24 @@ function ManualEntryForm() {
               />
             </div>
             <div>
-              <Label>Valor Líquido (R$)</Label>
+              <Label>Valor Unitário (R$)</Label>
+              <Input 
+                type="number" 
+                step="0.01"
+                required
+                value={formData.valor_unitario}
+                onChange={e => setFormData({...formData, valor_unitario: e.target.value})}
+              />
+            </div>
+            <div>
+              <Label>Valor Total (R$)</Label>
               <Input 
                 type="number" 
                 step="0.01"
                 required
                 value={formData.valor_total}
-                onChange={e => setFormData({...formData, valor_total: e.target.value})}
+                readOnly
+                className="bg-slate-100"
               />
             </div>
           </div>
