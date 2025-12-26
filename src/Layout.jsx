@@ -116,6 +116,11 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
           { title: 'Dashboard Clientes', path: 'DashboardClientes' }
         ]
+      },
+      {
+        title: 'Painel Gestor Visita',
+        icon: TrendingUp,
+        path: 'PainelGestorVisita'
       }
     ];
 
