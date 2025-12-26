@@ -118,9 +118,13 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Painel Gestor Visita',
+        title: 'Integração Gestor Visita',
         icon: TrendingUp,
-        path: 'PainelGestorVisita'
+        submenu: [
+          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
+          { title: 'Relatórios de Visitas', path: 'RelatoriosGestorVisita' },
+          { title: 'Importações', path: 'Importacoes' }
+        ]
       }
     ];
 
