@@ -145,17 +145,17 @@ Deno.serve(async (req) => {
                 origem_app_id: GESTOR_VISITA_APP_ID,
                 origem_estoque_id: estoque.id,
                 origem_visita_id: estoque.visita_id,
-                cliente_nome: cliente?.nome_fantasia,
-                cliente_codigo: cliente?.codigo_interno,
-                produto_codigo: produto?.codigo,
-                produto_descricao: produto?.descricao,
-                produto_gramatura: produto?.gramatura,
-                quantidade: estoque.quantidade,
-                data_validade: estoque.data_validade,
-                data_fabricacao: estoque.data_fabricacao,
-                horario_fabricacao: estoque.horario_fabricacao,
-                data_registro: estoque.created_date,
-                promotor_nome: promotor?.nome_completo
+                cliente_nome: cliente?.nome_fantasia || cliente?.razao_social || 'N/A',
+                cliente_codigo: cliente?.codigo_interno || cliente?.codigo || 'N/A',
+                produto_codigo: produto?.codigo || 'N/A',
+                produto_descricao: produto?.descricao || produto?.nome || 'N/A',
+                produto_gramatura: produto?.gramatura || null,
+                quantidade: estoque.quantidade || 0,
+                data_validade: estoque.data_validade || null,
+                data_fabricacao: estoque.data_fabricacao || null,
+                horario_fabricacao: estoque.horario_fabricacao || null,
+                data_registro: estoque.created_date || new Date().toISOString(),
+                promotor_nome: promotor?.nome_completo || promotor?.nome || 'Sem Promotor'
             });
         }
 
