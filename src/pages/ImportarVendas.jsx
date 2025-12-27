@@ -307,6 +307,15 @@ function TrocasImportadasTab() {
                 Excluir Selecionadas ({selectedTrocas.length})
               </Button>
             )}
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteAll}
+              disabled={isDeleting || trocasFiltradas.length === 0}
+              className="gap-2 bg-red-700 hover:bg-red-800"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
+              Excluir Todas ({trocasFiltradas.length})
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
