@@ -161,8 +161,8 @@ function TrocasImportadasTab() {
     setIsDeleting(true);
     try {
       // Deletar em lotes menores para evitar rate limit
-      const BATCH_SIZE = 30;
-      const DELAY_MS = 1500;
+      const BATCH_SIZE = 10;
+      const DELAY_MS = 3000;
       
       let deletados = 0;
       for (let i = 0; i < selectedTrocas.length; i += BATCH_SIZE) {
@@ -170,10 +170,8 @@ function TrocasImportadasTab() {
         await Promise.all(batch.map(id => base44.entities.Troca.delete(id)));
         deletados += batch.length;
         
-        // Delay entre lotes
-        if (i + BATCH_SIZE < selectedTrocas.length) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-        }
+        // Delay entre todos os lotes
+        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
       
       queryClient.invalidateQueries(['trocas_todas']);
