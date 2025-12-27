@@ -184,6 +184,46 @@ function TrocasImportadasTab() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (trocasFiltradas.length === 0) {
+      alert('Não há trocas para excluir');
+      return;
+    }
+
+    if (!confirm(`⚠️ ATENÇÃO: Deseja realmente excluir TODAS as ${trocasFiltradas.length} trocas exibidas?\n\nEsta ação não pode ser desfeita!`)) {
+      return;
+    }
+
+    if (!confirm(`Confirme novamente: Excluir ${trocasFiltradas.length} trocas?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const idsParaExcluir = trocasFiltradas.map(t => t.id);
+      const BATCH_SIZE = 10;
+      const DELAY_MS = 3000;
+      
+      let deletados = 0;
+      for (let i = 0; i < idsParaExcluir.length; i += BATCH_SIZE) {
+        const batch = idsParaExcluir.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(id => base44.entities.Troca.delete(id)));
+        deletados += batch.length;
+        
+        // Delay entre todos os lotes
+        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+      }
+      
+      queryClient.invalidateQueries(['trocas_todas']);
+      setSelectedTrocas([]);
+      alert(`✅ ${deletados} troca(s) excluída(s) com sucesso!`);
+    } catch (error) {
+      alert('Erro ao excluir trocas: ' + error.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
