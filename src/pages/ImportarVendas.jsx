@@ -160,10 +160,25 @@ function TrocasImportadasTab() {
 
     setIsDeleting(true);
     try {
-      await base44.functions.invoke('excluirTrocasEmMassa', { ids: selectedTrocas });
+      // Deletar em lotes menores para evitar rate limit
+      const BATCH_SIZE = 30;
+      const DELAY_MS = 1500;
+      
+      let deletados = 0;
+      for (let i = 0; i < selectedTrocas.length; i += BATCH_SIZE) {
+        const batch = selectedTrocas.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(id => base44.entities.Troca.delete(id)));
+        deletados += batch.length;
+        
+        // Delay entre lotes
+        if (i + BATCH_SIZE < selectedTrocas.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+        }
+      }
+      
       queryClient.invalidateQueries(['trocas_todas']);
       setSelectedTrocas([]);
-      alert(`✅ ${selectedTrocas.length} troca(s) excluída(s) com sucesso!`);
+      alert(`✅ ${deletados} troca(s) excluída(s) com sucesso!`);
     } catch (error) {
       alert('Erro ao excluir trocas: ' + error.message);
     } finally {
