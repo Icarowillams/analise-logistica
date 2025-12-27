@@ -205,11 +205,11 @@ Deno.serve(async (req) => {
                     origem_app_id: GESTOR_VISITA_APP_ID,
                     origem_troca_id: troca.id,
                     origem_visita_id: troca.visita_id || '',
-                    cliente_nome: cliente?.nome_fantasia || 'N/A',
-                    cliente_codigo: cliente?.codigo_interno || '',
-                    produto_codigo: produto?.codigo || '',
-                    produto_descricao: produto?.descricao || troca.produto_descricao || 'N/A',
-                    motivo_troca: motivo?.motivo || 'N/A',
+                    cliente_nome: cliente?.nome_fantasia || cliente?.razao_social || 'N/A',
+                    cliente_codigo: cliente?.codigo_interno || cliente?.codigo || 'N/A',
+                    produto_codigo: produto?.codigo || 'N/A',
+                    produto_descricao: produto?.descricao || produto?.nome || troca.produto_descricao || 'N/A',
+                    motivo_troca: motivo?.motivo || motivo?.descricao || 'N/A',
                     quantidade: troca.quantidade || 0,
                     data_validade: troca.data_validade || null,
                     data_fabricacao: troca.data_fabricacao || null,
@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
                     ja_informado_anteriormente: troca.ja_informado_anteriormente || false,
                     foto_url: troca.foto_url || null,
                     data_registro: troca.created_date || new Date().toISOString(),
-                    promotor_nome: promotor?.nome_completo || 'N/A',
+                    promotor_nome: promotor?.nome_completo || promotor?.nome || 'Sem Promotor',
                     dias_vida_util: diasVidaUtil
                 });
             } catch (error) {
