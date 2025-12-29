@@ -160,23 +160,16 @@ function TrocasImportadasTab() {
 
     setIsDeleting(true);
     try {
-      // Deletar em lotes menores para evitar rate limit
-      const BATCH_SIZE = 10;
-      const DELAY_MS = 3000;
-      
-      let deletados = 0;
-      for (let i = 0; i < selectedTrocas.length; i += BATCH_SIZE) {
-        const batch = selectedTrocas.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(id => base44.entities.Troca.delete(id)));
-        deletados += batch.length;
-        
-        // Delay entre todos os lotes
-        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-      }
+      const { data } = await base44.functions.invoke('excluirTrocasEmMassa', { ids: selectedTrocas });
       
       queryClient.invalidateQueries(['trocas_todas']);
       setSelectedTrocas([]);
-      alert(`✅ ${deletados} troca(s) excluída(s) com sucesso!`);
+      
+      if (data.success) {
+        alert(`✅ ${data.deletados} troca(s) excluída(s) com sucesso!`);
+      } else {
+        alert(`Erro: ${data.error}`);
+      }
     } catch (error) {
       alert('Erro ao excluir trocas: ' + error.message);
     } finally {
@@ -201,22 +194,16 @@ function TrocasImportadasTab() {
     setIsDeleting(true);
     try {
       const idsParaExcluir = trocasFiltradas.map(t => t.id);
-      const BATCH_SIZE = 10;
-      const DELAY_MS = 3000;
-      
-      let deletados = 0;
-      for (let i = 0; i < idsParaExcluir.length; i += BATCH_SIZE) {
-        const batch = idsParaExcluir.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(id => base44.entities.Troca.delete(id)));
-        deletados += batch.length;
-        
-        // Delay entre todos os lotes
-        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-      }
+      const { data } = await base44.functions.invoke('excluirTrocasEmMassa', { ids: idsParaExcluir });
       
       queryClient.invalidateQueries(['trocas_todas']);
       setSelectedTrocas([]);
-      alert(`✅ ${deletados} troca(s) excluída(s) com sucesso!`);
+      
+      if (data.success) {
+        alert(`✅ ${data.deletados} troca(s) excluída(s) com sucesso!`);
+      } else {
+        alert(`Erro: ${data.error}`);
+      }
     } catch (error) {
       alert('Erro ao excluir trocas: ' + error.message);
     } finally {
