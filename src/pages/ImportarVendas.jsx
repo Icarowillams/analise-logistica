@@ -412,6 +412,7 @@ function ImportacaoTab() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
@@ -721,25 +722,58 @@ function ImportacaoTab() {
       queryClient.invalidateQueries(['trocas']);
       
       // Mostrar resumo da importação
-      const msgResumo = [];
-      if (vendasData.length > 0) msgResumo.push(`${vendasData.length} vendas`);
-      if (trocasData.length > 0) msgResumo.push(`${trocasData.length} trocas`);
-      
-      if (msgResumo.length > 0) {
-        alert(`✅ Importação concluída:\n${msgResumo.join('\n')}`);
-      }
+      setImportResult({
+        success: true,
+        vendas: vendasData.length,
+        trocas: trocasData.length
+      });
       
       setIsImporting(false);
       setBulkOpen(false);
+      
+      // Limpar mensagem após 5 segundos
+      setTimeout(() => setImportResult(null), 5000);
     } catch (error) {
       console.error('Erro na importação:', error);
-      alert('Erro ao importar vendas: ' + error.message);
+      setImportResult({
+        success: false,
+        error: error.message
+      });
       setIsImporting(false);
+      
+      // Limpar mensagem após 8 segundos
+      setTimeout(() => setImportResult(null), 8000);
     }
   };
   
   return (
     <div className="space-y-6">
+      {importResult && (
+        <Alert className={importResult.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}>
+          {importResult.success ? (
+            <CheckCircle className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-red-600" />
+          )}
+          <AlertDescription className={importResult.success ? "text-emerald-800" : "text-red-800"}>
+            {importResult.success ? (
+              <>
+                <strong>✅ Importação concluída com sucesso!</strong>
+                <div className="mt-2 space-y-1">
+                  {importResult.vendas > 0 && <div>• {importResult.vendas} vendas importadas</div>}
+                  {importResult.trocas > 0 && <div>• {importResult.trocas} trocas importadas</div>}
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>❌ Erro na importação</strong>
+                <div className="mt-2">{importResult.error}</div>
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Alert className="bg-orange-50 border-orange-200">
           <AlertCircle className="h-4 w-4 text-orange-600" />
