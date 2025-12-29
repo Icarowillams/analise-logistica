@@ -93,7 +93,7 @@ function TrocasImportadasTab() {
         query.data = { '$lte': appliedDates.end };
       }
       
-      const allTrocas = await base44.entities.Troca.list('-data', 5000);
+      const allTrocas = await base44.entities.Troca.list('-data', 50000);
       
       // Aplicar filtro de data se necessário
       if (Object.keys(query).length > 0 && query.data) {

@@ -1,6 +1,8 @@
 import AtualizarSupervisores from './pages/AtualizarSupervisores';
 import Categorias from './pages/Categorias';
 import Clientes from './pages/Clientes';
+import ConfigurarIntegracao from './pages/ConfigurarIntegracao';
+import ConfigurarWebhook from './pages/ConfigurarWebhook';
 import Dashboard from './pages/Dashboard';
 import DashboardClientes from './pages/DashboardClientes';
 import DashboardTrocas from './pages/DashboardTrocas';
@@ -28,8 +30,6 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import ConfigurarWebhook from './pages/ConfigurarWebhook';
-import ConfigurarIntegracao from './pages/ConfigurarIntegracao';
 import __Layout from './Layout.jsx';
 
 
@@ -37,6 +37,8 @@ export const PAGES = {
     "AtualizarSupervisores": AtualizarSupervisores,
     "Categorias": Categorias,
     "Clientes": Clientes,
+    "ConfigurarIntegracao": ConfigurarIntegracao,
+    "ConfigurarWebhook": ConfigurarWebhook,
     "Dashboard": Dashboard,
     "DashboardClientes": DashboardClientes,
     "DashboardTrocas": DashboardTrocas,
@@ -64,8 +66,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "ConfigurarWebhook": ConfigurarWebhook,
-    "ConfigurarIntegracao": ConfigurarIntegracao,
 }
 
 export const pagesConfig = {
