@@ -585,7 +585,7 @@ function ImportacaoTab() {
 
     // PROCESSAMENTO RÁPIDO
     const vendasData = [];
-    const trocasNaoCadastradas = [];
+    const trocasData = [];
     
     for (const row of data) {
         // Parse date
@@ -622,34 +622,6 @@ function ImportacaoTab() {
         // É troca apenas se a coluna estiver preenchida com 'SIM'
         const isTroca = trocaValue === 'SIM';
 
-        // Debug log
-        console.log(`Pedido: ${row.numpedido}, Coluna 'troca': '${row.troca}', isTroca: ${isTroca}, qtdRaw: ${qtdRaw}`);
-
-        // Se é troca e cliente não cadastrado, armazenar separadamente
-        if (isTroca && !cliente && produto) {
-          const d = new Date(dataVenda);
-          d.setDate(d.getDate() - 1);
-          const dataTroca = format(d, 'yyyy-MM-dd');
-          
-          trocasNaoCadastradas.push({
-            data: dataTroca,
-            codigo_cliente: String(row.codcliente),
-            produto_original_id: produto.id,
-            produto_original_nome: produto.nome,
-            quantidade: qtdRaw,
-            observacoes: `Pedido: ${row.numpedido || 'S/N'} - Cliente não cadastrado: ${row.codcliente}`
-          });
-          continue;
-        }
-
-        if (!cliente || !produto) continue;
-        
-        const vend = vendedoresPorId.get(cliente.vendedor_id);
-        
-        const qtdVenda = isTroca ? 0 : qtdRaw;
-        const qtdTroca = isTroca ? qtdRaw : 0;
-        const valorTotal = qtdRaw * vlUnit;
-
         // Calcular data_troca: se for troca, data_troca = data - 1 dia (exceto segunda que é -2 dias)
         let dataTroca = null;
         if (isTroca) {
@@ -664,75 +636,78 @@ function ImportacaoTab() {
           dataTroca = format(d, 'yyyy-MM-dd');
         }
 
-        vendasData.push({
-          numero_pedido: row.numpedido || `S/N-${dataVenda}-${cliente.id}`,
-          data: dataVenda,
-          data_troca: dataTroca,
-          vendedor_id: cliente.vendedor_id,
-          vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
-          supervisor_id: vend?.supervisor_id,
-          cliente_id: cliente.id,
-          cliente_nome: cliente.razao_social || cliente.nome_fantasia,
-          produto_id: produto.id,
-          produto_nome: produto.nome,
-          categoria_id: produto.categoria_id,
-          sub_categoria_id: produto.sub_categoria_id,
-          segmento_id: cliente.segmento_id,
-          rede_id: cliente.rede_id,
-          rota_id: cliente.rota_id,
-          tabela_id: cliente.tabela_id,
-          plano_pagamento_id: cliente.plano_pagamento_id,
-          quantidade: qtdVenda,
-          valor_total: valorTotal,
-          valor_unitario: vlUnit,
-          margem: 0,
-          bonificacao: 0,
-          troca: qtdTroca
-        });
-    }
-
-      // Separar vendas e trocas cadastradas
-      const trocasData = [];
-      
-      for (const venda of vendasData) {
-        if (venda.troca > 0) {
-          // Criar registro de troca para clientes cadastrados
-          trocasData.push({
-            data: venda.data_troca || venda.data,
-            cliente_id: venda.cliente_id,
-            cliente_nome: venda.cliente_nome,
-            produto_original_id: venda.produto_id,
-            produto_original_nome: venda.produto_nome,
-            produto_novo_id: null,
-            produto_novo_nome: null,
-            motivo_id: motivoTrocaId,
-            motivo_descricao: 'Troca importada via sistema',
-            vendedor_id: venda.vendedor_id,
-            vendedor_nome: venda.vendedor_nome,
-            quantidade: venda.troca,
-            observacoes: `Pedido: ${venda.numero_pedido}`
-          });
+        if (isTroca) {
+          // **SE FOR TROCA**: criar APENAS registro de troca, NÃO criar venda
+          if (!cliente && produto) {
+            // Troca de cliente não cadastrado
+            trocasData.push({
+              data: dataTroca || dataVenda,
+              cliente_id: '',
+              cliente_nome: `Cliente Não Cadastrado: ${row.codcliente}`,
+              produto_original_id: produto.id,
+              produto_original_nome: produto.nome,
+              produto_novo_id: '',
+              produto_novo_nome: '',
+              motivo_id: motivoTrocaId || '',
+              motivo_descricao: 'Troca importada - Cliente não cadastrado',
+              vendedor_id: '',
+              vendedor_nome: 'N/A',
+              quantidade: qtdRaw,
+              observacoes: `Pedido: ${row.numpedido || 'S/N'} - Cliente não cadastrado: ${row.codcliente}`
+            });
+          } else if (cliente && produto) {
+            // Troca de cliente cadastrado
+            const vend = vendedoresPorId.get(cliente.vendedor_id);
+            trocasData.push({
+              data: dataTroca || dataVenda,
+              cliente_id: cliente.id,
+              cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+              produto_original_id: produto.id,
+              produto_original_nome: produto.nome,
+              produto_novo_id: null,
+              produto_novo_nome: null,
+              motivo_id: motivoTrocaId,
+              motivo_descricao: 'Troca importada via sistema',
+              vendedor_id: cliente.vendedor_id || '',
+              vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
+              quantidade: qtdRaw,
+              observacoes: `Pedido: ${row.numpedido || 'S/N'}`
+            });
+          }
+        } else {
+          // **SE FOR VENDA**: criar APENAS registro de venda, NÃO criar troca
+          if (cliente && produto) {
+            const vend = vendedoresPorId.get(cliente.vendedor_id);
+            const valorTotal = qtdRaw * vlUnit;
+            
+            vendasData.push({
+              numero_pedido: row.numpedido || `S/N-${dataVenda}-${cliente.id}`,
+              data: dataVenda,
+              data_troca: null,
+              vendedor_id: cliente.vendedor_id,
+              vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
+              supervisor_id: vend?.supervisor_id,
+              cliente_id: cliente.id,
+              cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+              produto_id: produto.id,
+              produto_nome: produto.nome,
+              categoria_id: produto.categoria_id,
+              sub_categoria_id: produto.sub_categoria_id,
+              segmento_id: cliente.segmento_id,
+              rede_id: cliente.rede_id,
+              rota_id: cliente.rota_id,
+              tabela_id: cliente.tabela_id,
+              plano_pagamento_id: cliente.plano_pagamento_id,
+              quantidade: qtdRaw,
+              valor_total: valorTotal,
+              valor_unitario: vlUnit,
+              margem: 0,
+              bonificacao: 0,
+              troca: 0
+            });
+          }
         }
-      }
-
-      // Adicionar trocas de clientes não cadastrados (sem vendedor_id, apenas código)
-      for (const troca of trocasNaoCadastradas) {
-        trocasData.push({
-          data: troca.data,
-          cliente_id: '',
-          cliente_nome: `Cliente Não Cadastrado: ${troca.codigo_cliente}`,
-          produto_original_id: troca.produto_original_id,
-          produto_original_nome: troca.produto_original_nome,
-          produto_novo_id: '',
-          produto_novo_nome: '',
-          motivo_id: motivoTrocaId || '',
-          motivo_descricao: 'Troca importada - Cliente não cadastrado',
-          vendedor_id: '',
-          vendedor_nome: 'N/A',
-          quantidade: troca.quantidade,
-          observacoes: troca.observacoes
-        });
-      }
+    }
 
       if (vendasData.length > 0) {
           await base44.entities.Venda.bulkCreate(vendasData);
