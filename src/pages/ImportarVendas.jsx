@@ -724,7 +724,6 @@ function ImportacaoTab() {
       const msgResumo = [];
       if (vendasData.length > 0) msgResumo.push(`${vendasData.length} vendas`);
       if (trocasData.length > 0) msgResumo.push(`${trocasData.length} trocas`);
-      if (trocasNaoCadastradas.length > 0) msgResumo.push(`${trocasNaoCadastradas.length} trocas sem cliente cadastrado`);
       
       if (msgResumo.length > 0) {
         alert(`✅ Importação concluída:\n${msgResumo.join('\n')}`);
