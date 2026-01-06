@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
+import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 
 export default function MeusRoteiros() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -295,25 +297,17 @@ function VisitaDetalhes({ visita, cliente }) {
         </TabsList>
 
         <TabsContent value="estoque">
-          <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} />
+          <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
         </TabsContent>
 
         <TabsContent value="trocas">
-          <TrocasForm visitaId={visita.id} clienteId={cliente.cliente_id} />
+          <TrocasForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
         </TabsContent>
       </Tabs>
 
       <CheckoutButton visitaId={visita.id} />
     </div>
   );
-}
-
-function EstoqueForm({ visitaId, clienteId }) {
-  return <div>Formulário de Estoque (em desenvolvimento)</div>;
-}
-
-function TrocasForm({ visitaId, clienteId }) {
-  return <div>Formulário de Trocas (em desenvolvimento)</div>;
 }
 
 function CheckoutButton({ visitaId }) {
