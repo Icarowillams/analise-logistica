@@ -178,38 +178,61 @@ function TrocasImportadasTab() {
   };
 
   const handleDeleteAll = async () => {
-    if (trocasFiltradas.length === 0) {
-      alert('Não há trocas para excluir');
-      return;
-    }
-
-    if (!confirm(`⚠️ ATENÇÃO: Deseja realmente excluir TODAS as ${trocasFiltradas.length} trocas exibidas?\n\nEsta ação não pode ser desfeita!`)) {
-      return;
-    }
-
-    if (!confirm(`Confirme novamente: Excluir ${trocasFiltradas.length} trocas?`)) {
-      return;
-    }
-
-    setIsDeleting(true);
-    try {
-      const idsParaExcluir = trocasFiltradas.map(t => t.id);
-      const { data } = await base44.functions.invoke('excluirTrocasEmMassa', { ids: idsParaExcluir });
-      
-      queryClient.invalidateQueries(['trocas_todas']);
-      setSelectedTrocas([]);
-      
-      if (data.success) {
-        alert(`✅ ${data.deletados} troca(s) excluída(s) com sucesso!`);
-      } else {
-        alert(`Erro: ${data.error}`);
+      if (trocasFiltradas.length === 0) {
+        alert('Não há trocas para excluir');
+        return;
       }
-    } catch (error) {
-      alert('Erro ao excluir trocas: ' + error.message);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+
+      if (!confirm(`⚠️ ATENÇÃO: Deseja realmente excluir TODAS as ${trocasFiltradas.length} trocas exibidas?\n\nEsta ação não pode ser desfeita!`)) {
+        return;
+      }
+
+      if (!confirm(`Confirme novamente: Excluir ${trocasFiltradas.length} trocas?`)) {
+        return;
+      }
+
+      setIsDeleting(true);
+      try {
+        const idsParaExcluir = trocasFiltradas.map(t => t.id);
+        const { data } = await base44.functions.invoke('excluirTrocasEmMassa', { ids: idsParaExcluir });
+
+        queryClient.invalidateQueries(['trocas_todas']);
+        setSelectedTrocas([]);
+
+        if (data.success) {
+          alert(`✅ ${data.deletados} troca(s) excluída(s) com sucesso!`);
+        } else {
+          alert(`Erro: ${data.error}`);
+        }
+      } catch (error) {
+        alert('Erro ao excluir trocas: ' + error.message);
+      } finally {
+        setIsDeleting(false);
+      }
+    };
+
+    const handleAtualizarValores = async () => {
+      if (!confirm('Deseja atualizar os valores unitários das trocas com base nas vendas correspondentes?\n\nEste processo pode levar alguns minutos.')) {
+        return;
+      }
+
+      setIsDeleting(true);
+      try {
+        const { data } = await base44.functions.invoke('atualizarValoresTrocas', {});
+
+        queryClient.invalidateQueries(['trocas_todas']);
+
+        if (data.success) {
+          alert(`✅ Atualização concluída!\n\n${data.atualizados} trocas atualizadas\n${data.erros} erros`);
+        } else {
+          alert(`Erro: ${data.error}`);
+        }
+      } catch (error) {
+        alert('Erro ao atualizar valores: ' + error.message);
+      } finally {
+        setIsDeleting(false);
+      }
+    };
 
   return (
     <div className="space-y-6">
@@ -303,8 +326,17 @@ function TrocasImportadasTab() {
               {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
               Excluir Todas ({trocasFiltradas.length})
             </Button>
-          </div>
-        </CardHeader>
+            <Button 
+              variant="outline" 
+              onClick={handleAtualizarValores}
+              disabled={isDeleting}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Atualizar Valores
+            </Button>
+            </div>
+            </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
