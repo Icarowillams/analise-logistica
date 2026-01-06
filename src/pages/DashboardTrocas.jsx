@@ -238,13 +238,21 @@ export default function DashboardTrocas() {
   const valorTotal = useMemo(() => {
     let total = 0;
     trocasFiltradas.forEach(t => {
-      // Buscar valor do produto nas vendas
-      const venda = vendas.find(v => 
+      // Buscar vendas do mesmo produto e cliente no período próximo (até 30 dias)
+      const vendasRelacionadas = vendas.filter(v => 
         v.produto_id === t.produto_original_id && 
         v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000 // 7 dias
+        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
       );
-      const valorUnit = venda?.valor_unitario || 0;
+      
+      // Pegar o valor unitário médio ou o mais recente
+      let valorUnit = 0;
+      if (vendasRelacionadas.length > 0) {
+        // Ordenar por data mais recente
+        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
+        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
+      }
+      
       total += (t.quantidade || 0) * valorUnit;
     });
     return total;
@@ -283,12 +291,19 @@ export default function DashboardTrocas() {
       if (!grouped[nome]) {
         grouped[nome] = { qtd: 0, valor: 0 };
       }
-      const venda = vendas.find(v => 
+      
+      const vendasRelacionadas = vendas.filter(v => 
         v.produto_id === t.produto_original_id && 
         v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
       );
-      const valorUnit = venda?.valor_unitario || 0;
+      
+      let valorUnit = 0;
+      if (vendasRelacionadas.length > 0) {
+        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
+        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
+      }
+      
       grouped[nome].qtd += t.quantidade || 0;
       grouped[nome].valor += (t.quantidade || 0) * valorUnit;
     });
@@ -318,12 +333,19 @@ export default function DashboardTrocas() {
           valor: 0 
         };
       }
-      const venda = vendas.find(v => 
+      
+      const vendasRelacionadas = vendas.filter(v => 
         v.produto_id === t.produto_original_id && 
         v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
       );
-      const valorUnit = venda?.valor_unitario || 0;
+      
+      let valorUnit = 0;
+      if (vendasRelacionadas.length > 0) {
+        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
+        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
+      }
+      
       grouped[produtoId].qtd += t.quantidade || 0;
       grouped[produtoId].valor += (t.quantidade || 0) * valorUnit;
     });
@@ -355,12 +377,18 @@ export default function DashboardTrocas() {
         };
       }
       
-      const venda = vendas.find(v => 
+      const vendasRelacionadas = vendas.filter(v => 
         v.produto_id === t.produto_original_id && 
         v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 7 * 24 * 60 * 60 * 1000
+        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
       );
-      const valorUnit = venda?.valor_unitario || 0;
+      
+      let valorUnit = 0;
+      if (vendasRelacionadas.length > 0) {
+        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
+        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
+      }
+      
       const valorItem = (t.quantidade || 0) * valorUnit;
       
       grouped[clienteId].qtdTotal += t.quantidade || 0;
