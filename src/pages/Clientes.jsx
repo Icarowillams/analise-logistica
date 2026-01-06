@@ -33,6 +33,18 @@ export default function Clientes() {
 
   const queryClient = useQueryClient();
 
+  // Capturar código da URL se vier do redirecionamento
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codigoParam = params.get('codigo');
+    
+    if (codigoParam) {
+      setFormData(prev => ({ ...prev, codigo: codigoParam }));
+      setIsEditing(true);
+      setActiveTab('cadastro');
+    }
+  }, []);
+
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
     queryFn: () => base44.entities.Segmento.list()
@@ -65,8 +77,12 @@ export default function Clientes() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
-    onSuccess: () => {
+    onSuccess: async (novoCliente) => {
       queryClient.invalidateQueries(['clientes']);
+      
+      // Após criar o cliente, verificar e atualizar trocas sem cadastro
+      await processarTrocasSemCadastro(novoCliente);
+      
       resetForm();
       setIsEditing(false);
     }
@@ -74,8 +90,12 @@ export default function Clientes() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Cliente.update(id, data),
-    onSuccess: () => {
+    onSuccess: async (clienteAtualizado) => {
       queryClient.invalidateQueries(['clientes']);
+      
+      // Após atualizar o cliente, verificar e atualizar trocas sem cadastro
+      await processarTrocasSemCadastro(clienteAtualizado);
+      
       resetForm();
       setIsEditing(false);
     }
@@ -89,6 +109,39 @@ export default function Clientes() {
       setSelected(null);
     }
   });
+
+  const processarTrocasSemCadastro = async (cliente) => {
+    try {
+      // Buscar todas as trocas sem cliente cadastrado que tenham o código deste cliente
+      const todasTrocas = await base44.entities.Troca.list('-data', 5000);
+      const trocasParaAtualizar = todasTrocas.filter(t => 
+        (!t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado')) &&
+        t.cliente_nome?.includes(`Cliente Não Cadastrado: ${cliente.codigo}`)
+      );
+
+      if (trocasParaAtualizar.length > 0) {
+        // Buscar vendedor para pegar o nome
+        const vendedor = vendedores.find(v => v.id === cliente.vendedor_id);
+        
+        // Atualizar cada troca
+        for (const troca of trocasParaAtualizar) {
+          await base44.entities.Troca.update(troca.id, {
+            cliente_id: cliente.id,
+            cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+            vendedor_id: cliente.vendedor_id || '',
+            vendedor_nome: vendedor?.nome || 'N/A'
+          });
+        }
+
+        queryClient.invalidateQueries(['trocas']);
+        queryClient.invalidateQueries(['trocas_nao_cadastradas']);
+        
+        alert(`✅ Cliente cadastrado com sucesso!\n\n${trocasParaAtualizar.length} troca(s) foram vinculadas automaticamente ao novo cliente.`);
+      }
+    } catch (error) {
+      console.error('Erro ao processar trocas sem cadastro:', error);
+    }
+  };
 
   const resetForm = () => {
     setFormData({

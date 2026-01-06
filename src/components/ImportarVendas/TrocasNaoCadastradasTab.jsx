@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { AlertCircle, Loader2, Filter } from 'lucide-react';
+import { AlertCircle, Loader2, Filter, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { createPageUrl } from '@/utils';
 
 export default function TrocasNaoCadastradasTab() {
   const [dates, setDates] = useState({
@@ -136,12 +137,13 @@ export default function TrocasNaoCadastradasTab() {
                     <TableHead>Código Cliente</TableHead>
                     <TableHead className="text-right">Qtd Trocas</TableHead>
                     <TableHead>Produtos Trocados</TableHead>
+                    <TableHead className="text-center w-32">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {relatorio.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-8 text-slate-500">
+                      <TableCell colSpan={4} className="text-center py-8 text-slate-500">
                         Nenhuma troca sem cliente cadastrado no período
                       </TableCell>
                     </TableRow>
@@ -167,6 +169,17 @@ export default function TrocasNaoCadastradasTab() {
                               </div>
                             ))}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <a href={createPageUrl('Clientes') + '?codigo=' + item.codigo}>
+                            <Button
+                              size="sm"
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
+                            >
+                              <UserPlus className="w-3 h-3 mr-1" />
+                              Cadastrar
+                            </Button>
+                          </a>
                         </TableCell>
                       </TableRow>
                     ))
