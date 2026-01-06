@@ -26,11 +26,12 @@ import Produtos from './pages/Produtos';
 import Redes from './pages/Redes';
 import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
 import Rotas from './pages/Rotas';
+import Roteiros from './pages/Roteiros';
 import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import Roteiros from './pages/Roteiros';
+import MeusRoteiros from './pages/MeusRoteiros';
 import __Layout from './Layout.jsx';
 
 
@@ -63,11 +64,12 @@ export const PAGES = {
     "Redes": Redes,
     "RelatoriosGestorVisita": RelatoriosGestorVisita,
     "Rotas": Rotas,
+    "Roteiros": Roteiros,
     "Segmentos": Segmentos,
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "Roteiros": Roteiros,
+    "MeusRoteiros": MeusRoteiros,
 }
 
 export const pagesConfig = {

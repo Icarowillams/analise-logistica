@@ -119,9 +119,10 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Integração Gestor Visita',
+        title: 'Visitas',
         icon: TrendingUp,
         submenu: [
+          { title: 'Meus Roteiros', path: 'MeusRoteiros' },
           { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
           { title: 'Relatórios de Visitas', path: 'RelatoriosGestorVisita' },
           { title: 'Importações', path: 'Importacoes' }

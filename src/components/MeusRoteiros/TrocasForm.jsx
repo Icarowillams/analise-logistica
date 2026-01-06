@@ -1,0 +1,321 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
+import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+
+export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
+  const [formData, setFormData] = useState({
+    produto_id: '',
+    quantidade: '',
+    data_validade: '',
+    data_fabricacao: '',
+    horario_fabricacao: '',
+    motivo_troca: '',
+    ja_informado_anteriormente: false,
+    foto_url: ''
+  });
+  const [editingId, setEditingId] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const { data: produtos = [] } = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => base44.entities.Produto.list()
+  });
+
+  const { data: motivos = [] } = useQuery({
+    queryKey: ['motivosTroca'],
+    queryFn: () => base44.entities.MotivoTroca.list()
+  });
+
+  const { data: trocas = [] } = useQuery({
+    queryKey: ['trocasVisita', visitaId],
+    queryFn: () => base44.entities.TrocaVisita.filter({ visita_id: visitaId })
+  });
+
+  const { data: vendedorAtual } = useQuery({
+    queryKey: ['vendedorAtual'],
+    queryFn: async () => {
+      const user = await base44.auth.me();
+      const vendedores = await base44.entities.Vendedor.list();
+      return vendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+    }
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data) => base44.entities.TrocaVisita.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['trocasVisita']);
+      resetForm();
+    }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.TrocaVisita.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['trocasVisita']);
+      resetForm();
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.TrocaVisita.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['trocasVisita']);
+    }
+  });
+
+  const resetForm = () => {
+    setFormData({
+      produto_id: '',
+      quantidade: '',
+      data_validade: '',
+      data_fabricacao: '',
+      horario_fabricacao: '',
+      motivo_troca: '',
+      ja_informado_anteriormente: false,
+      foto_url: ''
+    });
+    setEditingId(null);
+  };
+
+  const handleDataValidadeChange = (dataValidade) => {
+    setFormData({ ...formData, data_validade: dataValidade });
+    
+    if (dataValidade) {
+      const data = new Date(dataValidade);
+      data.setDate(data.getDate() - 25);
+      const dataFabricacao = data.toISOString().split('T')[0];
+      setFormData(prev => ({ ...prev, data_validade: dataValidade, data_fabricacao: dataFabricacao }));
+    }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setFormData({ ...formData, foto_url: file_url });
+    } catch (error) {
+      alert('Erro ao fazer upload da foto');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!formData.produto_id || !formData.quantidade || !formData.motivo_troca) {
+      alert('Preencha os campos obrigatórios');
+      return;
+    }
+
+    const produto = produtos.find(p => p.id === formData.produto_id);
+    
+    const data = {
+      visita_id: visitaId,
+      cliente_id: clienteId,
+      cliente_nome: clienteNome,
+      produto_id: formData.produto_id,
+      produto_nome: produto?.nome || '',
+      produto_codigo: produto?.codigo || '',
+      quantidade: parseFloat(formData.quantidade),
+      data_validade: formData.data_validade || null,
+      data_fabricacao: formData.data_fabricacao || null,
+      horario_fabricacao: formData.horario_fabricacao || null,
+      motivo_troca: formData.motivo_troca,
+      ja_informado_anteriormente: formData.ja_informado_anteriormente,
+      foto_url: formData.foto_url || null,
+      vendedor_id: vendedorAtual?.id || '',
+      vendedor_nome: vendedorAtual?.nome || ''
+    };
+
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (troca) => {
+    setFormData({
+      produto_id: troca.produto_id,
+      quantidade: troca.quantidade,
+      data_validade: troca.data_validade || '',
+      data_fabricacao: troca.data_fabricacao || '',
+      horario_fabricacao: troca.horario_fabricacao || '',
+      motivo_troca: troca.motivo_troca,
+      ja_informado_anteriormente: troca.ja_informado_anteriormente || false,
+      foto_url: troca.foto_url || ''
+    });
+    setEditingId(troca.id);
+  };
+
+  return (
+    <div className="space-y-4 mt-4">
+      <Card className="p-4 bg-slate-50">
+        <h3 className="font-semibold mb-4">Adicionar Produtos em Troca</h3>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Produto *</Label>
+              <Select value={formData.produto_id} onValueChange={(v) => setFormData({ ...formData, produto_id: v })}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Selecione o produto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {produtos.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Quantidade *</Label>
+              <Input
+                type="number"
+                value={formData.quantidade}
+                onChange={(e) => setFormData({ ...formData, quantidade: e.target.value })}
+                placeholder="0"
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Data de Validade</Label>
+              <Input
+                type="date"
+                value={formData.data_validade}
+                onChange={(e) => handleDataValidadeChange(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Data de Fabricação</Label>
+              <Input
+                type="date"
+                value={formData.data_fabricacao}
+                onChange={(e) => setFormData({ ...formData, data_fabricacao: e.target.value })}
+                className="h-9 bg-slate-100"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Horário de Fabricação</Label>
+            <Input
+              type="time"
+              value={formData.horario_fabricacao}
+              onChange={(e) => setFormData({ ...formData, horario_fabricacao: e.target.value })}
+              className="h-9"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Motivo da Troca *</Label>
+            <Select value={formData.motivo_troca} onValueChange={(v) => setFormData({ ...formData, motivo_troca: v })}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecione o motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {motivos.map(m => (
+                  <SelectItem key={m.id} value={m.descricao}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center space-x-2 p-3 bg-amber-50 rounded border border-amber-200">
+            <Checkbox
+              id="ja-informado"
+              checked={formData.ja_informado_anteriormente}
+              onCheckedChange={(checked) => setFormData({ ...formData, ja_informado_anteriormente: checked })}
+            />
+            <label htmlFor="ja-informado" className="text-xs font-medium text-amber-900 cursor-pointer">
+              Esta troca já foi informada anteriormente (não realizada)
+            </label>
+          </div>
+
+          <div>
+            <Label className="text-xs">Foto da Troca</Label>
+            <div className="flex gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="h-9"
+                disabled={uploadingPhoto}
+              />
+              {formData.foto_url && (
+                <img src={formData.foto_url} alt="Preview" className="h-9 w-9 object-cover rounded" />
+              )}
+            </div>
+          </div>
+
+          <Button
+            onClick={handleSubmit}
+            disabled={createMutation.isPending || updateMutation.isPending}
+            className="w-full bg-gradient-to-r from-red-500 to-orange-600 h-9"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {editingId ? 'Atualizar na Lista' : 'Adicionar à Lista'}
+          </Button>
+        </div>
+      </Card>
+
+      <div className="space-y-2">
+        <h4 className="font-semibold text-sm">Trocas Adicionadas ({trocas.length})</h4>
+        {trocas.length === 0 ? (
+          <Alert>
+            <AlertDescription>Nenhuma troca adicionada ainda</AlertDescription>
+          </Alert>
+        ) : (
+          trocas.map((troca) => (
+            <Card key={troca.id} className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{troca.produto_nome}</p>
+                  <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                    <span>Qtd: {troca.quantidade}</span>
+                    <span>Motivo: {troca.motivo_troca}</span>
+                    {troca.ja_informado_anteriormente && (
+                      <span className="text-amber-600 font-medium">⚠️ Já informada</span>
+                    )}
+                  </div>
+                </div>
+                {troca.foto_url && (
+                  <img src={troca.foto_url} alt="Troca" className="h-12 w-12 object-cover rounded mr-2" />
+                )}
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(troca)} className="h-8 w-8">
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => deleteMutation.mutate(troca.id)}
+                    className="h-8 w-8 text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
