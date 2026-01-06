@@ -25,6 +25,7 @@ export default function Clientes() {
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+    latitude: '', longitude: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
     data_primeiro_contato: '', status: 'ativo'
   });
@@ -93,6 +94,7 @@ export default function Clientes() {
     setFormData({
       codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+      latitude: '', longitude: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
       data_primeiro_contato: '', status: 'ativo'
     });
@@ -119,6 +121,8 @@ export default function Clientes() {
       cidade: item.cidade || '',
       estado: item.estado || '',
       cep: item.cep || '',
+      latitude: item.latitude || '',
+      longitude: item.longitude || '',
       segmento_id: item.segmento_id || '',
       rede_id: item.rede_id || '',
       vendedor_id: item.vendedor_id || '',
@@ -549,6 +553,28 @@ export default function Clientes() {
                     value={formData.cep}
                     onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
                     placeholder="00000-000"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Latitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={formData.latitude}
+                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                    placeholder="-23.5505"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Longitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={formData.longitude}
+                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                    placeholder="-46.6333"
                     disabled={!isEditing}
                   />
                 </div>

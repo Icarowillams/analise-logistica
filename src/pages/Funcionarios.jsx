@@ -28,7 +28,9 @@ export default function Funcionarios() {
     funcao: '', 
     departamento_id: '',
     supervisor_id: '',
-    telefone: '', 
+    telefone: '',
+    latitude: '',
+    longitude: '',
     status: 'ativo'
   });
 
@@ -84,7 +86,9 @@ export default function Funcionarios() {
       funcao: '', 
       departamento_id: '',
       supervisor_id: '',
-      telefone: '', 
+      telefone: '',
+      latitude: '',
+      longitude: '',
       status: 'ativo' 
     });
     setSelected(null);
@@ -106,6 +110,8 @@ export default function Funcionarios() {
       departamento_id: item.departamento_id || '',
       supervisor_id: item.supervisor_id || '',
       telefone: item.telefone || '',
+      latitude: item.latitude || '',
+      longitude: item.longitude || '',
       status: item.status || 'ativo'
     });
     setIsEditing(true);
@@ -346,7 +352,28 @@ export default function Funcionarios() {
                     disabled={!isEditing}
                   />
                 </div>
-
+                <div>
+                  <Label>Latitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={formData.latitude}
+                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                    placeholder="-23.5505"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label>Longitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={formData.longitude}
+                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                    placeholder="-46.6333"
+                    disabled={!isEditing}
+                  />
+                </div>
                 <div>
                   <Label>Status</Label>
                   <Select 
