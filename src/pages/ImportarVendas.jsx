@@ -413,6 +413,7 @@ function ImportacaoTab() {
   const [isImporting, setIsImporting] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [importacaoTroca, setImportacaoTroca] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
@@ -536,13 +537,12 @@ function ImportacaoTab() {
     { key: 'qtd', label: 'QTD', required: true },
     { key: 'codcliente', label: 'CODCLIENTE', required: true },
     { key: 'data', label: 'DATA', required: true },
-    { key: 'vl_unitario', label: 'VL_UNITARIO', required: true },
-    { key: 'troca', label: 'TROCA (SIM/NÃO)' }
+    { key: 'vl_unitario', label: 'VL_UNITARIO', required: true }
   ];
 
   const bulkExampleData = [
-    { numpedido: '267862', codproduto: '1', qtd: '100', codcliente: '3362', data: '01/10/2025', vl_unitario: '4,00', troca: 'NÃO' },
-    { numpedido: '268040', codproduto: '1', qtd: '8', codcliente: '3362', data: '02/10/2025', vl_unitario: '4,00', troca: 'SIM' }
+    { numpedido: '267862', codproduto: '1', qtd: '100', codcliente: '3362', data: '01/10/2025', vl_unitario: '4,00' },
+    { numpedido: '268040', codproduto: '1', qtd: '8', codcliente: '3362', data: '02/10/2025', vl_unitario: '4,00' }
   ];
 
   const handleBulkImport = async (data) => {
@@ -619,9 +619,8 @@ function ImportacaoTab() {
         // Lógica de valores
         const qtdRaw = parseBRLValues(row.qtd);
         const vlUnit = parseBRLValues(row.vl_unitario);
-        const trocaValue = String(row.troca || '').toUpperCase().trim();
-        // É troca apenas se a coluna estiver preenchida com 'SIM'
-        const isTroca = trocaValue === 'SIM';
+        // Usar o checkbox de importação para determinar se é troca
+        const isTroca = importacaoTroca;
 
         // Calcular data_troca: se for troca, data_troca = data - 1 dia (exceto segunda que é -2 dias)
         let dataTroca = null;
@@ -833,13 +832,31 @@ function ImportacaoTab() {
             Registre uma venda individualmente ou importe em massa
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={() => setBulkOpen(true)}
-          className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
-        >
-          <Clipboard className="w-4 h-4" /> Importar em Massa
-        </Button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
+            borderColor: importacaoTroca ? '#f97316' : '#e5e7eb',
+            backgroundColor: importacaoTroca ? '#fff7ed' : 'white'
+          }}>
+            <input
+              type="checkbox"
+              checked={importacaoTroca}
+              onChange={(e) => setImportacaoTroca(e.target.checked)}
+              className="w-5 h-5 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+            />
+            <span className="text-sm font-semibold" style={{
+              color: importacaoTroca ? '#ea580c' : '#64748b'
+            }}>
+              {importacaoTroca ? '🔄 Importando TROCAS' : 'Importar como VENDAS'}
+            </span>
+          </label>
+          <Button 
+            variant="outline" 
+            onClick={() => setBulkOpen(true)}
+            className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+          >
+            <Clipboard className="w-4 h-4" /> Importar em Massa
+          </Button>
+        </div>
       </div>
 
       <ManualEntryForm />
