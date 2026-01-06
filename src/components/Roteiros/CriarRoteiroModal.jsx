@@ -140,7 +140,13 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     return (
       c.razao_social?.toLowerCase().includes(search) ||
       c.nome_fantasia?.toLowerCase().includes(search) ||
-      c.codigo?.toLowerCase().includes(search)
+      c.codigo?.toLowerCase().includes(search) ||
+      c.cpf_cnpj?.toLowerCase().includes(search) ||
+      c.endereco?.toLowerCase().includes(search) ||
+      c.bairro?.toLowerCase().includes(search) ||
+      c.cidade?.toLowerCase().includes(search) ||
+      c.estado?.toLowerCase().includes(search) ||
+      c.cep?.toLowerCase().includes(search)
     );
   });
 
