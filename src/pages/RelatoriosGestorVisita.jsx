@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Eye, Package, ArrowLeftRight, Search, Filter, 
   MapPin, Calendar, User, CheckCircle, XCircle, Clock,
-  TrendingUp, AlertTriangle, FileText, Download, RefreshCw
+  TrendingUp, AlertTriangle, FileText, Download, RefreshCw, Route
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
