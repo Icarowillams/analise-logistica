@@ -77,27 +77,30 @@ export default function Clientes() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
-    onSuccess: async (novoCliente) => {
+    onSuccess: (novoCliente) => {
       queryClient.invalidateQueries(['clientes']);
-      
-      // Após criar o cliente, verificar e atualizar trocas sem cadastro
-      await processarTrocasSemCadastro(novoCliente);
-      
       resetForm();
       setIsEditing(false);
+      
+      // Processar trocas em segundo plano
+      processarTrocasSemCadastro(novoCliente).catch(err => {
+        console.error('Erro ao processar trocas:', err);
+      });
     }
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Cliente.update(id, data),
-    onSuccess: async (clienteAtualizado) => {
+    onSuccess: (clienteAtualizado) => {
       queryClient.invalidateQueries(['clientes']);
-      
-      // Após atualizar o cliente, verificar e atualizar trocas sem cadastro
-      await processarTrocasSemCadastro(clienteAtualizado);
-      
       resetForm();
       setIsEditing(false);
+      alert('✅ Cliente atualizado com sucesso!');
+      
+      // Processar trocas em segundo plano
+      processarTrocasSemCadastro(clienteAtualizado).catch(err => {
+        console.error('Erro ao processar trocas:', err);
+      });
     }
   });
 
@@ -157,6 +160,7 @@ export default function Clientes() {
 
   const handleNew = () => {
     resetForm();
+    setSelected(null);
     setIsEditing(true);
     setActiveTab("cadastro");
   };
