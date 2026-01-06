@@ -161,6 +161,80 @@ export default function RelatoriosGestorVisita() {
     setDataFim('');
   };
 
+  // Funções de Exportação
+  const exportarCSV = (dados, nomeArquivo, colunas) => {
+    const headers = colunas.map(c => c.label).join(';');
+    const linhas = dados.map(item => 
+      colunas.map(c => c.getValue(item)).join(';')
+    );
+    const csv = [headers, ...linhas].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${nomeArquivo}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`;
+    link.click();
+  };
+
+  const exportarVisitas = () => {
+    const colunas = [
+      { label: 'Data', getValue: (v) => new Date(v.data_visita).toLocaleDateString('pt-BR') },
+      { label: 'Cliente', getValue: (v) => v.cliente_nome },
+      { label: 'Código', getValue: (v) => v.cliente_codigo },
+      { label: 'Cidade', getValue: (v) => v.cliente_cidade },
+      { label: 'UF', getValue: (v) => v.cliente_uf || '' },
+      { label: 'Promotor', getValue: (v) => v.promotor_nome },
+      { label: 'Status', getValue: (v) => v.status },
+      { label: 'Check-in', getValue: (v) => v.checkin_time ? new Date(v.checkin_time).toLocaleTimeString('pt-BR') : '' },
+      { label: 'Pedido Solicitado', getValue: (v) => v.pedido_solicitado ? 'Sim' : 'Não' }
+    ];
+    exportarCSV(visitasFiltradas, 'relatorio_visitas', colunas);
+  };
+
+  const exportarEstoques = () => {
+    const colunas = [
+      { label: 'Data', getValue: (e) => new Date(e.data_registro).toLocaleDateString('pt-BR') },
+      { label: 'Cliente', getValue: (e) => e.cliente_nome },
+      { label: 'Código Cliente', getValue: (e) => e.cliente_codigo },
+      { label: 'Produto', getValue: (e) => e.produto_descricao },
+      { label: 'Código Produto', getValue: (e) => e.produto_codigo },
+      { label: 'Quantidade', getValue: (e) => e.quantidade },
+      { label: 'Validade', getValue: (e) => e.data_validade ? new Date(e.data_validade).toLocaleDateString('pt-BR') : '' },
+      { label: 'Promotor', getValue: (e) => e.promotor_nome }
+    ];
+    exportarCSV(estoquesFiltrados, 'relatorio_estoques', colunas);
+  };
+
+  const exportarTrocas = () => {
+    const colunas = [
+      { label: 'Data', getValue: (t) => new Date(t.data_registro).toLocaleDateString('pt-BR') },
+      { label: 'Cliente', getValue: (t) => t.cliente_nome },
+      { label: 'Código Cliente', getValue: (t) => t.cliente_codigo },
+      { label: 'Produto', getValue: (t) => t.produto_descricao },
+      { label: 'Código Produto', getValue: (t) => t.produto_codigo },
+      { label: 'Motivo', getValue: (t) => t.motivo_troca || '' },
+      { label: 'Quantidade', getValue: (t) => t.quantidade },
+      { label: 'Dias Vida Útil', getValue: (t) => t.dias_vida_util !== null ? t.dias_vida_util : '' },
+      { label: 'Promotor', getValue: (t) => t.promotor_nome }
+    ];
+    exportarCSV(trocasFiltradas, 'relatorio_trocas', colunas);
+  };
+
+  // Agrupar visitas por roteiro
+  const visitasPorRoteiro = useMemo(() => {
+    const map = {};
+    visitasFiltradas.forEach(v => {
+      const roteiro = v.roteiro_nome || 'Sem Roteiro';
+      if (!map[roteiro]) {
+        map[roteiro] = [];
+      }
+      map[roteiro].push(v);
+    });
+    return Object.entries(map).map(([nome, visitas]) => ({
+      roteiro: nome,
+      visitas: visitas.sort((a, b) => new Date(a.data_visita) - new Date(b.data_visita))
+    }));
+  }, [visitasFiltradas]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -378,87 +452,185 @@ export default function RelatoriosGestorVisita() {
         {/* Visitas Tab */}
         <TabsContent value="visitas" className="mt-6">
           <Card className="border-0 shadow-lg">
-            <CardContent className="pt-6">
-              {loadingVisitas ? (
-                <div className="text-center py-8 text-slate-500">Carregando...</div>
-              ) : visitasFiltradas.length === 0 ? (
-                <div className="text-center py-12">
-                  <Eye className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500">Nenhuma visita encontrada</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Data/Hora</th>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Cliente</th>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Localização</th>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Promotor</th>
-                        <th className="text-center p-4 text-sm font-semibold text-slate-700">Status</th>
-                        <th className="text-center p-4 text-sm font-semibold text-slate-700">Pedido</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {visitasFiltradas.map((visita, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-slate-400" />
-                              <div>
-                                <div className="font-medium text-slate-900">
-                                  {new Date(visita.data_visita).toLocaleDateString('pt-BR')}
-                                </div>
-                                <div className="text-xs text-slate-500">
-                                  {visita.checkin_time && new Date(visita.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="font-semibold text-slate-900">{visita.cliente_nome}</div>
-                            <div className="text-xs text-slate-500">Cód: {visita.cliente_codigo}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-4 h-4 text-slate-400" />
-                              <div>
-                                <div className="text-sm text-slate-700">{visita.cliente_cidade} - {visita.cliente_uf}</div>
-                                {visita.cliente_segmento && (
-                                  <div className="text-xs text-slate-500">{visita.cliente_segmento}</div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-slate-400" />
-                              <span className="text-sm text-slate-700">{visita.promotor_nome}</span>
-                            </div>
-                          </td>
-                          <td className="p-4 text-center">
-                            <Badge className={
-                              visita.status === 'realizada' ? 'bg-green-100 text-green-700 border-green-200' :
-                              visita.status === 'nao_realizada' ? 'bg-red-100 text-red-700 border-red-200' :
-                              'bg-yellow-100 text-yellow-700 border-yellow-200'
-                            }>
-                              {visita.status === 'realizada' ? '✓ Realizada' :
-                               visita.status === 'nao_realizada' ? '✗ Não Realizada' : '⏳ Pendente'}
-                            </Badge>
-                          </td>
-                          <td className="p-4 text-center">
-                            {visita.pedido_solicitado ? (
-                              <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
-                            ) : (
-                              <XCircle className="w-5 h-5 text-slate-300 mx-auto" />
-                            )}
-                          </td>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Visitas Realizadas</CardTitle>
+              <Button onClick={exportarVisitas} variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Exportar CSV
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="por-cliente" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="por-cliente">Por Cliente</TabsTrigger>
+                  <TabsTrigger value="por-roteiro">Por Roteiro</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="por-cliente">
+                {loadingVisitas ? (
+                  <div className="text-center py-8 text-slate-500">Carregando...</div>
+                ) : visitasFiltradas.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Eye className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500">Nenhuma visita encontrada</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-700">Data/Hora</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-700">Cliente</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-700">Localização</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-700">Promotor</th>
+                          <th className="text-center p-4 text-sm font-semibold text-slate-700">Status</th>
+                          <th className="text-center p-4 text-sm font-semibold text-slate-700">Pedido</th>
                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {visitasFiltradas.map((visita, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-slate-400" />
+                                <div>
+                                  <div className="font-medium text-slate-900">
+                                    {new Date(visita.data_visita).toLocaleDateString('pt-BR')}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {visita.checkin_time && new Date(visita.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <div className="font-semibold text-slate-900">{visita.cliente_nome}</div>
+                              <div className="text-xs text-slate-500">Cód: {visita.cliente_codigo}</div>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="w-4 h-4 text-slate-400" />
+                                <div>
+                                  <div className="text-sm text-slate-700">{visita.cliente_cidade} - {visita.cliente_uf}</div>
+                                  {visita.cliente_segmento && (
+                                    <div className="text-xs text-slate-500">{visita.cliente_segmento}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-slate-400" />
+                                <span className="text-sm text-slate-700">{visita.promotor_nome}</span>
+                              </div>
+                            </td>
+                            <td className="p-4 text-center">
+                              <Badge className={
+                                visita.status === 'realizada' ? 'bg-green-100 text-green-700 border-green-200' :
+                                visita.status === 'nao_realizada' ? 'bg-red-100 text-red-700 border-red-200' :
+                                'bg-yellow-100 text-yellow-700 border-yellow-200'
+                              }>
+                                {visita.status === 'realizada' ? '✓ Realizada' :
+                                 visita.status === 'nao_realizada' ? '✗ Não Realizada' : '⏳ Pendente'}
+                              </Badge>
+                            </td>
+                            <td className="p-4 text-center">
+                              {visita.pedido_solicitado ? (
+                                <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
+                              ) : (
+                                <XCircle className="w-5 h-5 text-slate-300 mx-auto" />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                </TabsContent>
+
+                <TabsContent value="por-roteiro">
+                  {loadingVisitas ? (
+                    <div className="text-center py-8 text-slate-500">Carregando...</div>
+                  ) : visitasPorRoteiro.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Route className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-500">Nenhum roteiro encontrado</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {visitasPorRoteiro.map((item, idx) => (
+                        <Card key={idx} className="border-2">
+                          <CardHeader className="bg-slate-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Route className="w-5 h-5 text-indigo-600" />
+                                <CardTitle className="text-lg">{item.roteiro}</CardTitle>
+                              </div>
+                              <Badge className="bg-indigo-100 text-indigo-700">
+                                {item.visitas.length} visitas
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-4">
+                            <div className="overflow-x-auto">
+                              <table className="w-full">
+                                <thead className="bg-slate-50">
+                                  <tr>
+                                    <th className="text-left p-3 text-xs font-semibold text-slate-700">Data/Hora</th>
+                                    <th className="text-left p-3 text-xs font-semibold text-slate-700">Cliente</th>
+                                    <th className="text-left p-3 text-xs font-semibold text-slate-700">Cidade</th>
+                                    <th className="text-left p-3 text-xs font-semibold text-slate-700">Promotor</th>
+                                    <th className="text-center p-3 text-xs font-semibold text-slate-700">Status</th>
+                                    <th className="text-center p-3 text-xs font-semibold text-slate-700">Pedido</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {item.visitas.map((visita, vIdx) => (
+                                    <tr key={vIdx} className="hover:bg-slate-50 transition-colors">
+                                      <td className="p-3">
+                                        <div className="text-sm font-medium text-slate-900">
+                                          {new Date(visita.data_visita).toLocaleDateString('pt-BR')}
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                          {visita.checkin_time && new Date(visita.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                      </td>
+                                      <td className="p-3">
+                                        <div className="font-semibold text-sm text-slate-900">{visita.cliente_nome}</div>
+                                        <div className="text-xs text-slate-500">Cód: {visita.cliente_codigo}</div>
+                                      </td>
+                                      <td className="p-3 text-sm text-slate-700">{visita.cliente_cidade}</td>
+                                      <td className="p-3 text-sm text-slate-700">{visita.promotor_nome}</td>
+                                      <td className="p-3 text-center">
+                                        <Badge className={
+                                          visita.status === 'realizada' ? 'bg-green-100 text-green-700' :
+                                          visita.status === 'nao_realizada' ? 'bg-red-100 text-red-700' :
+                                          'bg-yellow-100 text-yellow-700'
+                                        }>
+                                          {visita.status === 'realizada' ? '✓' :
+                                           visita.status === 'nao_realizada' ? '✗' : '⏳'}
+                                        </Badge>
+                                      </td>
+                                      <td className="p-3 text-center">
+                                        {visita.pedido_solicitado ? (
+                                          <CheckCircle className="w-4 h-4 text-green-600 mx-auto" />
+                                        ) : (
+                                          <XCircle className="w-4 h-4 text-slate-300 mx-auto" />
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </CardContent>
+                        </Card>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </TabsContent>
@@ -466,7 +638,14 @@ export default function RelatoriosGestorVisita() {
         {/* Estoques Tab */}
         <TabsContent value="estoques" className="mt-6">
           <Card className="border-0 shadow-lg">
-            <CardContent className="pt-6">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Registros de Estoque</CardTitle>
+              <Button onClick={exportarEstoques} variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Exportar CSV
+              </Button>
+            </CardHeader>
+            <CardContent>
               {loadingEstoques ? (
                 <div className="text-center py-8 text-slate-500">Carregando...</div>
               ) : estoquesFiltrados.length === 0 ? (
@@ -540,7 +719,14 @@ export default function RelatoriosGestorVisita() {
         {/* Trocas Tab */}
         <TabsContent value="trocas" className="mt-6">
           <Card className="border-0 shadow-lg">
-            <CardContent className="pt-6">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Registros de Troca</CardTitle>
+              <Button onClick={exportarTrocas} variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Exportar CSV
+              </Button>
+            </CardHeader>
+            <CardContent>
               {loadingTrocas ? (
                 <div className="text-center py-8 text-slate-500">Carregando...</div>
               ) : trocasFiltradas.length === 0 ? (
