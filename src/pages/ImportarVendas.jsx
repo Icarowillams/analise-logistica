@@ -329,73 +329,88 @@ function TrocasImportadasTab() {
                       <TableHead>Vendedor</TableHead>
                       <TableHead>Motivo</TableHead>
                       <TableHead className="text-right">Quantidade</TableHead>
+                      <TableHead className="text-right">Valor Unit.</TableHead>
+                      <TableHead className="text-right">Valor Total</TableHead>
                       <TableHead>Observações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {trocasFiltradas.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-slate-500">
+                        <TableCell colSpan={11} className="text-center py-8 text-slate-500">
                           Nenhuma troca encontrada no período
                         </TableCell>
                       </TableRow>
                     ) : (
-                      trocasFiltradas.map((troca, idx) => (
-                        <TableRow key={idx} className="hover:bg-slate-50">
-                          <TableCell>
-                            <input 
-                              type="checkbox"
-                              checked={selectedTrocas.includes(troca.id)}
-                              onChange={() => toggleSelectTroca(troca.id)}
-                              className="cursor-pointer w-4 h-4"
-                            />
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {format(parseISO(troca.data), 'dd/MM/yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[200px]">
-                              <p className="font-medium text-slate-900 truncate">{troca.cliente_nome || 'N/A'}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[200px]">
-                              <p className="text-sm truncate">{troca.produto_original_nome || 'N/A'}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[200px]">
-                              <p className="text-sm text-slate-600 truncate">
-                                {troca.produto_novo_nome || '-'}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[150px]">
-                              <p className="text-sm truncate">{troca.vendedor_nome || 'N/A'}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[150px]">
-                              <p className="text-xs text-slate-600 truncate">
-                                {troca.motivo_descricao || 'N/A'}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Badge className="bg-orange-100 text-orange-700">
-                              {troca.quantidade || 0}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[200px]">
-                              <p className="text-xs text-slate-500 truncate">
-                                {troca.observacoes || '-'}
-                              </p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      trocasFiltradas.map((troca, idx) => {
+                        const valorTotal = (parseFloat(troca.quantidade) || 0) * (parseFloat(troca.valor_unitario) || 0);
+                        return (
+                          <TableRow key={idx} className="hover:bg-slate-50">
+                            <TableCell>
+                              <input 
+                                type="checkbox"
+                                checked={selectedTrocas.includes(troca.id)}
+                                onChange={() => toggleSelectTroca(troca.id)}
+                                className="cursor-pointer w-4 h-4"
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {format(parseISO(troca.data), 'dd/MM/yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[200px]">
+                                <p className="font-medium text-slate-900 truncate">{troca.cliente_nome || 'N/A'}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[200px]">
+                                <p className="text-sm truncate">{troca.produto_original_nome || 'N/A'}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[200px]">
+                                <p className="text-sm text-slate-600 truncate">
+                                  {troca.produto_novo_nome || '-'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[150px]">
+                                <p className="text-sm truncate">{troca.vendedor_nome || 'N/A'}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[150px]">
+                                <p className="text-xs text-slate-600 truncate">
+                                  {troca.motivo_descricao || 'N/A'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Badge className="bg-orange-100 text-orange-700">
+                                {troca.quantidade || 0}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-sm font-medium text-slate-700">
+                                {(parseFloat(troca.valor_unitario) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-sm font-semibold text-emerald-700">
+                                {valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-[200px]">
+                                <p className="text-xs text-slate-500 truncate">
+                                  {troca.observacoes || '-'}
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
