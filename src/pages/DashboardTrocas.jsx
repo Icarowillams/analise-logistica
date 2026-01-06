@@ -236,27 +236,11 @@ export default function DashboardTrocas() {
   }, [trocasFiltradas]);
 
   const valorTotal = useMemo(() => {
-    let total = 0;
-    trocasFiltradas.forEach(t => {
-      // Buscar vendas do mesmo produto e cliente no período próximo (até 30 dias)
-      const vendasRelacionadas = vendas.filter(v => 
-        v.produto_id === t.produto_original_id && 
-        v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
-      );
-      
-      // Pegar o valor unitário médio ou o mais recente
-      let valorUnit = 0;
-      if (vendasRelacionadas.length > 0) {
-        // Ordenar por data mais recente
-        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
-        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
-      }
-      
-      total += (t.quantidade || 0) * valorUnit;
-    });
-    return total;
-  }, [trocasFiltradas, vendas]);
+    return trocasFiltradas.reduce((acc, t) => {
+      const valorUnit = t.valor_unitario || 0;
+      return acc + ((t.quantidade || 0) * valorUnit);
+    }, 0);
+  }, [trocasFiltradas]);
 
   const pedidosUnicos = useMemo(() => {
     const pedidos = new Set();
@@ -292,18 +276,7 @@ export default function DashboardTrocas() {
         grouped[nome] = { qtd: 0, valor: 0 };
       }
       
-      const vendasRelacionadas = vendas.filter(v => 
-        v.produto_id === t.produto_original_id && 
-        v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
-      );
-      
-      let valorUnit = 0;
-      if (vendasRelacionadas.length > 0) {
-        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
-        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
-      }
-      
+      const valorUnit = t.valor_unitario || 0;
       grouped[nome].qtd += t.quantidade || 0;
       grouped[nome].valor += (t.quantidade || 0) * valorUnit;
     });
@@ -315,7 +288,7 @@ export default function DashboardTrocas() {
         valor: data.valor,
         precoMedio: data.qtd > 0 ? data.valor / data.qtd : 0
       }));
-  }, [trocasFiltradas, vendas]);
+  }, [trocasFiltradas]);
 
   // Trocas por Produto
   const trocasPorProduto = useMemo(() => {
@@ -334,18 +307,7 @@ export default function DashboardTrocas() {
         };
       }
       
-      const vendasRelacionadas = vendas.filter(v => 
-        v.produto_id === t.produto_original_id && 
-        v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
-      );
-      
-      let valorUnit = 0;
-      if (vendasRelacionadas.length > 0) {
-        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
-        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
-      }
-      
+      const valorUnit = t.valor_unitario || 0;
       grouped[produtoId].qtd += t.quantidade || 0;
       grouped[produtoId].valor += (t.quantidade || 0) * valorUnit;
     });
@@ -355,7 +317,7 @@ export default function DashboardTrocas() {
         ...data,
         precoMedio: data.qtd > 0 ? data.valor / data.qtd : 0
       }));
-  }, [trocasFiltradas, vendas, produtos]);
+  }, [trocasFiltradas, produtos]);
 
   // Trocas por Cliente com detalhes
   const trocasPorCliente = useMemo(() => {
@@ -377,18 +339,7 @@ export default function DashboardTrocas() {
         };
       }
       
-      const vendasRelacionadas = vendas.filter(v => 
-        v.produto_id === t.produto_original_id && 
-        v.cliente_id === t.cliente_id &&
-        Math.abs(new Date(v.data) - new Date(t.data)) < 30 * 24 * 60 * 60 * 1000
-      );
-      
-      let valorUnit = 0;
-      if (vendasRelacionadas.length > 0) {
-        vendasRelacionadas.sort((a, b) => new Date(b.data) - new Date(a.data));
-        valorUnit = vendasRelacionadas[0]?.valor_unitario || 0;
-      }
-      
+      const valorUnit = t.valor_unitario || 0;
       const valorItem = (t.quantidade || 0) * valorUnit;
       
       grouped[clienteId].qtdTotal += t.quantidade || 0;

@@ -653,6 +653,7 @@ function ImportacaoTab() {
               vendedor_id: '',
               vendedor_nome: 'N/A',
               quantidade: qtdRaw,
+              valor_unitario: vlUnit,
               observacoes: `Pedido: ${row.numpedido || 'S/N'} - Cliente não cadastrado: ${row.codcliente}`
             });
           } else if (cliente && produto) {
@@ -671,6 +672,7 @@ function ImportacaoTab() {
               vendedor_id: cliente.vendedor_id || '',
               vendedor_nome: vend?.nome || 'Vendedor Desconhecido',
               quantidade: qtdRaw,
+              valor_unitario: vlUnit,
               observacoes: `Pedido: ${row.numpedido || 'S/N'}`
             });
           }
@@ -986,6 +988,7 @@ function ManualEntryForm() {
           vendedor_id: cliente.vendedor_id || '',
           vendedor_nome: vendedor?.nome || 'Vendedor Desconhecido',
           quantidade: parseFloat(data.troca),
+          valor_unitario: qtd > 0 ? valor / qtd : 0,
           observacoes: `Venda manual: ${vendaPayload.numero_pedido}`,
           venda_original_id: venda.id
         });
