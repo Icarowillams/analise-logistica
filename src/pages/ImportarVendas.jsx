@@ -833,22 +833,32 @@ function ImportacaoTab() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
-            borderColor: importacaoTroca ? '#f97316' : '#e5e7eb',
-            backgroundColor: importacaoTroca ? '#fff7ed' : 'white'
-          }}>
-            <input
-              type="checkbox"
-              checked={importacaoTroca}
-              onChange={(e) => setImportacaoTroca(e.target.checked)}
-              className="w-5 h-5 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
-            />
-            <span className="text-sm font-semibold" style={{
-              color: importacaoTroca ? '#ea580c' : '#64748b'
-            }}>
-              {importacaoTroca ? '🔄 Importando TROCAS' : 'Importar como VENDAS'}
-            </span>
-          </label>
+          <div className="flex gap-3 p-3 rounded-lg border-2 border-gray-200 bg-white">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={!importacaoTroca}
+                onChange={() => setImportacaoTroca(false)}
+                className="w-4 h-4 text-blue-600"
+                name="tipoImportacao"
+              />
+              <span className="text-sm font-medium text-slate-700">
+                📦 Vendas
+              </span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={importacaoTroca}
+                onChange={() => setImportacaoTroca(true)}
+                className="w-4 h-4 text-orange-600"
+                name="tipoImportacao"
+              />
+              <span className="text-sm font-medium text-orange-700">
+                🔄 Trocas
+              </span>
+            </label>
+          </div>
           <Button 
             variant="outline" 
             onClick={() => setBulkOpen(true)}
@@ -870,6 +880,8 @@ function ImportacaoTab() {
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
         isImporting={isImporting}
+        tipoImportacao={importacaoTroca ? 'troca' : 'venda'}
+        onTipoChange={setImportacaoTroca}
       />
     </div>
   );
