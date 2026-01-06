@@ -236,10 +236,13 @@ export default function DashboardTrocas() {
   }, [trocasFiltradas]);
 
   const valorTotal = useMemo(() => {
-    return trocasFiltradas.reduce((acc, t) => {
-      const valorUnit = t.valor_unitario || 0;
-      return acc + ((t.quantidade || 0) * valorUnit);
-    }, 0);
+    let total = 0;
+    trocasFiltradas.forEach(t => {
+      const qtd = parseFloat(t.quantidade) || 0;
+      const vlUnit = parseFloat(t.valor_unitario) || 0;
+      total += qtd * vlUnit;
+    });
+    return total;
   }, [trocasFiltradas]);
 
   const pedidosUnicos = useMemo(() => {
@@ -263,8 +266,11 @@ export default function DashboardTrocas() {
 
   // Preço Médio do Período
   const precoMedio = useMemo(() => {
-    if (quantidadeTotal === 0) return 0;
-    return valorTotal / quantidadeTotal;
+    const qtdTotal = parseFloat(quantidadeTotal) || 0;
+    const vlTotal = parseFloat(valorTotal) || 0;
+    
+    if (qtdTotal === 0) return 0;
+    return vlTotal / qtdTotal;
   }, [valorTotal, quantidadeTotal]);
 
   // Trocas por Vendedor
@@ -276,9 +282,11 @@ export default function DashboardTrocas() {
         grouped[nome] = { qtd: 0, valor: 0 };
       }
       
-      const valorUnit = t.valor_unitario || 0;
-      grouped[nome].qtd += t.quantidade || 0;
-      grouped[nome].valor += (t.quantidade || 0) * valorUnit;
+      const qtd = parseFloat(t.quantidade) || 0;
+      const vlUnit = parseFloat(t.valor_unitario) || 0;
+      
+      grouped[nome].qtd += qtd;
+      grouped[nome].valor += qtd * vlUnit;
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b.qtd - a.qtd)
@@ -307,9 +315,11 @@ export default function DashboardTrocas() {
         };
       }
       
-      const valorUnit = t.valor_unitario || 0;
-      grouped[produtoId].qtd += t.quantidade || 0;
-      grouped[produtoId].valor += (t.quantidade || 0) * valorUnit;
+      const qtd = parseFloat(t.quantidade) || 0;
+      const vlUnit = parseFloat(t.valor_unitario) || 0;
+      
+      grouped[produtoId].qtd += qtd;
+      grouped[produtoId].valor += qtd * vlUnit;
     });
     return Object.values(grouped)
       .sort((a, b) => b.qtd - a.qtd)
@@ -339,10 +349,11 @@ export default function DashboardTrocas() {
         };
       }
       
-      const valorUnit = t.valor_unitario || 0;
-      const valorItem = (t.quantidade || 0) * valorUnit;
+      const qtd = parseFloat(t.quantidade) || 0;
+      const vlUnit = parseFloat(t.valor_unitario) || 0;
+      const valorItem = qtd * vlUnit;
       
-      grouped[clienteId].qtdTotal += t.quantidade || 0;
+      grouped[clienteId].qtdTotal += qtd;
       grouped[clienteId].valorTotal += valorItem;
       
       // Extrair número do pedido
@@ -359,15 +370,15 @@ export default function DashboardTrocas() {
         };
       }
       
-      grouped[clienteId].pedidos[numPedido].qtdTotal += t.quantidade || 0;
+      grouped[clienteId].pedidos[numPedido].qtdTotal += qtd;
       grouped[clienteId].pedidos[numPedido].valorTotal += valorItem;
       
       const produto = produtos.find(p => p.id === t.produto_original_id);
       grouped[clienteId].pedidos[numPedido].itens.push({
         codProduto: produto?.codigo || 'N/A',
         nomeProduto: t.produto_original_nome || 'Desconhecido',
-        qtd: t.quantidade || 0,
-        valorUnitario: valorUnit,
+        qtd: qtd,
+        valorUnitario: vlUnit,
         valorTotal: valorItem
       });
     });
