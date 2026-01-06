@@ -14,7 +14,19 @@ import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 export default function MeusRoteiros() {
   const [currentUser, setCurrentUser] = useState(null);
   const [vendedorAtual, setVendedorAtual] = useState(null);
-  const [selectedDia, setSelectedDia] = useState('');
+  
+  // Detectar dia atual
+  const diaAtualMap = {
+    0: 'domingo',
+    1: 'segunda-feira',
+    2: 'terca-feira',
+    3: 'quarta-feira',
+    4: 'quinta-feira',
+    5: 'sexta-feira',
+    6: 'sabado'
+  };
+  const diaAtual = diaAtualMap[new Date().getDay()];
+  const [selectedDia, setSelectedDia] = useState(diaAtual);
 
   const queryClient = useQueryClient();
 
@@ -76,7 +88,7 @@ export default function MeusRoteiros() {
         icon={Route}
       />
 
-      <Tabs value={selectedDia || diasSemana[0].valor} onValueChange={setSelectedDia} className="w-full">
+      <Tabs value={selectedDia} onValueChange={setSelectedDia} className="w-full">
         <TabsList className="grid w-full grid-cols-7 mb-6">
           {diasSemana.map(dia => {
             const roteirosDia = roteirosVendedor.filter(r => r.dia_semana === dia.valor);

@@ -101,6 +101,20 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   const handleSubmit = () => {
     const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
     
+    // Validar se já existe roteiro para este vendedor/dia
+    if (!isEditing) {
+      const { data: roteiros = [] } = queryClient.getQueryState(['roteiros']) || {};
+      const roteiroExistente = roteiros.find(r => 
+        r.vendedor_id === formData.vendedor_id && 
+        r.dia_semana === formData.dia_semana
+      );
+      
+      if (roteiroExistente) {
+        alert('Já existe um roteiro para este funcionário neste dia da semana. Edite o roteiro existente ou exclua-o antes de criar um novo.');
+        return;
+      }
+    }
+    
     const data = {
       vendedor_id: formData.vendedor_id,
       vendedor_nome: vendedor?.nome || 'N/A',
