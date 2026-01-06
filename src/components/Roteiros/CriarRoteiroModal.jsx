@@ -20,6 +20,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   const [filtros, setFiltros] = useState({
     busca: '',
     codigo: '',
+    cidade: '',
     vendedor_id: '',
     supervisor_id: '',
     rede_id: '',
@@ -145,6 +146,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     setFiltros({
       busca: '',
       codigo: '',
+      cidade: '',
       vendedor_id: '',
       supervisor_id: '',
       rede_id: '',
@@ -192,6 +194,11 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
 
     // Filtro por CPF/CNPJ
     if (filtros.cpf_cnpj && !c.cpf_cnpj?.toLowerCase().includes(filtros.cpf_cnpj.toLowerCase())) {
+      return false;
+    }
+
+    // Filtro por cidade
+    if (filtros.cidade && !c.cidade?.toLowerCase().includes(filtros.cidade.toLowerCase())) {
       return false;
     }
 
@@ -293,7 +300,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
             {showClientesPicker && (
               <div className="mb-4 p-4 border rounded-lg bg-slate-50">
                 <div className="space-y-3 mb-3">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                       <Label className="text-xs">Busca Geral</Label>
                       <Input
@@ -309,6 +316,15 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                         placeholder="Código do cliente..."
                         value={filtros.codigo}
                         onChange={(e) => setFiltros({ ...filtros, codigo: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Cidade</Label>
+                      <Input
+                        placeholder="Cidade..."
+                        value={filtros.cidade}
+                        onChange={(e) => setFiltros({ ...filtros, cidade: e.target.value })}
                         className="h-9"
                       />
                     </div>
