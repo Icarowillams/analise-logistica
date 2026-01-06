@@ -45,6 +45,7 @@ export default function Permissoes() {
   const queryClient = useQueryClient();
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
   const [permissaoAtual, setPermissaoAtual] = useState(null);
+  const [modoEdicao, setModoEdicao] = useState(false);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -74,6 +75,7 @@ export default function Permissoes() {
 
   useEffect(() => {
     if (funcionarioSelecionado) {
+      setModoEdicao(false);
       const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
       if (perm) {
         setPermissaoAtual(perm);
@@ -94,7 +96,7 @@ export default function Permissoes() {
   }, [funcionarioSelecionado, permissoes, vendedores]);
 
   const toggleAba = (abaId) => {
-    if (!permissaoAtual) return;
+    if (!permissaoAtual || !modoEdicao) return;
     const atual = permissaoAtual.abas_visiveis || [];
     const nova = atual.includes(abaId) 
       ? atual.filter(id => id !== abaId)
@@ -103,7 +105,7 @@ export default function Permissoes() {
   };
 
   const togglePermissao = (grupo, campo) => {
-    if (!permissaoAtual) return;
+    if (!permissaoAtual || !modoEdicao) return;
     setPermissaoAtual({
       ...permissaoAtual,
       [grupo]: {
@@ -114,7 +116,7 @@ export default function Permissoes() {
   };
 
   const salvarPermissoes = () => {
-    if (!permissaoAtual) return;
+    if (!permissaoAtual || !modoEdicao) return;
 
     const dataToSave = {
       vendedor_id: permissaoAtual.vendedor_id,
@@ -132,6 +134,7 @@ export default function Permissoes() {
     } else {
       createMutation.mutate(dataToSave);
     }
+    setModoEdicao(false);
   };
 
   const abasPorGrupo = useMemo(() => {
@@ -178,6 +181,41 @@ export default function Permissoes() {
       </Card>
 
       {permissaoAtual && (
+        <>
+          <div className="flex justify-end">
+            {!modoEdicao ? (
+              <Button 
+                onClick={() => setModoEdicao(true)} 
+                className="bg-gradient-to-r from-blue-500 to-blue-600"
+              >
+                <Lock className="w-4 h-4 mr-2" />
+                Alterar Permissões
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => {
+                    setModoEdicao(false);
+                    // Restaurar permissões originais
+                    const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
+                    if (perm) setPermissaoAtual(perm);
+                  }} 
+                  variant="outline"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={salvarPermissoes} 
+                  className="bg-gradient-to-r from-purple-500 to-indigo-600"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Salvar Permissões
+                </Button>
+              </div>
+            )}
+          </div>
+
         <Tabs defaultValue="abas" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="abas">Abas Visíveis</TabsTrigger>
@@ -202,13 +240,14 @@ export default function Permissoes() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {abas.map(aba => (
-                        <div key={aba.id} className="flex items-center space-x-2 p-3 bg-slate-50 rounded-lg">
+                        <div key={aba.id} className={`flex items-center space-x-2 p-3 rounded-lg ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                           <Checkbox
                             id={aba.id}
                             checked={permissaoAtual.abas_visiveis?.includes(aba.id)}
                             onCheckedChange={() => toggleAba(aba.id)}
+                            disabled={!modoEdicao}
                           />
-                          <Label htmlFor={aba.id} className="cursor-pointer text-sm">
+                          <Label htmlFor={aba.id} className={modoEdicao ? "cursor-pointer text-sm" : "text-sm text-slate-600"}>
                             {aba.nome}
                           </Label>
                         </div>
@@ -229,13 +268,14 @@ export default function Permissoes() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {['visualizar', 'criar', 'alterar', 'excluir', 'exportar'].map(perm => (
-                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                       <Checkbox
                         id={`metas-${perm}`}
                         checked={permissaoAtual.permissoes_metas?.[perm] || false}
                         onCheckedChange={() => togglePermissao('permissoes_metas', perm)}
+                        disabled={!modoEdicao}
                       />
-                      <Label htmlFor={`metas-${perm}`} className="cursor-pointer capitalize">
+                      <Label htmlFor={`metas-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
                         {perm.replace('_', ' ')}
                       </Label>
                     </div>
@@ -250,13 +290,14 @@ export default function Permissoes() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {['criar', 'editar', 'excluir', 'importar_massa', 'visualizar', 'exportar'].map(perm => (
-                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                       <Checkbox
                         id={`cadastros-${perm}`}
                         checked={permissaoAtual.permissoes_cadastros?.[perm] || false}
                         onCheckedChange={() => togglePermissao('permissoes_cadastros', perm)}
+                        disabled={!modoEdicao}
                       />
-                      <Label htmlFor={`cadastros-${perm}`} className="cursor-pointer capitalize">
+                      <Label htmlFor={`cadastros-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
                         {perm.replace('_', ' ')}
                       </Label>
                     </div>
@@ -271,13 +312,14 @@ export default function Permissoes() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {['visualizar', 'importar', 'importar_massa', 'excluir_lancamento'].map(perm => (
-                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                       <Checkbox
                         id={`importar-${perm}`}
                         checked={permissaoAtual.permissoes_importar?.[perm] || false}
                         onCheckedChange={() => togglePermissao('permissoes_importar', perm)}
+                        disabled={!modoEdicao}
                       />
-                      <Label htmlFor={`importar-${perm}`} className="cursor-pointer capitalize">
+                      <Label htmlFor={`importar-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
                         {perm.replace('_', ' ')}
                       </Label>
                     </div>
@@ -292,13 +334,14 @@ export default function Permissoes() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {['visualizar', 'utilizar_filtros', 'exportar'].map(perm => (
-                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                       <Checkbox
                         id={`analises-${perm}`}
                         checked={permissaoAtual.permissoes_analises?.[perm] || false}
                         onCheckedChange={() => togglePermissao('permissoes_analises', perm)}
+                        disabled={!modoEdicao}
                       />
-                      <Label htmlFor={`analises-${perm}`} className="cursor-pointer capitalize">
+                      <Label htmlFor={`analises-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
                         {perm.replace('_', ' ')}
                       </Label>
                     </div>
@@ -313,13 +356,14 @@ export default function Permissoes() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {['visualizar', 'iniciar_roteiro', 'finalizar_roteiro', 'importar_fotos', 'marcar_solicitou_pedido', 'importar_ultimo_estoque'].map(perm => (
-                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
                       <Checkbox
                         id={`visitas-${perm}`}
                         checked={permissaoAtual.permissoes_visitas?.[perm] || false}
                         onCheckedChange={() => togglePermissao('permissoes_visitas', perm)}
+                        disabled={!modoEdicao}
                       />
-                      <Label htmlFor={`visitas-${perm}`} className="cursor-pointer capitalize">
+                      <Label htmlFor={`visitas-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
                         {perm === 'marcar_solicitou_pedido' ? 'Marcar se Solicitou Pedido' : perm.replace(/_/g, ' ')}
                       </Label>
                     </div>
@@ -329,19 +373,7 @@ export default function Permissoes() {
             </div>
           </TabsContent>
         </Tabs>
-      )}
-
-      {permissaoAtual && (
-        <div className="flex justify-end">
-          <Button 
-            onClick={salvarPermissoes} 
-            className="bg-gradient-to-r from-purple-500 to-indigo-600"
-            disabled={createMutation.isPending || updateMutation.isPending}
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Salvar Permissões
-          </Button>
-        </div>
+        </>
       )}
     </div>
   );
