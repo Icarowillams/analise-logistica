@@ -93,7 +93,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Ocorrência de Troca', path: 'MotivosTroca' },
           { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
-          { title: 'Rotas', path: 'Rotas' }
+          { title: 'Rotas', path: 'Rotas' },
+          { title: 'Roteiros', path: 'Roteiros' }
         ]
       },
       {
