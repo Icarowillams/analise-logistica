@@ -34,7 +34,11 @@ const ABAS_SISTEMA = [
   { id: 'DashboardVendedor', nome: 'Dashboard Vendedor', grupo: 'analises' },
   { id: 'DashboardTrocas', nome: 'Dashboard Trocas', grupo: 'analises' },
   { id: 'DashboardClientes', nome: 'Dashboard Clientes', grupo: 'analises' },
-  { id: 'PainelGestorVisita', nome: 'Painel Gestor Visita', grupo: 'analises' }
+  { id: 'MeusRoteiros', nome: 'Meus Roteiros', grupo: 'visitas' },
+  { id: 'PainelGestorVisita', nome: 'Painel de Roteiros', grupo: 'visitas' },
+  { id: 'RelatoriosGestorVisita', nome: 'Relatórios de Visitas', grupo: 'visitas' },
+  { id: 'Importacoes', nome: 'Importações', grupo: 'visitas' },
+  { id: 'Roteiros', nome: 'Roteiros', grupo: 'cadastros' }
 ];
 
 export default function Permissoes() {
@@ -82,7 +86,8 @@ export default function Permissoes() {
           permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
           permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
-          permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false }
+          permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
+          permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false }
         });
       }
     }
@@ -118,7 +123,8 @@ export default function Permissoes() {
       permissoes_metas: permissaoAtual.permissoes_metas || {},
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
       permissoes_importar: permissaoAtual.permissoes_importar || {},
-      permissoes_analises: permissaoAtual.permissoes_analises || {}
+      permissoes_analises: permissaoAtual.permissoes_analises || {},
+      permissoes_visitas: permissaoAtual.permissoes_visitas || {}
     };
 
     if (permissaoAtual.id) {
@@ -192,6 +198,7 @@ export default function Permissoes() {
                       {grupo === 'importacoes' && 'Importações'}
                       {grupo === 'analises' && 'Análises'}
                       {grupo === 'dashboard' && 'Dashboard'}
+                      {grupo === 'visitas' && 'Visitas'}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {abas.map(aba => (
@@ -293,6 +300,27 @@ export default function Permissoes() {
                       />
                       <Label htmlFor={`analises-${perm}`} className="cursor-pointer capitalize">
                         {perm.replace('_', ' ')}
+                      </Label>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Visitas */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-base">Permissões - Visitas</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {['visualizar', 'iniciar_roteiro', 'finalizar_roteiro', 'importar_fotos', 'marcar_solicitou_pedido', 'importar_ultimo_estoque'].map(perm => (
+                    <div key={perm} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                      <Checkbox
+                        id={`visitas-${perm}`}
+                        checked={permissaoAtual.permissoes_visitas?.[perm] || false}
+                        onCheckedChange={() => togglePermissao('permissoes_visitas', perm)}
+                      />
+                      <Label htmlFor={`visitas-${perm}`} className="cursor-pointer capitalize">
+                        {perm === 'marcar_solicitou_pedido' ? 'Marcar se Solicitou Pedido' : perm.replace(/_/g, ' ')}
                       </Label>
                     </div>
                   ))}
