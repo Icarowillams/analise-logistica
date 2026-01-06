@@ -466,6 +466,28 @@ function ImportacaoTab() {
     }
   };
 
+  const atualizarValoresTrocas = async () => {
+    if (!confirm('Deseja atualizar os valores unitários de todas as trocas?\n\nIsso vai buscar o valor das vendas relacionadas e preencher o campo valor_unitario.')) {
+      return;
+    }
+
+    setIsRecalculating(true);
+    try {
+      const { data } = await base44.functions.invoke('atualizarValoresTrocas');
+      
+      if (data.success) {
+        queryClient.invalidateQueries(['trocas']);
+        alert(`✅ Atualização concluída!\n\n${data.atualizados} trocas atualizadas\n${data.sem_valor} trocas sem valor encontrado\nTotal: ${data.total_trocas}`);
+      } else {
+        alert(`Erro: ${data.error}`);
+      }
+    } catch (error) {
+      alert('Erro ao atualizar valores: ' + error.message);
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   const removerDuplicatas = async () => {
     if (!confirm('Deseja identificar e remover vendas duplicadas?\n\nSerá mantida apenas a primeira ocorrência de cada venda.\n\nCritério: mesmo pedido + produto + cliente + data')) {
       return;
@@ -775,7 +797,7 @@ function ImportacaoTab() {
         </Alert>
       )}
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Alert className="bg-orange-50 border-orange-200">
           <AlertCircle className="h-4 w-4 text-orange-600" />
           <AlertDescription className="flex items-center justify-between">
@@ -795,6 +817,30 @@ function ImportacaoTab() {
                 </>
               ) : (
                 'Recalcular'
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+
+        <Alert className="bg-purple-50 border-purple-200">
+          <AlertCircle className="h-4 w-4 text-purple-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-purple-800">
+              <strong>Trocas sem valor?</strong> Atualizar valores das trocas
+            </span>
+            <Button 
+              onClick={atualizarValoresTrocas}
+              disabled={isRecalculating}
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {isRecalculating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                'Atualizar'
               )}
             </Button>
           </AlertDescription>
