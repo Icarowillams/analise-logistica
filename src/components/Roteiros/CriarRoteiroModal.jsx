@@ -16,8 +16,17 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     dia_semana: '',
     clientes_selecionados: []
   });
-  const [searchCliente, setSearchCliente] = useState('');
   const [showClientesPicker, setShowClientesPicker] = useState(false);
+  const [filtros, setFiltros] = useState({
+    busca: '',
+    codigo: '',
+    vendedor_id: '',
+    supervisor_id: '',
+    rede_id: '',
+    rota_id: '',
+    segmento_id: '',
+    cpf_cnpj: ''
+  });
 
   const queryClient = useQueryClient();
 
@@ -29,6 +38,25 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
+  });
+
+  const { data: redes = [] } = useQuery({
+    queryKey: ['redes'],
+    queryFn: () => base44.entities.Rede.list()
+  });
+
+  const { data: rotas = [] } = useQuery({
+    queryKey: ['rotas'],
+    queryFn: () => base44.entities.Rota.list()
+  });
+
+  const { data: segmentos = [] } = useQuery({
+    queryKey: ['segmentos'],
+    queryFn: () => base44.entities.Segmento.list()
+  });
+
+  const supervisores = vendedores.filter(v => {
+    return vendedores.some(vend => vend.supervisor_id === v.id);
   });
 
   useEffect(() => {
@@ -110,8 +138,20 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
         ]
       });
     }
-    setSearchCliente('');
     setShowClientesPicker(false);
+  };
+
+  const limparFiltros = () => {
+    setFiltros({
+      busca: '',
+      codigo: '',
+      vendedor_id: '',
+      supervisor_id: '',
+      rede_id: '',
+      rota_id: '',
+      segmento_id: '',
+      cpf_cnpj: ''
+    });
   };
 
   const handleRemoveCliente = (clienteId) => {
@@ -135,13 +175,55 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   };
 
   const clientesFiltrados = clientes.filter(c => {
-    if (!searchCliente) return false;
-    const search = searchCliente.toLowerCase();
-    return (
-      c.razao_social?.toLowerCase().includes(search) ||
-      c.nome_fantasia?.toLowerCase().includes(search) ||
-      c.codigo?.toLowerCase().includes(search)
-    );
+    // Filtro de busca geral
+    if (filtros.busca) {
+      const busca = filtros.busca.toLowerCase();
+      const matchBusca = 
+        c.razao_social?.toLowerCase().includes(busca) ||
+        c.nome_fantasia?.toLowerCase().includes(busca) ||
+        c.codigo?.toLowerCase().includes(busca);
+      if (!matchBusca) return false;
+    }
+
+    // Filtro por código
+    if (filtros.codigo && !c.codigo?.toLowerCase().includes(filtros.codigo.toLowerCase())) {
+      return false;
+    }
+
+    // Filtro por CPF/CNPJ
+    if (filtros.cpf_cnpj && !c.cpf_cnpj?.toLowerCase().includes(filtros.cpf_cnpj.toLowerCase())) {
+      return false;
+    }
+
+    // Filtro por vendedor
+    if (filtros.vendedor_id && c.vendedor_id !== filtros.vendedor_id) {
+      return false;
+    }
+
+    // Filtro por supervisor (via vendedor)
+    if (filtros.supervisor_id) {
+      const vendedor = vendedores.find(v => v.id === c.vendedor_id);
+      if (!vendedor || vendedor.supervisor_id !== filtros.supervisor_id) {
+        return false;
+      }
+    }
+
+    // Filtro por rede
+    if (filtros.rede_id && c.rede_id !== filtros.rede_id) {
+      return false;
+    }
+
+    // Filtro por rota
+    if (filtros.rota_id && c.rota_id !== filtros.rota_id) {
+      return false;
+    }
+
+    // Filtro por segmento
+    if (filtros.segmento_id && c.segmento_id !== filtros.segmento_id) {
+      return false;
+    }
+
+    return true;
   });
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
@@ -210,32 +292,155 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
 
             {showClientesPicker && (
               <div className="mb-4 p-4 border rounded-lg bg-slate-50">
-                <Input
-                  placeholder="Buscar cliente por nome ou código..."
-                  value={searchCliente}
-                  onChange={(e) => setSearchCliente(e.target.value)}
-                  className="mb-2"
-                />
-                {searchCliente && (
-                  <div className="max-h-60 overflow-y-auto space-y-1">
-                    {clientesFiltrados.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-4">Nenhum cliente encontrado</p>
-                    ) : (
-                      clientesFiltrados.slice(0, 20).map(cliente => (
+                <div className="space-y-3 mb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Busca Geral</Label>
+                      <Input
+                        placeholder="Nome ou Razão Social..."
+                        value={filtros.busca}
+                        onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Código</Label>
+                      <Input
+                        placeholder="Código do cliente..."
+                        value={filtros.codigo}
+                        onChange={(e) => setFiltros({ ...filtros, codigo: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">CPF/CNPJ</Label>
+                      <Input
+                        placeholder="CPF ou CNPJ..."
+                        value={filtros.cpf_cnpj}
+                        onChange={(e) => setFiltros({ ...filtros, cpf_cnpj: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Vendedor</Label>
+                      <Select value={filtros.vendedor_id} onValueChange={(v) => setFiltros({ ...filtros, vendedor_id: v })}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Todos</SelectItem>
+                          {vendedores.map(v => (
+                            <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Supervisor</Label>
+                      <Select value={filtros.supervisor_id} onValueChange={(v) => setFiltros({ ...filtros, supervisor_id: v })}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Todos</SelectItem>
+                          {supervisores.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Segmento</Label>
+                      <Select value={filtros.segmento_id} onValueChange={(v) => setFiltros({ ...filtros, segmento_id: v })}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Todos</SelectItem>
+                          {segmentos.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Rede</Label>
+                      <Select value={filtros.rede_id} onValueChange={(v) => setFiltros({ ...filtros, rede_id: v })}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Todas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Todas</SelectItem>
+                          {redes.map(r => (
+                            <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Rota</Label>
+                      <Select value={filtros.rota_id} onValueChange={(v) => setFiltros({ ...filtros, rota_id: v })}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Todas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Todas</SelectItem>
+                          {rotas.map(r => (
+                            <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={limparFiltros}
+                        className="w-full h-9"
+                      >
+                        Limpar Filtros
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-1 border-t pt-2">
+                  {clientesFiltrados.length === 0 ? (
+                    <p className="text-sm text-slate-500 text-center py-4">
+                      {Object.values(filtros).some(v => v) ? 'Nenhum cliente encontrado com os filtros aplicados' : 'Use os filtros acima para buscar clientes'}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-slate-600 mb-2">
+                        {clientesFiltrados.length} cliente(s) encontrado(s) - mostrando até 50
+                      </p>
+                      {clientesFiltrados.slice(0, 50).map(cliente => (
                         <div
                           key={cliente.id}
                           onClick={() => handleAddCliente(cliente)}
                           className="p-2 hover:bg-slate-200 cursor-pointer rounded text-sm flex justify-between items-center"
                         >
-                          <span>
-                            {cliente.codigo} - {cliente.razao_social || cliente.nome_fantasia}
-                          </span>
+                          <div className="flex-1">
+                            <span className="font-medium">
+                              {cliente.codigo} - {cliente.razao_social || cliente.nome_fantasia}
+                            </span>
+                            {cliente.nome_fantasia && cliente.razao_social && (
+                              <span className="text-xs text-slate-500 ml-2">({cliente.nome_fantasia})</span>
+                            )}
+                          </div>
                           <span className="text-xs text-slate-500">{cliente.cidade}</span>
                         </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                      ))}
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
