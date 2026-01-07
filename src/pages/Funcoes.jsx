@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Briefcase, CheckCircle, XCircle, Building2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -68,6 +69,10 @@ function GerenciarFuncoes() {
       queryClient.invalidateQueries(['funcoes']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Função criada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar função: ' + error.message);
     }
   });
 
@@ -77,6 +82,10 @@ function GerenciarFuncoes() {
       queryClient.invalidateQueries(['funcoes']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Função atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar função: ' + error.message);
     }
   });
 
@@ -237,6 +246,10 @@ function GerenciarDepartamentos() {
       queryClient.invalidateQueries(['departamentos']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Departamento criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar departamento: ' + error.message);
     }
   });
 
@@ -246,6 +259,10 @@ function GerenciarDepartamentos() {
       queryClient.invalidateQueries(['departamentos']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Departamento atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar departamento: ' + error.message);
     }
   });
 

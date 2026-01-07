@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Tag, Upload, List, Save, Ban, CheckCircle, XCircle } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -35,6 +36,10 @@ export default function Segmentos() {
       queryClient.invalidateQueries(['segmentos']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Segmento criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar segmento: ' + error.message);
     }
   });
 
@@ -44,6 +49,10 @@ export default function Segmentos() {
       queryClient.invalidateQueries(['segmentos']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Segmento atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar segmento: ' + error.message);
     }
   });
 

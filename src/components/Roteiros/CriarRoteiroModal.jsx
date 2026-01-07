@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -87,6 +88,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     onSuccess: () => {
       queryClient.invalidateQueries(['roteiros']);
       onOpenChange(false);
+      toast.success('✅ Roteiro criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar roteiro: ' + error.message);
     }
   });
 
@@ -95,6 +100,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     onSuccess: () => {
       queryClient.invalidateQueries(['roteiros']);
       onOpenChange(false);
+      toast.success('✅ Roteiro atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar roteiro: ' + error.message);
     }
   });
 
@@ -110,7 +119,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
       );
       
       if (roteiroExistente) {
-        alert('Já existe um roteiro para este funcionário neste dia da semana. Edite o roteiro existente ou exclua-o antes de criar um novo.');
+        toast.error('Já existe um roteiro para este funcionário neste dia da semana.');
         return;
       }
     }
@@ -152,8 +161,8 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
           }
         ]
       });
+      toast.success(`Cliente ${cliente.codigo} adicionado ao roteiro`);
     }
-    setShowClientesPicker(false);
   };
 
   const limparFiltros = () => {
@@ -191,6 +200,11 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   };
 
   const clientesFiltrados = clientes.filter(c => {
+    // Excluir clientes já adicionados
+    if (formData.clientes_selecionados.find(cs => cs.id === c.id)) {
+      return false;
+    }
+
     // Filtro de busca geral
     if (filtros.busca) {
       const busca = filtros.busca.toLowerCase();
@@ -300,15 +314,17 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
           <div>
             <div className="flex items-center justify-between mb-3">
               <Label>Adicionar Clientes</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowClientesPicker(!showClientesPicker)}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Adicionar Clientes
-              </Button>
+              {!showClientesPicker && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowClientesPicker(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar Clientes
+                </Button>
+              )}
             </div>
 
             {showClientesPicker && (

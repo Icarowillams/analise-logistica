@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Tag, CheckCircle, XCircle, Layers, FolderTree } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -68,6 +69,10 @@ function GerenciarCategorias() {
       queryClient.invalidateQueries(['categorias']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Categoria criada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar categoria: ' + error.message);
     }
   });
 
@@ -77,6 +82,10 @@ function GerenciarCategorias() {
       queryClient.invalidateQueries(['categorias']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Categoria atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar categoria: ' + error.message);
     }
   });
 
@@ -242,6 +251,10 @@ function GerenciarSubCategorias() {
       queryClient.invalidateQueries(['subCategorias']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Subcategoria criada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar subcategoria: ' + error.message);
     }
   });
 
@@ -251,6 +264,10 @@ function GerenciarSubCategorias() {
       queryClient.invalidateQueries(['subCategorias']);
       setFormOpen(false);
       resetForm();
+      toast.success('✅ Subcategoria atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar subcategoria: ' + error.message);
     }
   });
 

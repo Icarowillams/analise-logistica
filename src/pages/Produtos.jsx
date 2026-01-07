@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import PageHeader from '@/components/ui/PageHeader';
@@ -66,6 +67,10 @@ export default function Produtos() {
       queryClient.invalidateQueries(['produtos']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Produto criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar produto: ' + error.message);
     }
   });
 
@@ -75,6 +80,10 @@ export default function Produtos() {
       queryClient.invalidateQueries(['produtos']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Produto atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar produto: ' + error.message);
     }
   });
 

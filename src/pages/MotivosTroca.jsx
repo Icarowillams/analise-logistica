@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { ArrowLeftRight, Upload, List, Save, Ban, CheckCircle, XCircle } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -35,6 +36,10 @@ export default function MotivosTroca() {
       queryClient.invalidateQueries(['motivosTroca']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Ocorrência criada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar ocorrência: ' + error.message);
     }
   });
 
@@ -44,6 +49,10 @@ export default function MotivosTroca() {
       queryClient.invalidateQueries(['motivosTroca']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Ocorrência atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar ocorrência: ' + error.message);
     }
   });
 

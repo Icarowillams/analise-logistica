@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Building2, CheckCircle, XCircle, Clock, Upload, Users, List, Save, Ban } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -81,11 +82,15 @@ export default function Clientes() {
       queryClient.invalidateQueries(['clientes']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Cliente criado com sucesso!');
       
       // Processar trocas em segundo plano
       processarTrocasSemCadastro(novoCliente).catch(err => {
         console.error('Erro ao processar trocas:', err);
       });
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar cliente: ' + error.message);
     }
   });
 
@@ -95,12 +100,15 @@ export default function Clientes() {
       queryClient.invalidateQueries(['clientes']);
       resetForm();
       setIsEditing(false);
-      alert('✅ Cliente atualizado com sucesso!');
+      toast.success('✅ Cliente atualizado com sucesso!');
       
       // Processar trocas em segundo plano
       processarTrocasSemCadastro(clienteAtualizado).catch(err => {
         console.error('Erro ao processar trocas:', err);
       });
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar cliente: ' + error.message);
     }
   });
 
@@ -138,8 +146,8 @@ export default function Clientes() {
 
         queryClient.invalidateQueries(['trocas']);
         queryClient.invalidateQueries(['trocas_nao_cadastradas']);
-        
-        alert(`✅ Cliente cadastrado com sucesso!\n\n${trocasParaAtualizar.length} troca(s) foram vinculadas automaticamente ao novo cliente.`);
+
+        toast.success(`${trocasParaAtualizar.length} troca(s) foram vinculadas automaticamente ao novo cliente.`);
       }
     } catch (error) {
       console.error('Erro ao processar trocas sem cadastro:', error);

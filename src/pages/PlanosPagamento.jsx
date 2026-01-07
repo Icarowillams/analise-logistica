@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { CreditCard, CheckCircle, XCircle, List, Save, Ban } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -33,6 +34,10 @@ export default function PlanosPagamento() {
       queryClient.invalidateQueries(['planosPagamento']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Plano criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar plano: ' + error.message);
     }
   });
 
@@ -42,6 +47,10 @@ export default function PlanosPagamento() {
       queryClient.invalidateQueries(['planosPagamento']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Plano atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar plano: ' + error.message);
     }
   });
 

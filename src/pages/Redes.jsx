@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Network, Upload, List, Save, Ban, CheckCircle, XCircle } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -35,6 +36,10 @@ export default function Redes() {
       queryClient.invalidateQueries(['redes']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Rede criada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar rede: ' + error.message);
     }
   });
 
@@ -44,6 +49,10 @@ export default function Redes() {
       queryClient.invalidateQueries(['redes']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Rede atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar rede: ' + error.message);
     }
   });
 
