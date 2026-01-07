@@ -58,6 +58,10 @@ export default function Funcionarios() {
       queryClient.invalidateQueries(['vendedores']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Funcionário criado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao criar funcionário: ' + error.message);
     }
   });
 
@@ -67,6 +71,10 @@ export default function Funcionarios() {
       queryClient.invalidateQueries(['vendedores']);
       resetForm();
       setIsEditing(false);
+      toast.success('✅ Funcionário atualizado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('❌ Erro ao atualizar funcionário: ' + error.message);
     }
   });
 
