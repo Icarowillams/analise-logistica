@@ -139,10 +139,36 @@ export default function Funcionarios() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (selected) {
-      updateMutation.mutate({ id: selected.id, data: formData });
+    
+    // Preparar dados convertendo latitude e longitude
+    const dataToSave = { ...formData };
+    
+    // Converter latitude para número ou null
+    if (dataToSave.latitude === '' || dataToSave.latitude === null) {
+      dataToSave.latitude = null;
     } else {
-      createMutation.mutate(formData);
+      dataToSave.latitude = parseFloat(dataToSave.latitude);
+      if (isNaN(dataToSave.latitude)) {
+        toast.error('❌ Latitude deve ser um número válido.');
+        return;
+      }
+    }
+    
+    // Converter longitude para número ou null
+    if (dataToSave.longitude === '' || dataToSave.longitude === null) {
+      dataToSave.longitude = null;
+    } else {
+      dataToSave.longitude = parseFloat(dataToSave.longitude);
+      if (isNaN(dataToSave.longitude)) {
+        toast.error('❌ Longitude deve ser um número válido.');
+        return;
+      }
+    }
+    
+    if (selected) {
+      updateMutation.mutate({ id: selected.id, data: dataToSave });
+    } else {
+      createMutation.mutate(dataToSave);
     }
   };
 
