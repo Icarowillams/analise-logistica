@@ -135,46 +135,48 @@ export default function BulkImportModal({
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          {/* Tipo de importação */}
-          <div className="p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
-            <p className="font-medium text-slate-700 mb-3">Tipo de Importação:</p>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
-                borderColor: tipoImportacao === 'venda' ? '#3b82f6' : '#e5e7eb',
-                backgroundColor: tipoImportacao === 'venda' ? '#eff6ff' : 'white'
-              }}>
-                <input
-                  type="radio"
-                  checked={tipoImportacao === 'venda'}
-                  onChange={() => onTipoChange && onTipoChange(false)}
-                  className="w-4 h-4 text-blue-600"
-                  name="tipoImportacaoModal"
-                />
-                <span className="text-sm font-semibold" style={{
-                  color: tipoImportacao === 'venda' ? '#1e40af' : '#64748b'
+          {/* Tipo de importação - só mostra se as props forem passadas */}
+          {onTipoChange && (
+            <div className="p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
+              <p className="font-medium text-slate-700 mb-3">Tipo de Importação:</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
+                  borderColor: tipoImportacao === 'venda' ? '#3b82f6' : '#e5e7eb',
+                  backgroundColor: tipoImportacao === 'venda' ? '#eff6ff' : 'white'
                 }}>
-                  📦 Vendas
-                </span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
-                borderColor: tipoImportacao === 'troca' ? '#f97316' : '#e5e7eb',
-                backgroundColor: tipoImportacao === 'troca' ? '#fff7ed' : 'white'
-              }}>
-                <input
-                  type="radio"
-                  checked={tipoImportacao === 'troca'}
-                  onChange={() => onTipoChange && onTipoChange(true)}
-                  className="w-4 h-4 text-orange-600"
-                  name="tipoImportacaoModal"
-                />
-                <span className="text-sm font-semibold" style={{
-                  color: tipoImportacao === 'troca' ? '#ea580c' : '#64748b'
+                  <input
+                    type="radio"
+                    checked={tipoImportacao === 'venda'}
+                    onChange={() => onTipoChange(false)}
+                    className="w-4 h-4 text-blue-600"
+                    name="tipoImportacaoModal"
+                  />
+                  <span className="text-sm font-semibold" style={{
+                    color: tipoImportacao === 'venda' ? '#1e40af' : '#64748b'
+                  }}>
+                    📦 Vendas
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all" style={{
+                  borderColor: tipoImportacao === 'troca' ? '#f97316' : '#e5e7eb',
+                  backgroundColor: tipoImportacao === 'troca' ? '#fff7ed' : 'white'
                 }}>
-                  🔄 Trocas
-                </span>
-              </label>
+                  <input
+                    type="radio"
+                    checked={tipoImportacao === 'troca'}
+                    onChange={() => onTipoChange(true)}
+                    className="w-4 h-4 text-orange-600"
+                    name="tipoImportacaoModal"
+                  />
+                  <span className="text-sm font-semibold" style={{
+                    color: tipoImportacao === 'troca' ? '#ea580c' : '#64748b'
+                  }}>
+                    🔄 Trocas
+                  </span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Baixar modelo */}
           <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl">
