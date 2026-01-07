@@ -273,6 +273,10 @@ export default function Clientes() {
 
     setIsImporting(true);
     
+    // Buscar todos os clientes existentes para verificar duplicatas
+    const existingClients = await base44.entities.Cliente.list();
+    const existingClientsMap = new Map(existingClients.map(c => [c.codigo, c]));
+    
     const findId = (list, name) => {
       if (!name) return null;
       const found = list.find(i => i.nome?.toLowerCase() === String(name).toLowerCase().trim());
@@ -301,8 +305,28 @@ export default function Clientes() {
         }
       }
 
+      // Converter latitude e longitude
+      let lat = item.latitude;
+      let lng = item.longitude;
+      
+      if (lat === '' || lat === null || lat === undefined) {
+        lat = null;
+      } else {
+        lat = parseFloat(lat);
+        if (isNaN(lat)) lat = null;
+      }
+      
+      if (lng === '' || lng === null || lng === undefined) {
+        lng = null;
+      } else {
+        lng = parseFloat(lng);
+        if (isNaN(lng)) lng = null;
+      }
+
       const clienteData = {
         ...item,
+        latitude: lat,
+        longitude: lng,
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
         tabela_id: findId(tabelas, item.tabela_preco),
         segmento_id: findId(segmentos, item.segmento),
@@ -324,10 +348,38 @@ export default function Clientes() {
       return clienteData;
     });
 
-    await base44.entities.Cliente.bulkCreate(clientesData);
+    // Separar clientes para criar e atualizar
+    const toCreate = [];
+    const toUpdate = [];
+
+    for (const clienteData of clientesData) {
+      const existingClient = existingClientsMap.get(clienteData.codigo);
+      if (existingClient) {
+        toUpdate.push({ id: existingClient.id, data: clienteData });
+      } else {
+        toCreate.push(clienteData);
+      }
+    }
+
+    // Executar criações
+    if (toCreate.length > 0) {
+      await base44.entities.Cliente.bulkCreate(toCreate);
+    }
+
+    // Executar atualizações
+    for (const updateItem of toUpdate) {
+      await base44.entities.Cliente.update(updateItem.id, updateItem.data);
+    }
+
     queryClient.invalidateQueries(['clientes']);
     setIsImporting(false);
     setBulkOpen(false);
+
+    // Mensagem de sucesso
+    const messages = [];
+    if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cliente(s) cadastrado(s)`);
+    if (toUpdate.length > 0) messages.push(`${toUpdate.length} cliente(s) atualizado(s)`);
+    toast.success(`✅ ${messages.join(' e ')}!`);
   };
 
   const bulkColumns = [
