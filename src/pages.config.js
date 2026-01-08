@@ -32,6 +32,7 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import MotivosNaoAtendimento from './pages/MotivosNaoAtendimento';
 import __Layout from './Layout.jsx';
 
 
@@ -70,6 +71,7 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "MotivosNaoAtendimento": MotivosNaoAtendimento,
 }
 
 export const pagesConfig = {
