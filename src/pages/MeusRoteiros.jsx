@@ -249,13 +249,24 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
     
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           setLocationData({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude
           });
-          setLoading(false);
-          setShowPedidoDialog(true);
+          
+          // Verificar se o usuário é vendedor (tem registro em Vendedor)
+          const user = await base44.auth.me();
+          const vendedores = await base44.entities.Vendedor.list();
+          const isVendedor = vendedores.some(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+          
+          if (isVendedor) {
+            setLoading(false);
+            setShowPedidoDialog(true);
+          } else {
+            // Admin ou outro tipo de usuário - registrar direto sem perguntar
+            await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
+          }
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
@@ -266,6 +277,47 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
       toast.error('Geolocalização não suportada pelo navegador');
       setLoading(false);
     }
+  };
+
+  const finalizarCheckinDireto = async (latitude, longitude) => {
+    const agora = new Date();
+    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
+    const dataVisitaRoteiro = {
+      roteiro_id: roteiroId,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      cliente_codigo: cliente.cliente_codigo,
+      cliente_cidade: cliente.cliente_cidade,
+      data_visita: agora.toISOString().split('T')[0],
+      checkin_time: agora.toISOString(),
+      checkin_latitude: latitude,
+      checkin_longitude: longitude,
+      status: 'checkin_realizado'
+    };
+
+    const dataVisita = {
+      numero_visita: numeroVisita,
+      roteiro_id: roteiroId,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      data_visita: agora.toISOString().split('T')[0],
+      hora_checkin: agora.toTimeString().split(' ')[0],
+      latitude_checkin: latitude,
+      longitude_checkin: longitude,
+      pedido_solicitado: null
+    };
+
+    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    setLoading(false);
+    onSuccess();
   };
 
   const finalizarCheckin = async () => {
