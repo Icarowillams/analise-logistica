@@ -120,15 +120,14 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Visitas',
-        icon: TrendingUp,
-        submenu: [
-          { title: 'Meus Roteiros', path: 'MeusRoteiros' },
-          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
-          { title: 'Relatórios de Visitas', path: 'RelatoriosGestorVisita' },
-          { title: 'Importações', path: 'Importacoes' }
-        ]
-      }
+          title: 'Visitas',
+          icon: TrendingUp,
+          submenu: [
+            { title: 'Meus Roteiros', path: 'MeusRoteiros' },
+            { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
+            { title: 'Relatórios de Visitas', path: 'RelatoriosGestorVisita' }
+          ]
+        }
     ];
 
     if (isAdmin) {
