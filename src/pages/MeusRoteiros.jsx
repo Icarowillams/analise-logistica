@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
 import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
 import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 
@@ -52,6 +56,12 @@ export default function MeusRoteiros() {
   const { data: visitas = [] } = useQuery({
     queryKey: ['visitasRoteiro', vendedorAtual?.id],
     queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedorAtual?.id }),
+    enabled: !!vendedorAtual
+  });
+
+  const { data: visitasRegistros = [] } = useQuery({
+    queryKey: ['visitas', vendedorAtual?.id],
+    queryFn: () => base44.entities.Visita.filter({ vendedor_id: vendedorAtual?.id }),
     enabled: !!vendedorAtual
   });
 
@@ -205,12 +215,32 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor }) {
 function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [showPedidoDialog, setShowPedidoDialog] = useState(false);
+  const [pedidoSolicitado, setPedidoSolicitado] = useState(null);
+  const [motivoSearch, setMotivoSearch] = useState('');
+  const [motivoSelecionado, setMotivoSelecionado] = useState('');
+  const [locationData, setLocationData] = useState(null);
+
+  const { data: motivos = [] } = useQuery({
+    queryKey: ['motivosNaoSolicitacao'],
+    queryFn: () => base44.entities.MotivoNaoSolicitacao.list()
+  });
+
+  const motivosFiltrados = motivos.filter(m => 
+    m.descricao?.toLowerCase().includes(motivoSearch.toLowerCase())
+  );
 
   const createVisitaMutation = useMutation({
     mutationFn: (data) => base44.entities.VisitaRoteiro.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['visitasRoteiro']);
-      onSuccess();
+    }
+  });
+
+  const createVisitaRegistroMutation = useMutation({
+    mutationFn: (data) => base44.entities.Visita.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['visitas']);
     }
   });
 
@@ -220,49 +250,175 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const data = {
-            roteiro_id: roteiroId,
-            vendedor_id: vendedor.id,
-            vendedor_nome: vendedor.nome,
-            cliente_id: cliente.cliente_id,
-            cliente_nome: cliente.cliente_nome,
-            cliente_codigo: cliente.cliente_codigo,
-            cliente_cidade: cliente.cliente_cidade,
-            data_visita: new Date().toISOString().split('T')[0],
-            checkin_time: new Date().toISOString(),
-            checkin_latitude: position.coords.latitude,
-            checkin_longitude: position.coords.longitude,
-            status: 'checkin_realizado'
-          };
-          
-          createVisitaMutation.mutate(data);
+          setLocationData({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
           setLoading(false);
+          setShowPedidoDialog(true);
         },
         (error) => {
-          alert('Erro ao obter localização. Verifique as permissões do navegador.');
+          toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
           setLoading(false);
         }
       );
     } else {
-      alert('Geolocalização não suportada pelo navegador');
+      toast.error('Geolocalização não suportada pelo navegador');
       setLoading(false);
     }
   };
 
+  const finalizarCheckin = async () => {
+    if (pedidoSolicitado === false && !motivoSelecionado) {
+      toast.error('Por favor, selecione o motivo da não solicitação');
+      return;
+    }
+
+    const agora = new Date();
+    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
+    const motivoObj = motivos.find(m => m.id === motivoSelecionado);
+
+    // Criar registro na VisitaRoteiro (entidade antiga)
+    const dataVisitaRoteiro = {
+      roteiro_id: roteiroId,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      cliente_codigo: cliente.cliente_codigo,
+      cliente_cidade: cliente.cliente_cidade,
+      data_visita: agora.toISOString().split('T')[0],
+      checkin_time: agora.toISOString(),
+      checkin_latitude: locationData.latitude,
+      checkin_longitude: locationData.longitude,
+      status: 'checkin_realizado'
+    };
+
+    // Criar registro na Visita (nova entidade para contabilização)
+    const dataVisita = {
+      numero_visita: numeroVisita,
+      roteiro_id: roteiroId,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      data_visita: agora.toISOString().split('T')[0],
+      hora_checkin: agora.toTimeString().split(' ')[0],
+      latitude_checkin: locationData.latitude,
+      longitude_checkin: locationData.longitude,
+      pedido_solicitado: pedidoSolicitado,
+      motivo_nao_solicitacao_id: motivoSelecionado || null,
+      motivo_nao_solicitacao_descricao: motivoObj?.descricao || null
+    };
+
+    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    setShowPedidoDialog(false);
+    setPedidoSolicitado(null);
+    setMotivoSelecionado('');
+    setMotivoSearch('');
+    onSuccess();
+  };
+
+  if (showPedidoDialog) {
+    return (
+      <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+        <div>
+          <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setPedidoSolicitado(true)}
+              variant={pedidoSolicitado === true ? 'default' : 'outline'}
+              className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
+            >
+              Sim
+            </Button>
+            <Button
+              onClick={() => setPedidoSolicitado(false)}
+              variant={pedidoSolicitado === false ? 'default' : 'outline'}
+              className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
+            >
+              Não
+            </Button>
+          </div>
+        </div>
+
+        {pedidoSolicitado === false && (
+          <div className="space-y-2 animate-in fade-in-50">
+            <Label>Motivo da não solicitação *</Label>
+            <Input
+              placeholder="Buscar motivo..."
+              value={motivoSearch}
+              onChange={(e) => setMotivoSearch(e.target.value)}
+              className="mb-2"
+            />
+            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o motivo..." />
+              </SelectTrigger>
+              <SelectContent>
+                {motivosFiltrados.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {pedidoSolicitado !== null && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPedidoDialog(false);
+                setPedidoSolicitado(null);
+                setMotivoSelecionado('');
+                setMotivoSearch('');
+              }}
+              className="flex-1"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={finalizarCheckin}
+              disabled={createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
+              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
+            >
+              Confirmar Check-in
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Button 
       onClick={handleCheckin}
-      disabled={loading || createVisitaMutation.isPending}
+      disabled={loading}
       className="w-full bg-gradient-to-r from-blue-500 to-blue-600"
     >
       <MapPin className="w-4 h-4 mr-2" />
-      {loading || createVisitaMutation.isPending ? 'Obtendo localização...' : 'Fazer Check-in'}
+      {loading ? 'Obtendo localização...' : 'Fazer Check-in'}
     </Button>
   );
 }
 
 function VisitaDetalhes({ visita, cliente }) {
   const [activeTab, setActiveTab] = useState('estoque');
+  const { data: visitaRegistro } = useQuery({
+    queryKey: ['visitaRegistro', visita.id],
+    queryFn: async () => {
+      const visitas = await base44.entities.Visita.filter({ 
+        cliente_id: cliente.cliente_id,
+        data_visita: visita.data_visita 
+      });
+      return visitas[0];
+    }
+  });
 
   if (visita.status === 'concluida') {
     return (
@@ -271,6 +427,11 @@ function VisitaDetalhes({ visita, cliente }) {
           <CheckCircle className="w-4 h-4 text-green-600" />
           <AlertDescription className="text-green-800">
             Visita concluída em {new Date(visita.checkout_time).toLocaleString('pt-BR')}
+            {visitaRegistro && (
+              <div className="mt-1 text-xs">
+                <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
+              </div>
+            )}
           </AlertDescription>
         </Alert>
         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -283,6 +444,13 @@ function VisitaDetalhes({ visita, cliente }) {
             <p className="font-medium">{new Date(visita.checkout_time).toLocaleTimeString('pt-BR')}</p>
           </div>
         </div>
+        {visitaRegistro && visitaRegistro.pedido_solicitado === false && (
+          <Alert className="bg-amber-50 border-amber-200">
+            <AlertDescription className="text-amber-800 text-xs">
+              <strong>Pedido não solicitado:</strong> {visitaRegistro.motivo_nao_solicitacao_descricao}
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
     );
   }
@@ -293,8 +461,21 @@ function VisitaDetalhes({ visita, cliente }) {
         <Clock className="w-4 h-4 text-blue-600" />
         <AlertDescription className="text-blue-800">
           Check-in realizado às {new Date(visita.checkin_time).toLocaleTimeString('pt-BR')}
+          {visitaRegistro && (
+            <div className="mt-1 text-xs">
+              <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
+            </div>
+          )}
         </AlertDescription>
       </Alert>
+
+      {visitaRegistro && visitaRegistro.pedido_solicitado === false && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <AlertDescription className="text-amber-800 text-sm">
+            <strong>Pedido não solicitado:</strong> {visitaRegistro.motivo_nao_solicitacao_descricao}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
