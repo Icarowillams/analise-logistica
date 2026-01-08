@@ -255,12 +255,13 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
             longitude: position.coords.longitude
           });
           
-          // Verificar se o usuário é vendedor (tem registro em Vendedor)
-          const user = await base44.auth.me();
-          const vendedores = await base44.entities.Vendedor.list();
-          const isVendedor = vendedores.some(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+          // Verificar se o vendedor tem cargo de funcionário (vendedor)
+          const funcoes = await base44.entities.Funcao.list();
+          const funcaoVendedor = funcoes.find(f => f.id === vendedor.funcao_id);
+          const isFuncionarioVendedor = funcaoVendedor?.nome?.toLowerCase().includes('vendedor') || 
+                                         funcaoVendedor?.nome?.toLowerCase().includes('funcionario');
           
-          if (isVendedor) {
+          if (isFuncionarioVendedor) {
             setLoading(false);
             setShowPedidoDialog(true);
           } else {
