@@ -256,6 +256,7 @@ export default function PainelGestorVisita() {
         <TabsList>
           <TabsTrigger value="roteiros">Roteiros</TabsTrigger>
           <TabsTrigger value="visitas">Visitas do Dia</TabsTrigger>
+          <TabsTrigger value="pendentes">Visitas Pendentes</TabsTrigger>
           <TabsTrigger value="graficos">Análises</TabsTrigger>
         </TabsList>
 
