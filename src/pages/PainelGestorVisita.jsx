@@ -2,89 +2,150 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { Route, Users, Download, Filter, Search, MapPin } from 'lucide-react';
+import { Route, Users, MapPin, Filter, Search, CheckCircle, XCircle, Clock, Eye } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'];
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function PainelGestorVisita() {
   const [filtroDia, setFiltroDia] = useState('todos');
-  const [filtroPromotor, setFiltroPromotor] = useState('todos');
+  const [filtroVendedor, setFiltroVendedor] = useState('todos');
+  const [filtroData, setFiltroData] = useState('');
   const [busca, setBusca] = useState('');
+  const [roteiroSelecionado, setRoteiroSelecionado] = useState(null);
 
-  const { data: resultado, isLoading } = useQuery({
-    queryKey: ['roteirosGestorVisita'],
-    queryFn: async () => {
-      const response = await base44.functions.invoke('buscarRoteirosGestorVisita', {});
-      return response.data;
-    },
-    refetchInterval: 30000
+  // Buscar dados das entidades locais
+  const { data: roteiros = [] } = useQuery({
+    queryKey: ['roteiros'],
+    queryFn: () => base44.entities.Roteiro.list()
   });
 
-  const roteiros = resultado?.roteiros || [];
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
+  });
 
-  // Promotores únicos para filtro
-  const promotoresUnicos = useMemo(() => {
-    const promotores = new Set();
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
+  const { data: visitas = [] } = useQuery({
+    queryKey: ['visitas'],
+    queryFn: () => base44.entities.Visita.list()
+  });
+
+  const { data: visitasRoteiro = [] } = useQuery({
+    queryKey: ['visitasRoteiro'],
+    queryFn: () => base44.entities.VisitaRoteiro.list()
+  });
+
+  // Mapear vendedores
+  const vendedoresMap = useMemo(() => {
+    return vendedores.reduce((acc, v) => {
+      acc[v.id] = v;
+      return acc;
+    }, {});
+  }, [vendedores]);
+
+  // Mapear clientes
+  const clientesMap = useMemo(() => {
+    return clientes.reduce((acc, c) => {
+      acc[c.id] = c;
+      return acc;
+    }, {});
+  }, [clientes]);
+
+  // Vendedores únicos para filtro
+  const vendedoresUnicos = useMemo(() => {
+    const ids = new Set();
     roteiros.forEach(r => {
-      if (r.promotor_nome) promotores.add(r.promotor_nome);
+      if (r.vendedor_id) ids.add(r.vendedor_id);
     });
-    return Array.from(promotores).sort();
-  }, [roteiros]);
+    return Array.from(ids).map(id => vendedoresMap[id]).filter(Boolean).sort((a, b) => a.nome?.localeCompare(b.nome));
+  }, [roteiros, vendedoresMap]);
 
   // Dias únicos para filtro
-  const diasUnicos = useMemo(() => {
-    const dias = new Set();
-    roteiros.forEach(r => {
-      if (r.dia_semana) dias.add(r.dia_semana);
+  const diasSemana = [
+    { valor: 'segunda-feira', label: 'Segunda-feira' },
+    { valor: 'terca-feira', label: 'Terça-feira' },
+    { valor: 'quarta-feira', label: 'Quarta-feira' },
+    { valor: 'quinta-feira', label: 'Quinta-feira' },
+    { valor: 'sexta-feira', label: 'Sexta-feira' },
+    { valor: 'sabado', label: 'Sábado' },
+    { valor: 'domingo', label: 'Domingo' }
+  ];
+
+  // Roteiros com dados enriquecidos
+  const roteirosEnriquecidos = useMemo(() => {
+    return roteiros.map(r => {
+      const vendedor = vendedoresMap[r.vendedor_id];
+      const clientesDoRoteiro = (r.clientes_ids || []).map(id => clientesMap[id]).filter(Boolean);
+      
+      // Contar visitas realizadas para este roteiro
+      const visitasDoRoteiro = visitasRoteiro.filter(v => v.roteiro_id === r.id);
+      const visitasHoje = visitasDoRoteiro.filter(v => v.data_visita === new Date().toISOString().split('T')[0]);
+      
+      return {
+        ...r,
+        vendedor_nome: vendedor?.nome || 'N/A',
+        vendedor,
+        clientes_detalhes: clientesDoRoteiro,
+        total_clientes: clientesDoRoteiro.length,
+        visitas_realizadas: visitasHoje.length,
+        visitas_totais: visitasDoRoteiro.length
+      };
     });
-    return Array.from(dias).sort();
-  }, [roteiros]);
+  }, [roteiros, vendedoresMap, clientesMap, visitasRoteiro]);
 
   // Roteiros filtrados
   const roteirosFiltrados = useMemo(() => {
-    return roteiros.filter(r => {
+    return roteirosEnriquecidos.filter(r => {
       if (filtroDia !== 'todos' && r.dia_semana !== filtroDia) return false;
-      if (filtroPromotor !== 'todos' && r.promotor_nome !== filtroPromotor) return false;
+      if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
       if (busca) {
         const termo = busca.toLowerCase();
         return (
-          r.promotor_nome?.toLowerCase().includes(termo) ||
-          r.dia_semana?.toLowerCase().includes(termo) ||
-          r.status?.toLowerCase().includes(termo) ||
-          r.promotor_id?.toLowerCase().includes(termo)
+          r.vendedor_nome?.toLowerCase().includes(termo) ||
+          r.dia_semana?.toLowerCase().includes(termo)
         );
       }
       return true;
     });
-  }, [roteiros, filtroDia, filtroPromotor, busca]);
+  }, [roteirosEnriquecidos, filtroDia, filtroVendedor, busca]);
 
-  // Estatísticas
-  const stats = useMemo(() => {
-    const total = roteirosFiltrados.length;
-    const promotores = new Set(roteirosFiltrados.map(r => r.promotor_id).filter(Boolean)).size;
-    const clientesTotais = roteirosFiltrados.reduce((sum, r) => sum + (r.clientes_ids?.length || 0), 0);
+  // Estatísticas de visitas
+  const statsVisitas = useMemo(() => {
+    const hoje = new Date().toISOString().split('T')[0];
+    const visitasHoje = visitas.filter(v => v.data_visita === hoje);
+    const pedidosSolicitados = visitasHoje.filter(v => v.pedido_solicitado === true).length;
+    const pedidosNaoSolicitados = visitasHoje.filter(v => v.pedido_solicitado === false).length;
 
     return {
-      total,
-      promotores,
-      clientesTotais
+      totalRoteiros: roteirosFiltrados.length,
+      totalVendedores: new Set(roteirosFiltrados.map(r => r.vendedor_id).filter(Boolean)).size,
+      totalClientes: roteirosFiltrados.reduce((sum, r) => sum + r.total_clientes, 0),
+      visitasHoje: visitasHoje.length,
+      pedidosSolicitados,
+      pedidosNaoSolicitados
     };
-  }, [roteirosFiltrados]);
+  }, [roteirosFiltrados, visitas]);
 
   // Roteiros por dia da semana
   const roteirosPorDia = useMemo(() => {
-    const diasOrdem = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const diasOrdem = diasSemana.map(d => d.valor);
     const grouped = {};
     diasOrdem.forEach(d => grouped[d] = 0);
     
@@ -94,41 +155,40 @@ export default function PainelGestorVisita() {
       }
     });
     
-    return diasOrdem.map(dia => ({ dia, qtd: grouped[dia] }));
+    return diasOrdem.map(dia => {
+      const label = diasSemana.find(d => d.valor === dia)?.label || dia;
+      return { dia: label.substring(0, 3), qtd: grouped[dia] };
+    });
   }, [roteirosFiltrados]);
 
-  // Roteiros por promotor
-  const roteirosPorPromotor = useMemo(() => {
+  // Roteiros por vendedor
+  const roteirosPorVendedor = useMemo(() => {
     const grouped = {};
     roteirosFiltrados.forEach(r => {
-      const promotor = r.promotor_nome || 'Sem promotor';
-      grouped[promotor] = (grouped[promotor] || 0) + 1;
+      const vendedor = r.vendedor_nome || 'Sem vendedor';
+      grouped[vendedor] = (grouped[vendedor] || 0) + 1;
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 8)
-      .map(([nome, qtd]) => ({ nome, qtd }));
+      .map(([nome, qtd]) => ({ nome: nome.split(' ')[0], qtd }));
   }, [roteirosFiltrados]);
 
-  // Clientes por roteiro (média)
-  const clientesPorRoteiro = useMemo(() => {
-    const dados = roteirosFiltrados.map(r => ({
-      promotor: r.promotor_nome?.split(' ')[0] || 'N/A',
-      clientes: r.clientes_ids?.length || 0
-    })).slice(0, 10);
-    return dados;
-  }, [roteirosFiltrados]);
+  // Visitas por status (pedido solicitado ou não)
+  const visitasPorStatus = useMemo(() => {
+    const hoje = new Date().toISOString().split('T')[0];
+    const visitasHoje = visitas.filter(v => v.data_visita === hoje);
+    
+    return [
+      { nome: 'Solicitados', qtd: visitasHoje.filter(v => v.pedido_solicitado === true).length },
+      { nome: 'Não Solicitados', qtd: visitasHoje.filter(v => v.pedido_solicitado === false).length },
+      { nome: 'Não Informado', qtd: visitasHoje.filter(v => v.pedido_solicitado === null).length }
+    ];
+  }, [visitas]);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-12 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
-        </div>
-      </div>
-    );
-  }
+  const getDiaLabel = (valor) => {
+    return diasSemana.find(d => d.valor === valor)?.label || valor;
+  };
 
   return (
     <div className="space-y-6">
@@ -139,49 +199,67 @@ export default function PainelGestorVisita() {
             <Route className="h-6 w-6 text-neutral-900" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Gestão de Roteiros</h1>
-            <p className="text-slate-500">Visualização dos roteiros do Gestor Visita</p>
+            <h1 className="text-2xl font-bold text-slate-900">Painel de Roteiros</h1>
+            <p className="text-slate-500">Gestão e acompanhamento de roteiros e visitas</p>
           </div>
         </div>
-        <Button className="bg-gradient-to-r from-yellow-400 to-amber-500 text-neutral-900 hover:from-yellow-500 hover:to-amber-600">
-          <Download className="w-4 h-4 mr-2" />
-          Exportar Roteiros ({stats.total})
-        </Button>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatsCard
-          title="Total de Roteiros"
-          value={stats.total}
-          subtitle="encontrados"
+          title="Roteiros"
+          value={statsVisitas.totalRoteiros}
+          subtitle="cadastrados"
           icon={Route}
           gradient="from-yellow-400 to-amber-500"
         />
         <StatsCard
-          title="Promotores"
-          value={stats.promotores}
-          subtitle="ativos"
+          title="Vendedores"
+          value={statsVisitas.totalVendedores}
+          subtitle="com roteiros"
           icon={Users}
-          gradient="from-yellow-400 to-amber-500"
+          gradient="from-blue-400 to-blue-500"
         />
         <StatsCard
-          title="Total de Clientes"
-          value={stats.clientesTotais}
+          title="Clientes"
+          value={statsVisitas.totalClientes}
           subtitle="nos roteiros"
           icon={MapPin}
-          gradient="from-yellow-400 to-amber-500"
+          gradient="from-purple-400 to-purple-500"
+        />
+        <StatsCard
+          title="Visitas Hoje"
+          value={statsVisitas.visitasHoje}
+          subtitle="realizadas"
+          icon={CheckCircle}
+          gradient="from-green-400 to-green-500"
+        />
+        <StatsCard
+          title="Pedidos OK"
+          value={statsVisitas.pedidosSolicitados}
+          subtitle="solicitados"
+          icon={CheckCircle}
+          gradient="from-emerald-400 to-emerald-500"
+        />
+        <StatsCard
+          title="Sem Pedido"
+          value={statsVisitas.pedidosNaoSolicitados}
+          subtitle="não solicitados"
+          icon={XCircle}
+          gradient="from-red-400 to-red-500"
         />
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="busca" className="w-full">
+      <Tabs defaultValue="roteiros" className="w-full">
         <TabsList>
-          <TabsTrigger value="busca">Busca de Roteiros</TabsTrigger>
+          <TabsTrigger value="roteiros">Roteiros</TabsTrigger>
+          <TabsTrigger value="visitas">Visitas do Dia</TabsTrigger>
           <TabsTrigger value="graficos">Análises</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="busca" className="space-y-4">
+        <TabsContent value="roteiros" className="space-y-4">
           {/* Filtros */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
@@ -193,30 +271,30 @@ export default function PainelGestorVisita() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1 block">Filtrar por dia</label>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Dia da Semana</label>
                   <Select value={filtroDia} onValueChange={setFiltroDia}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todos os dias" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos os dias</SelectItem>
-                      {diasUnicos.map(dia => (
-                        <SelectItem key={dia} value={dia}>{dia}</SelectItem>
+                      {diasSemana.map(dia => (
+                        <SelectItem key={dia.valor} value={dia.valor}>{dia.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1 block">Filtrar por funcionário</label>
-                  <Select value={filtroPromotor} onValueChange={setFiltroPromotor}>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Vendedor</label>
+                  <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Todos os promotores" />
+                      <SelectValue placeholder="Todos os vendedores" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos os promotores</SelectItem>
-                      {promotoresUnicos.map(promotor => (
-                        <SelectItem key={promotor} value={promotor}>{promotor}</SelectItem>
+                      <SelectItem value="todos">Todos os vendedores</SelectItem>
+                      {vendedoresUnicos.map(v => (
+                        <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -241,44 +319,48 @@ export default function PainelGestorVisita() {
           {/* Tabela de Roteiros */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
-              <CardTitle className="text-base">Roteiros Encontrados ({roteirosFiltrados.length})</CardTitle>
+              <CardTitle className="text-base">Roteiros ({roteirosFiltrados.length})</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b-2 border-slate-200">
-                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Dia da Semana</th>
-                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Funcionário</th>
-                      <th className="text-left p-3 text-sm font-semibold text-slate-700">ID do Roteiro</th>
+                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Dia</th>
+                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Vendedor</th>
                       <th className="text-center p-3 text-sm font-semibold text-slate-700">Clientes</th>
-                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Status</th>
+                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Visitas Hoje</th>
+                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {roteirosFiltrados.map((roteiro, idx) => (
-                      <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                    {roteirosFiltrados.map((roteiro) => (
+                      <tr key={roteiro.id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="p-3 text-sm text-slate-700 font-medium">
-                          {roteiro.dia_semana || 'N/A'}
+                          {getDiaLabel(roteiro.dia_semana)}
                         </td>
                         <td className="p-3 text-sm text-slate-700">
-                          {roteiro.promotor_nome || 'N/A'}
-                        </td>
-                        <td className="p-3 text-xs font-mono text-slate-600">
-                          <div className="space-y-0.5">
-                            <div>Func ID: {roteiro.promotor_id?.substring(0, 20) || 'N/A'}</div>
-                            <div>Roteiro ID: {roteiro.id?.substring(0, 20) || 'N/A'}</div>
-                          </div>
+                          {roteiro.vendedor_nome}
                         </td>
                         <td className="p-3 text-center">
                           <Badge className="bg-slate-100 text-slate-700">
-                            {roteiro.clientes_ids?.length || 0} clientes
+                            {roteiro.total_clientes} clientes
                           </Badge>
                         </td>
                         <td className="p-3 text-center">
-                          <Badge className="bg-blue-100 text-blue-700">
-                            {roteiro.status || 'planejado'}
+                          <Badge className={roteiro.visitas_realizadas > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}>
+                            {roteiro.visitas_realizadas} / {roteiro.total_clientes}
                           </Badge>
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setRoteiroSelecionado(roteiro)}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Ver
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -289,10 +371,12 @@ export default function PainelGestorVisita() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="visitas" className="space-y-4">
+          <VisitasDoDia visitas={visitas} vendedoresMap={vendedoresMap} clientesMap={clientesMap} />
+        </TabsContent>
+
         <TabsContent value="graficos" className="space-y-6">
-          {/* Gráficos */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Dia da Semana */}
             <Card className="border-0 shadow-lg">
               <CardHeader>
                 <CardTitle className="text-base">Roteiros por Dia da Semana</CardTitle>
@@ -301,7 +385,7 @@ export default function PainelGestorVisita() {
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={roteirosPorDia}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
+                    <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 11 }} />
                     <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
                     <Tooltip />
                     <Bar dataKey="qtd" fill="#fbbf24" radius={[8, 8, 0, 0]} />
@@ -310,17 +394,16 @@ export default function PainelGestorVisita() {
               </CardContent>
             </Card>
 
-            {/* Top Promotores */}
             <Card className="border-0 shadow-lg">
               <CardHeader>
-                <CardTitle className="text-base">Roteiros por Promotor</CardTitle>
+                <CardTitle className="text-base">Roteiros por Vendedor</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={roteirosPorPromotor} layout="vertical">
+                  <BarChart data={roteirosPorVendedor} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis type="number" tick={{ fill: '#64748b', fontSize: 12 }} />
-                    <YAxis dataKey="nome" type="category" tick={{ fill: '#64748b', fontSize: 10 }} width={100} />
+                    <YAxis dataKey="nome" type="category" tick={{ fill: '#64748b', fontSize: 10 }} width={80} />
                     <Tooltip />
                     <Bar dataKey="qtd" fill="#f59e0b" radius={[0, 8, 8, 0]} />
                   </BarChart>
@@ -328,19 +411,18 @@ export default function PainelGestorVisita() {
               </CardContent>
             </Card>
 
-            {/* Clientes por Roteiro */}
             <Card className="border-0 shadow-lg lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Clientes por Roteiro (Top 10)</CardTitle>
+                <CardTitle className="text-base">Status dos Pedidos (Hoje)</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={clientesPorRoteiro}>
+                  <BarChart data={visitasPorStatus}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="promotor" tick={{ fill: '#64748b', fontSize: 12 }} />
+                    <XAxis dataKey="nome" tick={{ fill: '#64748b', fontSize: 12 }} />
                     <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
                     <Tooltip />
-                    <Bar dataKey="clientes" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="qtd" fill="#6366f1" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -348,6 +430,148 @@ export default function PainelGestorVisita() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de Detalhes do Roteiro */}
+      <Dialog open={!!roteiroSelecionado} onOpenChange={() => setRoteiroSelecionado(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Roteiro - {getDiaLabel(roteiroSelecionado?.dia_semana)} - {roteiroSelecionado?.vendedor_nome}
+            </DialogTitle>
+          </DialogHeader>
+          {roteiroSelecionado && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500">Total de Clientes:</span>
+                  <p className="font-semibold">{roteiroSelecionado.total_clientes}</p>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500">Visitas Realizadas:</span>
+                  <p className="font-semibold">{roteiroSelecionado.visitas_totais}</p>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="font-semibold mb-2">Clientes do Roteiro:</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {roteiroSelecionado.clientes_detalhes?.map((cliente, idx) => (
+                    <div key={cliente.id} className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
+                      <Badge className="bg-amber-500 text-white">{idx + 1}</Badge>
+                      <div>
+                        <p className="font-medium text-sm">{cliente.razao_social || cliente.nome_fantasia}</p>
+                        <p className="text-xs text-slate-500">{cliente.codigo} • {cliente.cidade}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function VisitasDoDia({ visitas, vendedoresMap, clientesMap }) {
+  const hoje = new Date().toISOString().split('T')[0];
+  const [filtroVendedor, setFiltroVendedor] = useState('todos');
+  
+  const visitasHoje = useMemo(() => {
+    return visitas
+      .filter(v => v.data_visita === hoje)
+      .filter(v => filtroVendedor === 'todos' || v.vendedor_id === filtroVendedor)
+      .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+  }, [visitas, hoje, filtroVendedor]);
+
+  const vendedoresComVisitas = useMemo(() => {
+    const ids = new Set(visitas.filter(v => v.data_visita === hoje).map(v => v.vendedor_id));
+    return Array.from(ids).map(id => vendedoresMap[id]).filter(Boolean);
+  }, [visitas, hoje, vendedoresMap]);
+
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Visitas de Hoje ({visitasHoje.length})</CardTitle>
+          <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filtrar vendedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              {vendedoresComVisitas.map(v => (
+                <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b-2 border-slate-200">
+                <th className="text-left p-3 text-sm font-semibold text-slate-700">Nº Visita</th>
+                <th className="text-left p-3 text-sm font-semibold text-slate-700">Vendedor</th>
+                <th className="text-left p-3 text-sm font-semibold text-slate-700">Cliente</th>
+                <th className="text-center p-3 text-sm font-semibold text-slate-700">Hora</th>
+                <th className="text-center p-3 text-sm font-semibold text-slate-700">Pedido</th>
+                <th className="text-left p-3 text-sm font-semibold text-slate-700">Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visitasHoje.map((visita) => (
+                <tr key={visita.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="p-3 text-xs font-mono text-slate-600">
+                    {visita.numero_visita?.substring(0, 15) || '-'}
+                  </td>
+                  <td className="p-3 text-sm text-slate-700">
+                    {visita.vendedor_nome || vendedoresMap[visita.vendedor_id]?.nome || 'N/A'}
+                  </td>
+                  <td className="p-3 text-sm text-slate-700">
+                    {visita.cliente_nome || clientesMap[visita.cliente_id]?.razao_social || 'N/A'}
+                  </td>
+                  <td className="p-3 text-center text-sm">
+                    <Badge variant="outline">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {visita.hora_checkin?.substring(0, 5) || '-'}
+                    </Badge>
+                  </td>
+                  <td className="p-3 text-center">
+                    {visita.pedido_solicitado === true && (
+                      <Badge className="bg-green-100 text-green-700">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Sim
+                      </Badge>
+                    )}
+                    {visita.pedido_solicitado === false && (
+                      <Badge className="bg-red-100 text-red-700">
+                        <XCircle className="w-3 h-3 mr-1" />
+                        Não
+                      </Badge>
+                    )}
+                    {visita.pedido_solicitado === null && (
+                      <Badge className="bg-slate-100 text-slate-500">-</Badge>
+                    )}
+                  </td>
+                  <td className="p-3 text-sm text-slate-600">
+                    {visita.motivo_nao_solicitacao_descricao || '-'}
+                  </td>
+                </tr>
+              ))}
+              {visitasHoje.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-slate-500">
+                    Nenhuma visita registrada hoje
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
