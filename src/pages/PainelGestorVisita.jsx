@@ -484,6 +484,271 @@ export default function PainelGestorVisita() {
   );
 }
 
+function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientesMap }) {
+  const [mesAtual, setMesAtual] = useState(new Date());
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
+
+  const diasSemanaMap = {
+    0: 'domingo',
+    1: 'segunda-feira',
+    2: 'terca-feira',
+    3: 'quarta-feira',
+    4: 'quinta-feira',
+    5: 'sexta-feira',
+    6: 'sabado'
+  };
+
+  const diasSemanaNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+  // Gerar dias do mês
+  const diasDoMes = useMemo(() => {
+    const ano = mesAtual.getFullYear();
+    const mes = mesAtual.getMonth();
+    const primeiroDia = new Date(ano, mes, 1);
+    const ultimoDia = new Date(ano, mes + 1, 0);
+    const dias = [];
+
+    // Dias do mês anterior para preencher a primeira semana
+    const primeiroDiaSemana = primeiroDia.getDay();
+    for (let i = primeiroDiaSemana - 1; i >= 0; i--) {
+      const dia = new Date(ano, mes, -i);
+      dias.push({ data: dia, outroMes: true });
+    }
+
+    // Dias do mês atual
+    for (let d = 1; d <= ultimoDia.getDate(); d++) {
+      dias.push({ data: new Date(ano, mes, d), outroMes: false });
+    }
+
+    // Dias do próximo mês para completar a última semana
+    const diasRestantes = 42 - dias.length;
+    for (let i = 1; i <= diasRestantes; i++) {
+      dias.push({ data: new Date(ano, mes + 1, i), outroMes: true });
+    }
+
+    return dias;
+  }, [mesAtual]);
+
+  // Calcular visitas pendentes por dia
+  const visitasPorDia = useMemo(() => {
+    const resultado = {};
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    diasDoMes.forEach(({ data, outroMes }) => {
+      if (outroMes) return;
+      
+      const dataStr = data.toISOString().split('T')[0];
+      const diaSemana = diasSemanaMap[data.getDay()];
+      
+      // Roteiros programados para esse dia da semana
+      const roteirosDoDia = roteiros.filter(r => r.dia_semana === diaSemana);
+      
+      // Visitas que foram feitas nesse dia
+      const visitasFeitas = visitas.filter(v => v.data_visita === dataStr);
+      const clientesVisitados = new Set(visitasFeitas.map(v => v.cliente_id));
+
+      // Clientes que deveriam ter sido visitados mas não foram
+      const pendentes = [];
+      roteirosDoDia.forEach(roteiro => {
+        (roteiro.clientes_ids || []).forEach(clienteId => {
+          if (!clientesVisitados.has(clienteId)) {
+            pendentes.push({
+              cliente_id: clienteId,
+              cliente: clientesMap[clienteId],
+              vendedor_id: roteiro.vendedor_id,
+              vendedor: vendedoresMap[roteiro.vendedor_id],
+              roteiro
+            });
+          }
+        });
+      });
+
+      // Só considerar dias passados (não futuros)
+      const isPast = data < hoje;
+      
+      resultado[dataStr] = {
+        total: roteirosDoDia.reduce((sum, r) => sum + (r.clientes_ids?.length || 0), 0),
+        realizadas: visitasFeitas.length,
+        pendentes: isPast ? pendentes : [],
+        isPast
+      };
+    });
+
+    return resultado;
+  }, [diasDoMes, roteiros, visitas, clientesMap, vendedoresMap]);
+
+  // Visitas pendentes do dia selecionado
+  const visitasDoDiaSelecionado = useMemo(() => {
+    if (!diaSelecionado) return [];
+    const dataStr = diaSelecionado.toISOString().split('T')[0];
+    return visitasPorDia[dataStr]?.pendentes || [];
+  }, [diaSelecionado, visitasPorDia]);
+
+  const navegarMes = (direcao) => {
+    setMesAtual(prev => new Date(prev.getFullYear(), prev.getMonth() + direcao, 1));
+    setDiaSelecionado(null);
+  };
+
+  const getCorDia = (data) => {
+    const dataStr = data.toISOString().split('T')[0];
+    const info = visitasPorDia[dataStr];
+    if (!info || info.total === 0) return 'bg-slate-50';
+    if (!info.isPast) return 'bg-blue-50 border-blue-200';
+    if (info.pendentes.length === 0) return 'bg-green-100 border-green-300';
+    if (info.pendentes.length < info.total / 2) return 'bg-yellow-100 border-yellow-300';
+    return 'bg-red-100 border-red-300';
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Calendário */}
+      <Card className="border-0 shadow-lg lg:col-span-2">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Calendário de Visitas Pendentes
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navegarMes(-1)}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="font-semibold text-slate-700 min-w-[150px] text-center">
+                {mesesNomes[mesAtual.getMonth()]} {mesAtual.getFullYear()}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => navegarMes(1)}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Legenda */}
+          <div className="flex flex-wrap gap-4 mb-4 text-xs">
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 rounded bg-green-100 border border-green-300"></div>
+              <span>100% realizadas</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 rounded bg-yellow-100 border border-yellow-300"></div>
+              <span>Parcialmente realizadas</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 rounded bg-red-100 border border-red-300"></div>
+              <span>Muitas pendentes</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 rounded bg-blue-50 border border-blue-200"></div>
+              <span>Futuro</span>
+            </div>
+          </div>
+
+          {/* Header do calendário */}
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {diasSemanaNomes.map(dia => (
+              <div key={dia} className="text-center text-xs font-semibold text-slate-500 py-2">
+                {dia}
+              </div>
+            ))}
+          </div>
+
+          {/* Grid do calendário */}
+          <div className="grid grid-cols-7 gap-1">
+            {diasDoMes.map(({ data, outroMes }, idx) => {
+              const dataStr = data.toISOString().split('T')[0];
+              const info = visitasPorDia[dataStr];
+              const isSelected = diaSelecionado?.toISOString().split('T')[0] === dataStr;
+              const isHoje = new Date().toISOString().split('T')[0] === dataStr;
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => !outroMes && setDiaSelecionado(data)}
+                  disabled={outroMes}
+                  className={`
+                    p-2 rounded-lg text-center transition-all min-h-[70px] border
+                    ${outroMes ? 'opacity-30 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:shadow-md'}
+                    ${!outroMes && getCorDia(data)}
+                    ${isSelected ? 'ring-2 ring-amber-500 ring-offset-2' : ''}
+                    ${isHoje ? 'ring-2 ring-blue-500' : ''}
+                  `}
+                >
+                  <div className={`text-sm font-medium ${outroMes ? 'text-slate-400' : 'text-slate-700'}`}>
+                    {data.getDate()}
+                  </div>
+                  {!outroMes && info && info.total > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      <div className="text-[10px] text-slate-500">{info.realizadas}/{info.total}</div>
+                      {info.isPast && info.pendentes.length > 0 && (
+                        <Badge className="text-[10px] px-1 py-0 bg-red-500 text-white">
+                          {info.pendentes.length} pend
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Painel de detalhes */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-base">
+            {diaSelecionado 
+              ? `Pendentes - ${diaSelecionado.toLocaleDateString('pt-BR')}`
+              : 'Selecione um dia'
+            }
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!diaSelecionado ? (
+            <div className="text-center text-slate-400 py-8">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>Clique em um dia no calendário para ver as visitas que não foram realizadas</p>
+            </div>
+          ) : visitasDoDiaSelecionado.length === 0 ? (
+            <div className="text-center text-green-600 py-8">
+              <CheckCircle className="w-12 h-12 mx-auto mb-3" />
+              <p className="font-medium">Todas as visitas foram realizadas!</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              {visitasDoDiaSelecionado.map((item, idx) => (
+                <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-medium text-sm text-slate-800">
+                        {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {item.cliente?.codigo} • {item.cliente?.cidade}
+                      </p>
+                    </div>
+                    <Badge className="bg-red-100 text-red-700 text-xs">
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Pendente
+                    </Badge>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-red-200">
+                    <p className="text-xs text-slate-600">
+                      <span className="font-medium">Vendedor:</span> {item.vendedor?.nome || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function VisitasDoDia({ visitas, vendedoresMap, clientesMap }) {
   const hoje = new Date().toISOString().split('T')[0];
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
