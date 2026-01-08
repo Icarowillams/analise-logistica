@@ -376,6 +376,15 @@ export default function PainelGestorVisita() {
           <VisitasDoDia visitas={visitas} vendedoresMap={vendedoresMap} clientesMap={clientesMap} />
         </TabsContent>
 
+        <TabsContent value="pendentes" className="space-y-4">
+          <VisitasPendentesCalendario 
+            roteiros={roteirosEnriquecidos} 
+            visitas={visitas} 
+            vendedoresMap={vendedoresMap} 
+            clientesMap={clientesMap}
+          />
+        </TabsContent>
+
         <TabsContent value="graficos" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="border-0 shadow-lg">
