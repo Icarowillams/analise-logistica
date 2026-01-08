@@ -255,13 +255,12 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
             longitude: position.coords.longitude
           });
           
-          // Verificar se o vendedor tem cargo de funcionário (vendedor)
+          // Verificar se o cargo é especificamente vendedor
           const funcoes = await base44.entities.Funcao.list();
           const funcaoVendedor = funcoes.find(f => f.id === vendedor.funcao_id);
-          const isFuncionarioVendedor = funcaoVendedor?.nome?.toLowerCase().includes('vendedor') || 
-                                         funcaoVendedor?.nome?.toLowerCase().includes('funcionario');
+          const isVendedor = funcaoVendedor?.nome?.toLowerCase().includes('vendedor');
           
-          if (isFuncionarioVendedor) {
+          if (isVendedor) {
             setLoading(false);
             setShowPedidoDialog(true);
           } else {
