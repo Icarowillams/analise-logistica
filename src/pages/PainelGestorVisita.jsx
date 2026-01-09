@@ -549,7 +549,7 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
       const visitasFeitas = visitas.filter(v => v.data_visita === dataStr);
       const clientesVisitados = new Set(visitasFeitas.map(v => v.cliente_id));
 
-      // Clientes que deveriam ter sido visitados mas não foram
+      // Clientes que deveriam ter sido visitados (pendentes para passado, programados para futuro)
       const pendentes = [];
       roteirosDoDia.forEach(roteiro => {
         (roteiro.clientes_ids || []).forEach(clienteId => {
@@ -565,25 +565,50 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
         });
       });
 
-      // Só considerar dias passados (não futuros)
-      const isPast = data < hoje;
+      const dataComparacao = new Date(data);
+      dataComparacao.setHours(0, 0, 0, 0);
+      const isPast = dataComparacao < hoje;
+      const isToday = dataComparacao.getTime() === hoje.getTime();
       
       resultado[dataStr] = {
         total: roteirosDoDia.reduce((sum, r) => sum + (r.clientes_ids?.length || 0), 0),
         realizadas: visitasFeitas.length,
-        pendentes: isPast ? pendentes : [],
-        isPast
+        pendentes: pendentes, // Sempre incluir pendentes, independente do dia
+        isPast,
+        isToday,
+        isFuture: !isPast && !isToday
       };
     });
 
     return resultado;
   }, [diasDoMes, roteiros, visitas, clientesMap, vendedoresMap]);
 
-  // Visitas pendentes do dia selecionado
-  const visitasDoDiaSelecionado = useMemo(() => {
-    if (!diaSelecionado) return [];
+  // Visitas pendentes do dia selecionado agrupadas por vendedor
+  const visitasPorVendedor = useMemo(() => {
+    if (!diaSelecionado) return {};
     const dataStr = diaSelecionado.toISOString().split('T')[0];
-    return visitasPorDia[dataStr]?.pendentes || [];
+    const pendentes = visitasPorDia[dataStr]?.pendentes || [];
+    
+    // Agrupar por vendedor
+    const agrupado = {};
+    pendentes.forEach(item => {
+      const vendedorId = item.vendedor_id || 'sem_vendedor';
+      if (!agrupado[vendedorId]) {
+        agrupado[vendedorId] = {
+          vendedor: item.vendedor,
+          clientes: []
+        };
+      }
+      agrupado[vendedorId].clientes.push(item);
+    });
+    
+    return agrupado;
+  }, [diaSelecionado, visitasPorDia]);
+
+  const infoDiaSelecionado = useMemo(() => {
+    if (!diaSelecionado) return null;
+    const dataStr = diaSelecionado.toISOString().split('T')[0];
+    return visitasPorDia[dataStr];
   }, [diaSelecionado, visitasPorDia]);
 
   const navegarMes = (direcao) => {
@@ -595,11 +620,13 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
     const dataStr = data.toISOString().split('T')[0];
     const info = visitasPorDia[dataStr];
     if (!info || info.total === 0) return 'bg-slate-50';
-    if (!info.isPast) return 'bg-blue-50 border-blue-200';
+    if (info.isFuture) return 'bg-blue-50 border-blue-200';
     if (info.pendentes.length === 0) return 'bg-green-100 border-green-300';
     if (info.pendentes.length < info.total / 2) return 'bg-yellow-100 border-yellow-300';
     return 'bg-red-100 border-red-300';
   };
+
+  const totalPendentes = Object.values(visitasPorVendedor).reduce((sum, v) => sum + v.clientes.length, 0);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -641,7 +668,7 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
             </div>
             <div className="flex items-center gap-1">
               <div className="w-4 h-4 rounded bg-blue-50 border border-blue-200"></div>
-              <span>Futuro</span>
+              <span>Programadas (futuro)</span>
             </div>
           </div>
 
@@ -681,9 +708,9 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
                   {!outroMes && info && info.total > 0 && (
                     <div className="mt-1 space-y-0.5">
                       <div className="text-[10px] text-slate-500">{info.realizadas}/{info.total}</div>
-                      {info.isPast && info.pendentes.length > 0 && (
-                        <Badge className="text-[10px] px-1 py-0 bg-red-500 text-white">
-                          {info.pendentes.length} pend
+                      {info.pendentes.length > 0 && (
+                        <Badge className={`text-[10px] px-1 py-0 ${info.isFuture ? 'bg-blue-500' : 'bg-red-500'} text-white`}>
+                          {info.pendentes.length} {info.isFuture ? 'prog' : 'pend'}
                         </Badge>
                       )}
                     </div>
@@ -695,49 +722,83 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
         </CardContent>
       </Card>
 
-      {/* Painel de detalhes */}
+      {/* Painel de detalhes por vendedor */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
           <CardTitle className="text-base">
             {diaSelecionado 
-              ? `Pendentes - ${diaSelecionado.toLocaleDateString('pt-BR')}`
+              ? infoDiaSelecionado?.isFuture 
+                ? `Programadas - ${diaSelecionado.toLocaleDateString('pt-BR')}`
+                : `Pendentes - ${diaSelecionado.toLocaleDateString('pt-BR')}`
               : 'Selecione um dia'
             }
           </CardTitle>
+          {diaSelecionado && totalPendentes > 0 && (
+            <p className="text-sm text-slate-500">
+              {totalPendentes} cliente(s) • {Object.keys(visitasPorVendedor).length} vendedor(es)
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {!diaSelecionado ? (
             <div className="text-center text-slate-400 py-8">
               <AlertTriangle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Clique em um dia no calendário para ver as visitas que não foram realizadas</p>
+              <p>Clique em um dia no calendário para ver as visitas pendentes ou programadas</p>
             </div>
-          ) : visitasDoDiaSelecionado.length === 0 ? (
-            <div className="text-center text-green-600 py-8">
-              <CheckCircle className="w-12 h-12 mx-auto mb-3" />
-              <p className="font-medium">Todas as visitas foram realizadas!</p>
+          ) : totalPendentes === 0 ? (
+            <div className="text-center py-8">
+              {infoDiaSelecionado?.total === 0 ? (
+                <div className="text-slate-400">
+                  <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">Nenhum roteiro programado para este dia</p>
+                </div>
+              ) : (
+                <div className="text-green-600">
+                  <CheckCircle className="w-12 h-12 mx-auto mb-3" />
+                  <p className="font-medium">Todas as visitas foram realizadas!</p>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {visitasDoDiaSelecionado.map((item, idx) => (
-                <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium text-sm text-slate-800">
-                        {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {item.cliente?.codigo} • {item.cliente?.cidade}
-                      </p>
+            <div className="space-y-4 max-h-[500px] overflow-y-auto">
+              {Object.entries(visitasPorVendedor).map(([vendedorId, { vendedor, clientes }]) => (
+                <div key={vendedorId} className="border rounded-lg overflow-hidden">
+                  {/* Header do vendedor */}
+                  <div className={`p-3 ${infoDiaSelecionado?.isFuture ? 'bg-blue-100' : 'bg-amber-100'} flex items-center justify-between`}>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-slate-700" />
+                      <span className="font-semibold text-sm text-slate-800">
+                        {vendedor?.nome || 'Vendedor não encontrado'}
+                      </span>
                     </div>
-                    <Badge className="bg-red-100 text-red-700 text-xs">
-                      <XCircle className="w-3 h-3 mr-1" />
-                      Pendente
+                    <Badge className={`${infoDiaSelecionado?.isFuture ? 'bg-blue-500' : 'bg-red-500'} text-white text-xs`}>
+                      {clientes.length} cliente(s)
                     </Badge>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-red-200">
-                    <p className="text-xs text-slate-600">
-                      <span className="font-medium">Vendedor:</span> {item.vendedor?.nome || 'N/A'}
-                    </p>
+                  
+                  {/* Lista de clientes */}
+                  <div className="divide-y divide-slate-100">
+                    {clientes.map((item, idx) => (
+                      <div key={idx} className={`p-3 ${infoDiaSelecionado?.isFuture ? 'bg-blue-50/50' : 'bg-red-50/50'}`}>
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium text-sm text-slate-800">
+                              {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {item.cliente?.codigo} • {item.cliente?.cidade}
+                            </p>
+                          </div>
+                          <Badge className={`text-xs ${infoDiaSelecionado?.isFuture ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                            {infoDiaSelecionado?.isFuture ? (
+                              <><Clock className="w-3 h-3 mr-1" />Programada</>
+                            ) : (
+                              <><XCircle className="w-3 h-3 mr-1" />Pendente</>
+                            )}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
