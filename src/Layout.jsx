@@ -116,18 +116,27 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
-          { title: 'Dashboard Clientes', path: 'DashboardClientes' }
+          { title: 'Dashboard Clientes', path: 'DashboardClientes' },
+          { title: 'Análise de Visitas', path: 'AnaliseVisitas' }
         ]
       },
       {
-          title: 'Visitas',
-          icon: TrendingUp,
-          submenu: [
-            { title: 'Meus Roteiros', path: 'MeusRoteiros' },
-            { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
-            { title: 'Relatórios de Visitas', path: 'RelatoriosGestorVisita' }
-          ]
-        }
+        title: 'Relatórios',
+        icon: FileSpreadsheet,
+        submenu: [
+          { title: 'Roteiros/Visitas', path: 'RelatorioRoteiros' },
+          { title: 'Estoque', path: 'RelatorioEstoque' },
+          { title: 'Trocas', path: 'RelatorioTrocas' }
+        ]
+      },
+      {
+        title: 'Visitas',
+        icon: TrendingUp,
+        submenu: [
+          { title: 'Meus Roteiros', path: 'MeusRoteiros' },
+          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' }
+        ]
+      }
     ];
 
     if (isAdmin) {
