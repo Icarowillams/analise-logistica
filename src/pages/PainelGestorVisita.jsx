@@ -555,8 +555,8 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
       const dataStr = data.toISOString().split('T')[0];
       const diaSemana = diasSemanaMap[data.getDay()];
       
-      // Roteiros programados para esse dia da semana
-      const roteirosDoDia = roteiros.filter(r => r.dia_semana === diaSemana);
+      // Roteiros programados para esse dia da semana (aplicando filtro de vendedor)
+      const roteirosDoDia = roteirosFiltrados.filter(r => r.dia_semana === diaSemana);
       
       // Visitas que foram feitas nesse dia
       const visitasFeitas = visitas.filter(v => v.data_visita === dataStr);
