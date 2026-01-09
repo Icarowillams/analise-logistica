@@ -487,6 +487,19 @@ export default function PainelGestorVisita() {
 function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientesMap }) {
   const [mesAtual, setMesAtual] = useState(new Date());
   const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [filtroVendedor, setFiltroVendedor] = useState('todos');
+
+  // Vendedores únicos com roteiros
+  const vendedoresComRoteiros = useMemo(() => {
+    const ids = new Set(roteiros.map(r => r.vendedor_id).filter(Boolean));
+    return Array.from(ids).map(id => vendedoresMap[id]).filter(Boolean).sort((a, b) => a.nome?.localeCompare(b.nome));
+  }, [roteiros, vendedoresMap]);
+
+  // Roteiros filtrados por vendedor
+  const roteirosFiltrados = useMemo(() => {
+    if (filtroVendedor === 'todos') return roteiros;
+    return roteiros.filter(r => r.vendedor_id === filtroVendedor);
+  }, [roteiros, filtroVendedor]);
 
   const diasSemanaMap = {
     0: 'domingo',
