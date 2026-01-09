@@ -17,7 +17,6 @@ import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
 import MetasProduto from './pages/MetasProduto';
 import MetasTroca from './pages/MetasTroca';
-import MeusRoteiros from './pages/MeusRoteiros';
 import MotivosNaoAtendimento from './pages/MotivosNaoAtendimento';
 import MotivosTroca from './pages/MotivosTroca';
 import PainelGestorVisita from './pages/PainelGestorVisita';
@@ -56,7 +55,6 @@ export const PAGES = {
     "MetasPrecoMedio": MetasPrecoMedio,
     "MetasProduto": MetasProduto,
     "MetasTroca": MetasTroca,
-    "MeusRoteiros": MeusRoteiros,
     "MotivosNaoAtendimento": MotivosNaoAtendimento,
     "MotivosTroca": MotivosTroca,
     "PainelGestorVisita": PainelGestorVisita,
