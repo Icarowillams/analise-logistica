@@ -154,21 +154,9 @@ export default function MeusRoteiros() {
   );
 }
 
-function MeuCalendario({ roteiros, visitas, vendedor }) {
+function MeuCalendario({ roteiros, visitas, vendedor, clientesMap }) {
   const [mesAtual, setMesAtual] = useState(new Date());
   const [diaSelecionado, setDiaSelecionado] = useState(null);
-
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
-
-  const clientesMap = useMemo(() => {
-    return clientes.reduce((acc, c) => {
-      acc[c.id] = c;
-      return acc;
-    }, {});
-  }, [clientes]);
 
   const diasSemanaMap = {
     0: 'domingo',
