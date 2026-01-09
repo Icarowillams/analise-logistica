@@ -102,7 +102,6 @@ export default function MeusRoteiros() {
   }
 
   const roteirosVendedor = roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
-  const [activeMainTab, setActiveMainTab] = useState('roteiros');
 
   return (
     <div>
