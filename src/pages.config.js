@@ -32,6 +32,10 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import AnaliseVisitas from './pages/AnaliseVisitas';
+import RelatorioRoteiros from './pages/RelatorioRoteiros';
+import RelatorioEstoque from './pages/RelatorioEstoque';
+import RelatorioTrocas from './pages/RelatorioTrocas';
 import __Layout from './Layout.jsx';
 
 
@@ -70,6 +74,10 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "AnaliseVisitas": AnaliseVisitas,
+    "RelatorioRoteiros": RelatorioRoteiros,
+    "RelatorioEstoque": RelatorioEstoque,
+    "RelatorioTrocas": RelatorioTrocas,
 }
 
 export const pagesConfig = {
