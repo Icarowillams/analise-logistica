@@ -18,6 +18,7 @@ import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 export default function MeusRoteiros() {
   const [currentUser, setCurrentUser] = useState(null);
   const [vendedorAtual, setVendedorAtual] = useState(null);
+  const [activeMainTab, setActiveMainTab] = useState('roteiros');
   
   // Detectar dia atual
   const diaAtualMap = {
