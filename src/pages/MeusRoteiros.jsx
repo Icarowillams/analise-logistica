@@ -159,6 +159,7 @@ export default function MeusRoteiros() {
             roteiros={roteirosVendedor} 
             visitas={visitasRegistros}
             vendedor={vendedorAtual}
+            clientesMap={clientesMap}
           />
         </TabsContent>
       </Tabs>
