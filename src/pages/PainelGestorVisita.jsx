@@ -594,7 +594,7 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
     });
 
     return resultado;
-  }, [diasDoMes, roteiros, visitas, clientesMap, vendedoresMap]);
+  }, [diasDoMes, roteirosFiltrados, visitas, clientesMap, vendedoresMap]);
 
   // Visitas pendentes do dia selecionado agrupadas por vendedor
   const visitasPorVendedor = useMemo(() => {
