@@ -65,6 +65,18 @@ export default function MeusRoteiros() {
     enabled: !!vendedorAtual
   });
 
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
+  const clientesMap = useMemo(() => {
+    return clientes.reduce((acc, c) => {
+      acc[c.id] = c;
+      return acc;
+    }, {});
+  }, [clientes]);
+
   const diasSemana = [
     { valor: 'segunda-feira', label: 'Segunda-feira' },
     { valor: 'terca-feira', label: 'Terça-feira' },
