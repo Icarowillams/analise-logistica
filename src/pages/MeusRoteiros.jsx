@@ -89,6 +89,7 @@ export default function MeusRoteiros() {
   }
 
   const roteirosVendedor = roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
+  const [activeMainTab, setActiveMainTab] = useState('roteiros');
 
   return (
     <div>
@@ -98,33 +99,56 @@ export default function MeusRoteiros() {
         icon={Route}
       />
 
-      <Tabs value={selectedDia} onValueChange={setSelectedDia} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-6">
-          {diasSemana.map(dia => {
-            const roteirosDia = roteirosVendedor.filter(r => r.dia_semana === dia.valor);
-            return (
-              <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs">
-                {dia.label.substring(0, 3)}
-                {roteirosDia.length > 0 && (
-                  <Badge className="ml-1 bg-amber-500 text-white" variant="secondary">
-                    {roteirosDia[0]?.clientes_ids?.length || 0}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            );
-          })}
+      <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="w-full mb-6">
+        <TabsList>
+          <TabsTrigger value="roteiros">
+            <Route className="w-4 h-4 mr-2" />
+            Roteiros do Dia
+          </TabsTrigger>
+          <TabsTrigger value="calendario">
+            <Calendar className="w-4 h-4 mr-2" />
+            Meu Calendário
+          </TabsTrigger>
         </TabsList>
 
-        {diasSemana.map(dia => (
-          <TabsContent key={dia.valor} value={dia.valor}>
-            <RoteirosDia 
-              dia={dia.valor} 
-              roteiros={roteirosVendedor.filter(r => r.dia_semana === dia.valor)}
-              visitas={visitas}
-              vendedor={vendedorAtual}
-            />
-          </TabsContent>
-        ))}
+        <TabsContent value="roteiros">
+          <Tabs value={selectedDia} onValueChange={setSelectedDia} className="w-full">
+            <TabsList className="grid w-full grid-cols-7 mb-6">
+              {diasSemana.map(dia => {
+                const roteirosDia = roteirosVendedor.filter(r => r.dia_semana === dia.valor);
+                return (
+                  <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs">
+                    {dia.label.substring(0, 3)}
+                    {roteirosDia.length > 0 && (
+                      <Badge className="ml-1 bg-amber-500 text-white" variant="secondary">
+                        {roteirosDia[0]?.clientes_ids?.length || 0}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+
+            {diasSemana.map(dia => (
+              <TabsContent key={dia.valor} value={dia.valor}>
+                <RoteirosDia 
+                  dia={dia.valor} 
+                  roteiros={roteirosVendedor.filter(r => r.dia_semana === dia.valor)}
+                  visitas={visitas}
+                  vendedor={vendedorAtual}
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="calendario">
+          <MeuCalendario 
+            roteiros={roteirosVendedor} 
+            visitas={visitasRegistros}
+            vendedor={vendedorAtual}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );
