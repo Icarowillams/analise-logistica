@@ -646,21 +646,43 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
       {/* Calendário */}
       <Card className="border-0 shadow-lg lg:col-span-2">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Calendário de Visitas Pendentes
-            </CardTitle>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                Calendário de Visitas Pendentes
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => navegarMes(-1)}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="font-semibold text-slate-700 min-w-[150px] text-center">
+                  {mesesNomes[mesAtual.getMonth()]} {mesAtual.getFullYear()}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => navegarMes(1)}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            {/* Filtro de vendedor */}
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navegarMes(-1)}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="font-semibold text-slate-700 min-w-[150px] text-center">
-                {mesesNomes[mesAtual.getMonth()]} {mesAtual.getFullYear()}
-              </span>
-              <Button variant="outline" size="sm" onClick={() => navegarMes(1)}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <Filter className="w-4 h-4 text-slate-500" />
+              <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Filtrar por vendedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os vendedores</SelectItem>
+                  {vendedoresComRoteiros.map(v => (
+                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {filtroVendedor !== 'todos' && (
+                <Button variant="ghost" size="sm" onClick={() => setFiltroVendedor('todos')}>
+                  Limpar
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
