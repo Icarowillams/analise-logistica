@@ -1,3 +1,4 @@
+import AnaliseVisitas from './pages/AnaliseVisitas';
 import AtualizarSupervisores from './pages/AtualizarSupervisores';
 import Categorias from './pages/Categorias';
 import Clientes from './pages/Clientes';
@@ -25,6 +26,9 @@ import Permissoes from './pages/Permissoes';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Produtos from './pages/Produtos';
 import Redes from './pages/Redes';
+import RelatorioEstoque from './pages/RelatorioEstoque';
+import RelatorioRoteiros from './pages/RelatorioRoteiros';
+import RelatorioTrocas from './pages/RelatorioTrocas';
 import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
 import Rotas from './pages/Rotas';
 import Roteiros from './pages/Roteiros';
@@ -32,14 +36,11 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import AnaliseVisitas from './pages/AnaliseVisitas';
-import RelatorioRoteiros from './pages/RelatorioRoteiros';
-import RelatorioEstoque from './pages/RelatorioEstoque';
-import RelatorioTrocas from './pages/RelatorioTrocas';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "AnaliseVisitas": AnaliseVisitas,
     "AtualizarSupervisores": AtualizarSupervisores,
     "Categorias": Categorias,
     "Clientes": Clientes,
@@ -67,6 +68,9 @@ export const PAGES = {
     "PlanosPagamento": PlanosPagamento,
     "Produtos": Produtos,
     "Redes": Redes,
+    "RelatorioEstoque": RelatorioEstoque,
+    "RelatorioRoteiros": RelatorioRoteiros,
+    "RelatorioTrocas": RelatorioTrocas,
     "RelatoriosGestorVisita": RelatoriosGestorVisita,
     "Rotas": Rotas,
     "Roteiros": Roteiros,
@@ -74,10 +78,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "AnaliseVisitas": AnaliseVisitas,
-    "RelatorioRoteiros": RelatorioRoteiros,
-    "RelatorioEstoque": RelatorioEstoque,
-    "RelatorioTrocas": RelatorioTrocas,
 }
 
 export const pagesConfig = {

@@ -361,14 +361,25 @@ export default function Clientes() {
       }
     }
 
-    // Executar criações
-    if (toCreate.length > 0) {
-      await base44.entities.Cliente.bulkCreate(toCreate);
-    }
+    try {
+      // Executar criações
+      if (toCreate.length > 0) {
+        await base44.entities.Cliente.bulkCreate(toCreate);
+      }
 
-    // Executar atualizações
-    for (const updateItem of toUpdate) {
-      await base44.entities.Cliente.update(updateItem.id, updateItem.data);
+      // Executar atualizações em massa (evita erro de rate limit)
+      if (toUpdate.length > 0) {
+        const updateData = toUpdate.map(item => ({
+          id: item.id,
+          ...item.data
+        }));
+        await base44.entities.Cliente.bulkUpdate(updateData);
+      }
+    } catch (error) {
+      console.error('Erro na importação:', error);
+      setIsImporting(false);
+      toast.error('❌ Erro na importação: ' + error.message);
+      return;
     }
 
     queryClient.invalidateQueries(['clientes']);
