@@ -90,7 +90,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Clientes', path: 'Clientes' },
           { title: 'Segmentos', path: 'Segmentos' },
           { title: 'Redes', path: 'Redes' },
-          { title: 'Ocorrência de Troca', path: 'MotivosTroca' },
+          { title: 'Ocorrências - Motivos', path: 'MotivosTroca' },
           { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
           { title: 'Rotas', path: 'Rotas' },
