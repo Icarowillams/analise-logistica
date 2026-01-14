@@ -360,30 +360,71 @@ export default function Roteiros() {
 function ImportarTab() {
   const [importData, setImportData] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [importMode, setImportMode] = useState('paste'); // 'paste' ou 'file'
   const queryClient = useQueryClient();
+  const fileInputRef = React.useRef(null);
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
 
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
+  });
+
+  const handleDownloadTemplate = () => {
+    const headers = ['cod_cliente', 'funcionario', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+    const exampleRows = [
+      ['CLI001', 'João Silva', 'sim', '', 'sim', '', 'sim', '', ''],
+      ['CLI002', 'Maria Santos', '', 'sim', '', 'sim', '', '', ''],
+      ['CLI003', 'João Silva', 'sim', 'sim', 'sim', 'sim', 'sim', '', '']
+    ];
+    
+    const csvContent = [
+      headers.join(';'),
+      ...exampleRows.map(row => row.join(';'))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'modelo_importacao_roteiros.csv';
+    link.click();
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImportData(event.target.result);
+    };
+    reader.readAsText(file);
+  };
+
   const handleImport = async () => {
     if (!importData.trim()) {
-      alert('Cole os dados para importar');
+      alert('Cole os dados ou faça upload de um arquivo para importar');
       return;
     }
 
     setIsImporting(true);
     try {
       const lines = importData.split('\n').filter(l => l.trim());
-      const headers = lines[0].split(/[;\t]/).map(h => h.trim().toLowerCase());
+      const headers = lines[0].split(/[;\t,]/).map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
       
       // Validar cabeçalho
-      if (!headers.includes('cod')) {
-        alert('Formato inválido: falta a coluna "cod"');
+      if (!headers.includes('cod_cliente') && !headers.includes('cod')) {
+        alert('Formato inválido: falta a coluna "cod_cliente" ou "cod"');
         setIsImporting(false);
         return;
       }
+
+      const codColumn = headers.includes('cod_cliente') ? 'cod_cliente' : 'cod';
+      const hasFuncionarioColumn = headers.includes('funcionario');
 
       const dias = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
       const diasMap = {
@@ -398,33 +439,63 @@ function ImportarTab() {
 
       // Processar dados
       const roteirosMap = new Map();
+      const erros = [];
 
       for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(/[;\t]/);
+        const values = lines[i].split(/[;\t,]/).map(v => v.trim().replace(/['"]/g, ''));
         const row = {};
         headers.forEach((h, idx) => {
           row[h] = values[idx]?.trim() || '';
         });
 
-        const codigo = row.cod;
+        const codigo = row[codColumn];
         if (!codigo) continue;
 
         const cliente = clientes.find(c => c.codigo === codigo);
-        if (!cliente) continue;
+        if (!cliente) {
+          erros.push(`Linha ${i + 1}: Cliente com código "${codigo}" não encontrado`);
+          continue;
+        }
+
+        // Determinar o funcionário responsável
+        let vendedorId = null;
+        let vendedorNome = null;
+
+        if (hasFuncionarioColumn && row.funcionario) {
+          // Buscar funcionário pelo nome informado
+          const funcionario = vendedores.find(v => 
+            v.nome?.toLowerCase().trim() === row.funcionario.toLowerCase().trim()
+          );
+          if (funcionario) {
+            vendedorId = funcionario.id;
+            vendedorNome = funcionario.nome;
+          } else {
+            erros.push(`Linha ${i + 1}: Funcionário "${row.funcionario}" não encontrado`);
+            continue;
+          }
+        } else {
+          // Usar o vendedor do cliente como fallback
+          vendedorId = cliente.vendedor_id;
+          const vendedor = vendedores.find(v => v.id === vendedorId);
+          vendedorNome = vendedor?.nome || 'N/A';
+        }
+
+        if (!vendedorId) {
+          erros.push(`Linha ${i + 1}: Cliente "${codigo}" sem funcionário associado`);
+          continue;
+        }
 
         // Para cada dia da semana
         dias.forEach(dia => {
           const valor = row[dia]?.toLowerCase();
-          if (valor === 'sim' || valor === 's' || valor === 'x') {
+          if (valor === 'sim' || valor === 's' || valor === 'x' || valor === '1') {
             const diaCompleto = diasMap[dia];
-            const vendedorId = cliente.vendedor_id;
-            
-            if (!vendedorId) return;
 
             const key = `${vendedorId}-${diaCompleto}`;
             if (!roteirosMap.has(key)) {
               roteirosMap.set(key, {
                 vendedor_id: vendedorId,
+                vendedor_nome: vendedorNome,
                 dia_semana: diaCompleto,
                 clientes: []
               });
@@ -435,16 +506,18 @@ function ImportarTab() {
         });
       }
 
-      // Criar roteiros
-      let criados = 0;
+      if (erros.length > 0 && roteirosMap.size === 0) {
+        alert('Erros encontrados:\n' + erros.slice(0, 10).join('\n') + (erros.length > 10 ? `\n... e mais ${erros.length - 10} erros` : ''));
+        setIsImporting(false);
+        return;
+      }
+
+      // Criar roteiros em massa
+      const roteirosParaCriar = [];
       for (const [key, data] of roteirosMap.entries()) {
-        // Buscar nome do vendedor
-        const vendedoresData = await base44.entities.Vendedor.list();
-        const vendedor = vendedoresData.find(v => v.id === data.vendedor_id);
-        
-        const roteiroData = {
+        roteirosParaCriar.push({
           vendedor_id: data.vendedor_id,
-          vendedor_nome: vendedor?.nome || 'N/A',
+          vendedor_nome: data.vendedor_nome,
           dia_semana: data.dia_semana,
           clientes_ids: data.clientes.map(c => c.id),
           clientes_detalhes: data.clientes.map((c, idx) => ({
@@ -455,15 +528,22 @@ function ImportarTab() {
             ordem: idx + 1
           })),
           status: 'planejado'
-        };
+        });
+      }
 
-        await base44.entities.Roteiro.create(roteiroData);
-        criados++;
+      if (roteirosParaCriar.length > 0) {
+        await base44.entities.Roteiro.bulkCreate(roteirosParaCriar);
       }
 
       queryClient.invalidateQueries(['roteiros']);
-      alert(`✅ ${criados} roteiros criados com sucesso!`);
+      
+      let msg = `✅ ${roteirosParaCriar.length} roteiros criados com sucesso!`;
+      if (erros.length > 0) {
+        msg += `\n\n⚠️ ${erros.length} linhas com erros foram ignoradas.`;
+      }
+      alert(msg);
       setImportData('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (error) {
       alert('Erro ao importar: ' + error.message);
     } finally {
@@ -474,32 +554,85 @@ function ImportarTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Importar Dados</CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle>Importar Roteiros em Massa</CardTitle>
+          <Button
+            onClick={handleDownloadTemplate}
+            variant="outline"
+            className="border-amber-200 text-amber-700 hover:bg-amber-50"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Baixar Modelo
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <h3 className="font-semibold text-amber-900 mb-2">Formato Esperado</h3>
           <p className="text-sm text-amber-800 mb-2">
-            Cole os dados em formato tabular (Excel/Planilha). A primeira linha deve ser o cabeçalho:
+            A primeira linha deve ser o cabeçalho com as seguintes colunas:
           </p>
           <p className="font-mono text-sm bg-white p-2 rounded border mb-2">
-            cod | segunda | terca | quarta | quinta | sexta | sabado | domingo
+            cod_cliente | funcionario | segunda | terca | quarta | quinta | sexta | sabado | domingo
           </p>
-          <p className="text-sm text-amber-800">
-            Nas colunas de dias, use "sim" para indicar que o cliente é atendido naquele dia.
+          <ul className="text-sm text-amber-800 list-disc list-inside space-y-1">
+            <li><strong>cod_cliente:</strong> Código do cliente (obrigatório)</li>
+            <li><strong>funcionario:</strong> Nome do funcionário responsável (promotor ou vendedor)</li>
+            <li><strong>Dias:</strong> Use "sim", "s", "x" ou "1" para indicar atendimento no dia</li>
+          </ul>
+          <p className="text-sm text-amber-700 mt-2 italic">
+            💡 Um mesmo cliente pode ter roteiros diferentes para promotor e vendedor!
           </p>
         </div>
 
-        <div>
-          <Label>Cole os dados aqui (copie do Excel e cole)...</Label>
-          <Textarea
-            value={importData}
-            onChange={(e) => setImportData(e.target.value)}
-            placeholder="cod&#9;segunda&#9;terca&#9;quarta&#9;quinta&#9;sexta&#9;sabado&#9;domingo"
-            rows={12}
-            className="font-mono text-sm"
-          />
+        <div className="flex gap-4">
+          <Button
+            variant={importMode === 'paste' ? 'default' : 'outline'}
+            onClick={() => setImportMode('paste')}
+            className={importMode === 'paste' ? 'bg-amber-500 hover:bg-amber-600' : ''}
+          >
+            Colar Dados
+          </Button>
+          <Button
+            variant={importMode === 'file' ? 'default' : 'outline'}
+            onClick={() => setImportMode('file')}
+            className={importMode === 'file' ? 'bg-amber-500 hover:bg-amber-600' : ''}
+          >
+            Upload de Arquivo
+          </Button>
         </div>
+
+        {importMode === 'file' ? (
+          <div className="border-2 border-dashed border-amber-300 rounded-lg p-6 text-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.txt,.xls,.xlsx"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="file-upload"
+            />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <Upload className="w-12 h-12 mx-auto text-amber-400 mb-2" />
+              <p className="text-amber-700 font-medium">Clique para selecionar um arquivo</p>
+              <p className="text-sm text-amber-500">CSV, TXT ou Excel</p>
+            </label>
+            {importData && (
+              <p className="mt-4 text-green-600 font-medium">✓ Arquivo carregado com sucesso!</p>
+            )}
+          </div>
+        ) : (
+          <div>
+            <Label>Cole os dados aqui (copie do Excel e cole)...</Label>
+            <Textarea
+              value={importData}
+              onChange={(e) => setImportData(e.target.value)}
+              placeholder="cod_cliente;funcionario;segunda;terca;quarta;quinta;sexta;sabado;domingo"
+              rows={12}
+              className="font-mono text-sm"
+            />
+          </div>
+        )}
 
         <Button
           onClick={handleImport}
@@ -507,7 +640,7 @@ function ImportarTab() {
           className="w-full bg-gradient-to-r from-green-500 to-emerald-600"
         >
           <Upload className="w-4 h-4 mr-2" />
-          {isImporting ? 'Importando...' : 'Validar Dados'}
+          {isImporting ? 'Importando...' : 'Importar Roteiros'}
         </Button>
       </CardContent>
     </Card>
