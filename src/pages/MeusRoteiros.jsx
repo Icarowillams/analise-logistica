@@ -691,7 +691,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   );
 }
 
-function VisitaDetalhes({ visita, cliente }) {
+function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
   const [activeTab, setActiveTab] = useState('estoque');
   const { data: visitaRegistro } = useQuery({
     queryKey: ['visitaRegistro', visita.id],
@@ -703,6 +703,29 @@ function VisitaDetalhes({ visita, cliente }) {
       return visitas[0];
     }
   });
+
+  // Verificar permissões de estoque e trocas
+  const podeInformarEstoque = permissaoUsuario?.permissoes_visitas?.informar_estoque !== false;
+  const podeInformarTrocas = permissaoUsuario?.permissoes_visitas?.informar_trocas !== false;
+
+  // Se não atendido, mostrar apenas o status
+  if (visita.status === 'nao_atendido') {
+    return (
+      <div className="space-y-3">
+        <Alert className="bg-red-50 border-red-200">
+          <XCircle className="w-4 h-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            Cliente não atendido
+            {visita.motivo_nao_atendimento && (
+              <div className="mt-1 text-xs">
+                <strong>Motivo:</strong> {visita.motivo_nao_atendimento}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   if (visita.status === 'concluida') {
     return (
