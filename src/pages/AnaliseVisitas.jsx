@@ -446,33 +446,28 @@ export default function AnaliseVisitas() {
           </CardContent>
         </Card>
 
-        {/* Distribuição de Pedidos */}
+        {/* Distribuição de Visitas */}
         <Card className="border-0 shadow-lg">
           <CardHeader>
             <div className="flex items-center gap-2">
               <Target className="w-5 h-5 text-purple-600" />
-              <CardTitle className="text-lg">Distribuição de Pedidos</CardTitle>
+              <CardTitle className="text-lg">Distribuição de Visitas</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={distribuicaoPedidos}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {distribuicaoPedidos.map((entry, index) => (
+              <BarChart data={distribuicaoVisitas} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis dataKey="name" type="category" width={120} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="value" name="Quantidade">
+                  {distribuicaoVisitas.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
