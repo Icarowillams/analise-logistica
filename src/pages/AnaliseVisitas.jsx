@@ -255,7 +255,7 @@ export default function AnaliseVisitas() {
     { name: 'Não Realizadas', value: stats.totalNaoAtendidas, color: '#ef4444' }
   ].filter(item => item.value > 0), [stats]);
 
-  // Tabela de Performance por Funcionário
+  // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
     const map = {};
     
@@ -281,12 +281,12 @@ export default function AnaliseVisitas() {
       });
     });
     
-    // Contar visitas realizadas
-    visitasFiltradas.forEach(v => {
+    // Contar visitas do VisitaRoteiro
+    visitasRoteiroFiltradas.forEach(v => {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!map[vendedorId]) {
         map[vendedorId] = {
-          nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
+          nome: vendedoresMap[vendedorId]?.nome || v.vendedor_nome || 'Sem Nome',
           agendadas: 0,
           realizadas: 0,
           naoRealizadas: 0,
@@ -294,18 +294,22 @@ export default function AnaliseVisitas() {
           semPedido: 0
         };
       }
-      map[vendedorId].realizadas++;
+      
+      // Contar como realizada se status for concluida, checkin_realizado ou em_andamento
+      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        map[vendedorId].realizadas++;
+      } else if (v.status === 'nao_atendido') {
+        map[vendedorId].naoRealizadas++;
+      }
+      
       if (v.pedido_solicitado === true) map[vendedorId].comPedido++;
       if (v.pedido_solicitado === false) map[vendedorId].semPedido++;
     });
     
-    // Calcular não realizadas
-    Object.values(map).forEach(item => {
-      item.naoRealizadas = Math.max(0, item.agendadas - item.realizadas);
-    });
-    
-    return Object.values(map).sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
+    return Object.values(map)
+      .filter(item => item.agendadas > 0 || item.realizadas > 0)
+      .sort((a, b) => b.agendadas - a.agendadas);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
 
   const limparFiltros = () => {
     const d = new Date();
