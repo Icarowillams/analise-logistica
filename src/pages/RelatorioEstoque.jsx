@@ -6,16 +6,23 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  Package, Filter, Calendar, Download, Search, MapPin, User
+  Package, Filter, Calendar, Download, Search, MapPin, ChevronDown, ChevronRight, Eye
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function RelatorioEstoque() {
   const [filtroCliente, setFiltroCliente] = useState('todos');
   const [filtroProduto, setFiltroProduto] = useState('todos');
   const [busca, setBusca] = useState('');
-  const [mostrarApenasUltimo, setMostrarApenasUltimo] = useState(true);
+  const [clientesExpandidos, setClientesExpandidos] = useState({});
+  const [visitasExpandidas, setVisitasExpandidas] = useState({});
+  const [modalUltimoEstoque, setModalUltimoEstoque] = useState({ open: false, produto: null, dados: [] });
 
   const { data: estoqueVisita = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
@@ -54,8 +61,8 @@ export default function RelatorioEstoque() {
     return Array.from(ids).map(id => produtosMap[id]).filter(Boolean).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   }, [estoqueVisita, produtosMap]);
 
-  // Estoques filtrados e processados
-  const estoquesFiltrados = useMemo(() => {
+  // Dados agrupados por cliente > visita > produtos
+  const dadosAgrupados = useMemo(() => {
     let dados = estoqueVisita.map(e => ({
       ...e,
       cliente: clientesMap[e.cliente_id],
@@ -80,34 +87,97 @@ export default function RelatorioEstoque() {
       );
     }
 
-    // Se mostrar apenas último, agrupar por cliente+produto e pegar o mais recente
-    if (mostrarApenasUltimo) {
-      const mapa = {};
-      dados.forEach(e => {
-        const key = `${e.cliente_id}_${e.produto_id}`;
-        if (!mapa[key] || new Date(e.created_date) > new Date(mapa[key].created_date)) {
-          mapa[key] = e;
-        }
-      });
-      dados = Object.values(mapa);
-    }
+    // Agrupar por cliente
+    const porCliente = {};
+    dados.forEach(e => {
+      const clienteId = e.cliente_id || 'sem_cliente';
+      if (!porCliente[clienteId]) {
+        porCliente[clienteId] = {
+          cliente: e.cliente,
+          clienteId,
+          visitas: {},
+          totalProdutos: 0,
+          totalItens: 0
+        };
+      }
+      
+      // Agrupar por data de visita
+      const dataVisita = e.data_visita || e.created_date?.split('T')[0] || 'sem_data';
+      if (!porCliente[clienteId].visitas[dataVisita]) {
+        porCliente[clienteId].visitas[dataVisita] = {
+          data: dataVisita,
+          vendedor: e.vendedor,
+          produtos: [],
+          totalLancamentos: 0
+        };
+      }
+      
+      porCliente[clienteId].visitas[dataVisita].produtos.push(e);
+      porCliente[clienteId].visitas[dataVisita].totalLancamentos++;
+      porCliente[clienteId].totalProdutos++;
+      porCliente[clienteId].totalItens += e.quantidade || 0;
+    });
 
-    return dados.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, filtroProduto, busca, mostrarApenasUltimo]);
+    // Converter para array e ordenar visitas por data desc
+    return Object.values(porCliente)
+      .map(cliente => ({
+        ...cliente,
+        visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
+      }))
+      .sort((a, b) => (a.cliente?.razao_social || '').localeCompare(b.cliente?.razao_social || ''));
+  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, filtroProduto, busca]);
+
+  const toggleCliente = (clienteId) => {
+    setClientesExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));
+  };
+
+  const toggleVisita = (key) => {
+    setVisitasExpandidas(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Buscar último estoque de um produto específico em todos os clientes
+  const verUltimoEstoque = (produto) => {
+    const registros = estoqueVisita
+      .filter(e => e.produto_id === produto.id)
+      .map(e => ({
+        ...e,
+        cliente: clientesMap[e.cliente_id],
+        vendedor: vendedoresMap[e.vendedor_id]
+      }))
+      .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+
+    // Pegar o mais recente por cliente
+    const porCliente = {};
+    registros.forEach(r => {
+      if (!porCliente[r.cliente_id]) {
+        porCliente[r.cliente_id] = r;
+      }
+    });
+
+    setModalUltimoEstoque({
+      open: true,
+      produto,
+      dados: Object.values(porCliente).sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+    });
+  };
 
   const exportarCSV = () => {
     const linhas = ['Data;Cliente;Código Cliente;Produto;Código Produto;Quantidade;Validade;Vendedor'];
-    estoquesFiltrados.forEach(e => {
-      linhas.push([
-        new Date(e.created_date).toLocaleDateString('pt-BR'),
-        e.cliente?.razao_social || e.cliente?.nome_fantasia || '',
-        e.cliente?.codigo || '',
-        e.produto?.nome || '',
-        e.produto?.codigo || '',
-        e.quantidade || 0,
-        e.data_validade ? new Date(e.data_validade).toLocaleDateString('pt-BR') : '',
-        e.vendedor?.nome || ''
-      ].join(';'));
+    dadosAgrupados.forEach(cliente => {
+      cliente.visitas.forEach(visita => {
+        visita.produtos.forEach(e => {
+          linhas.push([
+            new Date(e.created_date).toLocaleDateString('pt-BR'),
+            e.cliente?.razao_social || e.cliente?.nome_fantasia || '',
+            e.cliente?.codigo || '',
+            e.produto?.nome || '',
+            e.produto?.codigo || '',
+            e.quantidade || 0,
+            e.data_validade ? new Date(e.data_validade).toLocaleDateString('pt-BR') : '',
+            e.vendedor?.nome || ''
+          ].join(';'));
+        });
+      });
     });
     const csv = linhas.join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -116,6 +186,8 @@ export default function RelatorioEstoque() {
     link.download = `relatorio_estoque_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`;
     link.click();
   };
+
+  const totalRegistros = dadosAgrupados.reduce((sum, c) => sum + c.totalProdutos, 0);
 
   return (
     <div className="space-y-6">
@@ -127,7 +199,7 @@ export default function RelatorioEstoque() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Relatório de Estoque</h1>
-            <p className="text-slate-500 mt-1">Último estoque informado por cliente/produto</p>
+            <p className="text-slate-500 mt-1">{totalRegistros} registros encontrados</p>
           </div>
         </div>
         <Button onClick={exportarCSV} variant="outline" className="gap-2">
@@ -145,7 +217,7 @@ export default function RelatorioEstoque() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Cliente</label>
               <Select value={filtroCliente} onValueChange={setFiltroCliente}>
@@ -182,113 +254,174 @@ export default function RelatorioEstoque() {
                 />
               </div>
             </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg border bg-blue-50 border-blue-200">
-                <Checkbox checked={mostrarApenasUltimo} onCheckedChange={setMostrarApenasUltimo} />
-                <span className="text-sm font-medium text-blue-700">Apenas último estoque</span>
-              </label>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Resumo */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-cyan-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-blue-700">{estoquesFiltrados.length}</div>
-            <div className="text-sm text-blue-600">Registros</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-700">
-              {estoquesFiltrados.reduce((sum, e) => sum + (e.quantidade || 0), 0)}
-            </div>
-            <div className="text-sm text-green-600">Quantidade Total</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-pink-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-purple-700">
-              {new Set(estoquesFiltrados.map(e => e.cliente_id)).size}
-            </div>
-            <div className="text-sm text-purple-600">Clientes</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabela */}
+      {/* Lista Agrupada por Cliente */}
       <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle>Registros de Estoque ({estoquesFiltrados.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
             <div className="text-center py-8 text-slate-500">Carregando...</div>
-          ) : estoquesFiltrados.length === 0 ? (
+          ) : dadosAgrupados.length === 0 ? (
             <div className="text-center py-12">
               <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <p className="text-slate-500">Nenhum registro de estoque encontrado</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Data</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Cliente</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Produto</th>
-                    <th className="text-center p-4 text-sm font-semibold text-slate-700">Quantidade</th>
-                    <th className="text-center p-4 text-sm font-semibold text-slate-700">Validade</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Vendedor</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {estoquesFiltrados.map((e, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm">{new Date(e.created_date).toLocaleDateString('pt-BR')}</span>
+            <div className="divide-y divide-slate-100">
+              {dadosAgrupados.map((clienteData) => (
+                <div key={clienteData.clienteId} className="bg-white">
+                  {/* Header do Cliente */}
+                  <button
+                    onClick={() => toggleCliente(clienteData.clienteId)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      {clientesExpandidos[clienteData.clienteId] ? (
+                        <ChevronDown className="w-5 h-5 text-slate-400" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-slate-400" />
+                      )}
+                      <div className="text-left">
+                        <div className="font-semibold text-slate-900">
+                          {clienteData.cliente?.razao_social || clienteData.cliente?.nome_fantasia || 'Cliente não identificado'}
                         </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-medium text-slate-900">{e.cliente?.razao_social || e.cliente?.nome_fantasia || 'N/A'}</div>
-                        <div className="text-xs text-slate-500 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" /> {e.cliente?.cidade || 'N/A'}
+                        <div className="text-sm text-slate-500">
+                          {clienteData.totalProdutos} produtos • {clienteData.totalItens} itens total
                         </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-medium text-slate-900">{e.produto?.nome || 'N/A'}</div>
-                        <div className="text-xs text-slate-500">Cód: {e.produto?.codigo || 'N/A'}</div>
-                      </td>
-                      <td className="p-4 text-center">
-                        <Badge className="bg-blue-100 text-blue-700 text-base px-3">
-                          {e.quantidade || 0}
-                        </Badge>
-                      </td>
-                      <td className="p-4 text-center">
-                        {e.data_validade ? (
-                          <span className="text-sm">{new Date(e.data_validade).toLocaleDateString('pt-BR')}</span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm">{e.vendedor?.nome || 'N/A'}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-slate-600">
+                      {clienteData.visitas.length} visitas
+                    </Badge>
+                  </button>
+
+                  {/* Visitas do Cliente */}
+                  {clientesExpandidos[clienteData.clienteId] && (
+                    <div className="border-t border-slate-100 bg-slate-50/50">
+                      {clienteData.visitas.map((visita, idx) => {
+                        const visitaKey = `${clienteData.clienteId}_${visita.data}`;
+                        return (
+                          <div key={idx} className="border-b border-slate-100 last:border-b-0">
+                            {/* Header da Visita */}
+                            <button
+                              onClick={() => toggleVisita(visitaKey)}
+                              className="w-full flex items-center justify-between px-6 py-3 hover:bg-slate-100/50 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                {visitasExpandidas[visitaKey] ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-blue-500" />
+                                  <span className="font-medium text-slate-700">
+                                    Visita em {new Date(visita.data).toLocaleDateString('pt-BR')}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-sm text-slate-500">
+                                {visita.vendedor?.nome || 'N/A'} • {visita.totalLancamentos} lançamento(s)
+                              </span>
+                            </button>
+
+                            {/* Produtos da Visita */}
+                            {visitasExpandidas[visitaKey] && (
+                              <div className="bg-white px-8 py-3 space-y-1">
+                                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
+                                  Produto
+                                </div>
+                                {visita.produtos.map((prod, pIdx) => (
+                                  <div 
+                                    key={pIdx} 
+                                    className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 group"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-slate-700">{prod.produto?.nome || 'Produto N/A'}</span>
+                                      {prod.quantidade !== undefined && (
+                                        <Badge className="bg-blue-100 text-blue-700">
+                                          Qtd: {prod.quantidade}
+                                        </Badge>
+                                      )}
+                                      {prod.data_validade && (
+                                        <Badge variant="outline" className="text-xs">
+                                          Val: {new Date(prod.data_validade).toLocaleDateString('pt-BR')}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        verUltimoEstoque(prod.produto);
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      Ver Último Estoque
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Modal de Último Estoque */}
+      <Dialog open={modalUltimoEstoque.open} onOpenChange={(open) => setModalUltimoEstoque({ ...modalUltimoEstoque, open })}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-blue-600" />
+              Último Estoque - {modalUltimoEstoque.produto?.nome}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-4">
+            {modalUltimoEstoque.dados.length === 0 ? (
+              <p className="text-center text-slate-500 py-4">Nenhum registro encontrado</p>
+            ) : (
+              modalUltimoEstoque.dados.map((registro, idx) => (
+                <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <div className="font-medium text-slate-900">
+                      {registro.cliente?.razao_social || registro.cliente?.nome_fantasia || 'Cliente N/A'}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <MapPin className="w-3 h-3" />
+                      {registro.cliente?.cidade || 'N/A'}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {registro.vendedor?.nome || 'N/A'} • {new Date(registro.created_date).toLocaleDateString('pt-BR')}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Badge className="bg-blue-100 text-blue-700 text-lg px-3">
+                      {registro.quantidade || 0}
+                    </Badge>
+                    {registro.data_validade && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        Val: {new Date(registro.data_validade).toLocaleDateString('pt-BR')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
