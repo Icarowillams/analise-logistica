@@ -376,107 +376,120 @@ export default function AnaliseVisitas() {
         />
       </div>
 
-      {/* Tabs de Análise */}
-      <Tabs defaultValue="conversao" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="conversao">Conversão por Vendedor</TabsTrigger>
-          <TabsTrigger value="evolucao">Evolução Diária</TabsTrigger>
-          <TabsTrigger value="clientes">Clientes por Vendedor</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="conversao" className="mt-6">
-          <Card className="border-0 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Taxa de Conversão por Vendedor</CardTitle>
-              <CardDescription>Percentual de visitas que geraram pedido</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={conversaoPorVendedor} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} />
-                  <YAxis dataKey="nome" type="category" width={100} />
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Bar dataKey="taxa" fill="#10b981" radius={[0, 8, 8, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="evolucao" className="mt-6">
-          <Card className="border-0 shadow-lg">
-            <CardHeader>
+      {/* Gráficos lado a lado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Evolução Diária de Visitas */}
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-indigo-600" />
               <CardTitle className="text-lg">Evolução Diária de Visitas</CardTitle>
-              <CardDescription>Visitas com e sem pedido por dia</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={visitasPorDia}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="dataFormatada" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="total" name="Total" stroke="#6366f1" strokeWidth={2} />
-                  <Line type="monotone" dataKey="comPedido" name="Com Pedido" stroke="#10b981" strokeWidth={2} />
-                  <Line type="monotone" dataKey="semPedido" name="Sem Pedido" stroke="#ef4444" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={visitasPorDia}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="dataFormatada" fontSize={11} />
+                <YAxis fontSize={11} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="comPedido" name="Realizado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="semPedido" name="Não Realizado" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="clientes" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg">Clientes Atendidos por Vendedor</CardTitle>
-                <CardDescription>Top 10 vendedores</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={clientesPorVendedor}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="nome" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="clientes" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+        {/* Distribuição de Pedidos */}
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-600" />
+              <CardTitle className="text-lg">Distribuição de Pedidos</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={distribuicaoPedidos}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {distribuicaoPedidos.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
 
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg">Distribuição de Pedidos</CardTitle>
-                <CardDescription>Status das visitas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <PieChart>
-                    <Pie
-                      data={distribuicaoPedidos}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={120}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {distribuicaoPedidos.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+      {/* Tabela de Performance por Funcionário */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-orange-600" />
+            <CardTitle className="text-lg">Tabela de Performance por Funcionário</CardTitle>
           </div>
-        </TabsContent>
-      </Tabs>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="font-semibold">#</TableHead>
+                  <TableHead className="font-semibold">Funcionário</TableHead>
+                  <TableHead className="font-semibold text-center">Agendadas</TableHead>
+                  <TableHead className="font-semibold text-center text-green-600">Realizadas</TableHead>
+                  <TableHead className="font-semibold text-center text-red-600">Não Realizadas</TableHead>
+                  <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
+                  <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
+                  <TableHead className="font-semibold text-center">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {performancePorFuncionario.map((item, index) => (
+                  <TableRow key={index} className="hover:bg-slate-50">
+                    <TableCell>
+                      <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                        {index + 1}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{item.nome}</TableCell>
+                    <TableCell className="text-center">{item.agendadas}</TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-green-600 font-medium">{item.realizadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-blue-600 font-medium">{item.comPedido}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-orange-600 font-medium">{item.semPedido}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50">
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
