@@ -67,7 +67,17 @@ export default function AnaliseVisitas() {
     return rotas.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
   }, [rotas]);
 
-  // Visitas filtradas por período e vendedor/rota
+  // Visitas filtradas por período e vendedor/rota (usa VisitaRoteiro para dados de execução)
+  const visitasRoteiroFiltradas = useMemo(() => {
+    return visitasRoteiro.filter(v => {
+      if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
+      if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
+      if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
+      return true;
+    });
+  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota]);
+
+  // Manter compatibilidade com visitas da entidade Visita
   const visitasFiltradas = useMemo(() => {
     return visitas.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
