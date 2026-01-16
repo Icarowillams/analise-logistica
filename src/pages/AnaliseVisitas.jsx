@@ -439,8 +439,8 @@ export default function AnaliseVisitas() {
                 <YAxis fontSize={11} />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="comPedido" name="Realizado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="semPedido" name="Não Realizado" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="realizadas" name="Realizado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="naoRealizadas" name="Não Realizado" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
