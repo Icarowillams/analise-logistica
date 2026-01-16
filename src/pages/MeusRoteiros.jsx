@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Route, MapPin, Clock, CheckCircle, Package, ArrowLeftRight, Camera, Upload, Download } from 'lucide-react';
+import { Route, MapPin, Clock, CheckCircle, Package, ArrowLeftRight, XCircle, CalendarPlus } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
 import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
