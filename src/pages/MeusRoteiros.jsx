@@ -139,6 +139,8 @@ export default function MeusRoteiros() {
               roteiros={roteirosVendedor.filter(r => r.dia_semana === dia.valor)}
               visitas={visitas}
               vendedor={vendedorAtual}
+              visitasReagendadas={visitasReagendadas}
+              permissaoUsuario={permissaoUsuario}
             />
           </TabsContent>
         ))}
