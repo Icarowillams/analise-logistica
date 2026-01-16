@@ -66,6 +66,22 @@ export default function MeusRoteiros() {
     enabled: !!vendedorAtual
   });
 
+  const { data: visitasReagendadas = [] } = useQuery({
+    queryKey: ['visitasReagendadas', vendedorAtual?.id],
+    queryFn: () => base44.entities.VisitaReagendada.filter({ vendedor_id: vendedorAtual?.id, status: 'pendente' }),
+    enabled: !!vendedorAtual
+  });
+
+  const { data: permissoes = [] } = useQuery({
+    queryKey: ['permissoes'],
+    queryFn: () => base44.entities.Permissao.list()
+  });
+
+  const permissaoUsuario = useMemo(() => {
+    if (!vendedorAtual) return null;
+    return permissoes.find(p => p.vendedor_id === vendedorAtual.id);
+  }, [permissoes, vendedorAtual]);
+
   const diasSemana = [
     { valor: 'segunda-feira', label: 'Segunda-feira' },
     { valor: 'terca-feira', label: 'Terça-feira' },
