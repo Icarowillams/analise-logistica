@@ -541,49 +541,115 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   if (showPedidoDialog) {
     return (
       <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-        <div>
-          <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
-          <div className="flex gap-3">
-            <Button
-              onClick={() => setPedidoSolicitado(true)}
-              variant={pedidoSolicitado === true ? 'default' : 'outline'}
-              className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
-            >
-              Sim
-            </Button>
-            <Button
-              onClick={() => setPedidoSolicitado(false)}
-              variant={pedidoSolicitado === false ? 'default' : 'outline'}
-              className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
-            >
-              Não
-            </Button>
+        {/* Opção Não Atendido */}
+        <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="nao-atendido"
+              checked={naoAtendido}
+              onCheckedChange={(checked) => {
+                setNaoAtendido(checked);
+                if (checked) {
+                  setPedidoSolicitado(null);
+                  setMotivoSelecionado('');
+                }
+              }}
+            />
+            <label htmlFor="nao-atendido" className="text-sm font-medium text-red-900 cursor-pointer flex items-center gap-2">
+              <XCircle className="w-4 h-4" />
+              Cliente não foi atendido
+            </label>
           </div>
+          
+          {naoAtendido && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <Label className="text-xs text-red-700">Motivo do Não Atendimento *</Label>
+                <Select value={motivoNaoAtendimento} onValueChange={setMotivoNaoAtendimento}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione o motivo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {motivosNaoAtend.filter(m => m.status === 'ativo').map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {motivoNaoAtendimento && (
+                <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="reagendar"
+                      checked={reagendarDiaSeguinte}
+                      onCheckedChange={setReagendarDiaSeguinte}
+                    />
+                    <label htmlFor="reagendar" className="text-sm font-medium text-orange-900 cursor-pointer flex items-center gap-2">
+                      <CalendarPlus className="w-4 h-4" />
+                      Reagendar para o dia seguinte?
+                    </label>
+                  </div>
+                  {reagendarDiaSeguinte && (
+                    <p className="text-xs text-orange-600 mt-2">
+                      O cliente será adicionado ao roteiro de amanhã como uma exceção pontual.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {pedidoSolicitado === false && (
-          <div className="space-y-2 animate-in fade-in-50">
-            <Label>Motivo da não solicitação *</Label>
-            <Input
-              placeholder="Buscar motivo..."
-              value={motivoSearch}
-              onChange={(e) => setMotivoSearch(e.target.value)}
-              className="mb-2"
-            />
-            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o motivo..." />
-              </SelectTrigger>
-              <SelectContent>
-                {motivosFiltrados.map(m => (
-                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Pedido Solicitado (apenas se não marcou Não Atendido) */}
+        {!naoAtendido && (
+          <>
+            <div>
+              <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => setPedidoSolicitado(true)}
+                  variant={pedidoSolicitado === true ? 'default' : 'outline'}
+                  className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
+                >
+                  Sim
+                </Button>
+                <Button
+                  onClick={() => setPedidoSolicitado(false)}
+                  variant={pedidoSolicitado === false ? 'default' : 'outline'}
+                  className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
+                >
+                  Não
+                </Button>
+              </div>
+            </div>
+
+            {pedidoSolicitado === false && (
+              <div className="space-y-2 animate-in fade-in-50">
+                <Label>Motivo da não solicitação *</Label>
+                <Input
+                  placeholder="Buscar motivo..."
+                  value={motivoSearch}
+                  onChange={(e) => setMotivoSearch(e.target.value)}
+                  className="mb-2"
+                />
+                <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o motivo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {motivosFiltrados.map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </>
         )}
 
-        {pedidoSolicitado !== null && (
+        {/* Botões de ação */}
+        {(naoAtendido && motivoNaoAtendimento) || (!naoAtendido && pedidoSolicitado !== null) ? (
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -592,6 +658,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
                 setPedidoSolicitado(null);
                 setMotivoSelecionado('');
                 setMotivoSearch('');
+                setNaoAtendido(false);
+                setMotivoNaoAtendimento('');
+                setReagendarDiaSeguinte(false);
               }}
               className="flex-1"
             >
@@ -600,12 +669,12 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             <Button
               onClick={finalizarCheckin}
               disabled={createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
-              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
+              className={`flex-1 ${naoAtendido ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-blue-500 to-blue-600'}`}
             >
-              Confirmar Check-in
+              {naoAtendido ? 'Registrar Não Atendimento' : 'Confirmar Check-in'}
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
