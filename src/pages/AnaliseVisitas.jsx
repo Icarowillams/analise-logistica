@@ -214,6 +214,58 @@ export default function AnaliseVisitas() {
     { name: 'Não Informado', value: stats.totalVisitas - stats.comPedido - stats.semPedido, color: '#94a3b8' }
   ], [stats]);
 
+  // Tabela de Performance por Funcionário
+  const performancePorFuncionario = useMemo(() => {
+    const map = {};
+    
+    // Calcular visitas agendadas por vendedor no período
+    const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
+    roteirosFiltrados.forEach(r => {
+      const vendedorId = r.vendedor_id;
+      if (!map[vendedorId]) {
+        map[vendedorId] = {
+          nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
+          agendadas: 0,
+          realizadas: 0,
+          naoRealizadas: 0,
+          comPedido: 0,
+          semPedido: 0
+        };
+      }
+      diasNoPeriodo.forEach(dia => {
+        const diaSemana = getDiaSemana(dia);
+        if (r.dia_semana === diaSemana) {
+          map[vendedorId].agendadas += (r.clientes_ids?.length || 0);
+        }
+      });
+    });
+    
+    // Contar visitas realizadas
+    visitasFiltradas.forEach(v => {
+      const vendedorId = v.vendedor_id || 'sem_vendedor';
+      if (!map[vendedorId]) {
+        map[vendedorId] = {
+          nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
+          agendadas: 0,
+          realizadas: 0,
+          naoRealizadas: 0,
+          comPedido: 0,
+          semPedido: 0
+        };
+      }
+      map[vendedorId].realizadas++;
+      if (v.pedido_solicitado === true) map[vendedorId].comPedido++;
+      if (v.pedido_solicitado === false) map[vendedorId].semPedido++;
+    });
+    
+    // Calcular não realizadas
+    Object.values(map).forEach(item => {
+      item.naoRealizadas = Math.max(0, item.agendadas - item.realizadas);
+    });
+    
+    return Object.values(map).sort((a, b) => b.agendadas - a.agendadas);
+  }, [visitasFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
+
   const limparFiltros = () => {
     const d = new Date();
     d.setDate(1);
