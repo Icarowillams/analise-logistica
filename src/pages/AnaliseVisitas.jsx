@@ -385,39 +385,39 @@ export default function AnaliseVisitas() {
       {/* KPIs Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatsCard
-          title="Conversão de Pedido"
-          value={`${taxaConversao}%`}
-          subtitle={`${stats.comPedido} de ${stats.totalVisitas} visitas`}
+          title="Visitas Agendadas"
+          value={stats.totalAgendadas}
+          subtitle="no período"
+          icon={Calendar}
+          gradient="from-blue-500 to-indigo-600"
+        />
+        <StatsCard
+          title="Taxa de Conclusão"
+          value={`${taxaConclusao}%`}
+          subtitle={`${stats.totalRealizadas} realizadas`}
           icon={Target}
+          gradient="from-yellow-500 to-amber-600"
+        />
+        <StatsCard
+          title="Visitas Realizadas"
+          value={stats.totalRealizadas}
+          subtitle="clique para detalhes"
+          icon={CheckCircle}
           gradient="from-green-500 to-emerald-600"
         />
         <StatsCard
-          title="Tx. Não Solicitação"
-          value={`${taxaNaoSolicitacao}%`}
-          subtitle="visitas sem pedido"
+          title="Não Realizadas"
+          value={stats.totalNaoAtendidas}
+          subtitle="clique para detalhes"
           icon={XCircle}
           gradient="from-red-500 to-rose-600"
         />
         <StatsCard
-          title="Tx. Não Atendimento"
-          value={`${taxaNaoAtendimento}%`}
-          subtitle="clientes não visitados"
+          title="Em Andamento"
+          value={stats.totalEmAndamento}
+          subtitle={tempoMedioPorVisita !== 'N/D' ? `tempo médio: ${tempoMedioPorVisita}` : 'sem tempo médio'}
           icon={Clock}
           gradient="from-orange-500 to-amber-600"
-        />
-        <StatsCard
-          title="Tempo Médio/Visita"
-          value={tempoMedioPorVisita}
-          subtitle="por atendimento"
-          icon={Clock}
-          gradient="from-blue-500 to-cyan-600"
-        />
-        <StatsCard
-          title="Clientes Atendidos"
-          value={clientesAtendidos}
-          subtitle="no período"
-          icon={UserCheck}
-          gradient="from-purple-500 to-indigo-600"
         />
       </div>
 
