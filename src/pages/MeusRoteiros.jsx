@@ -784,26 +784,36 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
         </Alert>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="estoque">
-            <Package className="w-4 h-4 mr-2" />
-            Estoque
-          </TabsTrigger>
-          <TabsTrigger value="trocas">
-            <ArrowLeftRight className="w-4 h-4 mr-2" />
-            Trocas
-          </TabsTrigger>
-        </TabsList>
+      {(podeInformarEstoque || podeInformarTrocas) && (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className={`grid w-full ${podeInformarEstoque && podeInformarTrocas ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {podeInformarEstoque && (
+              <TabsTrigger value="estoque">
+                <Package className="w-4 h-4 mr-2" />
+                Estoque
+              </TabsTrigger>
+            )}
+            {podeInformarTrocas && (
+              <TabsTrigger value="trocas">
+                <ArrowLeftRight className="w-4 h-4 mr-2" />
+                Trocas
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        <TabsContent value="estoque">
-          <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
-        </TabsContent>
+          {podeInformarEstoque && (
+            <TabsContent value="estoque">
+              <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
+            </TabsContent>
+          )}
 
-        <TabsContent value="trocas">
-          <TrocasForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
-        </TabsContent>
-      </Tabs>
+          {podeInformarTrocas && (
+            <TabsContent value="trocas">
+              <TrocasForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
+            </TabsContent>
+          )}
+        </Tabs>
+      )}
 
       <CheckoutButton visitaId={visita.id} />
     </div>
