@@ -27,9 +27,15 @@ export default function AnaliseVisitas() {
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
   const [filtroRota, setFiltroRota] = useState('todos');
 
+  // Visita = registro de contabilização, VisitaRoteiro = registro de execução do roteiro
   const { data: visitas = [] } = useQuery({
     queryKey: ['visitas'],
     queryFn: () => base44.entities.Visita.list('-data_visita', 5000)
+  });
+
+  const { data: visitasRoteiro = [] } = useQuery({
+    queryKey: ['visitasRoteiro'],
+    queryFn: () => base44.entities.VisitaRoteiro.list('-data_visita', 5000)
   });
 
   const { data: roteiros = [] } = useQuery({
