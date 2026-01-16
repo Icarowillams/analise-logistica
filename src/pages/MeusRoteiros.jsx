@@ -249,7 +249,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   );
 }
 
-function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor }) {
+function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario }) {
   const [showVisita, setShowVisita] = useState(false);
 
   const getStatusBadge = () => {
@@ -262,18 +262,26 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor }) {
     if (visitaExistente.status === 'concluida') {
       return <Badge className="bg-green-500">Concluída</Badge>;
     }
+    if (visitaExistente.status === 'nao_atendido') {
+      return <Badge className="bg-red-500">Não Atendido</Badge>;
+    }
     return <Badge variant="outline">Pendente</Badge>;
   };
 
   return (
-    <Card>
+    <Card className={isReagendamento ? 'border-orange-300 bg-orange-50/50' : ''}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Badge className="bg-amber-500 text-white text-lg px-3">{ordem}</Badge>
+            <Badge className={isReagendamento ? 'bg-orange-500 text-white text-lg px-3' : 'bg-amber-500 text-white text-lg px-3'}>
+              {ordem}
+            </Badge>
             <div>
               <CardTitle className="text-lg">{cliente.cliente_nome}</CardTitle>
-              <p className="text-sm text-slate-500">{cliente.cliente_codigo} • {cliente.cliente_cidade}</p>
+              <p className="text-sm text-slate-500">
+                {cliente.cliente_codigo} • {cliente.cliente_cidade}
+                {isReagendamento && <span className="ml-2 text-orange-600 font-medium">(Reagendado)</span>}
+              </p>
             </div>
           </div>
           {getStatusBadge()}
@@ -286,9 +294,14 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor }) {
             roteiroId={roteiroId} 
             vendedor={vendedor}
             onSuccess={() => setShowVisita(true)}
+            reagendamentoId={reagendamentoId}
           />
         ) : showVisita || visitaExistente ? (
-          <VisitaDetalhes visita={visitaExistente} cliente={cliente} />
+          <VisitaDetalhes 
+            visita={visitaExistente} 
+            cliente={cliente} 
+            permissaoUsuario={permissaoUsuario}
+          />
         ) : null}
       </CardContent>
     </Card>
