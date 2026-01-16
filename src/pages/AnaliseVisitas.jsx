@@ -95,69 +95,92 @@ export default function AnaliseVisitas() {
     });
   }, [roteiros, filtroVendedor]);
 
-  // ========== KPIs ==========
+  // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 
-  // 1. Conversão de Pedido por Visita
-  const taxaConversao = useMemo(() => {
-    const total = visitasFiltradas.length;
-    if (total === 0) return 0;
-    const comPedido = visitasFiltradas.filter(v => v.pedido_solicitado === true).length;
-    return ((comPedido / total) * 100).toFixed(1);
-  }, [visitasFiltradas]);
-
-  // 2. Taxa de Não Solicitação de Pedidos
-  const taxaNaoSolicitacao = useMemo(() => {
-    const total = visitasFiltradas.length;
-    if (total === 0) return 0;
-    const semPedido = visitasFiltradas.filter(v => v.pedido_solicitado === false).length;
-    return ((semPedido / total) * 100).toFixed(1);
-  }, [visitasFiltradas]);
-
-  // 3. Taxa de Não Atendimento (clientes programados vs visitados)
-  const taxaNaoAtendimento = useMemo(() => {
-    // Calcular quantos clientes deveriam ser visitados no período
+  // Calcular total de visitas agendadas no período
+  const totalAgendadas = useMemo(() => {
     const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
-    let totalProgramados = 0;
-    let totalVisitados = new Set();
-
+    let total = 0;
     diasNoPeriodo.forEach(dia => {
       const diaSemana = getDiaSemana(dia);
-      const roteirosNoDia = roteirosFiltrados.filter(r => r.dia_semana === diaSemana);
-      roteirosNoDia.forEach(r => {
-        totalProgramados += (r.clientes_ids?.length || 0);
+      roteirosFiltrados.forEach(r => {
+        if (r.dia_semana === diaSemana) {
+          total += (r.clientes_ids?.length || 0);
+        }
       });
     });
+    return total;
+  }, [roteirosFiltrados, dataInicio, dataFim]);
 
-    visitasFiltradas.forEach(v => {
-      totalVisitados.add(`${v.cliente_id}_${v.data_visita}`);
-    });
+  // Visitas realizadas (status concluida ou checkin_realizado)
+  const visitasRealizadas = useMemo(() => {
+    return visitasRoteiroFiltradas.filter(v => 
+      v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento'
+    );
+  }, [visitasRoteiroFiltradas]);
 
-    if (totalProgramados === 0) return 0;
-    const naoAtendidos = totalProgramados - totalVisitados.size;
-    return ((naoAtendidos / totalProgramados) * 100).toFixed(1);
-  }, [roteirosFiltrados, visitasFiltradas, dataInicio, dataFim]);
+  // Visitas não atendidas
+  const visitasNaoAtendidas = useMemo(() => {
+    return visitasRoteiroFiltradas.filter(v => v.status === 'nao_atendido');
+  }, [visitasRoteiroFiltradas]);
 
-  // 4. Tempo Médio por Visita (se houver hora_checkin e hora_checkout)
+  // Visitas em andamento
+  const visitasEmAndamento = useMemo(() => {
+    return visitasRoteiroFiltradas.filter(v => v.status === 'em_andamento' || v.status === 'checkin_realizado');
+  }, [visitasRoteiroFiltradas]);
+
+  // 1. Taxa de Conclusão (realizadas / agendadas)
+  const taxaConclusao = useMemo(() => {
+    if (totalAgendadas === 0) return 0;
+    return ((visitasRealizadas.length / totalAgendadas) * 100).toFixed(1);
+  }, [visitasRealizadas, totalAgendadas]);
+
+  // 2. Visitas com pedido solicitado
+  const visitasComPedido = useMemo(() => {
+    return visitasRoteiroFiltradas.filter(v => v.pedido_solicitado === true);
+  }, [visitasRoteiroFiltradas]);
+
+  // 3. Visitas sem pedido
+  const visitasSemPedido = useMemo(() => {
+    return visitasRoteiroFiltradas.filter(v => v.pedido_solicitado === false);
+  }, [visitasRoteiroFiltradas]);
+
+  // 4. Tempo Médio por Visita
   const tempoMedioPorVisita = useMemo(() => {
-    const visitasComTempo = visitasFiltradas.filter(v => v.hora_checkin);
+    const visitasComTempo = visitasRoteiroFiltradas.filter(v => v.checkin_time && v.checkout_time);
     if (visitasComTempo.length === 0) return 'N/D';
-    // Se não há checkout, retorna N/D
-    return 'N/D';
-  }, [visitasFiltradas]);
+    
+    let totalMinutos = 0;
+    visitasComTempo.forEach(v => {
+      const checkin = new Date(v.checkin_time);
+      const checkout = new Date(v.checkout_time);
+      const diff = (checkout - checkin) / 60000; // em minutos
+      if (diff > 0 && diff < 480) { // máximo 8 horas para evitar outliers
+        totalMinutos += diff;
+      }
+    });
+    
+    if (totalMinutos === 0) return 'N/D';
+    const media = totalMinutos / visitasComTempo.length;
+    return `${Math.round(media)} min`;
+  }, [visitasRoteiroFiltradas]);
 
-  // 5. Quantidade de Clientes Atendidos
+  // 5. Clientes únicos atendidos
   const clientesAtendidos = useMemo(() => {
-    const uniqueClientes = new Set(visitasFiltradas.map(v => v.cliente_id));
+    const uniqueClientes = new Set(visitasRealizadas.map(v => v.cliente_id));
     return uniqueClientes.size;
-  }, [visitasFiltradas]);
+  }, [visitasRealizadas]);
 
-  // Stats resumidos
+  // Stats resumidos para KPIs
   const stats = useMemo(() => ({
-    totalVisitas: visitasFiltradas.length,
-    comPedido: visitasFiltradas.filter(v => v.pedido_solicitado === true).length,
-    semPedido: visitasFiltradas.filter(v => v.pedido_solicitado === false).length,
+    totalAgendadas,
+    totalRealizadas: visitasRealizadas.length,
+    totalNaoAtendidas: visitasNaoAtendidas.length,
+    totalEmAndamento: visitasEmAndamento.length,
+    comPedido: visitasComPedido.length,
+    semPedido: visitasSemPedido.length,
     clientesAtendidos
-  }), [visitasFiltradas, clientesAtendidos]);
+  }), [totalAgendadas, visitasRealizadas, visitasNaoAtendidas, visitasEmAndamento, visitasComPedido, visitasSemPedido, clientesAtendidos]);
 
   // ========== Dados para Gráficos ==========
 
