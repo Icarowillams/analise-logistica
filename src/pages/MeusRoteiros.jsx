@@ -350,6 +350,20 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     }
   });
 
+  const createReagendamentoMutation = useMutation({
+    mutationFn: (data) => base44.entities.VisitaReagendada.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['visitasReagendadas']);
+    }
+  });
+
+  const updateReagendamentoMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.VisitaReagendada.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['visitasReagendadas']);
+    }
+  });
+
   const handleCheckin = () => {
     setLoading(true);
     
