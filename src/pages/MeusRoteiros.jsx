@@ -343,6 +343,33 @@ export default function MeusRoteiros() {
         </CardContent>
       </Card>
 
+      {/* Seletor de Dia da Semana */}
+      <Card className="border-0 shadow-lg">
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap gap-2">
+            {diasSemanaLista.map(dia => (
+              <Button
+                key={dia.valor}
+                variant={diaSelecionado === dia.valor ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setDiaSelecionado(dia.valor)}
+                className={diaSelecionado === dia.valor 
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600' 
+                  : dia.valor === diaSemanaHoje ? 'border-amber-400 text-amber-700' : ''
+                }
+              >
+                {dia.label}
+                {dia.valor === diaSemanaHoje && <span className="ml-1 text-xs">(Hoje)</span>}
+              </Button>
+            ))}
+          </div>
+          <p className="text-sm text-slate-500 mt-2">
+            Total de roteiros cadastrados: {meusRoteiros.length} | 
+            Roteiros para {diasSemanaLista.find(d => d.valor === diaSelecionado)?.label}: {meusRoteirosHoje.length}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Estatísticas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border-0 shadow-lg">
