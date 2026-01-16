@@ -6,16 +6,16 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { 
   TrendingUp, Users, MapPin, Filter, Calendar, 
-  CheckCircle, XCircle, Clock, Target, Percent, UserCheck
+  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function AnaliseVisitas() {
   const [dataInicio, setDataInicio] = useState(() => {
