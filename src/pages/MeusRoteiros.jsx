@@ -149,8 +149,37 @@ export default function MeusRoteiros() {
   );
 }
 
-function RoteirosDia({ dia, roteiros, visitas, vendedor }) {
-  if (roteiros.length === 0) {
+function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario }) {
+  // Calcular data correspondente ao dia selecionado
+  const hoje = new Date();
+  const diaAtualMap = {
+    'domingo': 0,
+    'segunda-feira': 1,
+    'terca-feira': 2,
+    'quarta-feira': 3,
+    'quinta-feira': 4,
+    'sexta-feira': 5,
+    'sabado': 6
+  };
+  
+  const diaAtualNumero = hoje.getDay();
+  const diaSelecionadoNumero = diaAtualMap[dia];
+  let diffDias = diaSelecionadoNumero - diaAtualNumero;
+  if (diffDias < 0) diffDias += 7;
+  
+  const dataSelecionada = new Date(hoje);
+  dataSelecionada.setDate(hoje.getDate() + diffDias);
+  const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
+
+  // Filtrar visitas reagendadas para este dia
+  const reagendadasParaHoje = visitasReagendadas.filter(vr => 
+    vr.data_reagendamento === dataSelecionadaStr && vr.status === 'pendente'
+  );
+
+  const roteiro = roteiros[0];
+  const clientesDoRoteiro = roteiro?.clientes_detalhes || [];
+
+  if (roteiros.length === 0 && reagendadasParaHoje.length === 0) {
     return (
       <Card>
         <CardContent className="pt-6 text-center text-slate-500">
@@ -160,11 +189,45 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor }) {
     );
   }
 
-  const roteiro = roteiros[0];
-
   return (
     <div className="space-y-4">
-      {roteiro.clientes_detalhes?.map((cliente, idx) => {
+      {/* Visitas Reagendadas (Exceções) */}
+      {reagendadasParaHoje.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-orange-600 flex items-center gap-2">
+            <CalendarPlus className="w-4 h-4" />
+            Reagendamentos ({reagendadasParaHoje.length})
+          </h3>
+          {reagendadasParaHoje.map((reagendada) => {
+            const visitaExistente = visitas.find(v => 
+              v.cliente_id === reagendada.cliente_id && 
+              v.data_visita === dataSelecionadaStr
+            );
+
+            return (
+              <ClienteCard 
+                key={`reagendada-${reagendada.id}`}
+                cliente={{
+                  cliente_id: reagendada.cliente_id,
+                  cliente_nome: reagendada.cliente_nome,
+                  cliente_codigo: reagendada.cliente_codigo,
+                  cliente_cidade: reagendada.cliente_cidade
+                }}
+                ordem="R"
+                visitaExistente={visitaExistente}
+                roteiroId={null}
+                vendedor={vendedor}
+                isReagendamento={true}
+                reagendamentoId={reagendada.id}
+                permissaoUsuario={permissaoUsuario}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Clientes do Roteiro Fixo */}
+      {clientesDoRoteiro.map((cliente, idx) => {
         const visitaExistente = visitas.find(v => 
           v.cliente_id === cliente.cliente_id && 
           v.roteiro_id === roteiro.id
@@ -178,6 +241,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor }) {
             visitaExistente={visitaExistente}
             roteiroId={roteiro.id}
             vendedor={vendedor}
+            permissaoUsuario={permissaoUsuario}
           />
         );
       })}
