@@ -206,15 +206,18 @@ export default function AnaliseVisitas() {
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
 
-  // Visitas por dia
+  // Visitas por dia (baseado em VisitaRoteiro)
   const visitasPorDia = useMemo(() => {
     const map = {};
-    visitasFiltradas.forEach(v => {
+    visitasRoteiroFiltradas.forEach(v => {
       const data = v.data_visita;
-      if (!map[data]) map[data] = { data, total: 0, comPedido: 0, semPedido: 0 };
-      map[data].total++;
-      if (v.pedido_solicitado === true) map[data].comPedido++;
-      if (v.pedido_solicitado === false) map[data].semPedido++;
+      if (!map[data]) map[data] = { data, realizadas: 0, naoRealizadas: 0 };
+      
+      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        map[data].realizadas++;
+      } else if (v.status === 'nao_atendido') {
+        map[data].naoRealizadas++;
+      }
     });
 
     return Object.values(map)
@@ -224,7 +227,7 @@ export default function AnaliseVisitas() {
         ...item,
         dataFormatada: new Date(item.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
       }));
-  }, [visitasFiltradas]);
+  }, [visitasRoteiroFiltradas]);
 
   // Clientes por vendedor
   const clientesPorVendedor = useMemo(() => {
