@@ -308,7 +308,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   );
 }
 
-function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
+function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoId }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [showPedidoDialog, setShowPedidoDialog] = useState(false);
@@ -316,10 +316,20 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
   const [motivoSearch, setMotivoSearch] = useState('');
   const [motivoSelecionado, setMotivoSelecionado] = useState('');
   const [locationData, setLocationData] = useState(null);
+  
+  // Estados para Não Atendido
+  const [naoAtendido, setNaoAtendido] = useState(false);
+  const [motivoNaoAtendimento, setMotivoNaoAtendimento] = useState('');
+  const [reagendarDiaSeguinte, setReagendarDiaSeguinte] = useState(false);
 
   const { data: motivos = [] } = useQuery({
     queryKey: ['motivosNaoSolicitacao'],
     queryFn: () => base44.entities.MotivoNaoSolicitacao.list()
+  });
+
+  const { data: motivosNaoAtend = [] } = useQuery({
+    queryKey: ['motivosNaoAtendimento'],
+    queryFn: () => base44.entities.MotivoNaoAtendimento.list()
   });
 
   const motivosFiltrados = motivos.filter(m => 
