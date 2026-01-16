@@ -249,12 +249,11 @@ export default function AnaliseVisitas() {
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
 
-  // Distribuição de status de pedido
-  const distribuicaoPedidos = useMemo(() => [
-    { name: 'Com Pedido', value: stats.comPedido, color: '#10b981' },
-    { name: 'Sem Pedido', value: stats.semPedido, color: '#ef4444' },
-    { name: 'Não Informado', value: stats.totalVisitas - stats.comPedido - stats.semPedido, color: '#94a3b8' }
-  ], [stats]);
+  // Distribuição de visitas por status
+  const distribuicaoVisitas = useMemo(() => [
+    { name: 'Realizadas', value: stats.totalRealizadas, color: '#10b981' },
+    { name: 'Não Realizadas', value: stats.totalNaoAtendidas, color: '#ef4444' }
+  ].filter(item => item.value > 0), [stats]);
 
   // Tabela de Performance por Funcionário
   const performancePorFuncionario = useMemo(() => {
