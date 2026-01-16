@@ -265,6 +265,18 @@ export default function MeusRoteiros() {
   };
 
   const handleFecharModal = () => {
+    // Salvar dados antes de voltar se visita estiver em andamento
+    if (visitaAtual && visitaAtual.status === 'em_andamento') {
+      updateVisitaMutation.mutate({
+        id: visitaAtual.id,
+        data: {
+          pedido_solicitado: pedidoSolicitado,
+          motivo_nao_pedido: motivoNaoPedido || null,
+          motivo_nao_atendimento: motivoNaoAtendimento || null,
+          observacoes: observacoes || null
+        }
+      });
+    }
     setClienteSelecionado(null);
     setVisitaAtual(null);
   };
