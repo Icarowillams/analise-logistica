@@ -441,7 +441,13 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   };
 
   const finalizarCheckin = async () => {
-    if (pedidoSolicitado === false && !motivoSelecionado) {
+    // Validações
+    if (naoAtendido && !motivoNaoAtendimento) {
+      toast.error('Por favor, selecione o motivo do não atendimento');
+      return;
+    }
+    
+    if (!naoAtendido && pedidoSolicitado === false && !motivoSelecionado) {
       toast.error('Por favor, selecione o motivo da não solicitação');
       return;
     }
@@ -450,10 +456,11 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
 
     const motivoObj = motivos.find(m => m.id === motivoSelecionado);
+    const motivoNaoAtendObj = motivosNaoAtend.find(m => m.id === motivoNaoAtendimento);
 
-    // Criar registro na VisitaRoteiro (entidade antiga)
+    // Criar registro na VisitaRoteiro
     const dataVisitaRoteiro = {
-      roteiro_id: roteiroId,
+      roteiro_id: roteiroId || '',
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
       cliente_id: cliente.cliente_id,
@@ -464,13 +471,14 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       checkin_time: agora.toISOString(),
       checkin_latitude: locationData.latitude,
       checkin_longitude: locationData.longitude,
-      status: 'checkin_realizado'
+      status: naoAtendido ? 'nao_atendido' : 'checkin_realizado',
+      motivo_nao_atendimento: naoAtendido ? motivoNaoAtendObj?.descricao : null
     };
 
-    // Criar registro na Visita (nova entidade para contabilização)
+    // Criar registro na Visita
     const dataVisita = {
       numero_visita: numeroVisita,
-      roteiro_id: roteiroId,
+      roteiro_id: roteiroId || '',
       cliente_id: cliente.cliente_id,
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
@@ -479,19 +487,54 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: locationData.latitude,
       longitude_checkin: locationData.longitude,
-      pedido_solicitado: pedidoSolicitado,
-      motivo_nao_solicitacao_id: motivoSelecionado || null,
-      motivo_nao_solicitacao_descricao: motivoObj?.descricao || null
+      pedido_solicitado: naoAtendido ? null : pedidoSolicitado,
+      motivo_nao_solicitacao_id: (!naoAtendido && pedidoSolicitado === false) ? motivoSelecionado : null,
+      motivo_nao_solicitacao_descricao: (!naoAtendido && pedidoSolicitado === false) ? motivoObj?.descricao : null
     };
 
     await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
     await createVisitaRegistroMutation.mutateAsync(dataVisita);
 
-    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    // Se marcou reagendar para o dia seguinte
+    if (naoAtendido && reagendarDiaSeguinte) {
+      const amanha = new Date(agora);
+      amanha.setDate(amanha.getDate() + 1);
+      
+      await createReagendamentoMutation.mutateAsync({
+        cliente_id: cliente.cliente_id,
+        cliente_nome: cliente.cliente_nome,
+        cliente_codigo: cliente.cliente_codigo,
+        cliente_cidade: cliente.cliente_cidade,
+        vendedor_id: vendedor.id,
+        vendedor_nome: vendedor.nome,
+        data_reagendamento: amanha.toISOString().split('T')[0],
+        motivo_nao_atendimento: motivoNaoAtendObj?.descricao,
+        visita_original_id: numeroVisita,
+        status: 'pendente'
+      });
+      
+      toast.success(`✅ Visita não atendida registrada e reagendada para amanhã!`);
+    } else if (naoAtendido) {
+      toast.success(`✅ Visita não atendida registrada!`);
+    } else {
+      toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    }
+
+    // Se era um reagendamento, marcar como realizado
+    if (reagendamentoId) {
+      await updateReagendamentoMutation.mutateAsync({
+        id: reagendamentoId,
+        data: { status: 'realizada' }
+      });
+    }
+
     setShowPedidoDialog(false);
     setPedidoSolicitado(null);
     setMotivoSelecionado('');
     setMotivoSearch('');
+    setNaoAtendido(false);
+    setMotivoNaoAtendimento('');
+    setReagendarDiaSeguinte(false);
     onSuccess();
   };
 
