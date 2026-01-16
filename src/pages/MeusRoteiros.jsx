@@ -1,85 +1,26 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { Route, MapPin, Clock, CheckCircle, Package, ArrowLeftRight, Camera, Upload, Download } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Route, MapPin, Clock, CheckCircle, XCircle, Play, ChevronRight, 
-  User, ShoppingCart, Package, ArrowLeftRight, AlertTriangle, ArrowLeft
-} from 'lucide-react';
+import { toast } from 'sonner';
 import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
 import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 
 export default function MeusRoteiros() {
-  const [clienteSelecionado, setClienteSelecionado] = useState(null);
-  const [visitaAtual, setVisitaAtual] = useState(null);
-  const [tabVisita, setTabVisita] = useState('pedido');
-  const [pedidoSolicitado, setPedidoSolicitado] = useState(null);
-  const [motivoNaoPedido, setMotivoNaoPedido] = useState('');
-  const [observacoes, setObservacoes] = useState('');
-  const [naoAtendido, setNaoAtendido] = useState(false);
-  const [motivoNaoAtendimento, setMotivoNaoAtendimento] = useState('');
-
-  const queryClient = useQueryClient();
-
-  // Buscar usuário atual e seu registro de vendedor
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
-  });
-
-  const { data: vendedores = [] } = useQuery({
-    queryKey: ['vendedores'],
-    queryFn: () => base44.entities.Vendedor.list()
-  });
-
-  const vendedorAtual = useMemo(() => {
-    if (!currentUser || !vendedores.length) return null;
-    return vendedores.find(v => v.email?.toLowerCase() === currentUser.email?.toLowerCase());
-  }, [currentUser, vendedores]);
-
-  // Buscar roteiros do vendedor atual
-  const { data: roteiros = [] } = useQuery({
-    queryKey: ['roteiros'],
-    queryFn: () => base44.entities.Roteiro.list()
-  });
-
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
-
-  const { data: visitasRoteiro = [] } = useQuery({
-    queryKey: ['visitasRoteiro'],
-    queryFn: () => base44.entities.VisitaRoteiro.list('-created_date', 1000)
-  });
-
-  const { data: motivosNaoPedido = [] } = useQuery({
-    queryKey: ['motivosNaoSolicitacao'],
-    queryFn: () => base44.entities.MotivoNaoSolicitacao.list()
-  });
-
-  const { data: motivosNaoAtend = [] } = useQuery({
-    queryKey: ['motivosNaoAtendimento'],
-    queryFn: () => base44.entities.MotivoNaoAtendimento.list()
-  });
-
-  // Mapear clientes
-  const clientesMap = useMemo(() => {
-    return clientes.reduce((acc, c) => {
-      acc[c.id] = c;
-      return acc;
-    }, {});
-  }, [clientes]);
-
-  // Dias da semana
-  const diasSemanaMap = {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [vendedorAtual, setVendedorAtual] = useState(null);
+  
+  // Detectar dia atual
+  const diaAtualMap = {
     0: 'domingo',
     1: 'segunda-feira',
     2: 'terca-feira',
@@ -88,72 +29,536 @@ export default function MeusRoteiros() {
     5: 'sexta-feira',
     6: 'sabado'
   };
+  const diaAtual = diaAtualMap[new Date().getDay()];
+  const [selectedDia, setSelectedDia] = useState(diaAtual);
 
-  const hoje = new Date();
-  const diaSemanaHoje = diasSemanaMap[hoje.getDay()];
-  const dataHoje = hoje.toISOString().split('T')[0];
+  const queryClient = useQueryClient();
 
-  const [diaSelecionado, setDiaSelecionado] = useState(diaSemanaHoje);
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores'],
+    queryFn: () => base44.entities.Vendedor.list()
+  });
 
-  const diasSemanaLista = [
-    { valor: 'segunda-feira', label: 'Segunda' },
-    { valor: 'terca-feira', label: 'Terça' },
-    { valor: 'quarta-feira', label: 'Quarta' },
-    { valor: 'quinta-feira', label: 'Quinta' },
-    { valor: 'sexta-feira', label: 'Sexta' },
+  useEffect(() => {
+    base44.auth.me().then(user => {
+      setCurrentUser(user);
+      const vendedor = vendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+      setVendedorAtual(vendedor);
+    }).catch(() => {});
+  }, [vendedores]);
+
+  const { data: roteiros = [] } = useQuery({
+    queryKey: ['roteiros', vendedorAtual?.id],
+    queryFn: () => base44.entities.Roteiro.filter({ vendedor_id: vendedorAtual?.id }),
+    enabled: !!vendedorAtual
+  });
+
+  const { data: visitas = [] } = useQuery({
+    queryKey: ['visitasRoteiro', vendedorAtual?.id],
+    queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedorAtual?.id }),
+    enabled: !!vendedorAtual
+  });
+
+  const { data: visitasRegistros = [] } = useQuery({
+    queryKey: ['visitas', vendedorAtual?.id],
+    queryFn: () => base44.entities.Visita.filter({ vendedor_id: vendedorAtual?.id }),
+    enabled: !!vendedorAtual
+  });
+
+  const diasSemana = [
+    { valor: 'segunda-feira', label: 'Segunda-feira' },
+    { valor: 'terca-feira', label: 'Terça-feira' },
+    { valor: 'quarta-feira', label: 'Quarta-feira' },
+    { valor: 'quinta-feira', label: 'Quinta-feira' },
+    { valor: 'sexta-feira', label: 'Sexta-feira' },
     { valor: 'sabado', label: 'Sábado' },
     { valor: 'domingo', label: 'Domingo' }
   ];
 
-  // Todos os roteiros do vendedor atual
-  const meusRoteiros = useMemo(() => {
-    if (!vendedorAtual) return [];
-    return roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
-  }, [roteiros, vendedorAtual]);
+  if (!vendedorAtual) {
+    return (
+      <div>
+        <PageHeader title="Meus Roteiros" icon={Route} />
+        <Alert>
+          <AlertDescription>
+            Você não está cadastrado como funcionário no sistema. Entre em contato com o administrador.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
-  // Roteiros do dia selecionado
-  const meusRoteirosHoje = useMemo(() => {
-    return meusRoteiros.filter(r => r.dia_semana === diaSelecionado);
-  }, [meusRoteiros, diaSelecionado]);
+  const roteirosVendedor = roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
 
-  // Clientes do roteiro do dia selecionado com status de visita
-  const clientesDoRoteiro = useMemo(() => {
-    const clientesIds = new Set();
-    meusRoteirosHoje.forEach(r => {
-      (r.clientes_ids || []).forEach(id => clientesIds.add(id));
-    });
+  return (
+    <div>
+      <PageHeader 
+        title="Meus Roteiros" 
+        subtitle={`Olá, ${vendedorAtual.nome}`}
+        icon={Route}
+      />
 
-    return Array.from(clientesIds).map(id => {
-      const cliente = clientesMap[id];
-      if (!cliente) return null;
+      <Tabs value={selectedDia} onValueChange={setSelectedDia} className="w-full">
+        <TabsList className="grid w-full grid-cols-7 mb-6">
+          {diasSemana.map(dia => {
+            const roteirosDia = roteirosVendedor.filter(r => r.dia_semana === dia.valor);
+            return (
+              <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs">
+                {dia.label.substring(0, 3)}
+                {roteirosDia.length > 0 && (
+                  <Badge className="ml-1 bg-amber-500 text-white" variant="secondary">
+                    {roteirosDia[0]?.clientes_ids?.length || 0}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
 
-      // Verificar se já foi visitado hoje (apenas se for o dia atual)
-      const visitaHoje = diaSelecionado === diaSemanaHoje 
-        ? visitasRoteiro.find(v => 
-            v.cliente_id === id && 
-            v.data_visita === dataHoje &&
-            v.vendedor_id === vendedorAtual?.id
-          )
-        : null;
+        {diasSemana.map(dia => (
+          <TabsContent key={dia.valor} value={dia.valor}>
+            <RoteirosDia 
+              dia={dia.valor} 
+              roteiros={roteirosVendedor.filter(r => r.dia_semana === dia.valor)}
+              visitas={visitas}
+              vendedor={vendedorAtual}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  );
+}
 
-      return {
-        ...cliente,
-        visitaHoje,
-        status: visitaHoje?.status || 'pendente'
-      };
-    }).filter(Boolean);
-  }, [meusRoteirosHoje, clientesMap, visitasRoteiro, dataHoje, vendedorAtual, diaSelecionado, diaSemanaHoje]);
+function RoteirosDia({ dia, roteiros, visitas, vendedor }) {
+  if (roteiros.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6 text-center text-slate-500">
+          Nenhum roteiro programado para este dia
+        </CardContent>
+      </Card>
+    );
+  }
 
-  // Criar visita
+  const roteiro = roteiros[0];
+
+  return (
+    <div className="space-y-4">
+      {roteiro.clientes_detalhes?.map((cliente, idx) => {
+        const visitaExistente = visitas.find(v => 
+          v.cliente_id === cliente.cliente_id && 
+          v.roteiro_id === roteiro.id
+        );
+
+        return (
+          <ClienteCard 
+            key={cliente.cliente_id}
+            cliente={cliente}
+            ordem={idx + 1}
+            visitaExistente={visitaExistente}
+            roteiroId={roteiro.id}
+            vendedor={vendedor}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor }) {
+  const [showVisita, setShowVisita] = useState(false);
+
+  const getStatusBadge = () => {
+    if (!visitaExistente) {
+      return <Badge variant="outline" className="bg-slate-100">Pendente</Badge>;
+    }
+    if (visitaExistente.status === 'checkin_realizado') {
+      return <Badge className="bg-blue-500">Check-in Realizado</Badge>;
+    }
+    if (visitaExistente.status === 'concluida') {
+      return <Badge className="bg-green-500">Concluída</Badge>;
+    }
+    return <Badge variant="outline">Pendente</Badge>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Badge className="bg-amber-500 text-white text-lg px-3">{ordem}</Badge>
+            <div>
+              <CardTitle className="text-lg">{cliente.cliente_nome}</CardTitle>
+              <p className="text-sm text-slate-500">{cliente.cliente_codigo} • {cliente.cliente_cidade}</p>
+            </div>
+          </div>
+          {getStatusBadge()}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!visitaExistente || visitaExistente.status === 'pendente' ? (
+          <CheckinButton 
+            cliente={cliente} 
+            roteiroId={roteiroId} 
+            vendedor={vendedor}
+            onSuccess={() => setShowVisita(true)}
+          />
+        ) : showVisita || visitaExistente ? (
+          <VisitaDetalhes visita={visitaExistente} cliente={cliente} />
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CheckinButton({ cliente, roteiroId, vendedor, onSuccess }) {
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
+  const [showPedidoDialog, setShowPedidoDialog] = useState(false);
+  const [pedidoSolicitado, setPedidoSolicitado] = useState(null);
+  const [motivoSearch, setMotivoSearch] = useState('');
+  const [motivoSelecionado, setMotivoSelecionado] = useState('');
+  const [locationData, setLocationData] = useState(null);
+
+  const { data: motivos = [] } = useQuery({
+    queryKey: ['motivosNaoSolicitacao'],
+    queryFn: () => base44.entities.MotivoNaoSolicitacao.list()
+  });
+
+  const motivosFiltrados = motivos.filter(m => 
+    m.descricao?.toLowerCase().includes(motivoSearch.toLowerCase())
+  );
+
   const createVisitaMutation = useMutation({
     mutationFn: (data) => base44.entities.VisitaRoteiro.create(data),
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries(['visitasRoteiro']);
-      setVisitaAtual(data);
     }
   });
 
-  // Atualizar visita
+  const createVisitaRegistroMutation = useMutation({
+    mutationFn: (data) => base44.entities.Visita.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['visitas']);
+    }
+  });
+
+  const handleCheckin = () => {
+    setLoading(true);
+    
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          setLocationData({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+          
+          // Verificar se o cargo é especificamente vendedor
+          const funcoes = await base44.entities.Funcao.list();
+          const funcaoVendedor = funcoes.find(f => f.id === vendedor.funcao_id);
+          const isVendedor = funcaoVendedor?.nome?.toLowerCase().includes('vendedor');
+          
+          if (isVendedor) {
+            setLoading(false);
+            setShowPedidoDialog(true);
+          } else {
+            // Admin ou outro tipo de usuário - registrar direto sem perguntar
+            await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
+          }
+        },
+        (error) => {
+          toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
+          setLoading(false);
+        }
+      );
+    } else {
+      toast.error('Geolocalização não suportada pelo navegador');
+      setLoading(false);
+    }
+  };
+
+  const finalizarCheckinDireto = async (latitude, longitude) => {
+    const agora = new Date();
+    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
+    const dataVisitaRoteiro = {
+      roteiro_id: roteiroId,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      cliente_codigo: cliente.cliente_codigo,
+      cliente_cidade: cliente.cliente_cidade,
+      data_visita: agora.toISOString().split('T')[0],
+      checkin_time: agora.toISOString(),
+      checkin_latitude: latitude,
+      checkin_longitude: longitude,
+      status: 'checkin_realizado'
+    };
+
+    const dataVisita = {
+      numero_visita: numeroVisita,
+      roteiro_id: roteiroId,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      data_visita: agora.toISOString().split('T')[0],
+      hora_checkin: agora.toTimeString().split(' ')[0],
+      latitude_checkin: latitude,
+      longitude_checkin: longitude,
+      pedido_solicitado: null
+    };
+
+    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    setLoading(false);
+    onSuccess();
+  };
+
+  const finalizarCheckin = async () => {
+    if (pedidoSolicitado === false && !motivoSelecionado) {
+      toast.error('Por favor, selecione o motivo da não solicitação');
+      return;
+    }
+
+    const agora = new Date();
+    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
+    const motivoObj = motivos.find(m => m.id === motivoSelecionado);
+
+    // Criar registro na VisitaRoteiro (entidade antiga)
+    const dataVisitaRoteiro = {
+      roteiro_id: roteiroId,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      cliente_codigo: cliente.cliente_codigo,
+      cliente_cidade: cliente.cliente_cidade,
+      data_visita: agora.toISOString().split('T')[0],
+      checkin_time: agora.toISOString(),
+      checkin_latitude: locationData.latitude,
+      checkin_longitude: locationData.longitude,
+      status: 'checkin_realizado'
+    };
+
+    // Criar registro na Visita (nova entidade para contabilização)
+    const dataVisita = {
+      numero_visita: numeroVisita,
+      roteiro_id: roteiroId,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      data_visita: agora.toISOString().split('T')[0],
+      hora_checkin: agora.toTimeString().split(' ')[0],
+      latitude_checkin: locationData.latitude,
+      longitude_checkin: locationData.longitude,
+      pedido_solicitado: pedidoSolicitado,
+      motivo_nao_solicitacao_id: motivoSelecionado || null,
+      motivo_nao_solicitacao_descricao: motivoObj?.descricao || null
+    };
+
+    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    setShowPedidoDialog(false);
+    setPedidoSolicitado(null);
+    setMotivoSelecionado('');
+    setMotivoSearch('');
+    onSuccess();
+  };
+
+  if (showPedidoDialog) {
+    return (
+      <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+        <div>
+          <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setPedidoSolicitado(true)}
+              variant={pedidoSolicitado === true ? 'default' : 'outline'}
+              className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
+            >
+              Sim
+            </Button>
+            <Button
+              onClick={() => setPedidoSolicitado(false)}
+              variant={pedidoSolicitado === false ? 'default' : 'outline'}
+              className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
+            >
+              Não
+            </Button>
+          </div>
+        </div>
+
+        {pedidoSolicitado === false && (
+          <div className="space-y-2 animate-in fade-in-50">
+            <Label>Motivo da não solicitação *</Label>
+            <Input
+              placeholder="Buscar motivo..."
+              value={motivoSearch}
+              onChange={(e) => setMotivoSearch(e.target.value)}
+              className="mb-2"
+            />
+            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o motivo..." />
+              </SelectTrigger>
+              <SelectContent>
+                {motivosFiltrados.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {pedidoSolicitado !== null && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPedidoDialog(false);
+                setPedidoSolicitado(null);
+                setMotivoSelecionado('');
+                setMotivoSearch('');
+              }}
+              className="flex-1"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={finalizarCheckin}
+              disabled={createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
+              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
+            >
+              Confirmar Check-in
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Button 
+      onClick={handleCheckin}
+      disabled={loading}
+      className="w-full bg-gradient-to-r from-blue-500 to-blue-600"
+    >
+      <MapPin className="w-4 h-4 mr-2" />
+      {loading ? 'Obtendo localização...' : 'Fazer Check-in'}
+    </Button>
+  );
+}
+
+function VisitaDetalhes({ visita, cliente }) {
+  const [activeTab, setActiveTab] = useState('estoque');
+  const { data: visitaRegistro } = useQuery({
+    queryKey: ['visitaRegistro', visita.id],
+    queryFn: async () => {
+      const visitas = await base44.entities.Visita.filter({ 
+        cliente_id: cliente.cliente_id,
+        data_visita: visita.data_visita 
+      });
+      return visitas[0];
+    }
+  });
+
+  if (visita.status === 'concluida') {
+    return (
+      <div className="space-y-3">
+        <Alert className="bg-green-50 border-green-200">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            Visita concluída em {new Date(visita.checkout_time).toLocaleString('pt-BR')}
+            {visitaRegistro && (
+              <div className="mt-1 text-xs">
+                <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div>
+            <span className="text-slate-500">Check-in:</span>
+            <p className="font-medium">{new Date(visita.checkin_time).toLocaleTimeString('pt-BR')}</p>
+          </div>
+          <div>
+            <span className="text-slate-500">Check-out:</span>
+            <p className="font-medium">{new Date(visita.checkout_time).toLocaleTimeString('pt-BR')}</p>
+          </div>
+        </div>
+        {visitaRegistro && visitaRegistro.pedido_solicitado === false && (
+          <Alert className="bg-amber-50 border-amber-200">
+            <AlertDescription className="text-amber-800 text-xs">
+              <strong>Pedido não solicitado:</strong> {visitaRegistro.motivo_nao_solicitacao_descricao}
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Alert className="bg-blue-50 border-blue-200">
+        <Clock className="w-4 h-4 text-blue-600" />
+        <AlertDescription className="text-blue-800">
+          Check-in realizado às {new Date(visita.checkin_time).toLocaleTimeString('pt-BR')}
+          {visitaRegistro && (
+            <div className="mt-1 text-xs">
+              <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
+            </div>
+          )}
+        </AlertDescription>
+      </Alert>
+
+      {visitaRegistro && visitaRegistro.pedido_solicitado === false && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <AlertDescription className="text-amber-800 text-sm">
+            <strong>Pedido não solicitado:</strong> {visitaRegistro.motivo_nao_solicitacao_descricao}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="estoque">
+            <Package className="w-4 h-4 mr-2" />
+            Estoque
+          </TabsTrigger>
+          <TabsTrigger value="trocas">
+            <ArrowLeftRight className="w-4 h-4 mr-2" />
+            Trocas
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="estoque">
+          <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
+        </TabsContent>
+
+        <TabsContent value="trocas">
+          <TrocasForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
+        </TabsContent>
+      </Tabs>
+
+      <CheckoutButton visitaId={visita.id} />
+    </div>
+  );
+}
+
+function CheckoutButton({ visitaId }) {
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
+
   const updateVisitaMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.VisitaRoteiro.update(id, data),
     onSuccess: () => {
@@ -161,558 +566,41 @@ export default function MeusRoteiros() {
     }
   });
 
-  // Iniciar visita (check-in)
-  const handleIniciarVisita = async (cliente) => {
-    // Verificar se já existe visita em andamento
-    const visitaExistente = visitasRoteiro.find(v => 
-      v.cliente_id === cliente.id && 
-      v.data_visita === dataHoje &&
-      v.vendedor_id === vendedorAtual?.id
-    );
-
-    if (visitaExistente) {
-      setVisitaAtual(visitaExistente);
-      setClienteSelecionado(cliente);
-      setPedidoSolicitado(visitaExistente.pedido_solicitado);
-      setMotivoNaoPedido(visitaExistente.motivo_nao_pedido || '');
-      setObservacoes(visitaExistente.observacoes || '');
-      setNaoAtendido(visitaExistente.status === 'nao_atendido');
-      setMotivoNaoAtendimento(visitaExistente.motivo_nao_atendimento || '');
-      return;
-    }
-
-    // Obter localização
-    let latitude = null;
-    let longitude = null;
+  const handleCheckout = () => {
+    setLoading(true);
     
     if (navigator.geolocation) {
-      try {
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000
-          });
-        });
-        latitude = position.coords.latitude;
-        longitude = position.coords.longitude;
-      } catch (e) {
-        console.log('Não foi possível obter localização');
-      }
-    }
-
-    const roteiro = meusRoteirosHoje.find(r => r.clientes_ids?.includes(cliente.id));
-
-    const visitaData = {
-      roteiro_id: roteiro?.id || '',
-      cliente_id: cliente.id,
-      cliente_nome: cliente.razao_social || cliente.nome_fantasia,
-      vendedor_id: vendedorAtual?.id || '',
-      vendedor_nome: vendedorAtual?.nome || '',
-      data_visita: dataHoje,
-      checkin_time: new Date().toISOString(),
-      latitude_checkin: latitude,
-      longitude_checkin: longitude,
-      status: 'em_andamento'
-    };
-
-    createVisitaMutation.mutate(visitaData);
-    setClienteSelecionado(cliente);
-    setPedidoSolicitado(null);
-    setMotivoNaoPedido('');
-    setObservacoes('');
-    setNaoAtendido(false);
-    setMotivoNaoAtendimento('');
-  };
-
-  // Finalizar visita (check-out)
-  const handleFinalizarVisita = async () => {
-    if (!visitaAtual) return;
-
-    // Validar campos obrigatórios
-    if (naoAtendido && !motivoNaoAtendimento) {
-      alert('Informe o motivo do não atendimento');
-      return;
-    }
-
-    if (!naoAtendido && pedidoSolicitado === null) {
-      alert('Informe se o pedido foi solicitado');
-      return;
-    }
-
-    if (!naoAtendido && pedidoSolicitado === false && !motivoNaoPedido) {
-      alert('Informe o motivo de não solicitação do pedido');
-      return;
-    }
-
-    const updateData = {
-      checkout_time: new Date().toISOString(),
-      status: naoAtendido ? 'nao_atendido' : 'concluida',
-      pedido_solicitado: naoAtendido ? null : pedidoSolicitado,
-      motivo_nao_pedido: pedidoSolicitado === false ? motivoNaoPedido : null,
-      motivo_nao_atendimento: naoAtendido ? motivoNaoAtendimento : null,
-      observacoes: observacoes
-    };
-
-    await updateVisitaMutation.mutateAsync({ id: visitaAtual.id, data: updateData });
-    
-    setClienteSelecionado(null);
-    setVisitaAtual(null);
-    setPedidoSolicitado(null);
-    setMotivoNaoPedido('');
-    setObservacoes('');
-    setNaoAtendido(false);
-    setMotivoNaoAtendimento('');
-  };
-
-  const handleFecharModal = () => {
-    // Salvar dados antes de voltar se visita estiver em andamento
-    if (visitaAtual && visitaAtual.status === 'em_andamento') {
-      updateVisitaMutation.mutate({
-        id: visitaAtual.id,
-        data: {
-          pedido_solicitado: pedidoSolicitado,
-          motivo_nao_pedido: motivoNaoPedido || null,
-          motivo_nao_atendimento: motivoNaoAtendimento || null,
-          observacoes: observacoes || null
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const data = {
+            checkout_time: new Date().toISOString(),
+            checkout_latitude: position.coords.latitude,
+            checkout_longitude: position.coords.longitude,
+            status: 'concluida'
+          };
+          
+          updateVisitaMutation.mutate({ id: visitaId, data });
+          setLoading(false);
+        },
+        (error) => {
+          alert('Erro ao obter localização. Verifique as permissões do navegador.');
+          setLoading(false);
         }
-      });
+      );
+    } else {
+      alert('Geolocalização não suportada pelo navegador');
+      setLoading(false);
     }
-    setClienteSelecionado(null);
-    setVisitaAtual(null);
   };
-
-  const getDiaLabel = (valor) => {
-    const labels = {
-      'domingo': 'Domingo',
-      'segunda-feira': 'Segunda-feira',
-      'terca-feira': 'Terça-feira',
-      'quarta-feira': 'Quarta-feira',
-      'quinta-feira': 'Quinta-feira',
-      'sexta-feira': 'Sexta-feira',
-      'sabado': 'Sábado'
-    };
-    return labels[valor] || valor;
-  };
-
-  // Estatísticas
-  const stats = useMemo(() => {
-    const total = clientesDoRoteiro.length;
-    const visitados = clientesDoRoteiro.filter(c => c.status === 'concluida').length;
-    const naoAtendidos = clientesDoRoteiro.filter(c => c.status === 'nao_atendido').length;
-    const pendentes = total - visitados - naoAtendidos;
-    
-    return { total, visitados, naoAtendidos, pendentes };
-  }, [clientesDoRoteiro]);
-
-  if (!vendedorAtual) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Card className="p-6 text-center">
-          <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Acesso Restrito</h2>
-          <p className="text-slate-500">
-            Seu usuário não está vinculado a um funcionário cadastrado no sistema.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
-          <Route className="h-6 w-6 text-neutral-900" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Meus Roteiros</h1>
-          <p className="text-slate-500">
-            {getDiaLabel(diaSemanaHoje)} - {hoje.toLocaleDateString('pt-BR')}
-          </p>
-        </div>
-      </div>
-
-      {/* Informações do Vendedor */}
-      <Card className="border-0 shadow-lg bg-gradient-to-r from-amber-50 to-yellow-50">
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-amber-500 flex items-center justify-center">
-              <User className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900">{vendedorAtual.nome}</p>
-              <p className="text-sm text-slate-500">{vendedorAtual.email}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Seletor de Dia da Semana */}
-      <Card className="border-0 shadow-lg">
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap gap-2">
-            {diasSemanaLista.map(dia => (
-              <Button
-                key={dia.valor}
-                variant={diaSelecionado === dia.valor ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDiaSelecionado(dia.valor)}
-                className={diaSelecionado === dia.valor 
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-600' 
-                  : dia.valor === diaSemanaHoje ? 'border-amber-400 text-amber-700' : ''
-                }
-              >
-                {dia.label}
-                {dia.valor === diaSemanaHoje && <span className="ml-1 text-xs">(Hoje)</span>}
-              </Button>
-            ))}
-          </div>
-          <p className="text-sm text-slate-500 mt-2">
-            Total de roteiros cadastrados: {meusRoteiros.length} | 
-            Roteiros para {diasSemanaLista.find(d => d.valor === diaSelecionado)?.label}: {meusRoteirosHoje.length}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-lg">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-slate-900">{stats.total}</div>
-            <div className="text-sm text-slate-500">Total de Clientes</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg bg-green-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-700">{stats.visitados}</div>
-            <div className="text-sm text-green-600">Visitados</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg bg-red-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-red-700">{stats.naoAtendidos}</div>
-            <div className="text-sm text-red-600">Não Atendidos</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg bg-amber-50">
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-amber-700">{stats.pendentes}</div>
-            <div className="text-sm text-amber-600">Pendentes</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Lista de Clientes ou Tela de Visita */}
-      {!clienteSelecionado ? (
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-amber-500" />
-              Clientes do Roteiro ({clientesDoRoteiro.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {clientesDoRoteiro.length === 0 ? (
-              <div className="text-center py-12">
-                <Route className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500">Nenhum roteiro programado para este dia</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {clientesDoRoteiro.map((cliente) => (
-                  <div
-                    key={cliente.id}
-                    className={`p-4 rounded-lg border transition-all ${
-                      cliente.status === 'concluida' 
-                        ? 'bg-green-50 border-green-200' 
-                        : cliente.status === 'nao_atendido'
-                        ? 'bg-red-50 border-red-200'
-                        : cliente.status === 'em_andamento'
-                        ? 'bg-blue-50 border-blue-200'
-                        : 'bg-white border-slate-200 hover:border-amber-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-slate-900">
-                            {cliente.razao_social || cliente.nome_fantasia}
-                          </p>
-                          {cliente.status === 'concluida' && (
-                            <Badge className="bg-green-500 text-white">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Visitado
-                            </Badge>
-                          )}
-                          {cliente.status === 'nao_atendido' && (
-                            <Badge className="bg-red-500 text-white">
-                              <XCircle className="w-3 h-3 mr-1" />
-                              Não Atendido
-                            </Badge>
-                          )}
-                          {cliente.status === 'em_andamento' && (
-                            <Badge className="bg-blue-500 text-white">
-                              <Clock className="w-3 h-3 mr-1" />
-                              Em Andamento
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1">
-                          {cliente.codigo} • {cliente.cidade} - {cliente.bairro}
-                        </p>
-                        {cliente.visitaHoje?.checkin_time && (
-                          <p className="text-xs text-slate-400 mt-1">
-                            Check-in: {new Date(cliente.visitaHoje.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            {cliente.visitaHoje.checkout_time && (
-                              <> • Check-out: {new Date(cliente.visitaHoje.checkout_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        onClick={() => handleIniciarVisita(cliente)}
-                        className={
-                          cliente.status === 'concluida' || cliente.status === 'nao_atendido'
-                            ? 'bg-slate-400'
-                            : cliente.status === 'em_andamento'
-                            ? 'bg-blue-500 hover:bg-blue-600'
-                            : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                        }
-                        size="sm"
-                      >
-                        {cliente.status === 'concluida' || cliente.status === 'nao_atendido' ? (
-                          <>Ver</>
-                        ) : cliente.status === 'em_andamento' ? (
-                          <>Continuar</>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 mr-1" />
-                            Iniciar
-                          </>
-                        )}
-                        <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        /* Tela de Check-in/Visita */
-        <Card className="border-0 shadow-lg">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={handleFecharModal}
-                className="shrink-0"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-amber-500" />
-                  {clienteSelecionado.razao_social || clienteSelecionado.nome_fantasia}
-                </CardTitle>
-                <p className="text-sm text-slate-500">
-                  {clienteSelecionado.codigo} • {clienteSelecionado.cidade}
-                </p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Info do Cliente */}
-            <div className="p-3 bg-slate-50 rounded-lg text-sm">
-              <p><strong>Endereço:</strong> {clienteSelecionado.endereco}, {clienteSelecionado.numero} - {clienteSelecionado.bairro}</p>
-              <p><strong>Cidade:</strong> {clienteSelecionado.cidade} - {clienteSelecionado.estado}</p>
-            </div>
-
-            {/* Status da visita */}
-            {visitaAtual && (
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2 text-blue-700">
-                  <Clock className="w-4 h-4" />
-                  <span className="font-medium">
-                    Visita iniciada às {new Date(visitaAtual.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Tabs da Visita */}
-            <Tabs value={tabVisita} onValueChange={setTabVisita} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="pedido" className="flex items-center gap-1">
-                  <ShoppingCart className="w-4 h-4" />
-                  <span className="hidden sm:inline">Pedido</span>
-                </TabsTrigger>
-                <TabsTrigger value="estoque" className="flex items-center gap-1">
-                  <Package className="w-4 h-4" />
-                  <span className="hidden sm:inline">Estoque</span>
-                </TabsTrigger>
-                <TabsTrigger value="trocas" className="flex items-center gap-1">
-                  <ArrowLeftRight className="w-4 h-4" />
-                  <span className="hidden sm:inline">Trocas</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="pedido" className="space-y-4 mt-4">
-                {/* Não Atendimento */}
-                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="nao-atendido"
-                      checked={naoAtendido}
-                      onCheckedChange={(checked) => {
-                        setNaoAtendido(checked);
-                        if (checked) {
-                          setPedidoSolicitado(null);
-                          setMotivoNaoPedido('');
-                        }
-                      }}
-                      disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                    />
-                    <label htmlFor="nao-atendido" className="text-sm font-medium text-red-900 cursor-pointer">
-                      Cliente não foi atendido
-                    </label>
-                  </div>
-                  
-                  {naoAtendido && (
-                    <div className="mt-3">
-                      <Label className="text-xs text-red-700">Motivo do Não Atendimento *</Label>
-                      <Select 
-                        value={motivoNaoAtendimento} 
-                        onValueChange={setMotivoNaoAtendimento}
-                        disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Selecione o motivo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {motivosNaoAtend.filter(m => m.status === 'ativo').map(m => (
-                            <SelectItem key={m.id} value={m.descricao}>{m.descricao}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Pedido Solicitado */}
-                {!naoAtendido && (
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm font-medium">O cliente solicitou pedido? *</Label>
-                      <div className="flex gap-3 mt-2">
-                        <Button
-                          type="button"
-                          variant={pedidoSolicitado === true ? 'default' : 'outline'}
-                          className={pedidoSolicitado === true ? 'bg-green-500 hover:bg-green-600' : ''}
-                          onClick={() => {
-                            setPedidoSolicitado(true);
-                            setMotivoNaoPedido('');
-                          }}
-                          disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Sim
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={pedidoSolicitado === false ? 'default' : 'outline'}
-                          className={pedidoSolicitado === false ? 'bg-red-500 hover:bg-red-600' : ''}
-                          onClick={() => setPedidoSolicitado(false)}
-                          disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                        >
-                          <XCircle className="w-4 h-4 mr-2" />
-                          Não
-                        </Button>
-                      </div>
-                    </div>
-
-                    {pedidoSolicitado === false && (
-                      <div>
-                        <Label className="text-sm font-medium">Motivo de Não Solicitação *</Label>
-                        <Select 
-                          value={motivoNaoPedido} 
-                          onValueChange={setMotivoNaoPedido}
-                          disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Selecione o motivo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {motivosNaoPedido.filter(m => m.status === 'ativo').map(m => (
-                              <SelectItem key={m.id} value={m.descricao}>{m.descricao}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Observações */}
-                <div>
-                  <Label className="text-sm font-medium">Observações</Label>
-                  <Textarea
-                    value={observacoes}
-                    onChange={(e) => setObservacoes(e.target.value)}
-                    placeholder="Observações da visita..."
-                    className="mt-1"
-                    rows={3}
-                    disabled={visitaAtual?.status === 'concluida' || visitaAtual?.status === 'nao_atendido'}
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="estoque">
-                {visitaAtual ? (
-                  <EstoqueForm
-                    visitaId={visitaAtual.id}
-                    clienteId={clienteSelecionado.id}
-                    clienteNome={clienteSelecionado.razao_social || clienteSelecionado.nome_fantasia}
-                  />
-                ) : (
-                  <div className="text-center py-8 text-slate-500">
-                    Inicie a visita para registrar o estoque
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="trocas">
-                {visitaAtual ? (
-                  <TrocasForm
-                    visitaId={visitaAtual.id}
-                    clienteId={clienteSelecionado.id}
-                    clienteNome={clienteSelecionado.razao_social || clienteSelecionado.nome_fantasia}
-                  />
-                ) : (
-                  <div className="text-center py-8 text-slate-500">
-                    Inicie a visita para registrar as trocas
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-
-            {/* Botão Finalizar */}
-            {visitaAtual && visitaAtual.status !== 'concluida' && visitaAtual.status !== 'nao_atendido' && (
-              <Button
-                onClick={handleFinalizarVisita}
-                disabled={updateVisitaMutation.isPending}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 h-12 text-lg"
-              >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                {updateVisitaMutation.isPending ? 'Finalizando...' : 'Finalizar Visita'}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    <Button 
+      onClick={handleCheckout}
+      disabled={loading || updateVisitaMutation.isPending}
+      className="w-full bg-gradient-to-r from-green-500 to-green-600"
+    >
+      <CheckCircle className="w-4 h-4 mr-2" />
+      {loading || updateVisitaMutation.isPending ? 'Obtendo localização...' : 'Finalizar Visita (Check-out)'}
+    </Button>
   );
 }
