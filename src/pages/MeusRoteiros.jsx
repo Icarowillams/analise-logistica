@@ -100,16 +100,30 @@ export default function MeusRoteiros() {
   const diaSemanaHoje = diasSemanaMap[hoje.getDay()];
   const dataHoje = hoje.toISOString().split('T')[0];
 
-  // Roteiros do vendedor atual para hoje
-  const meusRoteirosHoje = useMemo(() => {
-    if (!vendedorAtual) return [];
-    return roteiros.filter(r => 
-      r.vendedor_id === vendedorAtual.id && 
-      r.dia_semana === diaSemanaHoje
-    );
-  }, [roteiros, vendedorAtual, diaSemanaHoje]);
+  const [diaSelecionado, setDiaSelecionado] = useState(diaSemanaHoje);
 
-  // Clientes do roteiro de hoje com status de visita
+  const diasSemanaLista = [
+    { valor: 'segunda-feira', label: 'Segunda' },
+    { valor: 'terca-feira', label: 'Terça' },
+    { valor: 'quarta-feira', label: 'Quarta' },
+    { valor: 'quinta-feira', label: 'Quinta' },
+    { valor: 'sexta-feira', label: 'Sexta' },
+    { valor: 'sabado', label: 'Sábado' },
+    { valor: 'domingo', label: 'Domingo' }
+  ];
+
+  // Todos os roteiros do vendedor atual
+  const meusRoteiros = useMemo(() => {
+    if (!vendedorAtual) return [];
+    return roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
+  }, [roteiros, vendedorAtual]);
+
+  // Roteiros do dia selecionado
+  const meusRoteirosHoje = useMemo(() => {
+    return meusRoteiros.filter(r => r.dia_semana === diaSelecionado);
+  }, [meusRoteiros, diaSelecionado]);
+
+  // Clientes do roteiro do dia selecionado com status de visita
   const clientesDoRoteiro = useMemo(() => {
     const clientesIds = new Set();
     meusRoteirosHoje.forEach(r => {
@@ -120,12 +134,14 @@ export default function MeusRoteiros() {
       const cliente = clientesMap[id];
       if (!cliente) return null;
 
-      // Verificar se já foi visitado hoje
-      const visitaHoje = visitasRoteiro.find(v => 
-        v.cliente_id === id && 
-        v.data_visita === dataHoje &&
-        v.vendedor_id === vendedorAtual?.id
-      );
+      // Verificar se já foi visitado hoje (apenas se for o dia atual)
+      const visitaHoje = diaSelecionado === diaSemanaHoje 
+        ? visitasRoteiro.find(v => 
+            v.cliente_id === id && 
+            v.data_visita === dataHoje &&
+            v.vendedor_id === vendedorAtual?.id
+          )
+        : null;
 
       return {
         ...cliente,
@@ -133,7 +149,7 @@ export default function MeusRoteiros() {
         status: visitaHoje?.status || 'pendente'
       };
     }).filter(Boolean);
-  }, [meusRoteirosHoje, clientesMap, visitasRoteiro, dataHoje, vendedorAtual]);
+  }, [meusRoteirosHoje, clientesMap, visitasRoteiro, dataHoje, vendedorAtual, diaSelecionado, diaSemanaHoje]);
 
   // Criar visita
   const createVisitaMutation = useMutation({
