@@ -104,8 +104,8 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
   };
 
   const handleSubmit = () => {
-    if (!formData.produto_id || !formData.quantidade) {
-      alert('Preencha os campos obrigatórios');
+    if (!formData.produto_id || !formData.quantidade || !formData.data_fabricacao || !formData.horario_fabricacao) {
+      alert('Preencha todos os campos obrigatórios (Produto, Quantidade, Data de Fabricação e Horário de Fabricação)');
       return;
     }
 
@@ -252,25 +252,27 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
               />
             </div>
             <div>
-              <Label className="text-xs">Data de Fabricação</Label>
+              <Label className="text-xs">Data de Fabricação *</Label>
               <Input
                 type="date"
                 value={formData.data_fabricacao}
                 onChange={(e) => setFormData({ ...formData, data_fabricacao: e.target.value })}
                 className="h-9 bg-slate-100"
                 placeholder="Calculado automaticamente"
+                required
               />
               <p className="text-xs text-slate-500 mt-1">Calculado: 25 dias antes da validade</p>
             </div>
           </div>
 
           <div>
-            <Label className="text-xs">Horário de Fabricação</Label>
+            <Label className="text-xs">Horário de Fabricação *</Label>
             <Input
               type="time"
               value={formData.horario_fabricacao}
               onChange={(e) => setFormData({ ...formData, horario_fabricacao: e.target.value })}
               className="h-9"
+              required
             />
           </div>
 
