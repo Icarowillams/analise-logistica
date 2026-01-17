@@ -69,8 +69,14 @@ export default function Permissoes() {
   // Funcionários filtrados por função selecionada
   const funcionariosDaFuncao = useMemo(() => {
     if (!funcaoSelecionada) return [];
-    return vendedores.filter(v => v.funcao_id === funcaoSelecionada);
-  }, [vendedores, funcaoSelecionada]);
+    const funcaoSel = funcoes.find(f => f.id === funcaoSelecionada);
+    if (!funcaoSel) return [];
+    // Filtrar por funcao_id OU pelo nome da função (campo texto legado)
+    return vendedores.filter(v => 
+      v.funcao_id === funcaoSelecionada || 
+      v.funcao?.toLowerCase() === funcaoSel.nome?.toLowerCase()
+    );
+  }, [vendedores, funcaoSelecionada, funcoes]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Permissao.create(data),
