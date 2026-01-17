@@ -88,6 +88,11 @@ export default function Clientes() {
       processarTrocasSemCadastro(novoCliente).catch(err => {
         console.error('Erro ao processar trocas:', err);
       });
+      
+      // Processar logs de clientes não cadastrados (roteiros)
+      processarLogsRoteiros(novoCliente).catch(err => {
+        console.error('Erro ao processar logs de roteiros:', err);
+      });
     },
     onError: (error) => {
       toast.error('❌ Erro ao criar cliente: ' + error.message);
@@ -120,6 +125,97 @@ export default function Clientes() {
       setSelected(null);
     }
   });
+
+  const processarLogsRoteiros = async (cliente) => {
+    try {
+      // Buscar logs pendentes com o código deste cliente
+      const logs = await base44.entities.LogClienteNaoCadastrado.filter({ 
+        codigo_cliente: cliente.codigo,
+        status: 'pendente' 
+      });
+
+      if (logs.length === 0) return;
+
+      const roteiros = await base44.entities.Roteiro.list();
+      const diasMap = {
+        'segunda': 'segunda-feira',
+        'terca': 'terca-feira',
+        'quarta': 'quarta-feira',
+        'quinta': 'quinta-feira',
+        'sexta': 'sexta-feira',
+        'sabado': 'sabado',
+        'domingo': 'domingo'
+      };
+
+      let totalAdicionados = 0;
+
+      for (const log of logs) {
+        for (const dia of log.dias_semana || []) {
+          const diaCompleto = diasMap[dia] || dia;
+          
+          // Buscar roteiro existente do funcionário para este dia
+          const roteiroExistente = roteiros.find(r => 
+            r.vendedor_id === log.funcionario_id && 
+            r.dia_semana === diaCompleto
+          );
+
+          if (roteiroExistente) {
+            // Verificar se o cliente já não está no roteiro
+            if (!roteiroExistente.clientes_ids?.includes(cliente.id)) {
+              const novosClientesIds = [...(roteiroExistente.clientes_ids || []), cliente.id];
+              const novosClientesDetalhes = [
+                ...(roteiroExistente.clientes_detalhes || []),
+                {
+                  cliente_id: cliente.id,
+                  cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+                  cliente_codigo: cliente.codigo,
+                  cliente_cidade: cliente.cidade,
+                  ordem: novosClientesIds.length
+                }
+              ];
+
+              await base44.entities.Roteiro.update(roteiroExistente.id, {
+                clientes_ids: novosClientesIds,
+                clientes_detalhes: novosClientesDetalhes
+              });
+              totalAdicionados++;
+            }
+          } else if (log.funcionario_id) {
+            // Criar novo roteiro para este funcionário/dia
+            await base44.entities.Roteiro.create({
+              vendedor_id: log.funcionario_id,
+              vendedor_nome: log.funcionario_nome,
+              dia_semana: diaCompleto,
+              clientes_ids: [cliente.id],
+              clientes_detalhes: [{
+                cliente_id: cliente.id,
+                cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+                cliente_codigo: cliente.codigo,
+                cliente_cidade: cliente.cidade,
+                ordem: 1
+              }],
+              status: 'planejado'
+            });
+            totalAdicionados++;
+          }
+        }
+
+        // Marcar log como resolvido
+        await base44.entities.LogClienteNaoCadastrado.update(log.id, {
+          status: 'resolvido',
+          cliente_id: cliente.id
+        });
+      }
+
+      if (totalAdicionados > 0) {
+        queryClient.invalidateQueries(['roteiros']);
+        queryClient.invalidateQueries(['logsClientesNaoCadastrados']);
+        toast.success(`Cliente adicionado automaticamente em ${totalAdicionados} roteiro(s)!`);
+      }
+    } catch (error) {
+      console.error('Erro ao processar logs de roteiros:', error);
+    }
+  };
 
   const processarTrocasSemCadastro = async (cliente) => {
     try {
