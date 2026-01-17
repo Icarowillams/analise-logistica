@@ -295,6 +295,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
             vendedor={vendedor}
             onSuccess={() => setShowVisita(true)}
             reagendamentoId={reagendamentoId}
+            permissaoUsuario={permissaoUsuario}
           />
         ) : showVisita || visitaExistente ? (
           <VisitaDetalhes 
@@ -308,19 +309,23 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   );
 }
 
-function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoId }) {
+function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoId, permissaoUsuario }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [showPedidoDialog, setShowPedidoDialog] = useState(false);
+  const [showNaoAtendidoDialog, setShowNaoAtendidoDialog] = useState(false);
   const [pedidoSolicitado, setPedidoSolicitado] = useState(null);
   const [motivoSearch, setMotivoSearch] = useState('');
+  const [motivoNaoAtendSearch, setMotivoNaoAtendSearch] = useState('');
   const [motivoSelecionado, setMotivoSelecionado] = useState('');
   const [locationData, setLocationData] = useState(null);
   
   // Estados para Não Atendido
-  const [naoAtendido, setNaoAtendido] = useState(false);
   const [motivoNaoAtendimento, setMotivoNaoAtendimento] = useState('');
   const [reagendarDiaSeguinte, setReagendarDiaSeguinte] = useState(false);
+
+  // Verificar permissão de marcar solicitou pedido
+  const podeMarcarSolicitouPedido = permissaoUsuario?.permissoes_visitas?.marcar_solicitou_pedido !== false;
 
   const { data: motivos = [] } = useQuery({
     queryKey: ['motivosNaoSolicitacao'],
@@ -333,7 +338,11 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   });
 
   const motivosFiltrados = motivos.filter(m => 
-    m.descricao?.toLowerCase().includes(motivoSearch.toLowerCase())
+    m.descricao?.toLowerCase().includes(motivoSearch.toLowerCase()) && m.status === 'ativo'
+  );
+
+  const motivosNaoAtendFiltrados = motivosNaoAtend.filter(m => 
+    m.descricao?.toLowerCase().includes(motivoNaoAtendSearch.toLowerCase()) && m.status === 'ativo'
   );
 
   const createVisitaMutation = useMutation({
@@ -375,18 +384,38 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             longitude: position.coords.longitude
           });
           
-          // Verificar se o cargo é especificamente vendedor
-          const funcoes = await base44.entities.Funcao.list();
-          const funcaoVendedor = funcoes.find(f => f.id === vendedor.funcao_id);
-          const isVendedor = funcaoVendedor?.nome?.toLowerCase().includes('vendedor');
-          
-          if (isVendedor) {
+          // Verificar se tem permissão para marcar solicitou pedido
+          if (podeMarcarSolicitouPedido) {
             setLoading(false);
             setShowPedidoDialog(true);
           } else {
-            // Admin ou outro tipo de usuário - registrar direto sem perguntar
+            // Usuário sem permissão - registrar direto sem perguntar
             await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
           }
+        },
+        (error) => {
+          toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
+          setLoading(false);
+        }
+      );
+    } else {
+      toast.error('Geolocalização não suportada pelo navegador');
+      setLoading(false);
+    }
+  };
+
+  const handleNaoAtendimento = () => {
+    setLoading(true);
+    
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          setLocationData({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+          setLoading(false);
+          setShowNaoAtendidoDialog(true);
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
@@ -442,12 +471,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
 
   const finalizarCheckin = async () => {
     // Validações
-    if (naoAtendido && !motivoNaoAtendimento) {
-      toast.error('Por favor, selecione o motivo do não atendimento');
-      return;
-    }
-    
-    if (!naoAtendido && pedidoSolicitado === false && !motivoSelecionado) {
+    if (pedidoSolicitado === false && !motivoSelecionado) {
       toast.error('Por favor, selecione o motivo da não solicitação');
       return;
     }
@@ -456,6 +480,69 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
 
     const motivoObj = motivos.find(m => m.id === motivoSelecionado);
+
+    // Criar registro na VisitaRoteiro
+    const dataVisitaRoteiro = {
+      roteiro_id: roteiroId || '',
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      cliente_codigo: cliente.cliente_codigo,
+      cliente_cidade: cliente.cliente_cidade,
+      data_visita: agora.toISOString().split('T')[0],
+      checkin_time: agora.toISOString(),
+      checkin_latitude: locationData.latitude,
+      checkin_longitude: locationData.longitude,
+      status: 'checkin_realizado'
+    };
+
+    // Criar registro na Visita
+    const dataVisita = {
+      numero_visita: numeroVisita,
+      roteiro_id: roteiroId || '',
+      cliente_id: cliente.cliente_id,
+      cliente_nome: cliente.cliente_nome,
+      vendedor_id: vendedor.id,
+      vendedor_nome: vendedor.nome,
+      data_visita: agora.toISOString().split('T')[0],
+      hora_checkin: agora.toTimeString().split(' ')[0],
+      latitude_checkin: locationData.latitude,
+      longitude_checkin: locationData.longitude,
+      pedido_solicitado: pedidoSolicitado,
+      motivo_nao_solicitacao_id: pedidoSolicitado === false ? motivoSelecionado : null,
+      motivo_nao_solicitacao_descricao: pedidoSolicitado === false ? motivoObj?.descricao : null
+    };
+
+    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+    // Se era um reagendamento, marcar como realizado
+    if (reagendamentoId) {
+      await updateReagendamentoMutation.mutateAsync({
+        id: reagendamentoId,
+        data: { status: 'realizada' }
+      });
+    }
+
+    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+
+    setShowPedidoDialog(false);
+    setPedidoSolicitado(null);
+    setMotivoSelecionado('');
+    setMotivoSearch('');
+    onSuccess();
+  };
+
+  const finalizarNaoAtendimento = async () => {
+    if (!motivoNaoAtendimento) {
+      toast.error('Por favor, selecione o motivo do não atendimento');
+      return;
+    }
+
+    const agora = new Date();
+    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
     const motivoNaoAtendObj = motivosNaoAtend.find(m => m.id === motivoNaoAtendimento);
 
     // Criar registro na VisitaRoteiro
@@ -471,8 +558,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       checkin_time: agora.toISOString(),
       checkin_latitude: locationData.latitude,
       checkin_longitude: locationData.longitude,
-      status: naoAtendido ? 'nao_atendido' : 'checkin_realizado',
-      motivo_nao_atendimento: naoAtendido ? motivoNaoAtendObj?.descricao : null
+      status: 'nao_atendido',
+      motivo_nao_atendimento: motivoNaoAtendObj?.descricao
     };
 
     // Criar registro na Visita
@@ -487,16 +574,14 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: locationData.latitude,
       longitude_checkin: locationData.longitude,
-      pedido_solicitado: naoAtendido ? null : pedidoSolicitado,
-      motivo_nao_solicitacao_id: (!naoAtendido && pedidoSolicitado === false) ? motivoSelecionado : null,
-      motivo_nao_solicitacao_descricao: (!naoAtendido && pedidoSolicitado === false) ? motivoObj?.descricao : null
+      pedido_solicitado: null
     };
 
     await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
     await createVisitaRegistroMutation.mutateAsync(dataVisita);
 
     // Se marcou reagendar para o dia seguinte
-    if (naoAtendido && reagendarDiaSeguinte) {
+    if (reagendarDiaSeguinte) {
       const amanha = new Date(agora);
       amanha.setDate(amanha.getDate() + 1);
       
@@ -513,11 +598,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         status: 'pendente'
       });
       
-      toast.success(`✅ Visita não atendida registrada e reagendada para amanhã!`);
-    } else if (naoAtendido) {
-      toast.success(`✅ Visita não atendida registrada!`);
+      toast.success(`✅ Não atendimento registrado e reagendado para amanhã!`);
     } else {
-      toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+      toast.success(`✅ Não atendimento registrado!`);
     }
 
     // Se era um reagendamento, marcar como realizado
@@ -528,128 +611,143 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       });
     }
 
-    setShowPedidoDialog(false);
-    setPedidoSolicitado(null);
-    setMotivoSelecionado('');
-    setMotivoSearch('');
-    setNaoAtendido(false);
+    setShowNaoAtendidoDialog(false);
     setMotivoNaoAtendimento('');
+    setMotivoNaoAtendSearch('');
     setReagendarDiaSeguinte(false);
     onSuccess();
   };
 
+  // Dialog de Não Atendimento
+  if (showNaoAtendidoDialog) {
+    return (
+      <div className="space-y-4 p-4 bg-red-50 rounded-lg border-2 border-red-200">
+        <h3 className="text-base font-semibold text-red-800 flex items-center gap-2">
+          <XCircle className="w-5 h-5" />
+          Registrar Não Atendimento
+        </h3>
+
+        <div className="space-y-2">
+          <Label className="text-sm text-red-700">Buscar motivo</Label>
+          <Input
+            placeholder="Digite para buscar..."
+            value={motivoNaoAtendSearch}
+            onChange={(e) => setMotivoNaoAtendSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm text-red-700">Motivo do Não Atendimento *</Label>
+          <Select value={motivoNaoAtendimento} onValueChange={setMotivoNaoAtendimento}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o motivo..." />
+            </SelectTrigger>
+            <SelectContent>
+              {motivosNaoAtendFiltrados.map(m => (
+                <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {motivoNaoAtendimento && (
+          <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="reagendar-nao-atend"
+                checked={reagendarDiaSeguinte}
+                onCheckedChange={setReagendarDiaSeguinte}
+              />
+              <label htmlFor="reagendar-nao-atend" className="text-sm font-medium text-orange-900 cursor-pointer flex items-center gap-2">
+                <CalendarPlus className="w-4 h-4" />
+                Reagendar para o dia seguinte?
+              </label>
+            </div>
+            {reagendarDiaSeguinte && (
+              <p className="text-xs text-orange-600 mt-2">
+                O cliente será adicionado ao roteiro de amanhã como uma exceção pontual.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowNaoAtendidoDialog(false);
+              setMotivoNaoAtendimento('');
+              setMotivoNaoAtendSearch('');
+              setReagendarDiaSeguinte(false);
+            }}
+            className="flex-1"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={finalizarNaoAtendimento}
+            disabled={!motivoNaoAtendimento || createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
+            className="flex-1 bg-gradient-to-r from-red-500 to-red-600"
+          >
+            Registrar Não Atendimento
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Dialog de Check-in (para quem tem permissão de marcar solicitou pedido)
   if (showPedidoDialog) {
     return (
       <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-        {/* Opção Não Atendido */}
-        <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="nao-atendido"
-              checked={naoAtendido}
-              onCheckedChange={(checked) => {
-                setNaoAtendido(checked);
-                if (checked) {
-                  setPedidoSolicitado(null);
-                  setMotivoSelecionado('');
-                }
-              }}
-            />
-            <label htmlFor="nao-atendido" className="text-sm font-medium text-red-900 cursor-pointer flex items-center gap-2">
-              <XCircle className="w-4 h-4" />
-              Cliente não foi atendido
-            </label>
+        <h3 className="text-base font-semibold text-blue-800 flex items-center gap-2">
+          <CheckCircle className="w-5 h-5" />
+          Registrar Check-in
+        </h3>
+
+        <div>
+          <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setPedidoSolicitado(true)}
+              variant={pedidoSolicitado === true ? 'default' : 'outline'}
+              className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
+            >
+              Sim
+            </Button>
+            <Button
+              onClick={() => setPedidoSolicitado(false)}
+              variant={pedidoSolicitado === false ? 'default' : 'outline'}
+              className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
+            >
+              Não
+            </Button>
           </div>
-          
-          {naoAtendido && (
-            <div className="mt-3 space-y-3">
-              <div>
-                <Label className="text-xs text-red-700">Motivo do Não Atendimento *</Label>
-                <Select value={motivoNaoAtendimento} onValueChange={setMotivoNaoAtendimento}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione o motivo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {motivosNaoAtend.filter(m => m.status === 'ativo').map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {motivoNaoAtendimento && (
-                <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="reagendar"
-                      checked={reagendarDiaSeguinte}
-                      onCheckedChange={setReagendarDiaSeguinte}
-                    />
-                    <label htmlFor="reagendar" className="text-sm font-medium text-orange-900 cursor-pointer flex items-center gap-2">
-                      <CalendarPlus className="w-4 h-4" />
-                      Reagendar para o dia seguinte?
-                    </label>
-                  </div>
-                  {reagendarDiaSeguinte && (
-                    <p className="text-xs text-orange-600 mt-2">
-                      O cliente será adicionado ao roteiro de amanhã como uma exceção pontual.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Pedido Solicitado (apenas se não marcou Não Atendido) */}
-        {!naoAtendido && (
-          <>
-            <div>
-              <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setPedidoSolicitado(true)}
-                  variant={pedidoSolicitado === true ? 'default' : 'outline'}
-                  className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
-                >
-                  Sim
-                </Button>
-                <Button
-                  onClick={() => setPedidoSolicitado(false)}
-                  variant={pedidoSolicitado === false ? 'default' : 'outline'}
-                  className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
-                >
-                  Não
-                </Button>
-              </div>
-            </div>
-
-            {pedidoSolicitado === false && (
-              <div className="space-y-2 animate-in fade-in-50">
-                <Label>Motivo da não solicitação *</Label>
-                <Input
-                  placeholder="Buscar motivo..."
-                  value={motivoSearch}
-                  onChange={(e) => setMotivoSearch(e.target.value)}
-                  className="mb-2"
-                />
-                <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o motivo..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {motivosFiltrados.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </>
+        {pedidoSolicitado === false && (
+          <div className="space-y-2 animate-in fade-in-50">
+            <Label>Buscar motivo</Label>
+            <Input
+              placeholder="Digite para buscar..."
+              value={motivoSearch}
+              onChange={(e) => setMotivoSearch(e.target.value)}
+            />
+            <Label>Motivo da não solicitação *</Label>
+            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o motivo..." />
+              </SelectTrigger>
+              <SelectContent>
+                {motivosFiltrados.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         )}
 
-        {/* Botões de ação */}
-        {(naoAtendido && motivoNaoAtendimento) || (!naoAtendido && pedidoSolicitado !== null) ? (
+        {pedidoSolicitado !== null && (
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -658,9 +756,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
                 setPedidoSolicitado(null);
                 setMotivoSelecionado('');
                 setMotivoSearch('');
-                setNaoAtendido(false);
-                setMotivoNaoAtendimento('');
-                setReagendarDiaSeguinte(false);
               }}
               className="flex-1"
             >
@@ -668,26 +763,37 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             </Button>
             <Button
               onClick={finalizarCheckin}
-              disabled={createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
-              className={`flex-1 ${naoAtendido ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-blue-500 to-blue-600'}`}
+              disabled={(pedidoSolicitado === false && !motivoSelecionado) || createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
+              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
             >
-              {naoAtendido ? 'Registrar Não Atendimento' : 'Confirmar Check-in'}
+              Confirmar Check-in
             </Button>
           </div>
-        ) : null}
+        )}
       </div>
     );
   }
 
   return (
-    <Button 
-      onClick={handleCheckin}
-      disabled={loading}
-      className="w-full bg-gradient-to-r from-blue-500 to-blue-600"
-    >
-      <MapPin className="w-4 h-4 mr-2" />
-      {loading ? 'Obtendo localização...' : 'Fazer Check-in'}
-    </Button>
+    <div className="flex gap-2">
+      <Button 
+        onClick={handleCheckin}
+        disabled={loading}
+        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
+      >
+        <MapPin className="w-4 h-4 mr-2" />
+        {loading ? 'Obtendo localização...' : 'Check-in'}
+      </Button>
+      <Button 
+        onClick={handleNaoAtendimento}
+        disabled={loading}
+        variant="outline"
+        className="border-red-300 text-red-700 hover:bg-red-50"
+      >
+        <XCircle className="w-4 h-4 mr-2" />
+        Não Atendimento
+      </Button>
+    </div>
   );
 }
 
