@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import CriarRoteiroModal from '@/components/Roteiros/CriarRoteiroModal';
 import VisualizarRoteiroModal from '@/components/Roteiros/VisualizarRoteiroModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import LogClientesNaoCadastrados from '@/components/Roteiros/LogClientesNaoCadastrados';
 
 export default function Roteiros() {
   const [activeTab, setActiveTab] = useState("busca");
@@ -319,7 +320,8 @@ export default function Roteiros() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="importar">
+        <TabsContent value="importar" className="space-y-6">
+          <LogClientesNaoCadastrados />
           <ImportarTab />
         </TabsContent>
 
@@ -440,6 +442,7 @@ function ImportarTab() {
       // Processar dados
       const roteirosMap = new Map();
       const erros = [];
+      const clientesNaoEncontrados = new Map(); // codigo -> { funcionario, dias }
 
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(/[;\t,]/).map(v => v.trim().replace(/['"]/g, ''));
@@ -453,6 +456,31 @@ function ImportarTab() {
 
         const cliente = clientes.find(c => c.codigo === codigo);
         if (!cliente) {
+          // Registrar cliente não encontrado com seus dias e funcionário
+          if (!clientesNaoEncontrados.has(codigo)) {
+            clientesNaoEncontrados.set(codigo, {
+              funcionario: row.funcionario || '',
+              funcionario_id: null,
+              dias: []
+            });
+          }
+          // Identificar quais dias estavam marcados
+          const dias = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+          dias.forEach(dia => {
+            const valor = row[dia]?.toLowerCase();
+            if (valor === 'sim' || valor === 's' || valor === 'x' || valor === '1') {
+              if (!clientesNaoEncontrados.get(codigo).dias.includes(dia)) {
+                clientesNaoEncontrados.get(codigo).dias.push(dia);
+              }
+            }
+          });
+          // Buscar ID do funcionário
+          if (row.funcionario) {
+            const func = vendedores.find(v => v.nome?.toLowerCase().trim() === row.funcionario.toLowerCase().trim());
+            if (func) {
+              clientesNaoEncontrados.get(codigo).funcionario_id = func.id;
+            }
+          }
           erros.push(`Linha ${i + 1}: Cliente com código "${codigo}" não encontrado`);
           continue;
         }
@@ -506,8 +534,28 @@ function ImportarTab() {
         });
       }
 
+      // Salvar logs de clientes não cadastrados
+      if (clientesNaoEncontrados.size > 0) {
+        const logsParaCriar = [];
+        for (const [codigo, data] of clientesNaoEncontrados.entries()) {
+          if (data.dias.length > 0) {
+            logsParaCriar.push({
+              codigo_cliente: codigo,
+              funcionario_nome: data.funcionario,
+              funcionario_id: data.funcionario_id,
+              dias_semana: data.dias,
+              status: 'pendente'
+            });
+          }
+        }
+        if (logsParaCriar.length > 0) {
+          await base44.entities.LogClienteNaoCadastrado.bulkCreate(logsParaCriar);
+          queryClient.invalidateQueries(['logsClientesNaoCadastrados']);
+        }
+      }
+
       if (erros.length > 0 && roteirosMap.size === 0) {
-        alert('Erros encontrados:\n' + erros.slice(0, 10).join('\n') + (erros.length > 10 ? `\n... e mais ${erros.length - 10} erros` : ''));
+        alert('Erros encontrados:\n' + erros.slice(0, 10).join('\n') + (erros.length > 10 ? `\n... e mais ${erros.length - 10} erros` : '') + '\n\nOs clientes não cadastrados foram salvos no log.');
         setIsImporting(false);
         return;
       }
@@ -538,8 +586,11 @@ function ImportarTab() {
       queryClient.invalidateQueries(['roteiros']);
       
       let msg = `✅ ${roteirosParaCriar.length} roteiros criados com sucesso!`;
-      if (erros.length > 0) {
-        msg += `\n\n⚠️ ${erros.length} linhas com erros foram ignoradas.`;
+      if (clientesNaoEncontrados.size > 0) {
+        msg += `\n\n⚠️ ${clientesNaoEncontrados.size} cliente(s) não cadastrado(s) foram salvos no log.`;
+      }
+      if (erros.length > clientesNaoEncontrados.size) {
+        msg += `\n\n⚠️ ${erros.length - clientesNaoEncontrados.size} outras linhas com erros foram ignoradas.`;
       }
       alert(msg);
       setImportData('');
