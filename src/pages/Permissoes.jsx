@@ -7,8 +7,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Save, Users, Lock } from 'lucide-react';
+import { Shield, Save, Users, Lock, Briefcase, Copy, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const ABAS_SISTEMA = [
   { id: 'Dashboard', nome: 'Dashboard', grupo: 'dashboard' },
@@ -43,19 +44,33 @@ const ABAS_SISTEMA = [
 
 export default function Permissoes() {
   const queryClient = useQueryClient();
+  const [modoSelecao, setModoSelecao] = useState('funcionario'); // 'funcionario' ou 'funcao'
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
+  const [funcaoSelecionada, setFuncaoSelecionada] = useState('');
   const [permissaoAtual, setPermissaoAtual] = useState(null);
   const [modoEdicao, setModoEdicao] = useState(false);
+  const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   const { data: permissoes = [] } = useQuery({
     queryKey: ['permissoes'],
     queryFn: () => base44.entities.Permissao.list()
   });
+
+  // Funcionários filtrados por função selecionada
+  const funcionariosDaFuncao = useMemo(() => {
+    if (!funcaoSelecionada) return [];
+    return vendedores.filter(v => v.funcao_id === funcaoSelecionada);
+  }, [vendedores, funcaoSelecionada]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Permissao.create(data),
@@ -137,6 +152,70 @@ export default function Permissoes() {
     setModoEdicao(false);
   };
 
+  // Aplicar permissões em massa para todos os funcionários da função
+  const aplicarPermissoesEmMassa = async () => {
+    if (!permissaoAtual || !funcaoSelecionada || funcionariosDaFuncao.length === 0) return;
+
+    setAplicandoEmMassa(true);
+
+    const permissoesBase = {
+      abas_visiveis: permissaoAtual.abas_visiveis || [],
+      permissoes_metas: permissaoAtual.permissoes_metas || {},
+      permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
+      permissoes_importar: permissaoAtual.permissoes_importar || {},
+      permissoes_analises: permissaoAtual.permissoes_analises || {},
+      permissoes_visitas: permissaoAtual.permissoes_visitas || {}
+    };
+
+    let atualizados = 0;
+    let criados = 0;
+
+    for (const funcionario of funcionariosDaFuncao) {
+      const permExistente = permissoes.find(p => p.vendedor_id === funcionario.id);
+      
+      const dataToSave = {
+        vendedor_id: funcionario.id,
+        vendedor_email: funcionario.email || '',
+        ...permissoesBase
+      };
+
+      if (permExistente) {
+        await base44.entities.Permissao.update(permExistente.id, dataToSave);
+        atualizados++;
+      } else {
+        await base44.entities.Permissao.create(dataToSave);
+        criados++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['permissoes'] });
+    setAplicandoEmMassa(false);
+    setModoEdicao(false);
+    toast.success(`Permissões aplicadas! ${criados} criadas, ${atualizados} atualizadas.`);
+  };
+
+  // Gerar permissão modelo para edição por função
+  const gerarPermissaoModelo = () => {
+    setPermissaoAtual({
+      vendedor_id: 'modelo_funcao',
+      vendedor_email: '',
+      abas_visiveis: [],
+      permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
+      permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
+      permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
+      permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
+      permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false }
+    });
+  };
+
+  // Quando muda a função, gerar permissão modelo
+  useEffect(() => {
+    if (modoSelecao === 'funcao' && funcaoSelecionada) {
+      gerarPermissaoModelo();
+      setModoEdicao(false);
+    }
+  }, [funcaoSelecionada, modoSelecao]);
+
   const abasPorGrupo = useMemo(() => {
     return ABAS_SISTEMA.reduce((acc, aba) => {
       if (!acc[aba.grupo]) acc[aba.grupo] = [];
@@ -153,36 +232,87 @@ export default function Permissoes() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Gerenciar Permissões</h1>
-          <p className="text-slate-500">Controle de acesso por usuário</p>
+          <p className="text-slate-500">Controle de acesso por usuário ou por função</p>
         </div>
       </div>
 
+      {/* Seletor de modo: Por Funcionário ou Por Função */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Selecionar Funcionário
+            <Shield className="w-5 h-5" />
+            Modo de Seleção
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={funcionarioSelecionado} onValueChange={setFuncionarioSelecionado}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Selecione um funcionário..." />
-            </SelectTrigger>
-            <SelectContent>
-              {vendedores.map(v => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.nome} ({v.email || 'Sem email'})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Tabs value={modoSelecao} onValueChange={(v) => {
+            setModoSelecao(v);
+            setFuncionarioSelecionado('');
+            setFuncaoSelecionada('');
+            setPermissaoAtual(null);
+            setModoEdicao(false);
+          }}>
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="funcionario" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Por Funcionário
+              </TabsTrigger>
+              <TabsTrigger value="funcao" className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4" />
+                Por Função
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="funcionario" className="mt-4">
+              <Select value={funcionarioSelecionado} onValueChange={setFuncionarioSelecionado}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione um funcionário..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {vendedores.map(v => {
+                    const funcao = funcoes.find(f => f.id === v.funcao_id);
+                    return (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.nome} {funcao ? `(${funcao.nome})` : ''} - {v.email || 'Sem email'}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </TabsContent>
+
+            <TabsContent value="funcao" className="mt-4 space-y-4">
+              <Select value={funcaoSelecionada} onValueChange={setFuncaoSelecionada}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione uma função..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {funcoes.map(f => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {funcaoSelecionada && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    <strong>{funcionariosDaFuncao.length} funcionário(s)</strong> com esta função: {funcionariosDaFuncao.map(f => f.nome).join(', ') || 'Nenhum'}
+                    <br />
+                    <span className="text-sm">As permissões serão aplicadas a todos esses funcionários.</span>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
       {permissaoAtual && (
         <>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             {!modoEdicao ? (
               <Button 
                 onClick={() => setModoEdicao(true)} 
@@ -196,22 +326,37 @@ export default function Permissoes() {
                 <Button 
                   onClick={() => {
                     setModoEdicao(false);
-                    // Restaurar permissões originais
-                    const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
-                    if (perm) setPermissaoAtual(perm);
+                    if (modoSelecao === 'funcionario') {
+                      const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
+                      if (perm) setPermissaoAtual(perm);
+                    } else {
+                      gerarPermissaoModelo();
+                    }
                   }} 
                   variant="outline"
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  onClick={salvarPermissoes} 
-                  className="bg-gradient-to-r from-purple-500 to-indigo-600"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  Salvar Permissões
-                </Button>
+                
+                {modoSelecao === 'funcionario' ? (
+                  <Button 
+                    onClick={salvarPermissoes} 
+                    className="bg-gradient-to-r from-purple-500 to-indigo-600"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Salvar Permissões
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={aplicarPermissoesEmMassa} 
+                    className="bg-gradient-to-r from-amber-500 to-orange-600"
+                    disabled={aplicandoEmMassa || funcionariosDaFuncao.length === 0}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    {aplicandoEmMassa ? 'Aplicando...' : `Aplicar para ${funcionariosDaFuncao.length} Funcionário(s)`}
+                  </Button>
+                )}
               </div>
             )}
           </div>
