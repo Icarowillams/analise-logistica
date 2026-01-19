@@ -729,24 +729,47 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         </div>
 
         {pedidoSolicitado === false && (
-          <div className="space-y-2 animate-in fade-in-50">
-            <Label>Buscar motivo</Label>
-            <Input
-              placeholder="Digite para buscar..."
-              value={motivoSearch}
-              onChange={(e) => setMotivoSearch(e.target.value)}
-            />
-            <Label>Motivo da não solicitação *</Label>
-            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o motivo..." />
-              </SelectTrigger>
-              <SelectContent>
-                {motivosFiltrados.map(m => (
-                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-3 animate-in fade-in-50">
+            <div className="space-y-2">
+              <Label>Buscar motivo</Label>
+              <Input
+                placeholder="Digite para buscar..."
+                value={motivoSearch}
+                onChange={(e) => setMotivoSearch(e.target.value)}
+              />
+              <Label>Motivo da não solicitação *</Label>
+              <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o motivo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {motivosFiltrados.map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {motivoSelecionado && (
+              <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="reagendar-nao-solicitou"
+                    checked={reagendarNaoSolicitou}
+                    onCheckedChange={setReagendarNaoSolicitou}
+                  />
+                  <label htmlFor="reagendar-nao-solicitou" className="text-sm font-medium text-orange-900 cursor-pointer flex items-center gap-2">
+                    <CalendarPlus className="w-4 h-4" />
+                    Reagendar para o dia seguinte?
+                  </label>
+                </div>
+                {reagendarNaoSolicitou && (
+                  <p className="text-xs text-orange-600 mt-2">
+                    O cliente será adicionado ao roteiro de amanhã como uma exceção pontual.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
