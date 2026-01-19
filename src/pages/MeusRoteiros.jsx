@@ -805,6 +805,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
                 setPedidoSolicitado(null);
                 setMotivoSelecionado('');
                 setMotivoSearch('');
+                setReagendarNaoSolicitou(false);
               }}
               className="flex-1"
             >
