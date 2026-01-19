@@ -81,7 +81,7 @@ export default function LogClientesNaoCadastrados() {
               ...(roteiroExistente.clientes_detalhes || []),
               {
                 cliente_id: cliente.id,
-                cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+                cliente_nome: cliente.nome_fantasia || cliente.razao_social,
                 cliente_codigo: cliente.codigo,
                 cliente_cidade: cliente.cidade,
                 ordem: novosClientesIds.length
@@ -103,7 +103,7 @@ export default function LogClientesNaoCadastrados() {
             clientes_ids: [cliente.id],
             clientes_detalhes: [{
               cliente_id: cliente.id,
-              cliente_nome: cliente.razao_social || cliente.nome_fantasia,
+              cliente_nome: cliente.nome_fantasia || cliente.razao_social,
               cliente_codigo: cliente.codigo,
               cliente_cidade: cliente.cidade,
               ordem: 1
