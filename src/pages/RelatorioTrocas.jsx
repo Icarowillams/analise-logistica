@@ -102,7 +102,7 @@ export default function RelatorioTrocas() {
   // Clientes com trocas
   const clientesComTrocas = useMemo(() => {
     const ids = new Set(dadosAtuais.map(t => t.cliente_id).filter(Boolean));
-    return Array.from(ids).map(id => clientesMap[id]).filter(Boolean).sort((a, b) => (a.razao_social || '').localeCompare(b.razao_social || ''));
+    return Array.from(ids).map(id => clientesMap[id]).filter(Boolean).sort((a, b) => (a.nome_fantasia || a.razao_social || '').localeCompare(b.nome_fantasia || b.razao_social || ''));
   }, [dadosAtuais, clientesMap]);
 
   // Trocas filtradas
@@ -163,7 +163,7 @@ export default function RelatorioTrocas() {
       if (mainTab === 'importadas') {
         linhas.push([
           t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '',
-          t.cliente?.razao_social || t.cliente?.nome_fantasia || '',
+          t.cliente?.nome_fantasia || t.cliente?.razao_social || '',
           t.produto?.nome || '',
           t.quantidade || 0,
           t.motivo || '',
@@ -172,7 +172,7 @@ export default function RelatorioTrocas() {
       } else {
         linhas.push([
           t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '',
-          t.cliente?.razao_social || t.cliente?.nome_fantasia || '',
+          t.cliente?.nome_fantasia || t.cliente?.razao_social || '',
           t.produto?.nome || '',
           t.quantidade || 0,
           t.motivo || '',
@@ -254,7 +254,7 @@ export default function RelatorioTrocas() {
                 <SelectContent>
                   <SelectItem value="todos">Todos os clientes</SelectItem>
                   {clientesComTrocas.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.razao_social || c.nome_fantasia}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -362,7 +362,7 @@ export default function RelatorioTrocas() {
                       </td>
                       <td className="p-4">
                         <div className="font-medium text-slate-900">
-                          {t.cliente?.razao_social || t.cliente?.nome_fantasia || 'N/A'}
+                          {t.cliente?.nome_fantasia || t.cliente?.razao_social || 'N/A'}
                         </div>
                         <div className="text-xs text-slate-500 flex items-center gap-1">
                           <MapPin className="w-3 h-3" /> {t.cliente?.cidade || 'N/A'}

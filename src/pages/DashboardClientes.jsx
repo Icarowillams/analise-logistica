@@ -216,7 +216,7 @@ export default function DashboardClientes() {
                     const hist = historicoCliente(c.id);
                     return (
                       <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.razao_social}</TableCell>
+                        <TableCell className="font-medium">{c.nome_fantasia || c.razao_social}</TableCell>
                         <TableCell>{c.cidade || '-'}</TableCell>
                         <TableCell>{c.telefone || '-'}</TableCell>
                         <TableCell>{hist.ultimaCompra || 'Nunca comprou'}</TableCell>
@@ -266,8 +266,10 @@ export default function DashboardClientes() {
                       <TableRow key={c.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{c.razao_social}</p>
-                            {c.nome_fantasia && <p className="text-sm text-slate-500">{c.nome_fantasia}</p>}
+                            <p className="font-medium">{c.nome_fantasia || c.razao_social}</p>
+                            {c.nome_fantasia && c.razao_social && c.nome_fantasia !== c.razao_social && (
+                              <p className="text-sm text-slate-500">{c.razao_social}</p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

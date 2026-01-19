@@ -52,7 +52,7 @@ export default function RelatorioEstoque() {
   // Clientes com estoque registrado
   const clientesComEstoque = useMemo(() => {
     const ids = new Set(estoqueVisita.map(e => e.cliente_id).filter(Boolean));
-    return Array.from(ids).map(id => clientesMap[id]).filter(Boolean).sort((a, b) => (a.razao_social || '').localeCompare(b.razao_social || ''));
+    return Array.from(ids).map(id => clientesMap[id]).filter(Boolean).sort((a, b) => (a.nome_fantasia || a.razao_social || '').localeCompare(b.nome_fantasia || b.razao_social || ''));
   }, [estoqueVisita, clientesMap]);
 
   // Produtos com estoque registrado
@@ -124,7 +124,7 @@ export default function RelatorioEstoque() {
         ...cliente,
         visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
       }))
-      .sort((a, b) => (a.cliente?.razao_social || '').localeCompare(b.cliente?.razao_social || ''));
+      .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
   }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, filtroProduto, busca]);
 
   const toggleCliente = (clienteId) => {
@@ -168,7 +168,7 @@ export default function RelatorioEstoque() {
         visita.produtos.forEach(e => {
           linhas.push([
             new Date(e.created_date).toLocaleDateString('pt-BR'),
-            e.cliente?.razao_social || e.cliente?.nome_fantasia || '',
+            e.cliente?.nome_fantasia || e.cliente?.razao_social || '',
             e.cliente?.codigo || '',
             e.produto?.nome || '',
             e.produto?.codigo || '',
@@ -225,7 +225,7 @@ export default function RelatorioEstoque() {
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
                   {clientesComEstoque.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.razao_social || c.nome_fantasia}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -285,7 +285,7 @@ export default function RelatorioEstoque() {
                       )}
                       <div className="text-left">
                         <div className="font-semibold text-slate-900">
-                          {clienteData.cliente?.razao_social || clienteData.cliente?.nome_fantasia || 'Cliente não identificado'}
+                          {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
                         </div>
                         <div className="text-sm text-slate-500">
                           {clienteData.totalProdutos} produtos • {clienteData.totalItens} itens total
@@ -396,7 +396,7 @@ export default function RelatorioEstoque() {
                 <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
                   <div>
                     <div className="font-medium text-slate-900">
-                      {registro.cliente?.razao_social || registro.cliente?.nome_fantasia || 'Cliente N/A'}
+                      {registro.cliente?.nome_fantasia || registro.cliente?.razao_social || 'Cliente N/A'}
                     </div>
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <MapPin className="w-3 h-3" />

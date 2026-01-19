@@ -132,7 +132,12 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
 
   const columns = [
     { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
-    { key: 'razao_social', label: 'Razão Social', sortable: true },
+    { 
+      key: 'nome_fantasia', 
+      label: 'Nome Fantasia', 
+      sortable: true,
+      render: (val, row) => val || row.razao_social
+    },
     { key: 'cidade', label: 'Cidade' },
     { 
       key: 'vendedor_id', 

@@ -306,7 +306,7 @@ export default function RelatorioRoteiros() {
                           {item.clientesAtendidos.map((c, cIdx) => (
                             <div key={cIdx} className="text-sm p-2 bg-green-50 rounded flex items-center justify-between">
                               <div>
-                                <span className="font-medium">{c.razao_social || c.nome_fantasia}</span>
+                                <span className="font-medium">{c.nome_fantasia || c.razao_social}</span>
                                 <span className="text-slate-500 ml-2 text-xs">{c.cidade}</span>
                               </div>
                               {c.visita?.pedido_solicitado === true && (
@@ -328,7 +328,7 @@ export default function RelatorioRoteiros() {
                         <div className="space-y-1 max-h-32 overflow-y-auto">
                           {item.clientesPendentes.map((c, cIdx) => (
                             <div key={cIdx} className="text-sm p-2 bg-red-50 rounded">
-                              <span className="font-medium">{c.razao_social || c.nome_fantasia}</span>
+                              <span className="font-medium">{c.nome_fantasia || c.razao_social}</span>
                               <span className="text-slate-500 ml-2 text-xs">{c.cidade}</span>
                             </div>
                           ))}
