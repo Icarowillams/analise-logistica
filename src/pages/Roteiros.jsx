@@ -188,9 +188,10 @@ export default function Roteiros() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[600px] grid-cols-3 mb-6">
+        <TabsList className="grid w-full max-w-[800px] grid-cols-4 mb-6">
           <TabsTrigger value="busca">Busca de Roteiros</TabsTrigger>
           <TabsTrigger value="importar">Criação em Massa</TabsTrigger>
+          <TabsTrigger value="pendentes">Clientes Pendentes</TabsTrigger>
           <TabsTrigger value="visualizar">Visualizar Roteiro</TabsTrigger>
         </TabsList>
 
@@ -321,8 +322,11 @@ export default function Roteiros() {
         </TabsContent>
 
         <TabsContent value="importar" className="space-y-6">
-          <LogClientesNaoCadastrados />
           <ImportarTab />
+        </TabsContent>
+
+        <TabsContent value="pendentes" className="space-y-6">
+          <LogClientesNaoCadastrados />
         </TabsContent>
 
         <TabsContent value="visualizar">
