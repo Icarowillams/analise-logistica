@@ -7,9 +7,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Save, Users, Lock, Briefcase, Copy, AlertTriangle } from 'lucide-react';
+import { Shield, Save, Users, Lock, Briefcase, Copy, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 const ABAS_SISTEMA = [
   { id: 'Dashboard', nome: 'Dashboard', grupo: 'dashboard' },
@@ -59,6 +60,8 @@ export default function Permissoes() {
   const [permissaoAtual, setPermissaoAtual] = useState(null);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
+  const [funcionariosSelecionados, setFuncionariosSelecionados] = useState([]);
+  const [listaFuncionariosAberta, setListaFuncionariosAberta] = useState(false);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -174,7 +177,7 @@ export default function Permissoes() {
     setModoEdicao(false);
   };
 
-  // Aplicar permissões em massa para todos os funcionários da função
+  // Aplicar permissões em massa para funcionários selecionados ou todos da função
   const aplicarPermissoesEmMassa = async () => {
     if (!permissaoAtual || !funcaoSelecionada || funcionariosDaFuncao.length === 0) return;
 
@@ -193,7 +196,12 @@ export default function Permissoes() {
     let atualizados = 0;
     let criados = 0;
 
-    for (const funcionario of funcionariosDaFuncao) {
+    // Se nenhum funcionário foi selecionado, aplica para todos da função
+    const funcionariosParaAplicar = funcionariosSelecionados.length > 0 
+      ? funcionariosDaFuncao.filter(f => funcionariosSelecionados.includes(f.id))
+      : funcionariosDaFuncao;
+
+    for (const funcionario of funcionariosParaAplicar) {
       const permExistente = permissoes.find(p => p.vendedor_id === funcionario.id);
       
       const dataToSave = {
@@ -214,7 +222,26 @@ export default function Permissoes() {
     queryClient.invalidateQueries({ queryKey: ['permissoes'] });
     setAplicandoEmMassa(false);
     setModoEdicao(false);
+    setFuncionariosSelecionados([]);
     toast.success(`Permissões aplicadas! ${criados} criadas, ${atualizados} atualizadas.`);
+  };
+
+  // Toggle seleção de funcionário individual
+  const toggleFuncionarioSelecionado = (funcionarioId) => {
+    setFuncionariosSelecionados(prev => 
+      prev.includes(funcionarioId)
+        ? prev.filter(id => id !== funcionarioId)
+        : [...prev, funcionarioId]
+    );
+  };
+
+  // Selecionar/Desselecionar todos
+  const toggleTodosFuncionarios = () => {
+    if (funcionariosSelecionados.length === funcionariosDaFuncao.length) {
+      setFuncionariosSelecionados([]);
+    } else {
+      setFuncionariosSelecionados(funcionariosDaFuncao.map(f => f.id));
+    }
   };
 
   // Gerar permissão modelo para edição por função
@@ -237,11 +264,12 @@ export default function Permissoes() {
     });
   };
 
-  // Quando muda a função, gerar permissão modelo
+  // Quando muda a função, gerar permissão modelo e limpar seleção
   useEffect(() => {
     if (modoSelecao === 'funcao' && funcaoSelecionada) {
       gerarPermissaoModelo();
       setModoEdicao(false);
+      setFuncionariosSelecionados([]);
     }
   }, [funcaoSelecionada, modoSelecao]);
 
@@ -324,13 +352,73 @@ export default function Permissoes() {
                 </SelectContent>
               </Select>
 
-              {funcaoSelecionada && (
+              {funcaoSelecionada && funcionariosDaFuncao.length > 0 && (
+                <Collapsible open={listaFuncionariosAberta} onOpenChange={setListaFuncionariosAberta}>
+                  <div className="border rounded-lg bg-slate-50">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-between p-4 h-auto">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          <span>
+                            <strong>{funcionariosDaFuncao.length}</strong> funcionário(s) com esta função
+                            {funcionariosSelecionados.length > 0 && (
+                              <span className="ml-2 text-amber-600">
+                                ({funcionariosSelecionados.length} selecionado(s))
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {listaFuncionariosAberta ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-4 pb-4 space-y-2">
+                        <div className="flex items-center justify-between border-b pb-2 mb-2">
+                          <span className="text-sm text-slate-600">
+                            Selecione os funcionários específicos ou deixe em branco para aplicar a todos
+                          </span>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={toggleTodosFuncionarios}
+                          >
+                            {funcionariosSelecionados.length === funcionariosDaFuncao.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                          {funcionariosDaFuncao.map(func => (
+                            <div 
+                              key={func.id} 
+                              className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-slate-100 ${
+                                funcionariosSelecionados.includes(func.id) ? 'bg-amber-50 border border-amber-200' : 'bg-white border'
+                              }`}
+                              onClick={() => toggleFuncionarioSelecionado(func.id)}
+                            >
+                              <Checkbox
+                                checked={funcionariosSelecionados.includes(func.id)}
+                                onCheckedChange={() => toggleFuncionarioSelecionado(func.id)}
+                              />
+                              <Label className="cursor-pointer text-sm flex-1">
+                                {func.nome}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
+              )}
+
+              {funcaoSelecionada && funcionariosDaFuncao.length === 0 && (
                 <Alert className="bg-amber-50 border-amber-200">
                   <AlertTriangle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-amber-800">
-                    <strong>{funcionariosDaFuncao.length} funcionário(s)</strong> com esta função: {funcionariosDaFuncao.map(f => f.nome).join(', ') || 'Nenhum'}
-                    <br />
-                    <span className="text-sm">As permissões serão aplicadas a todos esses funcionários.</span>
+                    Nenhum funcionário encontrado com esta função.
                   </AlertDescription>
                 </Alert>
               )}
@@ -383,7 +471,12 @@ export default function Permissoes() {
                     disabled={aplicandoEmMassa || funcionariosDaFuncao.length === 0}
                   >
                     <Copy className="w-4 h-4 mr-2" />
-                    {aplicandoEmMassa ? 'Aplicando...' : `Aplicar para ${funcionariosDaFuncao.length} Funcionário(s)`}
+                    {aplicandoEmMassa 
+                      ? 'Aplicando...' 
+                      : funcionariosSelecionados.length > 0 
+                        ? `Aplicar para ${funcionariosSelecionados.length} Funcionário(s) Selecionado(s)`
+                        : `Aplicar para Todos (${funcionariosDaFuncao.length})`
+                    }
                   </Button>
                 )}
               </div>
@@ -391,10 +484,9 @@ export default function Permissoes() {
           </div>
 
         <Tabs defaultValue="abas" className="w-full">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="abas">Abas Visíveis</TabsTrigger>
             <TabsTrigger value="niveis">Níveis de Acesso</TabsTrigger>
-            <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
           </TabsList>
 
           <TabsContent value="abas" className="space-y-4">
@@ -546,45 +638,44 @@ export default function Permissoes() {
                   ))}
                 </CardContent>
               </Card>
-            </div>
-          </TabsContent>
 
-          <TabsContent value="relatorios" className="space-y-4">
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle>Permissões por Relatório</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {RELATORIOS_PERMISSOES.map(rel => (
-                  <div key={rel.id} className="border rounded-lg p-4 bg-slate-50">
-                    <h4 className="font-semibold text-slate-800 mb-3">{rel.nome}</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {['visualizar', 'filtros', 'exportar'].map(tipo => {
-                        const permKey = `${rel.id}_${tipo}`;
-                        const labels = {
-                          visualizar: 'Visualizar',
-                          filtros: 'Utilizar Filtros',
-                          exportar: 'Exportar'
-                        };
-                        return (
-                          <div key={tipo} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-white' : 'bg-slate-100'}`}>
-                            <Checkbox
-                              id={`rel-${permKey}`}
-                              checked={permissaoAtual.permissoes_relatorios?.[permKey] || false}
-                              onCheckedChange={() => togglePermissao('permissoes_relatorios', permKey)}
-                              disabled={!modoEdicao}
-                            />
-                            <Label htmlFor={`rel-${permKey}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
-                              {labels[tipo]}
-                            </Label>
-                          </div>
-                        );
-                      })}
+              {/* Relatórios */}
+              <Card className="border-0 shadow-lg lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-base">Permissões - Relatórios</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {RELATORIOS_PERMISSOES.map(rel => (
+                    <div key={rel.id} className="border rounded-lg p-3 bg-slate-50">
+                      <h4 className="font-medium text-slate-800 mb-2 text-sm">{rel.nome}</h4>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['visualizar', 'filtros', 'exportar'].map(tipo => {
+                          const permKey = `${rel.id}_${tipo}`;
+                          const labels = {
+                            visualizar: 'Visualizar',
+                            filtros: 'Filtros',
+                            exportar: 'Exportar'
+                          };
+                          return (
+                            <div key={tipo} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-white' : 'bg-slate-100'}`}>
+                              <Checkbox
+                                id={`rel-${permKey}`}
+                                checked={permissaoAtual.permissoes_relatorios?.[permKey] || false}
+                                onCheckedChange={() => togglePermissao('permissoes_relatorios', permKey)}
+                                disabled={!modoEdicao}
+                              />
+                              <Label htmlFor={`rel-${permKey}`} className={modoEdicao ? "cursor-pointer text-sm" : "text-slate-600 text-sm"}>
+                                {labels[tipo]}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
         </>
