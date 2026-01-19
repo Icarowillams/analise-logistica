@@ -26,6 +26,7 @@ const ABAS_SISTEMA = [
   { id: 'PlanosPagamento', nome: 'Planos de Pagamento', grupo: 'cadastros' },
   { id: 'UnidadesMedida', nome: 'Unidades de Medida', grupo: 'cadastros' },
   { id: 'Rotas', nome: 'Rotas', grupo: 'cadastros' },
+  { id: 'Roteiros', nome: 'Roteiros', grupo: 'cadastros' },
   { id: 'MetasProduto', nome: 'Meta por Produto', grupo: 'metas' },
   { id: 'MetasPositivacao', nome: 'Meta por Positivação', grupo: 'metas' },
   { id: 'MetasPrecoMedio', nome: 'Meta por Preço Médio', grupo: 'metas' },
@@ -35,11 +36,19 @@ const ABAS_SISTEMA = [
   { id: 'DashboardVendedor', nome: 'Dashboard Vendedor', grupo: 'analises' },
   { id: 'DashboardTrocas', nome: 'Dashboard Trocas', grupo: 'analises' },
   { id: 'DashboardClientes', nome: 'Dashboard Clientes', grupo: 'analises' },
+  { id: 'AnaliseVisitas', nome: 'Análise de Visitas', grupo: 'analises' },
   { id: 'MeusRoteiros', nome: 'Meus Roteiros', grupo: 'visitas' },
   { id: 'PainelGestorVisita', nome: 'Painel de Roteiros', grupo: 'visitas' },
-  { id: 'RelatoriosGestorVisita', nome: 'Relatórios de Visitas', grupo: 'visitas' },
-  { id: 'Importacoes', nome: 'Importações', grupo: 'visitas' },
-  { id: 'Roteiros', nome: 'Roteiros', grupo: 'cadastros' }
+  { id: 'RelatorioRoteiros', nome: 'Roteiros/Visitas', grupo: 'relatorios' },
+  { id: 'RelatorioEstoque', nome: 'Estoque', grupo: 'relatorios' },
+  { id: 'RelatorioTrocas', nome: 'Trocas', grupo: 'relatorios' }
+];
+
+const RELATORIOS_PERMISSOES = [
+  { id: 'rel_roteiros', nome: 'Relatório Roteiros/Visitas', pagina: 'RelatorioRoteiros' },
+  { id: 'rel_estoque', nome: 'Relatório Estoque', pagina: 'RelatorioEstoque' },
+  { id: 'rel_trocas', nome: 'Relatório Trocas', pagina: 'RelatorioTrocas' },
+  { id: 'analise_visitas', nome: 'Análise de Visitas', pagina: 'AnaliseVisitas' }
 ];
 
 export default function Permissoes() {
