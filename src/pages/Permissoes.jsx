@@ -391,9 +391,10 @@ export default function Permissoes() {
           </div>
 
         <Tabs defaultValue="abas" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="abas">Abas Visíveis</TabsTrigger>
             <TabsTrigger value="niveis">Níveis de Acesso</TabsTrigger>
+            <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
           </TabsList>
 
           <TabsContent value="abas" className="space-y-4">
@@ -411,6 +412,7 @@ export default function Permissoes() {
                       {grupo === 'analises' && 'Análises'}
                       {grupo === 'dashboard' && 'Dashboard'}
                       {grupo === 'visitas' && 'Visitas'}
+                      {grupo === 'relatorios' && 'Relatórios'}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {abas.map(aba => (
@@ -545,6 +547,44 @@ export default function Permissoes() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="relatorios" className="space-y-4">
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle>Permissões por Relatório</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {RELATORIOS_PERMISSOES.map(rel => (
+                  <div key={rel.id} className="border rounded-lg p-4 bg-slate-50">
+                    <h4 className="font-semibold text-slate-800 mb-3">{rel.nome}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {['visualizar', 'filtros', 'exportar'].map(tipo => {
+                        const permKey = `${rel.id}_${tipo}`;
+                        const labels = {
+                          visualizar: 'Visualizar',
+                          filtros: 'Utilizar Filtros',
+                          exportar: 'Exportar'
+                        };
+                        return (
+                          <div key={tipo} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-white' : 'bg-slate-100'}`}>
+                            <Checkbox
+                              id={`rel-${permKey}`}
+                              checked={permissaoAtual.permissoes_relatorios?.[permKey] || false}
+                              onCheckedChange={() => togglePermissao('permissoes_relatorios', permKey)}
+                              disabled={!modoEdicao}
+                            />
+                            <Label htmlFor={`rel-${permKey}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
+                              {labels[tipo]}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
         </>
