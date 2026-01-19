@@ -119,7 +119,13 @@ export default function Permissoes() {
           permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
           permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
-          permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false }
+          permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false },
+          permissoes_relatorios: { 
+            rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
+            rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
+            rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
+            analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
+          }
         });
       }
     }
@@ -156,7 +162,8 @@ export default function Permissoes() {
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
-      permissoes_visitas: permissaoAtual.permissoes_visitas || {}
+      permissoes_visitas: permissaoAtual.permissoes_visitas || {},
+      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {}
     };
 
     if (permissaoAtual.id) {
@@ -179,7 +186,8 @@ export default function Permissoes() {
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
-      permissoes_visitas: permissaoAtual.permissoes_visitas || {}
+      permissoes_visitas: permissaoAtual.permissoes_visitas || {},
+      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {}
     };
 
     let atualizados = 0;
@@ -219,7 +227,13 @@ export default function Permissoes() {
       permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
       permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
       permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
-      permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false }
+      permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+      permissoes_relatorios: { 
+        rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
+        rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
+        rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
+        analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
+      }
     });
   };
 
