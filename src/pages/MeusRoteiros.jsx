@@ -323,6 +323,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   // Estados para Não Atendido
   const [motivoNaoAtendimento, setMotivoNaoAtendimento] = useState('');
   const [reagendarDiaSeguinte, setReagendarDiaSeguinte] = useState(false);
+  
+  // Estado para reagendar quando não solicitar pedido
+  const [reagendarNaoSolicitou, setReagendarNaoSolicitou] = useState(false);
 
   // Verificar permissão de marcar solicitou pedido
   const podeMarcarSolicitouPedido = permissaoUsuario?.permissoes_visitas?.marcar_solicitou_pedido !== false;
