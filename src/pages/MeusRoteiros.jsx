@@ -528,12 +528,35 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       });
     }
 
-    toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    // Se marcou reagendar quando não solicitou pedido
+    if (pedidoSolicitado === false && reagendarNaoSolicitou) {
+      const agora = new Date();
+      const amanha = new Date(agora);
+      amanha.setDate(amanha.getDate() + 1);
+      
+      await createReagendamentoMutation.mutateAsync({
+        cliente_id: cliente.cliente_id,
+        cliente_nome: cliente.cliente_nome,
+        cliente_codigo: cliente.cliente_codigo,
+        cliente_cidade: cliente.cliente_cidade,
+        vendedor_id: vendedor.id,
+        vendedor_nome: vendedor.nome,
+        data_reagendamento: amanha.toISOString().split('T')[0],
+        motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
+        visita_original_id: numeroVisita,
+        status: 'pendente'
+      });
+      
+      toast.success(`✅ Check-in realizado e reagendado para amanhã! Visita #${numeroVisita}`);
+    } else {
+      toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+    }
 
     setShowPedidoDialog(false);
     setPedidoSolicitado(null);
     setMotivoSelecionado('');
     setMotivoSearch('');
+    setReagendarNaoSolicitou(false);
     onSuccess();
   };
 
