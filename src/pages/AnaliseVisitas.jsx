@@ -60,7 +60,7 @@ export default function AnaliseVisitas() {
   });
 
   // Permissões de visibilidade de clientes
-  const { filtrarClientes, filtrarPorCliente, filtrarPorVendedor, vendedoresPermitidosIds } = useClientesPermissao();
+  const { filtrarClientes, filtrarPorCliente, filtrarRoteiros, vendedoresPermitidosIds } = useClientesPermissao();
 
   // Clientes filtrados por permissão
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
@@ -98,15 +98,16 @@ export default function AnaliseVisitas() {
     return filtrarPorCliente(resultado);
   }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota, filtrarPorCliente]);
 
+  // Roteiros filtrados por permissão de clientes da base
+  const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
+
   // Roteiros filtrados
   const roteirosFiltrados = useMemo(() => {
-    let resultado = roteiros.filter(r => {
+    return roteirosPermitidos.filter(r => {
       if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
       return true;
     });
-    // Aplicar filtro de permissão por vendedor
-    return filtrarPorVendedor(resultado);
-  }, [roteiros, filtroVendedor, filtrarPorVendedor]);
+  }, [roteirosPermitidos, filtroVendedor]);
 
   // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 

@@ -46,10 +46,16 @@ export default function RelatorioRoteiros() {
   });
 
   // Permissões de visibilidade de clientes
-  const { filtrarClientes, filtrarPorCliente, filtrarPorVendedor, vendedoresPermitidosIds } = useClientesPermissao();
+  const { filtrarClientes, filtrarPorCliente, filtrarRoteiros, vendedoresPermitidosIds } = useClientesPermissao();
 
   // Clientes filtrados por permissão
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+
+  // Visitas filtradas por cliente da base
+  const visitasFiltradas = useMemo(() => filtrarPorCliente(visitas), [visitas, filtrarPorCliente]);
+
+  // Roteiros filtrados por clientes da base
+  const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
 
   // Mapas
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
@@ -83,13 +89,13 @@ export default function RelatorioRoteiros() {
 
     diasNoPeriodo.forEach(dia => {
       const diaSemana = diasSemanaMap[new Date(dia + 'T12:00:00').getDay()];
-      const roteirosDoDia = roteiros.filter(r => {
+      const roteirosDoDia = roteirosPermitidos.filter(r => {
         if (r.dia_semana !== diaSemana) return false;
         if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
         return true;
       });
 
-      const visitasDoDia = visitas.filter(v => v.data_visita === dia);
+      const visitasDoDia = visitasFiltradas.filter(v => v.data_visita === dia);
       const clientesVisitados = new Set(visitasDoDia.map(v => v.cliente_id));
 
       roteirosDoDia.forEach(roteiro => {
@@ -126,7 +132,7 @@ export default function RelatorioRoteiros() {
     });
 
     return resultado.sort((a, b) => b.data.localeCompare(a.data));
-  }, [diasNoPeriodo, roteiros, visitas, vendedoresMap, clientesMap, filtroVendedor, filtroRegiao, mostrarApenasPendentes]);
+  }, [diasNoPeriodo, roteirosPermitidos, visitasFiltradas, vendedoresMap, clientesMap, filtroVendedor, filtroRegiao, mostrarApenasPendentes]);
 
   // Estatísticas
   const stats = useMemo(() => {

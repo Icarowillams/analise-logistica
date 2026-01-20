@@ -3,14 +3,19 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
 /**
- * Hook para filtrar clientes baseado na permissão de visibilidade do usuário
+ * Hook para filtrar dados baseado na permissão de visibilidade do usuário
  * 
  * Regras:
- * - visibilidade_clientes = 'todos': vê todos os clientes
+ * - visibilidade_clientes = 'todos': vê todos os dados
  * - visibilidade_clientes = 'base': 
- *   - Vendedor/Promotor: vê apenas clientes vinculados a ele (vendedor_id) ou nos seus roteiros
- *   - Supervisor: vê clientes dos vendedores que ele supervisiona
+ *   - Só vê dados (clientes, visitas, estoques, trocas, vendas) relacionados aos clientes da sua base
+ *   - Vendedor/Promotor: clientes vinculados a ele ou nos seus roteiros
+ *   - Supervisor: clientes dos vendedores que ele supervisiona
  * - Admin: sempre vê todos
+ * 
+ * IMPORTANTE: O filtro é baseado em CLIENTES DA BASE, não em quem executou a ação.
+ * Ex: Se um promotor visita um cliente da minha base, eu vejo essa visita.
+ * Se um promotor visita um cliente que NÃO é da minha base, eu NÃO vejo essa visita.
  */
 export function useClientesPermissao() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -51,7 +56,7 @@ export function useClientesPermissao() {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  // IDs dos clientes que o usuário pode ver
+  // IDs dos clientes que o usuário pode ver (BASE DE CLIENTES)
   const clientesPermitidosIds = useMemo(() => {
     // Admin sempre vê tudo
     if (isAdmin) {
@@ -87,14 +92,14 @@ export function useClientesPermissao() {
     // 3. Se é supervisor: clientes dos vendedores que ele supervisiona
     const vendedoresSupervisionados = vendedores.filter(v => v.supervisor_id === funcionarioAtual.id);
     vendedoresSupervisionados.forEach(vendedor => {
-      // Clientes vinculados aos vendedores
+      // Clientes vinculados aos vendedores supervisionados
       clientes.forEach(c => {
         if (c.vendedor_id === vendedor.id) {
           idsPermitidos.add(c.id);
         }
       });
 
-      // Clientes nos roteiros dos vendedores
+      // Clientes nos roteiros dos vendedores supervisionados
       roteiros.forEach(r => {
         if (r.vendedor_id === vendedor.id) {
           (r.clientes_ids || []).forEach(id => idsPermitidos.add(id));
@@ -119,15 +124,22 @@ export function useClientesPermissao() {
     return clientesPermitidosIds.has(clienteId);
   };
 
-  // Função para filtrar vendas/trocas/registros por cliente
+  // Função para filtrar qualquer registro por cliente_id
+  // Isso inclui: visitas, estoques, trocas, vendas - QUALQUER dado vinculado a um cliente
   const filtrarPorCliente = (lista, campoClienteId = 'cliente_id') => {
     if (clientesPermitidosIds === null) {
       return lista;
     }
-    return lista.filter(item => clientesPermitidosIds.has(item[campoClienteId]));
+    return lista.filter(item => {
+      const clienteId = item[campoClienteId];
+      // Se não tem cliente_id, não mostra (para garantir que dados órfãos não apareçam)
+      if (!clienteId) return false;
+      return clientesPermitidosIds.has(clienteId);
+    });
   };
 
-  // IDs de vendedores permitidos (para filtrar vendas, etc)
+  // IDs de vendedores permitidos (o próprio funcionário + supervisionados)
+  // Usado para filtros de seleção de vendedores na interface
   const vendedoresPermitidosIds = useMemo(() => {
     if (isAdmin) return null;
     if (!permissaoUsuario || permissaoUsuario.visibilidade_clientes !== 'base') return null;
@@ -145,7 +157,26 @@ export function useClientesPermissao() {
     return ids;
   }, [isAdmin, permissaoUsuario, funcionarioAtual, vendedores]);
 
-  // Função para filtrar por vendedor
+  // Função para filtrar roteiros - mostra apenas roteiros com clientes da base
+  const filtrarRoteiros = (listaRoteiros) => {
+    if (clientesPermitidosIds === null) {
+      return listaRoteiros;
+    }
+    return listaRoteiros.filter(roteiro => {
+      // Verifica se pelo menos um cliente do roteiro está na base permitida
+      const clientesDoRoteiro = roteiro.clientes_ids || [];
+      return clientesDoRoteiro.some(clienteId => clientesPermitidosIds.has(clienteId));
+    }).map(roteiro => {
+      // Filtra os clientes_ids para mostrar apenas os permitidos
+      return {
+        ...roteiro,
+        clientes_ids: (roteiro.clientes_ids || []).filter(id => clientesPermitidosIds.has(id)),
+        clientes_detalhes: (roteiro.clientes_detalhes || []).filter(d => clientesPermitidosIds.has(d.cliente_id))
+      };
+    });
+  };
+
+  // Função para filtrar por vendedor (usado em selects da interface)
   const filtrarPorVendedor = (lista, campoVendedorId = 'vendedor_id') => {
     if (vendedoresPermitidosIds === null) return lista;
     return lista.filter(item => vendedoresPermitidosIds.has(item[campoVendedorId]));
@@ -162,6 +193,7 @@ export function useClientesPermissao() {
     clientePermitido,
     filtrarPorCliente,
     filtrarPorVendedor,
+    filtrarRoteiros,
     clientes: clientesPermitidosIds === null ? clientes : clientes.filter(c => clientesPermitidosIds.has(c.id)),
     loading: !currentUser
   };
