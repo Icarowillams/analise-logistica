@@ -327,8 +327,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   // Estado para reagendar quando não solicitar pedido
   const [reagendarNaoSolicitou, setReagendarNaoSolicitou] = useState(false);
 
-  // Verificar permissão de marcar solicitou pedido
-  const podeMarcarSolicitouPedido = permissaoUsuario?.permissoes_visitas?.marcar_solicitou_pedido !== false;
+  // Verificar permissão de informar motivo não solicitação (nova permissão que controla se pergunta ou não sobre pedido)
+  const podeInformarMotivoNaoSolicitacao = permissaoUsuario?.permissoes_visitas?.informar_motivo_nao_solicitacao === true;
 
   const { data: motivos = [] } = useQuery({
     queryKey: ['motivosNaoSolicitacao'],
@@ -387,12 +387,12 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             longitude: position.coords.longitude
           });
           
-          // Verificar se tem permissão para marcar solicitou pedido
-          if (podeMarcarSolicitouPedido) {
+          // Verificar se tem permissão para informar motivo não solicitação
+          if (podeInformarMotivoNaoSolicitacao) {
             setLoading(false);
             setShowPedidoDialog(true);
           } else {
-            // Usuário sem permissão - registrar direto sem perguntar
+            // Usuário sem permissão - registrar direto sem perguntar sobre pedido
             await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
           }
         },
