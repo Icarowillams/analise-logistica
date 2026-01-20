@@ -7,7 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Save, Users, Lock, Briefcase, Copy, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Shield, Save, Users, Lock, Briefcase, Copy, AlertTriangle, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -118,6 +119,7 @@ export default function Permissoes() {
           vendedor_id: funcionarioSelecionado,
           vendedor_email: vendedor?.email || '',
           abas_visiveis: [],
+          visibilidade_clientes: 'todos',
           permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
           permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
@@ -161,6 +163,7 @@ export default function Permissoes() {
       vendedor_id: permissaoAtual.vendedor_id,
       vendedor_email: permissaoAtual.vendedor_email,
       abas_visiveis: permissaoAtual.abas_visiveis || [],
+      visibilidade_clientes: permissaoAtual.visibilidade_clientes || 'todos',
       permissoes_metas: permissaoAtual.permissoes_metas || {},
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
       permissoes_importar: permissaoAtual.permissoes_importar || {},
@@ -185,6 +188,7 @@ export default function Permissoes() {
 
     const permissoesBase = {
       abas_visiveis: permissaoAtual.abas_visiveis || [],
+      visibilidade_clientes: permissaoAtual.visibilidade_clientes || 'todos',
       permissoes_metas: permissaoAtual.permissoes_metas || {},
       permissoes_cadastros: permissaoAtual.permissoes_cadastros || {},
       permissoes_importar: permissaoAtual.permissoes_importar || {},
@@ -250,6 +254,7 @@ export default function Permissoes() {
       vendedor_id: 'modelo_funcao',
       vendedor_email: '',
       abas_visiveis: [],
+      visibilidade_clientes: 'todos',
       permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
       permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
       permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
@@ -528,6 +533,55 @@ export default function Permissoes() {
           </TabsContent>
 
           <TabsContent value="niveis" className="space-y-4">
+            {/* Visibilidade de Clientes */}
+            <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-indigo-50">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-blue-600" />
+                  Visibilidade de Clientes
+                </CardTitle>
+                <p className="text-sm text-slate-600 mt-1">
+                  Define quais clientes o funcionário pode visualizar em todo o sistema (análises, relatórios, cadastros, roteiros, etc.)
+                </p>
+              </CardHeader>
+              <CardContent>
+                <RadioGroup
+                  value={permissaoAtual.visibilidade_clientes || 'todos'}
+                  onValueChange={(value) => {
+                    if (modoEdicao) {
+                      setPermissaoAtual({ ...permissaoAtual, visibilidade_clientes: value });
+                    }
+                  }}
+                  disabled={!modoEdicao}
+                  className="space-y-3"
+                >
+                  <div className={`flex items-start space-x-3 p-4 rounded-lg border ${permissaoAtual.visibilidade_clientes === 'todos' ? 'bg-green-50 border-green-300' : 'bg-white border-slate-200'}`}>
+                    <RadioGroupItem value="todos" id="vis-todos" disabled={!modoEdicao} />
+                    <div>
+                      <Label htmlFor="vis-todos" className={`font-semibold ${modoEdicao ? 'cursor-pointer' : 'text-slate-600'}`}>
+                        Todos os Clientes
+                      </Label>
+                      <p className="text-sm text-slate-500">
+                        O funcionário pode ver informações de todos os clientes cadastrados no sistema.
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`flex items-start space-x-3 p-4 rounded-lg border ${permissaoAtual.visibilidade_clientes === 'base' ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'}`}>
+                    <RadioGroupItem value="base" id="vis-base" disabled={!modoEdicao} />
+                    <div>
+                      <Label htmlFor="vis-base" className={`font-semibold ${modoEdicao ? 'cursor-pointer' : 'text-slate-600'}`}>
+                        Apenas Clientes da Base
+                      </Label>
+                      <p className="text-sm text-slate-500">
+                        <strong>Vendedor/Promotor:</strong> vê apenas clientes vinculados a ele (vendedor_id) ou nos seus roteiros.<br/>
+                        <strong>Supervisor:</strong> vê clientes dos vendedores que ele supervisiona.
+                      </p>
+                    </div>
+                  </div>
+                </RadioGroup>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Metas */}
               <Card className="border-0 shadow-lg">

@@ -77,6 +77,11 @@ export default function MeusRoteiros() {
     queryFn: () => base44.entities.Permissao.list()
   });
 
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
   const permissaoUsuario = useMemo(() => {
     if (!vendedorAtual) return null;
     return permissoes.find(p => p.vendedor_id === vendedorAtual.id);
@@ -141,6 +146,7 @@ export default function MeusRoteiros() {
               vendedor={vendedorAtual}
               visitasReagendadas={visitasReagendadas}
               permissaoUsuario={permissaoUsuario}
+              clientes={clientes}
             />
           </TabsContent>
         ))}
@@ -149,7 +155,7 @@ export default function MeusRoteiros() {
   );
 }
 
-function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario }) {
+function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
   // Calcular data correspondente ao dia selecionado
   const hoje = new Date();
   const diaAtualMap = {
@@ -204,14 +210,19 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
               v.data_visita === dataSelecionadaStr
             );
 
+            // Buscar dados completos do cliente
+            const clienteCompleto = clientes.find(c => c.id === reagendada.cliente_id);
+
             return (
               <ClienteCard 
                 key={`reagendada-${reagendada.id}`}
                 cliente={{
                   cliente_id: reagendada.cliente_id,
-                  cliente_nome: reagendada.cliente_nome,
-                  cliente_codigo: reagendada.cliente_codigo,
-                  cliente_cidade: reagendada.cliente_cidade
+                  cliente_nome: clienteCompleto?.razao_social || reagendada.cliente_nome,
+                  cliente_nome_fantasia: clienteCompleto?.nome_fantasia,
+                  cliente_codigo: clienteCompleto?.codigo || reagendada.cliente_codigo,
+                  cliente_cidade: clienteCompleto?.cidade || reagendada.cliente_cidade,
+                  cliente_bairro: clienteCompleto?.bairro
                 }}
                 ordem="R"
                 visitaExistente={visitaExistente}
@@ -233,10 +244,22 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
           v.roteiro_id === roteiro.id
         );
 
+        // Buscar dados completos do cliente
+        const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id);
+
+        const clienteAtualizado = {
+          ...cliente,
+          cliente_nome: clienteCompleto?.razao_social || cliente.cliente_nome,
+          cliente_nome_fantasia: clienteCompleto?.nome_fantasia || cliente.cliente_nome_fantasia,
+          cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
+          cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
+          cliente_bairro: clienteCompleto?.bairro || cliente.cliente_bairro
+        };
+
         return (
           <ClienteCard 
             key={cliente.cliente_id}
-            cliente={cliente}
+            cliente={clienteAtualizado}
             ordem={idx + 1}
             visitaExistente={visitaExistente}
             roteiroId={roteiro.id}
