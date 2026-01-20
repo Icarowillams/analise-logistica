@@ -69,8 +69,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
         clientes_selecionados: roteiro.clientes_detalhes?.map(c => ({
           id: c.cliente_id,
           nome: c.cliente_nome,
+          nome_fantasia: c.cliente_nome_fantasia,
           codigo: c.cliente_codigo,
           cidade: c.cliente_cidade,
+          bairro: c.cliente_bairro,
           ordem: c.ordem
         })) || []
       });
@@ -132,8 +134,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
       clientes_detalhes: formData.clientes_selecionados.map((c, idx) => ({
         cliente_id: c.id,
         cliente_nome: c.nome,
+        cliente_nome_fantasia: c.nome_fantasia,
         cliente_codigo: c.codigo,
         cliente_cidade: c.cidade,
+        cliente_bairro: c.bairro,
         ordem: idx + 1
       })),
       status: roteiro?.status || 'planejado'
@@ -154,9 +158,11 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
           ...formData.clientes_selecionados,
           {
             id: cliente.id,
-            nome: cliente.nome_fantasia || cliente.razao_social,
+            nome: cliente.razao_social,
+            nome_fantasia: cliente.nome_fantasia,
             codigo: cliente.codigo,
             cidade: cliente.cidade,
+            bairro: cliente.bairro,
             ordem: formData.clientes_selecionados.length + 1
           }
         ]
