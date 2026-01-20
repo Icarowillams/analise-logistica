@@ -122,7 +122,7 @@ export default function Permissoes() {
           permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
           permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
-          permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false, informar_motivo_nao_solicitacao: false },
+          permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
           permissoes_relatorios: { 
             rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
             rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
@@ -623,7 +623,7 @@ export default function Permissoes() {
                   <CardTitle className="text-base">Permissões - Visitas</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {['visualizar', 'iniciar_roteiro', 'finalizar_roteiro', 'importar_fotos', 'marcar_solicitou_pedido', 'importar_ultimo_estoque', 'informar_estoque', 'informar_trocas', 'informar_motivo_nao_solicitacao'].map(perm => {
+                  {['visualizar', 'iniciar_roteiro', 'finalizar_roteiro', 'importar_fotos', 'marcar_solicitou_pedido', 'importar_ultimo_estoque', 'informar_estoque', 'informar_trocas'].map(perm => {
                     const labels = {
                       visualizar: 'Visualizar',
                       iniciar_roteiro: 'Iniciar Roteiro',
@@ -632,8 +632,7 @@ export default function Permissoes() {
                       marcar_solicitou_pedido: 'Marcar se Solicitou Pedido',
                       importar_ultimo_estoque: 'Importar Último Estoque',
                       informar_estoque: 'Informar Estoque',
-                      informar_trocas: 'Informar Trocas',
-                      informar_motivo_nao_solicitacao: 'Informar Motivo Não Solicitação'
+                      informar_trocas: 'Informar Trocas'
                     };
                     return (
                       <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
