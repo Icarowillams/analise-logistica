@@ -154,7 +154,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
           ...formData.clientes_selecionados,
           {
             id: cliente.id,
-            nome: cliente.razao_social || cliente.nome_fantasia,
+            nome: cliente.nome_fantasia || cliente.razao_social,
             codigo: cliente.codigo,
             cidade: cliente.cidade,
             ordem: formData.clientes_selecionados.length + 1
