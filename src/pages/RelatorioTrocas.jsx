@@ -8,29 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  ArrowLeftRight, Filter, Calendar, Download, Search, MapPin, User, AlertTriangle, Package, FileSpreadsheet
+  ArrowLeftRight, Filter, Calendar, Download, Search, MapPin, User, AlertTriangle
 } from 'lucide-react';
 
 export default function RelatorioTrocas() {
-  const [mainTab, setMainTab] = useState('importadas');
   const [filtroCliente, setFiltroCliente] = useState('todos');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [busca, setBusca] = useState('');
   const [mostrarApenasUltima, setMostrarApenasUltima] = useState(false);
 
-  // Buscar trocas de visitas (TrocaVisita) - Estoque
-  const { data: trocasVisitaAll = [], isLoading: loadingVisita } = useQuery({
+  // Buscar trocas de visitas (TrocaVisita) - Formulários dos roteiros
+  const { data: trocasVisitaAll = [], isLoading } = useQuery({
     queryKey: ['trocasVisita'],
     queryFn: () => base44.entities.TrocaVisita.list('-created_date', 5000)
-  });
-
-  // Buscar trocas importadas (Troca)
-  const { data: trocasImportadasAll = [], isLoading: loadingImportadas } = useQuery({
-    queryKey: ['trocas'],
-    queryFn: () => base44.entities.Troca.list('-data', 5000)
   });
 
   const { data: clientesAll = [] } = useQuery({
@@ -44,7 +36,6 @@ export default function RelatorioTrocas() {
   // Dados filtrados por permissão
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const trocasVisita = useMemo(() => filtrarPorCliente(trocasVisitaAll), [trocasVisitaAll, filtrarPorCliente]);
-  const trocasImportadas = useMemo(() => filtrarPorCliente(trocasImportadasAll), [trocasImportadasAll, filtrarPorCliente]);
 
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],
@@ -56,19 +47,13 @@ export default function RelatorioTrocas() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
-  const { data: motivosTroca = [] } = useQuery({
-    queryKey: ['motivosTroca'],
-    queryFn: () => base44.entities.MotivoTroca.list()
-  });
-
   // Mapas
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
-  const motivosMap = useMemo(() => motivosTroca.reduce((acc, m) => { acc[m.id] = m; return acc; }, {}), [motivosTroca]);
 
-  // Trocas de Estoque (Visita)
-  const trocasEstoque = useMemo(() => {
+  // Trocas de Visitas (Formulários dos Roteiros)
+  const dadosAtuais = useMemo(() => {
     return trocasVisita.map(t => ({
       id: t.id,
       data: t.created_date?.split('T')[0],
@@ -86,27 +71,6 @@ export default function RelatorioTrocas() {
       created_date: t.created_date
     }));
   }, [trocasVisita, clientesMap, produtosMap, vendedoresMap]);
-
-  // Trocas Importadas
-  const trocasImport = useMemo(() => {
-    return trocasImportadas.map(t => ({
-      id: t.id,
-      data: t.data,
-      cliente_id: t.cliente_id,
-      cliente: clientesMap[t.cliente_id] || { razao_social: t.cliente_nome },
-      produto_id: t.produto_original_id,
-      produto: produtosMap[t.produto_original_id] || { nome: t.produto_original_nome },
-      vendedor_id: t.vendedor_id,
-      vendedor: vendedoresMap[t.vendedor_id] || { nome: t.vendedor_nome },
-      quantidade: t.quantidade || 1,
-      motivo: motivosMap[t.motivo_id]?.descricao || t.motivo_descricao || '',
-      created_date: t.created_date || t.data
-    }));
-  }, [trocasImportadas, clientesMap, produtosMap, vendedoresMap, motivosMap]);
-
-  // Dados atuais baseado na aba
-  const dadosAtuais = mainTab === 'importadas' ? trocasImport : trocasEstoque;
-  const isLoading = mainTab === 'importadas' ? loadingImportadas : loadingVisita;
 
   // Clientes com trocas
   const clientesComTrocas = useMemo(() => {
@@ -153,49 +117,26 @@ export default function RelatorioTrocas() {
     return dados.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
   }, [dadosAtuais, filtroCliente, dataInicio, dataFim, busca, mostrarApenasUltima]);
 
-  const handleTabChange = (tab) => {
-    setMainTab(tab);
-    setFiltroCliente('todos');
-    setDataInicio('');
-    setDataFim('');
-    setBusca('');
-    setMostrarApenasUltima(false);
-  };
-
   const exportarCSV = () => {
-    const tipoRelatorio = mainTab === 'importadas' ? 'importadas' : 'estoque';
-    const linhas = mainTab === 'importadas' 
-      ? ['Data;Cliente;Produto;Quantidade;Motivo;Vendedor']
-      : ['Data;Cliente;Produto;Quantidade;Motivo;Validade;Fabricação;Vendedor'];
+    const linhas = ['Data;Cliente;Produto;Quantidade;Motivo;Validade;Fabricação;Vendedor'];
     
     trocasFiltradas.forEach(t => {
-      if (mainTab === 'importadas') {
-        linhas.push([
-          t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '',
-          t.cliente?.nome_fantasia || t.cliente?.razao_social || '',
-          t.produto?.nome || '',
-          t.quantidade || 0,
-          t.motivo || '',
-          t.vendedor?.nome || ''
-        ].join(';'));
-      } else {
-        linhas.push([
-          t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '',
-          t.cliente?.nome_fantasia || t.cliente?.razao_social || '',
-          t.produto?.nome || '',
-          t.quantidade || 0,
-          t.motivo || '',
-          t.data_validade ? new Date(t.data_validade).toLocaleDateString('pt-BR') : '',
-          t.data_fabricacao ? new Date(t.data_fabricacao).toLocaleDateString('pt-BR') : '',
-          t.vendedor?.nome || ''
-        ].join(';'));
-      }
+      linhas.push([
+        t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '',
+        t.cliente?.nome_fantasia || t.cliente?.razao_social || '',
+        t.produto?.nome || '',
+        t.quantidade || 0,
+        t.motivo || '',
+        t.data_validade ? new Date(t.data_validade).toLocaleDateString('pt-BR') : '',
+        t.data_fabricacao ? new Date(t.data_fabricacao).toLocaleDateString('pt-BR') : '',
+        t.vendedor?.nome || ''
+      ].join(';'));
     });
     const csv = linhas.join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `relatorio_trocas_${tipoRelatorio}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`;
+    link.download = `relatorio_trocas_visitas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`;
     link.click();
   };
 
@@ -209,9 +150,7 @@ export default function RelatorioTrocas() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Relatório de Trocas</h1>
-            <p className="text-slate-500 mt-1">
-              {mainTab === 'importadas' ? 'Trocas importadas do sistema' : 'Trocas registradas em visitas de estoque'}
-            </p>
+            <p className="text-slate-500 mt-1">Trocas registradas nos formulários de visitas/roteiros</p>
           </div>
         </div>
         <Button onClick={exportarCSV} variant="outline" className="gap-2">
@@ -220,29 +159,11 @@ export default function RelatorioTrocas() {
         </Button>
       </div>
 
-      {/* Abas principais */}
-      <Tabs value={mainTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-[500px] grid-cols-2">
-          <TabsTrigger value="importadas" className="flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4" />
-            Trocas Importadas
-          </TabsTrigger>
-          <TabsTrigger value="estoque" className="flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Trocas de Estoque
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
       {/* Card informativo */}
-      <div className={`p-4 rounded-lg border ${mainTab === 'importadas' ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
-        <h3 className={`font-semibold mb-1 ${mainTab === 'importadas' ? 'text-purple-900' : 'text-blue-900'}`}>
-          {mainTab === 'importadas' ? 'Trocas Importadas' : 'Trocas de Estoque (Visitas)'}
-        </h3>
-        <p className={`text-sm ${mainTab === 'importadas' ? 'text-purple-800' : 'text-blue-800'}`}>
-          {mainTab === 'importadas' 
-            ? 'Registros de trocas importados via planilha ou sistema externo.'
-            : 'Registros de trocas coletados durante visitas de estoque pelos promotores.'}
+      <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
+        <h3 className="font-semibold mb-1 text-blue-900">Trocas de Visitas</h3>
+        <p className="text-sm text-blue-800">
+          Registros de trocas coletados durante visitas pelos promotores nos formulários dos roteiros.
         </p>
       </div>
 
@@ -327,9 +248,7 @@ export default function RelatorioTrocas() {
       {/* Tabela */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle>
-            {mainTab === 'importadas' ? 'Trocas Importadas' : 'Trocas de Estoque'} ({trocasFiltradas.length})
-          </CardTitle>
+          <CardTitle>Trocas de Visitas ({trocasFiltradas.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -349,13 +268,9 @@ export default function RelatorioTrocas() {
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Produto</th>
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Motivo</th>
                     <th className="text-center p-4 text-sm font-semibold text-slate-700">Qtd</th>
-                    {mainTab === 'estoque' && (
-                      <>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Validade</th>
-                        <th className="text-left p-4 text-sm font-semibold text-slate-700">Fabricação</th>
-                      </>
-                    )}
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Vendedor</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Validade</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Fabricação</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Promotor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -392,20 +307,16 @@ export default function RelatorioTrocas() {
                           {t.quantidade || 0}
                         </Badge>
                       </td>
-                      {mainTab === 'estoque' && (
-                        <>
-                          <td className="p-4">
-                            <span className="text-sm">
-                              {t.data_validade ? new Date(t.data_validade).toLocaleDateString('pt-BR') : '-'}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className="text-sm">
-                              {t.data_fabricacao ? new Date(t.data_fabricacao).toLocaleDateString('pt-BR') : '-'}
-                            </span>
-                          </td>
-                        </>
-                      )}
+                      <td className="p-4">
+                        <span className="text-sm">
+                          {t.data_validade ? new Date(t.data_validade).toLocaleDateString('pt-BR') : '-'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-sm">
+                          {t.data_fabricacao ? new Date(t.data_fabricacao).toLocaleDateString('pt-BR') : '-'}
+                        </span>
+                      </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-slate-400" />
