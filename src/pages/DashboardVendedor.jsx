@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar
@@ -16,11 +17,23 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function DashboardVendedor() {
   const [vendedorId, setVendedorId] = useState('');
 
-  const { data: vendedores = [], isLoading: lV } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: vendas = [], isLoading: lVe } = useQuery({ queryKey: ['vendas'], queryFn: () => base44.entities.Venda.list('-data', 5000) });
-  const { data: trocas = [] } = useQuery({ queryKey: ['trocas'], queryFn: () => base44.entities.Troca.list('-data', 2000) });
+  const { data: vendedoresAll = [], isLoading: lV } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: vendasAll = [], isLoading: lVe } = useQuery({ queryKey: ['vendas'], queryFn: () => base44.entities.Venda.list('-data', 5000) });
+  const { data: trocasAll = [] } = useQuery({ queryKey: ['trocas'], queryFn: () => base44.entities.Troca.list('-data', 2000) });
   const { data: rotas = [] } = useQuery({ queryKey: ['rotas'], queryFn: () => base44.entities.Rota.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
+  const { data: clientesAll = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente, filtrarPorVendedor, vendedoresPermitidosIds } = useClientesPermissao();
+
+  // Dados filtrados por permissão
+  const vendedores = useMemo(() => {
+    if (vendedoresPermitidosIds === null) return vendedoresAll;
+    return vendedoresAll.filter(v => vendedoresPermitidosIds.has(v.id));
+  }, [vendedoresAll, vendedoresPermitidosIds]);
+  const vendas = useMemo(() => filtrarPorCliente(vendasAll), [vendasAll, filtrarPorCliente]);
+  const trocas = useMemo(() => filtrarPorCliente(trocasAll), [trocasAll, filtrarPorCliente]);
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
 
   const isLoading = lV || lVe;
 

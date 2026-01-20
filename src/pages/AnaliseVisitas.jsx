@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -53,10 +54,16 @@ export default function AnaliseVisitas() {
     queryFn: () => base44.entities.Rota.list()
   });
 
-  const { data: clientes = [] } = useQuery({
+  const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente, filtrarPorVendedor, vendedoresPermitidosIds } = useClientesPermissao();
+
+  // Clientes filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
 
   // Mapas
   const vendedoresMap = useMemo(() => {
@@ -69,31 +76,37 @@ export default function AnaliseVisitas() {
 
   // Visitas filtradas por período e vendedor/rota (usa VisitaRoteiro para dados de execução)
   const visitasRoteiroFiltradas = useMemo(() => {
-    return visitasRoteiro.filter(v => {
+    let resultado = visitasRoteiro.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
       if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
       return true;
     });
-  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota]);
+    // Aplicar filtro de permissão por cliente
+    return filtrarPorCliente(resultado);
+  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota, filtrarPorCliente]);
 
   // Manter compatibilidade com visitas da entidade Visita
   const visitasFiltradas = useMemo(() => {
-    return visitas.filter(v => {
+    let resultado = visitas.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
       if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
       return true;
     });
-  }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota]);
+    // Aplicar filtro de permissão por cliente
+    return filtrarPorCliente(resultado);
+  }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota, filtrarPorCliente]);
 
   // Roteiros filtrados
   const roteirosFiltrados = useMemo(() => {
-    return roteiros.filter(r => {
+    let resultado = roteiros.filter(r => {
       if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
       return true;
     });
-  }, [roteiros, filtroVendedor]);
+    // Aplicar filtro de permissão por vendedor
+    return filtrarPorVendedor(resultado);
+  }, [roteiros, filtroVendedor, filtrarPorVendedor]);
 
   // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 
@@ -360,9 +373,11 @@ export default function AnaliseVisitas() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
-                  {vendedores.map(v => (
-                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                  ))}
+                  {vendedores
+                    .filter(v => vendedoresPermitidosIds === null || vendedoresPermitidosIds.has(v.id))
+                    .map(v => (
+                      <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
