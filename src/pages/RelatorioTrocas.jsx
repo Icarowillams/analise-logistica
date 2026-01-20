@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -21,21 +22,29 @@ export default function RelatorioTrocas() {
   const [mostrarApenasUltima, setMostrarApenasUltima] = useState(false);
 
   // Buscar trocas de visitas (TrocaVisita) - Estoque
-  const { data: trocasVisita = [], isLoading: loadingVisita } = useQuery({
+  const { data: trocasVisitaAll = [], isLoading: loadingVisita } = useQuery({
     queryKey: ['trocasVisita'],
     queryFn: () => base44.entities.TrocaVisita.list('-created_date', 5000)
   });
 
   // Buscar trocas importadas (Troca)
-  const { data: trocasImportadas = [], isLoading: loadingImportadas } = useQuery({
+  const { data: trocasImportadasAll = [], isLoading: loadingImportadas } = useQuery({
     queryKey: ['trocas'],
     queryFn: () => base44.entities.Troca.list('-data', 5000)
   });
 
-  const { data: clientes = [] } = useQuery({
+  const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente } = useClientesPermissao();
+
+  // Dados filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+  const trocasVisita = useMemo(() => filtrarPorCliente(trocasVisitaAll), [trocasVisitaAll, filtrarPorCliente]);
+  const trocasImportadas = useMemo(() => filtrarPorCliente(trocasImportadasAll), [trocasImportadasAll, filtrarPorCliente]);
 
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],

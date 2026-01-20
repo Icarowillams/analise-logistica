@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -24,15 +25,22 @@ export default function RelatorioEstoque() {
   const [visitasExpandidas, setVisitasExpandidas] = useState({});
   const [modalUltimoEstoque, setModalUltimoEstoque] = useState({ open: false, produto: null, dados: [] });
 
-  const { data: estoqueVisita = [], isLoading } = useQuery({
+  const { data: estoqueVisitaAll = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
     queryFn: () => base44.entities.EstoqueVisita.list('-created_date', 5000)
   });
 
-  const { data: clientes = [] } = useQuery({
+  const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente } = useClientesPermissao();
+
+  // Dados filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+  const estoqueVisita = useMemo(() => filtrarPorCliente(estoqueVisitaAll), [estoqueVisitaAll, filtrarPorCliente]);
 
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],

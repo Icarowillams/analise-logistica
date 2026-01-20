@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -39,10 +40,16 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
-  const { data: clientes = [] } = useQuery({
+  const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente, filtrarPorVendedor, vendedoresPermitidosIds } = useClientesPermissao();
+
+  // Clientes filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
 
   // Mapas
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
@@ -200,7 +207,9 @@ export default function RelatorioRoteiros() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
-                  {vendedores.map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}
+                  {vendedores
+                    .filter(v => vendedoresPermitidosIds === null || vendedoresPermitidosIds.has(v.id))
+                    .map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { Search, Filter, MapPin, List } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
@@ -21,15 +22,25 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
     search: ''
   });
 
-  const { data: clientes = [], isLoading } = useQuery({
+  const { data: clientesAll = [], isLoading } = useQuery({
     queryKey: ['clientes'],
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  const { data: vendedores = [] } = useQuery({
+  const { data: vendedoresAll = [] } = useQuery({
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.list()
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
+
+  // Dados filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+  const vendedores = useMemo(() => {
+    if (vendedoresPermitidosIds === null) return vendedoresAll;
+    return vendedoresAll.filter(v => vendedoresPermitidosIds.has(v.id));
+  }, [vendedoresAll, vendedoresPermitidosIds]);
 
   const { data: redes = [] } = useQuery({
     queryKey: ['redes'],

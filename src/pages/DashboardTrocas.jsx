@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line
@@ -124,22 +125,34 @@ export default function DashboardTrocas() {
   });
   const [buscaCliente, setBuscaCliente] = useState('');
 
-  const { data: trocas = [], isLoading: lT } = useQuery({ 
+  const { data: trocasAll = [], isLoading: lT } = useQuery({ 
     queryKey: ['trocas'], 
     queryFn: () => base44.entities.Troca.list('-data', 5000) 
   });
-  const { data: vendas = [], isLoading: lV } = useQuery({ 
+  const { data: vendasAll = [], isLoading: lV } = useQuery({ 
     queryKey: ['vendas'], 
     queryFn: () => base44.entities.Venda.list('-data', 5000) 
   });
-  const { data: clientes = [] } = useQuery({ 
+  const { data: clientesAll = [] } = useQuery({ 
     queryKey: ['clientes'], 
     queryFn: () => base44.entities.Cliente.list() 
   });
-  const { data: vendedores = [] } = useQuery({ 
+  const { data: vendedoresAll = [] } = useQuery({ 
     queryKey: ['vendedores'], 
     queryFn: () => base44.entities.Vendedor.list() 
   });
+
+  // Permissões de visibilidade de clientes
+  const { filtrarClientes, filtrarPorCliente, vendedoresPermitidosIds } = useClientesPermissao();
+
+  // Dados filtrados por permissão
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+  const trocas = useMemo(() => filtrarPorCliente(trocasAll), [trocasAll, filtrarPorCliente]);
+  const vendas = useMemo(() => filtrarPorCliente(vendasAll), [vendasAll, filtrarPorCliente]);
+  const vendedores = useMemo(() => {
+    if (vendedoresPermitidosIds === null) return vendedoresAll;
+    return vendedoresAll.filter(v => vendedoresPermitidosIds.has(v.id));
+  }, [vendedoresAll, vendedoresPermitidosIds]);
   const { data: produtos = [] } = useQuery({ 
     queryKey: ['produtos'], 
     queryFn: () => base44.entities.Produto.list() 
