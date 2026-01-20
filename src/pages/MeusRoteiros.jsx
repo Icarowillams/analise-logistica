@@ -277,10 +277,12 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
               {ordem}
             </Badge>
             <div>
-              <CardTitle className="text-lg">{cliente.cliente_nome}</CardTitle>
+              <CardTitle className="text-lg">
+                <span className="text-slate-500 font-normal">{cliente.cliente_codigo}</span> - {cliente.cliente_nome_fantasia || cliente.cliente_nome}
+                {isReagendamento && <span className="ml-2 text-orange-600 font-medium text-sm">(Reagendado)</span>}
+              </CardTitle>
               <p className="text-sm text-slate-500">
-                {cliente.cliente_codigo} • {cliente.cliente_cidade}
-                {isReagendamento && <span className="ml-2 text-orange-600 font-medium">(Reagendado)</span>}
+                {cliente.cliente_cidade}{cliente.cliente_bairro ? ` - ${cliente.cliente_bairro}` : ''}
               </p>
             </div>
           </div>

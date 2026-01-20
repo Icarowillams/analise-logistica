@@ -18,11 +18,9 @@ import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
 import MetasProduto from './pages/MetasProduto';
 import MetasTroca from './pages/MetasTroca';
-import MeusRoteiros from './pages/MeusRoteiros';
 import MotivosTroca from './pages/MotivosTroca';
 import PainelGestorVisita from './pages/PainelGestorVisita';
 import PainelRodrigosM from './pages/PainelRodrigosM';
-import Permissoes from './pages/Permissoes';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Produtos from './pages/Produtos';
 import Redes from './pages/Redes';
@@ -36,6 +34,8 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import MeusRoteiros from './pages/MeusRoteiros';
+import Permissoes from './pages/Permissoes';
 import __Layout from './Layout.jsx';
 
 
@@ -60,11 +60,9 @@ export const PAGES = {
     "MetasPrecoMedio": MetasPrecoMedio,
     "MetasProduto": MetasProduto,
     "MetasTroca": MetasTroca,
-    "MeusRoteiros": MeusRoteiros,
     "MotivosTroca": MotivosTroca,
     "PainelGestorVisita": PainelGestorVisita,
     "PainelRodrigosM": PainelRodrigosM,
-    "Permissoes": Permissoes,
     "PlanosPagamento": PlanosPagamento,
     "Produtos": Produtos,
     "Redes": Redes,
@@ -78,6 +76,8 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "MeusRoteiros": MeusRoteiros,
+    "Permissoes": Permissoes,
 }
 
 export const pagesConfig = {
