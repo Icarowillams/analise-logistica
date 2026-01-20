@@ -2,12 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
-import { Map, Filter, TrendingUp, Package, Users, DollarSign, MapPin } from 'lucide-react';
+import { Map, Filter, TrendingUp, Users, MapPin, CheckCircle } from 'lucide-react';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import 'leaflet/dist/leaflet.css';
 
@@ -25,16 +24,16 @@ function FitBounds({ bounds }) {
 export default function MapaVendas() {
   const [dataInicio, setDataInicio] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 3);
+    d.setMonth(d.getMonth() - 1);
     return d.toISOString().split('T')[0];
   });
   const [dataFim, setDataFim] = useState(() => new Date().toISOString().split('T')[0]);
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
-  const [filtroCategoria, setFiltroCategoria] = useState('todos');
 
-  const { data: vendas = [] } = useQuery({
-    queryKey: ['vendas'],
-    queryFn: () => base44.entities.Venda.list('-data', 10000)
+  // Buscar visitas (têm coordenadas de check-in)
+  const { data: visitasAll = [] } = useQuery({
+    queryKey: ['visitas'],
+    queryFn: () => base44.entities.Visita.list('-data_visita', 10000)
   });
 
   const { data: clientesAll = [] } = useQuery({
@@ -47,23 +46,13 @@ export default function MapaVendas() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
-  const { data: categorias = [] } = useQuery({
-    queryKey: ['categorias'],
-    queryFn: () => base44.entities.Categoria.list()
-  });
-
-  const { data: produtos = [] } = useQuery({
-    queryKey: ['produtos'],
-    queryFn: () => base44.entities.Produto.list()
-  });
-
   // Permissões
   const { filtrarClientes, filtrarPorCliente, vendedoresPermitidosIds } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
 
   // Mapas auxiliares
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
-  const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
+  const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
   // Vendedores filtrados por permissão
   const vendedoresFiltrados = useMemo(() => {
@@ -71,59 +60,71 @@ export default function MapaVendas() {
     return vendedores.filter(v => vendedoresPermitidosIds.has(v.id));
   }, [vendedores, vendedoresPermitidosIds]);
 
-  // Filtrar vendas
-  const vendasFiltradas = useMemo(() => {
-    let resultado = filtrarPorCliente(vendas);
+  // Filtrar visitas por permissão e filtros
+  const visitasFiltradas = useMemo(() => {
+    let resultado = filtrarPorCliente(visitasAll);
     
     resultado = resultado.filter(v => {
-      if (dataInicio && v.data < dataInicio) return false;
-      if (dataFim && v.data > dataFim) return false;
+      if (dataInicio && v.data_visita < dataInicio) return false;
+      if (dataFim && v.data_visita > dataFim) return false;
       if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
-      if (filtroCategoria !== 'todos') {
-        const produto = produtosMap[v.produto_id];
-        if (!produto || produto.categoria_id !== filtroCategoria) return false;
-      }
+      // Só incluir visitas com coordenadas válidas
+      if (!v.latitude_checkin || !v.longitude_checkin) return false;
       return true;
     });
 
     return resultado;
-  }, [vendas, filtrarPorCliente, dataInicio, dataFim, filtroVendedor, filtroCategoria, produtosMap]);
+  }, [visitasAll, filtrarPorCliente, dataInicio, dataFim, filtroVendedor]);
 
-  // Agrupar vendas por cliente com coordenadas
-  const vendasPorCliente = useMemo(() => {
+  // Agrupar visitas por cliente com coordenadas do check-in
+  const visitasPorCliente = useMemo(() => {
     const agrupado = {};
     
-    vendasFiltradas.forEach(venda => {
-      const cliente = clientesMap[venda.cliente_id];
-      if (!cliente || !cliente.latitude || !cliente.longitude) return;
+    visitasFiltradas.forEach(visita => {
+      const clienteId = visita.cliente_id;
+      const cliente = clientesMap[clienteId];
       
-      if (!agrupado[venda.cliente_id]) {
-        agrupado[venda.cliente_id] = {
-          cliente,
-          totalVendas: 0,
-          totalValor: 0,
-          qtdPedidos: 0,
-          lat: cliente.latitude,
-          lng: cliente.longitude
+      if (!agrupado[clienteId]) {
+        agrupado[clienteId] = {
+          cliente: cliente || { razao_social: visita.cliente_nome, nome_fantasia: visita.cliente_nome },
+          totalVisitas: 0,
+          comPedido: 0,
+          vendedores: new Set(),
+          ultimaVisita: null,
+          // Usar coordenadas da última visita
+          lat: visita.latitude_checkin,
+          lng: visita.longitude_checkin
         };
       }
       
-      agrupado[venda.cliente_id].totalVendas += venda.quantidade || 0;
-      agrupado[venda.cliente_id].totalValor += venda.valor_total || 0;
-      agrupado[venda.cliente_id].qtdPedidos += 1;
+      agrupado[clienteId].totalVisitas += 1;
+      if (visita.pedido_solicitado) {
+        agrupado[clienteId].comPedido += 1;
+      }
+      agrupado[clienteId].vendedores.add(visita.vendedor_nome || visita.vendedor_id);
+      
+      // Atualizar para a visita mais recente (com coordenadas mais atuais)
+      if (!agrupado[clienteId].ultimaVisita || visita.data_visita > agrupado[clienteId].ultimaVisita) {
+        agrupado[clienteId].ultimaVisita = visita.data_visita;
+        agrupado[clienteId].lat = visita.latitude_checkin;
+        agrupado[clienteId].lng = visita.longitude_checkin;
+      }
     });
 
-    return Object.values(agrupado);
-  }, [vendasFiltradas, clientesMap]);
+    return Object.values(agrupado).map(item => ({
+      ...item,
+      vendedores: Array.from(item.vendedores)
+    }));
+  }, [visitasFiltradas, clientesMap]);
 
   // Calcular intensidade máxima para escala de cores
-  const maxValor = useMemo(() => {
-    return Math.max(...vendasPorCliente.map(v => v.totalValor), 1);
-  }, [vendasPorCliente]);
+  const maxVisitas = useMemo(() => {
+    return Math.max(...visitasPorCliente.map(v => v.totalVisitas), 1);
+  }, [visitasPorCliente]);
 
-  // Função para cor baseada no valor (heatmap)
-  const getColor = (valor) => {
-    const intensidade = valor / maxValor;
+  // Função para cor baseada no número de visitas (heatmap)
+  const getColor = (totalVisitas) => {
+    const intensidade = totalVisitas / maxVisitas;
     if (intensidade > 0.8) return '#dc2626'; // vermelho
     if (intensidade > 0.6) return '#ea580c'; // laranja escuro
     if (intensidade > 0.4) return '#f97316'; // laranja
@@ -131,30 +132,30 @@ export default function MapaVendas() {
     return '#22c55e'; // verde
   };
 
-  // Função para raio baseado no valor
-  const getRadius = (valor) => {
-    const intensidade = valor / maxValor;
+  // Função para raio baseado no número de visitas
+  const getRadius = (totalVisitas) => {
+    const intensidade = totalVisitas / maxVisitas;
     return Math.max(8, Math.min(30, 8 + intensidade * 22));
   };
 
   // Bounds para ajustar o mapa
   const bounds = useMemo(() => {
-    if (vendasPorCliente.length === 0) return null;
-    return vendasPorCliente.map(v => [v.lat, v.lng]);
-  }, [vendasPorCliente]);
+    if (visitasPorCliente.length === 0) return null;
+    return visitasPorCliente.map(v => [v.lat, v.lng]);
+  }, [visitasPorCliente]);
 
   // KPIs
   const kpis = useMemo(() => {
-    const totalValor = vendasFiltradas.reduce((acc, v) => acc + (v.valor_total || 0), 0);
-    const totalQtd = vendasFiltradas.reduce((acc, v) => acc + (v.quantidade || 0), 0);
-    const clientesUnicos = new Set(vendasFiltradas.map(v => v.cliente_id)).size;
-    const clientesComCoordenadas = vendasPorCliente.length;
+    const totalVisitas = visitasFiltradas.length;
+    const comPedido = visitasFiltradas.filter(v => v.pedido_solicitado).length;
+    const clientesUnicos = new Set(visitasFiltradas.map(v => v.cliente_id)).size;
+    const clientesNoMapa = visitasPorCliente.length;
 
-    return { totalValor, totalQtd, clientesUnicos, clientesComCoordenadas };
-  }, [vendasFiltradas, vendasPorCliente]);
+    return { totalVisitas, comPedido, clientesUnicos, clientesNoMapa };
+  }, [visitasFiltradas, visitasPorCliente]);
 
-  // Centro padrão do mapa (Brasil)
-  const defaultCenter = [-14.235, -51.9253];
+  // Centro padrão do mapa (Pernambuco)
+  const defaultCenter = [-8.05, -34.9];
 
   return (
     <div className="space-y-6">
@@ -164,8 +165,8 @@ export default function MapaVendas() {
           <Map className="h-7 w-7 text-white" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Mapa de Vendas</h1>
-          <p className="text-slate-500 mt-1">Visualização geográfica das vendas por região</p>
+          <h1 className="text-3xl font-bold text-slate-900">Mapa de Visitas</h1>
+          <p className="text-slate-500 mt-1">Visualização geográfica das visitas realizadas</p>
         </div>
       </div>
 
@@ -209,20 +210,7 @@ export default function MapaVendas() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-1 block">Categoria</label>
-              <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas</SelectItem>
-                  {categorias.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
           </div>
         </CardContent>
       </Card>
@@ -233,13 +221,11 @@ export default function MapaVendas() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-emerald-500/20">
-                <DollarSign className="w-5 h-5 text-emerald-600" />
+                <MapPin className="w-5 h-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-500">Total Vendido</p>
-                <p className="text-lg font-bold text-slate-900">
-                  {kpis.totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </p>
+                <p className="text-xs text-slate-500">Total Visitas</p>
+                <p className="text-lg font-bold text-slate-900">{kpis.totalVisitas}</p>
               </div>
             </div>
           </CardContent>
@@ -249,11 +235,11 @@ export default function MapaVendas() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-blue-500/20">
-                <Package className="w-5 h-5 text-blue-600" />
+                <CheckCircle className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-500">Qtd. Vendida</p>
-                <p className="text-lg font-bold text-slate-900">{kpis.totalQtd.toLocaleString('pt-BR')}</p>
+                <p className="text-xs text-slate-500">Com Pedido</p>
+                <p className="text-lg font-bold text-slate-900">{kpis.comPedido}</p>
               </div>
             </div>
           </CardContent>
@@ -266,7 +252,7 @@ export default function MapaVendas() {
                 <Users className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-500">Clientes Atendidos</p>
+                <p className="text-xs text-slate-500">Clientes Visitados</p>
                 <p className="text-lg font-bold text-slate-900">{kpis.clientesUnicos}</p>
               </div>
             </div>
@@ -277,11 +263,11 @@ export default function MapaVendas() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-amber-500/20">
-                <MapPin className="w-5 h-5 text-amber-600" />
+                <Map className="w-5 h-5 text-amber-600" />
               </div>
               <div>
                 <p className="text-xs text-slate-500">No Mapa</p>
-                <p className="text-lg font-bold text-slate-900">{kpis.clientesComCoordenadas}</p>
+                <p className="text-lg font-bold text-slate-900">{kpis.clientesNoMapa}</p>
               </div>
             </div>
           </CardContent>
@@ -292,7 +278,7 @@ export default function MapaVendas() {
       <Card className="border-0 shadow-md">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-4">
-            <span className="text-sm font-medium text-slate-700">Intensidade de Vendas:</span>
+            <span className="text-sm font-medium text-slate-700">Intensidade de Visitas:</span>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-green-500"></div>
               <span className="text-xs text-slate-600">Baixo</span>
@@ -321,16 +307,16 @@ export default function MapaVendas() {
       <Card className="border-0 shadow-lg overflow-hidden">
         <CardContent className="p-0">
           <div className="h-[600px] w-full">
-            {vendasPorCliente.length === 0 ? (
+            {visitasPorCliente.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500">
                 <MapPin className="w-16 h-16 text-slate-300 mb-4" />
                 <p className="text-lg font-medium">Nenhum dado para exibir no mapa</p>
-                <p className="text-sm">Verifique se os clientes possuem coordenadas cadastradas</p>
+                <p className="text-sm">Verifique se há visitas com check-in no período selecionado</p>
               </div>
             ) : (
               <MapContainer
                 center={bounds && bounds.length > 0 ? bounds[0] : defaultCenter}
-                zoom={6}
+                zoom={10}
                 style={{ height: '100%', width: '100%' }}
               >
                 <TileLayer
@@ -338,19 +324,19 @@ export default function MapaVendas() {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 {bounds && <FitBounds bounds={bounds} />}
-                {vendasPorCliente.map((item, idx) => (
+                {visitasPorCliente.map((item, idx) => (
                   <CircleMarker
                     key={idx}
                     center={[item.lat, item.lng]}
-                    radius={getRadius(item.totalValor)}
-                    fillColor={getColor(item.totalValor)}
-                    color={getColor(item.totalValor)}
+                    radius={getRadius(item.totalVisitas)}
+                    fillColor={getColor(item.totalVisitas)}
+                    color={getColor(item.totalVisitas)}
                     weight={2}
                     opacity={0.8}
                     fillOpacity={0.6}
                   >
                     <Popup>
-                      <div className="p-2 min-w-[200px]">
+                      <div className="p-2 min-w-[220px]">
                         <h3 className="font-bold text-slate-900 mb-2">
                           {item.cliente.nome_fantasia || item.cliente.razao_social}
                         </h3>
@@ -360,18 +346,22 @@ export default function MapaVendas() {
                             <span className="font-medium">{item.cliente.cidade || 'N/A'}</span>
                           </p>
                           <p className="flex justify-between">
-                            <span className="text-slate-500">Total Vendido:</span>
-                            <span className="font-medium text-emerald-600">
-                              {item.totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            <span className="text-slate-500">Total Visitas:</span>
+                            <span className="font-medium text-emerald-600">{item.totalVisitas}</span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-slate-500">Com Pedido:</span>
+                            <span className="font-medium text-blue-600">{item.comPedido}</span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-slate-500">Última Visita:</span>
+                            <span className="font-medium">
+                              {item.ultimaVisita ? new Date(item.ultimaVisita).toLocaleDateString('pt-BR') : 'N/A'}
                             </span>
                           </p>
                           <p className="flex justify-between">
-                            <span className="text-slate-500">Qtd. Itens:</span>
-                            <span className="font-medium">{item.totalVendas.toLocaleString('pt-BR')}</span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-slate-500">Nº Pedidos:</span>
-                            <span className="font-medium">{item.qtdPedidos}</span>
+                            <span className="text-slate-500">Promotores:</span>
+                            <span className="font-medium">{item.vendedores.length}</span>
                           </p>
                         </div>
                       </div>
@@ -389,13 +379,13 @@ export default function MapaVendas() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-emerald-500" />
-            Top 10 Clientes por Valor
+            Top 10 Clientes Mais Visitados
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {vendasPorCliente
-              .sort((a, b) => b.totalValor - a.totalValor)
+            {visitasPorCliente
+              .sort((a, b) => b.totalVisitas - a.totalVisitas)
               .slice(0, 10)
               .map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
@@ -411,10 +401,8 @@ export default function MapaVendas() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-emerald-600">
-                      {item.totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </p>
-                    <p className="text-xs text-slate-500">{item.qtdPedidos} pedidos</p>
+                    <p className="font-bold text-emerald-600">{item.totalVisitas} visitas</p>
+                    <p className="text-xs text-slate-500">{item.comPedido} com pedido</p>
                   </div>
                 </div>
               ))}

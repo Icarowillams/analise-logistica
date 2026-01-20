@@ -13,6 +13,7 @@ import Funcoes from './pages/Funcoes';
 import Home from './pages/Home';
 import Importacoes from './pages/Importacoes';
 import ImportarVendas from './pages/ImportarVendas';
+import MapaVendas from './pages/MapaVendas';
 import MetasCadastro from './pages/MetasCadastro';
 import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
@@ -36,7 +37,6 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import MapaVendas from './pages/MapaVendas';
 import __Layout from './Layout.jsx';
 
 
@@ -56,6 +56,7 @@ export const PAGES = {
     "Home": Home,
     "Importacoes": Importacoes,
     "ImportarVendas": ImportarVendas,
+    "MapaVendas": MapaVendas,
     "MetasCadastro": MetasCadastro,
     "MetasPositivacao": MetasPositivacao,
     "MetasPrecoMedio": MetasPrecoMedio,
@@ -79,7 +80,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "MapaVendas": MapaVendas,
 }
 
 export const pagesConfig = {
