@@ -119,9 +119,10 @@ export default function RelatorioRoteiros() {
   // Função para obter clientes do roteiro com status de visita
   const getClientesDoRoteiroComStatus = (roteiro) => {
     const clientesDoRoteiro = roteiro.clientes_detalhes || [];
-    const visitados = [];
-    const naoAtendidos = [];
-    const pendentes = [];
+    const concluidos = [];      // Check-in E Check-out realizados
+    const emAtendimento = [];   // Apenas Check-in (sem check-out)
+    const semAtendimento = [];  // Não atendido (com motivo)
+    const semCheckin = [];      // Sem nenhum registro
 
     clientesDoRoteiro.forEach((clienteRoteiro, idx) => {
       const clienteCompleto = clientesMap[clienteRoteiro.cliente_id];
@@ -146,18 +147,22 @@ export default function RelatorioRoteiros() {
         visitaRegistro: visitaReg
       };
 
-      // Cliente só é visitado se tiver check-in E check-out
-      if (visitaRot && visitaRot.status === 'concluida' && visitaRot.checkout_time) {
-        visitados.push(clienteInfo);
-      } else if (visitaRot && visitaRot.status === 'nao_atendido') {
-        naoAtendidos.push(clienteInfo);
+      if (visitaRot && visitaRot.status === 'nao_atendido') {
+        // Sem Atendimento: não atendido com motivo
+        semAtendimento.push(clienteInfo);
+      } else if (visitaRot && visitaRot.status === 'concluida' && visitaRot.checkout_time) {
+        // Concluído: tem check-in E check-out
+        concluidos.push(clienteInfo);
+      } else if (visitaRot && visitaRot.checkin_time && !visitaRot.checkout_time) {
+        // Em Atendimento: tem check-in mas não tem check-out
+        emAtendimento.push(clienteInfo);
       } else {
-        // Pendente: sem visita OU com check-in mas sem check-out
-        pendentes.push(clienteInfo);
+        // Sem Check-in: nenhum registro
+        semCheckin.push(clienteInfo);
       }
     });
 
-    return { visitados, naoAtendidos, pendentes };
+    return { concluidos, emAtendimento, semAtendimento, semCheckin };
   };
 
   const toggleVendedor = (vendedorId) => {
@@ -193,11 +198,11 @@ export default function RelatorioRoteiros() {
     vendedoresComRoteiros.forEach(vendedor => {
       const roteirosVend = roteirosPorVendedor[vendedor.id] || [];
       roteirosVend.forEach(roteiro => {
-        const { visitados, naoAtendidos, pendentes } = getClientesDoRoteiroComStatus(roteiro);
         const diaLabel = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana)?.label || roteiro.dia_semana;
         
-        [...visitados, ...naoAtendidos, ...pendentes].forEach(c => {
-          const status = visitados.includes(c) ? 'Visitado' : naoAtendidos.includes(c) ? 'Não Atendido' : 'Pendente';
+        const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesDoRoteiroComStatus(roteiro);
+        [...concluidos, ...emAtendimento, ...semAtendimento, ...semCheckin].forEach(c => {
+          const status = concluidos.includes(c) ? 'Concluído' : emAtendimento.includes(c) ? 'Em Atendimento' : semAtendimento.includes(c) ? 'Sem Atendimento' : 'Sem Check-in';
           const checkin = c.visitaRoteiro?.checkin_time ? new Date(c.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-';
           const checkout = c.visitaRoteiro?.checkout_time ? new Date(c.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-';
           linhas.push(`${vendedor.nome};${diaLabel};${c.cliente?.nome_fantasia || c.cliente_nome};${status};${checkin};${checkout}`);
@@ -286,7 +291,7 @@ export default function RelatorioRoteiros() {
                         const diaConfig = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana);
                         const keyDia = `${vendedor.id}-${roteiro.dia_semana}`;
                         const isDiaExpanded = expandedDias[keyDia];
-                        const { visitados, naoAtendidos, pendentes } = getClientesDoRoteiroComStatus(roteiro);
+                        const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesDoRoteiroComStatus(roteiro);
 
                         return (
                           <Collapsible key={roteiro.id} open={isDiaExpanded} onOpenChange={() => toggleDia(vendedor.id, roteiro.dia_semana)}>
@@ -297,28 +302,29 @@ export default function RelatorioRoteiros() {
                                   <Calendar className="w-5 h-5 text-blue-600" />
                                   <span className="font-semibold text-slate-800">{diaConfig?.label || roteiro.dia_semana}</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge className="bg-green-100 text-green-700">{visitados.length} visitados</Badge>
-                                  <Badge className="bg-red-100 text-red-700">{naoAtendidos.length} não atendidos</Badge>
-                                  <Badge className="bg-amber-100 text-amber-700">{pendentes.length} pendentes</Badge>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge className="bg-green-100 text-green-700">{concluidos.length} concluídos</Badge>
+                                  <Badge className="bg-blue-100 text-blue-700">{emAtendimento.length} em atendimento</Badge>
+                                  <Badge className="bg-red-100 text-red-700">{semAtendimento.length} sem atendimento</Badge>
+                                  <Badge className="bg-slate-200 text-slate-700">{semCheckin.length} sem check-in</Badge>
                                 </div>
                               </div>
                             </CollapsibleTrigger>
 
                             <CollapsibleContent>
                               <div className="ml-8 mt-3 space-y-4">
-                                {/* Visitados */}
-                                {visitados.length > 0 && (
+                                {/* Concluídos - Check-in e Check-out */}
+                                {concluidos.length > 0 && (
                                   <div>
                                     <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1">
-                                      <CheckCircle className="w-4 h-4" /> Visitados ({visitados.length})
+                                      <CheckCircle className="w-4 h-4" /> Concluídos ({concluidos.length})
                                     </h4>
                                     <div className="space-y-2">
-                                      {visitados.map((c, idx) => (
+                                      {concluidos.map((c, idx) => (
                                         <ClienteCard 
                                           key={idx} 
                                           clienteInfo={c} 
-                                          tipo="visitado"
+                                          tipo="concluido"
                                           onOpenMap={() => handleOpenMap(c)}
                                           onOpenPhotos={() => handleOpenPhotos(c)}
                                         />
@@ -327,18 +333,38 @@ export default function RelatorioRoteiros() {
                                   </div>
                                 )}
 
-                                {/* Não Atendidos */}
-                                {naoAtendidos.length > 0 && (
+                                {/* Em Atendimento - Apenas Check-in */}
+                                {emAtendimento.length > 0 && (
+                                  <div>
+                                    <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                                      <Clock className="w-4 h-4" /> Em Atendimento ({emAtendimento.length})
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {emAtendimento.map((c, idx) => (
+                                        <ClienteCard 
+                                          key={idx} 
+                                          clienteInfo={c} 
+                                          tipo="emAtendimento"
+                                          onOpenMap={() => handleOpenMap(c)}
+                                          onOpenPhotos={() => handleOpenPhotos(c)}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Sem Atendimento - Não atendido com motivo */}
+                                {semAtendimento.length > 0 && (
                                   <div>
                                     <h4 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1">
-                                      <XCircle className="w-4 h-4" /> Não Atendidos ({naoAtendidos.length})
+                                      <XCircle className="w-4 h-4" /> Sem Atendimento ({semAtendimento.length})
                                     </h4>
                                     <div className="space-y-2">
-                                      {naoAtendidos.map((c, idx) => (
+                                      {semAtendimento.map((c, idx) => (
                                         <ClienteCard 
                                           key={idx} 
                                           clienteInfo={c} 
-                                          tipo="naoAtendido"
+                                          tipo="semAtendimento"
                                           onOpenMap={() => handleOpenMap(c)}
                                           onOpenPhotos={() => handleOpenPhotos(c)}
                                         />
@@ -347,25 +373,25 @@ export default function RelatorioRoteiros() {
                                   </div>
                                 )}
 
-                                {/* Pendentes */}
-                                {pendentes.length > 0 && (
+                                {/* Sem Check-in - Pendentes */}
+                                {semCheckin.length > 0 && (
                                   <div>
-                                    <h4 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1">
-                                      <AlertTriangle className="w-4 h-4" /> Pendentes - Sem Registro ({pendentes.length})
+                                    <h4 className="text-sm font-semibold text-slate-600 mb-2 flex items-center gap-1">
+                                      <AlertTriangle className="w-4 h-4" /> Sem Check-in ({semCheckin.length})
                                     </h4>
                                     <div className="space-y-2">
-                                      {pendentes.map((c, idx) => (
+                                      {semCheckin.map((c, idx) => (
                                         <ClienteCard 
                                           key={idx} 
                                           clienteInfo={c} 
-                                          tipo="pendente"
+                                          tipo="semCheckin"
                                         />
                                       ))}
                                     </div>
                                   </div>
                                 )}
 
-                                {visitados.length === 0 && naoAtendidos.length === 0 && pendentes.length === 0 && (
+                                {concluidos.length === 0 && emAtendimento.length === 0 && semAtendimento.length === 0 && semCheckin.length === 0 && (
                                   <p className="text-slate-500 text-sm">Nenhum cliente neste roteiro</p>
                                 )}
                               </div>
@@ -531,9 +557,10 @@ export default function RelatorioRoteiros() {
 function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
   const { cliente, visitaRoteiro, visitaRegistro } = clienteInfo;
 
-  const bgColor = tipo === 'visitado' ? 'bg-green-50 border-green-200' : 
-                  tipo === 'naoAtendido' ? 'bg-red-50 border-red-200' : 
-                  'bg-amber-50 border-amber-200';
+  const bgColor = tipo === 'concluido' ? 'bg-green-50 border-green-200' : 
+                  tipo === 'emAtendimento' ? 'bg-blue-50 border-blue-200' :
+                  tipo === 'semAtendimento' ? 'bg-red-50 border-red-200' : 
+                  'bg-slate-50 border-slate-200';
 
   return (
     <div className={`p-3 rounded-lg border ${bgColor}`}>
@@ -560,13 +587,13 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
               )}
               {visitaRoteiro.checkout_time && (
                 <div className="flex items-center gap-2">
-                  <Clock className="w-3 h-3 text-red-600" />
-                  <span className="text-red-700">
+                  <Clock className="w-3 h-3 text-blue-600" />
+                  <span className="text-blue-700">
                     Check-out: {new Date(visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
                   </span>
                 </div>
               )}
-              {tipo === 'naoAtendido' && visitaRoteiro.motivo_nao_atendimento && (
+              {tipo === 'semAtendimento' && visitaRoteiro.motivo_nao_atendimento && (
                 <div className="text-red-600 font-medium">
                   Motivo: {visitaRoteiro.motivo_nao_atendimento}
                 </div>
@@ -580,16 +607,23 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
             </div>
           )}
 
-          {tipo === 'pendente' && (
-            <Badge className="mt-2 bg-amber-600 text-white text-xs">
+          {tipo === 'emAtendimento' && (
+            <Badge className="mt-2 bg-blue-600 text-white text-xs">
+              <Clock className="w-3 h-3 mr-1" />
+              Aguardando Check-out
+            </Badge>
+          )}
+
+          {tipo === 'semCheckin' && (
+            <Badge className="mt-2 bg-slate-500 text-white text-xs">
               <AlertTriangle className="w-3 h-3 mr-1" />
-              Sem nenhum registro informado
+              Sem nenhum registro
             </Badge>
           )}
         </div>
 
         {/* Botões de ação */}
-        {tipo !== 'pendente' && visitaRoteiro && (
+        {tipo !== 'semCheckin' && visitaRoteiro && (
           <div className="flex gap-2 ml-4">
             <Button size="sm" variant="outline" onClick={onOpenMap} className="border-blue-300 text-blue-700 hover:bg-blue-50">
               <Eye className="w-4 h-4" />
