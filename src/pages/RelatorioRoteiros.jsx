@@ -37,14 +37,20 @@ const checkoutIcon = new L.Icon({
 });
 
 const diasSemanaConfig = [
-  { valor: 'segunda-feira', label: 'Segunda', abrev: 'Seg' },
-  { valor: 'terca-feira', label: 'Terça', abrev: 'Ter' },
-  { valor: 'quarta-feira', label: 'Quarta', abrev: 'Qua' },
-  { valor: 'quinta-feira', label: 'Quinta', abrev: 'Qui' },
-  { valor: 'sexta-feira', label: 'Sexta', abrev: 'Sex' },
-  { valor: 'sabado', label: 'Sábado', abrev: 'Sáb' },
-  { valor: 'domingo', label: 'Domingo', abrev: 'Dom' }
+  { valor: 'domingo', label: 'Domingo', abrev: 'Dom', ordem: 0 },
+  { valor: 'segunda-feira', label: 'Segunda', abrev: 'Seg', ordem: 1 },
+  { valor: 'terca-feira', label: 'Terça', abrev: 'Ter', ordem: 2 },
+  { valor: 'quarta-feira', label: 'Quarta', abrev: 'Qua', ordem: 3 },
+  { valor: 'quinta-feira', label: 'Quinta', abrev: 'Qui', ordem: 4 },
+  { valor: 'sexta-feira', label: 'Sexta', abrev: 'Sex', ordem: 5 },
+  { valor: 'sabado', label: 'Sábado', abrev: 'Sáb', ordem: 6 }
 ];
+
+const clienteIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+});
 
 export default function RelatorioRoteiros() {
   const [expandedVendedores, setExpandedVendedores] = useState({});
@@ -140,11 +146,13 @@ export default function RelatorioRoteiros() {
         visitaRegistro: visitaReg
       };
 
-      if (visitaRot && (visitaRot.status === 'checkin_realizado' || visitaRot.status === 'concluida')) {
+      // Cliente só é visitado se tiver check-in E check-out
+      if (visitaRot && visitaRot.status === 'concluida' && visitaRot.checkout_time) {
         visitados.push(clienteInfo);
       } else if (visitaRot && visitaRot.status === 'nao_atendido') {
         naoAtendidos.push(clienteInfo);
       } else {
+        // Pendente: sem visita OU com check-in mas sem check-out
         pendentes.push(clienteInfo);
       }
     });
@@ -268,7 +276,13 @@ export default function RelatorioRoteiros() {
 
                   <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
-                      {roteirosVend.map(roteiro => {
+                      {roteirosVend
+                        .sort((a, b) => {
+                          const ordemA = diasSemanaConfig.find(d => d.valor === a.dia_semana)?.ordem ?? 99;
+                          const ordemB = diasSemanaConfig.find(d => d.valor === b.dia_semana)?.ordem ?? 99;
+                          return ordemA - ordemB;
+                        })
+                        .map(roteiro => {
                         const diaConfig = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana);
                         const keyDia = `${vendedor.id}-${roteiro.dia_semana}`;
                         const isDiaExpanded = expandedDias[keyDia];
@@ -378,23 +392,43 @@ export default function RelatorioRoteiros() {
             </DialogTitle>
           </DialogHeader>
           <div className="h-[400px] rounded-lg overflow-hidden">
-            {selectedVisita?.visitaRoteiro?.checkin_latitude && (
+            {selectedVisita && (
               <MapContainer
-                center={[selectedVisita.visitaRoteiro.checkin_latitude, selectedVisita.visitaRoteiro.checkin_longitude]}
+                center={[
+                  selectedVisita.visitaRoteiro?.checkin_latitude || selectedVisita.cliente?.latitude || -8.05,
+                  selectedVisita.visitaRoteiro?.checkin_longitude || selectedVisita.cliente?.longitude || -34.9
+                ]}
                 zoom={15}
                 style={{ height: '100%', width: '100%' }}
               >
                 <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <Marker position={[selectedVisita.visitaRoteiro.checkin_latitude, selectedVisita.visitaRoteiro.checkin_longitude]} icon={checkinIcon}>
-                  <Popup>
-                    <strong>Check-in</strong><br />
-                    {new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR')}
-                  </Popup>
-                </Marker>
-                {selectedVisita.visitaRoteiro.checkout_latitude && (
+                
+                {/* Marcador do Cliente (azul) */}
+                {selectedVisita.cliente?.latitude && selectedVisita.cliente?.longitude && (
+                  <Marker position={[selectedVisita.cliente.latitude, selectedVisita.cliente.longitude]} icon={clienteIcon}>
+                    <Popup>
+                      <strong>📍 Localização do Cliente</strong><br />
+                      {selectedVisita.cliente.nome_fantasia || selectedVisita.cliente.razao_social}<br />
+                      {selectedVisita.cliente.endereco}, {selectedVisita.cliente.bairro}
+                    </Popup>
+                  </Marker>
+                )}
+                
+                {/* Marcador Check-in (verde) */}
+                {selectedVisita.visitaRoteiro?.checkin_latitude && (
+                  <Marker position={[selectedVisita.visitaRoteiro.checkin_latitude, selectedVisita.visitaRoteiro.checkin_longitude]} icon={checkinIcon}>
+                    <Popup>
+                      <strong>✅ Check-in</strong><br />
+                      {new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR')}
+                    </Popup>
+                  </Marker>
+                )}
+                
+                {/* Marcador Check-out (vermelho) */}
+                {selectedVisita.visitaRoteiro?.checkout_latitude && (
                   <Marker position={[selectedVisita.visitaRoteiro.checkout_latitude, selectedVisita.visitaRoteiro.checkout_longitude]} icon={checkoutIcon}>
                     <Popup>
-                      <strong>Check-out</strong><br />
+                      <strong>🚪 Check-out</strong><br />
                       {new Date(selectedVisita.visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
                     </Popup>
                   </Marker>
@@ -402,7 +436,8 @@ export default function RelatorioRoteiros() {
               </MapContainer>
             )}
           </div>
-          <div className="flex gap-4 text-sm">
+          <div className="flex gap-4 text-sm mt-2">
+            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-blue-500"></div><span>Cliente</span></div>
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-green-500"></div><span>Check-in</span></div>
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-red-500"></div><span>Check-out</span></div>
           </div>
