@@ -442,9 +442,9 @@ export default function RelatorioRoteiros() {
                   >
                     <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     
-                    {/* Marcador do Cliente (azul) */}
+                    {/* Marcador do Cliente (azul) - menor e no centro */}
                     {clienteLat && clienteLng && (
-                      <Marker position={[clienteLat, clienteLng]} icon={clienteIcon}>
+                      <Marker position={addOffset(clienteLat, clienteLng, 0)} icon={clienteIcon} zIndexOffset={100}>
                         <Popup>
                           <strong>📍 Localização do Cliente</strong><br />
                           {selectedVisita.cliente.nome_fantasia || selectedVisita.cliente.razao_social}<br />
@@ -453,9 +453,9 @@ export default function RelatorioRoteiros() {
                       </Marker>
                     )}
                     
-                    {/* Marcador Check-in (verde) */}
+                    {/* Marcador Check-in (verde) - maior e levemente deslocado */}
                     {checkinLat && checkinLng && (
-                      <Marker position={[checkinLat, checkinLng]} icon={checkinIcon}>
+                      <Marker position={addOffset(checkinLat, checkinLng, 1)} icon={checkinIcon} zIndexOffset={200}>
                         <Popup>
                           <strong>✅ Check-in</strong><br />
                           {selectedVisita.visitaRoteiro.checkin_time ? new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-'}
@@ -463,9 +463,9 @@ export default function RelatorioRoteiros() {
                       </Marker>
                     )}
                     
-                    {/* Marcador Check-out (vermelho) */}
+                    {/* Marcador Check-out (vermelho) - médio e deslocado oposto */}
                     {checkoutLat && checkoutLng && (
-                      <Marker position={[checkoutLat, checkoutLng]} icon={checkoutIcon}>
+                      <Marker position={addOffset(checkoutLat, checkoutLng, 2)} icon={checkoutIcon} zIndexOffset={300}>
                         <Popup>
                           <strong>🚪 Check-out</strong><br />
                           {selectedVisita.visitaRoteiro.checkout_time ? new Date(selectedVisita.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-'}
