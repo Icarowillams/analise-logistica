@@ -391,51 +391,74 @@ export default function RelatorioRoteiros() {
               Localização - {selectedVisita?.cliente?.nome_fantasia || selectedVisita?.cliente_nome}
             </DialogTitle>
           </DialogHeader>
-          <div className="h-[400px] rounded-lg overflow-hidden">
-            {selectedVisita && (
-              <MapContainer
-                center={[
-                  selectedVisita.visitaRoteiro?.checkin_latitude || selectedVisita.cliente?.latitude || -8.05,
-                  selectedVisita.visitaRoteiro?.checkin_longitude || selectedVisita.cliente?.longitude || -34.9
-                ]}
-                zoom={15}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                
-                {/* Marcador do Cliente (azul) */}
-                {selectedVisita.cliente?.latitude && selectedVisita.cliente?.longitude && (
-                  <Marker position={[selectedVisita.cliente.latitude, selectedVisita.cliente.longitude]} icon={clienteIcon}>
-                    <Popup>
-                      <strong>📍 Localização do Cliente</strong><br />
-                      {selectedVisita.cliente.nome_fantasia || selectedVisita.cliente.razao_social}<br />
-                      {selectedVisita.cliente.endereco}, {selectedVisita.cliente.bairro}
-                    </Popup>
-                  </Marker>
+          {(() => {
+            // Buscar latitude/longitude de check-in (pode estar em diferentes campos)
+            const checkinLat = selectedVisita?.visitaRoteiro?.checkin_latitude || selectedVisita?.visitaRoteiro?.latitude_checkin;
+            const checkinLng = selectedVisita?.visitaRoteiro?.checkin_longitude || selectedVisita?.visitaRoteiro?.longitude_checkin;
+            const checkoutLat = selectedVisita?.visitaRoteiro?.checkout_latitude;
+            const checkoutLng = selectedVisita?.visitaRoteiro?.checkout_longitude;
+            const clienteLat = selectedVisita?.cliente?.latitude;
+            const clienteLng = selectedVisita?.cliente?.longitude;
+
+            // Centro do mapa: priorizar check-in, depois cliente
+            const centerLat = checkinLat || clienteLat || -8.05;
+            const centerLng = checkinLng || clienteLng || -34.9;
+
+            const hasAnyLocation = checkinLat || checkoutLat || clienteLat;
+
+            return (
+              <div className="h-[400px] rounded-lg overflow-hidden">
+                {selectedVisita && hasAnyLocation ? (
+                  <MapContainer
+                    center={[centerLat, centerLng]}
+                    zoom={15}
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    
+                    {/* Marcador do Cliente (azul) */}
+                    {clienteLat && clienteLng && (
+                      <Marker position={[clienteLat, clienteLng]} icon={clienteIcon}>
+                        <Popup>
+                          <strong>📍 Localização do Cliente</strong><br />
+                          {selectedVisita.cliente.nome_fantasia || selectedVisita.cliente.razao_social}<br />
+                          {selectedVisita.cliente.endereco}, {selectedVisita.cliente.bairro}
+                        </Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* Marcador Check-in (verde) */}
+                    {checkinLat && checkinLng && (
+                      <Marker position={[checkinLat, checkinLng]} icon={checkinIcon}>
+                        <Popup>
+                          <strong>✅ Check-in</strong><br />
+                          {selectedVisita.visitaRoteiro.checkin_time ? new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-'}
+                        </Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* Marcador Check-out (vermelho) */}
+                    {checkoutLat && checkoutLng && (
+                      <Marker position={[checkoutLat, checkoutLng]} icon={checkoutIcon}>
+                        <Popup>
+                          <strong>🚪 Check-out</strong><br />
+                          {selectedVisita.visitaRoteiro.checkout_time ? new Date(selectedVisita.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-'}
+                        </Popup>
+                      </Marker>
+                    )}
+                  </MapContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-slate-100 rounded-lg">
+                    <div className="text-center text-slate-500">
+                      <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>Nenhuma localização registrada para esta visita</p>
+                      <p className="text-sm">O check-in foi realizado sem captura de GPS</p>
+                    </div>
+                  </div>
                 )}
-                
-                {/* Marcador Check-in (verde) */}
-                {selectedVisita.visitaRoteiro?.checkin_latitude && (
-                  <Marker position={[selectedVisita.visitaRoteiro.checkin_latitude, selectedVisita.visitaRoteiro.checkin_longitude]} icon={checkinIcon}>
-                    <Popup>
-                      <strong>✅ Check-in</strong><br />
-                      {new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR')}
-                    </Popup>
-                  </Marker>
-                )}
-                
-                {/* Marcador Check-out (vermelho) */}
-                {selectedVisita.visitaRoteiro?.checkout_latitude && (
-                  <Marker position={[selectedVisita.visitaRoteiro.checkout_latitude, selectedVisita.visitaRoteiro.checkout_longitude]} icon={checkoutIcon}>
-                    <Popup>
-                      <strong>🚪 Check-out</strong><br />
-                      {new Date(selectedVisita.visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
-                    </Popup>
-                  </Marker>
-                )}
-              </MapContainer>
-            )}
-          </div>
+              </div>
+            );
+          })()}
           <div className="flex gap-4 text-sm mt-2">
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-blue-500"></div><span>Cliente</span></div>
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-green-500"></div><span>Check-in</span></div>
