@@ -280,23 +280,23 @@ export default function MapaVendas() {
           <div className="flex flex-wrap items-center gap-4">
             <span className="text-sm font-medium text-slate-700">Intensidade de Visitas:</span>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-green-500"></div>
+              <div className="w-4 h-4 rounded-full bg-red-600"></div>
               <span className="text-xs text-slate-600">Baixo</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-yellow-400"></div>
+              <div className="w-4 h-4 rounded-full bg-orange-600"></div>
               <span className="text-xs text-slate-600">Médio-Baixo</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-orange-500"></div>
+              <div className="w-4 h-4 rounded-full bg-orange-400"></div>
               <span className="text-xs text-slate-600">Médio</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-orange-600"></div>
+              <div className="w-4 h-4 rounded-full bg-yellow-400"></div>
               <span className="text-xs text-slate-600">Médio-Alto</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-red-600"></div>
+              <div className="w-4 h-4 rounded-full bg-green-500"></div>
               <span className="text-xs text-slate-600">Alto</span>
             </div>
           </div>
