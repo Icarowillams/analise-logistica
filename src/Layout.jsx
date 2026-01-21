@@ -244,20 +244,26 @@ export default function Layout({ children, currentPageName }) {
         }
       `}</style>
 
-      {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-neutral-900 z-50 flex items-center justify-between px-4 shadow-xl">
-        <div className="flex items-center gap-3">
+      {/* Mobile Header com visual premium */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-900 z-50 flex items-center justify-between px-4 shadow-xl border-b border-amber-500/20">
+        {/* Decoração hexagonal */}
+        <svg className="absolute left-0 top-0 w-20 h-20 opacity-5" viewBox="0 0 100 115.47">
+          <polygon points="50,0 100,28.87 100,86.60 50,115.47 0,86.60 0,28.87" fill="#f59e0b"/>
+        </svg>
+
+        <div className="flex items-center gap-3 relative">
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
             alt="Pão & Mel" 
-            className="h-10 w-auto"
+            className="h-10 w-auto drop-shadow-lg"
+            style={{ filter: 'drop-shadow(0 2px 8px rgba(245,158,11,0.3))' }}
           />
         </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="text-white hover:bg-neutral-800"
+          className="text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 transition-colors"
         >
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </Button>
@@ -359,10 +365,10 @@ export default function Layout({ children, currentPageName }) {
         </nav>
       </aside>
 
-      {/* Overlay */}
+      {/* Overlay com toque de mel */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
+          className="fixed inset-0 bg-amber-950/60 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
