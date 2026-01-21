@@ -7,23 +7,16 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
-  Package, Filter, Calendar, Download, Search, MapPin, ChevronDown, ChevronRight, Eye
+  Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle
 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export default function RelatorioEstoque() {
   const [filtroCliente, setFiltroCliente] = useState('todos');
-  const [filtroProduto, setFiltroProduto] = useState('todos');
   const [busca, setBusca] = useState('');
   const [clientesExpandidos, setClientesExpandidos] = useState({});
   const [visitasExpandidas, setVisitasExpandidas] = useState({});
-  const [modalUltimoEstoque, setModalUltimoEstoque] = useState({ open: false, produto: null, dados: [] });
 
   const { data: estoqueVisitaAll = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
@@ -35,10 +28,8 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  // Permissões de visibilidade de clientes
   const { filtrarClientes, filtrarPorCliente } = useClientesPermissao();
 
-  // Dados filtrados por permissão
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const estoqueVisita = useMemo(() => filtrarPorCliente(estoqueVisitaAll), [estoqueVisitaAll, filtrarPorCliente]);
 
@@ -52,7 +43,6 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
-  // Mapas
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
@@ -63,27 +53,47 @@ export default function RelatorioEstoque() {
     return Array.from(ids).map(id => clientesMap[id]).filter(Boolean).sort((a, b) => (a.nome_fantasia || a.razao_social || '').localeCompare(b.nome_fantasia || b.razao_social || ''));
   }, [estoqueVisita, clientesMap]);
 
-  // Produtos com estoque registrado
-  const produtosComEstoque = useMemo(() => {
-    const ids = new Set(estoqueVisita.map(e => e.produto_id).filter(Boolean));
-    return Array.from(ids).map(id => produtosMap[id]).filter(Boolean).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-  }, [estoqueVisita, produtosMap]);
+  // Calcular prazo de vencimento
+  const calcularPrazoVencimento = (dataValidade) => {
+    if (!dataValidade) return null;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const validade = new Date(dataValidade);
+    validade.setHours(0, 0, 0, 0);
+    const diffTime = validade - hoje;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
 
-  // Dados agrupados por cliente > visita > produtos
+  const getCorPrazo = (diasRestantes) => {
+    if (diasRestantes === null) return 'bg-slate-100 text-slate-600';
+    if (diasRestantes < 0) return 'bg-black text-white'; // Vencido
+    if (diasRestantes < 7) return 'bg-red-500 text-white'; // Crítico
+    if (diasRestantes < 12) return 'bg-amber-500 text-white'; // Atenção
+    return 'bg-green-500 text-white'; // Normal
+  };
+
+  const getLabelPrazo = (diasRestantes) => {
+    if (diasRestantes === null) return 'Sem validade';
+    if (diasRestantes < 0) return `Vencido há ${Math.abs(diasRestantes)} dias`;
+    if (diasRestantes === 0) return 'Vence hoje';
+    if (diasRestantes === 1) return '1 dia para vencer';
+    return `${diasRestantes} dias para vencer`;
+  };
+
+  // Dados agrupados por cliente > visita (data + usuário) > produtos
   const dadosAgrupados = useMemo(() => {
     let dados = estoqueVisita.map(e => ({
       ...e,
       cliente: clientesMap[e.cliente_id],
       produto: produtosMap[e.produto_id],
-      vendedor: vendedoresMap[e.vendedor_id]
+      vendedor: vendedoresMap[e.vendedor_id],
+      prazoVencimento: calcularPrazoVencimento(e.data_validade)
     }));
 
     // Filtros
     if (filtroCliente !== 'todos') {
       dados = dados.filter(e => e.cliente_id === filtroCliente);
-    }
-    if (filtroProduto !== 'todos') {
-      dados = dados.filter(e => e.produto_id === filtroProduto);
     }
     if (busca) {
       const termo = busca.toLowerCase();
@@ -109,19 +119,23 @@ export default function RelatorioEstoque() {
         };
       }
       
-      // Agrupar por data de visita
+      // Agrupar por data de visita + vendedor
       const dataVisita = e.data_visita || e.created_date?.split('T')[0] || 'sem_data';
-      if (!porCliente[clienteId].visitas[dataVisita]) {
-        porCliente[clienteId].visitas[dataVisita] = {
+      const vendedorId = e.vendedor_id || 'sem_vendedor';
+      const visitaKey = `${dataVisita}_${vendedorId}`;
+      
+      if (!porCliente[clienteId].visitas[visitaKey]) {
+        porCliente[clienteId].visitas[visitaKey] = {
           data: dataVisita,
           vendedor: e.vendedor,
+          vendedorId,
           produtos: [],
           totalLancamentos: 0
         };
       }
       
-      porCliente[clienteId].visitas[dataVisita].produtos.push(e);
-      porCliente[clienteId].visitas[dataVisita].totalLancamentos++;
+      porCliente[clienteId].visitas[visitaKey].produtos.push(e);
+      porCliente[clienteId].visitas[visitaKey].totalLancamentos++;
       porCliente[clienteId].totalProdutos++;
       porCliente[clienteId].totalItens += e.quantidade || 0;
     });
@@ -133,7 +147,7 @@ export default function RelatorioEstoque() {
         visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
       }))
       .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
-  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, filtroProduto, busca]);
+  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, busca]);
 
   const toggleCliente = (clienteId) => {
     setClientesExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));
@@ -143,45 +157,21 @@ export default function RelatorioEstoque() {
     setVisitasExpandidas(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Buscar último estoque de um produto específico em todos os clientes
-  const verUltimoEstoque = (produto) => {
-    const registros = estoqueVisita
-      .filter(e => e.produto_id === produto.id)
-      .map(e => ({
-        ...e,
-        cliente: clientesMap[e.cliente_id],
-        vendedor: vendedoresMap[e.vendedor_id]
-      }))
-      .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-
-    // Pegar o mais recente por cliente
-    const porCliente = {};
-    registros.forEach(r => {
-      if (!porCliente[r.cliente_id]) {
-        porCliente[r.cliente_id] = r;
-      }
-    });
-
-    setModalUltimoEstoque({
-      open: true,
-      produto,
-      dados: Object.values(porCliente).sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
-    });
-  };
-
   const exportarCSV = () => {
-    const linhas = ['Data;Cliente;Código Cliente;Produto;Código Produto;Quantidade;Validade;Vendedor'];
+    const linhas = ['Data Lançamento;Cliente;Código Cliente;Produto;Código Produto;Quantidade;Data Validade;Prazo Vencimento;Vendedor'];
     dadosAgrupados.forEach(cliente => {
       cliente.visitas.forEach(visita => {
         visita.produtos.forEach(e => {
+          const prazo = e.prazoVencimento !== null ? `${e.prazoVencimento} dias` : '';
           linhas.push([
-            new Date(e.created_date).toLocaleDateString('pt-BR'),
+            e.created_date ? new Date(e.created_date).toLocaleString('pt-BR') : '',
             e.cliente?.nome_fantasia || e.cliente?.razao_social || '',
             e.cliente?.codigo || '',
             e.produto?.nome || '',
             e.produto?.codigo || '',
             e.quantidade || 0,
             e.data_validade ? new Date(e.data_validade).toLocaleDateString('pt-BR') : '',
+            prazo,
             e.vendedor?.nome || ''
           ].join(';'));
         });
@@ -216,6 +206,21 @@ export default function RelatorioEstoque() {
         </Button>
       </div>
 
+      {/* Legenda de Cores */}
+      <Card className="border-0 shadow-lg">
+        <CardContent className="py-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-sm font-medium text-slate-600">Prazo de Vencimento:</span>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="bg-green-500 text-white">Normal (≥12 dias)</Badge>
+              <Badge className="bg-amber-500 text-white">Atenção (7-11 dias)</Badge>
+              <Badge className="bg-red-500 text-white">Crítico (&lt;7 dias)</Badge>
+              <Badge className="bg-black text-white">Vencido</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Filtros */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
@@ -225,27 +230,15 @@ export default function RelatorioEstoque() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Cliente</label>
               <Select value={filtroCliente} onValueChange={setFiltroCliente}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="todos">Todos os Clientes</SelectItem>
                   {clientesComEstoque.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Produto</label>
-              <Select value={filtroProduto} onValueChange={setFiltroProduto}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {produtosComEstoque.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -279,157 +272,141 @@ export default function RelatorioEstoque() {
           ) : (
             <div className="divide-y divide-slate-100">
               {dadosAgrupados.map((clienteData) => (
-                <div key={clienteData.clienteId} className="bg-white">
+                <Collapsible 
+                  key={clienteData.clienteId} 
+                  open={clientesExpandidos[clienteData.clienteId]}
+                  onOpenChange={() => toggleCliente(clienteData.clienteId)}
+                >
                   {/* Header do Cliente */}
-                  <button
-                    onClick={() => toggleCliente(clienteData.clienteId)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      {clientesExpandidos[clienteData.clienteId] ? (
-                        <ChevronDown className="w-5 h-5 text-slate-400" />
-                      ) : (
-                        <ChevronRight className="w-5 h-5 text-slate-400" />
-                      )}
-                      <div className="text-left">
-                        <div className="font-semibold text-slate-900">
-                          {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
-                        </div>
-                        <div className="text-sm text-slate-500">
-                          {clienteData.totalProdutos} produtos • {clienteData.totalItens} itens total
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        {clientesExpandidos[clienteData.clienteId] ? (
+                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-slate-400" />
+                        )}
+                        <div className="text-left">
+                          <div className="font-semibold text-slate-900">
+                            {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            {clienteData.totalProdutos} lançamentos • {clienteData.totalItens} unidades
+                          </div>
                         </div>
                       </div>
+                      <Badge variant="outline" className="text-slate-600">
+                        {clienteData.visitas.length} visitas
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-slate-600">
-                      {clienteData.visitas.length} visitas
-                    </Badge>
-                  </button>
+                  </CollapsibleTrigger>
 
                   {/* Visitas do Cliente */}
-                  {clientesExpandidos[clienteData.clienteId] && (
+                  <CollapsibleContent>
                     <div className="border-t border-slate-100 bg-slate-50/50">
                       {clienteData.visitas.map((visita, idx) => {
-                        const visitaKey = `${clienteData.clienteId}_${visita.data}`;
+                        const visitaKey = `${clienteData.clienteId}_${visita.data}_${visita.vendedorId}`;
                         return (
-                          <div key={idx} className="border-b border-slate-100 last:border-b-0">
+                          <Collapsible 
+                            key={idx} 
+                            open={visitasExpandidas[visitaKey]}
+                            onOpenChange={() => toggleVisita(visitaKey)}
+                          >
                             {/* Header da Visita */}
-                            <button
-                              onClick={() => toggleVisita(visitaKey)}
-                              className="w-full flex items-center justify-between px-6 py-3 hover:bg-slate-100/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                {visitasExpandidas[visitaKey] ? (
-                                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                                )}
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4 text-blue-500" />
-                                  <span className="font-medium text-slate-700">
-                                    Visita em {new Date(visita.data).toLocaleDateString('pt-BR')}
-                                  </span>
+                            <CollapsibleTrigger className="w-full">
+                              <div className="flex items-center justify-between px-6 py-3 hover:bg-slate-100/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0">
+                                <div className="flex items-center gap-3">
+                                  {visitasExpandidas[visitaKey] ? (
+                                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                                  )}
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="w-4 h-4 text-blue-500" />
+                                      <span className="font-medium text-slate-700">
+                                        {new Date(visita.data).toLocaleDateString('pt-BR')}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-slate-500">
+                                      <User className="w-4 h-4" />
+                                      <span className="text-sm">{visita.vendedor?.nome || 'N/A'}</span>
+                                    </div>
+                                  </div>
                                 </div>
+                                <Badge className="bg-blue-100 text-blue-700">
+                                  {visita.totalLancamentos} produtos
+                                </Badge>
                               </div>
-                              <span className="text-sm text-slate-500">
-                                {visita.vendedor?.nome || 'N/A'} • {visita.totalLancamentos} lançamento(s)
-                              </span>
-                            </button>
+                            </CollapsibleTrigger>
 
                             {/* Produtos da Visita */}
-                            {visitasExpandidas[visitaKey] && (
-                              <div className="bg-white px-8 py-3 space-y-1">
-                                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
-                                  Produto
+                            <CollapsibleContent>
+                              <div className="bg-white px-8 py-3 space-y-2">
+                                {/* Cabeçalho */}
+                                <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
+                                  <div className="col-span-4">Produto</div>
+                                  <div className="col-span-1 text-center">Qtd</div>
+                                  <div className="col-span-2 text-center">Validade</div>
+                                  <div className="col-span-2 text-center">Prazo</div>
+                                  <div className="col-span-3 text-center">Lançamento</div>
                                 </div>
+                                
                                 {visita.produtos.map((prod, pIdx) => (
                                   <div 
                                     key={pIdx} 
-                                    className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 group"
+                                    className="grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50"
                                   >
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-slate-700">{prod.produto?.nome || 'Produto N/A'}</span>
-                                      {prod.quantidade !== undefined && (
-                                        <Badge className="bg-blue-100 text-blue-700">
-                                          Qtd: {prod.quantidade}
-                                        </Badge>
-                                      )}
-                                      {prod.data_validade && (
-                                        <Badge variant="outline" className="text-xs">
-                                          Val: {new Date(prod.data_validade).toLocaleDateString('pt-BR')}
-                                        </Badge>
+                                    {/* Produto */}
+                                    <div className="col-span-4">
+                                      <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
+                                      {prod.produto?.codigo && (
+                                        <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
                                       )}
                                     </div>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        verUltimoEstoque(prod.produto);
-                                      }}
-                                    >
-                                      <Eye className="w-4 h-4 mr-1" />
-                                      Ver Último Estoque
-                                    </Button>
+                                    
+                                    {/* Quantidade */}
+                                    <div className="col-span-1 text-center">
+                                      <Badge className="bg-blue-100 text-blue-700">
+                                        {prod.quantidade || 0}
+                                      </Badge>
+                                    </div>
+                                    
+                                    {/* Data de Validade */}
+                                    <div className="col-span-2 text-center text-sm text-slate-600">
+                                      {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                    </div>
+                                    
+                                    {/* Prazo de Vencimento */}
+                                    <div className="col-span-2 text-center">
+                                      <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
+                                        {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
+                                          <AlertTriangle className="w-3 h-3 mr-1" />
+                                        )}
+                                        {getLabelPrazo(prod.prazoVencimento)}
+                                      </Badge>
+                                    </div>
+                                    
+                                    {/* Data e Hora de Lançamento */}
+                                    <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
+                                      <Clock className="w-3 h-3" />
+                                      {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
-                            )}
-                          </div>
+                            </CollapsibleContent>
+                          </Collapsible>
                         );
                       })}
                     </div>
-                  )}
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Modal de Último Estoque */}
-      <Dialog open={modalUltimoEstoque.open} onOpenChange={(open) => setModalUltimoEstoque({ ...modalUltimoEstoque, open })}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-600" />
-              Último Estoque - {modalUltimoEstoque.produto?.nome}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-4">
-            {modalUltimoEstoque.dados.length === 0 ? (
-              <p className="text-center text-slate-500 py-4">Nenhum registro encontrado</p>
-            ) : (
-              modalUltimoEstoque.dados.map((registro, idx) => (
-                <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-slate-900">
-                      {registro.cliente?.nome_fantasia || registro.cliente?.razao_social || 'Cliente N/A'}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                      <MapPin className="w-3 h-3" />
-                      {registro.cliente?.cidade || 'N/A'}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {registro.vendedor?.nome || 'N/A'} • {new Date(registro.created_date).toLocaleDateString('pt-BR')}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Badge className="bg-blue-100 text-blue-700 text-lg px-3">
-                      {registro.quantidade || 0}
-                    </Badge>
-                    {registro.data_validade && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        Val: {new Date(registro.data_validade).toLocaleDateString('pt-BR')}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

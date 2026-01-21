@@ -27,7 +27,7 @@ L.Icon.Default.mergeOptions({
 const checkinIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+  iconSize: [30, 50], iconAnchor: [15, 50], popupAnchor: [1, -40], shadowSize: [50, 50]
 });
 
 const checkoutIcon = new L.Icon({
@@ -49,8 +49,19 @@ const diasSemanaConfig = [
 const clienteIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+  iconSize: [20, 33], iconAnchor: [10, 33], popupAnchor: [1, -28], shadowSize: [33, 33]
 });
+
+// Função para adicionar pequeno offset aos marcadores para evitar sobreposição total
+const addOffset = (lat, lng, offsetIndex) => {
+  const offsets = [
+    [0, 0],           // Cliente (centro)
+    [0.00015, 0.00015], // Check-in (levemente nordeste)
+    [-0.00015, 0.00015] // Check-out (levemente noroeste)
+  ];
+  const [latOffset, lngOffset] = offsets[offsetIndex] || [0, 0];
+  return [lat + latOffset, lng + lngOffset];
+};
 
 export default function RelatorioRoteiros() {
   const [expandedVendedores, setExpandedVendedores] = useState({});
