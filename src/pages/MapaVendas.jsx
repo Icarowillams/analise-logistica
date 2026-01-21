@@ -122,14 +122,14 @@ export default function MapaVendas() {
     return Math.max(...visitasPorCliente.map(v => v.totalVisitas), 1);
   }, [visitasPorCliente]);
 
-  // Função para cor baseada no número de visitas (heatmap)
+  // Função para cor baseada no número de visitas (heatmap) - Verde = Alto, Vermelho = Baixo
   const getColor = (totalVisitas) => {
     const intensidade = totalVisitas / maxVisitas;
-    if (intensidade > 0.8) return '#dc2626'; // vermelho
-    if (intensidade > 0.6) return '#ea580c'; // laranja escuro
-    if (intensidade > 0.4) return '#f97316'; // laranja
-    if (intensidade > 0.2) return '#facc15'; // amarelo
-    return '#22c55e'; // verde
+    if (intensidade > 0.8) return '#22c55e'; // verde (alto)
+    if (intensidade > 0.6) return '#facc15'; // amarelo (médio alto)
+    if (intensidade > 0.4) return '#f97316'; // laranja claro (médio)
+    if (intensidade > 0.2) return '#ea580c'; // laranja escuro (médio baixo)
+    return '#dc2626'; // vermelho (baixo)
   };
 
   // Função para raio baseado no número de visitas

@@ -165,12 +165,17 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 honeycomb-bg">
       <style>{`
         :root {
           --primary: 45 100% 51%;
           --primary-foreground: 0 0% 0%;
           --accent: 0 72% 51%;
+        }
+        
+        .honeycomb-bg {
+          background-color: #fefce8;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath fill='%23facc15' fill-opacity='0.08' d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' /%3E%3Cpath fill='none' stroke='%23f59e0b' stroke-opacity='0.06' stroke-width='1' d='M28 0L28 66L0 50L0 16L28 0L56 16L56 50L28 66' /%3E%3C/svg%3E");
         }
         
         .sidebar-gradient {
@@ -203,6 +208,10 @@ export default function Layout({ children, currentPageName }) {
         .btn-pao-mel:hover {
           background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
         }
+        
+        .hexagon-icon {
+          clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        }
       `}</style>
 
       {/* Mobile Header */}
@@ -232,16 +241,16 @@ export default function Layout({ children, currentPageName }) {
         shadow-2xl
       `}>
         {/* Logo */}
-        <div className="h-24 flex items-center justify-center px-6 border-b border-neutral-700/50 bg-white/5">
+        <div className="h-32 flex items-center justify-center px-6 border-b border-neutral-700/50 bg-white/5">
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
             alt="Pão & Mel" 
-            className="h-16 w-auto"
+            className="h-20 w-auto"
           />
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 h-[calc(100%-6rem)] overflow-y-auto">
+        <nav className="p-4 h-[calc(100%-8rem)] overflow-y-auto">
           <ul className="space-y-1">
             {menuItems.map((item) => (
               <li key={item.title}>
@@ -258,7 +267,9 @@ export default function Layout({ children, currentPageName }) {
                       }
                     `}
                   >
-                    <item.icon className="w-5 h-5" />
+                    <div className="w-8 h-8 flex items-center justify-center bg-neutral-700/50 hexagon-icon">
+                      <item.icon className="w-4 h-4" />
+                    </div>
                     {item.title}
                   </Link>
                 ) : (
@@ -268,7 +279,9 @@ export default function Layout({ children, currentPageName }) {
                       className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-neutral-300 hover:text-yellow-300 menu-item-hover transition-all duration-200"
                     >
                       <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5" />
+                        <div className="w-8 h-8 flex items-center justify-center bg-neutral-700/50 hexagon-icon">
+                          <item.icon className="w-4 h-4" />
+                        </div>
                         {item.title}
                       </div>
                       {expandedMenus.includes(item.title) 
