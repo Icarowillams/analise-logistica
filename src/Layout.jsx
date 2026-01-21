@@ -134,8 +134,7 @@ export default function Layout({ children, currentPageName }) {
         icon: TrendingUp,
         submenu: [
           { title: 'Meus Roteiros', path: 'MeusRoteiros' },
-          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' },
-          { title: 'Painel de Visitas', path: 'PainelVisitas' }
+          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' }
         ]
       }
     ];
