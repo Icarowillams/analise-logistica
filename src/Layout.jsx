@@ -21,11 +21,13 @@ import {
   Upload,
   Settings,
   TrendingUp,
-  Shield
+  Shield,
+  Hexagon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import HoneycombBackground from '@/components/ui/HoneycombBackground';
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -165,43 +167,80 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 relative">
+      {/* Fundo de Colmeia Animado */}
+      <HoneycombBackground intensity="light" />
+
       <style>{`
         :root {
           --primary: 45 100% 51%;
           --primary-foreground: 0 0% 0%;
-          --accent: 0 72% 51%;
+          --accent: 38 92% 50%;
         }
-        
+
         .sidebar-gradient {
-          background: linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 50%, #3d3d3d 100%);
+          background: linear-gradient(180deg, #1a1a1a 0%, #262626 50%, #1f1f1f 100%);
         }
-        
+
+        .sidebar-honeycomb {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cg fill-rule='evenodd'%3E%3Cg id='hexagons' fill='%23f59e0b' fill-opacity='0.03' fill-rule='nonzero'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+
         .menu-item-active {
-          background: linear-gradient(90deg, rgba(250,204,21,0.25) 0%, rgba(250,204,21,0.1) 100%);
-          border-left: 3px solid #facc15;
+          background: linear-gradient(90deg, rgba(245,158,11,0.3) 0%, rgba(245,158,11,0.1) 100%);
+          border-left: 4px solid #f59e0b;
+          box-shadow: inset 0 0 20px rgba(245,158,11,0.1);
         }
-        
+
         .menu-item-hover:hover {
-          background: linear-gradient(90deg, rgba(250,204,21,0.15) 0%, rgba(250,204,21,0.05) 100%);
+          background: linear-gradient(90deg, rgba(245,158,11,0.2) 0%, rgba(245,158,11,0.05) 100%);
         }
-        
+
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        
+
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
+        }
+
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+
         .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
+          animation: fadeIn 0.4s ease-out;
         }
-        
+
+        .animate-float {
+          animation: float 3s ease-in-out infinite;
+        }
+
         .btn-pao-mel {
-          background: linear-gradient(135deg, #facc15 0%, #f59e0b 100%);
+          background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
           color: #1a1a1a;
+          box-shadow: 0 4px 20px rgba(245,158,11,0.4);
         }
-        
+
         .btn-pao-mel:hover {
-          background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+          background: linear-gradient(135deg, #fcd34d 0%, #fbbf24 50%, #f59e0b 100%);
+          box-shadow: 0 6px 25px rgba(245,158,11,0.5);
+          transform: translateY(-1px);
+        }
+
+        .honey-glow {
+          box-shadow: 0 0 40px rgba(245,158,11,0.15);
+        }
+
+        .honey-text {
+          background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #f59e0b 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer 3s linear infinite;
         }
       `}</style>
 
@@ -226,18 +265,29 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Sidebar */}
       <aside className={`
-        fixed top-0 left-0 h-full w-72 sidebar-gradient z-40 
+        fixed top-0 left-0 h-full w-72 sidebar-gradient sidebar-honeycomb z-40 
         transform transition-transform duration-300 ease-out
         lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        shadow-2xl
+        shadow-2xl border-r border-amber-500/10
       `}>
-        {/* Logo */}
-        <div className="h-24 flex items-center justify-center px-6 border-b border-neutral-700/50 bg-white/5">
-          <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
-            alt="Pão & Mel" 
-            className="h-16 w-auto"
-          />
+        {/* Logo com decoração hexagonal */}
+        <div className="h-28 flex items-center justify-center px-6 border-b border-amber-500/20 bg-gradient-to-b from-neutral-800/50 to-transparent relative overflow-hidden">
+          {/* Hexágonos decorativos */}
+          <svg className="absolute -left-4 -top-4 w-16 h-18 opacity-10" viewBox="0 0 100 115.47">
+            <polygon points="50,0 100,28.87 100,86.60 50,115.47 0,86.60 0,28.87" fill="#f59e0b"/>
+          </svg>
+          <svg className="absolute -right-6 -bottom-6 w-20 h-22 opacity-10" viewBox="0 0 100 115.47">
+            <polygon points="50,0 100,28.87 100,86.60 50,115.47 0,86.60 0,28.87" fill="#f59e0b"/>
+          </svg>
+
+          <div className="relative animate-float">
+            <img 
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
+              alt="Pão & Mel" 
+              className="h-18 w-auto drop-shadow-lg"
+              style={{ filter: 'drop-shadow(0 4px 20px rgba(245,158,11,0.3))' }}
+            />
+          </div>
         </div>
 
         {/* Navigation */}
@@ -250,45 +300,48 @@ export default function Layout({ children, currentPageName }) {
                     to={createPageUrl(item.path)}
                     onClick={() => setSidebarOpen(false)}
                     className={`
-                      flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
-                      transition-all duration-200 menu-item-hover
+                      flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold
+                      transition-all duration-300 menu-item-hover group
                       ${isActiveRoute(item.path)
-                        ? 'menu-item-active text-yellow-400'
-                        : 'text-neutral-300 hover:text-yellow-300'
+                        ? 'menu-item-active text-amber-400'
+                        : 'text-neutral-300 hover:text-amber-300'
                       }
                     `}
                   >
-                    <item.icon className="w-5 h-5" />
+                    <div className={`p-1.5 rounded-lg transition-all duration-300 ${isActiveRoute(item.path) ? 'bg-amber-500/20' : 'group-hover:bg-amber-500/10'}`}>
+                      <item.icon className="w-5 h-5" />
+                    </div>
                     {item.title}
                   </Link>
                 ) : (
                   <>
                     <button
                       onClick={() => toggleSubmenu(item.title)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-neutral-300 hover:text-yellow-300 menu-item-hover transition-all duration-200"
+                      className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold text-neutral-300 hover:text-amber-300 menu-item-hover transition-all duration-300 group"
                     >
                       <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5" />
+                        <div className="p-1.5 rounded-lg transition-all duration-300 group-hover:bg-amber-500/10">
+                          <item.icon className="w-5 h-5" />
+                        </div>
                         {item.title}
                       </div>
-                      {expandedMenus.includes(item.title) 
-                        ? <ChevronDown className="w-4 h-4" />
-                        : <ChevronRight className="w-4 h-4" />
-                      }
+                      <div className={`transition-transform duration-300 ${expandedMenus.includes(item.title) ? 'rotate-180' : ''}`}>
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
                     </button>
                     {expandedMenus.includes(item.title) && (
-                      <ul className="mt-1 ml-4 pl-4 border-l border-neutral-700/50 space-y-1">
+                      <ul className="mt-2 ml-4 pl-4 border-l-2 border-amber-500/30 space-y-1">
                         {item.submenu.map((subItem) => (
                           <li key={subItem.path}>
                             <Link
                               to={createPageUrl(subItem.path)}
                               onClick={() => setSidebarOpen(false)}
                               className={`
-                                block px-4 py-2.5 rounded-lg text-sm
-                                transition-all duration-200
+                                block px-4 py-2.5 rounded-lg text-sm font-medium
+                                transition-all duration-300
                                 ${isActiveRoute(subItem.path)
-                                  ? 'text-yellow-400 bg-yellow-500/15 font-medium'
-                                  : 'text-neutral-400 hover:text-yellow-300 hover:bg-neutral-700/30'
+                                  ? 'text-amber-400 bg-amber-500/20 shadow-inner'
+                                  : 'text-neutral-400 hover:text-amber-300 hover:bg-amber-500/10'
                                 }
                               `}
                             >
@@ -315,11 +368,11 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* Main Content */}
-      <main className="lg:ml-72 min-h-screen pt-16 lg:pt-0">
-        <div className="p-4 md:p-6 lg:p-8 animate-fade-in">
+      <main className="lg:ml-72 min-h-screen pt-16 lg:pt-0 relative">
+        <div className="p-4 md:p-6 lg:p-8 animate-fade-in relative z-10">
           {children}
         </div>
       </main>
-    </div>
-  );
-}
+      </div>
+      );
+      }
