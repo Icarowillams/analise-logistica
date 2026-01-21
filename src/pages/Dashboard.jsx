@@ -13,12 +13,11 @@ import {
   TrendingUp,
   Award
 } from 'lucide-react';
-import HoneyStatsCard from '@/components/ui/HoneyStatsCard';
-import { HoneyCard, HoneyCardHeader, HoneyCardTitle, HoneyCardContent } from '@/components/ui/HoneyCard';
-import PageHeader from '@/components/ui/PageHeader';
+import StatsCard from '@/components/ui/StatsCard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const COLORS = ['#f59e0b', '#fbbf24', '#d97706', '#b45309', '#92400e'];
+const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'];
 
 export default function Dashboard() {
   const { data: vendas = [], isLoading: loadingVendas } = useQuery({
@@ -100,12 +99,12 @@ export default function Dashboard() {
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-36 rounded-2xl bg-amber-100/50" />
+            <Skeleton key={i} className="h-36 rounded-2xl" />
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-80 rounded-2xl bg-amber-100/50" />
-          <Skeleton className="h-80 rounded-2xl bg-amber-100/50" />
+          <Skeleton className="h-80 rounded-2xl" />
+          <Skeleton className="h-80 rounded-2xl" />
         </div>
       </div>
     );
@@ -113,84 +112,81 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header com tema Pão & Mel */}
-      <PageHeader 
-        title="Dashboard Principal"
-        subtitle="Visão geral do desempenho comercial"
-        icon={TrendingUp}
-        showBee={true}
-      />
+      <div className="flex items-center gap-4 mb-8">
+        <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <TrendingUp className="h-6 w-6 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
+          <p className="text-slate-500">Visão geral do desempenho comercial</p>
+        </div>
+      </div>
 
-      {/* KPIs com tema de mel */}
+      {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <HoneyStatsCard
+        <StatsCard
           title="Total Vendido"
           value={`R$ ${totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           subtitle={`${vendas.length} vendas realizadas`}
           icon={DollarSign}
-          variant="honey"
+          gradient="from-emerald-500 to-teal-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Clientes Ativos"
           value={clientesAtivos}
           subtitle={`de ${clientes.length} cadastrados`}
           icon={Users}
-          variant="dark"
+          gradient="from-blue-500 to-cyan-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Vendedores"
           value={vendedoresAtivos}
           subtitle="ativos na equipe"
           icon={Award}
-          variant="golden"
+          gradient="from-indigo-500 to-purple-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Trocas"
           value={totalTrocas}
           subtitle="processadas"
           icon={ArrowLeftRight}
-          variant="amber"
+          gradient="from-orange-500 to-amber-500"
         />
       </div>
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <HoneyCard variant="glass" glow>
-          <HoneyCardHeader>
-            <HoneyCardTitle icon={TrendingUp}>Vendas por Mês</HoneyCardTitle>
-          </HoneyCardHeader>
-          <HoneyCardContent>
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-800">Vendas por Mês</CardTitle>
+          </CardHeader>
+          <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={vendasPorMes}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#fcd34d40" />
-                <XAxis dataKey="mes" tick={{ fill: '#92400e', fontSize: 12 }} />
-                <YAxis tick={{ fill: '#92400e', fontSize: 12 }} tickFormatter={(v) => `R$${(v/1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 12 }} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={(v) => `R$${(v/1000).toFixed(0)}k`} />
                 <Tooltip 
                   formatter={(value) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Valor']}
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: '1px solid #fbbf24', 
-                    boxShadow: '0 10px 40px rgba(245,158,11,0.2)',
-                    backgroundColor: '#fffbeb'
-                  }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}
                 />
-                <Bar dataKey="valor" fill="url(#honeyGradient)" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="valor" fill="url(#colorGradient)" radius={[8, 8, 0, 0]} />
                 <defs>
-                  <linearGradient id="honeyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#fbbf24" />
-                    <stop offset="100%" stopColor="#d97706" />
+                  <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" />
+                    <stop offset="100%" stopColor="#8b5cf6" />
                   </linearGradient>
                 </defs>
               </BarChart>
             </ResponsiveContainer>
-          </HoneyCardContent>
-        </HoneyCard>
+          </CardContent>
+        </Card>
 
-        <HoneyCard variant="glass" glow>
-          <HoneyCardHeader>
-            <HoneyCardTitle icon={Package}>Top 5 Produtos</HoneyCardTitle>
-          </HoneyCardHeader>
-          <HoneyCardContent>
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-800">Top 5 Produtos</CardTitle>
+          </CardHeader>
+          <CardContent>
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
@@ -208,12 +204,7 @@ export default function Dashboard() {
                 </Pie>
                 <Tooltip 
                   formatter={(value) => [value, 'Quantidade']}
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: '1px solid #fbbf24', 
-                    boxShadow: '0 10px 40px rgba(245,158,11,0.2)',
-                    backgroundColor: '#fffbeb'
-                  }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}
                 />
                 <Legend 
                   verticalAlign="bottom" 
@@ -222,67 +213,38 @@ export default function Dashboard() {
                 />
               </PieChart>
             </ResponsiveContainer>
-          </HoneyCardContent>
-        </HoneyCard>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Ranking Vendedores */}
-      <HoneyCard variant="default" glow>
-        <HoneyCardHeader>
-          <HoneyCardTitle icon={Award}>Ranking de Vendedores</HoneyCardTitle>
-        </HoneyCardHeader>
-        <HoneyCardContent>
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-slate-800">Ranking de Vendedores</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="space-y-4">
             {topVendedores.map((v, idx) => (
-              <div key={v.nome} className="flex items-center gap-4 p-3 rounded-xl hover:bg-amber-50/50 transition-colors">
-                {/* Posição com hexágono */}
-                <div className="relative">
-                  <svg viewBox="0 0 100 115.47" className={`w-12 h-14 ${idx < 3 ? 'drop-shadow-md' : ''}`}>
-                    <defs>
-                      <linearGradient id={`rankGrad${idx}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                        {idx === 0 ? (
-                          <>
-                            <stop offset="0%" stopColor="#fbbf24" />
-                            <stop offset="100%" stopColor="#f59e0b" />
-                          </>
-                        ) : idx === 1 ? (
-                          <>
-                            <stop offset="0%" stopColor="#d1d5db" />
-                            <stop offset="100%" stopColor="#9ca3af" />
-                          </>
-                        ) : idx === 2 ? (
-                          <>
-                            <stop offset="0%" stopColor="#d97706" />
-                            <stop offset="100%" stopColor="#b45309" />
-                          </>
-                        ) : (
-                          <>
-                            <stop offset="0%" stopColor="#fef3c7" />
-                            <stop offset="100%" stopColor="#fde68a" />
-                          </>
-                        )}
-                      </linearGradient>
-                    </defs>
-                    <polygon 
-                      points="50,0 100,28.87 100,86.60 50,115.47 0,86.60 0,28.87"
-                      fill={`url(#rankGrad${idx})`}
-                    />
-                  </svg>
-                  <span className={`absolute inset-0 flex items-center justify-center font-black text-lg ${idx < 3 ? 'text-amber-950' : 'text-amber-700'}`}>
-                    {idx + 1}
-                  </span>
+              <div key={v.nome} className="flex items-center gap-4">
+                <div className={`
+                  w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white
+                  ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : 
+                    idx === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
+                    idx === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-700' :
+                    'bg-gradient-to-br from-slate-300 to-slate-400'}
+                `}>
+                  {idx + 1}
                 </div>
-                
                 <div className="flex-1">
-                  <div className="flex justify-between mb-2">
-                    <span className="font-semibold text-neutral-800">{v.nome}</span>
-                    <span className="font-bold text-amber-700">
+                  <div className="flex justify-between mb-1">
+                    <span className="font-medium text-slate-700">{v.nome}</span>
+                    <span className="font-semibold text-slate-900">
                       R$ {v.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <div className="h-3 bg-amber-100 rounded-full overflow-hidden">
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 rounded-full transition-all duration-700 shadow-inner"
+                      className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
                       style={{ width: `${topVendedores[0]?.valor ? (v.valor / topVendedores[0].valor) * 100 : 0}%` }}
                     />
                   </div>
@@ -290,16 +252,11 @@ export default function Dashboard() {
               </div>
             ))}
             {topVendedores.length === 0 && (
-              <div className="text-center py-12">
-                <svg viewBox="0 0 100 115.47" className="w-16 h-18 mx-auto mb-4 opacity-30">
-                  <polygon points="50,0 100,28.87 100,86.60 50,115.47 0,86.60 0,28.87" fill="#f59e0b"/>
-                </svg>
-                <p className="text-amber-700 font-medium">Nenhuma venda registrada ainda</p>
-              </div>
+              <p className="text-center text-slate-500 py-8">Nenhuma venda registrada ainda</p>
             )}
           </div>
-        </HoneyCardContent>
-      </HoneyCard>
+        </CardContent>
+      </Card>
     </div>
   );
 }

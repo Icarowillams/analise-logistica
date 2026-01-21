@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,9 +15,7 @@ import {
   TrendingUp, Users, MapPin, Filter, Calendar, 
   CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText
 } from 'lucide-react';
-import HoneyStatsCard from '@/components/ui/HoneyStatsCard';
-import { HoneyCard, HoneyCardHeader, HoneyCardTitle, HoneyCardContent } from '@/components/ui/HoneyCard';
-import PageHeader from '@/components/ui/PageHeader';
+import StatsCard from '@/components/ui/StatsCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function AnaliseVisitas() {
@@ -337,53 +336,42 @@ export default function AnaliseVisitas() {
 
   return (
     <div className="space-y-6">
-      {/* Header com tema Pão & Mel */}
-      <PageHeader 
-        title="Análise de Visitas"
-        subtitle="KPIs e indicadores de desempenho de rota e visita"
-        icon={TrendingUp}
-        showBee={true}
-      />
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl">
+          <TrendingUp className="h-7 w-7 text-white" />
+        </div>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Análise de Visitas</h1>
+          <p className="text-slate-500 mt-1">KPIs e indicadores de desempenho de rota e visita</p>
+        </div>
+      </div>
 
       {/* Filtros */}
-      <HoneyCard variant="honey" glow>
-        <HoneyCardHeader>
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
           <div className="flex items-center justify-between">
-            <HoneyCardTitle icon={Filter}>Filtros</HoneyCardTitle>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={limparFiltros}
-              className="text-amber-700 hover:text-amber-900 hover:bg-amber-200/50"
-            >
-              Limpar Filtros
-            </Button>
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-slate-600" />
+              <CardTitle className="text-base">Filtros</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={limparFiltros}>Limpar Filtros</Button>
           </div>
-        </HoneyCardHeader>
-        <HoneyCardContent>
+        </CardHeader>
+        <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="text-sm font-semibold text-amber-900 mb-1.5 block">Data Início</label>
-              <Input 
-                type="date" 
-                value={dataInicio} 
-                onChange={e => setDataInicio(e.target.value)} 
-                className="border-amber-300 focus:border-amber-500 focus:ring-amber-500/20"
-              />
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Início</label>
+              <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-semibold text-amber-900 mb-1.5 block">Data Fim</label>
-              <Input 
-                type="date" 
-                value={dataFim} 
-                onChange={e => setDataFim(e.target.value)} 
-                className="border-amber-300 focus:border-amber-500 focus:ring-amber-500/20"
-              />
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Fim</label>
+              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-semibold text-amber-900 mb-1.5 block">Vendedor</label>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Vendedor</label>
               <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
-                <SelectTrigger className="border-amber-300 focus:border-amber-500"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
                   {vendedores
@@ -395,9 +383,9 @@ export default function AnaliseVisitas() {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-semibold text-amber-900 mb-1.5 block">Rota</label>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Rota</label>
               <Select value={filtroRota} onValueChange={setFiltroRota}>
-                <SelectTrigger className="border-amber-300 focus:border-amber-500"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todas</SelectItem>
                   {rotas.map(r => (
@@ -407,162 +395,147 @@ export default function AnaliseVisitas() {
               </Select>
             </div>
           </div>
-        </HoneyCardContent>
-      </HoneyCard>
+        </CardContent>
+      </Card>
 
-      {/* KPIs Principais com tema de colmeia */}
+      {/* KPIs Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <HoneyStatsCard
+        <StatsCard
           title="Visitas Agendadas"
           value={stats.totalAgendadas}
           subtitle="no período"
           icon={Calendar}
-          variant="dark"
+          gradient="from-blue-500 to-indigo-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Taxa de Conclusão"
           value={`${taxaConclusao}%`}
           subtitle={`${stats.totalRealizadas} realizadas`}
           icon={Target}
-          variant="honey"
+          gradient="from-yellow-500 to-amber-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Visitas Realizadas"
           value={stats.totalRealizadas}
-          subtitle="concluídas com sucesso"
+          subtitle="clique para detalhes"
           icon={CheckCircle}
-          variant="golden"
+          gradient="from-green-500 to-emerald-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Não Realizadas"
           value={stats.totalNaoAtendidas}
-          subtitle="pendentes de atenção"
+          subtitle="clique para detalhes"
           icon={XCircle}
-          variant="amber"
+          gradient="from-red-500 to-rose-600"
         />
-        <HoneyStatsCard
+        <StatsCard
           title="Em Andamento"
           value={stats.totalEmAndamento}
           subtitle={tempoMedioPorVisita !== 'N/D' ? `tempo médio: ${tempoMedioPorVisita}` : 'sem tempo médio'}
           icon={Clock}
-          variant="dark"
+          gradient="from-orange-500 to-amber-600"
         />
       </div>
 
       {/* Gráficos lado a lado */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Evolução Diária de Visitas */}
-        <HoneyCard variant="glass" glow>
-          <HoneyCardHeader>
-            <HoneyCardTitle icon={Calendar}>Evolução Diária de Visitas</HoneyCardTitle>
-          </HoneyCardHeader>
-          <HoneyCardContent>
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-indigo-600" />
+              <CardTitle className="text-lg">Evolução Diária de Visitas</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={visitasPorDia}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#fcd34d40" />
-                <XAxis dataKey="dataFormatada" fontSize={11} stroke="#92400e" />
-                <YAxis fontSize={11} stroke="#92400e" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#fffbeb', 
-                    border: '1px solid #fbbf24',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 40px rgba(245,158,11,0.2)'
-                  }}
-                />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="dataFormatada" fontSize={11} />
+                <YAxis fontSize={11} />
+                <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="realizadas" name="Realizado" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: '#f59e0b' }} />
-                <Line type="monotone" dataKey="naoRealizadas" name="Não Realizado" stroke="#92400e" strokeWidth={3} dot={{ r: 4, fill: '#92400e' }} />
+                <Line type="monotone" dataKey="realizadas" name="Realizado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="naoRealizadas" name="Não Realizado" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
-          </HoneyCardContent>
-        </HoneyCard>
+          </CardContent>
+        </Card>
 
         {/* Distribuição de Visitas */}
-        <HoneyCard variant="glass" glow>
-          <HoneyCardHeader>
-            <HoneyCardTitle icon={Target}>Distribuição de Visitas</HoneyCardTitle>
-          </HoneyCardHeader>
-          <HoneyCardContent>
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-600" />
+              <CardTitle className="text-lg">Distribuição de Visitas</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={distribuicaoVisitas} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#fcd34d40" />
-                <XAxis type="number" stroke="#92400e" />
-                <YAxis dataKey="name" type="category" width={120} stroke="#92400e" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#fffbeb', 
-                    border: '1px solid #fbbf24',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 40px rgba(245,158,11,0.2)'
-                  }}
-                />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis dataKey="name" type="category" width={120} />
+                <Tooltip />
                 <Legend />
-                <Bar dataKey="value" name="Quantidade" radius={[0, 8, 8, 0]}>
+                <Bar dataKey="value" name="Quantidade">
                   {distribuicaoVisitas.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === 0 ? '#f59e0b' : '#92400e'} />
+                    <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </HoneyCardContent>
-        </HoneyCard>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabela de Performance por Funcionário */}
-      <HoneyCard variant="default" glow>
-        <HoneyCardHeader>
-          <HoneyCardTitle icon={FileText}>Tabela de Performance por Funcionário</HoneyCardTitle>
-        </HoneyCardHeader>
-        <HoneyCardContent>
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-orange-600" />
+            <CardTitle className="text-lg">Tabela de Performance por Funcionário</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gradient-to-r from-amber-100 to-yellow-100 border-b-2 border-amber-300">
-                  <TableHead className="font-bold text-amber-900">#</TableHead>
-                  <TableHead className="font-bold text-amber-900">Funcionário</TableHead>
-                  <TableHead className="font-bold text-center text-amber-900">Agendadas</TableHead>
-                  <TableHead className="font-bold text-center text-amber-700">Realizadas</TableHead>
-                  <TableHead className="font-bold text-center text-amber-800">Não Realizadas</TableHead>
-                  <TableHead className="font-bold text-center text-amber-600">Com Pedido</TableHead>
-                  <TableHead className="font-bold text-center text-amber-700">Sem Pedido</TableHead>
-                  <TableHead className="font-bold text-center text-amber-900">Ações</TableHead>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="font-semibold">#</TableHead>
+                  <TableHead className="font-semibold">Funcionário</TableHead>
+                  <TableHead className="font-semibold text-center">Agendadas</TableHead>
+                  <TableHead className="font-semibold text-center text-green-600">Realizadas</TableHead>
+                  <TableHead className="font-semibold text-center text-red-600">Não Realizadas</TableHead>
+                  <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
+                  <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
+                  <TableHead className="font-semibold text-center">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {performancePorFuncionario.map((item, index) => (
-                  <TableRow key={index} className="hover:bg-amber-50/50 transition-colors border-b border-amber-100">
+                  <TableRow key={index} className="hover:bg-slate-50">
                     <TableCell>
-                      <div className={`
-                        w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm
-                        ${index === 0 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-md' : 
-                          index === 1 ? 'bg-gradient-to-br from-amber-300 to-amber-400 text-amber-900' :
-                          index === 2 ? 'bg-gradient-to-br from-amber-200 to-amber-300 text-amber-800' :
-                          'bg-amber-100 text-amber-700'}
-                      `}>
+                      <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
                         {index + 1}
-                      </div>
+                      </Badge>
                     </TableCell>
-                    <TableCell className="font-semibold text-neutral-800">{item.nome}</TableCell>
-                    <TableCell className="text-center font-medium">{item.agendadas}</TableCell>
+                    <TableCell className="font-medium">{item.nome}</TableCell>
+                    <TableCell className="text-center">{item.agendadas}</TableCell>
                     <TableCell className="text-center">
-                      <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-bold text-sm">{item.realizadas}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="px-2 py-1 rounded-full bg-amber-800/10 text-amber-800 font-bold text-sm">{item.naoRealizadas}</span>
+                      <span className="text-green-600 font-medium">{item.realizadas}</span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="px-2 py-1 rounded-full bg-amber-400/20 text-amber-700 font-bold text-sm">{item.comPedido}</span>
+                      <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="px-2 py-1 rounded-full bg-amber-200/50 text-amber-600 font-bold text-sm">{item.semPedido}</span>
+                      <span className="text-blue-600 font-medium">{item.comPedido}</span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-amber-600 hover:text-amber-800 hover:bg-amber-100"
-                      >
+                      <span className="text-orange-600 font-medium">{item.semPedido}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50">
                         <FileText className="w-4 h-4" />
                       </Button>
                     </TableCell>
@@ -571,8 +544,8 @@ export default function AnaliseVisitas() {
               </TableBody>
             </Table>
           </div>
-        </HoneyCardContent>
-      </HoneyCard>
+        </CardContent>
+      </Card>
     </div>
   );
 }
