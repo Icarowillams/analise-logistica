@@ -37,6 +37,7 @@ import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
 import Dashboard from './pages/Dashboard';
 import AnaliseVisitas from './pages/AnaliseVisitas';
+import PainelVisitas from './pages/PainelVisitas';
 import __Layout from './Layout.jsx';
 
 
@@ -80,6 +81,7 @@ export const PAGES = {
     "UnidadesMedida": UnidadesMedida,
     "Dashboard": Dashboard,
     "AnaliseVisitas": AnaliseVisitas,
+    "PainelVisitas": PainelVisitas,
 }
 
 export const pagesConfig = {
