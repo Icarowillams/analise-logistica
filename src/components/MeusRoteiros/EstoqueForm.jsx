@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Download, Upload, Camera } from 'lucide-react';
+import { Plus, Edit, Trash2, Download, Send, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 
 export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
   const [formData, setFormData] = useState({
@@ -19,7 +20,10 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
     foto_url: ''
   });
   const [editingId, setEditingId] = useState(null);
+  const [editingLocalIndex, setEditingLocalIndex] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [itensPendentes, setItensPendentes] = useState([]); // Itens não enviados ainda
+  const [enviando, setEnviando] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -46,7 +50,6 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
     mutationFn: (data) => base44.entities.EstoqueVisita.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['estoquesVisita']);
-      resetForm();
     }
   });
 
@@ -75,6 +78,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       foto_url: ''
     });
     setEditingId(null);
+    setEditingLocalIndex(null);
   };
 
   const handleDataValidadeChange = (dataValidade) => {
@@ -127,14 +131,25 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       vendedor_nome: vendedorAtual?.nome || ''
     };
 
+    // Se está editando um item já salvo no banco
     if (editingId) {
       updateMutation.mutate({ id: editingId, data });
-    } else {
-      createMutation.mutate(data);
+    } 
+    // Se está editando um item pendente (local)
+    else if (editingLocalIndex !== null) {
+      const novosItens = [...itensPendentes];
+      novosItens[editingLocalIndex] = data;
+      setItensPendentes(novosItens);
+      resetForm();
+    }
+    // Adiciona novo item à lista pendente
+    else {
+      setItensPendentes([...itensPendentes, data]);
+      resetForm();
     }
   };
 
-  const handleEdit = (estoque) => {
+  const handleEditSalvo = (estoque) => {
     setFormData({
       produto_id: estoque.produto_id,
       quantidade: estoque.quantidade,
@@ -144,6 +159,47 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       foto_url: estoque.foto_url || ''
     });
     setEditingId(estoque.id);
+    setEditingLocalIndex(null);
+  };
+
+  const handleEditPendente = (item, index) => {
+    setFormData({
+      produto_id: item.produto_id,
+      quantidade: item.quantidade,
+      data_validade: item.data_validade || '',
+      data_fabricacao: item.data_fabricacao || '',
+      horario_fabricacao: item.horario_fabricacao || '',
+      foto_url: item.foto_url || ''
+    });
+    setEditingLocalIndex(index);
+    setEditingId(null);
+  };
+
+  const handleRemovePendente = (index) => {
+    const novosItens = itensPendentes.filter((_, i) => i !== index);
+    setItensPendentes(novosItens);
+  };
+
+  // Enviar apenas os itens pendentes (sem finalizar)
+  const handleEnviarSemFinalizar = async () => {
+    if (itensPendentes.length === 0) {
+      alert('Não há itens pendentes para enviar');
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      for (const item of itensPendentes) {
+        await base44.entities.EstoqueVisita.create(item);
+      }
+      setItensPendentes([]);
+      queryClient.invalidateQueries(['estoquesVisita']);
+      alert('Itens enviados com sucesso!');
+    } catch (error) {
+      alert('Erro ao enviar itens: ' + error.message);
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const handleImportarUltimoEstoque = async () => {
@@ -172,27 +228,25 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
         return;
       }
 
-      for (const estoque of estoquesAnteriores) {
-        const data = {
-          visita_id: visitaId,
-          cliente_id: clienteId,
-          cliente_nome: clienteNome,
-          produto_id: estoque.produto_id,
-          produto_nome: estoque.produto_nome,
-          produto_codigo: estoque.produto_codigo,
-          quantidade: estoque.quantidade,
-          data_validade: estoque.data_validade,
-          data_fabricacao: estoque.data_fabricacao,
-          horario_fabricacao: estoque.horario_fabricacao,
-          foto_url: estoque.foto_url,
-          vendedor_id: vendedorAtual?.id || '',
-          vendedor_nome: vendedorAtual?.nome || ''
-        };
-        await base44.entities.EstoqueVisita.create(data);
-      }
+      // Importar como itens pendentes (não salva direto)
+      const itensImportados = estoquesAnteriores.map(estoque => ({
+        visita_id: visitaId,
+        cliente_id: clienteId,
+        cliente_nome: clienteNome,
+        produto_id: estoque.produto_id,
+        produto_nome: estoque.produto_nome,
+        produto_codigo: estoque.produto_codigo,
+        quantidade: estoque.quantidade,
+        data_validade: estoque.data_validade,
+        data_fabricacao: estoque.data_fabricacao,
+        horario_fabricacao: estoque.horario_fabricacao,
+        foto_url: estoque.foto_url,
+        vendedor_id: vendedorAtual?.id || '',
+        vendedor_nome: vendedorAtual?.nome || ''
+      }));
 
-      queryClient.invalidateQueries(['estoquesVisita']);
-      alert('Último estoque importado com sucesso!');
+      setItensPendentes([...itensPendentes, ...itensImportados]);
+      alert('Último estoque importado para a lista pendente!');
     } catch (error) {
       alert('Erro ao importar estoque: ' + error.message);
     }
@@ -298,23 +352,84 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
             className="w-full bg-gradient-to-r from-amber-500 to-orange-600 h-9"
           >
             <Plus className="w-4 h-4 mr-2" />
-            {editingId ? 'Atualizar na Lista' : 'Adicionar à Lista'}
+            {editingId ? 'Atualizar Item Salvo' : editingLocalIndex !== null ? 'Atualizar Pendente' : 'Adicionar à Lista'}
           </Button>
         </div>
       </Card>
 
+      {/* Itens Pendentes (não enviados) */}
+      {itensPendentes.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              Pendentes de Envio ({itensPendentes.length})
+            </h4>
+            <Button
+              onClick={handleEnviarSemFinalizar}
+              disabled={enviando}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Send className="w-3 h-3 mr-1" />
+              {enviando ? 'Enviando...' : 'Enviar sem Finalizar'}
+            </Button>
+          </div>
+          {itensPendentes.map((item, index) => (
+            <Card key={index} className="p-3 border-2 border-dashed border-amber-300 bg-amber-50">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-500 text-white text-xs">Pendente</Badge>
+                    <p className="font-medium text-sm">{item.produto_nome}</p>
+                  </div>
+                  <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                    <span>Qtd: {item.quantidade}</span>
+                    {item.data_validade && <span>Val: {new Date(item.data_validade).toLocaleDateString('pt-BR')}</span>}
+                    {item.horario_fabricacao && <span>Hora: {item.horario_fabricacao}</span>}
+                  </div>
+                </div>
+                {item.foto_url && (
+                  <img src={item.foto_url} alt="Produto" className="h-12 w-12 object-cover rounded mr-2" />
+                )}
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditPendente(item, index)} className="h-8 w-8">
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => handleRemovePendente(index)}
+                    className="h-8 w-8 text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Itens já enviados/salvos */}
       <div className="space-y-2">
-        <h4 className="font-semibold text-sm">Produtos Adicionados ({estoques.length})</h4>
+        <h4 className="font-semibold text-sm flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          Enviados ({estoques.length})
+        </h4>
         {estoques.length === 0 ? (
           <Alert>
-            <AlertDescription>Nenhum produto adicionado ainda</AlertDescription>
+            <AlertDescription>Nenhum item enviado ainda</AlertDescription>
           </Alert>
         ) : (
           estoques.map((estoque) => (
-            <Card key={estoque.id} className="p-3">
+            <Card key={estoque.id} className="p-3 bg-slate-100 border-slate-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="font-medium text-sm">{estoque.produto_nome}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-slate-500 text-white text-xs">Enviado</Badge>
+                    <p className="font-medium text-sm text-slate-700">{estoque.produto_nome}</p>
+                  </div>
                   <div className="flex gap-3 text-xs text-slate-500 mt-1">
                     <span>Qtd: {estoque.quantidade}</span>
                     {estoque.data_validade && <span>Val: {new Date(estoque.data_validade).toLocaleDateString('pt-BR')}</span>}
@@ -325,7 +440,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
                   <img src={estoque.foto_url} alt="Produto" className="h-12 w-12 object-cover rounded mr-2" />
                 )}
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(estoque)} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditSalvo(estoque)} className="h-8 w-8">
                     <Edit className="w-3 h-3" />
                   </Button>
                   <Button 

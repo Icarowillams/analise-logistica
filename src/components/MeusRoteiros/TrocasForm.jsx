@@ -6,9 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Send, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
   const [formData, setFormData] = useState({
@@ -22,7 +23,10 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     foto_url: ''
   });
   const [editingId, setEditingId] = useState(null);
+  const [editingLocalIndex, setEditingLocalIndex] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [itensPendentes, setItensPendentes] = useState([]); // Itens não enviados ainda
+  const [enviando, setEnviando] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -54,7 +58,6 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     mutationFn: (data) => base44.entities.TrocaVisita.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['trocasVisita']);
-      resetForm();
     }
   });
 
@@ -85,6 +88,7 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
       foto_url: ''
     });
     setEditingId(null);
+    setEditingLocalIndex(null);
   };
 
   const handleDataValidadeChange = (dataValidade) => {
@@ -139,14 +143,25 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
       vendedor_nome: vendedorAtual?.nome || ''
     };
 
+    // Se está editando um item já salvo no banco
     if (editingId) {
       updateMutation.mutate({ id: editingId, data });
-    } else {
-      createMutation.mutate(data);
+    } 
+    // Se está editando um item pendente (local)
+    else if (editingLocalIndex !== null) {
+      const novosItens = [...itensPendentes];
+      novosItens[editingLocalIndex] = data;
+      setItensPendentes(novosItens);
+      resetForm();
+    }
+    // Adiciona novo item à lista pendente
+    else {
+      setItensPendentes([...itensPendentes, data]);
+      resetForm();
     }
   };
 
-  const handleEdit = (troca) => {
+  const handleEditSalvo = (troca) => {
     setFormData({
       produto_id: troca.produto_id,
       quantidade: troca.quantidade,
@@ -158,6 +173,49 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
       foto_url: troca.foto_url || ''
     });
     setEditingId(troca.id);
+    setEditingLocalIndex(null);
+  };
+
+  const handleEditPendente = (item, index) => {
+    setFormData({
+      produto_id: item.produto_id,
+      quantidade: item.quantidade,
+      data_validade: item.data_validade || '',
+      data_fabricacao: item.data_fabricacao || '',
+      horario_fabricacao: item.horario_fabricacao || '',
+      motivo_troca: item.motivo_troca,
+      ja_informado_anteriormente: item.ja_informado_anteriormente || false,
+      foto_url: item.foto_url || ''
+    });
+    setEditingLocalIndex(index);
+    setEditingId(null);
+  };
+
+  const handleRemovePendente = (index) => {
+    const novosItens = itensPendentes.filter((_, i) => i !== index);
+    setItensPendentes(novosItens);
+  };
+
+  // Enviar apenas os itens pendentes (sem finalizar)
+  const handleEnviarSemFinalizar = async () => {
+    if (itensPendentes.length === 0) {
+      alert('Não há itens pendentes para enviar');
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      for (const item of itensPendentes) {
+        await base44.entities.TrocaVisita.create(item);
+      }
+      setItensPendentes([]);
+      queryClient.invalidateQueries(['trocasVisita']);
+      alert('Itens enviados com sucesso!');
+    } catch (error) {
+      alert('Erro ao enviar itens: ' + error.message);
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -270,23 +328,86 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
             className="w-full bg-gradient-to-r from-red-500 to-orange-600 h-9"
           >
             <Plus className="w-4 h-4 mr-2" />
-            {editingId ? 'Atualizar na Lista' : 'Adicionar à Lista'}
+            {editingId ? 'Atualizar Item Salvo' : editingLocalIndex !== null ? 'Atualizar Pendente' : 'Adicionar à Lista'}
           </Button>
         </div>
       </Card>
 
+      {/* Itens Pendentes (não enviados) */}
+      {itensPendentes.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              Pendentes de Envio ({itensPendentes.length})
+            </h4>
+            <Button
+              onClick={handleEnviarSemFinalizar}
+              disabled={enviando}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Send className="w-3 h-3 mr-1" />
+              {enviando ? 'Enviando...' : 'Enviar sem Finalizar'}
+            </Button>
+          </div>
+          {itensPendentes.map((item, index) => (
+            <Card key={index} className="p-3 border-2 border-dashed border-amber-300 bg-amber-50">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-500 text-white text-xs">Pendente</Badge>
+                    <p className="font-medium text-sm">{item.produto_nome}</p>
+                  </div>
+                  <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                    <span>Qtd: {item.quantidade}</span>
+                    <span>Motivo: {item.motivo_troca}</span>
+                    {item.ja_informado_anteriormente && (
+                      <span className="text-amber-600 font-medium">⚠️ Já informada</span>
+                    )}
+                  </div>
+                </div>
+                {item.foto_url && (
+                  <img src={item.foto_url} alt="Troca" className="h-12 w-12 object-cover rounded mr-2" />
+                )}
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditPendente(item, index)} className="h-8 w-8">
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => handleRemovePendente(index)}
+                    className="h-8 w-8 text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Itens já enviados/salvos */}
       <div className="space-y-2">
-        <h4 className="font-semibold text-sm">Trocas Adicionadas ({trocas.length})</h4>
+        <h4 className="font-semibold text-sm flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          Enviados ({trocas.length})
+        </h4>
         {trocas.length === 0 ? (
           <Alert>
-            <AlertDescription>Nenhuma troca adicionada ainda</AlertDescription>
+            <AlertDescription>Nenhuma troca enviada ainda</AlertDescription>
           </Alert>
         ) : (
           trocas.map((troca) => (
-            <Card key={troca.id} className="p-3">
+            <Card key={troca.id} className="p-3 bg-slate-100 border-slate-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="font-medium text-sm">{troca.produto_nome}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-slate-500 text-white text-xs">Enviado</Badge>
+                    <p className="font-medium text-sm text-slate-700">{troca.produto_nome}</p>
+                  </div>
                   <div className="flex gap-3 text-xs text-slate-500 mt-1">
                     <span>Qtd: {troca.quantidade}</span>
                     <span>Motivo: {troca.motivo_troca}</span>
@@ -299,7 +420,7 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
                   <img src={troca.foto_url} alt="Troca" className="h-12 w-12 object-cover rounded mr-2" />
                 )}
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(troca)} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditSalvo(troca)} className="h-8 w-8">
                     <Edit className="w-3 h-3" />
                   </Button>
                   <Button 
