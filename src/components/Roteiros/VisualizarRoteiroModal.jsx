@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +9,16 @@ import MapaRoteiro from './MapaRoteiro';
 
 export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) {
   const [viewMode, setViewMode] = useState('lista');
+
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list(),
+    enabled: open
+  });
+
+  const clientesMap = useMemo(() => 
+    clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), 
+  [clientes]);
 
   if (!roteiro) return null;
 
@@ -56,18 +68,22 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
             <div>
               <h3 className="font-semibold mb-4">Sequência de Visitas:</h3>
               <div className="space-y-3">
-                {roteiro.clientes_detalhes?.map((cliente, idx) => (
-                  <div key={idx} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-slate-50">
-                    <Badge className="bg-amber-100 text-amber-700 text-lg px-3 py-1">
-                      {idx + 1}
-                    </Badge>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-lg">{cliente.nome_fantasia || cliente.cliente_nome}</h4>
-                      <p className="text-sm text-slate-600">{cliente.cliente_cidade}</p>
-                      <p className="text-xs text-slate-400">Código: {cliente.cliente_codigo}</p>
+                {roteiro.clientes_detalhes?.map((cliente, idx) => {
+                  const clienteCompleto = clientesMap[cliente.cliente_id];
+                  const nomeExibir = clienteCompleto?.nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome;
+                  return (
+                    <div key={idx} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-slate-50">
+                      <Badge className="bg-amber-100 text-amber-700 text-lg px-3 py-1">
+                        {idx + 1}
+                      </Badge>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-lg">{nomeExibir}</h4>
+                        <p className="text-sm text-slate-600">{cliente.cliente_cidade}</p>
+                        <p className="text-xs text-slate-400">Código: {cliente.cliente_codigo}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
