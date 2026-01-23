@@ -163,7 +163,15 @@ export default function RelatorioRoteiros() {
     
     // Filtro por funções (múltiplas via vendedor)
     if (filtros.funcoes_ids.length > 0) {
-      const vendedoresDasFuncoes = vendedores.filter(v => filtros.funcoes_ids.includes(v.funcao_id)).map(v => v.id);
+      // Busca nomes das funções selecionadas para comparar com o campo 'funcao' (string)
+      const nomesFuncoesSelecionadas = funcoes
+        .filter(f => filtros.funcoes_ids.includes(f.id))
+        .map(f => f.nome?.toLowerCase());
+      
+      const vendedoresDasFuncoes = vendedores.filter(v => 
+        filtros.funcoes_ids.includes(v.funcao_id) || 
+        nomesFuncoesSelecionadas.includes(v.funcao?.toLowerCase())
+      ).map(v => v.id);
       resultado = resultado.filter(r => vendedoresDasFuncoes.includes(r.vendedor_id));
     }
     
