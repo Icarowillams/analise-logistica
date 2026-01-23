@@ -69,7 +69,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
         clientes_selecionados: roteiro.clientes_detalhes?.map(c => ({
           id: c.cliente_id,
           nome: c.cliente_nome,
-          nome_fantasia: c.cliente_nome_fantasia,
+          nome_fantasia: c.nome_fantasia,
           codigo: c.cliente_codigo,
           cidade: c.cliente_cidade,
           bairro: c.cliente_bairro,
@@ -134,7 +134,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
       clientes_detalhes: formData.clientes_selecionados.map((c, idx) => ({
         cliente_id: c.id,
         cliente_nome: c.nome,
-        cliente_nome_fantasia: c.nome_fantasia,
+        nome_fantasia: c.nome_fantasia,
         cliente_codigo: c.codigo,
         cliente_cidade: c.cidade,
         cliente_bairro: c.bairro,
@@ -521,7 +521,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                               </div>
                               <Badge className="bg-amber-100 text-amber-700">{index + 1}</Badge>
                               <div className="flex-1">
-                                <p className="font-medium text-sm">{cliente.nome}</p>
+                                <p className="font-medium text-sm">{cliente.nome_fantasia || cliente.nome}</p>
                                 <p className="text-xs text-slate-500">
                                   {cliente.codigo} • {cliente.cidade}
                                 </p>
