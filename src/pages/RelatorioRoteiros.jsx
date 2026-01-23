@@ -15,6 +15,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -77,12 +80,14 @@ export default function RelatorioRoteiros() {
   
   // Filtros
   const [filtros, setFiltros] = useState({
-    dia_semana: '',
-    vendedor_id: '',
-    funcao_id: '',
+    dias_semana: [],
+    vendedores_ids: [],
+    funcoes_ids: [],
     cliente_busca: ''
   });
-  const [showFiltros, setShowFiltros] = useState(false);
+  const [showFiltros, setShowFiltros] = useState(true);
+  const [buscaVendedor, setBuscaVendedor] = useState('');
+  const [buscaFuncao, setBuscaFuncao] = useState('');
 
   // Função para trazer marcador à frente
   const bringToFront = (tipo) => {
@@ -146,20 +151,20 @@ export default function RelatorioRoteiros() {
   const roteirosFiltrados = useMemo(() => {
     let resultado = roteirosPermitidos;
     
-    // Filtro por dia da semana
-    if (filtros.dia_semana) {
-      resultado = resultado.filter(r => r.dia_semana === filtros.dia_semana);
+    // Filtro por dias da semana (múltiplos)
+    if (filtros.dias_semana.length > 0) {
+      resultado = resultado.filter(r => filtros.dias_semana.includes(r.dia_semana));
     }
     
-    // Filtro por vendedor
-    if (filtros.vendedor_id) {
-      resultado = resultado.filter(r => r.vendedor_id === filtros.vendedor_id);
+    // Filtro por vendedores (múltiplos)
+    if (filtros.vendedores_ids.length > 0) {
+      resultado = resultado.filter(r => filtros.vendedores_ids.includes(r.vendedor_id));
     }
     
-    // Filtro por função (via vendedor)
-    if (filtros.funcao_id) {
-      const vendedoresDaFuncao = vendedores.filter(v => v.funcao_id === filtros.funcao_id).map(v => v.id);
-      resultado = resultado.filter(r => vendedoresDaFuncao.includes(r.vendedor_id));
+    // Filtro por funções (múltiplas via vendedor)
+    if (filtros.funcoes_ids.length > 0) {
+      const vendedoresDasFuncoes = vendedores.filter(v => filtros.funcoes_ids.includes(v.funcao_id)).map(v => v.id);
+      resultado = resultado.filter(r => vendedoresDasFuncoes.includes(r.vendedor_id));
     }
     
     // Filtro por cliente (busca no nome)
@@ -195,10 +200,49 @@ export default function RelatorioRoteiros() {
   }, [vendedoresComRoteiros, roteirosFiltrados]);
 
   const limparFiltros = () => {
-    setFiltros({ dia_semana: '', vendedor_id: '', funcao_id: '', cliente_busca: '' });
+    setFiltros({ dias_semana: [], vendedores_ids: [], funcoes_ids: [], cliente_busca: '' });
+    setBuscaVendedor('');
+    setBuscaFuncao('');
   };
 
-  const temFiltrosAtivos = filtros.dia_semana || filtros.vendedor_id || filtros.funcao_id || filtros.cliente_busca;
+  const toggleDiaSemana = (dia) => {
+    setFiltros(prev => ({
+      ...prev,
+      dias_semana: prev.dias_semana.includes(dia) 
+        ? prev.dias_semana.filter(d => d !== dia)
+        : [...prev.dias_semana, dia]
+    }));
+  };
+
+  const toggleVendedorFiltro = (vendedorId) => {
+    setFiltros(prev => ({
+      ...prev,
+      vendedores_ids: prev.vendedores_ids.includes(vendedorId)
+        ? prev.vendedores_ids.filter(v => v !== vendedorId)
+        : [...prev.vendedores_ids, vendedorId]
+    }));
+  };
+
+  const toggleFuncaoFiltro = (funcaoId) => {
+    setFiltros(prev => ({
+      ...prev,
+      funcoes_ids: prev.funcoes_ids.includes(funcaoId)
+        ? prev.funcoes_ids.filter(f => f !== funcaoId)
+        : [...prev.funcoes_ids, funcaoId]
+    }));
+  };
+
+  const vendedoresFiltradosLista = useMemo(() => {
+    if (!buscaVendedor) return vendedores.filter(v => v.status === 'ativo');
+    return vendedores.filter(v => v.status === 'ativo' && v.nome?.toLowerCase().includes(buscaVendedor.toLowerCase()));
+  }, [vendedores, buscaVendedor]);
+
+  const funcoesFiltradosLista = useMemo(() => {
+    if (!buscaFuncao) return funcoes.filter(f => f.status === 'ativo');
+    return funcoes.filter(f => f.status === 'ativo' && f.nome?.toLowerCase().includes(buscaFuncao.toLowerCase()));
+  }, [funcoes, buscaFuncao]);
+
+  const temFiltrosAtivos = filtros.dias_semana.length > 0 || filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
   // Função para obter clientes do roteiro com status de visita
   const getClientesDoRoteiroComStatus = (roteiro) => {
