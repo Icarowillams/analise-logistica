@@ -62,7 +62,7 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
                       {idx + 1}
                     </Badge>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-lg">{cliente.clientenome || cliente.cliente_nome_fantasia}</h4>
+                      <h4 className="font-semibold text-lg">{cliente.cliente.cliente_nome_fantasia || cliente}</h4>
                       <p className="text-sm text-slate-600">{cliente.cliente_cidade}</p>
                       <p className="text-xs text-slate-400">Código: {cliente.cliente_codigo}</p>
                     </div>
