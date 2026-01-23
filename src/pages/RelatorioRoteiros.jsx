@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
@@ -69,6 +69,19 @@ export default function RelatorioRoteiros() {
   const [showMapModal, setShowMapModal] = useState(false);
   const [showPhotosModal, setShowPhotosModal] = useState(false);
   const [selectedVisita, setSelectedVisita] = useState(null);
+  const [markerZIndex, setMarkerZIndex] = useState({ cliente: 100, checkin: 200, checkout: 300 });
+  const markerRefs = useRef({ cliente: null, checkin: null, checkout: null });
+
+  // Função para trazer marcador à frente
+  const bringToFront = (tipo) => {
+    const newZIndex = { cliente: 100, checkin: 100, checkout: 100 };
+    newZIndex[tipo] = 400;
+    setMarkerZIndex(newZIndex);
+    // Abrir popup do marcador
+    if (markerRefs.current[tipo]) {
+      markerRefs.current[tipo].openPopup();
+    }
+  };
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -455,7 +468,12 @@ export default function RelatorioRoteiros() {
                     
                     {/* Marcador do Cliente (azul) - menor e no centro */}
                     {clienteLat && clienteLng && (
-                      <Marker position={addOffset(clienteLat, clienteLng, 0)} icon={clienteIcon} zIndexOffset={100}>
+                      <Marker 
+                        position={addOffset(clienteLat, clienteLng, 0)} 
+                        icon={clienteIcon} 
+                        zIndexOffset={markerZIndex.cliente}
+                        ref={(ref) => { markerRefs.current.cliente = ref; }}
+                      >
                         <Popup>
                           <strong>📍 Localização do Cliente</strong><br />
                           {selectedVisita.cliente.nome_fantasia || selectedVisita.cliente.razao_social}<br />
@@ -466,7 +484,12 @@ export default function RelatorioRoteiros() {
                     
                     {/* Marcador Check-in (verde) - maior e levemente deslocado */}
                     {checkinLat && checkinLng && (
-                      <Marker position={addOffset(checkinLat, checkinLng, 1)} icon={checkinIcon} zIndexOffset={200}>
+                      <Marker 
+                        position={addOffset(checkinLat, checkinLng, 1)} 
+                        icon={checkinIcon} 
+                        zIndexOffset={markerZIndex.checkin}
+                        ref={(ref) => { markerRefs.current.checkin = ref; }}
+                      >
                         <Popup>
                           <strong>✅ Check-in</strong><br />
                           {selectedVisita.visitaRoteiro.checkin_time ? new Date(selectedVisita.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-'}
@@ -476,7 +499,12 @@ export default function RelatorioRoteiros() {
                     
                     {/* Marcador Check-out (vermelho) - médio e deslocado oposto */}
                     {checkoutLat && checkoutLng && (
-                      <Marker position={addOffset(checkoutLat, checkoutLng, 2)} icon={checkoutIcon} zIndexOffset={300}>
+                      <Marker 
+                        position={addOffset(checkoutLat, checkoutLng, 2)} 
+                        icon={checkoutIcon} 
+                        zIndexOffset={markerZIndex.checkout}
+                        ref={(ref) => { markerRefs.current.checkout = ref; }}
+                      >
                         <Popup>
                           <strong>🚪 Check-out</strong><br />
                           {selectedVisita.visitaRoteiro.checkout_time ? new Date(selectedVisita.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-'}
@@ -497,10 +525,29 @@ export default function RelatorioRoteiros() {
             );
           })()}
           <div className="flex gap-4 text-sm mt-2">
-            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-blue-500"></div><span>Cliente</span></div>
-            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-green-500"></div><span>Check-in</span></div>
-            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-red-500"></div><span>Check-out</span></div>
+            <button 
+              onClick={() => bringToFront('cliente')}
+              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 transition-colors cursor-pointer ${markerZIndex.cliente === 400 ? 'bg-blue-100 ring-2 ring-blue-400' : ''}`}
+            >
+              <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+              <span>Cliente</span>
+            </button>
+            <button 
+              onClick={() => bringToFront('checkin')}
+              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-green-100 transition-colors cursor-pointer ${markerZIndex.checkin === 400 ? 'bg-green-100 ring-2 ring-green-400' : ''}`}
+            >
+              <div className="w-4 h-4 rounded-full bg-green-500"></div>
+              <span>Check-in</span>
+            </button>
+            <button 
+              onClick={() => bringToFront('checkout')}
+              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-red-100 transition-colors cursor-pointer ${markerZIndex.checkout === 400 ? 'bg-red-100 ring-2 ring-red-400' : ''}`}
+            >
+              <div className="w-4 h-4 rounded-full bg-red-500"></div>
+              <span>Check-out</span>
+            </button>
           </div>
+          <p className="text-xs text-slate-500 mt-1">Clique na legenda para destacar o marcador no mapa</p>
         </DialogContent>
       </Dialog>
 
@@ -565,6 +612,24 @@ export default function RelatorioRoteiros() {
   );
 }
 
+// Função para calcular tempo em loja
+function calcularTempoEmLoja(checkinTime, checkoutTime) {
+  if (!checkinTime || !checkoutTime) return null;
+  const checkin = new Date(checkinTime);
+  const checkout = new Date(checkoutTime);
+  const diffMs = checkout - checkin;
+  if (diffMs < 0) return null;
+  
+  const diffMinutos = Math.floor(diffMs / 60000);
+  const horas = Math.floor(diffMinutos / 60);
+  const minutos = diffMinutos % 60;
+  
+  if (horas > 0) {
+    return `${horas}h ${minutos}min`;
+  }
+  return `${minutos} min`;
+}
+
 function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
   const { cliente, visitaRoteiro, visitaRegistro } = clienteInfo;
 
@@ -573,13 +638,15 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
                   tipo === 'semAtendimento' ? 'bg-red-50 border-red-200' : 
                   'bg-slate-50 border-slate-200';
 
+  const tempoEmLoja = calcularTempoEmLoja(visitaRoteiro?.checkin_time, visitaRoteiro?.checkout_time);
+
   return (
     <div className={`p-3 rounded-lg border ${bgColor}`}>
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <Badge className="bg-slate-600 text-white text-xs">{clienteInfo.ordem}</Badge>
-            <span className="font-semibold text-slate-900">{cliente?.nome_fantasia || clienteInfo.cliente_nome}</span>
+            <span className="font-semibold text-slate-900">{cliente?.nome_fantasia || cliente?.razao_social || clienteInfo.cliente_nome}</span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}
@@ -602,6 +669,13 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
                   <span className="text-blue-700">
                     Check-out: {new Date(visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
                   </span>
+                </div>
+              )}
+              {tempoEmLoja && (
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-purple-600 text-white text-xs">
+                    ⏱️ Tempo em loja: {tempoEmLoja}
+                  </Badge>
                 </div>
               )}
               {tipo === 'semAtendimento' && visitaRoteiro.motivo_nao_atendimento && (
