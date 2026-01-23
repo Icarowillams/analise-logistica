@@ -459,6 +459,13 @@ export default function RelatorioRoteiros() {
             return (
               <div className="h-[400px] rounded-lg overflow-hidden">
                 {selectedVisita && hasAnyLocation ? (
+                  <>
+                  {!clienteLat && !clienteLng && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-1.5 rounded mb-2 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      Cliente sem localização cadastrada
+                    </div>
+                  )}
                   <MapContainer
                     center={[centerLat, centerLng]}
                     zoom={15}
@@ -512,6 +519,7 @@ export default function RelatorioRoteiros() {
                       </Marker>
                     )}
                   </MapContainer>
+                  </>
                 ) : (
                   <div className="h-full flex items-center justify-center bg-slate-100 rounded-lg">
                     <div className="text-center text-slate-500">

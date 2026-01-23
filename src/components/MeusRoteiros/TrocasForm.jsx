@@ -272,13 +272,18 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
           </div>
 
           <div>
-            <Label className="text-xs">Horário de Fabricação</Label>
-            <Input
-              type="time"
-              value={formData.horario_fabricacao}
-              onChange={(e) => setFormData({ ...formData, horario_fabricacao: e.target.value })}
-              className="h-9"
-            />
+            <Label className="text-xs">Período de Fabricação</Label>
+            <Select value={formData.horario_fabricacao} onValueChange={(v) => setFormData({ ...formData, horario_fabricacao: v })}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecione o período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="madrugada">Madrugada (00h - 06h)</SelectItem>
+                <SelectItem value="manha">Manhã (06h - 12h)</SelectItem>
+                <SelectItem value="tarde">Tarde (12h - 18h)</SelectItem>
+                <SelectItem value="noite">Noite (18h - 00h)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
