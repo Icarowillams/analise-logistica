@@ -362,7 +362,7 @@ export default function RelatorioRoteiros() {
           <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" className="gap-2">
             <Filter className="w-4 h-4" />
             Filtros
-            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{[filtros.dia_semana, filtros.vendedor_id, filtros.funcao_id, filtros.cliente_busca].filter(Boolean).length}</Badge>}
+            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{filtros.dias_semana.length + filtros.vendedores_ids.length + filtros.funcoes_ids.length + (filtros.cliente_busca ? 1 : 0)}</Badge>}
           </Button>
           <Button onClick={exportarCSV} variant="outline" className="gap-2">
             <Download className="w-4 h-4" />
@@ -376,53 +376,124 @@ export default function RelatorioRoteiros() {
         <Card className="border-0 shadow-lg">
           <CardContent className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filtro Dia da Semana */}
               <div>
-                <Label className="text-xs">Dia da Semana</Label>
-                <Select value={filtros.dia_semana} onValueChange={(v) => setFiltros({ ...filtros, dia_semana: v })}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Todos os dias" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>Todos os dias</SelectItem>
-                    {diasSemanaConfig.map(d => (
-                      <SelectItem key={d.valor} value={d.valor}>{d.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs mb-1 block">Dia da Semana</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
+                      <span className="truncate">
+                        {filtros.dias_semana.length === 0 
+                          ? 'Todos os dias' 
+                          : filtros.dias_semana.length === 1 
+                            ? diasSemanaConfig.find(d => d.valor === filtros.dias_semana[0])?.label
+                            : `${filtros.dias_semana.length} selecionados`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-2">
+                      {diasSemanaConfig.map(d => (
+                        <div key={d.valor} className="flex items-center gap-2">
+                          <Checkbox 
+                            id={`dia-${d.valor}`}
+                            checked={filtros.dias_semana.includes(d.valor)}
+                            onCheckedChange={() => toggleDiaSemana(d.valor)}
+                          />
+                          <label htmlFor={`dia-${d.valor}`} className="text-sm cursor-pointer flex-1">{d.label}</label>
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               
+              {/* Filtro Funcionário */}
               <div>
-                <Label className="text-xs">Funcionário</Label>
-                <Select value={filtros.vendedor_id} onValueChange={(v) => setFiltros({ ...filtros, vendedor_id: v })}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Todos os funcionários" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>Todos os funcionários</SelectItem>
-                    {vendedores.filter(v => v.status === 'ativo').map(v => (
-                      <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs mb-1 block">Funcionário</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
+                      <span className="truncate">
+                        {filtros.vendedores_ids.length === 0 
+                          ? 'Todos os funcionários' 
+                          : filtros.vendedores_ids.length === 1 
+                            ? vendedores.find(v => v.id === filtros.vendedores_ids[0])?.nome
+                            : `${filtros.vendedores_ids.length} selecionados`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <Input
+                      placeholder="Buscar funcionário..."
+                      value={buscaVendedor}
+                      onChange={(e) => setBuscaVendedor(e.target.value)}
+                      className="h-8 mb-2"
+                    />
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {vendedoresFiltradosLista.map(v => (
+                          <div key={v.id} className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`vend-${v.id}`}
+                              checked={filtros.vendedores_ids.includes(v.id)}
+                              onCheckedChange={() => toggleVendedorFiltro(v.id)}
+                            />
+                            <label htmlFor={`vend-${v.id}`} className="text-sm cursor-pointer flex-1 truncate">{v.nome}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
               </div>
               
+              {/* Filtro Função */}
               <div>
-                <Label className="text-xs">Função</Label>
-                <Select value={filtros.funcao_id} onValueChange={(v) => setFiltros({ ...filtros, funcao_id: v })}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Todas as funções" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>Todas as funções</SelectItem>
-                    {funcoes.filter(f => f.status === 'ativo').map(f => (
-                      <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs mb-1 block">Função</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
+                      <span className="truncate">
+                        {filtros.funcoes_ids.length === 0 
+                          ? 'Todas as funções' 
+                          : filtros.funcoes_ids.length === 1 
+                            ? funcoes.find(f => f.id === filtros.funcoes_ids[0])?.nome
+                            : `${filtros.funcoes_ids.length} selecionadas`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <Input
+                      placeholder="Buscar função..."
+                      value={buscaFuncao}
+                      onChange={(e) => setBuscaFuncao(e.target.value)}
+                      className="h-8 mb-2"
+                    />
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {funcoesFiltradosLista.map(f => (
+                          <div key={f.id} className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`func-${f.id}`}
+                              checked={filtros.funcoes_ids.includes(f.id)}
+                              onCheckedChange={() => toggleFuncaoFiltro(f.id)}
+                            />
+                            <label htmlFor={`func-${f.id}`} className="text-sm cursor-pointer flex-1 truncate">{f.nome}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
               </div>
               
+              {/* Buscar Cliente */}
               <div>
-                <Label className="text-xs">Buscar Cliente</Label>
+                <Label className="text-xs mb-1 block">Buscar Cliente</Label>
                 <Input
                   placeholder="Nome ou código..."
                   value={filtros.cliente_busca}
