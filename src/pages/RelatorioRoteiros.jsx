@@ -10,8 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Route, Users, MapPin, Download, CheckCircle, XCircle, Clock, AlertTriangle, 
-  Eye, Image, ChevronDown, ChevronRight, Calendar
+  Eye, Image, ChevronDown, ChevronRight, Calendar, Filter, X
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -71,6 +74,15 @@ export default function RelatorioRoteiros() {
   const [selectedVisita, setSelectedVisita] = useState(null);
   const [markerZIndex, setMarkerZIndex] = useState({ cliente: 100, checkin: 200, checkout: 300 });
   const markerRefs = useRef({ cliente: null, checkin: null, checkout: null });
+  
+  // Filtros
+  const [filtros, setFiltros] = useState({
+    dia_semana: '',
+    vendedor_id: '',
+    funcao_id: '',
+    cliente_busca: ''
+  });
+  const [showFiltros, setShowFiltros] = useState(false);
 
   // Função para trazer marcador à frente
   const bringToFront = (tipo) => {
@@ -118,6 +130,11 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.TrocaVisita.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   const { filtrarClientes, filtrarRoteiros, vendedoresPermitidosIds } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
@@ -125,20 +142,63 @@ export default function RelatorioRoteiros() {
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
-  // Vendedores com roteiros
+  // Aplicar filtros nos roteiros
+  const roteirosFiltrados = useMemo(() => {
+    let resultado = roteirosPermitidos;
+    
+    // Filtro por dia da semana
+    if (filtros.dia_semana) {
+      resultado = resultado.filter(r => r.dia_semana === filtros.dia_semana);
+    }
+    
+    // Filtro por vendedor
+    if (filtros.vendedor_id) {
+      resultado = resultado.filter(r => r.vendedor_id === filtros.vendedor_id);
+    }
+    
+    // Filtro por função (via vendedor)
+    if (filtros.funcao_id) {
+      const vendedoresDaFuncao = vendedores.filter(v => v.funcao_id === filtros.funcao_id).map(v => v.id);
+      resultado = resultado.filter(r => vendedoresDaFuncao.includes(r.vendedor_id));
+    }
+    
+    // Filtro por cliente (busca no nome)
+    if (filtros.cliente_busca) {
+      const busca = filtros.cliente_busca.toLowerCase();
+      resultado = resultado.filter(r => 
+        r.clientes_detalhes?.some(c => {
+          const clienteCompleto = clientesMap[c.cliente_id];
+          const nomeFantasia = clienteCompleto?.nome_fantasia?.toLowerCase() || '';
+          const razaoSocial = clienteCompleto?.razao_social?.toLowerCase() || c.cliente_nome?.toLowerCase() || '';
+          const codigo = clienteCompleto?.codigo?.toLowerCase() || c.cliente_codigo?.toLowerCase() || '';
+          return nomeFantasia.includes(busca) || razaoSocial.includes(busca) || codigo.includes(busca);
+        })
+      );
+    }
+    
+    return resultado;
+  }, [roteirosPermitidos, filtros, vendedores, clientesMap]);
+
+  // Vendedores com roteiros (filtrados)
   const vendedoresComRoteiros = useMemo(() => {
-    const vendedorIds = new Set(roteirosPermitidos.map(r => r.vendedor_id));
+    const vendedorIds = new Set(roteirosFiltrados.map(r => r.vendedor_id));
     return vendedores.filter(v => vendedorIds.has(v.id) && v.status === 'ativo');
-  }, [vendedores, roteirosPermitidos]);
+  }, [vendedores, roteirosFiltrados]);
 
   // Roteiros agrupados por vendedor
   const roteirosPorVendedor = useMemo(() => {
     const agrupado = {};
     vendedoresComRoteiros.forEach(v => {
-      agrupado[v.id] = roteirosPermitidos.filter(r => r.vendedor_id === v.id);
+      agrupado[v.id] = roteirosFiltrados.filter(r => r.vendedor_id === v.id);
     });
     return agrupado;
-  }, [vendedoresComRoteiros, roteirosPermitidos]);
+  }, [vendedoresComRoteiros, roteirosFiltrados]);
+
+  const limparFiltros = () => {
+    setFiltros({ dia_semana: '', vendedor_id: '', funcao_id: '', cliente_busca: '' });
+  };
+
+  const temFiltrosAtivos = filtros.dia_semana || filtros.vendedor_id || filtros.funcao_id || filtros.cliente_busca;
 
   // Função para obter clientes do roteiro com status de visita
   const getClientesDoRoteiroComStatus = (roteiro) => {
@@ -254,11 +314,91 @@ export default function RelatorioRoteiros() {
             <p className="text-slate-500 mt-1">Visualização detalhada por funcionário e dia</p>
           </div>
         </div>
-        <Button onClick={exportarCSV} variant="outline" className="gap-2">
-          <Download className="w-4 h-4" />
-          Exportar CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" className="gap-2">
+            <Filter className="w-4 h-4" />
+            Filtros
+            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{[filtros.dia_semana, filtros.vendedor_id, filtros.funcao_id, filtros.cliente_busca].filter(Boolean).length}</Badge>}
+          </Button>
+          <Button onClick={exportarCSV} variant="outline" className="gap-2">
+            <Download className="w-4 h-4" />
+            Exportar CSV
+          </Button>
+        </div>
       </div>
+
+      {/* Painel de Filtros */}
+      {showFiltros && (
+        <Card className="border-0 shadow-lg">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <Label className="text-xs">Dia da Semana</Label>
+                <Select value={filtros.dia_semana} onValueChange={(v) => setFiltros({ ...filtros, dia_semana: v })}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Todos os dias" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Todos os dias</SelectItem>
+                    {diasSemanaConfig.map(d => (
+                      <SelectItem key={d.valor} value={d.valor}>{d.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-xs">Funcionário</Label>
+                <Select value={filtros.vendedor_id} onValueChange={(v) => setFiltros({ ...filtros, vendedor_id: v })}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Todos os funcionários" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Todos os funcionários</SelectItem>
+                    {vendedores.filter(v => v.status === 'ativo').map(v => (
+                      <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-xs">Função</Label>
+                <Select value={filtros.funcao_id} onValueChange={(v) => setFiltros({ ...filtros, funcao_id: v })}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Todas as funções" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Todas as funções</SelectItem>
+                    {funcoes.filter(f => f.status === 'ativo').map(f => (
+                      <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-xs">Buscar Cliente</Label>
+                <Input
+                  placeholder="Nome ou código..."
+                  value={filtros.cliente_busca}
+                  onChange={(e) => setFiltros({ ...filtros, cliente_busca: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+            </div>
+            
+            {temFiltrosAtivos && (
+              <div className="flex justify-end mt-3">
+                <Button variant="ghost" size="sm" onClick={limparFiltros} className="text-slate-600 gap-1">
+                  <X className="w-4 h-4" />
+                  Limpar filtros
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de Vendedores */}
       <div className="space-y-4">
