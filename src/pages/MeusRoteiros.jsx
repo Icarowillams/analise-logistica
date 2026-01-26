@@ -155,6 +155,15 @@ export default function MeusRoteiros() {
   );
 }
 
+// Função auxiliar para calcular início da semana (domingo)
+function getInicioSemana(data) {
+  const d = new Date(data);
+  const diaSemana = d.getDay(); // 0 = domingo
+  d.setDate(d.getDate() - diaSemana);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
   // Calcular data correspondente ao dia selecionado
   const hoje = new Date();
@@ -176,6 +185,18 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   const dataSelecionada = new Date(hoje);
   dataSelecionada.setDate(hoje.getDate() + diffDias);
   const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
+
+  // Calcular início e fim da semana atual (domingo a sábado)
+  const inicioSemana = getInicioSemana(hoje);
+  const fimSemana = new Date(inicioSemana);
+  fimSemana.setDate(inicioSemana.getDate() + 6);
+  fimSemana.setHours(23, 59, 59, 999);
+
+  // Filtrar visitas apenas da semana atual
+  const visitasDaSemana = visitas.filter(v => {
+    const dataVisita = new Date(v.data_visita);
+    return dataVisita >= inicioSemana && dataVisita <= fimSemana;
+  });
 
   // Filtrar visitas reagendadas para este dia
   const reagendadasParaHoje = visitasReagendadas.filter(vr => 
