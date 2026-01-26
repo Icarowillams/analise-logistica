@@ -260,7 +260,8 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
       {/* Clientes do Roteiro Fixo */}
       {clientesDoRoteiro.map((cliente, idx) => {
-        const visitaExistente = visitas.find(v => 
+        // Buscar visita apenas da semana atual para este cliente/roteiro
+        const visitaExistente = visitasDaSemana.find(v => 
           v.cliente_id === cliente.cliente_id && 
           v.roteiro_id === roteiro.id
         );
