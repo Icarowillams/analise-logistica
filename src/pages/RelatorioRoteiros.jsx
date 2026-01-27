@@ -58,29 +58,68 @@ const clienteIcon = new L.Icon({
   iconSize: [20, 33], iconAnchor: [10, 33], popupAnchor: [1, -28], shadowSize: [33, 33]
 });
 
-// Função para adicionar pequeno offset aos marcadores para evitar sobreposição total
 const addOffset = (lat, lng, offsetIndex) => {
-  const offsets = [
-    [0, 0],           // Cliente (centro)
-    [0.00015, 0.00015], // Check-in (levemente nordeste)
-    [-0.00015, 0.00015] // Check-out (levemente noroeste)
-  ];
+  const offsets = [[0, 0], [0.00015, 0.00015], [-0.00015, 0.00015]];
   const [latOffset, lngOffset] = offsets[offsetIndex] || [0, 0];
   return [lat + latOffset, lng + lngOffset];
 };
 
+// Função para obter início da semana (domingo)
+function getInicioSemana(data) {
+  const d = new Date(data);
+  const diaSemana = d.getDay();
+  d.setDate(d.getDate() - diaSemana);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Função para obter todas as datas de um dia da semana no período
+function getDatasNoPeriodo(dataInicio, dataFim, diaSemanaValor) {
+  const diaNumero = diasSemanaConfig.find(d => d.valor === diaSemanaValor)?.ordem;
+  if (diaNumero === undefined) return [];
+  
+  const datas = [];
+  const inicio = new Date(dataInicio);
+  const fim = new Date(dataFim);
+  
+  // Encontrar primeiro dia da semana correto no período
+  const diff = (diaNumero - inicio.getDay() + 7) % 7;
+  const primeiroDia = new Date(inicio);
+  primeiroDia.setDate(inicio.getDate() + diff);
+  
+  // Se o primeiro dia está antes do início, avançar uma semana
+  if (primeiroDia < inicio) {
+    primeiroDia.setDate(primeiroDia.getDate() + 7);
+  }
+  
+  // Coletar todas as datas
+  const atual = new Date(primeiroDia);
+  while (atual <= fim) {
+    datas.push(atual.toISOString().split('T')[0]);
+    atual.setDate(atual.getDate() + 7);
+  }
+  
+  return datas;
+}
+
 export default function RelatorioRoteiros() {
   const [expandedVendedores, setExpandedVendedores] = useState({});
   const [expandedDias, setExpandedDias] = useState({});
+  const [selectedDates, setSelectedDates] = useState({}); // {vendedorId-dia: 'YYYY-MM-DD'}
   const [showMapModal, setShowMapModal] = useState(false);
   const [showPhotosModal, setShowPhotosModal] = useState(false);
   const [selectedVisita, setSelectedVisita] = useState(null);
   const [markerZIndex, setMarkerZIndex] = useState({ cliente: 100, checkin: 200, checkout: 300 });
   const markerRefs = useRef({ cliente: null, checkin: null, checkout: null });
   
-  // Filtros
+  // Filtros de período
+  const hoje = new Date();
+  const inicioSemanaAtual = getInicioSemana(hoje);
+  const [dataInicio, setDataInicio] = useState(inicioSemanaAtual.toISOString().split('T')[0]);
+  const [dataFim, setDataFim] = useState(hoje.toISOString().split('T')[0]);
+  
+  // Filtros adicionais
   const [filtros, setFiltros] = useState({
-    dias_semana: [],
     vendedores_ids: [],
     funcoes_ids: [],
     cliente_busca: ''
@@ -89,12 +128,10 @@ export default function RelatorioRoteiros() {
   const [buscaVendedor, setBuscaVendedor] = useState('');
   const [buscaFuncao, setBuscaFuncao] = useState('');
 
-  // Função para trazer marcador à frente
   const bringToFront = (tipo) => {
     const newZIndex = { cliente: 100, checkin: 100, checkout: 100 };
     newZIndex[tipo] = 400;
     setMarkerZIndex(newZIndex);
-    // Abrir popup do marcador
     if (markerRefs.current[tipo]) {
       markerRefs.current[tipo].openPopup();
     }
@@ -140,30 +177,37 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.Funcao.list()
   });
 
-  const { filtrarClientes, filtrarRoteiros, vendedoresPermitidosIds } = useClientesPermissao();
+  const { filtrarClientes, filtrarRoteiros } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
 
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
+  // Filtrar visitas pelo período
+  const visitasNoPeriodo = useMemo(() => {
+    return visitasRoteiro.filter(v => {
+      if (!v.data_visita) return false;
+      return v.data_visita >= dataInicio && v.data_visita <= dataFim;
+    });
+  }, [visitasRoteiro, dataInicio, dataFim]);
+
+  const visitasRegistroNoPeriodo = useMemo(() => {
+    return visitas.filter(v => {
+      if (!v.data_visita) return false;
+      return v.data_visita >= dataInicio && v.data_visita <= dataFim;
+    });
+  }, [visitas, dataInicio, dataFim]);
+
   // Aplicar filtros nos roteiros
   const roteirosFiltrados = useMemo(() => {
     let resultado = roteirosPermitidos;
     
-    // Filtro por dias da semana (múltiplos)
-    if (filtros.dias_semana.length > 0) {
-      resultado = resultado.filter(r => filtros.dias_semana.includes(r.dia_semana));
-    }
-    
-    // Filtro por vendedores (múltiplos)
     if (filtros.vendedores_ids.length > 0) {
       resultado = resultado.filter(r => filtros.vendedores_ids.includes(r.vendedor_id));
     }
     
-    // Filtro por funções (múltiplas via vendedor)
     if (filtros.funcoes_ids.length > 0) {
-      // Busca nomes das funções selecionadas para comparar com o campo 'funcao' (string)
       const nomesFuncoesSelecionadas = funcoes
         .filter(f => filtros.funcoes_ids.includes(f.id))
         .map(f => f.nome?.toLowerCase());
@@ -175,7 +219,6 @@ export default function RelatorioRoteiros() {
       resultado = resultado.filter(r => vendedoresDasFuncoes.includes(r.vendedor_id));
     }
     
-    // Filtro por cliente (busca no nome)
     if (filtros.cliente_busca) {
       const busca = filtros.cliente_busca.toLowerCase();
       resultado = resultado.filter(r => 
@@ -190,15 +233,13 @@ export default function RelatorioRoteiros() {
     }
     
     return resultado;
-  }, [roteirosPermitidos, filtros, vendedores, clientesMap]);
+  }, [roteirosPermitidos, filtros, vendedores, clientesMap, funcoes]);
 
-  // Vendedores com roteiros (filtrados)
   const vendedoresComRoteiros = useMemo(() => {
     const vendedorIds = new Set(roteirosFiltrados.map(r => r.vendedor_id));
     return vendedores.filter(v => vendedorIds.has(v.id) && v.status === 'ativo');
   }, [vendedores, roteirosFiltrados]);
 
-  // Roteiros agrupados por vendedor
   const roteirosPorVendedor = useMemo(() => {
     const agrupado = {};
     vendedoresComRoteiros.forEach(v => {
@@ -208,18 +249,9 @@ export default function RelatorioRoteiros() {
   }, [vendedoresComRoteiros, roteirosFiltrados]);
 
   const limparFiltros = () => {
-    setFiltros({ dias_semana: [], vendedores_ids: [], funcoes_ids: [], cliente_busca: '' });
+    setFiltros({ vendedores_ids: [], funcoes_ids: [], cliente_busca: '' });
     setBuscaVendedor('');
     setBuscaFuncao('');
-  };
-
-  const toggleDiaSemana = (dia) => {
-    setFiltros(prev => ({
-      ...prev,
-      dias_semana: prev.dias_semana.includes(dia) 
-        ? prev.dias_semana.filter(d => d !== dia)
-        : [...prev.dias_semana, dia]
-    }));
   };
 
   const toggleVendedorFiltro = (vendedorId) => {
@@ -250,29 +282,30 @@ export default function RelatorioRoteiros() {
     return funcoes.filter(f => f.status === 'ativo' && f.nome?.toLowerCase().includes(buscaFuncao.toLowerCase()));
   }, [funcoes, buscaFuncao]);
 
-  const temFiltrosAtivos = filtros.dias_semana.length > 0 || filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
+  const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes do roteiro com status de visita
-  const getClientesDoRoteiroComStatus = (roteiro) => {
+  // Função para obter clientes visitados em uma data específica
+  const getClientesVisitadosNaData = (roteiro, dataEspecifica) => {
     const clientesDoRoteiro = roteiro.clientes_detalhes || [];
-    const concluidos = [];      // Check-in E Check-out realizados
-    const emAtendimento = [];   // Apenas Check-in (sem check-out)
-    const semAtendimento = [];  // Não atendido (com motivo)
-    const semCheckin = [];      // Sem nenhum registro
+    const concluidos = [];
+    const emAtendimento = [];
+    const semAtendimento = [];
+    const semCheckin = [];
 
     clientesDoRoteiro.forEach((clienteRoteiro, idx) => {
       const clienteCompleto = clientesMap[clienteRoteiro.cliente_id];
       
-      // Buscar visita do cliente
-      const visitaRot = visitasRoteiro.find(v => 
+      // Buscar visita do cliente nesta data específica
+      const visitaRot = visitasNoPeriodo.find(v => 
         v.cliente_id === clienteRoteiro.cliente_id && 
         v.vendedor_id === roteiro.vendedor_id &&
-        v.roteiro_id === roteiro.id
+        v.data_visita === dataEspecifica
       );
 
-      const visitaReg = visitas.find(v =>
+      const visitaReg = visitasRegistroNoPeriodo.find(v =>
         v.cliente_id === clienteRoteiro.cliente_id &&
-        v.vendedor_id === roteiro.vendedor_id
+        v.vendedor_id === roteiro.vendedor_id &&
+        v.data_visita === dataEspecifica
       );
 
       const clienteInfo = {
@@ -280,20 +313,17 @@ export default function RelatorioRoteiros() {
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot,
-        visitaRegistro: visitaReg
+        visitaRegistro: visitaReg,
+        dataVisita: dataEspecifica
       };
 
       if (visitaRot && visitaRot.status === 'nao_atendido') {
-        // Sem Atendimento: não atendido com motivo
         semAtendimento.push(clienteInfo);
       } else if (visitaRot && visitaRot.status === 'concluida' && visitaRot.checkout_time) {
-        // Concluído: tem check-in E check-out
         concluidos.push(clienteInfo);
       } else if (visitaRot && visitaRot.checkin_time && !visitaRot.checkout_time) {
-        // Em Atendimento: tem check-in mas não tem check-out
         emAtendimento.push(clienteInfo);
       } else {
-        // Sem Check-in: nenhum registro
         semCheckin.push(clienteInfo);
       }
     });
@@ -308,6 +338,11 @@ export default function RelatorioRoteiros() {
   const toggleDia = (vendedorId, dia) => {
     const key = `${vendedorId}-${dia}`;
     setExpandedDias(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSelectDate = (vendedorId, dia, date) => {
+    const key = `${vendedorId}-${dia}`;
+    setSelectedDates(prev => ({ ...prev, [key]: date }));
   };
 
   const handleOpenMap = (clienteInfo) => {
@@ -330,18 +365,21 @@ export default function RelatorioRoteiros() {
   }, [selectedVisita, estoques, trocas]);
 
   const exportarCSV = () => {
-    const linhas = ['Vendedor;Dia;Cliente;Status;Check-in;Check-out'];
+    const linhas = ['Vendedor;Dia;Data;Cliente;Status;Check-in;Check-out'];
     vendedoresComRoteiros.forEach(vendedor => {
       const roteirosVend = roteirosPorVendedor[vendedor.id] || [];
       roteirosVend.forEach(roteiro => {
         const diaLabel = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana)?.label || roteiro.dia_semana;
+        const datasNoPeriodo = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
         
-        const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesDoRoteiroComStatus(roteiro);
-        [...concluidos, ...emAtendimento, ...semAtendimento, ...semCheckin].forEach(c => {
-          const status = concluidos.includes(c) ? 'Concluído' : emAtendimento.includes(c) ? 'Em Atendimento' : semAtendimento.includes(c) ? 'Sem Atendimento' : 'Sem Check-in';
-          const checkin = c.visitaRoteiro?.checkin_time ? new Date(c.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-';
-          const checkout = c.visitaRoteiro?.checkout_time ? new Date(c.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-';
-          linhas.push(`${vendedor.nome};${diaLabel};${c.cliente?.nome_fantasia || c.cliente_nome};${status};${checkin};${checkout}`);
+        datasNoPeriodo.forEach(data => {
+          const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(roteiro, data);
+          [...concluidos, ...emAtendimento, ...semAtendimento].forEach(c => {
+            const status = concluidos.includes(c) ? 'Concluído' : emAtendimento.includes(c) ? 'Em Atendimento' : 'Sem Atendimento';
+            const checkin = c.visitaRoteiro?.checkin_time ? new Date(c.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-';
+            const checkout = c.visitaRoteiro?.checkout_time ? new Date(c.visitaRoteiro.checkout_time).toLocaleString('pt-BR') : '-';
+            linhas.push(`${vendedor.nome};${diaLabel};${new Date(data).toLocaleDateString('pt-BR')};${c.cliente?.nome_fantasia || c.cliente_nome};${status};${checkin};${checkout}`);
+          });
         });
       });
     });
@@ -356,21 +394,21 @@ export default function RelatorioRoteiros() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl hexagon-icon">
             <Route className="h-7 w-7 text-white" />
           </div>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Relatório de Roteiros/Visitas</h1>
-            <p className="text-slate-500 mt-1">Visualização detalhada por funcionário e dia</p>
+            <p className="text-slate-500 mt-1">Visualização por período e data específica</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" className="gap-2">
             <Filter className="w-4 h-4" />
             Filtros
-            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{filtros.dias_semana.length + filtros.vendedores_ids.length + filtros.funcoes_ids.length + (filtros.cliente_busca ? 1 : 0)}</Badge>}
+            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{filtros.vendedores_ids.length + filtros.funcoes_ids.length + (filtros.cliente_busca ? 1 : 0)}</Badge>}
           </Button>
           <Button onClick={exportarCSV} variant="outline" className="gap-2">
             <Download className="w-4 h-4" />
@@ -383,38 +421,27 @@ export default function RelatorioRoteiros() {
       {showFiltros && (
         <Card className="border-0 shadow-lg">
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Filtro Dia da Semana */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Filtro de Período - Data Início */}
               <div>
-                <Label className="text-xs mb-1 block">Dia da Semana</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
-                      <span className="truncate">
-                        {filtros.dias_semana.length === 0 
-                          ? 'Todos os dias' 
-                          : filtros.dias_semana.length === 1 
-                            ? diasSemanaConfig.find(d => d.valor === filtros.dias_semana[0])?.label
-                            : `${filtros.dias_semana.length} selecionados`}
-                      </span>
-                      <ChevronDown className="w-4 h-4 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-56 p-2" align="start">
-                    <div className="space-y-2">
-                      {diasSemanaConfig.map(d => (
-                        <div key={d.valor} className="flex items-center gap-2">
-                          <Checkbox 
-                            id={`dia-${d.valor}`}
-                            checked={filtros.dias_semana.includes(d.valor)}
-                            onCheckedChange={() => toggleDiaSemana(d.valor)}
-                          />
-                          <label htmlFor={`dia-${d.valor}`} className="text-sm cursor-pointer flex-1">{d.label}</label>
-                        </div>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <Label className="text-xs mb-1 block">Data Início</Label>
+                <Input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              
+              {/* Filtro de Período - Data Fim */}
+              <div>
+                <Label className="text-xs mb-1 block">Data Fim</Label>
+                <Input
+                  type="date"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                  className="h-9"
+                />
               </div>
               
               {/* Filtro Funcionário */}
@@ -425,7 +452,7 @@ export default function RelatorioRoteiros() {
                     <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
                       <span className="truncate">
                         {filtros.vendedores_ids.length === 0 
-                          ? 'Todos os funcionários' 
+                          ? 'Todos' 
                           : filtros.vendedores_ids.length === 1 
                             ? vendedores.find(v => v.id === filtros.vendedores_ids[0])?.nome
                             : `${filtros.vendedores_ids.length} selecionados`}
@@ -466,7 +493,7 @@ export default function RelatorioRoteiros() {
                     <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
                       <span className="truncate">
                         {filtros.funcoes_ids.length === 0 
-                          ? 'Todas as funções' 
+                          ? 'Todas' 
                           : filtros.funcoes_ids.length === 1 
                             ? funcoes.find(f => f.id === filtros.funcoes_ids[0])?.nome
                             : `${filtros.funcoes_ids.length} selecionadas`}
@@ -578,7 +605,14 @@ export default function RelatorioRoteiros() {
                         const diaConfig = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana);
                         const keyDia = `${vendedor.id}-${roteiro.dia_semana}`;
                         const isDiaExpanded = expandedDias[keyDia];
-                        const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesDoRoteiroComStatus(roteiro);
+                        const datasDisponiveis = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
+                        const dataSelecionada = selectedDates[keyDia] || datasDisponiveis[datasDisponiveis.length - 1]; // Última data por padrão
+                        
+                        // Contar visitas realizadas no período para este dia
+                        const visitasRealizadasNoDia = visitasNoPeriodo.filter(v => 
+                          v.vendedor_id === vendedor.id && 
+                          datasDisponiveis.includes(v.data_visita)
+                        ).length;
 
                         return (
                           <Collapsible key={roteiro.id} open={isDiaExpanded} onOpenChange={() => toggleDia(vendedor.id, roteiro.dia_semana)}>
@@ -590,97 +624,126 @@ export default function RelatorioRoteiros() {
                                   <span className="font-semibold text-slate-800">{diaConfig?.label || roteiro.dia_semana}</span>
                                 </div>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge className="bg-green-100 text-green-700">{concluidos.length} concluídos</Badge>
-                                  <Badge className="bg-blue-100 text-blue-700">{emAtendimento.length} em atendimento</Badge>
-                                  <Badge className="bg-red-100 text-red-700">{semAtendimento.length} sem atendimento</Badge>
-                                  <Badge className="bg-slate-200 text-slate-700">{semCheckin.length} sem check-in</Badge>
+                                  <Badge className="bg-blue-100 text-blue-700">{datasDisponiveis.length} datas no período</Badge>
+                                  <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
                                 </div>
                               </div>
                             </CollapsibleTrigger>
 
                             <CollapsibleContent>
                               <div className="ml-8 mt-3 space-y-4">
-                                {/* Concluídos - Check-in e Check-out */}
-                                {concluidos.length > 0 && (
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1">
-                                      <CheckCircle className="w-4 h-4" /> Concluídos ({concluidos.length})
-                                    </h4>
-                                    <div className="space-y-2">
-                                      {concluidos.map((c, idx) => (
-                                        <ClienteCard 
-                                          key={idx} 
-                                          clienteInfo={c} 
-                                          tipo="concluido"
-                                          onOpenMap={() => handleOpenMap(c)}
-                                          onOpenPhotos={() => handleOpenPhotos(c)}
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
+                                {/* Seletor de Data */}
+                                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                                  <Label className="text-sm font-medium text-blue-700">Selecione a data:</Label>
+                                  <Select 
+                                    value={dataSelecionada || ''} 
+                                    onValueChange={(value) => handleSelectDate(vendedor.id, roteiro.dia_semana, value)}
+                                  >
+                                    <SelectTrigger className="w-48">
+                                      <SelectValue placeholder="Selecione uma data" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {datasDisponiveis.length === 0 ? (
+                                        <SelectItem value="none" disabled>Nenhuma data no período</SelectItem>
+                                      ) : (
+                                        datasDisponiveis.map(data => {
+                                          const visitasNaData = visitasNoPeriodo.filter(v => 
+                                            v.vendedor_id === vendedor.id && v.data_visita === data
+                                          ).length;
+                                          return (
+                                            <SelectItem key={data} value={data}>
+                                              {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                              {visitasNaData > 0 && ` (${visitasNaData} visitas)`}
+                                            </SelectItem>
+                                          );
+                                        })
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
 
-                                {/* Em Atendimento - Apenas Check-in */}
-                                {emAtendimento.length > 0 && (
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                                      <Clock className="w-4 h-4" /> Em Atendimento ({emAtendimento.length})
-                                    </h4>
-                                    <div className="space-y-2">
-                                      {emAtendimento.map((c, idx) => (
-                                        <ClienteCard 
-                                          key={idx} 
-                                          clienteInfo={c} 
-                                          tipo="emAtendimento"
-                                          onOpenMap={() => handleOpenMap(c)}
-                                          onOpenPhotos={() => handleOpenPhotos(c)}
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
+                                {/* Clientes da data selecionada */}
+                                {dataSelecionada && (() => {
+                                  const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(roteiro, dataSelecionada);
+                                  const temVisitas = concluidos.length > 0 || emAtendimento.length > 0 || semAtendimento.length > 0;
 
-                                {/* Sem Atendimento - Não atendido com motivo */}
-                                {semAtendimento.length > 0 && (
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1">
-                                      <XCircle className="w-4 h-4" /> Sem Atendimento ({semAtendimento.length})
-                                    </h4>
-                                    <div className="space-y-2">
-                                      {semAtendimento.map((c, idx) => (
-                                        <ClienteCard 
-                                          key={idx} 
-                                          clienteInfo={c} 
-                                          tipo="semAtendimento"
-                                          onOpenMap={() => handleOpenMap(c)}
-                                          onOpenPhotos={() => handleOpenPhotos(c)}
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
+                                  return (
+                                    <div className="space-y-4">
+                                      <div className="text-sm text-slate-600 font-medium">
+                                        Visitas em {new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                                      </div>
 
-                                {/* Sem Check-in - Pendentes */}
-                                {semCheckin.length > 0 && (
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-slate-600 mb-2 flex items-center gap-1">
-                                      <AlertTriangle className="w-4 h-4" /> Sem Check-in ({semCheckin.length})
-                                    </h4>
-                                    <div className="space-y-2">
-                                      {semCheckin.map((c, idx) => (
-                                        <ClienteCard 
-                                          key={idx} 
-                                          clienteInfo={c} 
-                                          tipo="semCheckin"
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
+                                      {!temVisitas ? (
+                                        <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
+                                          <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                          <p>Nenhuma visita realizada nesta data</p>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          {/* Concluídos */}
+                                          {concluidos.length > 0 && (
+                                            <div>
+                                              <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1">
+                                                <CheckCircle className="w-4 h-4" /> Concluídos ({concluidos.length})
+                                              </h4>
+                                              <div className="space-y-2">
+                                                {concluidos.map((c, idx) => (
+                                                  <ClienteCard 
+                                                    key={idx} 
+                                                    clienteInfo={c} 
+                                                    tipo="concluido"
+                                                    onOpenMap={() => handleOpenMap(c)}
+                                                    onOpenPhotos={() => handleOpenPhotos(c)}
+                                                  />
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
 
-                                {concluidos.length === 0 && emAtendimento.length === 0 && semAtendimento.length === 0 && semCheckin.length === 0 && (
-                                  <p className="text-slate-500 text-sm">Nenhum cliente neste roteiro</p>
-                                )}
+                                          {/* Em Atendimento */}
+                                          {emAtendimento.length > 0 && (
+                                            <div>
+                                              <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                                                <Clock className="w-4 h-4" /> Em Atendimento ({emAtendimento.length})
+                                              </h4>
+                                              <div className="space-y-2">
+                                                {emAtendimento.map((c, idx) => (
+                                                  <ClienteCard 
+                                                    key={idx} 
+                                                    clienteInfo={c} 
+                                                    tipo="emAtendimento"
+                                                    onOpenMap={() => handleOpenMap(c)}
+                                                    onOpenPhotos={() => handleOpenPhotos(c)}
+                                                  />
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Sem Atendimento */}
+                                          {semAtendimento.length > 0 && (
+                                            <div>
+                                              <h4 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1">
+                                                <XCircle className="w-4 h-4" /> Sem Atendimento ({semAtendimento.length})
+                                              </h4>
+                                              <div className="space-y-2">
+                                                {semAtendimento.map((c, idx) => (
+                                                  <ClienteCard 
+                                                    key={idx} 
+                                                    clienteInfo={c} 
+                                                    tipo="semAtendimento"
+                                                    onOpenMap={() => handleOpenMap(c)}
+                                                    onOpenPhotos={() => handleOpenPhotos(c)}
+                                                  />
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </CollapsibleContent>
                           </Collapsible>
@@ -705,7 +768,6 @@ export default function RelatorioRoteiros() {
             </DialogTitle>
           </DialogHeader>
           {(() => {
-            // Buscar latitude/longitude de check-in (pode estar em diferentes campos)
             const checkinLat = selectedVisita?.visitaRoteiro?.checkin_latitude || selectedVisita?.visitaRoteiro?.latitude_checkin;
             const checkinLng = selectedVisita?.visitaRoteiro?.checkin_longitude || selectedVisita?.visitaRoteiro?.longitude_checkin;
             const checkoutLat = selectedVisita?.visitaRoteiro?.checkout_latitude;
@@ -713,7 +775,6 @@ export default function RelatorioRoteiros() {
             const clienteLat = selectedVisita?.cliente?.latitude;
             const clienteLng = selectedVisita?.cliente?.longitude;
 
-            // Centro do mapa: priorizar check-in, depois cliente
             const centerLat = checkinLat || clienteLat || -8.05;
             const centerLng = checkinLng || clienteLng || -34.9;
 
@@ -736,7 +797,6 @@ export default function RelatorioRoteiros() {
                   >
                     <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     
-                    {/* Marcador do Cliente (azul) - menor e no centro */}
                     {clienteLat && clienteLng && (
                       <Marker 
                         position={addOffset(clienteLat, clienteLng, 0)} 
@@ -752,7 +812,6 @@ export default function RelatorioRoteiros() {
                       </Marker>
                     )}
                     
-                    {/* Marcador Check-in (verde) - maior e levemente deslocado */}
                     {checkinLat && checkinLng && (
                       <Marker 
                         position={addOffset(checkinLat, checkinLng, 1)} 
@@ -767,7 +826,6 @@ export default function RelatorioRoteiros() {
                       </Marker>
                     )}
                     
-                    {/* Marcador Check-out (vermelho) - médio e deslocado oposto */}
                     {checkoutLat && checkoutLng && (
                       <Marker 
                         position={addOffset(checkoutLat, checkoutLng, 2)} 
@@ -788,7 +846,6 @@ export default function RelatorioRoteiros() {
                     <div className="text-center text-slate-500">
                       <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
                       <p>Nenhuma localização registrada para esta visita</p>
-                      <p className="text-sm">O check-in foi realizado sem captura de GPS</p>
                     </div>
                   </div>
                 )}
@@ -818,7 +875,6 @@ export default function RelatorioRoteiros() {
               <span>Check-out</span>
             </button>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Clique na legenda para destacar o marcador no mapa</p>
         </DialogContent>
       </Dialog>
 
@@ -883,7 +939,6 @@ export default function RelatorioRoteiros() {
   );
 }
 
-// Função para calcular tempo em loja
 function calcularTempoEmLoja(checkinTime, checkoutTime) {
   if (!checkinTime || !checkoutTime) return null;
   const checkin = new Date(checkinTime);
@@ -923,7 +978,6 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}
           </p>
           
-          {/* Info de visita */}
           {visitaRoteiro && (
             <div className="mt-2 text-xs space-y-1">
               {visitaRoteiro.checkin_time && (
@@ -969,16 +1023,8 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
               Aguardando Check-out
             </Badge>
           )}
-
-          {tipo === 'semCheckin' && (
-            <Badge className="mt-2 bg-slate-500 text-white text-xs">
-              <AlertTriangle className="w-3 h-3 mr-1" />
-              Sem nenhum registro
-            </Badge>
-          )}
         </div>
 
-        {/* Botões de ação */}
         {tipo !== 'semCheckin' && visitaRoteiro && (
           <div className="flex gap-2 ml-4">
             <Button size="sm" variant="outline" onClick={onOpenMap} className="border-blue-300 text-blue-700 hover:bg-blue-50">
