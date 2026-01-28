@@ -71,15 +71,18 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
                 {roteiro.clientes_detalhes?.map((cliente, idx) => {
                   const clienteCompleto = clientesMap[cliente.cliente_id];
                   const nomeExibir = clienteCompleto?.nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome;
+                  const codigoCliente = clienteCompleto?.codigo || cliente.cliente_codigo;
                   return (
                     <div key={idx} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-slate-50">
                       <Badge className="bg-amber-100 text-amber-700 text-lg px-3 py-1">
                         {idx + 1}
                       </Badge>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-lg">{nomeExibir}</h4>
-                        <p className="text-sm text-slate-600">{cliente.cliente_cidade}</p>
-                        <p className="text-xs text-slate-400">Código: {cliente.cliente_codigo}</p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs font-mono">{codigoCliente}</Badge>
+                          <h4 className="font-semibold text-lg">{nomeExibir}</h4>
+                        </div>
+                        <p className="text-sm text-slate-600 mt-1">{clienteCompleto?.cidade || cliente.cliente_cidade}</p>
                       </div>
                     </div>
                   );
