@@ -401,6 +401,54 @@ export default function Roteiros() {
         onConfirm={() => deleteMutation.mutate(selected?.id)}
         isDeleting={deleteMutation.isPending}
       />
+
+      {/* Modal de Duplicar Roteiro */}
+      <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="w-5 h-5 text-blue-600" />
+              Duplicar Roteiro
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-sm text-slate-600">Roteiro original:</p>
+              <p className="font-semibold">{selected?.vendedor_nome}</p>
+              <p className="text-sm text-slate-500">{getDiaLabel(selected?.dia_semana)} - {selected?.clientes_ids?.length || 0} clientes</p>
+            </div>
+            <div>
+              <Label>Selecione o novo dia da semana *</Label>
+              <Select value={duplicateDia} onValueChange={setDuplicateDia}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o dia" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="segunda-feira">Segunda-feira</SelectItem>
+                  <SelectItem value="terca-feira">Terça-feira</SelectItem>
+                  <SelectItem value="quarta-feira">Quarta-feira</SelectItem>
+                  <SelectItem value="quinta-feira">Quinta-feira</SelectItem>
+                  <SelectItem value="sexta-feira">Sexta-feira</SelectItem>
+                  <SelectItem value="sabado">Sábado</SelectItem>
+                  <SelectItem value="domingo">Domingo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={confirmDuplicate} 
+              disabled={duplicateMutation.isPending || !duplicateDia}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {duplicateMutation.isPending ? 'Duplicando...' : 'Duplicar Roteiro'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
