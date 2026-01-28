@@ -808,7 +808,8 @@ export default function RelatorioRoteiros() {
                             </CollapsibleContent>
                           </Collapsible>
                         );
-                      })}
+                      });
+                      })()}
                     </CardContent>
                   </CollapsibleContent>
                 </Collapsible>
