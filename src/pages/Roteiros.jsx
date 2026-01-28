@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Route, Upload, Download, Filter, Search, MoreVertical, Edit, Trash2, Eye } from 'lucide-react';
+import { Route, Upload, Download, Filter, Search, MoreVertical, Edit, Trash2, Eye, Copy } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
