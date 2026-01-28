@@ -625,83 +625,100 @@ export default function RelatorioRoteiros() {
 
                   <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
-                      {roteirosVend
-                        .sort((a, b) => {
-                          const ordemA = diasSemanaConfig.find(d => d.valor === a.dia_semana)?.ordem ?? 99;
-                          const ordemB = diasSemanaConfig.find(d => d.valor === b.dia_semana)?.ordem ?? 99;
-                          return ordemA - ordemB;
-                        })
-                        .map(roteiro => {
-                        const diaConfig = diasSemanaConfig.find(d => d.valor === roteiro.dia_semana);
-                        const keyDia = `${vendedor.id}-${roteiro.dia_semana}`;
-                        const isDiaExpanded = expandedDias[keyDia];
-                        const datasDisponiveis = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
-                        const dataSelecionada = selectedDates[keyDia] || datasDisponiveis[datasDisponiveis.length - 1]; // Última data por padrão
+                      {/* Agrupar por datas reais com visitas */}
+                      {(() => {
+                        const datasComVisitas = getDatasComVisitas(vendedor.id);
                         
-                        // Contar visitas realizadas no período para este dia
-                        const visitasRealizadasNoDia = visitasNoPeriodo.filter(v => 
-                          v.vendedor_id === vendedor.id && 
-                          datasDisponiveis.includes(v.data_visita)
-                        ).length;
+                        if (datasComVisitas.length === 0) {
+                          return (
+                            <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
+                              <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p>Nenhuma visita registrada no período selecionado</p>
+                            </div>
+                          );
+                        }
 
-                        return (
-                          <Collapsible key={roteiro.id} open={isDiaExpanded} onOpenChange={() => toggleDia(vendedor.id, roteiro.dia_semana)}>
-                            <CollapsibleTrigger className="w-full">
-                              <div className="flex items-center justify-between p-3 bg-slate-100 rounded-lg cursor-pointer hover:bg-slate-200 transition-all">
-                                <div className="flex items-center gap-3">
-                                  {isDiaExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
-                                  <Calendar className="w-5 h-5 text-blue-600" />
-                                  <span className="font-semibold text-slate-800">{diaConfig?.label || roteiro.dia_semana}</span>
-                                </div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge className="bg-blue-100 text-blue-700">{datasDisponiveis.length} datas no período</Badge>
-                                  <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
-                                </div>
-                              </div>
-                            </CollapsibleTrigger>
+                        // Agrupar datas por dia da semana real
+                        const datasPorDiaSemana = {};
+                        datasComVisitas.forEach(data => {
+                          const diaConfig = getDiaSemanaReal(data);
+                          if (!diaConfig) return;
+                          if (!datasPorDiaSemana[diaConfig.valor]) {
+                            datasPorDiaSemana[diaConfig.valor] = [];
+                          }
+                          datasPorDiaSemana[diaConfig.valor].push(data);
+                        });
 
-                            <CollapsibleContent>
-                              <div className="ml-8 mt-3 space-y-4">
-                                {/* Seletor de Data */}
-                                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                                  <Label className="text-sm font-medium text-blue-700">Selecione a data:</Label>
-                                  <Select 
-                                    value={dataSelecionada || ''} 
-                                    onValueChange={(value) => handleSelectDate(vendedor.id, roteiro.dia_semana, value)}
-                                  >
-                                    <SelectTrigger className="w-48">
-                                      <SelectValue placeholder="Selecione uma data" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {datasDisponiveis.length === 0 ? (
-                                        <SelectItem value="none" disabled>Nenhuma data no período</SelectItem>
-                                      ) : (
-                                        datasDisponiveis.map(data => {
-                                          const visitasNaData = visitasNoPeriodo.filter(v => 
-                                            v.vendedor_id === vendedor.id && v.data_visita === data
-                                          ).length;
+                        // Ordenar dias da semana
+                        const diasOrdenados = Object.keys(datasPorDiaSemana).sort((a, b) => {
+                          const ordemA = diasSemanaConfig.find(d => d.valor === a)?.ordem ?? 99;
+                          const ordemB = diasSemanaConfig.find(d => d.valor === b)?.ordem ?? 99;
+                          return ordemA - ordemB;
+                        });
+
+                        return diasOrdenados.map(diaSemana => {
+                          const diaConfig = diasSemanaConfig.find(d => d.valor === diaSemana);
+                          const datasDesteDia = datasPorDiaSemana[diaSemana];
+                          const keyDia = `${vendedor.id}-${diaSemana}`;
+                          const isDiaExpanded = expandedDias[keyDia];
+                          const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
+                          
+                          // Contar visitas realizadas neste dia
+                          const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
+                            return acc + ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
+                          }, 0);
+
+                          return (
+                            <Collapsible key={diaSemana} open={isDiaExpanded} onOpenChange={() => toggleDia(vendedor.id, diaSemana)}>
+                              <CollapsibleTrigger className="w-full">
+                                <div className="flex items-center justify-between p-3 bg-slate-100 rounded-lg cursor-pointer hover:bg-slate-200 transition-all">
+                                  <div className="flex items-center gap-3">
+                                    {isDiaExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
+                                    <Calendar className="w-5 h-5 text-blue-600" />
+                                    <span className="font-semibold text-slate-800">{diaConfig?.label || diaSemana}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className="bg-blue-100 text-blue-700">{datasDesteDia.length} datas no período</Badge>
+                                    <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
+                                  </div>
+                                </div>
+                              </CollapsibleTrigger>
+
+                              <CollapsibleContent>
+                                <div className="ml-8 mt-3 space-y-4">
+                                  {/* Seletor de Data */}
+                                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                                    <Label className="text-sm font-medium text-blue-700">Selecione a data:</Label>
+                                    <Select 
+                                      value={dataSelecionada || ''} 
+                                      onValueChange={(value) => handleSelectDate(vendedor.id, diaSemana, value)}
+                                    >
+                                      <SelectTrigger className="w-48">
+                                        <SelectValue placeholder="Selecione uma data" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {datasDesteDia.map(data => {
+                                          const visitasNaData = ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
                                           return (
                                             <SelectItem key={data} value={data}>
                                               {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                               {visitasNaData > 0 && ` (${visitasNaData} visitas)`}
                                             </SelectItem>
                                           );
-                                        })
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
+                                        })}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
 
-                                {/* Clientes da data selecionada */}
-                                {dataSelecionada && (() => {
-                                  const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(roteiro, dataSelecionada);
-                                  const temVisitas = concluidos.length > 0 || emAtendimento.length > 0 || semAtendimento.length > 0;
+                                  {/* Clientes da data selecionada */}
+                                  {dataSelecionada && (() => {
+                                    const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(vendedor.id, dataSelecionada);
 
-                                  return (
-                                    <div className="space-y-4">
-                                      <div className="text-sm text-slate-600 font-medium">
-                                        Visitas em {new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                                      </div>
+                                    return (
+                                      <div className="space-y-4">
+                                        <div className="text-sm text-slate-600 font-medium">
+                                          Visitas em {new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                                        </div>
 
                                       <>
                                         {/* Concluídos */}
