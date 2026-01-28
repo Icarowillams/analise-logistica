@@ -683,6 +683,11 @@ export default function RelatorioRoteiros() {
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
                           
+                          // Contar clientes do roteiro para este dia
+                          const roteirosVendedor = roteirosPorVendedor[vendedor.id] || [];
+                          const roteiroDesteDia = roteirosVendedor.find(r => r.dia_semana === diaSemana);
+                          const totalClientesDia = roteiroDesteDia?.clientes_detalhes?.length || 0;
+                          
                           // Contar visitas realizadas neste dia
                           const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
                             return acc + ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
