@@ -320,32 +320,26 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes visitados em uma data específica
-  const getClientesVisitadosNaData = (roteiro, dataEspecifica) => {
-    const clientesDoRoteiro = roteiro.clientes_detalhes || [];
+  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais)
+  const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
+    const visitasDaData = (visitasPorVendedorEData[vendedorId] || {})[dataEspecifica] || [];
     const concluidos = [];
     const emAtendimento = [];
     const semAtendimento = [];
     const semCheckin = [];
 
-    clientesDoRoteiro.forEach((clienteRoteiro, idx) => {
-      const clienteCompleto = clientesMap[clienteRoteiro.cliente_id];
+    visitasDaData.forEach((visitaRot, idx) => {
+      const clienteCompleto = clientesMap[visitaRot.cliente_id];
       
-      // Buscar visita do cliente nesta data específica
-      const visitaRot = visitasNoPeriodo.find(v => 
-        v.cliente_id === clienteRoteiro.cliente_id && 
-        v.vendedor_id === roteiro.vendedor_id &&
-        v.data_visita === dataEspecifica
-      );
-
       const visitaReg = visitasRegistroNoPeriodo.find(v =>
-        v.cliente_id === clienteRoteiro.cliente_id &&
-        v.vendedor_id === roteiro.vendedor_id &&
+        v.cliente_id === visitaRot.cliente_id &&
+        v.vendedor_id === vendedorId &&
         v.data_visita === dataEspecifica
       );
 
       const clienteInfo = {
-        ...clienteRoteiro,
+        cliente_id: visitaRot.cliente_id,
+        cliente_nome: visitaRot.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot,
@@ -353,11 +347,11 @@ export default function RelatorioRoteiros() {
         dataVisita: dataEspecifica
       };
 
-      if (visitaRot && visitaRot.status === 'nao_atendido') {
+      if (visitaRot.status === 'nao_atendido') {
         semAtendimento.push(clienteInfo);
-      } else if (visitaRot && visitaRot.status === 'concluida' && visitaRot.checkout_time) {
+      } else if (visitaRot.status === 'concluida' && visitaRot.checkout_time) {
         concluidos.push(clienteInfo);
-      } else if (visitaRot && visitaRot.checkin_time && !visitaRot.checkout_time) {
+      } else if (visitaRot.checkin_time && !visitaRot.checkout_time) {
         emAtendimento.push(clienteInfo);
       } else {
         semCheckin.push(clienteInfo);
