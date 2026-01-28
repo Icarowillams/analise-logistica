@@ -632,22 +632,22 @@ export default function RelatorioRoteiros() {
 
                   <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
-                      {/* Agrupar por datas reais com visitas */}
+                      {/* Agrupar por datas do roteiro (mesmo sem visitas ainda) */}
                       {(() => {
-                        const datasComVisitas = getDatasComVisitas(vendedor.id);
+                        const todasDatasRoteiro = getDatasDoRoteiro(vendedor.id);
                         
-                        if (datasComVisitas.length === 0) {
+                        if (todasDatasRoteiro.length === 0) {
                           return (
                             <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
                               <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                              <p>Nenhuma visita registrada no período selecionado</p>
+                              <p>Nenhum roteiro no período selecionado</p>
                             </div>
                           );
                         }
 
                         // Agrupar datas por dia da semana real
                         const datasPorDiaSemana = {};
-                        datasComVisitas.forEach(data => {
+                        todasDatasRoteiro.forEach(data => {
                           const diaConfig = getDiaSemanaReal(data);
                           if (!diaConfig) return;
                           if (!datasPorDiaSemana[diaConfig.valor]) {
