@@ -1037,9 +1037,16 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
               Aguardando Check-out
             </Badge>
           )}
+
+          {tipo === 'pendente' && (
+            <Badge className="mt-2 bg-amber-500 text-white text-xs">
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              Aguardando Check-in
+            </Badge>
+          )}
         </div>
 
-        {tipo !== 'semCheckin' && visitaRoteiro && (
+        {tipo !== 'pendente' && visitaRoteiro && (
           <div className="flex gap-2 ml-4">
             <Button size="sm" variant="outline" onClick={onOpenMap} className="border-blue-300 text-blue-700 hover:bg-blue-50">
               <Eye className="w-4 h-4" />
