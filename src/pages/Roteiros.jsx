@@ -23,8 +23,10 @@ export default function Roteiros() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [duplicateDia, setDuplicateDia] = useState('');
   
   const [filters, setFilters] = useState({
     dia: '',
