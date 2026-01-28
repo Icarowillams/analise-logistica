@@ -45,6 +45,13 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     queryFn: () => base44.entities.TrocaVisita.filter({ visita_id: visitaId })
   });
 
+  // Buscar última troca do cliente
+  const { data: ultimasTrocas = [] } = useQuery({
+    queryKey: ['ultimasTrocasCliente', clienteId],
+    queryFn: () => base44.entities.TrocaVisita.filter({ cliente_id: clienteId }, '-created_date', 50),
+    enabled: !!clienteId
+  });
+
   const { data: vendedorAtual } = useQuery({
     queryKey: ['vendedorAtual'],
     queryFn: async () => {
