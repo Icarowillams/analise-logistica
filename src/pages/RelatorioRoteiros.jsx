@@ -248,6 +248,42 @@ export default function RelatorioRoteiros() {
     return agrupado;
   }, [vendedoresComRoteiros, roteirosFiltrados]);
 
+  // Agrupar visitas por data real ao invés de dia do roteiro
+  const visitasPorVendedorEData = useMemo(() => {
+    const agrupado = {};
+    
+    vendedoresComRoteiros.forEach(vendedor => {
+      agrupado[vendedor.id] = {};
+      
+      // Pegar todas as visitas deste vendedor no período
+      const visitasVendedor = visitasNoPeriodo.filter(v => v.vendedor_id === vendedor.id);
+      
+      // Agrupar por data
+      visitasVendedor.forEach(visita => {
+        if (!visita.data_visita) return;
+        if (!agrupado[vendedor.id][visita.data_visita]) {
+          agrupado[vendedor.id][visita.data_visita] = [];
+        }
+        agrupado[vendedor.id][visita.data_visita].push(visita);
+      });
+    });
+    
+    return agrupado;
+  }, [vendedoresComRoteiros, visitasNoPeriodo]);
+
+  // Obter todas as datas únicas com visitas para um vendedor
+  const getDatasComVisitas = (vendedorId) => {
+    const datas = Object.keys(visitasPorVendedorEData[vendedorId] || {});
+    return datas.sort((a, b) => new Date(b) - new Date(a)); // Mais recente primeiro
+  };
+
+  // Obter o dia da semana real de uma data
+  const getDiaSemanaReal = (dataStr) => {
+    const data = new Date(dataStr + 'T12:00:00');
+    const diaSemana = data.getDay();
+    return diasSemanaConfig.find(d => d.ordem === diaSemana);
+  };
+
   const limparFiltros = () => {
     setFiltros({ vendedores_ids: [], funcoes_ids: [], cliente_busca: '' });
     setBuscaVendedor('');
