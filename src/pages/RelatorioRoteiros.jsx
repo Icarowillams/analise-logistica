@@ -658,28 +658,27 @@ export default function RelatorioRoteiros() {
 
                   <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
-                      {/* Agrupar por datas reais com visitas */}
+                      {/* Agrupar por dias da semana dos roteiros fixos */}
                       {(() => {
-                        const datasComVisitas = getDatasComVisitas(vendedor.id);
+                        // Obter os dias da semana que este vendedor tem roteiro
+                        const diasComRoteiro = roteirosVend.map(r => r.dia_semana);
                         
-                        if (datasComVisitas.length === 0) {
+                        if (diasComRoteiro.length === 0) {
                           return (
                             <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
                               <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                              <p>Nenhuma visita registrada no período selecionado</p>
+                              <p>Nenhum roteiro cadastrado para este funcionário</p>
                             </div>
                           );
                         }
 
-                        // Agrupar datas por dia da semana real
+                        // Para cada dia da semana com roteiro, calcular todas as datas no período
                         const datasPorDiaSemana = {};
-                        datasComVisitas.forEach(data => {
-                          const diaConfig = getDiaSemanaReal(data);
-                          if (!diaConfig) return;
-                          if (!datasPorDiaSemana[diaConfig.valor]) {
-                            datasPorDiaSemana[diaConfig.valor] = [];
+                        diasComRoteiro.forEach(diaSemana => {
+                          const datasNoPeriodo = getDatasNoPeriodo(dataInicio, dataFim, diaSemana);
+                          if (datasNoPeriodo.length > 0) {
+                            datasPorDiaSemana[diaSemana] = datasNoPeriodo;
                           }
-                          datasPorDiaSemana[diaConfig.valor].push(data);
                         });
 
                         // Ordenar dias da semana
@@ -688,6 +687,15 @@ export default function RelatorioRoteiros() {
                           const ordemB = diasSemanaConfig.find(d => d.valor === b)?.ordem ?? 99;
                           return ordemA - ordemB;
                         });
+                        
+                        if (diasOrdenados.length === 0) {
+                          return (
+                            <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
+                              <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p>Nenhuma data no período corresponde aos dias dos roteiros</p>
+                            </div>
+                          );
+                        }
 
                         return diasOrdenados.map(diaSemana => {
                           const diaConfig = diasSemanaConfig.find(d => d.valor === diaSemana);
