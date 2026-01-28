@@ -271,10 +271,17 @@ export default function RelatorioRoteiros() {
     return agrupado;
   }, [vendedoresComRoteiros, visitasNoPeriodo]);
 
-  // Obter todas as datas únicas com visitas para um vendedor
-  const getDatasComVisitas = (vendedorId) => {
-    const datas = Object.keys(visitasPorVendedorEData[vendedorId] || {});
-    return datas.sort((a, b) => new Date(b) - new Date(a)); // Mais recente primeiro
+  // Obter todas as datas no período que correspondem aos dias de roteiro do vendedor
+  const getDatasDoRoteiro = (vendedorId) => {
+    const roteirosVendedor = roteirosPorVendedor[vendedorId] || [];
+    const todasDatas = new Set();
+    
+    roteirosVendedor.forEach(roteiro => {
+      const datasDesteDia = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
+      datasDesteDia.forEach(d => todasDatas.add(d));
+    });
+    
+    return Array.from(todasDatas).sort((a, b) => new Date(b) - new Date(a));
   };
 
   // Obter o dia da semana real de uma data
