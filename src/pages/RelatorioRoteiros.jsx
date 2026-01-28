@@ -1034,6 +1034,9 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <Badge className="bg-slate-600 text-white text-xs">{clienteInfo.ordem}</Badge>
+            {(cliente?.codigo || clienteInfo.cliente_codigo) && (
+              <Badge variant="outline" className="text-xs">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
+            )}
             <span className="font-semibold text-slate-900">{cliente?.nome_fantasia || cliente?.razao_social || clienteInfo.cliente_nome}</span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
