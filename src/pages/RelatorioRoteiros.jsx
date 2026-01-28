@@ -975,6 +975,7 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
   const bgColor = tipo === 'concluido' ? 'bg-green-50 border-green-200' : 
                   tipo === 'emAtendimento' ? 'bg-blue-50 border-blue-200' :
                   tipo === 'semAtendimento' ? 'bg-red-50 border-red-200' : 
+                  tipo === 'pendente' ? 'bg-amber-50 border-amber-200' :
                   'bg-slate-50 border-slate-200';
 
   const tempoEmLoja = calcularTempoEmLoja(visitaRoteiro?.checkin_time, visitaRoteiro?.checkout_time);
