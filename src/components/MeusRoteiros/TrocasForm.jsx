@@ -268,7 +268,18 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
   return (
     <div className="space-y-4 mt-4">
       <Card className="p-4 bg-slate-50">
-        <h3 className="font-semibold mb-4">Adicionar Produtos em Troca</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">Adicionar Produtos em Troca</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImportarUltimaTroca}
+            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+          >
+            <Download className="w-3 h-3 mr-1" />
+            Importar Última Troca
+          </Button>
+        </div>
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
