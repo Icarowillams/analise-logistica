@@ -203,6 +203,46 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     setItensPendentes(novosItens);
   };
 
+  // Importar última troca do cliente
+  const handleImportarUltimaTroca = () => {
+    // Filtrar trocas que não são da visita atual
+    const trocasAnteriores = ultimasTrocas.filter(t => t.visita_id !== visitaId);
+    
+    if (trocasAnteriores.length === 0) {
+      alert('Não há trocas anteriores para este cliente');
+      return;
+    }
+
+    // Pegar itens únicos por produto (última ocorrência de cada produto)
+    const produtosImportados = new Map();
+    trocasAnteriores.forEach(troca => {
+      if (!produtosImportados.has(troca.produto_id)) {
+        produtosImportados.set(troca.produto_id, troca);
+      }
+    });
+
+    const novosItens = Array.from(produtosImportados.values()).map(troca => ({
+      visita_id: visitaId,
+      cliente_id: clienteId,
+      cliente_nome: clienteNome,
+      produto_id: troca.produto_id,
+      produto_nome: troca.produto_nome,
+      produto_codigo: troca.produto_codigo,
+      quantidade: troca.quantidade,
+      data_validade: '',
+      data_fabricacao: '',
+      horario_fabricacao: troca.horario_fabricacao || '',
+      motivo_troca: troca.motivo_troca,
+      ja_informado_anteriormente: false,
+      foto_url: '',
+      vendedor_id: vendedorAtual?.id || '',
+      vendedor_nome: vendedorAtual?.nome || ''
+    }));
+
+    setItensPendentes(prev => [...prev, ...novosItens]);
+    alert(`${novosItens.length} item(ns) importado(s) da última troca`);
+  };
+
   // Enviar apenas os itens pendentes (sem finalizar)
   const handleEnviarSemFinalizar = async () => {
     if (itensPendentes.length === 0) {
