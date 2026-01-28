@@ -271,17 +271,10 @@ export default function RelatorioRoteiros() {
     return agrupado;
   }, [vendedoresComRoteiros, visitasNoPeriodo]);
 
-  // Obter todas as datas no período que correspondem aos dias de roteiro do vendedor
-  const getDatasDoRoteiro = (vendedorId) => {
-    const roteirosVendedor = roteirosPorVendedor[vendedorId] || [];
-    const todasDatas = new Set();
-    
-    roteirosVendedor.forEach(roteiro => {
-      const datasDesteDia = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
-      datasDesteDia.forEach(d => todasDatas.add(d));
-    });
-    
-    return Array.from(todasDatas).sort((a, b) => new Date(b) - new Date(a));
+  // Obter todas as datas únicas com visitas para um vendedor
+  const getDatasComVisitas = (vendedorId) => {
+    const datas = Object.keys(visitasPorVendedorEData[vendedorId] || {});
+    return datas.sort((a, b) => new Date(b) - new Date(a)); // Mais recente primeiro
   };
 
   // Obter o dia da semana real de uma data
@@ -327,38 +320,26 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes de uma data específica (baseado no roteiro + visitas reais)
+  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais)
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
-    const diaConfig = getDiaSemanaReal(dataEspecifica);
-    const roteirosVendedor = roteirosPorVendedor[vendedorId] || [];
-    const roteiroDesteDia = roteirosVendedor.find(r => r.dia_semana === diaConfig?.valor);
-    
     const visitasDaData = (visitasPorVendedorEData[vendedorId] || {})[dataEspecifica] || [];
-    const visitasMap = {};
-    visitasDaData.forEach(v => { visitasMap[v.cliente_id] = v; });
-    
     const concluidos = [];
     const emAtendimento = [];
     const semAtendimento = [];
     const semCheckin = [];
 
-    // Usar os clientes do roteiro como base
-    const clientesDoRoteiro = roteiroDesteDia?.clientes_detalhes || [];
-    
-    clientesDoRoteiro.forEach((clienteRoteiro, idx) => {
-      const clienteCompleto = clientesMap[clienteRoteiro.cliente_id];
-      const visitaRot = visitasMap[clienteRoteiro.cliente_id];
+    visitasDaData.forEach((visitaRot, idx) => {
+      const clienteCompleto = clientesMap[visitaRot.cliente_id];
       
       const visitaReg = visitasRegistroNoPeriodo.find(v =>
-        v.cliente_id === clienteRoteiro.cliente_id &&
+        v.cliente_id === visitaRot.cliente_id &&
         v.vendedor_id === vendedorId &&
         v.data_visita === dataEspecifica
       );
 
       const clienteInfo = {
-        cliente_id: clienteRoteiro.cliente_id,
-        cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || clienteRoteiro.cliente_nome,
-        cliente_codigo: clienteCompleto?.codigo || clienteRoteiro.cliente_codigo,
+        cliente_id: visitaRot.cliente_id,
+        cliente_nome: visitaRot.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot,
@@ -366,14 +347,13 @@ export default function RelatorioRoteiros() {
         dataVisita: dataEspecifica
       };
 
-      if (visitaRot?.status === 'nao_atendido') {
+      if (visitaRot.status === 'nao_atendido') {
         semAtendimento.push(clienteInfo);
-      } else if (visitaRot?.status === 'concluida' && visitaRot?.checkout_time) {
+      } else if (visitaRot.status === 'concluida' && visitaRot.checkout_time) {
         concluidos.push(clienteInfo);
-      } else if (visitaRot?.checkin_time && !visitaRot?.checkout_time) {
+      } else if (visitaRot.checkin_time && !visitaRot.checkout_time) {
         emAtendimento.push(clienteInfo);
       } else {
-        // Sem check-in = aguardando atendimento
         semCheckin.push(clienteInfo);
       }
     });
@@ -645,22 +625,22 @@ export default function RelatorioRoteiros() {
 
                   <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
-                      {/* Agrupar por datas do roteiro (mesmo sem visitas ainda) */}
+                      {/* Agrupar por datas reais com visitas */}
                       {(() => {
-                        const todasDatasRoteiro = getDatasDoRoteiro(vendedor.id);
+                        const datasComVisitas = getDatasComVisitas(vendedor.id);
                         
-                        if (todasDatasRoteiro.length === 0) {
+                        if (datasComVisitas.length === 0) {
                           return (
                             <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
                               <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                              <p>Nenhum roteiro no período selecionado</p>
+                              <p>Nenhuma visita registrada no período selecionado</p>
                             </div>
                           );
                         }
 
                         // Agrupar datas por dia da semana real
                         const datasPorDiaSemana = {};
-                        todasDatasRoteiro.forEach(data => {
+                        datasComVisitas.forEach(data => {
                           const diaConfig = getDiaSemanaReal(data);
                           if (!diaConfig) return;
                           if (!datasPorDiaSemana[diaConfig.valor]) {
@@ -683,11 +663,6 @@ export default function RelatorioRoteiros() {
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
                           
-                          // Contar clientes do roteiro para este dia
-                          const roteirosVendedor = roteirosPorVendedor[vendedor.id] || [];
-                          const roteiroDesteDia = roteirosVendedor.find(r => r.dia_semana === diaSemana);
-                          const totalClientesDia = roteiroDesteDia?.clientes_detalhes?.length || 0;
-                          
                           // Contar visitas realizadas neste dia
                           const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
                             return acc + ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
@@ -704,7 +679,6 @@ export default function RelatorioRoteiros() {
                                   </div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <Badge className="bg-blue-100 text-blue-700">{datasDesteDia.length} datas no período</Badge>
-                                    <Badge className="bg-amber-100 text-amber-700">{totalClientesDia} clientes</Badge>
                                     <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
                                   </div>
                                 </div>
