@@ -673,74 +673,87 @@ export default function RelatorioRoteiros() {
                                         Visitas em {new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                                       </div>
 
-                                      {!temVisitas ? (
-                                        <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500">
-                                          <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                          <p>Nenhuma visita realizada nesta data</p>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          {/* Concluídos */}
-                                          {concluidos.length > 0 && (
-                                            <div>
-                                              <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1">
-                                                <CheckCircle className="w-4 h-4" /> Concluídos ({concluidos.length})
-                                              </h4>
-                                              <div className="space-y-2">
-                                                {concluidos.map((c, idx) => (
-                                                  <ClienteCard 
-                                                    key={idx} 
-                                                    clienteInfo={c} 
-                                                    tipo="concluido"
-                                                    onOpenMap={() => handleOpenMap(c)}
-                                                    onOpenPhotos={() => handleOpenPhotos(c)}
-                                                  />
-                                                ))}
-                                              </div>
+                                      <>
+                                        {/* Concluídos */}
+                                        {concluidos.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1">
+                                              <CheckCircle className="w-4 h-4" /> Concluídos ({concluidos.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {concluidos.map((c, idx) => (
+                                                <ClienteCard 
+                                                  key={idx} 
+                                                  clienteInfo={c} 
+                                                  tipo="concluido"
+                                                  onOpenMap={() => handleOpenMap(c)}
+                                                  onOpenPhotos={() => handleOpenPhotos(c)}
+                                                />
+                                              ))}
                                             </div>
-                                          )}
+                                          </div>
+                                        )}
 
-                                          {/* Em Atendimento */}
-                                          {emAtendimento.length > 0 && (
-                                            <div>
-                                              <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                                                <Clock className="w-4 h-4" /> Em Atendimento ({emAtendimento.length})
-                                              </h4>
-                                              <div className="space-y-2">
-                                                {emAtendimento.map((c, idx) => (
-                                                  <ClienteCard 
-                                                    key={idx} 
-                                                    clienteInfo={c} 
-                                                    tipo="emAtendimento"
-                                                    onOpenMap={() => handleOpenMap(c)}
-                                                    onOpenPhotos={() => handleOpenPhotos(c)}
-                                                  />
-                                                ))}
-                                              </div>
+                                        {/* Em Atendimento */}
+                                        {emAtendimento.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                                              <Clock className="w-4 h-4" /> Em Atendimento ({emAtendimento.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {emAtendimento.map((c, idx) => (
+                                                <ClienteCard 
+                                                  key={idx} 
+                                                  clienteInfo={c} 
+                                                  tipo="emAtendimento"
+                                                  onOpenMap={() => handleOpenMap(c)}
+                                                  onOpenPhotos={() => handleOpenPhotos(c)}
+                                                />
+                                              ))}
                                             </div>
-                                          )}
+                                          </div>
+                                        )}
 
-                                          {/* Sem Atendimento */}
-                                          {semAtendimento.length > 0 && (
-                                            <div>
-                                              <h4 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1">
-                                                <XCircle className="w-4 h-4" /> Sem Atendimento ({semAtendimento.length})
-                                              </h4>
-                                              <div className="space-y-2">
-                                                {semAtendimento.map((c, idx) => (
-                                                  <ClienteCard 
-                                                    key={idx} 
-                                                    clienteInfo={c} 
-                                                    tipo="semAtendimento"
-                                                    onOpenMap={() => handleOpenMap(c)}
-                                                    onOpenPhotos={() => handleOpenPhotos(c)}
-                                                  />
-                                                ))}
-                                              </div>
+                                        {/* Sem Atendimento (Não Atendido) */}
+                                        {semAtendimento.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1">
+                                              <XCircle className="w-4 h-4" /> Não Atendido ({semAtendimento.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {semAtendimento.map((c, idx) => (
+                                                <ClienteCard 
+                                                  key={idx} 
+                                                  clienteInfo={c} 
+                                                  tipo="semAtendimento"
+                                                  onOpenMap={() => handleOpenMap(c)}
+                                                  onOpenPhotos={() => handleOpenPhotos(c)}
+                                                />
+                                              ))}
                                             </div>
-                                          )}
-                                        </>
-                                      )}
+                                          </div>
+                                        )}
+
+                                        {/* Pendentes (Sem Check-in) */}
+                                        {semCheckin.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                                              <AlertTriangle className="w-4 h-4" /> Pendentes ({semCheckin.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {semCheckin.map((c, idx) => (
+                                                <ClienteCard 
+                                                  key={idx} 
+                                                  clienteInfo={c} 
+                                                  tipo="pendente"
+                                                  onOpenMap={() => handleOpenMap(c)}
+                                                  onOpenPhotos={() => handleOpenPhotos(c)}
+                                                />
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </>
                                     </div>
                                   );
                                 })()}
