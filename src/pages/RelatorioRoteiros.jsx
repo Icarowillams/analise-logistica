@@ -699,7 +699,7 @@ export default function RelatorioRoteiros() {
 
                         return diasOrdenados.map(diaSemana => {
                           const diaConfig = diasSemanaConfig.find(d => d.valor === diaSemana);
-                          const datasDesteDia = datasPorDiaSemana[diaSemana];
+                          const datasDesteDia = datasPorDiaSemana[diaSemana].sort((a, b) => new Date(b) - new Date(a)); // Mais recente primeiro
                           const keyDia = `${vendedor.id}-${diaSemana}`;
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
