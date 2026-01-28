@@ -55,6 +55,41 @@ export default function Roteiros() {
     }
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async ({ roteiro, novoDia }) => {
+      const novoRoteiro = {
+        vendedor_id: roteiro.vendedor_id,
+        vendedor_nome: roteiro.vendedor_nome,
+        dia_semana: novoDia,
+        clientes_ids: roteiro.clientes_ids || [],
+        clientes_detalhes: roteiro.clientes_detalhes || [],
+        status: 'planejado',
+        observacoes: roteiro.observacoes || ''
+      };
+      return base44.entities.Roteiro.create(novoRoteiro);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['roteiros']);
+      setDuplicateModalOpen(false);
+      setSelected(null);
+      setDuplicateDia('');
+    }
+  });
+
+  const handleDuplicate = (roteiro) => {
+    setSelected(roteiro);
+    setDuplicateDia('');
+    setDuplicateModalOpen(true);
+  };
+
+  const confirmDuplicate = () => {
+    if (!duplicateDia) {
+      alert('Selecione o dia da semana para o novo roteiro');
+      return;
+    }
+    duplicateMutation.mutate({ roteiro: selected, novoDia: duplicateDia });
+  };
+
   const handleExport = () => {
     const headers = ['cod', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
     
