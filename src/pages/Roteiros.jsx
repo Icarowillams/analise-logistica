@@ -17,6 +17,7 @@ import CriarRoteiroModal from '@/components/Roteiros/CriarRoteiroModal';
 import VisualizarRoteiroModal from '@/components/Roteiros/VisualizarRoteiroModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import LogClientesNaoCadastrados from '@/components/Roteiros/LogClientesNaoCadastrados';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 export default function Roteiros() {
   const [activeTab, setActiveTab] = useState("busca");
