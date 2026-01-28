@@ -320,7 +320,7 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais)
+  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais + roteiro fixo)
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
     const visitasDaData = (visitasPorVendedorEData[vendedorId] || {})[dataEspecifica] || [];
     const concluidos = [];
@@ -328,6 +328,18 @@ export default function RelatorioRoteiros() {
     const semAtendimento = [];
     const semCheckin = [];
 
+    // Obter o dia da semana real da data
+    const diaConfig = getDiaSemanaReal(dataEspecifica);
+    
+    // Buscar o roteiro fixo para este vendedor neste dia da semana
+    const roteiroFixo = roteirosFiltrados.find(r => 
+      r.vendedor_id === vendedorId && r.dia_semana === diaConfig?.valor
+    );
+
+    // Criar um Set com os clientes que já têm visita registrada
+    const clientesComVisita = new Set(visitasDaData.map(v => v.cliente_id));
+
+    // Processar visitas registradas
     visitasDaData.forEach((visitaRot, idx) => {
       const clienteCompleto = clientesMap[visitaRot.cliente_id];
       
@@ -340,6 +352,7 @@ export default function RelatorioRoteiros() {
       const clienteInfo = {
         cliente_id: visitaRot.cliente_id,
         cliente_nome: visitaRot.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
+        cliente_codigo: visitaRot.cliente_codigo || clienteCompleto?.codigo,
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot,
@@ -357,6 +370,26 @@ export default function RelatorioRoteiros() {
         semCheckin.push(clienteInfo);
       }
     });
+
+    // Adicionar clientes do roteiro fixo que ainda não foram visitados
+    if (roteiroFixo?.clientes_detalhes) {
+      roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
+        if (!clientesComVisita.has(clienteDetalhe.cliente_id)) {
+          const clienteCompleto = clientesMap[clienteDetalhe.cliente_id];
+          const clienteInfo = {
+            cliente_id: clienteDetalhe.cliente_id,
+            cliente_nome: clienteDetalhe.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
+            cliente_codigo: clienteDetalhe.cliente_codigo || clienteCompleto?.codigo,
+            ordem: visitasDaData.length + idx + 1,
+            cliente: clienteCompleto,
+            visitaRoteiro: null,
+            visitaRegistro: null,
+            dataVisita: dataEspecifica
+          };
+          semCheckin.push(clienteInfo);
+        }
+      });
+    }
 
     return { concluidos, emAtendimento, semAtendimento, semCheckin };
   };
