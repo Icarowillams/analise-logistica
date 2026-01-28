@@ -704,6 +704,7 @@ export default function RelatorioRoteiros() {
                                   </div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <Badge className="bg-blue-100 text-blue-700">{datasDesteDia.length} datas no período</Badge>
+                                    <Badge className="bg-amber-100 text-amber-700">{totalClientesDia} clientes</Badge>
                                     <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
                                   </div>
                                 </div>
