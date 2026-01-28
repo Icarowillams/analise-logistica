@@ -342,6 +342,10 @@ export default function Roteiros() {
                                 <Edit className="w-4 h-4 mr-2" />
                                 Editar
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(roteiro)}>
+                                <Copy className="w-4 h-4 mr-2" />
+                                Duplicar
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleDelete(roteiro)} className="text-red-600">
                                 <Trash2 className="w-4 h-4 mr-2" />
                                 Excluir
