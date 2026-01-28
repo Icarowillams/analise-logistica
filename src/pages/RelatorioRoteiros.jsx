@@ -327,26 +327,38 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais)
+  // Função para obter clientes de uma data específica (baseado no roteiro + visitas reais)
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
+    const diaConfig = getDiaSemanaReal(dataEspecifica);
+    const roteirosVendedor = roteirosPorVendedor[vendedorId] || [];
+    const roteiroDesteDia = roteirosVendedor.find(r => r.dia_semana === diaConfig?.valor);
+    
     const visitasDaData = (visitasPorVendedorEData[vendedorId] || {})[dataEspecifica] || [];
+    const visitasMap = {};
+    visitasDaData.forEach(v => { visitasMap[v.cliente_id] = v; });
+    
     const concluidos = [];
     const emAtendimento = [];
     const semAtendimento = [];
     const semCheckin = [];
 
-    visitasDaData.forEach((visitaRot, idx) => {
-      const clienteCompleto = clientesMap[visitaRot.cliente_id];
+    // Usar os clientes do roteiro como base
+    const clientesDoRoteiro = roteiroDesteDia?.clientes_detalhes || [];
+    
+    clientesDoRoteiro.forEach((clienteRoteiro, idx) => {
+      const clienteCompleto = clientesMap[clienteRoteiro.cliente_id];
+      const visitaRot = visitasMap[clienteRoteiro.cliente_id];
       
       const visitaReg = visitasRegistroNoPeriodo.find(v =>
-        v.cliente_id === visitaRot.cliente_id &&
+        v.cliente_id === clienteRoteiro.cliente_id &&
         v.vendedor_id === vendedorId &&
         v.data_visita === dataEspecifica
       );
 
       const clienteInfo = {
-        cliente_id: visitaRot.cliente_id,
-        cliente_nome: visitaRot.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
+        cliente_id: clienteRoteiro.cliente_id,
+        cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || clienteRoteiro.cliente_nome,
+        cliente_codigo: clienteCompleto?.codigo || clienteRoteiro.cliente_codigo,
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot,
@@ -354,13 +366,14 @@ export default function RelatorioRoteiros() {
         dataVisita: dataEspecifica
       };
 
-      if (visitaRot.status === 'nao_atendido') {
+      if (visitaRot?.status === 'nao_atendido') {
         semAtendimento.push(clienteInfo);
-      } else if (visitaRot.status === 'concluida' && visitaRot.checkout_time) {
+      } else if (visitaRot?.status === 'concluida' && visitaRot?.checkout_time) {
         concluidos.push(clienteInfo);
-      } else if (visitaRot.checkin_time && !visitaRot.checkout_time) {
+      } else if (visitaRot?.checkin_time && !visitaRot?.checkout_time) {
         emAtendimento.push(clienteInfo);
       } else {
+        // Sem check-in = aguardando atendimento
         semCheckin.push(clienteInfo);
       }
     });
