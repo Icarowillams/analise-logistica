@@ -327,7 +327,7 @@ export default function RelatorioRoteiros() {
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
   // Função para obter clientes de um roteiro em uma data específica
-  // Busca visitas pelo roteiro_id, não pela data de realização
+  // Mostra TODOS os clientes do roteiro fixo e busca visitas em QUALQUER data do período
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
     const concluidos = [];
     const emAtendimento = [];
@@ -346,18 +346,21 @@ export default function RelatorioRoteiros() {
       return { concluidos, emAtendimento, semAtendimento, semCheckin };
     }
 
-    // Buscar visitas registradas para este ROTEIRO nesta DATA específica
-    // A visita deve ter o roteiro_id E a data_visita correspondentes
-    const visitasDaData = visitasNoPeriodo.filter(v => 
+    // Buscar TODAS as visitas deste roteiro no período (independente da data_visita)
+    const todasVisitasDoRoteiro = visitasNoPeriodo.filter(v => 
       v.vendedor_id === vendedorId && 
-      v.roteiro_id === roteiroFixo.id &&
-      v.data_visita === dataEspecifica
+      v.roteiro_id === roteiroFixo.id
     );
 
-    // Criar mapa de visitas por cliente_id
+    // Criar mapa de visitas por cliente_id (pegar a mais recente se houver múltiplas)
     const visitasPorCliente = {};
-    visitasDaData.forEach(v => {
-      visitasPorCliente[v.cliente_id] = v;
+    todasVisitasDoRoteiro.forEach(v => {
+      // Se já existe uma visita para este cliente, manter a mais recente ou a que tem checkout
+      if (!visitasPorCliente[v.cliente_id] || 
+          (v.checkout_time && !visitasPorCliente[v.cliente_id].checkout_time) ||
+          (v.data_visita > visitasPorCliente[v.cliente_id].data_visita)) {
+        visitasPorCliente[v.cliente_id] = v;
+      }
     });
 
     // Processar todos os clientes do roteiro fixo
@@ -365,11 +368,12 @@ export default function RelatorioRoteiros() {
       const clienteCompleto = clientesMap[clienteDetalhe.cliente_id];
       const visitaRot = visitasPorCliente[clienteDetalhe.cliente_id];
       
-      const visitaReg = visitasRegistroNoPeriodo.find(v =>
+      // Buscar registro de visita correspondente
+      const visitaReg = visitaRot ? visitasRegistroNoPeriodo.find(v =>
         v.cliente_id === clienteDetalhe.cliente_id &&
         v.vendedor_id === vendedorId &&
-        v.data_visita === dataEspecifica
-      );
+        v.data_visita === visitaRot.data_visita
+      ) : null;
 
       const clienteInfo = {
         cliente_id: clienteDetalhe.cliente_id,
@@ -379,7 +383,7 @@ export default function RelatorioRoteiros() {
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot || null,
         visitaRegistro: visitaReg,
-        dataVisita: dataEspecifica
+        dataVisita: visitaRot?.data_visita || dataEspecifica
       };
 
       if (visitaRot) {
