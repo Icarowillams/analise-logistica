@@ -284,7 +284,8 @@ export default function RelatorioRoteiros() {
 
   // Obter o dia da semana real de uma data
   const getDiaSemanaReal = (dataStr) => {
-    const data = new Date(dataStr + 'T12:00:00');
+    const [ano, mes, dia] = dataStr.split('-').map(Number);
+    const data = new Date(ano, mes - 1, dia);
     const diaSemana = data.getDay();
     return diasSemanaConfig.find(d => d.ordem === diaSemana);
   };
