@@ -316,9 +316,13 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
-  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais + roteiro fixo)
+  // Função para obter clientes visitados em uma data específica (baseado nas visitas reais da data)
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
-    const visitasDaData = (visitasPorVendedorEData[vendedorId] || {})[dataEspecifica] || [];
+    // Buscar visitas registradas ESPECIFICAMENTE para esta data
+    const visitasDaData = visitasNoPeriodo.filter(v => 
+      v.vendedor_id === vendedorId && v.data_visita === dataEspecifica
+    );
+    
     const concluidos = [];
     const emAtendimento = [];
     const semAtendimento = [];
@@ -332,7 +336,7 @@ export default function RelatorioRoteiros() {
       r.vendedor_id === vendedorId && r.dia_semana === diaConfig?.valor
     );
 
-    // Criar um Set com os clientes que já têm visita registrada
+    // Criar um Set com os clientes que já têm visita registrada nesta data
     const clientesComVisita = new Set(visitasDaData.map(v => v.cliente_id));
 
     // Processar visitas registradas
@@ -367,7 +371,7 @@ export default function RelatorioRoteiros() {
       }
     });
 
-    // Adicionar clientes do roteiro fixo que ainda não foram visitados
+    // Adicionar clientes do roteiro fixo que ainda não foram visitados nesta data específica
     if (roteiroFixo?.clientes_detalhes) {
       roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
         if (!clientesComVisita.has(clienteDetalhe.cliente_id)) {
