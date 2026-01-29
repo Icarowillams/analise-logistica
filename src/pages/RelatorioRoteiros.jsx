@@ -79,19 +79,28 @@ function getDatasNoPeriodo(dataInicio, dataFim, diaSemanaValor) {
   if (diaNumero === undefined) return [];
   
   const datas = [];
-  const inicio = new Date(dataInicio + 'T12:00:00');
-  const fim = new Date(dataFim + 'T12:00:00');
+  
+  // Usar parse manual para evitar problemas de timezone
+  const [anoI, mesI, diaI] = dataInicio.split('-').map(Number);
+  const [anoF, mesF, diaF] = dataFim.split('-').map(Number);
+  const inicio = new Date(anoI, mesI - 1, diaI);
+  const fim = new Date(anoF, mesF - 1, diaF);
   
   // Encontrar primeiro dia da semana correto no período
-  const diff = (diaNumero - inicio.getDay() + 7) % 7;
+  const diaAtualSemana = inicio.getDay();
+  let diff = diaNumero - diaAtualSemana;
+  if (diff < 0) diff += 7;
+  
   const primeiroDia = new Date(inicio);
   primeiroDia.setDate(inicio.getDate() + diff);
   
-  // Se o primeiro dia ficou antes do início (diff era 0 mas comparação de horário falhou), manter
   // Coletar todas as datas
   const atual = new Date(primeiroDia);
   while (atual <= fim) {
-    datas.push(atual.toISOString().split('T')[0]);
+    const ano = atual.getFullYear();
+    const mes = String(atual.getMonth() + 1).padStart(2, '0');
+    const dia = String(atual.getDate()).padStart(2, '0');
+    datas.push(`${ano}-${mes}-${dia}`);
     atual.setDate(atual.getDate() + 7);
   }
   
