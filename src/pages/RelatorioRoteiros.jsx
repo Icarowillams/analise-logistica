@@ -737,16 +737,20 @@ export default function RelatorioRoteiros() {
                                       value={dataSelecionada || ''} 
                                       onValueChange={(value) => handleSelectDate(vendedor.id, diaSemana, value)}
                                     >
-                                      <SelectTrigger className="w-48">
+                                      <SelectTrigger className="w-52">
                                         <SelectValue placeholder="Selecione uma data" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {datasDesteDia.map(data => {
-                                          const visitasNaData = ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
+                                          const visitasDaData = visitasNoPeriodo.filter(v => 
+                                            v.vendedor_id === vendedor.id && v.data_visita === data
+                                          );
+                                          const hoje = new Date().toISOString().split('T')[0];
+                                          const isFuturo = data > hoje;
                                           return (
                                             <SelectItem key={data} value={data}>
                                               {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                                              {visitasNaData > 0 && ` (${visitasNaData} visitas)`}
+                                              {visitasDaData.length > 0 ? ` (${visitasDaData.length} visitas)` : isFuturo ? ' (futuro)' : ' (sem visitas)'}
                                             </SelectItem>
                                           );
                                         })}
