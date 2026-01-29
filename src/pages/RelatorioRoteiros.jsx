@@ -704,9 +704,12 @@ export default function RelatorioRoteiros() {
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
                           
-                          // Contar visitas realizadas neste dia
+                          // Contar visitas realizadas neste dia (visitas com check-in)
                           const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
-                            return acc + ((visitasPorVendedorEData[vendedor.id] || {})[data] || []).length;
+                            const visitasDaData = visitasNoPeriodo.filter(v => 
+                              v.vendedor_id === vendedor.id && v.data_visita === data
+                            );
+                            return acc + visitasDaData.length;
                           }, 0);
 
                           return (
