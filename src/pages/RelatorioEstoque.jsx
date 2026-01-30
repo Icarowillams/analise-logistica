@@ -266,7 +266,23 @@ export default function RelatorioEstoque() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Início</label>
+              <Input
+                type="date"
+                value={dataInicio}
+                onChange={e => setDataInicio(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Fim</label>
+              <Input
+                type="date"
+                value={dataFim}
+                onChange={e => setDataFim(e.target.value)}
+              />
+            </div>
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Cliente</label>
               <Select value={filtroCliente} onValueChange={setFiltroCliente}>
@@ -291,6 +307,21 @@ export default function RelatorioEstoque() {
                 />
               </div>
             </div>
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <Checkbox
+              id="apenasUltimoEstoque"
+              checked={apenasUltimoEstoque}
+              onCheckedChange={setApenasUltimoEstoque}
+            />
+            <Label htmlFor="apenasUltimoEstoque" className="text-sm font-medium text-slate-700 cursor-pointer">
+              Apenas último estoque lançado
+            </Label>
+            {apenasUltimoEstoque && dadosAgrupados.length > 0 && dadosAgrupados[0]?.visitas[0]?.data && (
+              <Badge className="bg-blue-100 text-blue-700 ml-2">
+                Data: {new Date(dadosAgrupados[0].visitas[0].data + 'T12:00:00').toLocaleDateString('pt-BR')}
+              </Badge>
+            )}
           </div>
         </CardContent>
       </Card>
