@@ -328,7 +328,6 @@ export default function RelatorioRoteiros() {
 
   // Função para obter clientes de um roteiro em uma data específica
   // Mostra TODOS os clientes do roteiro fixo e busca visitas em QUALQUER data do período
-  // Também busca visitas pelo código do cliente caso o roteiro tenha sido duplicado/excluído
   const getClientesVisitadosNaData = (vendedorId, dataEspecifica) => {
     const concluidos = [];
     const emAtendimento = [];
@@ -347,61 +346,39 @@ export default function RelatorioRoteiros() {
       return { concluidos, emAtendimento, semAtendimento, semCheckin };
     }
 
-    // Buscar TODAS as visitas deste vendedor no período (não filtrar por roteiro_id)
-    // Isso permite encontrar visitas de roteiros duplicados/excluídos
-    const todasVisitasDoVendedor = visitasNoPeriodo.filter(v => 
-      v.vendedor_id === vendedorId
+    // Buscar TODAS as visitas deste roteiro no período (independente da data_visita)
+    const todasVisitasDoRoteiro = visitasNoPeriodo.filter(v => 
+      v.vendedor_id === vendedorId && 
+      v.roteiro_id === roteiroFixo.id
     );
 
-    // Criar mapa de visitas por cliente_id E por cliente_codigo
-    const visitasPorClienteId = {};
-    const visitasPorClienteCodigo = {};
-    
-    todasVisitasDoVendedor.forEach(v => {
-      // Mapear por cliente_id
-      if (v.cliente_id) {
-        if (!visitasPorClienteId[v.cliente_id] || 
-            (v.checkout_time && !visitasPorClienteId[v.cliente_id].checkout_time) ||
-            (v.data_visita > visitasPorClienteId[v.cliente_id].data_visita)) {
-          visitasPorClienteId[v.cliente_id] = v;
-        }
-      }
-      
-      // Mapear por cliente_codigo (para casos de roteiros duplicados)
-      if (v.cliente_codigo) {
-        if (!visitasPorClienteCodigo[v.cliente_codigo] || 
-            (v.checkout_time && !visitasPorClienteCodigo[v.cliente_codigo].checkout_time) ||
-            (v.data_visita > visitasPorClienteCodigo[v.cliente_codigo].data_visita)) {
-          visitasPorClienteCodigo[v.cliente_codigo] = v;
-        }
+    // Criar mapa de visitas por cliente_id (pegar a mais recente se houver múltiplas)
+    const visitasPorCliente = {};
+    todasVisitasDoRoteiro.forEach(v => {
+      // Se já existe uma visita para este cliente, manter a mais recente ou a que tem checkout
+      if (!visitasPorCliente[v.cliente_id] || 
+          (v.checkout_time && !visitasPorCliente[v.cliente_id].checkout_time) ||
+          (v.data_visita > visitasPorCliente[v.cliente_id].data_visita)) {
+        visitasPorCliente[v.cliente_id] = v;
       }
     });
 
     // Processar todos os clientes do roteiro fixo
     roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
       const clienteCompleto = clientesMap[clienteDetalhe.cliente_id];
-      const codigoCliente = clienteDetalhe.cliente_codigo || clienteCompleto?.codigo;
-      
-      // Tentar encontrar visita por cliente_id primeiro, depois por código
-      let visitaRot = visitasPorClienteId[clienteDetalhe.cliente_id];
-      if (!visitaRot && codigoCliente) {
-        visitaRot = visitasPorClienteCodigo[codigoCliente];
-      }
+      const visitaRot = visitasPorCliente[clienteDetalhe.cliente_id];
       
       // Buscar registro de visita correspondente
-      let visitaReg = null;
-      if (visitaRot) {
-        visitaReg = visitasRegistroNoPeriodo.find(v =>
-          (v.cliente_id === clienteDetalhe.cliente_id || v.cliente_codigo === codigoCliente) &&
-          v.vendedor_id === vendedorId &&
-          v.data_visita === visitaRot.data_visita
-        );
-      }
+      const visitaReg = visitaRot ? visitasRegistroNoPeriodo.find(v =>
+        v.cliente_id === clienteDetalhe.cliente_id &&
+        v.vendedor_id === vendedorId &&
+        v.data_visita === visitaRot.data_visita
+      ) : null;
 
       const clienteInfo = {
         cliente_id: clienteDetalhe.cliente_id,
         cliente_nome: clienteDetalhe.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
-        cliente_codigo: codigoCliente,
+        cliente_codigo: clienteDetalhe.cliente_codigo || clienteCompleto?.codigo,
         ordem: idx + 1,
         cliente: clienteCompleto,
         visitaRoteiro: visitaRot || null,
