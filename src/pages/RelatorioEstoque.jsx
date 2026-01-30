@@ -96,6 +96,20 @@ export default function RelatorioEstoque() {
       prazoVencimento: calcularPrazoVencimento(e.data_validade)
     }));
 
+    // Filtro por período
+    if (dataInicio) {
+      dados = dados.filter(e => {
+        const dataVisita = e.data_visita || e.created_date?.split('T')[0];
+        return dataVisita >= dataInicio;
+      });
+    }
+    if (dataFim) {
+      dados = dados.filter(e => {
+        const dataVisita = e.data_visita || e.created_date?.split('T')[0];
+        return dataVisita <= dataFim;
+      });
+    }
+
     // Filtros
     if (filtroCliente !== 'todos') {
       dados = dados.filter(e => e.cliente_id === filtroCliente);
@@ -108,6 +122,23 @@ export default function RelatorioEstoque() {
         e.produto?.nome?.toLowerCase().includes(termo) ||
         e.produto?.codigo?.toLowerCase().includes(termo)
       );
+    }
+
+    // Se "apenas último estoque" estiver marcado, filtrar para mostrar apenas a última data com estoque lançado
+    if (apenasUltimoEstoque && dados.length > 0) {
+      // Encontrar todas as datas únicas de lançamento de estoque
+      const datasComEstoque = [...new Set(dados.map(e => e.data_visita || e.created_date?.split('T')[0]).filter(Boolean))];
+      // Ordenar datas do mais recente para o mais antigo
+      datasComEstoque.sort((a, b) => b.localeCompare(a));
+      // Pegar a última data (mais recente)
+      const ultimaDataEstoque = datasComEstoque[0];
+      // Filtrar apenas registros desta data
+      if (ultimaDataEstoque) {
+        dados = dados.filter(e => {
+          const dataVisita = e.data_visita || e.created_date?.split('T')[0];
+          return dataVisita === ultimaDataEstoque;
+        });
+      }
     }
 
     // Agrupar por cliente
@@ -152,7 +183,7 @@ export default function RelatorioEstoque() {
         visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
       }))
       .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
-  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, busca]);
+  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, filtroCliente, busca, apenasUltimoEstoque, dataInicio, dataFim]);
 
   const toggleCliente = (clienteId) => {
     setClientesExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));
