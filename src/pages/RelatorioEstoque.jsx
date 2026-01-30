@@ -19,6 +19,9 @@ export default function RelatorioEstoque() {
   const [busca, setBusca] = useState('');
   const [clientesExpandidos, setClientesExpandidos] = useState({});
   const [visitasExpandidas, setVisitasExpandidas] = useState({});
+  const [apenasUltimoEstoque, setApenasUltimoEstoque] = useState(false);
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
 
   const { data: estoqueVisitaAll = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
