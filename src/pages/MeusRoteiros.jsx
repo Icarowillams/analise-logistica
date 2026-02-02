@@ -295,7 +295,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   );
 }
 
-function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario }) {
+function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
   const [showVisita, setShowVisita] = useState(false);
 
   const getStatusBadge = () => {
@@ -312,6 +312,38 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
       return <Badge className="bg-red-500">Não Atendido</Badge>;
     }
     return <Badge variant="outline">Pendente</Badge>;
+  };
+
+  const handleOpenMaps = (app) => {
+    const lat = clienteCompleto?.latitude;
+    const lng = clienteCompleto?.longitude;
+    
+    if (lat && lng) {
+      if (app === 'google') {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+      } else if (app === 'waze') {
+        window.open(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`, '_blank');
+      }
+    } else {
+      // Fallback para endereço se não tiver coordenadas
+      const endereco = [
+        clienteCompleto?.endereco,
+        clienteCompleto?.numero,
+        clienteCompleto?.bairro,
+        clienteCompleto?.cidade,
+        clienteCompleto?.estado
+      ].filter(Boolean).join(', ');
+      
+      if (endereco) {
+        if (app === 'google') {
+          window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(endereco)}`, '_blank');
+        } else if (app === 'waze') {
+          window.open(`https://waze.com/ul?q=${encodeURIComponent(endereco)}&navigate=yes`, '_blank');
+        }
+      } else {
+        alert('Endereço ou coordenadas não disponíveis para este cliente.');
+      }
+    }
   };
 
   return (
@@ -332,7 +364,26 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
               </p>
             </div>
           </div>
-          {getStatusBadge()}
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-8 w-8">
+                  <Navigation className="w-4 h-4 text-blue-600" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleOpenMaps('google')}>
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" className="w-4 h-4 mr-2" alt="Google Maps" />
+                  Google Maps
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleOpenMaps('waze')}>
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/d/d7/Waze_logo.svg" className="w-4 h-4 mr-2" alt="Waze" />
+                  Waze
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {getStatusBadge()}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
