@@ -215,81 +215,53 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
             {/* Vendedor */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Vendedor</label>
-              <Select 
-                value={filters.vendedor_id} 
-                onValueChange={(v) => setFilters({...filters, vendedor_id: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Vendedor</SelectItem>
-                  {vendedores.map(v => (
-                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelectFilter
+                options={vendedores}
+                selectedIds={filters.vendedor_ids}
+                onChange={(ids) => setFilters({...filters, vendedor_ids: ids})}
+                placeholder="Todos"
+                includeEmpty
+                emptyLabel="Sem Vendedor"
+              />
             </div>
 
             {/* Supervisor */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Supervisor</label>
-              <Select 
-                value={filters.supervisor_id} 
-                onValueChange={(v) => setFilters({...filters, supervisor_id: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Supervisor</SelectItem>
-                  {supervisors.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelectFilter
+                options={supervisors}
+                selectedIds={filters.supervisor_ids}
+                onChange={(ids) => setFilters({...filters, supervisor_ids: ids})}
+                placeholder="Todos"
+                includeEmpty
+                emptyLabel="Sem Supervisor"
+              />
             </div>
 
             {/* Rede */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Rede</label>
-              <Select 
-                value={filters.rede_id} 
-                onValueChange={(v) => setFilters({...filters, rede_id: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Rede</SelectItem>
-                  {redes.map(r => (
-                    <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelectFilter
+                options={redes}
+                selectedIds={filters.rede_ids}
+                onChange={(ids) => setFilters({...filters, rede_ids: ids})}
+                placeholder="Todas"
+                includeEmpty
+                emptyLabel="Sem Rede"
+              />
             </div>
 
             {/* Segmento */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Segmento</label>
-              <Select 
-                value={filters.segmento_id} 
-                onValueChange={(v) => setFilters({...filters, segmento_id: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="empty" className="text-amber-600">🔍 Vazio / Sem Segmento</SelectItem>
-                  {segmentos.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelectFilter
+                options={segmentos}
+                selectedIds={filters.segmento_ids}
+                onChange={(ids) => setFilters({...filters, segmento_ids: ids})}
+                placeholder="Todos"
+                includeEmpty
+                emptyLabel="Sem Segmento"
+              />
             </div>
 
             {/* Status */}
