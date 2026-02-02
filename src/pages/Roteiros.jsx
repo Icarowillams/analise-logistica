@@ -28,6 +28,7 @@ export default function Roteiros() {
   const [selected, setSelected] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [duplicateDia, setDuplicateDia] = useState('');
+  const [duplicateVendedor, setDuplicateVendedor] = useState('');
   
   const [filters, setFilters] = useState({
     dia: '',
@@ -57,10 +58,10 @@ export default function Roteiros() {
   });
 
   const duplicateMutation = useMutation({
-    mutationFn: async ({ roteiro, novoDia }) => {
+    mutationFn: async ({ roteiro, novoDia, novoVendedorId, novoVendedorNome }) => {
       const novoRoteiro = {
-        vendedor_id: roteiro.vendedor_id,
-        vendedor_nome: roteiro.vendedor_nome,
+        vendedor_id: novoVendedorId,
+        vendedor_nome: novoVendedorNome,
         dia_semana: novoDia,
         clientes_ids: roteiro.clientes_ids || [],
         clientes_detalhes: roteiro.clientes_detalhes || [],
@@ -74,12 +75,14 @@ export default function Roteiros() {
       setDuplicateModalOpen(false);
       setSelected(null);
       setDuplicateDia('');
+      setDuplicateVendedor('');
     }
   });
 
   const handleDuplicate = (roteiro) => {
     setSelected(roteiro);
     setDuplicateDia('');
+    setDuplicateVendedor(roteiro.vendedor_id || '');
     setDuplicateModalOpen(true);
   };
 
@@ -88,7 +91,32 @@ export default function Roteiros() {
       alert('Selecione o dia da semana para o novo roteiro');
       return;
     }
-    duplicateMutation.mutate({ roteiro: selected, novoDia: duplicateDia });
+    if (!duplicateVendedor) {
+      alert('Selecione o funcionário para o novo roteiro');
+      return;
+    }
+
+    const vendedorSelecionado = vendedores.find(v => v.id === duplicateVendedor);
+    const mesmoFuncionario = duplicateVendedor === selected?.vendedor_id;
+
+    // Validação: se for o mesmo funcionário, não pode duplicar para o mesmo dia ou dia que já tem roteiro
+    if (mesmoFuncionario) {
+      // Verificar se já existe roteiro para este funcionário neste dia
+      const roteiroExistente = roteiros.find(r => 
+        r.vendedor_id === duplicateVendedor && r.dia_semana === duplicateDia
+      );
+      if (roteiroExistente) {
+        alert(`O funcionário "${vendedorSelecionado?.nome}" já possui um roteiro para ${getDiaLabel(duplicateDia)}. Para o mesmo funcionário, escolha um dia diferente.`);
+        return;
+      }
+    }
+
+    duplicateMutation.mutate({ 
+      roteiro: selected, 
+      novoDia: duplicateDia,
+      novoVendedorId: duplicateVendedor,
+      novoVendedorNome: vendedorSelecionado?.nome || ''
+    });
   };
 
   const handleExport = () => {
@@ -418,6 +446,24 @@ export default function Roteiros() {
               <p className="text-sm text-slate-500">{getDiaLabel(selected?.dia_semana)} - {selected?.clientes_ids?.length || 0} clientes</p>
             </div>
             <div>
+              <Label>Selecione o funcionário *</Label>
+              <Select value={duplicateVendedor} onValueChange={setDuplicateVendedor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o funcionário" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vendedores.map(v => (
+                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {duplicateVendedor && duplicateVendedor !== selected?.vendedor_id && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Duplicando para outro funcionário - pode usar qualquer dia.
+                </p>
+              )}
+            </div>
+            <div>
               <Label>Selecione o novo dia da semana *</Label>
               <Select value={duplicateDia} onValueChange={setDuplicateDia}>
                 <SelectTrigger>
@@ -433,6 +479,11 @@ export default function Roteiros() {
                   <SelectItem value="domingo">Domingo</SelectItem>
                 </SelectContent>
               </Select>
+              {duplicateVendedor === selected?.vendedor_id && duplicateDia && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Mesmo funcionário: não pode duplicar para um dia que já tenha roteiro.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -441,7 +492,7 @@ export default function Roteiros() {
             </Button>
             <Button 
               onClick={confirmDuplicate} 
-              disabled={duplicateMutation.isPending || !duplicateDia}
+              disabled={duplicateMutation.isPending || !duplicateDia || !duplicateVendedor}
               className="bg-blue-600 hover:bg-blue-700"
             >
               {duplicateMutation.isPending ? 'Duplicando...' : 'Duplicar Roteiro'}
