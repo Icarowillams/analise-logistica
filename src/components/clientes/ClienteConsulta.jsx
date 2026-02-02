@@ -331,10 +331,10 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
             <Button 
               variant="outline" 
               onClick={() => setFilters({
-                vendedor_id: 'all',
-                supervisor_id: 'all',
-                rede_id: 'all',
-                segmento_id: 'all',
+                vendedor_ids: [],
+                supervisor_ids: [],
+                rede_ids: [],
+                segmento_ids: [],
                 status: 'all',
                 cidade: '',
                 bairro: '',
