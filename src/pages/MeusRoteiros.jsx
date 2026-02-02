@@ -253,6 +253,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
                 isReagendamento={true}
                 reagendamentoId={reagendada.id}
                 permissaoUsuario={permissaoUsuario}
+                clienteCompleto={clienteCompleto}
               />
             );
           })}
