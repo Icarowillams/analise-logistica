@@ -72,35 +72,61 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
 
   const filteredClientes = useMemo(() => {
     return clientes.filter(cliente => {
-      // Filter by Vendedor
-      if (filters.vendedor_id === 'empty') {
-        if (cliente.vendedor_id) return false;
-      } else if (filters.vendedor_id !== 'all' && cliente.vendedor_id !== filters.vendedor_id) {
-        return false;
+      // Filter by Vendedor (multi-select)
+      if (filters.vendedor_ids.length > 0) {
+        const hasEmpty = filters.vendedor_ids.includes('__empty__');
+        const selectedIds = filters.vendedor_ids.filter(id => id !== '__empty__');
+        
+        if (hasEmpty && !cliente.vendedor_id) {
+          // Passa se está vazio e "vazio" está selecionado
+        } else if (selectedIds.includes(cliente.vendedor_id)) {
+          // Passa se o vendedor está selecionado
+        } else {
+          return false;
+        }
       }
       
-      // Filter by Supervisor
-      if (filters.supervisor_id !== 'all') {
+      // Filter by Supervisor (multi-select)
+      if (filters.supervisor_ids.length > 0) {
         const supId = getSupervisorId(cliente);
-        if (filters.supervisor_id === 'empty') {
-          if (supId) return false;
-        } else if (supId !== filters.supervisor_id) {
+        const hasEmpty = filters.supervisor_ids.includes('__empty__');
+        const selectedIds = filters.supervisor_ids.filter(id => id !== '__empty__');
+        
+        if (hasEmpty && !supId) {
+          // Passa se está vazio
+        } else if (selectedIds.includes(supId)) {
+          // Passa se o supervisor está selecionado
+        } else {
           return false;
         }
       }
 
-      // Filter by Rede
-      if (filters.rede_id === 'empty') {
-        if (cliente.rede_id) return false;
-      } else if (filters.rede_id !== 'all' && cliente.rede_id !== filters.rede_id) {
-        return false;
+      // Filter by Rede (multi-select)
+      if (filters.rede_ids.length > 0) {
+        const hasEmpty = filters.rede_ids.includes('__empty__');
+        const selectedIds = filters.rede_ids.filter(id => id !== '__empty__');
+        
+        if (hasEmpty && !cliente.rede_id) {
+          // Passa se está vazio
+        } else if (selectedIds.includes(cliente.rede_id)) {
+          // Passa se a rede está selecionada
+        } else {
+          return false;
+        }
       }
 
-      // Filter by Segmento
-      if (filters.segmento_id === 'empty') {
-        if (cliente.segmento_id) return false;
-      } else if (filters.segmento_id !== 'all' && cliente.segmento_id !== filters.segmento_id) {
-        return false;
+      // Filter by Segmento (multi-select)
+      if (filters.segmento_ids.length > 0) {
+        const hasEmpty = filters.segmento_ids.includes('__empty__');
+        const selectedIds = filters.segmento_ids.filter(id => id !== '__empty__');
+        
+        if (hasEmpty && !cliente.segmento_id) {
+          // Passa se está vazio
+        } else if (selectedIds.includes(cliente.segmento_id)) {
+          // Passa se o segmento está selecionado
+        } else {
+          return false;
+        }
       }
 
       // Filter by Status
