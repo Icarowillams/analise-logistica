@@ -340,7 +340,7 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                     <div>
                       <Label className="text-xs">Busca Geral</Label>
                       <Input
-                        placeholder="Nome ou Razão Social..."
+                        placeholder="Nome Fantasia, Razão Social ou Código..."
                         value={filtros.busca}
                         onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })}
                         className="h-9"
