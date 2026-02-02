@@ -289,6 +289,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
             roteiroId={roteiro.id}
             vendedor={vendedor}
             permissaoUsuario={permissaoUsuario}
+            clienteCompleto={clienteCompleto}
           />
         );
       })}
