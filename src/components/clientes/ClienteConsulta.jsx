@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
-import { Search, Filter, MapPin, List, MapPinOff } from 'lucide-react';
+import { Search, Filter, MapPin, List, MapPinOff, Download } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 
-export default function ClienteConsulta({ onEdit, onDelete }) {
+export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const [filters, setFilters] = useState({
     vendedor_ids: [],
     supervisor_ids: [],
@@ -378,6 +378,17 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
             <List className="w-4 h-4" />
             Resultados ({filteredClientes.length})
           </h3>
+          {onExport && (
+            <Button
+              onClick={() => onExport(filteredClientes)}
+              variant="outline"
+              size="sm"
+              className="border-green-200 text-green-700 hover:bg-green-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Exportar ({filteredClientes.length})
+            </Button>
+          )}
         </div>
         <div className="p-0">
           <DataTable 

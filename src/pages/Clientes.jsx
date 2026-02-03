@@ -516,8 +516,8 @@ export default function Clientes() {
     { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo' }
   ];
 
-  const handleExport = async () => {
-    const clientes = await base44.entities.Cliente.list();
+  const handleExport = async (clientesFiltrados = null) => {
+    const clientes = clientesFiltrados || await base44.entities.Cliente.list();
     
     const headers = [
       'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj',
@@ -913,7 +913,7 @@ export default function Clientes() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <ClienteConsulta onEdit={handleEdit} onDelete={handleDelete} />
+          <ClienteConsulta onEdit={handleEdit} onDelete={handleDelete} onExport={handleExport} />
         </TabsContent>
       </Tabs>
 
