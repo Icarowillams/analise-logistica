@@ -517,7 +517,10 @@ export default function Clientes() {
   ];
 
   const handleExport = async (clientesFiltrados = null) => {
-    const clientes = clientesFiltrados || await base44.entities.Cliente.list();
+    let clientes = clientesFiltrados;
+    if (!clientes || !Array.isArray(clientes)) {
+      clientes = await base44.entities.Cliente.list();
+    }
     
     const headers = [
       'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj',
