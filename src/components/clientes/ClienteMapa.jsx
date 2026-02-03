@@ -18,22 +18,31 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Ícone customizado
+// Ícone customizado - maior e mais visível
 const createCustomIcon = (color) => {
   return L.divIcon({
     className: 'custom-marker',
     html: `<div style="
       background-color: ${color};
-      width: 28px;
-      height: 28px;
+      width: 32px;
+      height: 32px;
       border-radius: 50% 50% 50% 0;
       transform: rotate(-45deg);
-      border: 3px solid white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    "></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 28],
-    popupAnchor: [0, -28]
+      border: 4px solid white;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+    "><div style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(45deg);
+      width: 10px;
+      height: 10px;
+      background: white;
+      border-radius: 50%;
+    "></div></div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32]
   });
 };
 
@@ -277,17 +286,21 @@ export default function ClienteMapa() {
 
       {/* Mapa quadrado */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="aspect-square w-full max-w-4xl mx-auto">
+        <div style={{ height: '600px', maxHeight: '80vh' }} className="w-full">
           <MapContainer
             center={mapCenter}
             zoom={12}
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom={true}
+            maxBounds={[[-90, -180], [90, 180]]}
+            maxBoundsViscosity={1.0}
+            minZoom={3}
           >
             <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              noWrap={true}
             />
             {clientesComCoordenadas.map((cliente) => (
               <Marker
