@@ -272,11 +272,30 @@ export default function ClienteMapa() {
     });
   }, [clientesFiltrados]);
 
-  // Clientes com algum valor nos campos de coordenadas (mesmo inválidos)
-  const clientesComAlgumaCoordenada = useMemo(() => {
+  // Clientes com coordenadas INVÁLIDAS (fora dos limites ou valores absurdos)
+  const clientesComCoordenadasInvalidas = useMemo(() => {
     return clientesFiltrados.filter(c => {
-      return (c.latitude !== null && c.latitude !== undefined && c.latitude !== '') ||
-             (c.longitude !== null && c.longitude !== undefined && c.longitude !== '');
+      const lat = parseFloat(c.latitude);
+      const lng = parseFloat(c.longitude);
+      const temAlgumValor = (c.latitude !== null && c.latitude !== undefined && c.latitude !== '') ||
+                           (c.longitude !== null && c.longitude !== undefined && c.longitude !== '');
+      
+      if (!temAlgumValor) return false; // Não tem nenhum valor, não é "inválido", é "sem localização"
+      
+      // Tem valor mas é inválido (fora dos limites geográficos)
+      const invalido = isNaN(lat) || isNaN(lng) || 
+                       lat < -90 || lat > 90 || 
+                       lng < -180 || lng > 180 ||
+                       (lat === 0 && lng === 0);
+      return invalido;
+    });
+  }, [clientesFiltrados]);
+
+  // Clientes sem nenhuma coordenada cadastrada
+  const clientesSemCoordenada = useMemo(() => {
+    return clientesFiltrados.filter(c => {
+      return (c.latitude === null || c.latitude === undefined || c.latitude === '') &&
+             (c.longitude === null || c.longitude === undefined || c.longitude === '');
     });
   }, [clientesFiltrados]);
 
