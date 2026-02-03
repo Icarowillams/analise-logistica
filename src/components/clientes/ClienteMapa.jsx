@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -18,21 +18,27 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Ícone customizado - círculo grande e bem visível
-const createCustomIcon = (color) => {
+// Ícone customizado - tamanho ajusta com o zoom
+const createCustomIcon = (color, currentZoom = 12) => {
+  const baseSize = 20;
+  // Quanto menor o zoom (mais afastado), maior o marcador
+  const zoomFactor = Math.max(1, (15 - currentZoom) * 0.3);
+  const size = Math.min(50, Math.max(16, baseSize * zoomFactor));
+  const borderWidth = Math.max(2, size / 8);
+
   return L.divIcon({
     className: 'custom-marker',
     html: `<div style="
       background-color: ${color};
-      width: 24px;
-      height: 24px;
+      width: ${size}px;
+      height: ${size}px;
       border-radius: 50%;
-      border: 3px solid white;
-      box-shadow: 0 0 0 2px ${color}, 0 4px 12px rgba(0,0,0,0.5);
+      border: ${borderWidth}px solid white;
+      box-shadow: 0 0 0 ${Math.max(1, size / 12)}px ${color}, 0 4px 12px rgba(0,0,0,0.5);
     "></div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2]
   });
 };
 
@@ -51,58 +57,50 @@ function ChangeView({ center, zoom, bounds }) {
   return null;
 }
 
-// Componente de cluster manual para agrupar marcadores próximos
+// Componente de marcadores com zoom dinâmico
 function MarkerCluster({ clientes, getStatusColor, createIcon }) {
   const map = useMap();
-  const [clusters, setClusters] = useState([]);
-  
-  useEffect(() => {
-    if (!map || clientes.length === 0) {
-      setClusters([]);
-      return;
-    }
-    
-    // Simplesmente retorna todos os clientes como marcadores individuais
-    setClusters(clientes.map(c => ({
-      type: 'marker',
-      cliente: c,
-      position: [parseFloat(c.latitude), parseFloat(c.longitude)]
-    })));
-  }, [map, clientes]);
-  
+  const [currentZoom, setCurrentZoom] = useState(map.getZoom());
+
+  useMapEvents({
+    zoomend: () => {
+      setCurrentZoom(map.getZoom());
+    },
+  });
+
   return (
     <>
-      {clusters.map((item, idx) => (
+      {clientes.map((cliente) => (
         <Marker
-          key={item.cliente.id}
-          position={item.position}
-          icon={createIcon(getStatusColor(item.cliente.status))}
+          key={cliente.id}
+          position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
+          icon={createIcon(getStatusColor(cliente.status), currentZoom)}
         >
           <Popup>
             <div className="min-w-[200px] p-1">
               <div className="font-bold text-amber-700 text-sm mb-1">
-                {item.cliente.codigo}
+                {cliente.codigo}
               </div>
               <div className="font-semibold text-slate-800 text-base">
-                {item.cliente.nome_fantasia || item.cliente.razao_social}
+                {cliente.nome_fantasia || cliente.razao_social}
               </div>
-              {item.cliente.endereco && (
+              {cliente.endereco && (
                 <div className="text-xs text-slate-500 mt-1">
-                  {item.cliente.endereco}, {item.cliente.numero} - {item.cliente.bairro}
+                  {cliente.endereco}, {cliente.numero} - {cliente.bairro}
                 </div>
               )}
-              {item.cliente.cidade && (
+              {cliente.cidade && (
                 <div className="text-xs text-slate-500">
-                  {item.cliente.cidade} - {item.cliente.estado}
+                  {cliente.cidade} - {cliente.estado}
                 </div>
               )}
               <div className="mt-2">
                 <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                  item.cliente.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' :
-                  item.cliente.status === 'inativo' ? 'bg-red-100 text-red-700' :
+                  cliente.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' :
+                  cliente.status === 'inativo' ? 'bg-red-100 text-red-700' :
                   'bg-amber-100 text-amber-700'
                 }`}>
-                  {item.cliente.status}
+                  {cliente.status}
                 </span>
               </div>
             </div>
@@ -336,17 +334,18 @@ export default function ClienteMapa() {
         </Badge>
       </div>
 
-      {/* Mapa quadrado */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div style={{ height: '600px', maxHeight: '80vh' }} className="w-full">
+      {/* Mapa quadrado sem repetição */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex justify-center">
+        <div className="aspect-square w-full max-w-[700px]">
           <MapContainer
             center={mapCenter}
             zoom={12}
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom={true}
-            maxBounds={[[-90, -180], [90, 180]]}
+            maxBounds={[[-85, -180], [85, 180]]}
             maxBoundsViscosity={1.0}
-            minZoom={5}
+            minZoom={3}
+            worldCopyJump={false}
           >
             <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
             <TileLayer
