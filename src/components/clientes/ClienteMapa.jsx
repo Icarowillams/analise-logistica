@@ -344,7 +344,7 @@ export default function ClienteMapa() {
             scrollWheelZoom={true}
             maxBounds={[[-85, -180], [85, 180]]}
             maxBoundsViscosity={1.0}
-            minZoom={3}
+            minZoom={1}
             worldCopyJump={false}
           >
             <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
