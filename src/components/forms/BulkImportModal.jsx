@@ -22,7 +22,9 @@ export default function BulkImportModal({
   onImport,
   isImporting,
   tipoImportacao = 'venda',
-  onTipoChange
+  onTipoChange,
+  modoCliente,
+  onModoClienteChange
 }) {
   const [mode, setMode] = useState('upload'); // 'upload' | 'paste'
   const [file, setFile] = useState(null);
@@ -135,7 +137,56 @@ export default function BulkImportModal({
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          {/* Tipo de importação - só mostra se as props forem passadas */}
+          {/* Modo de importação de clientes - só mostra se as props forem passadas */}
+          {onModoClienteChange && (
+            <div className="p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
+              <p className="font-medium text-slate-700 mb-3">Modo de Importação:</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all flex-1" style={{
+                  borderColor: modoCliente === 'cadastro' ? '#10b981' : '#e5e7eb',
+                  backgroundColor: modoCliente === 'cadastro' ? '#ecfdf5' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    checked={modoCliente === 'cadastro'}
+                    onChange={() => onModoClienteChange('cadastro')}
+                    className="w-4 h-4 text-emerald-600"
+                    name="modoImportacaoCliente"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold block" style={{
+                      color: modoCliente === 'cadastro' ? '#059669' : '#64748b'
+                    }}>
+                      ➕ Cadastro
+                    </span>
+                    <span className="text-xs text-slate-500">Cria novos e atualiza existentes</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all flex-1" style={{
+                  borderColor: modoCliente === 'atualizacao' ? '#3b82f6' : '#e5e7eb',
+                  backgroundColor: modoCliente === 'atualizacao' ? '#eff6ff' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    checked={modoCliente === 'atualizacao'}
+                    onChange={() => onModoClienteChange('atualizacao')}
+                    className="w-4 h-4 text-blue-600"
+                    name="modoImportacaoCliente"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold block" style={{
+                      color: modoCliente === 'atualizacao' ? '#1e40af' : '#64748b'
+                    }}>
+                      ✏️ Atualização Cadastral
+                    </span>
+                    <span className="text-xs text-slate-500">Apenas atualiza clientes existentes</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Tipo de importação (vendas/trocas) - só mostra se as props forem passadas */}
           {onTipoChange && (
             <div className="p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
               <p className="font-medium text-slate-700 mb-3">Tipo de Importação:</p>
@@ -308,12 +359,23 @@ export default function BulkImportModal({
             <Button
               onClick={handleImport}
               disabled={isImporting || allRows.length === 0}
-              className={tipoImportacao === 'troca' ? 'bg-gradient-to-r from-orange-500 to-red-600' : 'bg-gradient-to-r from-emerald-500 to-teal-600'}
+              className={
+                modoCliente === 'atualizacao' 
+                  ? 'bg-gradient-to-r from-blue-500 to-indigo-600' 
+                  : tipoImportacao === 'troca' 
+                    ? 'bg-gradient-to-r from-orange-500 to-red-600' 
+                    : 'bg-gradient-to-r from-emerald-500 to-teal-600'
+              }
             >
               {isImporting ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</>
               ) : (
-                <><CheckCircle className="w-4 h-4 mr-2" />Importar {allRows.length} {tipoImportacao === 'troca' ? 'trocas' : 'vendas'}</>
+                <><CheckCircle className="w-4 h-4 mr-2" />
+                  {modoCliente === 'atualizacao' 
+                    ? `Atualizar ${allRows.length} cliente(s)` 
+                    : `Importar ${allRows.length} ${tipoImportacao === 'troca' ? 'trocas' : onModoClienteChange ? 'cliente(s)' : 'vendas'}`
+                  }
+                </>
               )}
             </Button>
           </div>
