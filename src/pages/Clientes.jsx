@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
@@ -640,7 +640,7 @@ export default function Clientes() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+        <TabsList className="grid w-full max-w-[500px] grid-cols-3 mb-6">
           <TabsTrigger value="cadastro" className="flex items-center gap-2">
             <Building2 className="w-4 h-4" />
             Cadastro
@@ -648,6 +648,10 @@ export default function Clientes() {
           <TabsTrigger value="consulta" className="flex items-center gap-2">
             <List className="w-4 h-4" />
             Consulta
+          </TabsTrigger>
+          <TabsTrigger value="mapa" className="flex items-center gap-2">
+            <Map className="w-4 h-4" />
+            Mapa
           </TabsTrigger>
         </TabsList>
         
@@ -947,6 +951,10 @@ export default function Clientes() {
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
           <ClienteConsulta onEdit={handleEdit} onDelete={handleDelete} onExport={handleExport} />
+        </TabsContent>
+
+        <TabsContent value="mapa" className="animate-in fade-in-50 duration-300">
+          <ClienteMapa />
         </TabsContent>
       </Tabs>
 
