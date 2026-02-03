@@ -22,17 +22,50 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Lista de estados brasileiros
+// Lista de estados brasileiros com siglas e nomes
 const ESTADOS_BRASIL = [
-  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
-  'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
-  'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
-  'ACRE', 'ALAGOAS', 'AMAPÁ', 'AMAZONAS', 'BAHIA', 'CEARÁ', 'DISTRITO FEDERAL',
-  'ESPÍRITO SANTO', 'GOIÁS', 'MARANHÃO', 'MATO GROSSO', 'MATO GROSSO DO SUL',
-  'MINAS GERAIS', 'PARÁ', 'PARAÍBA', 'PARANÁ', 'PERNAMBUCO', 'PIAUÍ',
-  'RIO DE JANEIRO', 'RIO GRANDE DO NORTE', 'RIO GRANDE DO SUL', 'RONDÔNIA',
-  'RORAIMA', 'SANTA CATARINA', 'SÃO PAULO', 'SERGIPE', 'TOCANTINS'
+  { sigla: 'AC', nome: 'Acre' },
+  { sigla: 'AL', nome: 'Alagoas' },
+  { sigla: 'AP', nome: 'Amapá' },
+  { sigla: 'AM', nome: 'Amazonas' },
+  { sigla: 'BA', nome: 'Bahia' },
+  { sigla: 'CE', nome: 'Ceará' },
+  { sigla: 'DF', nome: 'Distrito Federal' },
+  { sigla: 'ES', nome: 'Espírito Santo' },
+  { sigla: 'GO', nome: 'Goiás' },
+  { sigla: 'MA', nome: 'Maranhão' },
+  { sigla: 'MT', nome: 'Mato Grosso' },
+  { sigla: 'MS', nome: 'Mato Grosso do Sul' },
+  { sigla: 'MG', nome: 'Minas Gerais' },
+  { sigla: 'PA', nome: 'Pará' },
+  { sigla: 'PB', nome: 'Paraíba' },
+  { sigla: 'PR', nome: 'Paraná' },
+  { sigla: 'PE', nome: 'Pernambuco' },
+  { sigla: 'PI', nome: 'Piauí' },
+  { sigla: 'RJ', nome: 'Rio de Janeiro' },
+  { sigla: 'RN', nome: 'Rio Grande do Norte' },
+  { sigla: 'RS', nome: 'Rio Grande do Sul' },
+  { sigla: 'RO', nome: 'Rondônia' },
+  { sigla: 'RR', nome: 'Roraima' },
+  { sigla: 'SC', nome: 'Santa Catarina' },
+  { sigla: 'SP', nome: 'São Paulo' },
+  { sigla: 'SE', nome: 'Sergipe' },
+  { sigla: 'TO', nome: 'Tocantins' }
 ];
+
+// Função para verificar se estado do cliente pertence aos selecionados
+const estadoPertence = (estadoCliente, estadosSelecionados) => {
+  if (!estadoCliente) return false;
+  const estadoNorm = estadoCliente.toUpperCase().trim();
+  return estadosSelecionados.some(sigla => {
+    const estado = ESTADOS_BRASIL.find(e => e.sigla === sigla);
+    if (!estado) return false;
+    return estadoNorm === sigla || 
+           estadoNorm === estado.nome.toUpperCase() ||
+           estadoNorm.includes(estado.nome.toUpperCase()) ||
+           estado.nome.toUpperCase().includes(estadoNorm);
+  });
+};
 
 // Ícone customizado
 const createCustomIcon = (color, isOutsideRegion = false) => {
@@ -68,24 +101,16 @@ function ChangeView({ bounds }) {
   return null;
 }
 
-// Componente de marcadores
-function MapMarkers({ clientes, getStatusColor, createIcon, estadosSelecionados }) {
+// Componente de marcadores - mostra apenas clientes FORA dos estados selecionados
+function MapMarkers({ clientes, getStatusColor, createIcon }) {
   return (
     <>
-      {clientes.map((cliente) => {
-        const estadoCliente = (cliente.estado || '').toUpperCase().trim();
-        const isOutside = estadosSelecionados.length > 0 && 
-          !estadosSelecionados.some(e => 
-            estadoCliente === e.toUpperCase() || 
-            estadoCliente.includes(e.toUpperCase())
-          );
-        
-        return (
-          <Marker
-            key={cliente.id}
-            position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
-            icon={createIcon(isOutside ? '#8b5cf6' : getStatusColor(cliente.status), isOutside)}
-          >
+      {clientes.map((cliente) => (
+        <Marker
+          key={cliente.id}
+          position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
+          icon={createIcon(getStatusColor(cliente.status))}
+        >
             <Popup>
               <div className="min-w-[200px] p-1">
                 <div className="font-bold text-amber-700 text-sm mb-1">
@@ -112,17 +137,11 @@ function MapMarkers({ clientes, getStatusColor, createIcon, estadosSelecionados 
                   }`}>
                     {cliente.status}
                   </span>
-                  {isOutside && (
-                    <span className="inline-block ml-2 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
-                      Fora da região
-                    </span>
-                  )}
                 </div>
               </div>
             </Popup>
           </Marker>
-        );
-      })}
+        ))}
     </>
   );
 }
@@ -134,7 +153,7 @@ export default function ClienteMapa() {
   const [filtroRede, setFiltroRede] = useState('all');
   const [filtroStatus, setFiltroStatus] = useState('all');
   const [filtroCidade, setFiltroCidade] = useState('all');
-  const [estadosSelecionados, setEstadosSelecionados] = useState(['PE', 'PERNAMBUCO']);
+  const [estadosSelecionados, setEstadosSelecionados] = useState(['PE']);
   const [showEstadosFilter, setShowEstadosFilter] = useState(false);
 
   const { filtrarClientes, clientes: clientesPermitidos, loading: permLoading } = useClientesPermissao();
@@ -154,29 +173,18 @@ export default function ClienteMapa() {
     queryFn: () => base44.entities.Rede.list()
   });
 
-  // Estados únicos dos clientes
-  const estadosUnicos = useMemo(() => {
-    const estados = new Set();
-    clientesPermitidos.forEach(c => {
-      if (c.estado) {
-        estados.add(c.estado.toUpperCase().trim());
-      }
-    });
-    return Array.from(estados).sort();
-  }, [clientesPermitidos]);
-
-  const toggleEstado = (estado) => {
+  const toggleEstado = (sigla) => {
     setEstadosSelecionados(prev => {
-      if (prev.includes(estado)) {
-        return prev.filter(e => e !== estado);
+      if (prev.includes(sigla)) {
+        return prev.filter(e => e !== sigla);
       } else {
-        return [...prev, estado];
+        return [...prev, sigla];
       }
     });
   };
 
   const selecionarTodos = () => {
-    setEstadosSelecionados([...estadosUnicos]);
+    setEstadosSelecionados(ESTADOS_BRASIL.map(e => e.sigla));
   };
 
   const limparSelecao = () => {
@@ -226,17 +234,11 @@ export default function ClienteMapa() {
     });
   }, [clientesFiltrados]);
 
-  // Clientes fora dos estados selecionados
+  // Clientes fora dos estados selecionados (região de atendimento)
   const clientesForaRegiao = useMemo(() => {
-    if (estadosSelecionados.length === 0) return [];
+    if (estadosSelecionados.length === 0) return clientesComCoordenadas;
     
-    return clientesComCoordenadas.filter(c => {
-      const estadoCliente = (c.estado || '').toUpperCase().trim();
-      return !estadosSelecionados.some(e => 
-        estadoCliente === e.toUpperCase() || 
-        estadoCliente.includes(e.toUpperCase())
-      );
-    });
+    return clientesComCoordenadas.filter(c => !estadoPertence(c.estado, estadosSelecionados));
   }, [clientesComCoordenadas, estadosSelecionados]);
 
   // Lista de cidades únicas
@@ -245,16 +247,16 @@ export default function ClienteMapa() {
     return Array.from(cidadesSet).sort();
   }, [clientesPermitidos]);
 
-  // Calcular bounds do mapa
+  // Calcular bounds do mapa baseado nos clientes fora da região
   const mapBounds = useMemo(() => {
-    if (clientesComCoordenadas.length === 0) {
-      return L.latLngBounds([[-8.5, -37], [-7, -34]]); // Pernambuco como padrão
+    if (clientesForaRegiao.length === 0) {
+      return L.latLngBounds([[-33, -74], [5, -34]]); // Brasil inteiro
     }
     
     return L.latLngBounds(
-      clientesComCoordenadas.map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
+      clientesForaRegiao.map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
     );
-  }, [clientesComCoordenadas]);
+  }, [clientesForaRegiao]);
 
   // Cores por status
   const getStatusColor = (status) => {
@@ -376,14 +378,15 @@ export default function ClienteMapa() {
                   Limpar
                 </Button>
               </div>
-              <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-9 gap-2">
-                {estadosUnicos.map(estado => (
-                  <label key={estado} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+              <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-2">
+                {ESTADOS_BRASIL.map(estado => (
+                  <label key={estado.sigla} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-1.5 rounded">
                     <Checkbox
-                      checked={estadosSelecionados.some(e => e.toUpperCase() === estado.toUpperCase())}
-                      onCheckedChange={() => toggleEstado(estado)}
+                      checked={estadosSelecionados.includes(estado.sigla)}
+                      onCheckedChange={() => toggleEstado(estado.sigla)}
                     />
-                    <span>{estado}</span>
+                    <span className="font-medium">{estado.sigla}</span>
+                    <span className="text-xs text-slate-500 hidden md:inline">({estado.nome})</span>
                   </label>
                 ))}
               </div>
@@ -405,12 +408,10 @@ export default function ClienteMapa() {
         <Badge variant="outline" className="px-3 py-1.5 bg-white text-red-600">
           {clientesFiltrados.length - clientesComCoordenadas.length} sem localização
         </Badge>
-        {clientesForaRegiao.length > 0 && (
-          <Badge variant="outline" className="px-3 py-1.5 bg-purple-50 text-purple-700 border-purple-200">
-            <AlertTriangle className="w-4 h-4 mr-2" />
-            {clientesForaRegiao.length} fora da região
-          </Badge>
-        )}
+        <Badge variant="outline" className="px-3 py-1.5 bg-purple-50 text-purple-700 border-purple-200">
+          <AlertTriangle className="w-4 h-4 mr-2" />
+          {clientesForaRegiao.length} fora da região de atendimento
+        </Badge>
       </div>
 
       {/* Mapa e Lista lateral */}
@@ -432,28 +433,31 @@ export default function ClienteMapa() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <MapMarkers 
-                clientes={clientesComCoordenadas} 
+                clientes={clientesForaRegiao} 
                 getStatusColor={getStatusColor}
                 createIcon={createCustomIcon}
-                estadosSelecionados={estadosSelecionados}
               />
             </MapContainer>
           </div>
         </div>
 
         {/* Lista de clientes fora da região */}
-        {clientesForaRegiao.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border w-full lg:w-80 flex-shrink-0">
-            <div className="p-3 border-b bg-purple-50">
-              <h3 className="font-semibold text-purple-800 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Clientes Fora da Região ({clientesForaRegiao.length})
-              </h3>
-              <p className="text-xs text-purple-600 mt-1">
-                Clientes fora dos estados selecionados
-              </p>
-            </div>
-            <ScrollArea className="h-[440px]">
+        <div className="bg-white rounded-xl shadow-sm border w-full lg:w-80 flex-shrink-0">
+          <div className="p-3 border-b bg-purple-50">
+            <h3 className="font-semibold text-purple-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Clientes Fora da Região ({clientesForaRegiao.length})
+            </h3>
+            <p className="text-xs text-purple-600 mt-1">
+              Clientes fora dos estados de atendimento selecionados
+            </p>
+          </div>
+          <ScrollArea className="h-[440px]">
+            {clientesForaRegiao.length === 0 ? (
+              <div className="p-4 text-center text-slate-500 text-sm">
+                Nenhum cliente fora da região de atendimento
+              </div>
+            ) : (
               <div className="p-2 space-y-2">
                 {clientesForaRegiao.map(cliente => (
                   <div 
@@ -475,9 +479,9 @@ export default function ClienteMapa() {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
-          </div>
-        )}
+            )}
+          </ScrollArea>
+        </div>
       </div>
 
       {/* Legenda */}
@@ -493,10 +497,6 @@ export default function ClienteMapa() {
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-amber-500"></div>
           <span className="text-slate-600">Prospecto</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-purple-500 border-2 border-black"></div>
-          <span className="text-slate-600">Fora da região</span>
         </div>
       </div>
     </div>
