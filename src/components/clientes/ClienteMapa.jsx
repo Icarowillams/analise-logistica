@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -18,13 +18,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Ícone customizado - tamanho ajusta com o zoom
-const createCustomIcon = (color, currentZoom = 12) => {
-  const baseSize = 20;
-  // Quanto menor o zoom (mais afastado), maior o marcador
-  const zoomFactor = Math.max(1, (15 - currentZoom) * 0.3);
-  const size = Math.min(50, Math.max(16, baseSize * zoomFactor));
-  const borderWidth = Math.max(2, size / 8);
+// Ícone customizado - tamanho fixo e visível
+const createCustomIcon = (color) => {
+  const size = 18;
+  const borderWidth = 2;
 
   return L.divIcon({
     className: 'custom-marker',
@@ -34,7 +31,7 @@ const createCustomIcon = (color, currentZoom = 12) => {
       height: ${size}px;
       border-radius: 50%;
       border: ${borderWidth}px solid white;
-      box-shadow: 0 0 0 ${Math.max(1, size / 12)}px ${color}, 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     "></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -57,24 +54,15 @@ function ChangeView({ center, zoom, bounds }) {
   return null;
 }
 
-// Componente de marcadores com zoom dinâmico
+// Componente de marcadores
 function MarkerCluster({ clientes, getStatusColor, createIcon }) {
-  const map = useMap();
-  const [currentZoom, setCurrentZoom] = useState(map.getZoom());
-
-  useMapEvents({
-    zoomend: () => {
-      setCurrentZoom(map.getZoom());
-    },
-  });
-
   return (
     <>
       {clientes.map((cliente) => (
         <Marker
           key={cliente.id}
           position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
-          icon={createIcon(getStatusColor(cliente.status), currentZoom)}
+          icon={createIcon(getStatusColor(cliente.status))}
         >
           <Popup>
             <div className="min-w-[200px] p-1">
@@ -334,24 +322,21 @@ export default function ClienteMapa() {
         </Badge>
       </div>
 
-      {/* Mapa quadrado sem repetição */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex justify-center">
-        <div className="aspect-square w-full max-w-[700px]">
+      {/* Mapa */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div style={{ height: '500px' }} className="w-full">
           <MapContainer
             center={mapCenter}
             zoom={12}
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom={true}
-            maxBounds={[[-85, -180], [85, 180]]}
-            maxBoundsViscosity={1.0}
-            minZoom={1}
-            worldCopyJump={false}
+            minZoom={3}
+            maxZoom={18}
           >
             <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              noWrap={true}
             />
             <MarkerCluster 
               clientes={clientesComCoordenadas} 
