@@ -280,22 +280,23 @@ export default function ClienteMapa() {
     });
   }, [clientesFiltrados]);
 
-  // Clientes fora dos estados selecionados (para lista - inclui coordenadas inválidas)
-  const clientesForaRegiaoLista = useMemo(() => {
-    if (estadosSelecionados.length === 0) return clientesComAlgumaCoordenada;
-    
-    return clientesComAlgumaCoordenada.filter(c => !estadoPertence(c.estado, estadosSelecionados));
-  }, [clientesComAlgumaCoordenada, estadosSelecionados]);
-
   // Clientes fora dos estados selecionados COM coordenadas válidas (para mapa)
+  // Filtra pela LOCALIZAÇÃO GEOGRÁFICA (latitude/longitude), não pelo campo estado
   const clientesForaRegiaoMapa = useMemo(() => {
-    return clientesForaRegiaoLista.filter(c => {
+    if (estadosSelecionados.length === 0) return [];
+    
+    return clientesComCoordenadasValidas.filter(c => {
       const lat = parseFloat(c.latitude);
       const lng = parseFloat(c.longitude);
-      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 && 
-             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+      // Cliente está FORA se sua coordenada NÃO está dentro de nenhum estado selecionado
+      return !coordenadaDentroDeEstados(lat, lng, estadosSelecionados);
     });
-  }, [clientesForaRegiaoLista]);
+  }, [clientesComCoordenadasValidas, estadosSelecionados]);
+
+  // Clientes fora dos estados selecionados (para lista lateral)
+  const clientesForaRegiaoLista = useMemo(() => {
+    return clientesForaRegiaoMapa;
+  }, [clientesForaRegiaoMapa]);
 
   // Lista de cidades únicas
   const cidades = useMemo(() => {
