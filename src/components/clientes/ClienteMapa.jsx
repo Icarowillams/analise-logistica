@@ -18,31 +18,21 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Ícone customizado - maior e mais visível
+// Ícone customizado - círculo grande e bem visível
 const createCustomIcon = (color) => {
   return L.divIcon({
     className: 'custom-marker',
     html: `<div style="
       background-color: ${color};
-      width: 32px;
-      height: 32px;
-      border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg);
-      border: 4px solid white;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.4);
-    "><div style="
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(45deg);
-      width: 10px;
-      height: 10px;
-      background: white;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
-    "></div></div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
+      border: 3px solid white;
+      box-shadow: 0 0 0 2px ${color}, 0 4px 12px rgba(0,0,0,0.5);
+    "></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12]
   });
 };
 
@@ -52,13 +42,75 @@ function ChangeView({ center, zoom, bounds }) {
   
   useEffect(() => {
     if (bounds && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [50, 50] });
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     } else if (center) {
       map.setView(center, zoom);
     }
   }, [center, zoom, bounds, map]);
   
   return null;
+}
+
+// Componente de cluster manual para agrupar marcadores próximos
+function MarkerCluster({ clientes, getStatusColor, createIcon }) {
+  const map = useMap();
+  const [clusters, setClusters] = useState([]);
+  
+  useEffect(() => {
+    if (!map || clientes.length === 0) {
+      setClusters([]);
+      return;
+    }
+    
+    // Simplesmente retorna todos os clientes como marcadores individuais
+    setClusters(clientes.map(c => ({
+      type: 'marker',
+      cliente: c,
+      position: [parseFloat(c.latitude), parseFloat(c.longitude)]
+    })));
+  }, [map, clientes]);
+  
+  return (
+    <>
+      {clusters.map((item, idx) => (
+        <Marker
+          key={item.cliente.id}
+          position={item.position}
+          icon={createIcon(getStatusColor(item.cliente.status))}
+        >
+          <Popup>
+            <div className="min-w-[200px] p-1">
+              <div className="font-bold text-amber-700 text-sm mb-1">
+                {item.cliente.codigo}
+              </div>
+              <div className="font-semibold text-slate-800 text-base">
+                {item.cliente.nome_fantasia || item.cliente.razao_social}
+              </div>
+              {item.cliente.endereco && (
+                <div className="text-xs text-slate-500 mt-1">
+                  {item.cliente.endereco}, {item.cliente.numero} - {item.cliente.bairro}
+                </div>
+              )}
+              {item.cliente.cidade && (
+                <div className="text-xs text-slate-500">
+                  {item.cliente.cidade} - {item.cliente.estado}
+                </div>
+              )}
+              <div className="mt-2">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                  item.cliente.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' :
+                  item.cliente.status === 'inativo' ? 'bg-red-100 text-red-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {item.cliente.status}
+                </span>
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+    </>
+  );
 }
 
 export default function ClienteMapa() {
@@ -294,7 +346,7 @@ export default function ClienteMapa() {
             scrollWheelZoom={true}
             maxBounds={[[-90, -180], [90, 180]]}
             maxBoundsViscosity={1.0}
-            minZoom={3}
+            minZoom={5}
           >
             <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
             <TileLayer
@@ -302,45 +354,11 @@ export default function ClienteMapa() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               noWrap={true}
             />
-            {clientesComCoordenadas.map((cliente) => (
-              <Marker
-                key={cliente.id}
-                position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
-                icon={createCustomIcon(getStatusColor(cliente.status))}
-              >
-                <Popup>
-                  <div className="min-w-[200px] p-1">
-                    <div className="font-bold text-amber-700 text-sm mb-1">
-                      {cliente.codigo}
-                    </div>
-                    <div className="font-semibold text-slate-800 text-base">
-                      {cliente.nome_fantasia || cliente.razao_social}
-                    </div>
-                    {cliente.endereco && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        {cliente.endereco}, {cliente.numero} - {cliente.bairro}
-                      </div>
-                    )}
-                    {cliente.cidade && (
-                      <div className="text-xs text-slate-500">
-                        {cliente.cidade} - {cliente.estado}
-                      </div>
-                    )}
-                    <div className="mt-2">
-                      <Badge 
-                        className={
-                          cliente.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' :
-                          cliente.status === 'inativo' ? 'bg-red-100 text-red-700' :
-                          'bg-amber-100 text-amber-700'
-                        }
-                      >
-                        {cliente.status}
-                      </Badge>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            <MarkerCluster 
+              clientes={clientesComCoordenadas} 
+              getStatusColor={getStatusColor}
+              createIcon={createCustomIcon}
+            />
           </MapContainer>
         </div>
       </div>
