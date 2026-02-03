@@ -53,29 +53,29 @@ const ESTADOS_BRASIL = [
   { sigla: 'TO', nome: 'Tocantins' }
 ];
 
+// Normaliza string removendo acentos e convertendo para maiúsculo
+const normalizar = (str) => {
+  if (!str) return '';
+  return str.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+};
+
 // Função para verificar se estado do cliente pertence aos selecionados
 const estadoPertence = (estadoCliente, estadosSelecionados) => {
   if (!estadoCliente || estadosSelecionados.length === 0) return false;
-  const estadoNorm = estadoCliente.toUpperCase().trim();
+  
+  const estadoNorm = normalizar(estadoCliente);
   
   for (const sigla of estadosSelecionados) {
+    // Verifica sigla exata (ex: "PE")
+    if (estadoNorm === sigla) return true;
+    
     const estado = ESTADOS_BRASIL.find(e => e.sigla === sigla);
     if (!estado) continue;
     
-    // Verifica sigla exata
-    if (estadoNorm === sigla) return true;
+    const nomeNorm = normalizar(estado.nome);
     
-    // Verifica nome completo
-    if (estadoNorm === estado.nome.toUpperCase()) return true;
-    
-    // Verifica se contém o nome (para casos como "PARAIBA" vs "Paraíba")
-    const nomeSimples = estado.nome.toUpperCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove acentos
-    const estadoNormSimples = estadoNorm
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    
-    if (estadoNormSimples === nomeSimples) return true;
-    if (estadoNormSimples.includes(nomeSimples) || nomeSimples.includes(estadoNormSimples)) return true;
+    // Verifica nome completo normalizado (ex: "PARAIBA" === "PARAIBA")
+    if (estadoNorm === nomeNorm) return true;
   }
   
   return false;
