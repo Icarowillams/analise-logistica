@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useState, useMemo, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,21 @@ const createCustomIcon = (color) => {
     popupAnchor: [0, -28]
   });
 };
+
+// Componente para atualizar a view do mapa
+function ChangeView({ center, zoom, bounds }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (bounds && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [50, 50] });
+    } else if (center) {
+      map.setView(center, zoom);
+    }
+  }, [center, zoom, bounds, map]);
+  
+  return null;
+}
 
 export default function ClienteMapa() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,7 +114,11 @@ export default function ClienteMapa() {
 
   // Clientes com coordenadas válidas
   const clientesComCoordenadas = useMemo(() => {
-    return clientesFiltrados.filter(c => c.latitude && c.longitude);
+    return clientesFiltrados.filter(c => {
+      const lat = parseFloat(c.latitude);
+      const lng = parseFloat(c.longitude);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
   }, [clientesFiltrados]);
 
   // Lista de cidades únicas
@@ -108,14 +127,29 @@ export default function ClienteMapa() {
     return Array.from(cidadesSet).sort();
   }, [clientesPermitidos]);
 
-  // Calcular centro do mapa
-  const mapCenter = useMemo(() => {
+  // Calcular centro e bounds do mapa
+  const { mapCenter, mapBounds } = useMemo(() => {
     if (clientesComCoordenadas.length === 0) {
-      return [-5.08, -42.8]; // Teresina como padrão
+      return { 
+        mapCenter: [-5.08, -42.8], // Teresina como padrão
+        mapBounds: null 
+      };
     }
-    const latSum = clientesComCoordenadas.reduce((sum, c) => sum + c.latitude, 0);
-    const lngSum = clientesComCoordenadas.reduce((sum, c) => sum + c.longitude, 0);
-    return [latSum / clientesComCoordenadas.length, lngSum / clientesComCoordenadas.length];
+    
+    const lats = clientesComCoordenadas.map(c => parseFloat(c.latitude));
+    const lngs = clientesComCoordenadas.map(c => parseFloat(c.longitude));
+    
+    const latSum = lats.reduce((sum, lat) => sum + lat, 0);
+    const lngSum = lngs.reduce((sum, lng) => sum + lng, 0);
+    
+    const center = [latSum / lats.length, lngSum / lngs.length];
+    
+    // Criar bounds para ajustar o zoom automaticamente
+    const bounds = L.latLngBounds(
+      clientesComCoordenadas.map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
+    );
+    
+    return { mapCenter: center, mapBounds: bounds };
   }, [clientesComCoordenadas]);
 
   // Cores por status
@@ -250,6 +284,7 @@ export default function ClienteMapa() {
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom={true}
           >
+            <ChangeView center={mapCenter} zoom={12} bounds={mapBounds} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -257,7 +292,7 @@ export default function ClienteMapa() {
             {clientesComCoordenadas.map((cliente) => (
               <Marker
                 key={cliente.id}
-                position={[cliente.latitude, cliente.longitude]}
+                position={[parseFloat(cliente.latitude), parseFloat(cliente.longitude)]}
                 icon={createCustomIcon(getStatusColor(cliente.status))}
               >
                 <Popup>
