@@ -224,8 +224,8 @@ export default function ClienteMapa() {
     return clientes;
   }, [clientesPermitidos, searchTerm, filtroVendedor, filtroSegmento, filtroRede, filtroStatus, filtroCidade, filtrarClientes]);
 
-  // Clientes com coordenadas válidas
-  const clientesComCoordenadas = useMemo(() => {
+  // Clientes com coordenadas válidas (para mostrar no mapa)
+  const clientesComCoordenadasValidas = useMemo(() => {
     return clientesFiltrados.filter(c => {
       const lat = parseFloat(c.latitude);
       const lng = parseFloat(c.longitude);
@@ -234,12 +234,30 @@ export default function ClienteMapa() {
     });
   }, [clientesFiltrados]);
 
-  // Clientes fora dos estados selecionados (região de atendimento)
-  const clientesForaRegiao = useMemo(() => {
-    if (estadosSelecionados.length === 0) return clientesComCoordenadas;
+  // Clientes com algum valor nos campos de coordenadas (mesmo inválidos)
+  const clientesComAlgumaCoordenada = useMemo(() => {
+    return clientesFiltrados.filter(c => {
+      return (c.latitude !== null && c.latitude !== undefined && c.latitude !== '') ||
+             (c.longitude !== null && c.longitude !== undefined && c.longitude !== '');
+    });
+  }, [clientesFiltrados]);
+
+  // Clientes fora dos estados selecionados (para lista - inclui coordenadas inválidas)
+  const clientesForaRegiaoLista = useMemo(() => {
+    if (estadosSelecionados.length === 0) return clientesComAlgumaCoordenada;
     
-    return clientesComCoordenadas.filter(c => !estadoPertence(c.estado, estadosSelecionados));
-  }, [clientesComCoordenadas, estadosSelecionados]);
+    return clientesComAlgumaCoordenada.filter(c => !estadoPertence(c.estado, estadosSelecionados));
+  }, [clientesComAlgumaCoordenada, estadosSelecionados]);
+
+  // Clientes fora dos estados selecionados COM coordenadas válidas (para mapa)
+  const clientesForaRegiaoMapa = useMemo(() => {
+    return clientesForaRegiaoLista.filter(c => {
+      const lat = parseFloat(c.latitude);
+      const lng = parseFloat(c.longitude);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 && 
+             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    });
+  }, [clientesForaRegiaoLista]);
 
   // Lista de cidades únicas
   const cidades = useMemo(() => {
@@ -247,16 +265,16 @@ export default function ClienteMapa() {
     return Array.from(cidadesSet).sort();
   }, [clientesPermitidos]);
 
-  // Calcular bounds do mapa baseado nos clientes fora da região
+  // Calcular bounds do mapa baseado nos clientes fora da região com coordenadas válidas
   const mapBounds = useMemo(() => {
-    if (clientesForaRegiao.length === 0) {
+    if (clientesForaRegiaoMapa.length === 0) {
       return L.latLngBounds([[-33, -74], [5, -34]]); // Brasil inteiro
     }
     
     return L.latLngBounds(
-      clientesForaRegiao.map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
+      clientesForaRegiaoMapa.map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
     );
-  }, [clientesForaRegiao]);
+  }, [clientesForaRegiaoMapa]);
 
   // Cores por status
   const getStatusColor = (status) => {
@@ -403,14 +421,14 @@ export default function ClienteMapa() {
         </Badge>
         <Badge variant="outline" className="px-3 py-1.5 bg-white">
           <MapPin className="w-4 h-4 mr-2 text-emerald-600" />
-          {clientesComCoordenadas.length} com localização
+          {clientesComCoordenadasValidas.length} com localização válida
         </Badge>
         <Badge variant="outline" className="px-3 py-1.5 bg-white text-red-600">
-          {clientesFiltrados.length - clientesComCoordenadas.length} sem localização
+          {clientesFiltrados.length - clientesComCoordenadasValidas.length} sem localização válida
         </Badge>
         <Badge variant="outline" className="px-3 py-1.5 bg-purple-50 text-purple-700 border-purple-200">
           <AlertTriangle className="w-4 h-4 mr-2" />
-          {clientesForaRegiao.length} fora da região de atendimento
+          {clientesForaRegiaoLista.length} fora da região ({clientesForaRegiaoMapa.length} no mapa)
         </Badge>
       </div>
 
@@ -433,7 +451,7 @@ export default function ClienteMapa() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <MapMarkers 
-                clientes={clientesForaRegiao} 
+                clientes={clientesForaRegiaoMapa} 
                 getStatusColor={getStatusColor}
                 createIcon={createCustomIcon}
               />
@@ -446,38 +464,55 @@ export default function ClienteMapa() {
           <div className="p-3 border-b bg-purple-50">
             <h3 className="font-semibold text-purple-800 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
-              Clientes Fora da Região ({clientesForaRegiao.length})
+              Clientes Fora da Região ({clientesForaRegiaoLista.length})
             </h3>
             <p className="text-xs text-purple-600 mt-1">
               Clientes fora dos estados de atendimento selecionados
             </p>
           </div>
           <ScrollArea className="h-[440px]">
-            {clientesForaRegiao.length === 0 ? (
+            {clientesForaRegiaoLista.length === 0 ? (
               <div className="p-4 text-center text-slate-500 text-sm">
                 Nenhum cliente fora da região de atendimento
               </div>
             ) : (
               <div className="p-2 space-y-2">
-                {clientesForaRegiao.map(cliente => (
-                  <div 
-                    key={cliente.id} 
-                    className="p-3 bg-purple-50/50 rounded-lg border border-purple-100 hover:bg-purple-50 transition-colors"
-                  >
-                    <div className="font-medium text-sm text-slate-800">
-                      {cliente.nome_fantasia || cliente.razao_social}
+                {clientesForaRegiaoLista.map(cliente => {
+                  const lat = parseFloat(cliente.latitude);
+                  const lng = parseFloat(cliente.longitude);
+                  const coordenadaValida = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 && 
+                                           lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+                  
+                  return (
+                    <div 
+                      key={cliente.id} 
+                      className={`p-3 rounded-lg border transition-colors ${
+                        coordenadaValida 
+                          ? 'bg-purple-50/50 border-purple-100 hover:bg-purple-50' 
+                          : 'bg-red-50/50 border-red-200 hover:bg-red-50'
+                      }`}
+                    >
+                      <div className="font-medium text-sm text-slate-800">
+                        {cliente.nome_fantasia || cliente.razao_social}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Código: {cliente.codigo}
+                      </div>
+                      <div className="text-xs text-purple-700 mt-1 font-medium">
+                        {cliente.cidade || 'Sem cidade'} - {cliente.estado || 'Sem estado'}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">
+                        Lat: {cliente.latitude ?? 'N/A'}, Lng: {cliente.longitude ?? 'N/A'}
+                      </div>
+                      {!coordenadaValida && (
+                        <div className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Coordenada inválida - não aparece no mapa
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Código: {cliente.codigo}
-                    </div>
-                    <div className="text-xs text-purple-700 mt-1 font-medium">
-                      {cliente.cidade} - {cliente.estado}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      Lat: {cliente.latitude?.toFixed(4)}, Lng: {cliente.longitude?.toFixed(4)}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </ScrollArea>
