@@ -481,12 +481,16 @@ export default function ClienteMapa() {
           <MapPin className="w-4 h-4 mr-2 text-emerald-600" />
           {clientesComCoordenadasValidas.length} com localização válida
         </Badge>
-        <Badge variant="outline" className="px-3 py-1.5 bg-white text-red-600">
-          {clientesFiltrados.length - clientesComCoordenadasValidas.length} sem localização válida
+        <Badge variant="outline" className="px-3 py-1.5 bg-white text-slate-500">
+          {clientesSemCoordenada.length} sem localização
+        </Badge>
+        <Badge variant="outline" className="px-3 py-1.5 bg-red-50 text-red-600 border-red-200">
+          <AlertTriangle className="w-4 h-4 mr-2" />
+          {clientesComCoordenadasInvalidas.length} com coordenadas inválidas
         </Badge>
         <Badge variant="outline" className="px-3 py-1.5 bg-purple-50 text-purple-700 border-purple-200">
           <AlertTriangle className="w-4 h-4 mr-2" />
-          {clientesForaRegiaoLista.length} fora da região ({clientesForaRegiaoMapa.length} no mapa)
+          {clientesForaRegiaoLista.length} fora da região de atendimento
         </Badge>
       </div>
 
