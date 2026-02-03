@@ -22,6 +22,7 @@ export default function Clientes() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [modoImportacao, setModoImportacao] = useState('cadastro'); // 'cadastro' ou 'atualizacao'
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
@@ -354,13 +355,19 @@ export default function Clientes() {
       if (!item.status || item.status.trim() === '') emptyStatusCount++;
     });
 
-    if (emptyCodigoCount > 0) warnings.push(`${emptyCodigoCount} cliente(s) sem código`);
-    if (emptyCidadeCount > 0) warnings.push(`${emptyCidadeCount} cliente(s) sem cidade`);
-    if (emptyVendedorCount > 0) warnings.push(`${emptyVendedorCount} cliente(s) sem vendedor`);
-    if (emptySegmentoCount > 0) warnings.push(`${emptySegmentoCount} cliente(s) sem segmento`);
-    if (emptyStatusCount > 0) warnings.push(`${emptyStatusCount} cliente(s) sem status`);
+    // Se for modo atualização, código é obrigatório
+    if (modoImportacao === 'atualizacao' && emptyCodigoCount > 0) {
+      toast.error(`❌ Para atualização cadastral, todos os registros precisam ter código. ${emptyCodigoCount} registro(s) sem código.`);
+      return;
+    }
 
-    if (warnings.length > 0) {
+    if (warnings.length > 0 && modoImportacao === 'cadastro') {
+      if (emptyCodigoCount > 0) warnings.push(`${emptyCodigoCount} cliente(s) sem código`);
+      if (emptyCidadeCount > 0) warnings.push(`${emptyCidadeCount} cliente(s) sem cidade`);
+      if (emptyVendedorCount > 0) warnings.push(`${emptyVendedorCount} cliente(s) sem vendedor`);
+      if (emptySegmentoCount > 0) warnings.push(`${emptySegmentoCount} cliente(s) sem segmento`);
+      if (emptyStatusCount > 0) warnings.push(`${emptyStatusCount} cliente(s) sem status`);
+      
       const confirmImport = window.confirm(
         `⚠️ ATENÇÃO: Campos importantes em branco detectados!\n\n${warnings.join('\n')}\n\nDeseja continuar mesmo assim?`
       );
@@ -445,38 +452,58 @@ export default function Clientes() {
       return clienteData;
     });
 
-    // Separar clientes para criar e atualizar
+    // Separar clientes para criar e atualizar baseado no modo de importação
     const toCreate = [];
     const toUpdate = [];
+    let naoEncontrados = 0;
 
     for (const clienteData of clientesData) {
       // Normalizar código para comparação
       const codigoNormalizado = String(clienteData.codigo || '').trim().toLowerCase();
       const existingClient = existingClientsMap.get(codigoNormalizado);
-      if (existingClient) {
-        toUpdate.push({ id: existingClient.id, data: clienteData });
+      
+      if (modoImportacao === 'atualizacao') {
+        // Modo atualização: só atualiza clientes existentes
+        if (existingClient) {
+          toUpdate.push({ id: existingClient.id, data: clienteData });
+        } else {
+          naoEncontrados++;
+        }
       } else {
-        toCreate.push(clienteData);
+        // Modo cadastro: cria novos e atualiza existentes
+        if (existingClient) {
+          toUpdate.push({ id: existingClient.id, data: clienteData });
+        } else {
+          toCreate.push(clienteData);
+        }
       }
     }
 
+    console.log('Importação - Modo:', modoImportacao);
     console.log('Importação - Total no arquivo:', clientesData.length);
     console.log('Importação - Para criar:', toCreate.length);
     console.log('Importação - Para atualizar:', toUpdate.length);
+    console.log('Importação - Não encontrados:', naoEncontrados);
+
+    // Se modo atualização e nenhum cliente foi encontrado
+    if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
+      setIsImporting(false);
+      toast.error(`❌ Nenhum cliente encontrado para atualização. Verifique se os códigos estão corretos.`);
+      return;
+    }
 
     try {
-      // Executar criações
+      // Executar criações (apenas no modo cadastro)
       if (toCreate.length > 0) {
         await base44.entities.Cliente.bulkCreate(toCreate);
       }
 
-      // Executar atualizações em massa (evita erro de rate limit)
+      // Executar atualizações em massa
       if (toUpdate.length > 0) {
-        const updateData = toUpdate.map(item => ({
-          id: item.id,
-          ...item.data
-        }));
-        await base44.entities.Cliente.bulkUpdate(updateData);
+        // Atualizar um por um para garantir que funcione
+        for (const item of toUpdate) {
+          await base44.entities.Cliente.update(item.id, item.data);
+        }
       }
     } catch (error) {
       console.error('Erro na importação:', error);
@@ -493,7 +520,10 @@ export default function Clientes() {
     const messages = [];
     if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cliente(s) cadastrado(s)`);
     if (toUpdate.length > 0) messages.push(`${toUpdate.length} cliente(s) atualizado(s)`);
-    toast.success(`✅ ${messages.join(' e ')}!`);
+    if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
+      messages.push(`${naoEncontrados} código(s) não encontrado(s)`);
+    }
+    toast.success(`✅ ${messages.join(' | ')}!`);
   };
 
   const bulkColumns = [
@@ -928,13 +958,18 @@ export default function Clientes() {
 
       <BulkImportModal
         open={bulkOpen}
-        onOpenChange={setBulkOpen}
+        onOpenChange={(v) => {
+          setBulkOpen(v);
+          if (!v) setModoImportacao('cadastro');
+        }}
         title="Importar Clientes em Massa"
         description="Importe vários clientes de uma vez usando CSV ou colando dados do Excel"
         columns={bulkColumns}
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
         isImporting={isImporting}
+        modoCliente={modoImportacao}
+        onModoClienteChange={setModoImportacao}
       />
     </div>
   );
