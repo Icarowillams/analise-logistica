@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClienteConsulta from '@/components/clientes/ClienteConsulta';
+import ClienteMapa from '@/components/clientes/ClienteMapa';
 
 export default function Clientes() {
   const [activeTab, setActiveTab] = useState("cadastro");
