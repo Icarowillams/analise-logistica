@@ -55,16 +55,30 @@ const ESTADOS_BRASIL = [
 
 // Função para verificar se estado do cliente pertence aos selecionados
 const estadoPertence = (estadoCliente, estadosSelecionados) => {
-  if (!estadoCliente) return false;
+  if (!estadoCliente || estadosSelecionados.length === 0) return false;
   const estadoNorm = estadoCliente.toUpperCase().trim();
-  return estadosSelecionados.some(sigla => {
+  
+  for (const sigla of estadosSelecionados) {
     const estado = ESTADOS_BRASIL.find(e => e.sigla === sigla);
-    if (!estado) return false;
-    return estadoNorm === sigla || 
-           estadoNorm === estado.nome.toUpperCase() ||
-           estadoNorm.includes(estado.nome.toUpperCase()) ||
-           estado.nome.toUpperCase().includes(estadoNorm);
-  });
+    if (!estado) continue;
+    
+    // Verifica sigla exata
+    if (estadoNorm === sigla) return true;
+    
+    // Verifica nome completo
+    if (estadoNorm === estado.nome.toUpperCase()) return true;
+    
+    // Verifica se contém o nome (para casos como "PARAIBA" vs "Paraíba")
+    const nomeSimples = estado.nome.toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove acentos
+    const estadoNormSimples = estadoNorm
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    
+    if (estadoNormSimples === nomeSimples) return true;
+    if (estadoNormSimples.includes(nomeSimples) || nomeSimples.includes(estadoNormSimples)) return true;
+  }
+  
+  return false;
 };
 
 // Ícone customizado
