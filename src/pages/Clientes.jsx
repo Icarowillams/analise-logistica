@@ -585,14 +585,6 @@ export default function Clientes() {
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={handleExport}
-            variant="outline"
-            className="border-green-200 text-green-700 hover:bg-green-50"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
-          <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
             className="border-amber-200 text-amber-700 hover:bg-amber-50"
