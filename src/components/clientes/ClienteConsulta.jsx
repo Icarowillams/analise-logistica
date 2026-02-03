@@ -2,13 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
-import { Search, Filter, MapPin, List } from 'lucide-react';
+import { Search, Filter, MapPin, List, MapPinOff } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 
 export default function ClienteConsulta({ onEdit, onDelete }) {
@@ -20,7 +21,8 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
     status: 'all',
     cidade: '',
     bairro: '',
-    search: ''
+    search: '',
+    semLocalizacao: false
   });
 
   const { data: clientesAll = [], isLoading } = useQuery({
@@ -150,6 +152,11 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
           cliente.numero
         ].some(val => val && String(val).toLowerCase().includes(searchLower));
         if (!match) return false;
+      }
+
+      // Filter by Sem Localização
+      if (filters.semLocalizacao) {
+        if (cliente.latitude && cliente.longitude) return false;
       }
 
       return true;
@@ -312,7 +319,7 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
             </div>
 
             {/* General Search */}
-            <div className="md:col-span-2 space-y-1">
+            <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Busca Geral</label>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
@@ -322,6 +329,21 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                   onChange={(e) => setFilters({...filters, search: e.target.value})}
                   className="pl-8"
                 />
+              </div>
+            </div>
+
+            {/* Sem Localização */}
+            <div className="space-y-1 flex items-end">
+              <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-white">
+                <Checkbox
+                  id="semLocalizacao"
+                  checked={filters.semLocalizacao}
+                  onCheckedChange={(checked) => setFilters({...filters, semLocalizacao: checked})}
+                />
+                <label htmlFor="semLocalizacao" className="text-sm cursor-pointer flex items-center gap-1">
+                  <MapPinOff className="w-4 h-4 text-amber-500" />
+                  Sem localização
+                </label>
               </div>
             </div>
 
@@ -338,7 +360,8 @@ export default function ClienteConsulta({ onEdit, onDelete }) {
                 status: 'all',
                 cidade: '',
                 bairro: '',
-                search: ''
+                search: '',
+                semLocalizacao: false
               })}
               className="text-slate-600 hover:text-slate-900"
             >
