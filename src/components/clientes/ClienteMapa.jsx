@@ -53,31 +53,55 @@ const ESTADOS_BRASIL = [
   { sigla: 'TO', nome: 'Tocantins' }
 ];
 
-// Normaliza string removendo acentos e convertendo para maiúsculo
-const normalizar = (str) => {
-  if (!str) return '';
-  return str.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// Bounding boxes aproximados dos estados brasileiros (lat_min, lat_max, lng_min, lng_max)
+const ESTADOS_BOUNDS = {
+  'AC': { latMin: -11.15, latMax: -7.12, lngMin: -73.99, lngMax: -66.62 },
+  'AL': { latMin: -10.50, latMax: -8.81, lngMin: -38.24, lngMax: -35.15 },
+  'AP': { latMin: -1.23, latMax: 4.44, lngMin: -54.87, lngMax: -49.87 },
+  'AM': { latMin: -9.82, latMax: 2.25, lngMin: -73.79, lngMax: -56.10 },
+  'BA': { latMin: -18.35, latMax: -8.53, lngMin: -46.62, lngMax: -37.34 },
+  'CE': { latMin: -7.86, latMax: -2.78, lngMin: -41.42, lngMax: -37.25 },
+  'DF': { latMin: -16.05, latMax: -15.50, lngMin: -48.29, lngMax: -47.31 },
+  'ES': { latMin: -21.30, latMax: -17.89, lngMin: -41.88, lngMax: -39.68 },
+  'GO': { latMin: -19.50, latMax: -12.39, lngMin: -53.25, lngMax: -45.91 },
+  'MA': { latMin: -10.26, latMax: -1.05, lngMin: -48.76, lngMax: -41.79 },
+  'MT': { latMin: -18.04, latMax: -7.35, lngMin: -61.63, lngMax: -50.22 },
+  'MS': { latMin: -24.07, latMax: -17.17, lngMin: -58.17, lngMax: -53.26 },
+  'MG': { latMin: -22.92, latMax: -14.23, lngMin: -51.05, lngMax: -39.86 },
+  'PA': { latMin: -9.84, latMax: 2.59, lngMin: -58.90, lngMax: -46.06 },
+  'PB': { latMin: -8.30, latMax: -6.02, lngMin: -38.77, lngMax: -34.79 },
+  'PR': { latMin: -26.72, latMax: -22.52, lngMin: -54.62, lngMax: -48.02 },
+  'PE': { latMin: -9.48, latMax: -7.15, lngMin: -41.36, lngMax: -34.81 },
+  'PI': { latMin: -10.93, latMax: -2.74, lngMin: -45.99, lngMax: -40.37 },
+  'RJ': { latMin: -23.37, latMax: -20.76, lngMin: -44.89, lngMax: -40.96 },
+  'RN': { latMin: -6.98, latMax: -4.83, lngMin: -38.58, lngMax: -34.97 },
+  'RS': { latMin: -33.75, latMax: -27.08, lngMin: -57.64, lngMax: -49.69 },
+  'RO': { latMin: -13.70, latMax: -7.97, lngMin: -66.62, lngMax: -59.77 },
+  'RR': { latMin: -1.59, latMax: 5.27, lngMin: -64.82, lngMax: -58.88 },
+  'SC': { latMin: -29.35, latMax: -25.96, lngMin: -53.84, lngMax: -48.36 },
+  'SP': { latMin: -25.31, latMax: -19.78, lngMin: -53.11, lngMax: -44.16 },
+  'SE': { latMin: -11.57, latMax: -9.51, lngMin: -38.25, lngMax: -36.39 },
+  'TO': { latMin: -13.47, latMax: -5.17, lngMin: -50.73, lngMax: -45.73 }
 };
 
-// Função para verificar se estado do cliente pertence aos selecionados
-const estadoPertence = (estadoCliente, estadosSelecionados) => {
-  if (!estadoCliente || estadosSelecionados.length === 0) return false;
+// Verifica se uma coordenada está dentro de um estado
+const coordenadaDentroDoEstado = (lat, lng, siglaEstado) => {
+  const bounds = ESTADOS_BOUNDS[siglaEstado];
+  if (!bounds) return false;
   
-  const estadoNorm = normalizar(estadoCliente);
+  return lat >= bounds.latMin && lat <= bounds.latMax &&
+         lng >= bounds.lngMin && lng <= bounds.lngMax;
+};
+
+// Verifica se uma coordenada está dentro de algum dos estados selecionados
+const coordenadaDentroDeEstados = (lat, lng, estadosSelecionados) => {
+  if (estadosSelecionados.length === 0) return false;
   
   for (const sigla of estadosSelecionados) {
-    // Verifica sigla exata (ex: "PE")
-    if (estadoNorm === sigla) return true;
-    
-    const estado = ESTADOS_BRASIL.find(e => e.sigla === sigla);
-    if (!estado) continue;
-    
-    const nomeNorm = normalizar(estado.nome);
-    
-    // Verifica nome completo normalizado (ex: "PARAIBA" === "PARAIBA")
-    if (estadoNorm === nomeNorm) return true;
+    if (coordenadaDentroDoEstado(lat, lng, sigla)) {
+      return true;
+    }
   }
-  
   return false;
 };
 
