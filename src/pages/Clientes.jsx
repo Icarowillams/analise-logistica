@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Users, List, Save, Ban } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
@@ -516,6 +516,58 @@ export default function Clientes() {
     { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo' }
   ];
 
+  const handleExport = async () => {
+    const clientes = await base44.entities.Cliente.list();
+    
+    const headers = [
+      'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj',
+      'plano_pagamento', 'tabela_preco', 'segmento', 'rede', 'vendedor', 'rota',
+      'endereco', 'numero', 'bairro', 'cidade', 'estado', 'cep',
+      'latitude', 'longitude', 'status'
+    ];
+
+    const getName = (list, id) => {
+      if (!id) return '';
+      const item = list.find(i => i.id === id);
+      return item ? item.nome : '';
+    };
+
+    const rows = clientes.map(c => [
+      c.codigo || '',
+      c.razao_social || '',
+      c.nome_fantasia || '',
+      c.cpf_cnpj || '',
+      getName(planosPagamento, c.plano_pagamento_id),
+      getName(tabelas, c.tabela_id),
+      getName(segmentos, c.segmento_id),
+      getName(redes, c.rede_id),
+      getName(vendedores, c.vendedor_id),
+      getName(rotas, c.rota_id),
+      c.endereco || '',
+      c.numero || '',
+      c.bairro || '',
+      c.cidade || '',
+      c.estado || '',
+      c.cep || '',
+      c.latitude || '',
+      c.longitude || '',
+      c.status || ''
+    ]);
+
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    
+    toast.success(`✅ ${clientes.length} clientes exportados com sucesso!`);
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -529,6 +581,14 @@ export default function Clientes() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={handleExport}
+            variant="outline"
+            className="border-green-200 text-green-700 hover:bg-green-50"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Exportar
+          </Button>
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
