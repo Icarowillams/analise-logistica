@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, MapPin, Users, Filter } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import useClientesPermissao from '@/components/hooks/useClientesPermissao';
+import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -45,7 +45,7 @@ export default function ClienteMapa() {
   const [filtroStatus, setFiltroStatus] = useState('all');
   const [filtroCidade, setFiltroCidade] = useState('all');
 
-  const { filtrarClientes, clientesPermitidos, isLoading: permLoading } = useClientesPermissao();
+  const { filtrarClientes, clientes: clientesPermitidos, loading: permLoading } = useClientesPermissao();
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
