@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, MapPin, Users, Filter, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, MapPin, Users, Filter, AlertTriangle, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
@@ -334,6 +334,33 @@ export default function ClienteMapa() {
     );
   }, [clientesForaRegiaoMapa]);
 
+  // Função para exportar clientes para CSV
+  const exportarClientes = (clientes, nomeArquivo) => {
+    const headers = ['Código', 'Razão Social', 'Nome Fantasia', 'Cidade', 'Estado', 'Latitude', 'Longitude', 'Status'];
+    const rows = clientes.map(c => [
+      c.codigo || '',
+      c.razao_social || '',
+      c.nome_fantasia || '',
+      c.cidade || '',
+      c.estado || '',
+      c.latitude || '',
+      c.longitude || '',
+      c.status || ''
+    ]);
+    
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${nomeArquivo}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Cores por status
   const getStatusColor = (status) => {
     switch (status) {
@@ -526,10 +553,23 @@ export default function ClienteMapa() {
           {/* Lista de clientes com coordenadas INVÁLIDAS */}
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="p-3 border-b bg-red-50">
-              <h3 className="font-semibold text-red-800 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Coordenadas Inválidas ({clientesComCoordenadasInvalidas.length})
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-red-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Coordenadas Inválidas ({clientesComCoordenadasInvalidas.length})
+                </h3>
+                {clientesComCoordenadasInvalidas.length > 0 && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                    onClick={() => exportarClientes(clientesComCoordenadasInvalidas, 'clientes_coordenadas_invalidas')}
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Exportar
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-red-600 mt-1">
                 Clientes com coordenadas fora dos limites geográficos - precisam correção
               </p>
@@ -568,10 +608,23 @@ export default function ClienteMapa() {
           {/* Lista de clientes fora da região */}
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="p-3 border-b bg-purple-50">
-              <h3 className="font-semibold text-purple-800 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Fora da Região ({clientesForaRegiaoLista.length})
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-purple-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Fora da Região ({clientesForaRegiaoLista.length})
+                </h3>
+                {clientesForaRegiaoLista.length > 0 && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
+                    onClick={() => exportarClientes(clientesForaRegiaoLista, 'clientes_fora_regiao')}
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Exportar
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-purple-600 mt-1">
                 Clientes fora dos estados de atendimento selecionados
               </p>
