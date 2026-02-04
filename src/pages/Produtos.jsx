@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProdutoConsulta from '@/components/produtos/ProdutoConsulta';
+import ExportarProdutosOmieModal from '@/components/produtos/ExportarProdutosOmieModal';
 
 export default function Produtos() {
   const [activeTab, setActiveTab] = useState("cadastro");
@@ -24,6 +25,7 @@ export default function Produtos() {
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [exportOmieOpen, setExportOmieOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '',
@@ -238,6 +240,14 @@ export default function Produtos() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={() => setExportOmieOpen(true)}
+            variant="outline"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Exportar Omie
+          </Button>
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
@@ -540,6 +550,11 @@ export default function Produtos() {
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
         isImporting={isImporting}
+      />
+
+      <ExportarProdutosOmieModal
+        open={exportOmieOpen}
+        onOpenChange={setExportOmieOpen}
       />
 
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
