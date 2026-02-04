@@ -28,11 +28,11 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Nenhum cliente encontrado com os IDs informados' }, { status: 404 });
         }
 
-        // Processar em paralelo (lotes de 50 para máxima velocidade)
-        const BATCH_SIZE = 50;
+        // Processar sequencialmente com delay de 400ms (limite Omie: 3 req/seg)
         const resultados = [];
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        const processarCliente = async (cliente) => {
+        for (const cliente of clientesParaExportar) {
             const clienteOmie = {
                 codigo_cliente_integracao: cliente.id,
                 razao_social: cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome",
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
                 endereco_numero: cliente.numero || "",
                 bairro: cliente.bairro || "",
                 cidade: cliente.cidade || "",
-                estado: cliente.estado || "",
+                estado: (cliente.estado || "").substring(0, 2).toUpperCase(),
                 cep: cliente.cep || "",
                 pessoa_fisica: (cliente.cpf_cnpj && cliente.cpf_cnpj.length <= 14) ? "S" : "N"
             };
@@ -64,29 +64,25 @@ Deno.serve(async (req) => {
 
                 const resultado = await response.json();
 
-                return {
+                resultados.push({
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     sucesso: !resultado.faultstring,
                     codigo_omie: resultado.codigo_cliente_omie || null,
                     mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
-                };
+                });
             } catch (err) {
-                return {
+                resultados.push({
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
-                };
+                });
             }
-        };
 
-        // Processar em lotes paralelos
-        for (let i = 0; i < clientesParaExportar.length; i += BATCH_SIZE) {
-            const lote = clientesParaExportar.slice(i, i + BATCH_SIZE);
-            const resultadosLote = await Promise.all(lote.map(processarCliente));
-            resultados.push(...resultadosLote);
+            // Aguardar 400ms entre requisições para não exceder limite
+            await delay(400);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
