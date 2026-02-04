@@ -98,29 +98,24 @@ export default function PainelGestorVisita() {
       .sort((a, b) => a.nome?.localeCompare(b.nome));
   }, [roteiros, vendedoresMap]);
 
-  // Funções para filtro
+  // Funções para filtro - mostra todas as funções ativas
   const funcoesParaFiltro = useMemo(() => {
-    const funcoesIds = new Set();
-    funcionariosParaFiltro.forEach(f => {
-      if (f.funcao_id) funcoesIds.add(f.funcao_id);
-    });
-    return Array.from(funcoesIds)
-      .map(id => funcoesMap[id])
-      .filter(Boolean)
+    return funcoes
+      .filter(f => f.status !== 'inativo')
       .sort((a, b) => a.nome?.localeCompare(b.nome));
-  }, [funcionariosParaFiltro, funcoesMap]);
+  }, [funcoes]);
 
-  // Supervisores para filtro
+  // Supervisores para filtro - todos os vendedores que são supervisores de alguém
   const supervisoresParaFiltro = useMemo(() => {
     const supervisoresIds = new Set();
-    funcionariosParaFiltro.forEach(f => {
-      if (f.supervisor_id) supervisoresIds.add(f.supervisor_id);
+    vendedores.forEach(v => {
+      if (v.supervisor_id) supervisoresIds.add(v.supervisor_id);
     });
     return Array.from(supervisoresIds)
       .map(id => vendedoresMap[id])
       .filter(Boolean)
       .sort((a, b) => a.nome?.localeCompare(b.nome));
-  }, [funcionariosParaFiltro, vendedoresMap]);
+  }, [vendedores, vendedoresMap]);
 
   // Dias únicos para filtro
   const diasSemana = [
