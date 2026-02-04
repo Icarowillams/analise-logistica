@@ -1030,8 +1030,8 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
   return (
     <div className="space-y-2">
       {/* Header da tabela */}
-      <div className="hidden lg:grid lg:grid-cols-12 gap-2 p-3 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700">
-        <div className="col-span-1">Dia</div>
+      <div className="hidden md:grid md:grid-cols-12 gap-2 p-3 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700">
+        <div className="col-span-1 text-center">Dia</div>
         <div className="col-span-2">Funcionário</div>
         <div className="col-span-1 text-center">Clientes</div>
         <div className="col-span-1 text-center">Atendidos</div>
@@ -1052,102 +1052,143 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
         >
           <div className="border rounded-lg overflow-hidden">
             <CollapsibleTrigger asChild>
-              <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 p-3 bg-white hover:bg-slate-50 cursor-pointer items-center">
-                {/* Dia */}
-                <div className="col-span-1">
-                  <Badge variant="outline" className="text-xs">
-                    {getDiaLabel(item.dia_semana)?.substring(0, 3)}
-                  </Badge>
-                </div>
-                
-                {/* Funcionário */}
-                <div className="col-span-1 lg:col-span-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
-                      {item.funcionario?.nome?.charAt(0) || '?'}
-                    </div>
-                    <div className="hidden lg:block">
-                      <p className="text-sm font-medium text-slate-800 truncate max-w-[120px]">
-                        {item.funcionario?.nome || 'N/A'}
-                      </p>
-                      <p className="text-xs text-slate-500 truncate max-w-[120px]">
-                        {item.funcao?.nome || ''}
-                      </p>
+              <div className="p-3 bg-white hover:bg-slate-50 cursor-pointer">
+                {/* Desktop */}
+                <div className="hidden md:grid md:grid-cols-12 gap-2 items-center">
+                  {/* Dia */}
+                  <div className="col-span-1 text-center">
+                    <Badge variant="outline" className="text-xs">
+                      {getDiaLabel(item.dia_semana)?.substring(0, 3)}
+                    </Badge>
+                  </div>
+                  
+                  {/* Funcionário */}
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {item.funcionario?.nome?.charAt(0) || '?'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                          {item.funcionario?.nome || 'N/A'}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {item.funcao?.nome || '-'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-                
-                {/* Clientes */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <Badge variant="outline" className="bg-slate-50">
-                    {item.totalClientes}
-                  </Badge>
-                </div>
-                
-                {/* Atendidos */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <Badge className="bg-green-100 text-green-700">
-                    {item.atendidos}
-                  </Badge>
-                </div>
-                
-                {/* Não Atendidos */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <Badge className="bg-red-100 text-red-700">
-                    {item.naoAtendidos}
-                  </Badge>
-                </div>
-                
-                {/* Pendentes */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <Badge className="bg-yellow-100 text-yellow-700">
-                    {item.pendentes}
-                  </Badge>
-                </div>
-                
-                {/* Taxa Atendimento */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <span className={`text-xs font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(item.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {item.taxaAtendimento}%
-                  </span>
-                </div>
-                
-                {/* Taxa Não Atendimento */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <span className="text-xs font-semibold text-red-600">
-                    {item.taxaNaoAtendimento}%
-                  </span>
-                </div>
-                
-                {/* Taxa Pendência */}
-                <div className="hidden lg:block col-span-1 text-center">
-                  <span className="text-xs font-semibold text-yellow-600">
-                    {item.taxaPendencia}%
-                  </span>
-                </div>
-                
-                {/* Ações */}
-                <div className="col-span-2 flex items-center justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onVerRoteiro(item.roteiro);
-                    }}
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost">
-                    {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </Button>
+                  
+                  {/* Clientes */}
+                  <div className="col-span-1 text-center">
+                    <Badge variant="outline" className="bg-slate-50">
+                      {item.totalClientes}
+                    </Badge>
+                  </div>
+                  
+                  {/* Atendidos */}
+                  <div className="col-span-1 text-center">
+                    <Badge className="bg-green-100 text-green-700">
+                      {item.atendidos}
+                    </Badge>
+                  </div>
+                  
+                  {/* Não Atendidos */}
+                  <div className="col-span-1 text-center">
+                    <Badge className="bg-red-100 text-red-700">
+                      {item.naoAtendidos}
+                    </Badge>
+                  </div>
+                  
+                  {/* Pendentes */}
+                  <div className="col-span-1 text-center">
+                    <Badge className="bg-yellow-100 text-yellow-700">
+                      {item.pendentes}
+                    </Badge>
+                  </div>
+                  
+                  {/* Taxa Atendimento */}
+                  <div className="col-span-1 text-center">
+                    <span className={`text-xs font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(item.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {item.taxaAtendimento}%
+                    </span>
+                  </div>
+                  
+                  {/* Taxa Não Atendimento */}
+                  <div className="col-span-1 text-center">
+                    <span className="text-xs font-semibold text-red-600">
+                      {item.taxaNaoAtendimento}%
+                    </span>
+                  </div>
+                  
+                  {/* Taxa Pendência */}
+                  <div className="col-span-1 text-center">
+                    <span className="text-xs font-semibold text-yellow-600">
+                      {item.taxaPendencia}%
+                    </span>
+                  </div>
+                  
+                  {/* Ações */}
+                  <div className="col-span-2 flex items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onVerRoteiro(item.roteiro);
+                      }}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost">
+                      {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Mobile summary */}
-                <div className="col-span-2 lg:hidden text-xs text-slate-600">
-                  <span className="text-green-600">{item.atendidos} at.</span> • 
-                  <span className="text-red-600 ml-1">{item.naoAtendidos} não at.</span> • 
-                  <span className="text-yellow-600 ml-1">{item.pendentes} pend.</span>
+                {/* Mobile */}
+                <div className="md:hidden space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {getDiaLabel(item.dia_semana)?.substring(0, 3)}
+                      </Badge>
+                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
+                        {item.funcionario?.nome?.charAt(0) || '?'}
+                      </div>
+                      <span className="text-sm font-medium text-slate-800">
+                        {item.funcionario?.nome || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onVerRoteiro(item.roteiro);
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost">
+                        {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline" className="bg-slate-50">{item.totalClientes} clientes</Badge>
+                    <Badge className="bg-green-100 text-green-700">{item.atendidos} atend.</Badge>
+                    <Badge className="bg-red-100 text-red-700">{item.naoAtendidos} não at.</Badge>
+                    <Badge className="bg-yellow-100 text-yellow-700">{item.pendentes} pend.</Badge>
+                  </div>
+                  <div className="flex gap-3 text-xs">
+                    <span className={`font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>
+                      {item.taxaAtendimento}% atend.
+                    </span>
+                    <span className="font-semibold text-red-600">{item.taxaNaoAtendimento}% não at.</span>
+                    <span className="font-semibold text-yellow-600">{item.taxaPendencia}% pend.</span>
+                  </div>
                 </div>
               </div>
             </CollapsibleTrigger>
