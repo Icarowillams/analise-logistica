@@ -41,12 +41,14 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
 
   const clientesFiltrados = clientes.filter(c => {
     const termo = searchTerm.toLowerCase();
-    return (
+    const matchSearch = (
       c.razao_social?.toLowerCase().includes(termo) ||
       c.nome_fantasia?.toLowerCase().includes(termo) ||
       c.codigo?.toLowerCase().includes(termo) ||
       c.cpf_cnpj?.includes(termo)
     );
+    const matchStatus = apenasAtivos ? c.status === 'ativo' : true;
+    return matchSearch && matchStatus;
   });
 
   const toggleSelect = (id) => {
