@@ -20,8 +20,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos produtos para exportar' }, { status: 400 });
         }
 
-        // Processar no máximo 30 produtos por chamada (conservador para evitar rate limit)
-        const LOTE_MAX = 30;
+        // Processar no máximo 10 produtos por chamada (Omie tem limite rigoroso de ~50 req/min)
+        const LOTE_MAX = 10;
         const produtosDoLote = produto_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
         if (produtosDoLote.length === 0) {
@@ -57,11 +57,15 @@ Deno.serve(async (req) => {
             // - codigo: código do produto (até 60 caracteres)
             // - descricao: nome/descrição do produto (até 120 caracteres)
             // - unidade: unidade de medida (UN, KG, CX, FD, PCT, GR, etc)
+            // - ncm: NCM obrigatório (8 dígitos) - usar 1905.90.90 como padrão para pães
+            const ncmProduto = produto.ncm?.replace(/[^\d]/g, "") || "19059090"; // NCM padrão: Outros produtos de padaria
+            
             const produtoOmie = {
                 codigo_produto_integracao: produto.id,
                 codigo: (produto.codigo || produto.id).substring(0, 60),
                 descricao: (produto.nome || "Produto sem nome").substring(0, 120),
                 unidade: unidadeSigla,
+                ncm: ncmProduto.substring(0, 8),
                 peso_bruto: produto.peso || 0,
                 peso_liq: produto.peso || 0,
                 bloqueado: produto.status === 'inativo' ? "S" : "N",
@@ -114,8 +118,9 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // Aguardar 1200ms entre requisições para evitar rate limit da Omie (máx ~50 req/min)
-            await delay(1200);
+            // Aguardar 3000ms entre requisições para evitar rate limit da Omie
+            // A API Omie tem limite rigoroso e bloqueia por 30 minutos se exceder
+            await delay(3000);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
