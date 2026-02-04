@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import ClientesComErroOmie from './ClientesComErroOmie';
 
 export default function ExportarOmieModal({ open, onOpenChange }) {
   const [selectedIds, setSelectedIds] = useState([]);
@@ -28,6 +29,8 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
   const [totalSucessos, setTotalSucessos] = useState(0);
   const [totalErros, setTotalErros] = useState(0);
   const [todosResultados, setTodosResultados] = useState([]);
+  const [modalErrosAberto, setModalErrosAberto] = useState(false);
+  const [errosParaCorrigir, setErrosParaCorrigir] = useState([]);
 
   const exportarEmLotes = async (cliente_ids) => {
     setExportando(true);
@@ -311,6 +314,19 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               <Button variant="outline" onClick={handleClose}>
                 Fechar
               </Button>
+              {resultados.resumo.erros > 0 && (
+                <Button
+                  onClick={() => {
+                    const erros = resultados.resultados.filter(r => !r.sucesso);
+                    setErrosParaCorrigir(erros);
+                    setModalErrosAberto(true);
+                  }}
+                  className="bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Corrigir {resultados.resumo.erros} Erros
+                </Button>
+              )}
               <Button
                 onClick={() => setResultados(null)}
                 className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-neutral-900"
@@ -320,6 +336,12 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
             </div>
           </div>
         )}
+
+        <ClientesComErroOmie
+          open={modalErrosAberto}
+          onOpenChange={setModalErrosAberto}
+          erros={errosParaCorrigir}
+        />
       </DialogContent>
     </Dialog>
   );
