@@ -52,14 +52,27 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  // Encontrar clientes com erro
-  const clientesComErro = erros.map(erro => {
-    const cliente = clientes.find(c => c.id === erro.cliente_id);
-    return {
-      ...cliente,
-      erro_mensagem: erro.mensagem
-    };
-  }).filter(c => c.id);
+  // Se erros foram passados, usar eles. Senão, buscar clientes com dados inválidos
+  const clientesComErro = erros.length > 0 
+    ? erros.map(erro => {
+        const cliente = clientes.find(c => c.id === erro.cliente_id);
+        return {
+          ...cliente,
+          erro_mensagem: erro.mensagem
+        };
+      }).filter(c => c.id)
+    : clientes.filter(c => {
+        const estado = (c.estado || '').trim();
+        const estadoValido = ESTADOS_BRASIL.some(e => e.sigla === estado.toUpperCase());
+        const temEstadoInvalido = estado.length > 0 && estado.length !== 2 || (estado.length === 2 && !estadoValido);
+        const semCpfCnpj = !c.cpf_cnpj || c.cpf_cnpj.trim() === '';
+        const semEndereco = !c.endereco || c.endereco.trim() === '' || !c.cidade || c.cidade.trim() === '';
+        
+        return temEstadoInvalido || semCpfCnpj;
+      }).map(c => ({
+        ...c,
+        erro_mensagem: !c.cpf_cnpj ? 'CPF/CNPJ obrigatório' : 'Estado inválido: ' + c.estado
+      }));
 
   useEffect(() => {
     // Inicializar edições com dados atuais
