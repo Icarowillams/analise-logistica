@@ -92,8 +92,8 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // Aguardar 350ms entre requisições (limite Omie: 3 req/seg)
-            await delay(350);
+            // Aguardar 1000ms entre requisições para evitar bloqueio da API Omie
+            await delay(1000);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;

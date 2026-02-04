@@ -52,7 +52,7 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  // Lista de clientes com erro REAL de dados (não bloqueio de API) - apenas os 10 com erro de dados
+  // Lista de clientes com erro - todos os 14 da última exportação
   const clientesComErroReal = [
     { nome: 'MARIA LUCINEIDE NUNES DA SILVA', erro: 'O preenchimento da tag [cnpj_cpf] é obrigatório!' },
     { nome: 'VALDECI ALEXANDRE FERNANDES JUNIOR', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
@@ -63,7 +63,11 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     { nome: 'VANIA MARIA VIEIRA DE ANDRADE', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
     { nome: 'SUPERMERCADO MIRAMAR LTDA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
     { nome: 'REGO E SANTOS LTDA', erro: 'Cidade não cadastrada para o Código [LAGOA DO CAROO (PE)] ! - tag: [cidade]' },
-    { nome: 'RANYERE DA SILVA NOBREGA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' }
+    { nome: 'RANYERE DA SILVA NOBREGA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'SPIAGGIA CAIS COMERCIAL DE ALIMENTOS 6958293', erro: 'Estado não cadastrado para o valor [IP] ! - tag: [estado]' },
+    { nome: 'PANIFICADORA E CONFEITARIA ESPLANADA LTDA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'MARIA JOSE DE S. COSTA MINI MERCADO', erro: 'Estado não cadastrado para o valor [RE] ! - tag: [estado]' },
+    { nome: 'MERCADO MIXTO', erro: 'Estado não cadastrado para o valor [RE] ! - tag: [estado]' }
   ];
 
   // Se erros foram passados, usar eles. Senão, buscar clientes com dados inválidos baseado na lista
