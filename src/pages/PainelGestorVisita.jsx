@@ -924,6 +924,112 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
   );
 }
 
+function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLabel, onVerRoteiro }) {
+  // Agrupar roteiros por funcionário
+  const roteirosPorFuncionario = useMemo(() => {
+    const agrupado = {};
+    roteiros.forEach(r => {
+      const funcionarioId = r.vendedor_id || 'sem_funcionario';
+      if (!agrupado[funcionarioId]) {
+        const funcionario = vendedoresMap[funcionarioId];
+        const funcao = funcionario?.funcao_id ? funcoesMap[funcionario.funcao_id] : null;
+        const supervisor = funcionario?.supervisor_id ? vendedoresMap[funcionario.supervisor_id] : null;
+        agrupado[funcionarioId] = {
+          funcionario,
+          funcao,
+          supervisor,
+          roteiros: []
+        };
+      }
+      agrupado[funcionarioId].roteiros.push(r);
+    });
+    
+    // Ordenar por nome do funcionário
+    return Object.entries(agrupado)
+      .sort(([, a], [, b]) => (a.funcionario?.nome || 'ZZZ').localeCompare(b.funcionario?.nome || 'ZZZ'));
+  }, [roteiros, vendedoresMap, funcoesMap]);
+
+  if (roteiros.length === 0) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+        <p>Nenhum roteiro encontrado com os filtros aplicados</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {roteirosPorFuncionario.map(([funcionarioId, { funcionario, funcao, supervisor, roteiros: rots }]) => (
+        <div key={funcionarioId} className="border rounded-xl overflow-hidden">
+          {/* Header do funcionário */}
+          <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 border-b">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold">
+                  {funcionario?.nome?.charAt(0) || '?'}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">
+                    {funcionario?.nome || 'Funcionário não encontrado'}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {funcao && (
+                      <Badge variant="outline" className="text-xs bg-white">
+                        {funcao.nome}
+                      </Badge>
+                    )}
+                    {supervisor && (
+                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                        Sup: {supervisor.nome}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-amber-500 text-white">
+                  {rots.length} roteiro(s)
+                </Badge>
+                <Badge variant="outline" className="bg-white">
+                  {rots.reduce((sum, r) => sum + r.total_clientes, 0)} clientes
+                </Badge>
+              </div>
+            </div>
+          </div>
+          
+          {/* Roteiros do funcionário */}
+          <div className="divide-y divide-slate-100">
+            {rots.map(roteiro => (
+              <div key={roteiro.id} className="p-3 hover:bg-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="min-w-[100px] justify-center">
+                    {getDiaLabel(roteiro.dia_semana)}
+                  </Badge>
+                  <span className="text-sm text-slate-600">
+                    {roteiro.total_clientes} clientes
+                  </span>
+                  <Badge className={roteiro.visitas_realizadas > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}>
+                    {roteiro.visitas_realizadas} / {roteiro.total_clientes} visitas hoje
+                  </Badge>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onVerRoteiro(roteiro)}
+                >
+                  <Eye className="w-4 h-4 mr-1" />
+                  Ver
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function VisitasDoDia({ visitas, vendedoresMap, clientesMap }) {
   const hoje = new Date().toISOString().split('T')[0];
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
