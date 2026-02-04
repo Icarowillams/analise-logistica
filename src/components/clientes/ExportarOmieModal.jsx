@@ -78,6 +78,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     setSelectedIds([]);
     setSearchTerm('');
     setResultados(null);
+    setApenasAtivos(true);
     onOpenChange(false);
   };
 
