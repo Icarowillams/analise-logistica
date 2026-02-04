@@ -26,6 +26,7 @@ export default function Produtos() {
   const [isImporting, setIsImporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [exportOmieOpen, setExportOmieOpen] = useState(false);
+  const [modoProduto, setModoProduto] = useState('cadastro');
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '',
@@ -63,6 +64,11 @@ export default function Produtos() {
   const { data: unidadesProduto = [] } = useQuery({
     queryKey: ['unidadesProduto'],
     queryFn: () => base44.entities.UnidadeProduto.list()
+  });
+
+  const { data: produtos = [] } = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => base44.entities.Produto.list()
   });
 
   const createMutation = useMutation({
@@ -193,30 +199,73 @@ export default function Produtos() {
 
   const handleBulkImport = async (data) => {
     setIsImporting(true);
+    let atualizados = 0;
+    let criados = 0;
+    let erros = 0;
+
     for (const item of data) {
-      const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
-      const subCat = subCategorias.find(sc => sc.nome.toLowerCase() === (item.sub_categoria_nome || '').toLowerCase());
-      const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
-      const unidadeProd = unidadesProduto.find(u => u.nome.toLowerCase() === (item.unidade_produto_nome || '').toLowerCase());
-      
-      await base44.entities.Produto.create({
-        codigo: item.codigo,
-        nome: item.nome,
-        cod_barras: item.cod_barras,
-        ncm: (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8),
-        cest: (item.cest || '').replace(/[^\d]/g, '').substring(0, 7),
-        categoria_id: cat ? cat.id : null,
-        sub_categoria_id: subCat ? subCat.id : null,
-        unidade_medida_id: unidade ? unidade.id : null,
-        unidade_produto_id: unidadeProd ? unidadeProd.id : null,
-        peso: parseFloat(item.peso) || 0,
-        status: item.status || 'ativo',
-        estoque_atual: 0 // Default to 0 since removed from import
-      });
+      try {
+        const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
+        const subCat = subCategorias.find(sc => sc.nome.toLowerCase() === (item.sub_categoria_nome || '').toLowerCase());
+        const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
+        const unidadeProd = unidadesProduto.find(u => u.nome.toLowerCase() === (item.unidade_produto_nome || '').toLowerCase());
+        
+        if (modoProduto === 'atualizacao') {
+          // Modo atualização - buscar produto existente por código
+          const produtoExistente = produtos.find(p => p.codigo === item.codigo);
+          
+          if (produtoExistente) {
+            const dadosAtualizacao = {};
+            
+            // Só atualiza campos que foram informados
+            if (item.nome) dadosAtualizacao.nome = item.nome;
+            if (item.cod_barras) dadosAtualizacao.cod_barras = item.cod_barras;
+            if (item.ncm) dadosAtualizacao.ncm = (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8);
+            if (item.cest) dadosAtualizacao.cest = (item.cest || '').replace(/[^\d]/g, '').substring(0, 7);
+            if (cat) dadosAtualizacao.categoria_id = cat.id;
+            if (subCat) dadosAtualizacao.sub_categoria_id = subCat.id;
+            if (unidade) dadosAtualizacao.unidade_medida_id = unidade.id;
+            if (unidadeProd) dadosAtualizacao.unidade_produto_id = unidadeProd.id;
+            if (item.peso) dadosAtualizacao.peso = parseFloat(item.peso) || 0;
+            if (item.status) dadosAtualizacao.status = item.status;
+            
+            await base44.entities.Produto.update(produtoExistente.id, dadosAtualizacao);
+            atualizados++;
+          } else {
+            erros++;
+          }
+        } else {
+          // Modo cadastro - criar novo produto
+          await base44.entities.Produto.create({
+            codigo: item.codigo,
+            nome: item.nome,
+            cod_barras: item.cod_barras,
+            ncm: (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8),
+            cest: (item.cest || '').replace(/[^\d]/g, '').substring(0, 7),
+            categoria_id: cat ? cat.id : null,
+            sub_categoria_id: subCat ? subCat.id : null,
+            unidade_medida_id: unidade ? unidade.id : null,
+            unidade_produto_id: unidadeProd ? unidadeProd.id : null,
+            peso: parseFloat(item.peso) || 0,
+            status: item.status || 'ativo',
+            estoque_atual: 0
+          });
+          criados++;
+        }
+      } catch (err) {
+        erros++;
+      }
     }
+
     queryClient.invalidateQueries(['produtos']);
     setIsImporting(false);
     setBulkOpen(false);
+    
+    if (modoProduto === 'atualizacao') {
+      toast.success(`✅ ${atualizados} produtos atualizados${erros > 0 ? `, ${erros} não encontrados` : ''}`);
+    } else {
+      toast.success(`✅ ${criados} produtos criados com sucesso!`);
+    }
   };
 
   const bulkColumns = [
@@ -583,6 +632,8 @@ export default function Produtos() {
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
         isImporting={isImporting}
+        modoProduto={modoProduto}
+        onModoProdutoChange={setModoProduto}
       />
 
       <ExportarProdutosOmieModal
