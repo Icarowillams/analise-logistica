@@ -206,7 +206,7 @@ export default function PainelGestorVisita() {
 
   // Roteiros por dia da semana
   const roteirosPorDia = useMemo(() => {
-    const diasOrdem = diasSemana.map(d => d.valor);
+    const diasOrdem = diasSemana.map(d => d.id);
     const grouped = {};
     diasOrdem.forEach(d => grouped[d] = 0);
     
@@ -217,7 +217,7 @@ export default function PainelGestorVisita() {
     });
     
     return diasOrdem.map(dia => {
-      const label = diasSemana.find(d => d.valor === dia)?.label || dia;
+      const label = diasSemana.find(d => d.id === dia)?.nome || dia;
       return { dia: label.substring(0, 3), qtd: grouped[dia] };
     });
   }, [roteirosFiltrados]);
