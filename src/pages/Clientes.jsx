@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClienteConsulta from '@/components/clientes/ClienteConsulta';
 import ClienteMapa from '@/components/clientes/ClienteMapa';
 import ExportarOmieModal from '@/components/clientes/ExportarOmieModal';
+import ClientesComErroOmie from '@/components/clientes/ClientesComErroOmie';
 
 export default function Clientes() {
   const [activeTab, setActiveTab] = useState("cadastro");
@@ -26,6 +27,7 @@ export default function Clientes() {
   const [isImporting, setIsImporting] = useState(false);
   const [modoImportacao, setModoImportacao] = useState('cadastro'); // 'cadastro' ou 'atualizacao'
   const [omieModalOpen, setOmieModalOpen] = useState(false);
+  const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
@@ -625,6 +627,14 @@ export default function Clientes() {
         </div>
         <div className="flex gap-2">
           <Button
+            onClick={() => setCorrigirErrosOpen(true)}
+            variant="outline"
+            className="border-red-200 text-red-700 hover:bg-red-50"
+          >
+            <Ban className="w-4 h-4 mr-2" />
+            Corrigir Erros Omie
+          </Button>
+          <Button
             onClick={() => setOmieModalOpen(true)}
             variant="outline"
             className="border-blue-200 text-blue-700 hover:bg-blue-50"
@@ -994,6 +1004,12 @@ export default function Clientes() {
       <ExportarOmieModal
         open={omieModalOpen}
         onOpenChange={setOmieModalOpen}
+      />
+
+      <ClientesComErroOmie
+        open={corrigirErrosOpen}
+        onOpenChange={setCorrigirErrosOpen}
+        erros={[]}
       />
     </div>
   );
