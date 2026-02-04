@@ -28,16 +28,17 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Nenhum cliente encontrado com os IDs informados' }, { status: 404 });
         }
 
+        // Processar todos os clientes em paralelo (lotes de 10 para não sobrecarregar)
+        const BATCH_SIZE = 10;
         const resultados = [];
 
-        for (const cliente of clientesParaExportar) {
-            // Mapear campos do Base44 para Omie
+        const processarCliente = async (cliente) => {
             const clienteOmie = {
                 codigo_cliente_integracao: cliente.id,
                 razao_social: cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome",
                 nome_fantasia: cliente.nome_fantasia || cliente.razao_social || "",
                 cnpj_cpf: cliente.cpf_cnpj || "",
-                email: "", // Campo não existe na entidade Cliente atual
+                email: "",
                 endereco: cliente.endereco || "",
                 endereco_numero: cliente.numero || "",
                 bairro: cliente.bairro || "",
@@ -47,15 +48,12 @@ Deno.serve(async (req) => {
                 pessoa_fisica: (cliente.cpf_cnpj && cliente.cpf_cnpj.length <= 14) ? "S" : "N"
             };
 
-            // Escolher método: UpsertCliente (insere ou atualiza) ou IncluirCliente
             const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
 
             try {
                 const response = await fetch(OMIE_URL, {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         call: metodo,
                         app_key: OMIE_APP_KEY,
@@ -66,22 +64,29 @@ Deno.serve(async (req) => {
 
                 const resultado = await response.json();
 
-                resultados.push({
+                return {
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     sucesso: !resultado.faultstring,
                     codigo_omie: resultado.codigo_cliente_omie || null,
                     mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
-                });
+                };
             } catch (err) {
-                resultados.push({
+                return {
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
-                });
+                };
             }
+        };
+
+        // Processar em lotes paralelos
+        for (let i = 0; i < clientesParaExportar.length; i += BATCH_SIZE) {
+            const lote = clientesParaExportar.slice(i, i + BATCH_SIZE);
+            const resultadosLote = await Promise.all(lote.map(processarCliente));
+            resultados.push(...resultadosLote);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;

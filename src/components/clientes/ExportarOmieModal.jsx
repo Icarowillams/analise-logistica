@@ -15,6 +15,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [resultados, setResultados] = useState(null);
   const [apenasAtivos, setApenasAtivos] = useState(true);
+  const [progressoExportacao, setProgressoExportacao] = useState(0);
 
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes'],
