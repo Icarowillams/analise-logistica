@@ -925,30 +925,96 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
   );
 }
 
-function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLabel, onVerRoteiro }) {
-  // Agrupar roteiros por funcionário
-  const roteirosPorFuncionario = useMemo(() => {
-    const agrupado = {};
+function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLabel, onVerRoteiro, visitasRoteiro, clientesMap }) {
+  const [expandedRows, setExpandedRows] = useState({});
+
+  const toggleRow = (key) => {
+    setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Agrupar dados por funcionário + dia da semana com estatísticas de visitas
+  const dadosAgrupados = useMemo(() => {
+    const resultado = [];
+    
     roteiros.forEach(r => {
-      const funcionarioId = r.vendedor_id || 'sem_funcionario';
-      if (!agrupado[funcionarioId]) {
-        const funcionario = vendedoresMap[funcionarioId];
-        const funcao = funcionario?.funcao_id ? funcoesMap[funcionario.funcao_id] : null;
-        const supervisor = funcionario?.supervisor_id ? vendedoresMap[funcionario.supervisor_id] : null;
-        agrupado[funcionarioId] = {
-          funcionario,
-          funcao,
-          supervisor,
-          roteiros: []
-        };
-      }
-      agrupado[funcionarioId].roteiros.push(r);
+      const funcionario = vendedoresMap[r.vendedor_id];
+      const funcao = funcionario?.funcao_id ? funcoesMap[funcionario.funcao_id] : null;
+      const supervisor = funcionario?.supervisor_id ? vendedoresMap[funcionario.supervisor_id] : null;
+      
+      // Clientes do roteiro
+      const clientesIds = r.clientes_ids || [];
+      const totalClientes = clientesIds.length;
+      
+      // Visitas do roteiro (filtrar por roteiro_id e data de hoje ou conforme filtro de período)
+      const hoje = new Date().toISOString().split('T')[0];
+      const visitasDoRoteiro = visitasRoteiro.filter(v => v.roteiro_id === r.id && v.data_visita === hoje);
+      
+      // Calcular estatísticas
+      const clientesAtendidos = visitasDoRoteiro.filter(v => v.status === 'concluida');
+      const clientesNaoAtendidos = visitasDoRoteiro.filter(v => v.status === 'nao_atendido');
+      const clientesPendentes = clientesIds.filter(cId => {
+        const visita = visitasDoRoteiro.find(v => v.cliente_id === cId);
+        return !visita || visita.status === 'pendente' || visita.status === 'checkin_realizado';
+      });
+      
+      // Clientes com pedido
+      const clientesComPedido = visitasDoRoteiro.filter(v => v.pedido_solicitado === true);
+      const clientesSemPedido = visitasDoRoteiro.filter(v => v.pedido_solicitado === false && v.status === 'concluida');
+      
+      // Taxas
+      const taxaAtendimento = totalClientes > 0 ? ((clientesAtendidos.length / totalClientes) * 100).toFixed(1) : 0;
+      const taxaNaoAtendimento = totalClientes > 0 ? ((clientesNaoAtendidos.length / totalClientes) * 100).toFixed(1) : 0;
+      const taxaPendencia = totalClientes > 0 ? ((clientesPendentes.length / totalClientes) * 100).toFixed(1) : 0;
+      
+      // Detalhes dos clientes por status
+      const detalhesClientes = {
+        atendidos: clientesAtendidos.map(v => ({
+          ...v,
+          cliente: clientesMap[v.cliente_id]
+        })),
+        naoAtendidos: clientesNaoAtendidos.map(v => ({
+          ...v,
+          cliente: clientesMap[v.cliente_id]
+        })),
+        pendentes: clientesPendentes.map(cId => {
+          const visita = visitasDoRoteiro.find(v => v.cliente_id === cId);
+          return {
+            cliente_id: cId,
+            cliente: clientesMap[cId],
+            visita
+          };
+        })
+      };
+      
+      resultado.push({
+        id: r.id,
+        key: `${r.vendedor_id}-${r.dia_semana}`,
+        dia_semana: r.dia_semana,
+        funcionario,
+        funcao,
+        supervisor,
+        totalClientes,
+        atendidos: clientesAtendidos.length,
+        naoAtendidos: clientesNaoAtendidos.length,
+        pendentes: clientesPendentes.length,
+        comPedido: clientesComPedido.length,
+        semPedido: clientesSemPedido.length,
+        taxaAtendimento,
+        taxaNaoAtendimento,
+        taxaPendencia,
+        detalhesClientes,
+        roteiro: r
+      });
     });
     
-    // Ordenar por nome do funcionário
-    return Object.entries(agrupado)
-      .sort(([, a], [, b]) => (a.funcionario?.nome || 'ZZZ').localeCompare(b.funcionario?.nome || 'ZZZ'));
-  }, [roteiros, vendedoresMap, funcoesMap]);
+    // Ordenar por funcionário e dia
+    return resultado.sort((a, b) => {
+      const nomeA = a.funcionario?.nome || 'ZZZ';
+      const nomeB = b.funcionario?.nome || 'ZZZ';
+      if (nomeA !== nomeB) return nomeA.localeCompare(nomeB);
+      return (a.dia_semana || '').localeCompare(b.dia_semana || '');
+    });
+  }, [roteiros, vendedoresMap, funcoesMap, visitasRoteiro, clientesMap]);
 
   if (roteiros.length === 0) {
     return (
@@ -960,70 +1026,277 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
   }
 
   return (
-    <div className="space-y-4">
-      {roteirosPorFuncionario.map(([funcionarioId, { funcionario, funcao, supervisor, roteiros: rots }]) => (
-        <div key={funcionarioId} className="border rounded-xl overflow-hidden">
-          {/* Header do funcionário */}
-          <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 border-b">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold">
-                  {funcionario?.nome?.charAt(0) || '?'}
+    <div className="space-y-2">
+      {/* Header da tabela */}
+      <div className="hidden lg:grid lg:grid-cols-12 gap-2 p-3 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700">
+        <div className="col-span-1">Dia</div>
+        <div className="col-span-2">Funcionário</div>
+        <div className="col-span-1 text-center">Clientes</div>
+        <div className="col-span-1 text-center">Atendidos</div>
+        <div className="col-span-1 text-center">Não Atend.</div>
+        <div className="col-span-1 text-center">Pendentes</div>
+        <div className="col-span-1 text-center">% Atend.</div>
+        <div className="col-span-1 text-center">% Não At.</div>
+        <div className="col-span-1 text-center">% Pend.</div>
+        <div className="col-span-2 text-center">Ações</div>
+      </div>
+
+      {/* Linhas de dados */}
+      {dadosAgrupados.map((item) => (
+        <Collapsible 
+          key={item.key} 
+          open={expandedRows[item.key]} 
+          onOpenChange={() => toggleRow(item.key)}
+        >
+          <div className="border rounded-lg overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 p-3 bg-white hover:bg-slate-50 cursor-pointer items-center">
+                {/* Dia */}
+                <div className="col-span-1">
+                  <Badge variant="outline" className="text-xs">
+                    {getDiaLabel(item.dia_semana)?.substring(0, 3)}
+                  </Badge>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-slate-800">
-                    {funcionario?.nome || 'Funcionário não encontrado'}
-                  </h3>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {funcao && (
-                      <Badge variant="outline" className="text-xs bg-white">
-                        {funcao.nome}
-                      </Badge>
-                    )}
-                    {supervisor && (
-                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                        Sup: {supervisor.nome}
-                      </Badge>
-                    )}
+                
+                {/* Funcionário */}
+                <div className="col-span-1 lg:col-span-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
+                      {item.funcionario?.nome?.charAt(0) || '?'}
+                    </div>
+                    <div className="hidden lg:block">
+                      <p className="text-sm font-medium text-slate-800 truncate max-w-[120px]">
+                        {item.funcionario?.nome || 'N/A'}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate max-w-[120px]">
+                        {item.funcao?.nome || ''}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge className="bg-amber-500 text-white">
-                  {rots.length} roteiro(s)
-                </Badge>
-                <Badge variant="outline" className="bg-white">
-                  {rots.reduce((sum, r) => sum + r.total_clientes, 0)} clientes
-                </Badge>
-              </div>
-            </div>
-          </div>
-          
-          {/* Roteiros do funcionário */}
-          <div className="divide-y divide-slate-100">
-            {rots.map(roteiro => (
-              <div key={roteiro.id} className="p-3 hover:bg-slate-50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="min-w-[100px] justify-center">
-                    {getDiaLabel(roteiro.dia_semana)}
-                  </Badge>
-                  <span className="text-sm text-slate-600">
-                    {roteiro.total_clientes} clientes
-                  </span>
-                  <Badge className={roteiro.visitas_realizadas > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}>
-                    {roteiro.visitas_realizadas} / {roteiro.total_clientes} visitas hoje
+                
+                {/* Clientes */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <Badge variant="outline" className="bg-slate-50">
+                    {item.totalClientes}
                   </Badge>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onVerRoteiro(roteiro)}
-                >
-                  <Eye className="w-4 h-4 mr-1" />
-                  Ver
-                </Button>
+                
+                {/* Atendidos */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <Badge className="bg-green-100 text-green-700">
+                    {item.atendidos}
+                  </Badge>
+                </div>
+                
+                {/* Não Atendidos */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <Badge className="bg-red-100 text-red-700">
+                    {item.naoAtendidos}
+                  </Badge>
+                </div>
+                
+                {/* Pendentes */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <Badge className="bg-yellow-100 text-yellow-700">
+                    {item.pendentes}
+                  </Badge>
+                </div>
+                
+                {/* Taxa Atendimento */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <span className={`text-xs font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(item.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {item.taxaAtendimento}%
+                  </span>
+                </div>
+                
+                {/* Taxa Não Atendimento */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <span className="text-xs font-semibold text-red-600">
+                    {item.taxaNaoAtendimento}%
+                  </span>
+                </div>
+                
+                {/* Taxa Pendência */}
+                <div className="hidden lg:block col-span-1 text-center">
+                  <span className="text-xs font-semibold text-yellow-600">
+                    {item.taxaPendencia}%
+                  </span>
+                </div>
+                
+                {/* Ações */}
+                <div className="col-span-2 flex items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onVerRoteiro(item.roteiro);
+                    }}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost">
+                    {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+                </div>
+
+                {/* Mobile summary */}
+                <div className="col-span-2 lg:hidden text-xs text-slate-600">
+                  <span className="text-green-600">{item.atendidos} at.</span> • 
+                  <span className="text-red-600 ml-1">{item.naoAtendidos} não at.</span> • 
+                  <span className="text-yellow-600 ml-1">{item.pendentes} pend.</span>
+                </div>
               </div>
-            ))}
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent>
+              <div className="border-t bg-slate-50 p-4 space-y-4">
+                {/* Resumo */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white p-3 rounded-lg border">
+                    <div className="text-xs text-slate-500">Com Pedido</div>
+                    <div className="text-lg font-bold text-green-600 flex items-center gap-1">
+                      <ShoppingCart className="w-4 h-4" />
+                      {item.comPedido}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border">
+                    <div className="text-xs text-slate-500">Sem Pedido</div>
+                    <div className="text-lg font-bold text-red-600 flex items-center gap-1">
+                      <XCircle className="w-4 h-4" />
+                      {item.semPedido}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border">
+                    <div className="text-xs text-slate-500">Supervisor</div>
+                    <div className="text-sm font-semibold text-slate-700">
+                      {item.supervisor?.nome || '-'}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border">
+                    <div className="text-xs text-slate-500">Taxa Pedidos</div>
+                    <div className="text-lg font-bold text-blue-600 flex items-center gap-1">
+                      <Percent className="w-4 h-4" />
+                      {item.atendidos > 0 ? ((item.comPedido / item.atendidos) * 100).toFixed(1) : 0}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabs com detalhes dos clientes */}
+                <Tabs defaultValue="atendidos" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="atendidos" className="text-xs">
+                      Atendidos ({item.detalhesClientes.atendidos.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="naoAtendidos" className="text-xs">
+                      Não Atendidos ({item.detalhesClientes.naoAtendidos.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="pendentes" className="text-xs">
+                      Pendentes ({item.detalhesClientes.pendentes.length})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="atendidos" className="mt-3">
+                    <ClientesList 
+                      clientes={item.detalhesClientes.atendidos} 
+                      tipo="atendido"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="naoAtendidos" className="mt-3">
+                    <ClientesList 
+                      clientes={item.detalhesClientes.naoAtendidos} 
+                      tipo="naoAtendido"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="pendentes" className="mt-3">
+                    <ClientesList 
+                      clientes={item.detalhesClientes.pendentes} 
+                      tipo="pendente"
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      ))}
+    </div>
+  );
+}
+
+function ClientesList({ clientes, tipo }) {
+  if (clientes.length === 0) {
+    return (
+      <div className="text-center py-4 text-slate-400 text-sm">
+        Nenhum cliente {tipo === 'atendido' ? 'atendido' : tipo === 'naoAtendido' ? 'não atendido' : 'pendente'}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 max-h-64 overflow-y-auto">
+      {clientes.map((item, idx) => (
+        <div 
+          key={idx} 
+          className={`p-3 rounded-lg border ${
+            tipo === 'atendido' ? 'bg-green-50 border-green-200' :
+            tipo === 'naoAtendido' ? 'bg-red-50 border-red-200' :
+            'bg-yellow-50 border-yellow-200'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm text-slate-800 truncate">
+                {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {item.cliente?.codigo} • {item.cliente?.cidade || 'Sem cidade'}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {tipo === 'atendido' && (
+                <>
+                  {item.pedido_solicitado === true ? (
+                    <Badge className="bg-green-600 text-white text-xs">
+                      <ShoppingCart className="w-3 h-3 mr-1" />
+                      Com Pedido
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-slate-500 text-white text-xs">
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Sem Pedido
+                    </Badge>
+                  )}
+                  {item.checkin_time && (
+                    <span className="text-xs text-slate-500">
+                      {new Date(item.checkin_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </>
+              )}
+              {tipo === 'naoAtendido' && (
+                <>
+                  <Badge className="bg-red-600 text-white text-xs">
+                    <XCircle className="w-3 h-3 mr-1" />
+                    Não Atendido
+                  </Badge>
+                  {item.motivo_nao_atendimento && (
+                    <span className="text-xs text-red-600 text-right max-w-[150px] truncate">
+                      {item.motivo_nao_atendimento}
+                    </span>
+                  )}
+                </>
+              )}
+              {tipo === 'pendente' && (
+                <Badge className="bg-yellow-600 text-white text-xs">
+                  <Clock className="w-3 h-3 mr-1" />
+                  Pendente
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
       ))}
