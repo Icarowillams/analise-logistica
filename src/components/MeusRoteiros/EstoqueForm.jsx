@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Download, Send, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Download, Send, CheckCircle, Camera, Image, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
@@ -17,13 +17,16 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
     data_validade: '',
     data_fabricacao: '',
     horario_fabricacao: '',
-    foto_url: ''
+    fotos_urls: []
   });
   const [editingId, setEditingId] = useState(null);
   const [editingLocalIndex, setEditingLocalIndex] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [itensPendentes, setItensPendentes] = useState([]); // Itens não enviados ainda
+  const [itensPendentes, setItensPendentes] = useState([]);
   const [enviando, setEnviando] = useState(false);
+  
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   const queryClient = useQueryClient();
 
@@ -75,7 +78,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       data_validade: '',
       data_fabricacao: '',
       horario_fabricacao: '',
-      foto_url: ''
+      fotos_urls: []
     });
     setEditingId(null);
     setEditingLocalIndex(null);
@@ -93,18 +96,29 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
   };
 
   const handlePhotoUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadingPhoto(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setFormData({ ...formData, foto_url: file_url });
+      const newUrls = [];
+      for (const file of files) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        newUrls.push(file_url);
+      }
+      setFormData({ ...formData, fotos_urls: [...formData.fotos_urls, ...newUrls] });
     } catch (error) {
       alert('Erro ao fazer upload da foto');
     } finally {
       setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
+  };
+
+  const handleRemovePhoto = (index) => {
+    const newUrls = formData.fotos_urls.filter((_, i) => i !== index);
+    setFormData({ ...formData, fotos_urls: newUrls });
   };
 
   const handleSubmit = () => {
@@ -126,7 +140,8 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       data_validade: formData.data_validade || null,
       data_fabricacao: formData.data_fabricacao || null,
       horario_fabricacao: formData.horario_fabricacao || null,
-      foto_url: formData.foto_url || null,
+      foto_url: formData.fotos_urls[0] || null,
+      fotos_urls: formData.fotos_urls,
       vendedor_id: vendedorAtual?.id || '',
       vendedor_nome: vendedorAtual?.nome || ''
     };
@@ -156,7 +171,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       data_validade: estoque.data_validade || '',
       data_fabricacao: estoque.data_fabricacao || '',
       horario_fabricacao: estoque.horario_fabricacao || '',
-      foto_url: estoque.foto_url || ''
+      fotos_urls: estoque.fotos_urls || (estoque.foto_url ? [estoque.foto_url] : [])
     });
     setEditingId(estoque.id);
     setEditingLocalIndex(null);
@@ -169,7 +184,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
       data_validade: item.data_validade || '',
       data_fabricacao: item.data_fabricacao || '',
       horario_fabricacao: item.horario_fabricacao || '',
-      foto_url: item.foto_url || ''
+      fotos_urls: item.fotos_urls || (item.foto_url ? [item.foto_url] : [])
     });
     setEditingLocalIndex(index);
     setEditingId(null);
@@ -335,17 +350,66 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
           </div>
 
           <div>
-            <Label className="text-xs">Foto do Estoque</Label>
-            <div className="flex gap-2">
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoUpload}
-                className="h-9"
-                disabled={uploadingPhoto}
-              />
-              {formData.foto_url && (
-                <img src={formData.foto_url} alt="Preview" className="h-9 w-9 object-cover rounded" />
+            <Label className="text-xs">Fotos do Estoque</Label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  disabled={uploadingPhoto}
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  disabled={uploadingPhoto}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => cameraInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="flex-1"
+                >
+                  <Camera className="w-4 h-4 mr-1" />
+                  Câmera
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="flex-1"
+                >
+                  <Image className="w-4 h-4 mr-1" />
+                  Galeria
+                </Button>
+              </div>
+              {uploadingPhoto && <p className="text-xs text-amber-600">Enviando foto...</p>}
+              {formData.fotos_urls.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {formData.fotos_urls.map((url, index) => (
+                    <div key={index} className="relative">
+                      <img src={url} alt={`Foto ${index + 1}`} className="h-16 w-16 object-cover rounded border" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(index)}
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -393,8 +457,17 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
                     {item.horario_fabricacao && <span>Hora: {item.horario_fabricacao}</span>}
                   </div>
                 </div>
-                {item.foto_url && (
-                  <img src={item.foto_url} alt="Produto" className="h-12 w-12 object-cover rounded mr-2" />
+                {(item.fotos_urls?.length > 0 || item.foto_url) && (
+                  <div className="flex gap-1 mr-2">
+                    {(item.fotos_urls || [item.foto_url]).filter(Boolean).slice(0, 2).map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-12 w-12 object-cover rounded" />
+                    ))}
+                    {(item.fotos_urls?.length || 0) > 2 && (
+                      <div className="h-12 w-12 bg-slate-200 rounded flex items-center justify-center text-xs font-medium">
+                        +{item.fotos_urls.length - 2}
+                      </div>
+                    )}
+                  </div>
                 )}
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => handleEditPendente(item, index)} className="h-8 w-8">
@@ -440,8 +513,17 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
                     {estoque.horario_fabricacao && <span>Hora: {estoque.horario_fabricacao}</span>}
                   </div>
                 </div>
-                {estoque.foto_url && (
-                  <img src={estoque.foto_url} alt="Produto" className="h-12 w-12 object-cover rounded mr-2" />
+                {(estoque.fotos_urls?.length > 0 || estoque.foto_url) && (
+                  <div className="flex gap-1 mr-2">
+                    {(estoque.fotos_urls || [estoque.foto_url]).filter(Boolean).slice(0, 2).map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-12 w-12 object-cover rounded" />
+                    ))}
+                    {(estoque.fotos_urls?.length || 0) > 2 && (
+                      <div className="h-12 w-12 bg-slate-200 rounded flex items-center justify-center text-xs font-medium">
+                        +{estoque.fotos_urls.length - 2}
+                      </div>
+                    )}
+                  </div>
                 )}
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => handleEditSalvo(estoque)} className="h-8 w-8">
