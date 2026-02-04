@@ -612,7 +612,11 @@ export default function Produtos() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <ProdutoConsulta onEdit={handleEdit} onDelete={handleDelete} />
+          <ProdutoConsulta 
+            onEdit={handleEdit} 
+            onDelete={handleDelete} 
+            onExportOmie={() => setExportOmieOpen(true)}
+          />
         </TabsContent>
       </Tabs>
 
