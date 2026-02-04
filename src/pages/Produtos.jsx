@@ -32,6 +32,7 @@ export default function Produtos() {
     nome: '', 
     cod_barras: '',
     ncm: '',
+    cest: '',
     categoria_id: '', 
     sub_categoria_id: '',
     imagem_url: '',
@@ -105,6 +106,7 @@ export default function Produtos() {
       nome: '', 
       cod_barras: '',
       ncm: '',
+      cest: '',
       categoria_id: '', 
       sub_categoria_id: '',
       imagem_url: '',
@@ -130,6 +132,7 @@ export default function Produtos() {
       nome: item.nome || '',
       cod_barras: item.cod_barras || '',
       ncm: item.ncm || '',
+      cest: item.cest || '',
       categoria_id: item.categoria_id || '',
       sub_categoria_id: item.sub_categoria_id || '',
       imagem_url: item.imagem_url || '',
@@ -201,6 +204,7 @@ export default function Produtos() {
         nome: item.nome,
         cod_barras: item.cod_barras,
         ncm: (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8),
+        cest: (item.cest || '').replace(/[^\d]/g, '').substring(0, 7),
         categoria_id: cat ? cat.id : null,
         sub_categoria_id: subCat ? subCat.id : null,
         unidade_medida_id: unidade ? unidade.id : null,
@@ -220,6 +224,7 @@ export default function Produtos() {
     { key: 'nome', label: 'Nome', required: true },
     { key: 'cod_barras', label: 'Cód. Barras' },
     { key: 'ncm', label: 'NCM (8 dígitos)' },
+    { key: 'cest', label: 'CEST (7 dígitos)' },
     { key: 'categoria_nome', label: 'Nome da Categoria' },
     { key: 'sub_categoria_nome', label: 'Nome da Subcategoria' },
     { key: 'unidade_medida_nome', label: 'Nome da Unidade de Medida' },
@@ -229,8 +234,8 @@ export default function Produtos() {
   ];
 
   const bulkExampleData = [
-    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', ncm: '19059090', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', unidade_produto_nome: 'FD', peso: '1.5', status: 'ativo' },
-    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', ncm: '19059090', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', unidade_produto_nome: 'UN', peso: '0.5', status: 'ativo' }
+    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', ncm: '19059090', cest: '1702100', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', unidade_produto_nome: 'FD', peso: '1.5', status: 'ativo' },
+    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', ncm: '19059090', cest: '1702100', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', unidade_produto_nome: 'UN', peso: '0.5', status: 'ativo' }
   ];
 
   return (
@@ -407,6 +412,18 @@ export default function Produtos() {
                     disabled={!isEditing}
                   />
                   <p className="text-xs text-slate-500 mt-1">8 dígitos. Padrão pães: 19059090</p>
+                </div>
+
+                <div>
+                  <Label>CEST</Label>
+                  <Input
+                    value={formData.cest}
+                    onChange={(e) => setFormData({ ...formData, cest: e.target.value.replace(/[^\d]/g, '').substring(0, 7) })}
+                    placeholder="Ex: 1702100"
+                    maxLength={7}
+                    disabled={!isEditing}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">7 dígitos. Código Especificador ST</p>
                 </div>
 
                 <div>
