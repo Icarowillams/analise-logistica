@@ -157,8 +157,25 @@ export default function PainelGestorVisita() {
   // Roteiros filtrados
   const roteirosFiltrados = useMemo(() => {
     return roteirosEnriquecidos.filter(r => {
-      if (filtroDia !== 'todos' && r.dia_semana !== filtroDia) return false;
-      if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
+      // Filtro por dia da semana (multi-select)
+      if (filtroDiasSemana.length > 0 && !filtroDiasSemana.includes(r.dia_semana)) return false;
+      
+      // Filtro por funcionário (multi-select)
+      if (filtroFuncionarios.length > 0 && !filtroFuncionarios.includes(r.vendedor_id)) return false;
+      
+      // Filtro por função (multi-select)
+      if (filtroFuncoes.length > 0) {
+        const funcionario = vendedoresMap[r.vendedor_id];
+        if (!funcionario || !filtroFuncoes.includes(funcionario.funcao_id)) return false;
+      }
+      
+      // Filtro por supervisor (multi-select)
+      if (filtroSupervisores.length > 0) {
+        const funcionario = vendedoresMap[r.vendedor_id];
+        if (!funcionario || !filtroSupervisores.includes(funcionario.supervisor_id)) return false;
+      }
+      
+      // Busca textual
       if (busca) {
         const termo = busca.toLowerCase();
         return (
@@ -168,7 +185,7 @@ export default function PainelGestorVisita() {
       }
       return true;
     });
-  }, [roteirosEnriquecidos, filtroDia, filtroVendedor, busca]);
+  }, [roteirosEnriquecidos, filtroDiasSemana, filtroFuncionarios, filtroFuncoes, filtroSupervisores, busca, vendedoresMap]);
 
   // Estatísticas de visitas
   const statsVisitas = useMemo(() => {
