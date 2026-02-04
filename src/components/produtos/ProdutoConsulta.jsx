@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Search, Filter, Tag, Package, List, Download } from 'lucide-react';
+import { Search, Filter, Tag, Package, List, Download, Pencil, Upload } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { Pencil, Trash2 } from 'lucide-react';
 
-export default function ProdutoConsulta({ onEdit, onDelete }) {
+export default function ProdutoConsulta({ onEdit, onDelete, onExportOmie }) {
   const [filters, setFilters] = useState({
     categoria_id: 'all',
     sub_categoria_id: 'all',
@@ -116,6 +116,7 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
     { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
     { key: 'nome', label: 'Nome', sortable: true },
     { key: 'categoria_id', label: 'Categoria', render: (val) => getCategoryName(val) },
+    { key: 'ncm', label: 'NCM', width: '100px' },
     { key: 'estoque_atual', label: 'Estoque', width: '100px' },
     {
       key: 'status',
@@ -125,6 +126,21 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
         <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
           {val}
         </Badge>
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Ações',
+      width: '80px',
+      render: (_, row) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onEdit && onEdit(row)}
+          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+        >
+          <Pencil className="w-4 h-4" />
+        </Button>
       )
     }
   ];
@@ -240,15 +256,26 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
             <List className="w-4 h-4" />
             Resultados ({filteredProdutos.length})
           </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportarCSV}
-            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Exportar CSV
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportarCSV}
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Exportar CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onExportOmie && onExportOmie()}
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Exportar Omie
+            </Button>
+          </div>
         </div>
         <div className="p-0">
           <DataTable 
