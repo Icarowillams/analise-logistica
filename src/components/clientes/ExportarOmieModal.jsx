@@ -23,23 +23,65 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  const exportMutation = useMutation({
-    mutationFn: async (cliente_ids) => {
-      const response = await base44.functions.invoke('exportarClientesOmie', { cliente_ids });
-      return response.data;
-    },
-    onSuccess: (data) => {
-      setResultados(data);
-      if (data.resumo.erros === 0) {
-        toast.success(`✅ ${data.resumo.sucessos} cliente(s) exportado(s) para o Omie!`);
-      } else {
-        toast.warning(`⚠️ ${data.resumo.sucessos} exportado(s), ${data.resumo.erros} erro(s)`);
+  const [exportando, setExportando] = useState(false);
+  const [totalProcessado, setTotalProcessado] = useState(0);
+  const [totalSucessos, setTotalSucessos] = useState(0);
+  const [totalErros, setTotalErros] = useState(0);
+  const [todosResultados, setTodosResultados] = useState([]);
+
+  const exportarEmLotes = async (cliente_ids) => {
+    setExportando(true);
+    setTotalProcessado(0);
+    setTotalSucessos(0);
+    setTotalErros(0);
+    setTodosResultados([]);
+    setProgressoExportacao(0);
+
+    let loteAtual = 0;
+    let todosRes = [];
+    let sucessosTotal = 0;
+    let errosTotal = 0;
+
+    while (true) {
+      try {
+        const response = await base44.functions.invoke('exportarClientesOmie', { 
+          cliente_ids, 
+          lote_inicio: loteAtual 
+        });
+        const data = response.data;
+
+        todosRes = [...todosRes, ...data.resultados];
+        sucessosTotal += data.resumo.sucessos;
+        errosTotal += data.resumo.erros;
+
+        setTodosResultados(todosRes);
+        setTotalSucessos(sucessosTotal);
+        setTotalErros(errosTotal);
+        setTotalProcessado(todosRes.length);
+        setProgressoExportacao((todosRes.length / cliente_ids.length) * 100);
+
+        if (data.concluido) {
+          setResultados({
+            resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
+            resultados: todosRes
+          });
+          if (errosTotal === 0) {
+            toast.success(`✅ ${sucessosTotal} cliente(s) exportado(s) para o Omie!`);
+          } else {
+            toast.warning(`⚠️ ${sucessosTotal} exportado(s), ${errosTotal} erro(s)`);
+          }
+          break;
+        }
+
+        loteAtual = data.proximo_lote;
+      } catch (error) {
+        toast.error('❌ Erro ao exportar: ' + error.message);
+        break;
       }
-    },
-    onError: (error) => {
-      toast.error('❌ Erro ao exportar: ' + error.message);
     }
-  });
+
+    setExportando(false);
+  };
 
   const clientesFiltrados = clientes.filter(c => {
     const termo = searchTerm.toLowerCase();
@@ -73,22 +115,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
       return;
     }
     setResultados(null);
-    setProgressoExportacao(5);
-    
-    // Progresso animado enquanto processa
-    const intervalo = setInterval(() => {
-      setProgressoExportacao(prev => {
-        if (prev >= 95) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 500);
-    
-    exportMutation.mutate(selectedIds, {
-      onSettled: () => {
-        clearInterval(intervalo);
-        setProgressoExportacao(100);
-      }
-    });
+    exportarEmLotes(selectedIds);
   };
 
   const handleClose = () => {
@@ -200,21 +227,26 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 Cancelar
               </Button>
               <div className="flex flex-col gap-2">
-                {exportMutation.isPending && (
-                  <div className="flex items-center gap-3 w-full min-w-[250px]">
-                    <Progress value={progressoExportacao} className="h-3 flex-1" />
-                    <span className="text-sm font-medium text-slate-700 whitespace-nowrap">{Math.round(progressoExportacao)}%</span>
+                {exportando && (
+                  <div className="flex flex-col gap-2 w-full min-w-[300px]">
+                    <div className="flex items-center gap-3">
+                      <Progress value={progressoExportacao} className="h-3 flex-1" />
+                      <span className="text-sm font-medium text-slate-700 whitespace-nowrap">{Math.round(progressoExportacao)}%</span>
+                    </div>
+                    <div className="text-xs text-slate-500 text-center">
+                      {totalProcessado} de {selectedIds.length} | ✅ {totalSucessos} | ❌ {totalErros}
+                    </div>
                   </div>
                 )}
                 <Button
                   onClick={handleExportar}
-                  disabled={selectedIds.length === 0 || exportMutation.isPending}
+                  disabled={selectedIds.length === 0 || exportando}
                   className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
                 >
-                  {exportMutation.isPending ? (
+                  {exportando ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Exportando {selectedIds.length}...
+                      Exportando {totalProcessado}/{selectedIds.length}...
                     </>
                   ) : (
                     <>

@@ -14,38 +14,49 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { cliente_ids, modo = "upsert" } = body; // modo: "upsert" ou "incluir"
+        const { cliente_ids, modo = "upsert", lote_inicio = 0 } = body;
 
         if (!cliente_ids || !Array.isArray(cliente_ids) || cliente_ids.length === 0) {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        // Buscar clientes do Base44
-        const clientes = await base44.entities.Cliente.list();
-        const clientesParaExportar = clientes.filter(c => cliente_ids.includes(c.id));
-
-        if (clientesParaExportar.length === 0) {
-            return Response.json({ error: 'Nenhum cliente encontrado com os IDs informados' }, { status: 404 });
+        // Processar no máximo 100 clientes por chamada (para não dar timeout)
+        const LOTE_MAX = 100;
+        const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
+        
+        if (clientesDoLote.length === 0) {
+            return Response.json({ 
+                concluido: true,
+                resumo: { total: 0, sucessos: 0, erros: 0 },
+                resultados: []
+            });
         }
 
-        // Processar sequencialmente com delay de 400ms (limite Omie: 3 req/seg)
+        // Buscar clientes do Base44
+        const clientes = await base44.entities.Cliente.list();
+        const clientesParaExportar = clientes.filter(c => clientesDoLote.includes(c.id));
+
         const resultados = [];
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         for (const cliente of clientesParaExportar) {
+            // Validar e limpar dados antes de enviar
+            const estado = (cliente.estado || "").replace(/[^a-zA-Z]/g, "").substring(0, 2).toUpperCase();
+            const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
+            
             const clienteOmie = {
                 codigo_cliente_integracao: cliente.id,
-                razao_social: cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome",
-                nome_fantasia: cliente.nome_fantasia || cliente.razao_social || "",
-                cnpj_cpf: cliente.cpf_cnpj || "",
+                razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
+                nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 60),
+                cnpj_cpf: cpfCnpj,
                 email: "",
-                endereco: cliente.endereco || "",
-                endereco_numero: cliente.numero || "",
-                bairro: cliente.bairro || "",
-                cidade: cliente.cidade || "",
-                estado: (cliente.estado || "").substring(0, 2).toUpperCase(),
-                cep: cliente.cep || "",
-                pessoa_fisica: (cliente.cpf_cnpj && cliente.cpf_cnpj.length <= 14) ? "S" : "N"
+                endereco: (cliente.endereco || "N/A").substring(0, 60),
+                endereco_numero: (cliente.numero || "S/N").substring(0, 10),
+                bairro: (cliente.bairro || "N/A").substring(0, 60),
+                cidade: (cliente.cidade || "N/A").substring(0, 40),
+                estado: estado || "PE",
+                cep: (cliente.cep || "00000000").replace(/[^\d]/g, "").substring(0, 8),
+                pessoa_fisica: cpfCnpj.length <= 11 ? "S" : "N"
             };
 
             const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
@@ -81,14 +92,19 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // Aguardar 400ms entre requisições para não exceder limite
-            await delay(400);
+            // Aguardar 350ms entre requisições (limite Omie: 3 req/seg)
+            await delay(350);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
         const erros = resultados.filter(r => !r.sucesso).length;
+        const proximoLote = lote_inicio + LOTE_MAX;
+        const concluido = proximoLote >= cliente_ids.length;
 
         return Response.json({
+            concluido,
+            proximo_lote: concluido ? null : proximoLote,
+            total_geral: cliente_ids.length,
             resumo: {
                 total: resultados.length,
                 sucessos,
