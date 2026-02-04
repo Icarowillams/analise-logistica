@@ -21,9 +21,12 @@ import {
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 
 export default function PainelGestorVisita() {
-  const [filtroDia, setFiltroDia] = useState('todos');
-  const [filtroVendedor, setFiltroVendedor] = useState('todos');
-  const [filtroData, setFiltroData] = useState('');
+  const [filtroDiasSemana, setFiltroDiasSemana] = useState([]);
+  const [filtroFuncionarios, setFiltroFuncionarios] = useState([]);
+  const [filtroFuncoes, setFiltroFuncoes] = useState([]);
+  const [filtroSupervisores, setFiltroSupervisores] = useState([]);
+  const [filtroDataInicio, setFiltroDataInicio] = useState('');
+  const [filtroDataFim, setFiltroDataFim] = useState('');
   const [busca, setBusca] = useState('');
   const [roteiroSelecionado, setRoteiroSelecionado] = useState(null);
 
@@ -36,6 +39,11 @@ export default function PainelGestorVisita() {
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.list()
+  });
+
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
   });
 
   const { data: clientes = [] } = useQuery({
