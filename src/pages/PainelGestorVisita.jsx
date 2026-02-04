@@ -248,8 +248,21 @@ export default function PainelGestorVisita() {
   }, [visitas]);
 
   const getDiaLabel = (valor) => {
-    return diasSemana.find(d => d.valor === valor)?.label || valor;
+    return diasSemana.find(d => d.id === valor)?.nome || valor;
   };
+
+  const limparFiltros = () => {
+    setFiltroDiasSemana([]);
+    setFiltroFuncionarios([]);
+    setFiltroFuncoes([]);
+    setFiltroSupervisores([]);
+    setFiltroDataInicio('');
+    setFiltroDataFim('');
+    setBusca('');
+  };
+
+  const temFiltrosAtivos = filtroDiasSemana.length > 0 || filtroFuncionarios.length > 0 || 
+    filtroFuncoes.length > 0 || filtroSupervisores.length > 0 || filtroDataInicio || filtroDataFim || busca;
 
   return (
     <div className="space-y-6">
