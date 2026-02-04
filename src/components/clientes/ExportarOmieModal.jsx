@@ -107,6 +107,17 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
 
+              <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <Checkbox
+                  id="apenas-ativos"
+                  checked={apenasAtivos}
+                  onCheckedChange={setApenasAtivos}
+                />
+                <label htmlFor="apenas-ativos" className="text-sm font-medium text-amber-800 cursor-pointer">
+                  Mostrar apenas clientes ativos
+                </label>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
