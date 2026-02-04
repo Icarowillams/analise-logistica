@@ -203,23 +203,31 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               <Button variant="outline" onClick={handleClose}>
                 Cancelar
               </Button>
-              <Button
-                onClick={handleExportar}
-                disabled={selectedIds.length === 0 || exportMutation.isPending}
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-              >
-                {exportMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Exportando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Exportar {selectedIds.length} cliente(s)
-                  </>
+              <div className="flex flex-col gap-2">
+                {exportMutation.isPending && (
+                  <div className="flex items-center gap-3 w-full min-w-[200px]">
+                    <Progress value={progressoExportacao} className="h-2 flex-1" />
+                    <span className="text-sm text-slate-600 whitespace-nowrap">{progressoExportacao}%</span>
+                  </div>
                 )}
-              </Button>
+                <Button
+                  onClick={handleExportar}
+                  disabled={selectedIds.length === 0 || exportMutation.isPending}
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                >
+                  {exportMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Exportando {selectedIds.length}...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Exportar {selectedIds.length} cliente(s)
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </>
         ) : (
