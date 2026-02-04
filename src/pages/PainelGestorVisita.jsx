@@ -159,10 +159,24 @@ export default function PainelGestorVisita() {
       // Filtro por funcionário (multi-select)
       if (filtroFuncionarios.length > 0 && !filtroFuncionarios.includes(r.vendedor_id)) return false;
       
-      // Filtro por função (multi-select)
+      // Filtro por função (multi-select) - verifica por funcao_id ou pelo nome legado
       if (filtroFuncoes.length > 0) {
         const funcionario = vendedoresMap[r.vendedor_id];
-        if (!funcionario || !filtroFuncoes.includes(funcionario.funcao_id)) return false;
+        if (!funcionario) return false;
+        
+        // Verificar por funcao_id ou pelo campo texto legado 'funcao'
+        const funcaoMatch = filtroFuncoes.some(funcaoId => {
+          // Primeiro tenta por ID
+          if (funcionario.funcao_id === funcaoId) return true;
+          // Se não tiver funcao_id, tenta pelo nome da função no campo legado
+          const funcaoSelecionada = funcoesMap[funcaoId];
+          if (funcaoSelecionada && funcionario.funcao?.toLowerCase() === funcaoSelecionada.nome?.toLowerCase()) {
+            return true;
+          }
+          return false;
+        });
+        
+        if (!funcaoMatch) return false;
       }
       
       // Filtro por supervisor (multi-select)
@@ -181,7 +195,7 @@ export default function PainelGestorVisita() {
       }
       return true;
     });
-  }, [roteirosEnriquecidos, filtroDiasSemana, filtroFuncionarios, filtroFuncoes, filtroSupervisores, busca, vendedoresMap]);
+  }, [roteirosEnriquecidos, filtroDiasSemana, filtroFuncionarios, filtroFuncoes, filtroSupervisores, busca, vendedoresMap, funcoesMap]);
 
   // Estatísticas de visitas
   const statsVisitas = useMemo(() => {
