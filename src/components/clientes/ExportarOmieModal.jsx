@@ -72,7 +72,26 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
       return;
     }
     setResultados(null);
-    exportMutation.mutate(selectedIds);
+    setProgressoExportacao(0);
+    
+    // Simular progresso durante a exportação
+    const totalClientes = selectedIds.length;
+    const intervalo = setInterval(() => {
+      setProgressoExportacao(prev => {
+        if (prev >= 90) {
+          clearInterval(intervalo);
+          return prev;
+        }
+        return prev + Math.min(10, Math.floor(100 / totalClientes));
+      });
+    }, 300);
+    
+    exportMutation.mutate(selectedIds, {
+      onSettled: () => {
+        clearInterval(intervalo);
+        setProgressoExportacao(100);
+      }
+    });
   };
 
   const handleClose = () => {
