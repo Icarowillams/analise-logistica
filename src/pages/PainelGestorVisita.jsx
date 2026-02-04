@@ -434,57 +434,19 @@ export default function PainelGestorVisita() {
             </CardContent>
           </Card>
 
-          {/* Tabela de Roteiros */}
+          {/* Lista por Funcionário */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
-              <CardTitle className="text-base">Roteiros ({roteirosFiltrados.length})</CardTitle>
+              <CardTitle className="text-base">Roteiros por Funcionário ({roteirosFiltrados.length} roteiros)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b-2 border-slate-200">
-                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Dia</th>
-                      <th className="text-left p-3 text-sm font-semibold text-slate-700">Vendedor</th>
-                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Clientes</th>
-                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Visitas Hoje</th>
-                      <th className="text-center p-3 text-sm font-semibold text-slate-700">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roteirosFiltrados.map((roteiro) => (
-                      <tr key={roteiro.id} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 text-sm text-slate-700 font-medium">
-                          {getDiaLabel(roteiro.dia_semana)}
-                        </td>
-                        <td className="p-3 text-sm text-slate-700">
-                          {roteiro.vendedor_nome}
-                        </td>
-                        <td className="p-3 text-center">
-                          <Badge className="bg-slate-100 text-slate-700">
-                            {roteiro.total_clientes} clientes
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-center">
-                          <Badge className={roteiro.visitas_realizadas > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}>
-                            {roteiro.visitas_realizadas} / {roteiro.total_clientes}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setRoteiroSelecionado(roteiro)}
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Ver
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <RoteirosPorFuncionario 
+                roteiros={roteirosFiltrados} 
+                vendedoresMap={vendedoresMap}
+                funcoesMap={funcoesMap}
+                getDiaLabel={getDiaLabel}
+                onVerRoteiro={setRoteiroSelecionado}
+              />
             </CardContent>
           </Card>
         </TabsContent>
