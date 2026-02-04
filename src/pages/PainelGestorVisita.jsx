@@ -123,13 +123,13 @@ export default function PainelGestorVisita() {
 
   // Dias únicos para filtro
   const diasSemana = [
-    { valor: 'segunda-feira', label: 'Segunda-feira' },
-    { valor: 'terca-feira', label: 'Terça-feira' },
-    { valor: 'quarta-feira', label: 'Quarta-feira' },
-    { valor: 'quinta-feira', label: 'Quinta-feira' },
-    { valor: 'sexta-feira', label: 'Sexta-feira' },
-    { valor: 'sabado', label: 'Sábado' },
-    { valor: 'domingo', label: 'Domingo' }
+    { id: 'segunda-feira', nome: 'Segunda-feira' },
+    { id: 'terca-feira', nome: 'Terça-feira' },
+    { id: 'quarta-feira', nome: 'Quarta-feira' },
+    { id: 'quinta-feira', nome: 'Quinta-feira' },
+    { id: 'sexta-feira', nome: 'Sexta-feira' },
+    { id: 'sabado', nome: 'Sábado' },
+    { id: 'domingo', nome: 'Domingo' }
   ];
 
   // Roteiros com dados enriquecidos
