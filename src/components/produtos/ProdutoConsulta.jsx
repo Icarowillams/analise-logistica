@@ -10,8 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { Pencil, Trash2 } from 'lucide-react';
-
 export default function ProdutoConsulta({ onEdit, onDelete, onExportOmie }) {
   const [filters, setFilters] = useState({
     categoria_id: 'all',
