@@ -1078,7 +1078,7 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
                       <Badge className="bg-green-100 text-green-700">{data.totais.atendidos} at.</Badge>
                       <Badge className="bg-red-100 text-red-700">{data.totais.naoAtendidos} não at.</Badge>
                       <Badge className="bg-yellow-100 text-yellow-700">{data.totais.pendentes} pend.</Badge>
-                      <span className={`text-xs font-semibold ${parseFloat(data.totais.taxaAtendimento) >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>
+                      <span className="text-xs font-semibold text-green-600">
                         {data.totais.taxaAtendimento}%
                       </span>
                     </div>
@@ -1144,7 +1144,7 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
                               <Badge className="bg-yellow-100 text-yellow-700">{dia.pendentes}</Badge>
                             </div>
                             <div className="col-span-1 text-center">
-                              <span className={`text-xs font-semibold ${parseFloat(dia.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(dia.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              <span className="text-xs font-semibold text-green-600">
                                 {dia.taxaAtendimento}%
                               </span>
                             </div>
