@@ -75,11 +75,12 @@ Deno.serve(async (req) => {
                 inativo: produto.status === 'inativo' ? "S" : "N"
             };
 
-            // Adicionar CEST nas recomendações fiscais (campo cest raiz está deprecated)
+            // CEST - campo deprecated na API Omie
+            // A API de produtos não aceita mais o CEST diretamente
+            // O CEST deve ser configurado manualmente no Omie ou via outra API específica
+            // Adicionando nas observações internas para referência
             if (cestProduto) {
-                produtoOmie.recomendacoes_fiscais = {
-                    cest: cestProduto.substring(0, 7)
-                };
+                produtoOmie.obs_internas = `CEST: ${cestProduto}`;
             }
 
             // Adicionar código de barras se existir (EAN/GTIN - até 14 dígitos)
