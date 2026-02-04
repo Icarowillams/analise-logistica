@@ -52,7 +52,67 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  // Se erros foram passados, usar eles. Senão, buscar clientes com dados inválidos
+  // Lista de clientes com erro baseado na exportação (apenas ativos)
+  const nomesComErro = [
+    'MARIA LUCINEIDE NUNES DA SILVA',
+    'VALDECI ALEXANDRE FERNANDES JUNIOR',
+    'EDENIS SANDRA',
+    'EDUARDO PAIVA BRUM',
+    'VAREJAO SANTO INACIO LTDA',
+    'SUPERMERCADO PORTO DO MAR LTDA',
+    'VANIA MARIA VIEIRA DE ANDRADE',
+    'SUPERMERCADO MIRAMAR LTDA',
+    'REGO E SANTOS LTDA',
+    'RANYERE DA SILVA NOBREGA',
+    'SPIAGGIA CAIS COMERCIAL DE ALIMENTOS 6958293',
+    'PANIFICADORA E CONFEITARIA ESPLANADA LTDA',
+    'MARIA JOSE DE S. COSTA MINI MERCADO',
+    'MERCADO MIXTO',
+    'MARIA APARECIDA DE ARAUJO ME',
+    'MERCADINHO KUMAMOTO LTDA',
+    'M M.SILVA RIBEIRAO EPP 91',
+    'MAZID TRADING IMPORTACAO',
+    'M L SILVA FILHO RIBEIRAO',
+    'M C DA SILVA MERCADINHO',
+    'LIDIA EMILIA DA SILVA CARDOSO',
+    'LV COMERCIO VAREJISTA',
+    'JOSILIA CRISPIM DOS SANTOS',
+    'JOSE GABRIEL ALCANTARA DE LIMA',
+    'LUIZ HENRIQUE DE CARVALHO',
+    'HUMBERTO LUNA ALVES',
+    'J V M SUPERMERCADO',
+    'JOAO PAULO DA SILVA PERREIRA',
+    'FABIANA RAFAELA OLIVEIRA BEZERRA',
+    'EUDES DA SILVA BELMIRO',
+    'FLAVIO NEDES MONTEIRO DE ARAUJO',
+    'FRIGORIFICO CABENSE LTDA',
+    'COMERCIAL DE ALIMENTOS PANORAMA LTDA EPP',
+    'COMERCIAL DE ALIMENTOS CADETE DA SILVA EIRELI',
+    'BRUNO DANTAS XAVIER',
+    'CARREFOUR COMERCIO E INDUSTRIA LTDA',
+    'CHRISTIANE MARIA DUTRA DE ALMEIDA',
+    'ALEX MOTA DUARTE',
+    'ALIDIANE ALVES SANTOS JOAQUIM',
+    'AKSSA JULIANNE FLORENCIO FERREIRA',
+    'ANDERSON LUIZ DA SILVA',
+    'ATACADO BRASIL LTDA',
+    'ATACADO COMPRE MAIS LTDA',
+    'L. P. DE ANDRADE BEBIDAS ME N',
+    'JOSIVALDA PEREIRA DA LUZ',
+    'ESTHER SORAYA LIMA DE FRANCA',
+    'ELITON JUNIOR DA SILVA PESSOA',
+    'CRISLAINE MARILIA LIMA DA SILVA',
+    'CRISTIANE RODRIGUES MENDES',
+    'CARLOS A DA SILVA PRODUTOS ALIMENTI',
+    'ARCO VERDE SUPERMERCADO',
+    'ANA LUCIA DIAS DA SILVA',
+    'ANDRE LUIZ CHAVES DE OLIVEIRA',
+    'AMANDA DA SILVA BABOSA DE MELO',
+    'AMANDA MARIA BEZERRA DA SILVA',
+    '25716FRIGORIFICO TOP CARNES LTDA'
+  ];
+
+  // Se erros foram passados, usar eles. Senão, buscar clientes com dados inválidos baseado na lista
   const clientesComErro = erros.length > 0 
     ? erros.map(erro => {
         const cliente = clientes.find(c => c.id === erro.cliente_id);
@@ -60,19 +120,24 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
           ...cliente,
           erro_mensagem: erro.mensagem
         };
-      }).filter(c => c.id)
+      }).filter(c => c.id && c.status === 'ativo')
     : clientes.filter(c => {
-        const estado = (c.estado || '').trim();
-        const estadoValido = ESTADOS_BRASIL.some(e => e.sigla === estado.toUpperCase());
-        const temEstadoInvalido = estado.length > 0 && estado.length !== 2 || (estado.length === 2 && !estadoValido);
+        if (c.status !== 'ativo') return false;
+        const nomeCliente = (c.razao_social || '').toUpperCase().trim();
+        return nomesComErro.some(nome => nomeCliente.includes(nome.toUpperCase()) || nome.toUpperCase().includes(nomeCliente));
+      }).map(c => {
+        const estado = (c.estado || '').trim().toUpperCase();
+        const estadoValido = ESTADOS_BRASIL.some(e => e.sigla === estado);
         const semCpfCnpj = !c.cpf_cnpj || c.cpf_cnpj.trim() === '';
-        const semEndereco = !c.endereco || c.endereco.trim() === '' || !c.cidade || c.cidade.trim() === '';
         
-        return temEstadoInvalido || semCpfCnpj;
-      }).map(c => ({
-        ...c,
-        erro_mensagem: !c.cpf_cnpj ? 'CPF/CNPJ obrigatório' : 'Estado inválido: ' + c.estado
-      }));
+        let erro = '';
+        if (semCpfCnpj) erro = 'O preenchimento da tag [cnpj_cpf] é obrigatório!';
+        else if (!estadoValido && estado) erro = `Estado não cadastrado para o valor [${estado}] ! - tag: [estado]`;
+        else if (!c.cidade) erro = 'Cidade não cadastrada - tag: [cidade]';
+        else erro = 'Dados inválidos para exportação';
+        
+        return { ...c, erro_mensagem: erro };
+      });
 
   useEffect(() => {
     // Inicializar edições com dados atuais
