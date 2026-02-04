@@ -24,7 +24,9 @@ export default function BulkImportModal({
   tipoImportacao = 'venda',
   onTipoChange,
   modoCliente,
-  onModoClienteChange
+  onModoClienteChange,
+  modoProduto,
+  onModoProdutoChange
 }) {
   const [mode, setMode] = useState('upload'); // 'upload' | 'paste'
   const [file, setFile] = useState(null);
@@ -180,6 +182,55 @@ export default function BulkImportModal({
                       ✏️ Atualização Cadastral
                     </span>
                     <span className="text-xs text-slate-500">Apenas atualiza clientes existentes</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Modo de importação de produtos - só mostra se as props forem passadas */}
+          {onModoProdutoChange && (
+            <div className="p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
+              <p className="font-medium text-slate-700 mb-3">Modo de Importação:</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all flex-1" style={{
+                  borderColor: modoProduto === 'cadastro' ? '#10b981' : '#e5e7eb',
+                  backgroundColor: modoProduto === 'cadastro' ? '#ecfdf5' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    checked={modoProduto === 'cadastro'}
+                    onChange={() => onModoProdutoChange('cadastro')}
+                    className="w-4 h-4 text-emerald-600"
+                    name="modoImportacaoProduto"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold block" style={{
+                      color: modoProduto === 'cadastro' ? '#059669' : '#64748b'
+                    }}>
+                      ➕ Cadastro
+                    </span>
+                    <span className="text-xs text-slate-500">Cria novos produtos</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all flex-1" style={{
+                  borderColor: modoProduto === 'atualizacao' ? '#3b82f6' : '#e5e7eb',
+                  backgroundColor: modoProduto === 'atualizacao' ? '#eff6ff' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    checked={modoProduto === 'atualizacao'}
+                    onChange={() => onModoProdutoChange('atualizacao')}
+                    className="w-4 h-4 text-blue-600"
+                    name="modoImportacaoProduto"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold block" style={{
+                      color: modoProduto === 'atualizacao' ? '#1e40af' : '#64748b'
+                    }}>
+                      ✏️ Atualização Cadastral
+                    </span>
+                    <span className="text-xs text-slate-500">Apenas atualiza produtos existentes (por código)</span>
                   </div>
                 </label>
               </div>
@@ -360,7 +411,7 @@ export default function BulkImportModal({
               onClick={handleImport}
               disabled={isImporting || allRows.length === 0}
               className={
-                modoCliente === 'atualizacao' 
+                modoCliente === 'atualizacao' || modoProduto === 'atualizacao'
                   ? 'bg-gradient-to-r from-blue-500 to-indigo-600' 
                   : tipoImportacao === 'troca' 
                     ? 'bg-gradient-to-r from-orange-500 to-red-600' 
@@ -371,9 +422,13 @@ export default function BulkImportModal({
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</>
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" />
-                  {modoCliente === 'atualizacao' 
-                    ? `Atualizar ${allRows.length} cliente(s)` 
-                    : `Importar ${allRows.length} ${tipoImportacao === 'troca' ? 'trocas' : onModoClienteChange ? 'cliente(s)' : 'vendas'}`
+                  {modoProduto === 'atualizacao' 
+                    ? `Atualizar ${allRows.length} produto(s)`
+                    : modoCliente === 'atualizacao' 
+                      ? `Atualizar ${allRows.length} cliente(s)` 
+                      : onModoProdutoChange
+                        ? `Importar ${allRows.length} produto(s)`
+                        : `Importar ${allRows.length} ${tipoImportacao === 'troca' ? 'trocas' : onModoClienteChange ? 'cliente(s)' : 'vendas'}`
                   }
                 </>
               )}
