@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Search, Filter, Tag, Package, List } from 'lucide-react';
+import { Search, Filter, Tag, Package, List, Download } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
@@ -71,6 +71,31 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
     if (!id) return '-';
     const sub = subCategorias.find(s => s.id === id);
     return sub ? sub.nome : '-';
+  };
+
+  const exportarCSV = () => {
+    const headers = ['codigo', 'nome', 'cod_barras', 'ncm', 'cest', 'categoria', 'subcategoria', 'peso', 'estoque_atual', 'status'];
+    const csvContent = [
+      headers.join(';'),
+      ...filteredProdutos.map(p => [
+        p.codigo || '',
+        p.nome || '',
+        p.cod_barras || '',
+        p.ncm || '',
+        p.cest || '',
+        getCategoryName(p.categoria_id),
+        getSubCategoryName(p.sub_categoria_id),
+        p.peso || 0,
+        p.estoque_atual || 0,
+        p.status || ''
+      ].join(';'))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'produtos_exportados.csv';
+    link.click();
   };
 
   const columns = [
@@ -215,6 +240,15 @@ export default function ProdutoConsulta({ onEdit, onDelete }) {
             <List className="w-4 h-4" />
             Resultados ({filteredProdutos.length})
           </h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportarCSV}
+            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Exportar CSV
+          </Button>
         </div>
         <div className="p-0">
           <DataTable 
