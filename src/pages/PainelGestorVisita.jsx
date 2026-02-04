@@ -69,6 +69,14 @@ export default function PainelGestorVisita() {
     }, {});
   }, [vendedores]);
 
+  // Mapear funções
+  const funcoesMap = useMemo(() => {
+    return funcoes.reduce((acc, f) => {
+      acc[f.id] = f;
+      return acc;
+    }, {});
+  }, [funcoes]);
+
   // Mapear clientes
   const clientesMap = useMemo(() => {
     return clientes.reduce((acc, c) => {
@@ -77,14 +85,41 @@ export default function PainelGestorVisita() {
     }, {});
   }, [clientes]);
 
-  // Vendedores únicos para filtro
-  const vendedoresUnicos = useMemo(() => {
+  // Funcionários para filtro (com roteiros)
+  const funcionariosParaFiltro = useMemo(() => {
     const ids = new Set();
     roteiros.forEach(r => {
       if (r.vendedor_id) ids.add(r.vendedor_id);
     });
-    return Array.from(ids).map(id => vendedoresMap[id]).filter(Boolean).sort((a, b) => a.nome?.localeCompare(b.nome));
+    return Array.from(ids)
+      .map(id => vendedoresMap[id])
+      .filter(Boolean)
+      .sort((a, b) => a.nome?.localeCompare(b.nome));
   }, [roteiros, vendedoresMap]);
+
+  // Funções para filtro
+  const funcoesParaFiltro = useMemo(() => {
+    const funcoesIds = new Set();
+    funcionariosParaFiltro.forEach(f => {
+      if (f.funcao_id) funcoesIds.add(f.funcao_id);
+    });
+    return Array.from(funcoesIds)
+      .map(id => funcoesMap[id])
+      .filter(Boolean)
+      .sort((a, b) => a.nome?.localeCompare(b.nome));
+  }, [funcionariosParaFiltro, funcoesMap]);
+
+  // Supervisores para filtro
+  const supervisoresParaFiltro = useMemo(() => {
+    const supervisoresIds = new Set();
+    funcionariosParaFiltro.forEach(f => {
+      if (f.supervisor_id) supervisoresIds.add(f.supervisor_id);
+    });
+    return Array.from(supervisoresIds)
+      .map(id => vendedoresMap[id])
+      .filter(Boolean)
+      .sort((a, b) => a.nome?.localeCompare(b.nome));
+  }, [funcionariosParaFiltro, vendedoresMap]);
 
   // Dias únicos para filtro
   const diasSemana = [
