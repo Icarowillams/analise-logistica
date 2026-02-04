@@ -447,6 +447,8 @@ export default function PainelGestorVisita() {
                 funcoesMap={funcoesMap}
                 getDiaLabel={getDiaLabel}
                 onVerRoteiro={setRoteiroSelecionado}
+                visitasRoteiro={visitasRoteiro}
+                clientesMap={clientesMap}
               />
             </CardContent>
           </Card>
