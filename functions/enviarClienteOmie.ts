@@ -16,6 +16,16 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
         }
 
+        // Só enviar clientes ativos para o Omie
+        if (cliente.status !== 'ativo') {
+            console.log('Cliente ignorado (não ativo):', cliente.razao_social, '- Status:', cliente.status);
+            return Response.json({ 
+                sucesso: false, 
+                ignorado: true,
+                mensagem: 'Cliente não está ativo, não será enviado ao Omie'
+            });
+        }
+
         // Mapear campos do Base44 para Omie
         const clienteOmie = {
             codigo_cliente_integracao: cliente.id,
