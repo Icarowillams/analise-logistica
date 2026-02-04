@@ -58,7 +58,9 @@ Deno.serve(async (req) => {
             // - descricao: nome/descrição do produto (até 120 caracteres)
             // - unidade: unidade de medida (UN, KG, CX, FD, PCT, GR, etc)
             // - ncm: NCM obrigatório (8 dígitos) - usar 1905.90.90 como padrão para pães
+            // - cest: CEST opcional (7 dígitos)
             const ncmProduto = produto.ncm?.replace(/[^\d]/g, "") || "19059090"; // NCM padrão: Outros produtos de padaria
+            const cestProduto = produto.cest?.replace(/[^\d]/g, "") || "";
             
             const produtoOmie = {
                 codigo_produto_integracao: produto.id,
@@ -72,6 +74,11 @@ Deno.serve(async (req) => {
                 bloquear_exclusao: "N",
                 inativo: produto.status === 'inativo' ? "S" : "N"
             };
+
+            // Adicionar CEST se existir
+            if (cestProduto) {
+                produtoOmie.cest = cestProduto.substring(0, 7);
+            }
 
             // Adicionar código de barras se existir (EAN/GTIN - até 14 dígitos)
             if (produto.cod_barras && produto.cod_barras.trim()) {
