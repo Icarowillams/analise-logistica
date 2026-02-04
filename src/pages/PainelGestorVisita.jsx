@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { Route, Users, MapPin, Filter, Search, CheckCircle, XCircle, Clock, Eye, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Route, Users, MapPin, Filter, Search, CheckCircle, XCircle, Clock, Eye, ChevronLeft, ChevronRight, AlertTriangle, Calendar } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import {
   Dialog,
@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 
 export default function PainelGestorVisita() {
   const [filtroDia, setFiltroDia] = useState('todos');
