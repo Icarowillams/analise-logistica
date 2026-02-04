@@ -928,73 +928,69 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
 }
 
 function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLabel, onVerRoteiro, visitasRoteiro, clientesMap }) {
-  const [expandedRows, setExpandedRows] = useState({});
+  const [expandedFuncionarios, setExpandedFuncionarios] = useState({});
+  const [expandedDias, setExpandedDias] = useState({});
 
-  const toggleRow = (key) => {
-    setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleFuncionario = (funcionarioId) => {
+    setExpandedFuncionarios(prev => ({ ...prev, [funcionarioId]: !prev[funcionarioId] }));
   };
 
-  // Agrupar dados por funcionário + dia da semana com estatísticas de visitas
-  const dadosAgrupados = useMemo(() => {
-    const resultado = [];
+  const toggleDia = (key) => {
+    setExpandedDias(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Agrupar por funcionário primeiro, depois por dia
+  const dadosPorFuncionario = useMemo(() => {
+    const hoje = new Date().toISOString().split('T')[0];
+    const porFuncionario = {};
     
     roteiros.forEach(r => {
-      const funcionario = vendedoresMap[r.vendedor_id];
+      const funcionarioId = r.vendedor_id || 'sem_funcionario';
+      const funcionario = vendedoresMap[funcionarioId];
       const funcao = funcionario?.funcao_id ? funcoesMap[funcionario.funcao_id] : null;
       const supervisor = funcionario?.supervisor_id ? vendedoresMap[funcionario.supervisor_id] : null;
       
-      // Clientes do roteiro
+      if (!porFuncionario[funcionarioId]) {
+        porFuncionario[funcionarioId] = {
+          funcionario,
+          funcao,
+          supervisor,
+          dias: [],
+          totais: { clientes: 0, atendidos: 0, naoAtendidos: 0, pendentes: 0, comPedido: 0, semPedido: 0 }
+        };
+      }
+      
+      // Dados do dia
       const clientesIds = r.clientes_ids || [];
       const totalClientes = clientesIds.length;
-      
-      // Visitas do roteiro (filtrar por roteiro_id e data de hoje ou conforme filtro de período)
-      const hoje = new Date().toISOString().split('T')[0];
       const visitasDoRoteiro = visitasRoteiro.filter(v => v.roteiro_id === r.id && v.data_visita === hoje);
       
-      // Calcular estatísticas
       const clientesAtendidos = visitasDoRoteiro.filter(v => v.status === 'concluida');
       const clientesNaoAtendidos = visitasDoRoteiro.filter(v => v.status === 'nao_atendido');
       const clientesPendentes = clientesIds.filter(cId => {
         const visita = visitasDoRoteiro.find(v => v.cliente_id === cId);
         return !visita || visita.status === 'pendente' || visita.status === 'checkin_realizado';
       });
-      
-      // Clientes com pedido
       const clientesComPedido = visitasDoRoteiro.filter(v => v.pedido_solicitado === true);
       const clientesSemPedido = visitasDoRoteiro.filter(v => v.pedido_solicitado === false && v.status === 'concluida');
       
-      // Taxas
       const taxaAtendimento = totalClientes > 0 ? ((clientesAtendidos.length / totalClientes) * 100).toFixed(1) : 0;
       const taxaNaoAtendimento = totalClientes > 0 ? ((clientesNaoAtendidos.length / totalClientes) * 100).toFixed(1) : 0;
       const taxaPendencia = totalClientes > 0 ? ((clientesPendentes.length / totalClientes) * 100).toFixed(1) : 0;
       
-      // Detalhes dos clientes por status
       const detalhesClientes = {
-        atendidos: clientesAtendidos.map(v => ({
-          ...v,
-          cliente: clientesMap[v.cliente_id]
-        })),
-        naoAtendidos: clientesNaoAtendidos.map(v => ({
-          ...v,
-          cliente: clientesMap[v.cliente_id]
-        })),
-        pendentes: clientesPendentes.map(cId => {
-          const visita = visitasDoRoteiro.find(v => v.cliente_id === cId);
-          return {
-            cliente_id: cId,
-            cliente: clientesMap[cId],
-            visita
-          };
-        })
+        atendidos: clientesAtendidos.map(v => ({ ...v, cliente: clientesMap[v.cliente_id] })),
+        naoAtendidos: clientesNaoAtendidos.map(v => ({ ...v, cliente: clientesMap[v.cliente_id] })),
+        pendentes: clientesPendentes.map(cId => ({
+          cliente_id: cId,
+          cliente: clientesMap[cId],
+          visita: visitasDoRoteiro.find(v => v.cliente_id === cId)
+        }))
       };
       
-      resultado.push({
-        id: r.id,
-        key: `${r.vendedor_id}-${r.dia_semana}`,
+      porFuncionario[funcionarioId].dias.push({
+        key: `${funcionarioId}-${r.dia_semana}`,
         dia_semana: r.dia_semana,
-        funcionario,
-        funcao,
-        supervisor,
         totalClientes,
         atendidos: clientesAtendidos.length,
         naoAtendidos: clientesNaoAtendidos.length,
@@ -1007,15 +1003,27 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
         detalhesClientes,
         roteiro: r
       });
+      
+      // Acumular totais
+      porFuncionario[funcionarioId].totais.clientes += totalClientes;
+      porFuncionario[funcionarioId].totais.atendidos += clientesAtendidos.length;
+      porFuncionario[funcionarioId].totais.naoAtendidos += clientesNaoAtendidos.length;
+      porFuncionario[funcionarioId].totais.pendentes += clientesPendentes.length;
+      porFuncionario[funcionarioId].totais.comPedido += clientesComPedido.length;
+      porFuncionario[funcionarioId].totais.semPedido += clientesSemPedido.length;
     });
     
-    // Ordenar por funcionário e dia
-    return resultado.sort((a, b) => {
-      const nomeA = a.funcionario?.nome || 'ZZZ';
-      const nomeB = b.funcionario?.nome || 'ZZZ';
-      if (nomeA !== nomeB) return nomeA.localeCompare(nomeB);
-      return (a.dia_semana || '').localeCompare(b.dia_semana || '');
+    // Ordenar dias dentro de cada funcionário
+    Object.values(porFuncionario).forEach(f => {
+      f.dias.sort((a, b) => (a.dia_semana || '').localeCompare(b.dia_semana || ''));
+      // Calcular taxas totais
+      f.totais.taxaAtendimento = f.totais.clientes > 0 ? ((f.totais.atendidos / f.totais.clientes) * 100).toFixed(1) : 0;
+      f.totais.taxaNaoAtendimento = f.totais.clientes > 0 ? ((f.totais.naoAtendidos / f.totais.clientes) * 100).toFixed(1) : 0;
+      f.totais.taxaPendencia = f.totais.clientes > 0 ? ((f.totais.pendentes / f.totais.clientes) * 100).toFixed(1) : 0;
     });
+    
+    return Object.entries(porFuncionario)
+      .sort(([, a], [, b]) => (a.funcionario?.nome || 'ZZZ').localeCompare(b.funcionario?.nome || 'ZZZ'));
   }, [roteiros, vendedoresMap, funcoesMap, visitasRoteiro, clientesMap]);
 
   if (roteiros.length === 0) {
@@ -1028,239 +1036,216 @@ function RoteirosPorFuncionario({ roteiros, vendedoresMap, funcoesMap, getDiaLab
   }
 
   return (
-    <div className="space-y-2">
-      {/* Header da tabela */}
-      <div className="hidden md:grid md:grid-cols-12 gap-2 p-3 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700">
-        <div className="col-span-1 text-center">Dia</div>
-        <div className="col-span-2">Funcionário</div>
-        <div className="col-span-1 text-center">Clientes</div>
-        <div className="col-span-1 text-center">Atendidos</div>
-        <div className="col-span-1 text-center">Não Atend.</div>
-        <div className="col-span-1 text-center">Pendentes</div>
-        <div className="col-span-1 text-center">% Atend.</div>
-        <div className="col-span-1 text-center">% Não At.</div>
-        <div className="col-span-1 text-center">% Pend.</div>
-        <div className="col-span-2 text-center">Ações</div>
-      </div>
-
-      {/* Linhas de dados */}
-      {dadosAgrupados.map((item) => (
+    <div className="space-y-3">
+      {dadosPorFuncionario.map(([funcionarioId, data]) => (
         <Collapsible 
-          key={item.key} 
-          open={expandedRows[item.key]} 
-          onOpenChange={() => toggleRow(item.key)}
+          key={funcionarioId} 
+          open={expandedFuncionarios[funcionarioId]} 
+          onOpenChange={() => toggleFuncionario(funcionarioId)}
         >
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-xl overflow-hidden shadow-sm">
+            {/* Header do Funcionário */}
             <CollapsibleTrigger asChild>
-              <div className="p-3 bg-white hover:bg-slate-50 cursor-pointer">
-                {/* Desktop */}
-                <div className="hidden md:grid md:grid-cols-12 gap-2 items-center">
-                  {/* Dia */}
-                  <div className="col-span-1 text-center">
-                    <Badge variant="outline" className="text-xs">
-                      {getDiaLabel(item.dia_semana)?.substring(0, 3)}
-                    </Badge>
-                  </div>
-                  
-                  {/* Funcionário */}
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {item.funcionario?.nome?.charAt(0) || '?'}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">
-                          {item.funcionario?.nome || 'N/A'}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {item.funcao?.nome || '-'}
-                        </p>
+              <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 hover:from-amber-100 hover:to-yellow-100 cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold">
+                      {data.funcionario?.nome?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-800">
+                        {data.funcionario?.nome || 'Funcionário não encontrado'}
+                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {data.funcao && (
+                          <Badge variant="outline" className="text-xs bg-white">
+                            {data.funcao.nome}
+                          </Badge>
+                        )}
+                        {data.supervisor && (
+                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                            Sup: {data.supervisor.nome}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
                   
-                  {/* Clientes */}
-                  <div className="col-span-1 text-center">
-                    <Badge variant="outline" className="bg-slate-50">
-                      {item.totalClientes}
-                    </Badge>
-                  </div>
-                  
-                  {/* Atendidos */}
-                  <div className="col-span-1 text-center">
-                    <Badge className="bg-green-100 text-green-700">
-                      {item.atendidos}
-                    </Badge>
-                  </div>
-                  
-                  {/* Não Atendidos */}
-                  <div className="col-span-1 text-center">
-                    <Badge className="bg-red-100 text-red-700">
-                      {item.naoAtendidos}
-                    </Badge>
-                  </div>
-                  
-                  {/* Pendentes */}
-                  <div className="col-span-1 text-center">
-                    <Badge className="bg-yellow-100 text-yellow-700">
-                      {item.pendentes}
-                    </Badge>
-                  </div>
-                  
-                  {/* Taxa Atendimento */}
-                  <div className="col-span-1 text-center">
-                    <span className={`text-xs font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(item.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {item.taxaAtendimento}%
-                    </span>
-                  </div>
-                  
-                  {/* Taxa Não Atendimento */}
-                  <div className="col-span-1 text-center">
-                    <span className="text-xs font-semibold text-red-600">
-                      {item.taxaNaoAtendimento}%
-                    </span>
-                  </div>
-                  
-                  {/* Taxa Pendência */}
-                  <div className="col-span-1 text-center">
-                    <span className="text-xs font-semibold text-yellow-600">
-                      {item.taxaPendencia}%
-                    </span>
-                  </div>
-                  
-                  {/* Ações */}
-                  <div className="col-span-2 flex items-center justify-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onVerRoteiro(item.roteiro);
-                      }}
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost">
-                      {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Mobile */}
-                <div className="md:hidden space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {getDiaLabel(item.dia_semana)?.substring(0, 3)}
-                      </Badge>
-                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
-                        {item.funcionario?.nome?.charAt(0) || '?'}
-                      </div>
-                      <span className="text-sm font-medium text-slate-800">
-                        {item.funcionario?.nome || 'N/A'}
+                  <div className="flex items-center gap-3">
+                    {/* Totais do funcionário */}
+                    <div className="hidden md:flex items-center gap-2">
+                      <Badge variant="outline" className="bg-white">{data.totais.clientes} clientes</Badge>
+                      <Badge className="bg-green-100 text-green-700">{data.totais.atendidos} at.</Badge>
+                      <Badge className="bg-red-100 text-red-700">{data.totais.naoAtendidos} não at.</Badge>
+                      <Badge className="bg-yellow-100 text-yellow-700">{data.totais.pendentes} pend.</Badge>
+                      <span className={`text-xs font-semibold ${parseFloat(data.totais.taxaAtendimento) >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>
+                        {data.totais.taxaAtendimento}%
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onVerRoteiro(item.roteiro);
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost">
-                        {expandedRows[item.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </Button>
-                    </div>
+                    <Badge className="bg-amber-500 text-white">
+                      {data.dias.length} dia(s)
+                    </Badge>
+                    {expandedFuncionarios[funcionarioId] ? <ChevronUp className="w-5 h-5 text-slate-500" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="outline" className="bg-slate-50">{item.totalClientes} clientes</Badge>
-                    <Badge className="bg-green-100 text-green-700">{item.atendidos} atend.</Badge>
-                    <Badge className="bg-red-100 text-red-700">{item.naoAtendidos} não at.</Badge>
-                    <Badge className="bg-yellow-100 text-yellow-700">{item.pendentes} pend.</Badge>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    <span className={`font-semibold ${parseFloat(item.taxaAtendimento) >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>
-                      {item.taxaAtendimento}% atend.
-                    </span>
-                    <span className="font-semibold text-red-600">{item.taxaNaoAtendimento}% não at.</span>
-                    <span className="font-semibold text-yellow-600">{item.taxaPendencia}% pend.</span>
-                  </div>
+                </div>
+                
+                {/* Mobile totais */}
+                <div className="md:hidden mt-2 flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline" className="bg-white">{data.totais.clientes} clientes</Badge>
+                  <Badge className="bg-green-100 text-green-700">{data.totais.atendidos} at.</Badge>
+                  <Badge className="bg-red-100 text-red-700">{data.totais.naoAtendidos} não at.</Badge>
+                  <Badge className="bg-yellow-100 text-yellow-700">{data.totais.pendentes} pend.</Badge>
                 </div>
               </div>
             </CollapsibleTrigger>
             
             <CollapsibleContent>
-              <div className="border-t bg-slate-50 p-4 space-y-4">
-                {/* Resumo */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-white p-3 rounded-lg border">
-                    <div className="text-xs text-slate-500">Com Pedido</div>
-                    <div className="text-lg font-bold text-green-600 flex items-center gap-1">
-                      <ShoppingCart className="w-4 h-4" />
-                      {item.comPedido}
-                    </div>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border">
-                    <div className="text-xs text-slate-500">Sem Pedido</div>
-                    <div className="text-lg font-bold text-red-600 flex items-center gap-1">
-                      <XCircle className="w-4 h-4" />
-                      {item.semPedido}
-                    </div>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border">
-                    <div className="text-xs text-slate-500">Supervisor</div>
-                    <div className="text-sm font-semibold text-slate-700">
-                      {item.supervisor?.nome || '-'}
-                    </div>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border">
-                    <div className="text-xs text-slate-500">Taxa Pedidos</div>
-                    <div className="text-lg font-bold text-blue-600 flex items-center gap-1">
-                      <Percent className="w-4 h-4" />
-                      {item.atendidos > 0 ? ((item.comPedido / item.atendidos) * 100).toFixed(1) : 0}%
-                    </div>
-                  </div>
+              <div className="border-t">
+                {/* Header da tabela de dias */}
+                <div className="hidden md:grid md:grid-cols-11 gap-2 p-3 bg-slate-100 text-xs font-semibold text-slate-600">
+                  <div className="col-span-1 text-center">Dia</div>
+                  <div className="col-span-1 text-center">Clientes</div>
+                  <div className="col-span-1 text-center">Atendidos</div>
+                  <div className="col-span-1 text-center">Não Atend.</div>
+                  <div className="col-span-1 text-center">Pendentes</div>
+                  <div className="col-span-1 text-center">% Atend.</div>
+                  <div className="col-span-1 text-center">% Não At.</div>
+                  <div className="col-span-1 text-center">% Pend.</div>
+                  <div className="col-span-3 text-center">Ações</div>
                 </div>
+                
+                {/* Dias do funcionário */}
+                {data.dias.map((dia) => (
+                  <Collapsible 
+                    key={dia.key} 
+                    open={expandedDias[dia.key]} 
+                    onOpenChange={() => toggleDia(dia.key)}
+                  >
+                    <div className="border-t">
+                      <CollapsibleTrigger asChild>
+                        <div className="p-3 bg-white hover:bg-slate-50 cursor-pointer">
+                          {/* Desktop */}
+                          <div className="hidden md:grid md:grid-cols-11 gap-2 items-center">
+                            <div className="col-span-1 text-center">
+                              <Badge variant="outline" className="text-xs font-medium">
+                                {getDiaLabel(dia.dia_semana)?.substring(0, 3)}
+                              </Badge>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <Badge variant="outline" className="bg-slate-50">{dia.totalClientes}</Badge>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <Badge className="bg-green-100 text-green-700">{dia.atendidos}</Badge>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <Badge className="bg-red-100 text-red-700">{dia.naoAtendidos}</Badge>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <Badge className="bg-yellow-100 text-yellow-700">{dia.pendentes}</Badge>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <span className={`text-xs font-semibold ${parseFloat(dia.taxaAtendimento) >= 80 ? 'text-green-600' : parseFloat(dia.taxaAtendimento) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {dia.taxaAtendimento}%
+                              </span>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <span className="text-xs font-semibold text-red-600">{dia.taxaNaoAtendimento}%</span>
+                            </div>
+                            <div className="col-span-1 text-center">
+                              <span className="text-xs font-semibold text-yellow-600">{dia.taxaPendencia}%</span>
+                            </div>
+                            <div className="col-span-3 flex items-center justify-center gap-2">
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onVerRoteiro(dia.roteiro); }}>
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost">
+                                {expandedDias[dia.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          {/* Mobile */}
+                          <div className="md:hidden space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Badge variant="outline" className="text-xs font-medium">
+                                {getDiaLabel(dia.dia_semana)}
+                              </Badge>
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onVerRoteiro(dia.roteiro); }}>
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button size="sm" variant="ghost">
+                                  {expandedDias[dia.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              <Badge variant="outline">{dia.totalClientes} cli.</Badge>
+                              <Badge className="bg-green-100 text-green-700">{dia.atendidos} at.</Badge>
+                              <Badge className="bg-red-100 text-red-700">{dia.naoAtendidos} não at.</Badge>
+                              <Badge className="bg-yellow-100 text-yellow-700">{dia.pendentes} pend.</Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      
+                      <CollapsibleContent>
+                        <div className="border-t bg-slate-50 p-4 space-y-4">
+                          {/* Resumo do dia */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="bg-white p-3 rounded-lg border">
+                              <div className="text-xs text-slate-500">Com Pedido</div>
+                              <div className="text-lg font-bold text-green-600 flex items-center gap-1">
+                                <ShoppingCart className="w-4 h-4" />{dia.comPedido}
+                              </div>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border">
+                              <div className="text-xs text-slate-500">Sem Pedido</div>
+                              <div className="text-lg font-bold text-red-600 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />{dia.semPedido}
+                              </div>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border">
+                              <div className="text-xs text-slate-500">Taxa Pedidos</div>
+                              <div className="text-lg font-bold text-blue-600 flex items-center gap-1">
+                                <Percent className="w-4 h-4" />
+                                {dia.atendidos > 0 ? ((dia.comPedido / dia.atendidos) * 100).toFixed(1) : 0}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border">
+                              <div className="text-xs text-slate-500">Total Clientes</div>
+                              <div className="text-lg font-bold text-slate-700">{dia.totalClientes}</div>
+                            </div>
+                          </div>
 
-                {/* Tabs com detalhes dos clientes */}
-                <Tabs defaultValue="atendidos" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="atendidos" className="text-xs">
-                      Atendidos ({item.detalhesClientes.atendidos.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="naoAtendidos" className="text-xs">
-                      Não Atendidos ({item.detalhesClientes.naoAtendidos.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="pendentes" className="text-xs">
-                      Pendentes ({item.detalhesClientes.pendentes.length})
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="atendidos" className="mt-3">
-                    <ClientesList 
-                      clientes={item.detalhesClientes.atendidos} 
-                      tipo="atendido"
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="naoAtendidos" className="mt-3">
-                    <ClientesList 
-                      clientes={item.detalhesClientes.naoAtendidos} 
-                      tipo="naoAtendido"
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="pendentes" className="mt-3">
-                    <ClientesList 
-                      clientes={item.detalhesClientes.pendentes} 
-                      tipo="pendente"
-                    />
-                  </TabsContent>
-                </Tabs>
+                          {/* Tabs com clientes */}
+                          <Tabs defaultValue="atendidos" className="w-full">
+                            <TabsList className="grid w-full grid-cols-3">
+                              <TabsTrigger value="atendidos" className="text-xs">
+                                Atendidos ({dia.detalhesClientes.atendidos.length})
+                              </TabsTrigger>
+                              <TabsTrigger value="naoAtendidos" className="text-xs">
+                                Não Atendidos ({dia.detalhesClientes.naoAtendidos.length})
+                              </TabsTrigger>
+                              <TabsTrigger value="pendentes" className="text-xs">
+                                Pendentes ({dia.detalhesClientes.pendentes.length})
+                              </TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="atendidos" className="mt-3">
+                              <ClientesList clientes={dia.detalhesClientes.atendidos} tipo="atendido" />
+                            </TabsContent>
+                            <TabsContent value="naoAtendidos" className="mt-3">
+                              <ClientesList clientes={dia.detalhesClientes.naoAtendidos} tipo="naoAtendido" />
+                            </TabsContent>
+                            <TabsContent value="pendentes" className="mt-3">
+                              <ClientesList clientes={dia.detalhesClientes.pendentes} tipo="pendente" />
+                            </TabsContent>
+                          </Tabs>
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                ))}
               </div>
             </CollapsibleContent>
           </div>
