@@ -68,13 +68,19 @@ Deno.serve(async (req) => {
                 descricao: (produto.nome || "Produto sem nome").substring(0, 120),
                 unidade: unidadeSigla,
                 ncm: ncmProduto.substring(0, 8),
-                cest: cestProduto ? cestProduto.substring(0, 7) : "",
                 peso_bruto: produto.peso || 0,
                 peso_liq: produto.peso || 0,
                 bloqueado: produto.status === 'inativo' ? "S" : "N",
                 bloquear_exclusao: "N",
                 inativo: produto.status === 'inativo' ? "S" : "N"
             };
+
+            // Adicionar CEST nas recomendações fiscais (campo cest raiz está deprecated)
+            if (cestProduto) {
+                produtoOmie.recomendacoes_fiscais = {
+                    cest: cestProduto.substring(0, 7)
+                };
+            }
 
             // Adicionar código de barras se existir (EAN/GTIN - até 14 dígitos)
             if (produto.cod_barras && produto.cod_barras.trim()) {
