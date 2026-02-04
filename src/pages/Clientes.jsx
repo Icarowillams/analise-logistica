@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClienteConsulta from '@/components/clientes/ClienteConsulta';
 import ClienteMapa from '@/components/clientes/ClienteMapa';
+import ExportarOmieModal from '@/components/clientes/ExportarOmieModal';
 
 export default function Clientes() {
   const [activeTab, setActiveTab] = useState("cadastro");
@@ -24,6 +25,7 @@ export default function Clientes() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [modoImportacao, setModoImportacao] = useState('cadastro'); // 'cadastro' ou 'atualizacao'
+  const [omieModalOpen, setOmieModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
@@ -623,6 +625,14 @@ export default function Clientes() {
         </div>
         <div className="flex gap-2">
           <Button
+            onClick={() => setOmieModalOpen(true)}
+            variant="outline"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Exportar Omie
+          </Button>
+          <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
             className="border-amber-200 text-amber-700 hover:bg-amber-50"
@@ -979,6 +989,11 @@ export default function Clientes() {
         isImporting={isImporting}
         modoCliente={modoImportacao}
         onModoClienteChange={setModoImportacao}
+      />
+
+      <ExportarOmieModal
+        open={omieModalOpen}
+        onOpenChange={setOmieModalOpen}
       />
     </div>
   );
