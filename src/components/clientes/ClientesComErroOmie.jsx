@@ -52,64 +52,22 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     queryFn: () => base44.entities.Cliente.list()
   });
 
-  // Lista de clientes com erro baseado na exportação (apenas ativos)
-  const nomesComErro = [
-    'MARIA LUCINEIDE NUNES DA SILVA',
-    'VALDECI ALEXANDRE FERNANDES JUNIOR',
-    'EDENIS SANDRA',
-    'EDUARDO PAIVA BRUM',
-    'VAREJAO SANTO INACIO LTDA',
-    'SUPERMERCADO PORTO DO MAR LTDA',
-    'VANIA MARIA VIEIRA DE ANDRADE',
-    'SUPERMERCADO MIRAMAR LTDA',
-    'REGO E SANTOS LTDA',
-    'RANYERE DA SILVA NOBREGA',
-    'SPIAGGIA CAIS COMERCIAL DE ALIMENTOS 6958293',
-    'PANIFICADORA E CONFEITARIA ESPLANADA LTDA',
-    'MARIA JOSE DE S. COSTA MINI MERCADO',
-    'MERCADO MIXTO',
-    'MARIA APARECIDA DE ARAUJO ME',
-    'MERCADINHO KUMAMOTO LTDA',
-    'M M.SILVA RIBEIRAO EPP 91',
-    'MAZID TRADING IMPORTACAO',
-    'M L SILVA FILHO RIBEIRAO',
-    'M C DA SILVA MERCADINHO',
-    'LIDIA EMILIA DA SILVA CARDOSO',
-    'LV COMERCIO VAREJISTA',
-    'JOSILIA CRISPIM DOS SANTOS',
-    'JOSE GABRIEL ALCANTARA DE LIMA',
-    'LUIZ HENRIQUE DE CARVALHO',
-    'HUMBERTO LUNA ALVES',
-    'J V M SUPERMERCADO',
-    'JOAO PAULO DA SILVA PERREIRA',
-    'FABIANA RAFAELA OLIVEIRA BEZERRA',
-    'EUDES DA SILVA BELMIRO',
-    'FLAVIO NEDES MONTEIRO DE ARAUJO',
-    'FRIGORIFICO CABENSE LTDA',
-    'COMERCIAL DE ALIMENTOS PANORAMA LTDA EPP',
-    'COMERCIAL DE ALIMENTOS CADETE DA SILVA EIRELI',
-    'BRUNO DANTAS XAVIER',
-    'CARREFOUR COMERCIO E INDUSTRIA LTDA',
-    'CHRISTIANE MARIA DUTRA DE ALMEIDA',
-    'ALEX MOTA DUARTE',
-    'ALIDIANE ALVES SANTOS JOAQUIM',
-    'AKSSA JULIANNE FLORENCIO FERREIRA',
-    'ANDERSON LUIZ DA SILVA',
-    'ATACADO BRASIL LTDA',
-    'ATACADO COMPRE MAIS LTDA',
-    'L. P. DE ANDRADE BEBIDAS ME N',
-    'JOSIVALDA PEREIRA DA LUZ',
-    'ESTHER SORAYA LIMA DE FRANCA',
-    'ELITON JUNIOR DA SILVA PESSOA',
-    'CRISLAINE MARILIA LIMA DA SILVA',
-    'CRISTIANE RODRIGUES MENDES',
-    'CARLOS A DA SILVA PRODUTOS ALIMENTI',
-    'ARCO VERDE SUPERMERCADO',
-    'ANA LUCIA DIAS DA SILVA',
-    'ANDRE LUIZ CHAVES DE OLIVEIRA',
-    'AMANDA DA SILVA BABOSA DE MELO',
-    'AMANDA MARIA BEZERRA DA SILVA',
-    '25716FRIGORIFICO TOP CARNES LTDA'
+  // Lista de clientes com erro REAL de dados (não bloqueio de API)
+  const clientesComErroReal = [
+    { nome: 'MARIA LUCINEIDE NUNES DA SILVA', erro: 'O preenchimento da tag [cnpj_cpf] é obrigatório!' },
+    { nome: 'VALDECI ALEXANDRE FERNANDES JUNIOR', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'EDENIS SANDRA', erro: 'Estado não cadastrado para o valor [MI] ! - tag: [estado]' },
+    { nome: 'EDUARDO PAIVA BRUM', erro: 'Cidade não cadastrada para o Código [PONTA PORA (MA)] ! - tag: [cidade]' },
+    { nome: 'VAREJAO SANTO INACIO LTDA', erro: 'Estado não cadastrado para o valor [CA] ! - tag: [estado]' },
+    { nome: 'SUPERMERCADO PORTO DO MAR LTDA', erro: 'Estado não cadastrado para o valor [IP] ! - tag: [estado]' },
+    { nome: 'VANIA MARIA VIEIRA DE ANDRADE', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'SUPERMERCADO MIRAMAR LTDA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'REGO E SANTOS LTDA', erro: 'Cidade não cadastrada para o Código [LAGOA DO CAROO (PE)] ! - tag: [cidade]' },
+    { nome: 'RANYERE DA SILVA NOBREGA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'SPIAGGIA CAIS COMERCIAL DE ALIMENTOS 6958293', erro: 'Estado não cadastrado para o valor [IP] ! - tag: [estado]' },
+    { nome: 'PANIFICADORA E CONFEITARIA ESPLANADA LTDA', erro: 'Cidade não cadastrada para o Código [JOAO PESSOA (PA)] ! - tag: [cidade]' },
+    { nome: 'MARIA JOSE DE S. COSTA MINI MERCADO', erro: 'Estado não cadastrado para o valor [RE] ! - tag: [estado]' },
+    { nome: 'MERCADO MIXTO', erro: 'Estado não cadastrado para o valor [RE] ! - tag: [estado]' }
   ];
 
   // Se erros foram passados, usar eles. Senão, buscar clientes com dados inválidos baseado na lista
@@ -124,19 +82,11 @@ export default function ClientesComErroOmie({ open, onOpenChange, erros = [] }) 
     : clientes.filter(c => {
         if (c.status !== 'ativo') return false;
         const nomeCliente = (c.razao_social || '').toUpperCase().trim();
-        return nomesComErro.some(nome => nomeCliente.includes(nome.toUpperCase()) || nome.toUpperCase().includes(nomeCliente));
+        return clientesComErroReal.some(item => nomeCliente === item.nome.toUpperCase());
       }).map(c => {
-        const estado = (c.estado || '').trim().toUpperCase();
-        const estadoValido = ESTADOS_BRASIL.some(e => e.sigla === estado);
-        const semCpfCnpj = !c.cpf_cnpj || c.cpf_cnpj.trim() === '';
-        
-        let erro = '';
-        if (semCpfCnpj) erro = 'O preenchimento da tag [cnpj_cpf] é obrigatório!';
-        else if (!estadoValido && estado) erro = `Estado não cadastrado para o valor [${estado}] ! - tag: [estado]`;
-        else if (!c.cidade) erro = 'Cidade não cadastrada - tag: [cidade]';
-        else erro = 'Dados inválidos para exportação';
-        
-        return { ...c, erro_mensagem: erro };
+        const nomeCliente = (c.razao_social || '').toUpperCase().trim();
+        const erroInfo = clientesComErroReal.find(item => nomeCliente === item.nome.toUpperCase());
+        return { ...c, erro_mensagem: erroInfo?.erro || 'Dados inválidos' };
       });
 
   useEffect(() => {
