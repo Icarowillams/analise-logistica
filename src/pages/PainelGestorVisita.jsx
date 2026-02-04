@@ -338,44 +338,87 @@ export default function PainelGestorVisita() {
           {/* Filtros */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <Filter className="w-5 h-5 text-slate-600" />
-                <CardTitle className="text-base">Filtros</CardTitle>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-5 h-5 text-slate-600" />
+                  <CardTitle className="text-base">Filtros</CardTitle>
+                </div>
+                {temFiltrosAtivos && (
+                  <Button variant="ghost" size="sm" onClick={limparFiltros} className="text-amber-600 hover:text-amber-700">
+                    Limpar filtros
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <div>
                   <label className="text-sm font-medium text-slate-700 mb-1 block">Dia da Semana</label>
-                  <Select value={filtroDia} onValueChange={setFiltroDia}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todos os dias" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os dias</SelectItem>
-                      {diasSemana.map(dia => (
-                        <SelectItem key={dia.valor} value={dia.valor}>{dia.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={diasSemana}
+                    selectedIds={filtroDiasSemana}
+                    onChange={setFiltroDiasSemana}
+                    placeholder="Todos os dias"
+                  />
                 </div>
                 
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1 block">Vendedor</label>
-                  <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todos os vendedores" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os vendedores</SelectItem>
-                      {vendedoresUnicos.map(v => (
-                        <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Funcionário</label>
+                  <MultiSelectFilter
+                    options={funcionariosParaFiltro}
+                    selectedIds={filtroFuncionarios}
+                    onChange={setFiltroFuncionarios}
+                    placeholder="Todos os funcionários"
+                  />
                 </div>
 
                 <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Função</label>
+                  <MultiSelectFilter
+                    options={funcoesParaFiltro}
+                    selectedIds={filtroFuncoes}
+                    onChange={setFiltroFuncoes}
+                    placeholder="Todas as funções"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Supervisor</label>
+                  <MultiSelectFilter
+                    options={supervisoresParaFiltro}
+                    selectedIds={filtroSupervisores}
+                    onChange={setFiltroSupervisores}
+                    placeholder="Todos os supervisores"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Período - Início</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      type="date"
+                      value={filtroDataInicio}
+                      onChange={(e) => setFiltroDataInicio(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Período - Fim</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      type="date"
+                      value={filtroDataFim}
+                      onChange={(e) => setFiltroDataFim(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2">
                   <label className="text-sm font-medium text-slate-700 mb-1 block">Buscar</label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
