@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Nenhum cliente encontrado com os IDs informados' }, { status: 404 });
         }
 
-        // Processar todos os clientes em paralelo (lotes de 10 para não sobrecarregar)
-        const BATCH_SIZE = 10;
+        // Processar em paralelo (lotes de 50 para máxima velocidade)
+        const BATCH_SIZE = 50;
         const resultados = [];
 
         const processarCliente = async (cliente) => {
