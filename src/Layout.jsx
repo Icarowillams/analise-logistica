@@ -250,8 +250,25 @@ export default function Layout({ children, currentPageName }) {
           />
         </div>
 
+        {/* User Info & Logout */}
+        <div className="px-4 py-3 border-b border-neutral-700/50">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-neutral-400 truncate">
+              {currentUser?.email}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => base44.auth.logout()}
+              className="text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
         {/* Navigation */}
-        <nav className="p-4 h-[calc(100%-10rem)] overflow-y-auto">
+        <nav className="p-4 h-[calc(100%-13rem)] overflow-y-auto">
           <ul className="space-y-1">
             {menuItems.map((item) => (
               <li key={item.title}>
