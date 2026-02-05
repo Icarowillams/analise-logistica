@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
                 inativo: vendedor.status === 'inativo' ? "S" : "N",
                 fatura_pedido: "S",
                 visualiza_pedido: "N",
-                comissao: 0
+                comissao: 0.5
             };
 
             const metodo = modo === "incluir" ? "IncluirVendedor" : "UpsertVendedor";
