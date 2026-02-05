@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Users, CheckCircle, XCircle, Upload, List, Ban, Save } from 'lucide-react';
+import { Users, CheckCircle, XCircle, Upload, List, Ban, Save, Send } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
+import ExportarVendedoresOmieModal from '@/components/funcionarios/ExportarVendedoresOmieModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,7 @@ export default function Funcionarios() {
   
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [exportarOmieOpen, setExportarOmieOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
@@ -255,6 +257,14 @@ export default function Funcionarios() {
         />
         <div className="flex gap-2">
           <Button
+            onClick={() => setExportarOmieOpen(true)}
+            variant="outline"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Exportar Omie
+          </Button>
+          <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
             className="border-amber-200 text-amber-700 hover:bg-amber-50"
@@ -476,6 +486,11 @@ export default function Funcionarios() {
         exampleData={bulkExampleData}
         onImport={handleBulkImport}
         isImporting={isImporting}
+      />
+
+      <ExportarVendedoresOmieModal
+        open={exportarOmieOpen}
+        onOpenChange={setExportarOmieOpen}
       />
     </div>
   );
