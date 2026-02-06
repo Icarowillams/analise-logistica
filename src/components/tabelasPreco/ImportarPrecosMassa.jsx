@@ -181,7 +181,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   };
 
   const downloadTemplate = () => {
-    const template = "TABELA;COD PRODUTO;VALOR UNITARIO\nNOME_TABELA;001;10.50\nNOME_TABELA;002;15.99";
+    const template = "TABELA;COD PRODUTO;VALOR UNITARIO\nNOME_TABELA;001;10,50\nNOME_TABELA;002;15,99";
     const blob = new Blob([template], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
