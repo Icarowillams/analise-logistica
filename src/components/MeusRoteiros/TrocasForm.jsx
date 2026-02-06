@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
 import { Plus, Edit, Trash2, Send, CheckCircle, Download, Camera, Image, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -38,10 +38,40 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     queryFn: () => base44.entities.Produto.list()
   });
 
+  const { data: subCategorias = [] } = useQuery({
+    queryKey: ['subCategorias'],
+    queryFn: () => base44.entities.SubCategoria.list()
+  });
+
   const { data: motivos = [] } = useQuery({
     queryKey: ['motivosTroca'],
     queryFn: () => base44.entities.MotivoTroca.list()
   });
+
+  // Organizar produtos por subcategoria
+  const produtosPorSubcategoria = useMemo(() => {
+    const grupos = {};
+    const semCategoria = [];
+    
+    produtos.forEach(p => {
+      if (p.sub_categoria_id) {
+        if (!grupos[p.sub_categoria_id]) {
+          grupos[p.sub_categoria_id] = [];
+        }
+        grupos[p.sub_categoria_id].push(p);
+      } else {
+        semCategoria.push(p);
+      }
+    });
+
+    // Ordenar produtos dentro de cada grupo
+    Object.keys(grupos).forEach(key => {
+      grupos[key].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    });
+    semCategoria.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    return { grupos, semCategoria };
+  }, [produtos]);
 
   const { data: trocas = [] } = useQuery({
     queryKey: ['trocasVisita', visitaId],
@@ -139,25 +169,34 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
   };
 
   const handleSubmit = () => {
-    if (!formData.produto_id || !formData.quantidade || !formData.motivo_troca) {
-      alert('Preencha os campos obrigatórios');
+    // Se tem produto, precisa de quantidade e motivo
+    if (formData.produto_id) {
+      if (!formData.quantidade || !formData.motivo_troca) {
+        alert('Preencha os campos obrigatórios (Quantidade e Motivo)');
+        return;
+      }
+    }
+    
+    // Se não tem produto nem fotos, não pode enviar
+    if (!formData.produto_id && formData.fotos_urls.length === 0) {
+      alert('Adicione pelo menos um produto ou uma foto');
       return;
     }
 
-    const produto = produtos.find(p => p.id === formData.produto_id);
+    const produto = formData.produto_id ? produtos.find(p => p.id === formData.produto_id) : null;
     
     const data = {
       visita_id: visitaId,
       cliente_id: clienteId,
       cliente_nome: clienteNome,
-      produto_id: formData.produto_id,
-      produto_nome: produto?.nome || '',
+      produto_id: formData.produto_id || null,
+      produto_nome: produto?.nome || 'Foto Avulsa',
       produto_codigo: produto?.codigo || '',
-      quantidade: parseFloat(formData.quantidade),
+      quantidade: formData.quantidade ? parseFloat(formData.quantidade) : 0,
       data_validade: formData.data_validade || null,
       data_fabricacao: formData.data_fabricacao || null,
       horario_fabricacao: formData.horario_fabricacao || null,
-      motivo_troca: formData.motivo_troca,
+      motivo_troca: formData.motivo_troca || 'Foto Avulsa',
       ja_informado_anteriormente: formData.ja_informado_anteriormente,
       foto_url: formData.fotos_urls[0] || null,
       fotos_urls: formData.fotos_urls,
@@ -297,95 +336,10 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
         </div>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Produto *</Label>
-              <Select value={formData.produto_id} onValueChange={(v) => setFormData({ ...formData, produto_id: v })}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Selecione o produto" />
-                </SelectTrigger>
-                <SelectContent>
-                  {produtos.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Quantidade *</Label>
-              <Input
-                type="number"
-                value={formData.quantidade}
-                onChange={(e) => setFormData({ ...formData, quantidade: e.target.value })}
-                placeholder="0"
-                className="h-9"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Data de Validade</Label>
-              <Input
-                type="date"
-                value={formData.data_validade}
-                onChange={(e) => handleDataValidadeChange(e.target.value)}
-                className="h-9"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Data de Fabricação</Label>
-              <Input
-                type="date"
-                value={formData.data_fabricacao}
-                onChange={(e) => setFormData({ ...formData, data_fabricacao: e.target.value })}
-                className="h-9 bg-slate-100"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-xs">Período de Fabricação</Label>
-            <Select value={formData.horario_fabricacao} onValueChange={(v) => setFormData({ ...formData, horario_fabricacao: v })}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Selecione o período" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="madrugada">Madrugada (00h - 06h)</SelectItem>
-                <SelectItem value="manha">Manhã (06h - 12h)</SelectItem>
-                <SelectItem value="tarde">Tarde (12h - 18h)</SelectItem>
-                <SelectItem value="noite">Noite (18h - 00h)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label className="text-xs">Motivo da Troca *</Label>
-            <Select value={formData.motivo_troca} onValueChange={(v) => setFormData({ ...formData, motivo_troca: v })}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Selecione o motivo" />
-              </SelectTrigger>
-              <SelectContent>
-                {motivos.map(m => (
-                  <SelectItem key={m.id} value={m.descricao}>{m.descricao}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center space-x-2 p-3 bg-amber-50 rounded border border-amber-200">
-            <Checkbox
-              id="ja-informado"
-              checked={formData.ja_informado_anteriormente}
-              onCheckedChange={(checked) => setFormData({ ...formData, ja_informado_anteriormente: checked })}
-            />
-            <label htmlFor="ja-informado" className="text-xs font-medium text-amber-900 cursor-pointer">
-              Esta troca já foi informada anteriormente (não realizada)
-            </label>
-          </div>
-
-          <div>
-            <Label className="text-xs">Fotos da Troca</Label>
+          {/* Seção de Fotos - Separada e Independente */}
+          <div className="p-3 bg-white rounded-lg border border-slate-200">
+            <Label className="text-xs font-medium">Fotos da Troca</Label>
+            <p className="text-xs text-slate-500 mb-2">Você pode enviar apenas fotos ou fotos junto com produto</p>
             <div className="space-y-2">
               <div className="flex gap-2">
                 <input
@@ -447,6 +401,127 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="border-t pt-3">
+            <p className="text-xs text-slate-500 mb-2">Opcional: Vincular a um produto</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Produto</Label>
+              <Select value={formData.produto_id} onValueChange={(v) => setFormData({ ...formData, produto_id: v })}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Selecione o produto" />
+                </SelectTrigger>
+                <SelectContent className="max-h-80">
+                  {/* Produtos sem subcategoria */}
+                  {produtosPorSubcategoria.semCategoria.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="text-xs text-slate-400">Sem Categoria</SelectLabel>
+                      {produtosPorSubcategoria.semCategoria.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {/* Produtos por subcategoria */}
+                  {Object.entries(produtosPorSubcategoria.grupos).map(([subCatId, prods]) => {
+                    const subCat = subCategorias.find(s => s.id === subCatId);
+                    return (
+                      <SelectGroup key={subCatId}>
+                        <SelectLabel className="text-xs font-semibold text-amber-600">{subCat?.nome || 'Outros'}</SelectLabel>
+                        {prods.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Quantidade {formData.produto_id ? '*' : ''}</Label>
+              <Input
+                type="number"
+                value={formData.quantidade}
+                onChange={(e) => setFormData({ ...formData, quantidade: e.target.value })}
+                placeholder="0"
+                className="h-9"
+                disabled={!formData.produto_id}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Data de Validade</Label>
+              <Input
+                type="date"
+                value={formData.data_validade}
+                onChange={(e) => handleDataValidadeChange(e.target.value)}
+                className="h-9"
+                disabled={!formData.produto_id}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Data de Fabricação</Label>
+              <Input
+                type="date"
+                value={formData.data_fabricacao}
+                onChange={(e) => setFormData({ ...formData, data_fabricacao: e.target.value })}
+                className="h-9 bg-slate-100"
+                disabled={!formData.produto_id}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Período de Fabricação</Label>
+            <Select 
+              value={formData.horario_fabricacao} 
+              onValueChange={(v) => setFormData({ ...formData, horario_fabricacao: v })}
+              disabled={!formData.produto_id}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecione o período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="madrugada">Madrugada (00h - 06h)</SelectItem>
+                <SelectItem value="manha">Manhã (06h - 12h)</SelectItem>
+                <SelectItem value="tarde">Tarde (12h - 18h)</SelectItem>
+                <SelectItem value="noite">Noite (18h - 00h)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs">Motivo da Troca {formData.produto_id ? '*' : ''}</Label>
+            <Select 
+              value={formData.motivo_troca} 
+              onValueChange={(v) => setFormData({ ...formData, motivo_troca: v })}
+              disabled={!formData.produto_id}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecione o motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {motivos.map(m => (
+                  <SelectItem key={m.id} value={m.descricao}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center space-x-2 p-3 bg-amber-50 rounded border border-amber-200">
+            <Checkbox
+              id="ja-informado"
+              checked={formData.ja_informado_anteriormente}
+              onCheckedChange={(checked) => setFormData({ ...formData, ja_informado_anteriormente: checked })}
+              disabled={!formData.produto_id}
+            />
+            <label htmlFor="ja-informado" className="text-xs font-medium text-amber-900 cursor-pointer">
+              Esta troca já foi informada anteriormente (não realizada)
+            </label>
           </div>
 
           <Button
