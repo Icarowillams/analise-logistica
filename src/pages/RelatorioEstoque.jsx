@@ -224,34 +224,34 @@ export default function RelatorioEstoque() {
   const totalRegistros = dadosAgrupados.reduce((sum, c) => sum + c.totalProdutos, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-xl">
-            <Package className="h-7 w-7 text-white" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-xl shrink-0">
+            <Package className="h-5 w-5 sm:h-7 sm:w-7 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Relatório de Estoque</h1>
-            <p className="text-slate-500 mt-1">{totalRegistros} registros encontrados</p>
+            <h1 className="text-lg sm:text-3xl font-bold text-slate-900">Relatório de Estoque</h1>
+            <p className="text-xs sm:text-sm text-slate-500">{totalRegistros} registros</p>
           </div>
         </div>
-        <Button onClick={exportarCSV} variant="outline" className="gap-2">
+        <Button onClick={exportarCSV} variant="outline" size="sm" className="gap-2 self-end sm:self-auto">
           <Download className="w-4 h-4" />
-          Exportar CSV
+          Exportar
         </Button>
       </div>
 
       {/* Legenda de Cores */}
       <Card className="border-0 shadow-lg">
-        <CardContent className="py-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="text-sm font-medium text-slate-600">Prazo de Vencimento:</span>
-            <div className="flex flex-wrap gap-2">
-              <Badge className="bg-green-500 text-white">Normal (≥12 dias)</Badge>
-              <Badge className="bg-amber-500 text-white">Atenção (7-11 dias)</Badge>
-              <Badge className="bg-red-500 text-white">Crítico (&lt;7 dias)</Badge>
-              <Badge className="bg-black text-white">Vencido</Badge>
+        <CardContent className="py-2 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <span className="text-xs sm:text-sm font-medium text-slate-600">Legenda:</span>
+            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+              <Badge className="bg-green-500 text-white text-[10px] sm:text-xs">≥12d</Badge>
+              <Badge className="bg-amber-500 text-white text-[10px] sm:text-xs">7-11d</Badge>
+              <Badge className="bg-red-500 text-white text-[10px] sm:text-xs">&lt;7d</Badge>
+              <Badge className="bg-black text-white text-[10px] sm:text-xs">Venc.</Badge>
             </div>
           </div>
         </CardContent>
@@ -259,36 +259,38 @@ export default function RelatorioEstoque() {
 
       {/* Filtros */}
       <Card className="border-0 shadow-lg">
-        <CardHeader>
+        <CardHeader className="pb-2 sm:pb-4">
           <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-slate-600" />
-            <CardTitle className="text-base">Filtros</CardTitle>
+            <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
+            <CardTitle className="text-sm sm:text-base">Filtros</CardTitle>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Início</label>
+              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Início</label>
               <Input
                 type="date"
                 value={dataInicio}
                 onChange={e => setDataInicio(e.target.value)}
+                className="h-8 sm:h-9 text-xs sm:text-sm"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Fim</label>
+              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Fim</label>
               <Input
                 type="date"
                 value={dataFim}
                 onChange={e => setDataFim(e.target.value)}
+                className="h-8 sm:h-9 text-xs sm:text-sm"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Cliente</label>
+              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Cliente</label>
               <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os Clientes</SelectItem>
+                  <SelectItem value="todos">Todos</SelectItem>
                   {clientesComEstoque.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
                   ))}
@@ -296,30 +298,30 @@ export default function RelatorioEstoque() {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Buscar</label>
+              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Buscar</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-slate-400" />
                 <Input
-                  placeholder="Cliente ou produto..."
+                  placeholder="Buscar..."
                   value={busca}
                   onChange={e => setBusca(e.target.value)}
-                  className="pl-9"
+                  className="pl-7 sm:pl-9 h-8 sm:h-9 text-xs sm:text-sm"
                 />
               </div>
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <Checkbox
               id="apenasUltimoEstoque"
               checked={apenasUltimoEstoque}
               onCheckedChange={setApenasUltimoEstoque}
             />
-            <Label htmlFor="apenasUltimoEstoque" className="text-sm font-medium text-slate-700 cursor-pointer">
-              Apenas último estoque lançado
+            <Label htmlFor="apenasUltimoEstoque" className="text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
+              Apenas último estoque
             </Label>
             {apenasUltimoEstoque && dadosAgrupados.length > 0 && dadosAgrupados[0]?.visitas[0]?.data && (
-              <Badge className="bg-blue-100 text-blue-700 ml-2">
-                Data: {new Date(dadosAgrupados[0].visitas[0].data + 'T12:00:00').toLocaleDateString('pt-BR')}
+              <Badge className="bg-blue-100 text-blue-700 text-[10px] sm:text-xs">
+                {new Date(dadosAgrupados[0].visitas[0].data + 'T12:00:00').toLocaleDateString('pt-BR')}
               </Badge>
             )}
           </div>
@@ -346,24 +348,24 @@ export default function RelatorioEstoque() {
                 >
                   {/* Header do Cliente */}
                   <CollapsibleTrigger className="w-full">
-                    <div className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer gap-2">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                         {clientesExpandidos[clienteData.clienteId] ? (
-                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />
                         ) : (
-                          <ChevronRight className="w-5 h-5 text-slate-400" />
+                          <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />
                         )}
-                        <div className="text-left">
-                          <div className="font-semibold text-slate-900">
+                        <div className="text-left min-w-0 flex-1">
+                          <div className="font-semibold text-slate-900 text-sm sm:text-base truncate">
                             {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
                           </div>
-                          <div className="text-sm text-slate-500">
-                            {clienteData.totalProdutos} lançamentos • {clienteData.totalItens} unidades
+                          <div className="text-xs sm:text-sm text-slate-500">
+                            {clienteData.totalProdutos} lanç. • {clienteData.totalItens} un.
                           </div>
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-slate-600">
-                        {clienteData.visitas.length} visitas
+                      <Badge variant="outline" className="text-slate-600 text-[10px] sm:text-xs shrink-0">
+                        {clienteData.visitas.length} vis.
                       </Badge>
                     </div>
                   </CollapsibleTrigger>
@@ -381,37 +383,37 @@ export default function RelatorioEstoque() {
                           >
                             {/* Header da Visita */}
                             <CollapsibleTrigger className="w-full">
-                              <div className="flex items-center justify-between px-6 py-3 hover:bg-slate-100/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0">
-                                <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 hover:bg-slate-100/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0 gap-2">
+                                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                                   {visitasExpandidas[visitaKey] ? (
-                                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
                                   ) : (
-                                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
                                   )}
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <Calendar className="w-4 h-4 text-blue-500" />
-                                      <span className="font-medium text-slate-700">
+                                  <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-4 min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
+                                      <span className="font-medium text-slate-700 text-xs sm:text-sm">
                                         {new Date(visita.data).toLocaleDateString('pt-BR')}
                                       </span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-slate-500">
-                                      <User className="w-4 h-4" />
-                                      <span className="text-sm">{visita.vendedor?.nome || 'N/A'}</span>
+                                    <div className="flex items-center gap-1 text-slate-500">
+                                      <User className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                                      <span className="text-[10px] sm:text-sm truncate">{visita.vendedor?.nome || 'N/A'}</span>
                                     </div>
                                   </div>
                                 </div>
-                                <Badge className="bg-blue-100 text-blue-700">
-                                  {visita.totalLancamentos} produtos
+                                <Badge className="bg-blue-100 text-blue-700 text-[10px] sm:text-xs shrink-0 whitespace-nowrap">
+                                  {visita.totalLancamentos} prod.
                                 </Badge>
                               </div>
                             </CollapsibleTrigger>
 
                             {/* Produtos da Visita */}
                             <CollapsibleContent>
-                              <div className="bg-white px-8 py-3 space-y-2">
-                                {/* Cabeçalho */}
-                                <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
+                              <div className="bg-white px-2 sm:px-6 py-2 sm:py-3 space-y-2">
+                                {/* Cabeçalho - Desktop Only */}
+                                <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
                                   <div className="col-span-4">Produto</div>
                                   <div className="col-span-1 text-center">Qtd</div>
                                   <div className="col-span-2 text-center">Validade</div>
@@ -420,44 +422,62 @@ export default function RelatorioEstoque() {
                                 </div>
                                 
                                 {visita.produtos.map((prod, pIdx) => (
-                                  <div 
-                                    key={pIdx} 
-                                    className="grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50"
-                                  >
-                                    {/* Produto */}
-                                    <div className="col-span-4">
-                                      <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
-                                      {prod.produto?.codigo && (
-                                        <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
-                                      )}
+                                  <div key={pIdx}>
+                                    {/* Mobile Layout - Card Style */}
+                                    <div className="sm:hidden p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-semibold text-slate-800 leading-tight">{prod.produto?.nome || 'Produto N/A'}</p>
+                                          {prod.produto?.codigo && (
+                                            <p className="text-[10px] text-slate-400">Cód: {prod.produto.codigo}</p>
+                                          )}
+                                        </div>
+                                        <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5 shrink-0">
+                                          {prod.quantidade || 0} un.
+                                        </Badge>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="text-[10px] text-slate-500">
+                                          <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                        </div>
+                                        <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
+                                          {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
+                                        </Badge>
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-1.5">
+                                        <Clock className="w-2.5 h-2.5" />
+                                        {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                      </div>
                                     </div>
                                     
-                                    {/* Quantidade */}
-                                    <div className="col-span-1 text-center">
-                                      <Badge className="bg-blue-100 text-blue-700">
-                                        {prod.quantidade || 0}
-                                      </Badge>
-                                    </div>
-                                    
-                                    {/* Data de Validade */}
-                                    <div className="col-span-2 text-center text-sm text-slate-600">
-                                      {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
-                                    </div>
-                                    
-                                    {/* Prazo de Vencimento */}
-                                    <div className="col-span-2 text-center">
-                                      <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
-                                        {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
-                                          <AlertTriangle className="w-3 h-3 mr-1" />
+                                    {/* Desktop Layout - Grid */}
+                                    <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50">
+                                      <div className="col-span-4">
+                                        <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
+                                        {prod.produto?.codigo && (
+                                          <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
                                         )}
-                                        {getLabelPrazo(prod.prazoVencimento)}
-                                      </Badge>
-                                    </div>
-                                    
-                                    {/* Data e Hora de Lançamento */}
-                                    <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
-                                      <Clock className="w-3 h-3" />
-                                      {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                      </div>
+                                      <div className="col-span-1 text-center">
+                                        <Badge className="bg-blue-100 text-blue-700">
+                                          {prod.quantidade || 0}
+                                        </Badge>
+                                      </div>
+                                      <div className="col-span-2 text-center text-sm text-slate-600">
+                                        {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                      </div>
+                                      <div className="col-span-2 text-center">
+                                        <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
+                                          {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
+                                            <AlertTriangle className="w-3 h-3 mr-1" />
+                                          )}
+                                          {getLabelPrazo(prod.prazoVencimento)}
+                                        </Badge>
+                                      </div>
+                                      <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
+                                        <Clock className="w-3 h-3" />
+                                        {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                      </div>
                                     </div>
                                   </div>
                                 ))}
