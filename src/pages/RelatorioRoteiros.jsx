@@ -468,26 +468,25 @@ export default function RelatorioRoteiros() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl shrink-0">
-            <Route className="h-5 w-5 sm:h-7 sm:w-7 text-white" />
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl hexagon-icon">
+            <Route className="h-7 w-7 text-white" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-3xl font-bold text-slate-900">Relatório de Roteiros</h1>
-            <p className="text-xs sm:text-sm text-slate-500">Por período e data específica</p>
+            <h1 className="text-3xl font-bold text-slate-900">Relatório de Roteiros/Visitas</h1>
+            <p className="text-slate-500 mt-1">Visualização por período e data específica</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm">
-            <Filter className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Filtros</span>
-            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white text-[10px] px-1">{filtros.vendedores_ids.length + filtros.funcoes_ids.length + (filtros.cliente_busca ? 1 : 0)}</Badge>}
+          <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" className="gap-2">
+            <Filter className="w-4 h-4" />
+            Filtros
+            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white ml-1">{filtros.vendedores_ids.length + filtros.funcoes_ids.length + (filtros.cliente_busca ? 1 : 0)}</Badge>}
           </Button>
-          <Button onClick={exportarCSV} variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm">
-            <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Exportar CSV</span>
-            <span className="sm:hidden">CSV</span>
+          <Button onClick={exportarCSV} variant="outline" className="gap-2">
+            <Download className="w-4 h-4" />
+            Exportar CSV
           </Button>
         </div>
       </div>
@@ -495,8 +494,8 @@ export default function RelatorioRoteiros() {
       {/* Painel de Filtros */}
       {showFiltros && (
         <Card className="border-0 shadow-lg">
-          <CardContent className="p-3 sm:p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Filtro de Período - Data Início */}
               <div>
                 <Label className="text-xs mb-1 block">Data Início</Label>
@@ -644,24 +643,24 @@ export default function RelatorioRoteiros() {
               <Card key={vendedor.id} className="border-0 shadow-lg overflow-hidden">
                 <Collapsible open={isExpanded} onOpenChange={() => toggleVendedor(vendedor.id)}>
                   <CollapsibleTrigger className="w-full">
-                    <CardHeader className="bg-gradient-to-r from-slate-700 to-slate-800 text-white cursor-pointer hover:from-slate-600 hover:to-slate-700 transition-all p-3 sm:p-6">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          {isExpanded ? <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" /> : <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />}
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <CardHeader className="bg-gradient-to-r from-slate-700 to-slate-800 text-white cursor-pointer hover:from-slate-600 hover:to-slate-700 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                          <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
+                            <Users className="w-5 h-5" />
                           </div>
-                          <div className="text-left min-w-0">
-                            <CardTitle className="text-sm sm:text-lg truncate">{vendedor.nome}</CardTitle>
-                            <p className="text-xs sm:text-sm text-slate-300 truncate">{vendedor.email}</p>
+                          <div className="text-left">
+                            <CardTitle className="text-lg">{vendedor.nome}</CardTitle>
+                            <p className="text-sm text-slate-300">{vendedor.email}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 ml-10 sm:ml-0 shrink-0">
-                          <Badge className="bg-white/20 text-white text-[10px] sm:text-xs">
-                            {roteirosVend.length} rot.
+                        <div className="flex items-center gap-3">
+                          <Badge className="bg-white/20 text-white">
+                            {roteirosVend.length} roteiros
                           </Badge>
-                          <Badge className="bg-amber-500 text-white text-[10px] sm:text-xs">
-                            {totalClientes} cli.
+                          <Badge className="bg-amber-500 text-white">
+                            {totalClientes} clientes
                           </Badge>
                         </div>
                       </div>
@@ -732,30 +731,30 @@ export default function RelatorioRoteiros() {
                           return (
                             <Collapsible key={diaSemana} open={isDiaExpanded} onOpenChange={() => toggleDia(vendedor.id, diaSemana)}>
                               <CollapsibleTrigger className="w-full">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 bg-slate-100 rounded-lg cursor-pointer hover:bg-slate-200 transition-all gap-2">
-                              <div className="flex items-center gap-2 sm:gap-3">
-                                {isDiaExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
-                                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-                                <span className="font-semibold text-slate-800 text-sm sm:text-base">{diaConfig?.label || diaSemana}</span>
-                              </div>
-                              <div className="flex items-center gap-1 sm:gap-2 flex-wrap ml-6 sm:ml-0">
-                                <Badge className="bg-blue-100 text-blue-700 text-[10px] sm:text-xs">{datasDesteDia.length} datas</Badge>
-                                <Badge className="bg-green-100 text-green-700 text-[10px] sm:text-xs">{visitasRealizadasNoDia} visitas</Badge>
-                              </div>
-                              </div>
+                                <div className="flex items-center justify-between p-3 bg-slate-100 rounded-lg cursor-pointer hover:bg-slate-200 transition-all">
+                                  <div className="flex items-center gap-3">
+                                    {isDiaExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
+                                    <Calendar className="w-5 h-5 text-blue-600" />
+                                    <span className="font-semibold text-slate-800">{diaConfig?.label || diaSemana}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className="bg-blue-100 text-blue-700">{datasDesteDia.length} datas no período</Badge>
+                                    <Badge className="bg-green-100 text-green-700">{visitasRealizadasNoDia} visitas realizadas</Badge>
+                                  </div>
+                                </div>
                               </CollapsibleTrigger>
 
                               <CollapsibleContent>
                                 <div className="ml-8 mt-3 space-y-4">
                                   {/* Seletor de Data */}
-                                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-blue-50 rounded-lg">
-                                    <Label className="text-xs sm:text-sm font-medium text-blue-700">Data:</Label>
+                                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                                    <Label className="text-sm font-medium text-blue-700">Selecione a data:</Label>
                                     <Select 
                                       value={dataSelecionada || ''} 
                                       onValueChange={(value) => handleSelectDate(vendedor.id, diaSemana, value)}
                                     >
-                                      <SelectTrigger className="w-full sm:w-52">
-                                        <SelectValue placeholder="Selecione" />
+                                      <SelectTrigger className="w-52">
+                                        <SelectValue placeholder="Selecione uma data" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {datasDesteDia.map(data => {
@@ -1098,79 +1097,81 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
   const tempoEmLoja = calcularTempoEmLoja(visitaRoteiro?.checkin_time, visitaRoteiro?.checkout_time);
 
   return (
-    <div className={`p-2 sm:p-3 rounded-lg border ${bgColor}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-            <Badge className="bg-slate-600 text-white text-[10px] sm:text-xs px-1.5">{clienteInfo.ordem}</Badge>
+    <div className={`p-3 rounded-lg border ${bgColor}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-slate-600 text-white text-xs">{clienteInfo.ordem}</Badge>
             {(cliente?.codigo || clienteInfo.cliente_codigo) && (
-              <Badge variant="outline" className="text-[10px] sm:text-xs px-1">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
+              <Badge variant="outline" className="text-xs">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
             )}
-            <span className="font-semibold text-slate-900 text-xs sm:text-sm truncate">{cliente?.nome_fantasia || cliente?.razao_social || clienteInfo.cliente_nome}</span>
+            <span className="font-semibold text-slate-900">{cliente?.nome_fantasia || cliente?.razao_social || clienteInfo.cliente_nome}</span>
           </div>
-          <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 truncate">
+          <p className="text-xs text-slate-500 mt-1">
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}
           </p>
           
           {visitaRoteiro && (
-            <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs space-y-0.5 sm:space-y-1">
+            <div className="mt-2 text-xs space-y-1">
               {visitaRoteiro.checkin_time && (
-                <div className="flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-600 shrink-0" />
-                  <span className="text-green-700 truncate">
-                    In: {new Date(visitaRoteiro.checkin_time).toLocaleString('pt-BR')}
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-green-600" />
+                  <span className="text-green-700">
+                    Check-in: {new Date(visitaRoteiro.checkin_time).toLocaleString('pt-BR')}
                   </span>
                 </div>
               )}
               {visitaRoteiro.checkout_time && (
-                <div className="flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-600 shrink-0" />
-                  <span className="text-blue-700 truncate">
-                    Out: {new Date(visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-blue-600" />
+                  <span className="text-blue-700">
+                    Check-out: {new Date(visitaRoteiro.checkout_time).toLocaleString('pt-BR')}
                   </span>
                 </div>
               )}
               {tempoEmLoja && (
-                <Badge className="bg-purple-600 text-white text-[10px] px-1">
-                  ⏱️ {tempoEmLoja}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-purple-600 text-white text-xs">
+                    ⏱️ Tempo em loja: {tempoEmLoja}
+                  </Badge>
+                </div>
               )}
               {tipo === 'semAtendimento' && visitaRoteiro.motivo_nao_atendimento && (
-                <div className="text-red-600 font-medium text-[10px] truncate">
-                  {visitaRoteiro.motivo_nao_atendimento}
+                <div className="text-red-600 font-medium">
+                  Motivo: {visitaRoteiro.motivo_nao_atendimento}
                 </div>
               )}
               {visitaRegistro?.pedido_solicitado === true && (
-                <Badge className="bg-green-500 text-white text-[10px] px-1">Pedido ✓</Badge>
+                <Badge className="bg-green-500 text-white text-xs">Pedido Solicitado</Badge>
               )}
               {visitaRegistro?.pedido_solicitado === false && (
-                <Badge className="bg-amber-500 text-white text-[10px] px-1">S/Ped: {visitaRegistro.motivo_nao_solicitacao_descricao?.substring(0, 15)}...</Badge>
+                <Badge className="bg-amber-500 text-white text-xs">Sem Pedido: {visitaRegistro.motivo_nao_solicitacao_descricao}</Badge>
               )}
             </div>
           )}
 
           {tipo === 'emAtendimento' && (
-            <Badge className="mt-1 bg-blue-600 text-white text-[10px] px-1">
-              <Clock className="w-2.5 h-2.5 mr-0.5" />
-              Aguard. Check-out
+            <Badge className="mt-2 bg-blue-600 text-white text-xs">
+              <Clock className="w-3 h-3 mr-1" />
+              Aguardando Check-out
             </Badge>
           )}
 
           {tipo === 'pendente' && (
-            <Badge className="mt-1 bg-amber-500 text-white text-[10px] px-1">
-              <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
-              Aguard. Check-in
+            <Badge className="mt-2 bg-amber-500 text-white text-xs">
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              Aguardando Check-in
             </Badge>
           )}
         </div>
 
         {tipo !== 'pendente' && visitaRoteiro && (
-          <div className="flex gap-1 sm:gap-2 self-end sm:self-center shrink-0">
-            <Button size="sm" variant="outline" onClick={onOpenMap} className="h-7 w-7 sm:h-8 sm:w-8 p-0 border-blue-300 text-blue-700 hover:bg-blue-50">
-              <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+          <div className="flex gap-2 ml-4">
+            <Button size="sm" variant="outline" onClick={onOpenMap} className="border-blue-300 text-blue-700 hover:bg-blue-50">
+              <Eye className="w-4 h-4" />
             </Button>
-            <Button size="sm" variant="outline" onClick={onOpenPhotos} className="h-7 w-7 sm:h-8 sm:w-8 p-0 border-purple-300 text-purple-700 hover:bg-purple-50">
-              <Image className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Button size="sm" variant="outline" onClick={onOpenPhotos} className="border-purple-300 text-purple-700 hover:bg-purple-50">
+              <Image className="w-4 h-4" />
             </Button>
           </div>
         )}

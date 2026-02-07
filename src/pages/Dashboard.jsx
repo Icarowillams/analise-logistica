@@ -112,18 +112,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0">
-          <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+      <div className="flex items-center gap-4 mb-8">
+        <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <TrendingUp className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
-          <p className="text-xs sm:text-sm text-slate-500">Visão geral do desempenho comercial</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
+          <p className="text-slate-500">Visão geral do desempenho comercial</p>
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Total Vendido"
           value={`R$ ${totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -155,7 +155,7 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800">Vendas por Mês</CardTitle>
