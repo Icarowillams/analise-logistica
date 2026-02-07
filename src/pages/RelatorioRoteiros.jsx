@@ -756,6 +756,7 @@ export default function RelatorioRoteiros() {
                                     >
                                       <SelectTrigger className="w-full sm:w-52">
                                         <SelectValue placeholder="Selecione" />
+                                      </SelectTrigger>
                                       <SelectContent>
                                         {datasDesteDia.map(data => {
                                           const visitasDaData = visitasNoPeriodo.filter(v => 
