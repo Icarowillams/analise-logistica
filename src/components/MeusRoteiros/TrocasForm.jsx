@@ -538,64 +538,62 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
       {/* Itens Pendentes (não enviados) */}
       {itensPendentes.length > 0 && (
         <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center justify-between">
             <h4 className="font-semibold text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-              Pendentes ({itensPendentes.length})
+              Pendentes de Envio ({itensPendentes.length})
             </h4>
             <Button
               onClick={handleEnviarSemFinalizar}
               disabled={enviando}
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white self-end sm:self-auto"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <Send className="w-3 h-3 mr-1" />
-              {enviando ? 'Enviando...' : 'Enviar'}
+              {enviando ? 'Enviando...' : 'Enviar sem Finalizar'}
             </Button>
           </div>
           {itensPendentes.map((item, index) => (
-            <Card key={index} className="p-2 sm:p-3 border-2 border-dashed border-amber-300 bg-amber-50">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <Badge className="bg-amber-500 text-white text-[10px] px-1.5">Pend.</Badge>
-                      <p className="font-medium text-xs sm:text-sm truncate">{item.produto_nome}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] sm:text-xs text-slate-500 mt-1">
-                      <span>Qtd: {item.quantidade}</span>
-                      <span className="truncate max-w-[120px]">{item.motivo_troca}</span>
-                      {item.ja_informado_anteriormente && (
-                        <span className="text-amber-600 font-medium">⚠️</span>
-                      )}
-                    </div>
+            <Card key={index} className="p-3 border-2 border-dashed border-amber-300 bg-amber-50">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-500 text-white text-xs">Pendente</Badge>
+                    <p className="font-medium text-sm">{item.produto_nome}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" onClick={() => handleEditPendente(item, index)} className="h-7 w-7">
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => handleRemovePendente(index)}
-                      className="h-7 w-7 text-red-500"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                  <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                    <span>Qtd: {item.quantidade}</span>
+                    <span>Motivo: {item.motivo_troca}</span>
+                    {item.ja_informado_anteriormente && (
+                      <span className="text-amber-600 font-medium">⚠️ Já informada</span>
+                    )}
                   </div>
                 </div>
                 {(item.fotos_urls?.length > 0 || item.foto_url) && (
-                  <div className="flex gap-1 flex-wrap">
-                    {(item.fotos_urls || [item.foto_url]).filter(Boolean).slice(0, 3).map((url, i) => (
-                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-10 w-10 object-cover rounded" />
+                  <div className="flex gap-1 mr-2">
+                    {(item.fotos_urls || [item.foto_url]).filter(Boolean).slice(0, 2).map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-12 w-12 object-cover rounded" />
                     ))}
-                    {(item.fotos_urls?.length || 0) > 3 && (
-                      <div className="h-10 w-10 bg-slate-200 rounded flex items-center justify-center text-[10px] font-medium">
-                        +{item.fotos_urls.length - 3}
+                    {(item.fotos_urls?.length || 0) > 2 && (
+                      <div className="h-12 w-12 bg-slate-200 rounded flex items-center justify-center text-xs font-medium">
+                        +{item.fotos_urls.length - 2}
                       </div>
                     )}
                   </div>
                 )}
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditPendente(item, index)} className="h-8 w-8">
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => handleRemovePendente(index)}
+                    className="h-8 w-8 text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -614,48 +612,46 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
           </Alert>
         ) : (
           trocas.map((troca) => (
-            <Card key={troca.id} className="p-2 sm:p-3 bg-slate-100 border-slate-300">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <Badge className="bg-green-600 text-white text-[10px] px-1.5">Env.</Badge>
-                      <p className="font-medium text-xs sm:text-sm text-slate-700 truncate">{troca.produto_nome}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] sm:text-xs text-slate-500 mt-1">
-                      <span>Qtd: {troca.quantidade}</span>
-                      <span className="truncate max-w-[120px]">{troca.motivo_troca}</span>
-                      {troca.ja_informado_anteriormente && (
-                        <span className="text-amber-600 font-medium">⚠️</span>
-                      )}
-                    </div>
+            <Card key={troca.id} className="p-3 bg-slate-100 border-slate-300">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-slate-500 text-white text-xs">Enviado</Badge>
+                    <p className="font-medium text-sm text-slate-700">{troca.produto_nome}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" onClick={() => handleEditSalvo(troca)} className="h-7 w-7">
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => deleteMutation.mutate(troca.id)}
-                      className="h-7 w-7 text-red-500"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                  <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                    <span>Qtd: {troca.quantidade}</span>
+                    <span>Motivo: {troca.motivo_troca}</span>
+                    {troca.ja_informado_anteriormente && (
+                      <span className="text-amber-600 font-medium">⚠️ Já informada</span>
+                    )}
                   </div>
                 </div>
                 {(troca.fotos_urls?.length > 0 || troca.foto_url) && (
-                  <div className="flex gap-1 flex-wrap">
-                    {(troca.fotos_urls || [troca.foto_url]).filter(Boolean).slice(0, 3).map((url, i) => (
-                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-10 w-10 object-cover rounded" />
+                  <div className="flex gap-1 mr-2">
+                    {(troca.fotos_urls || [troca.foto_url]).filter(Boolean).slice(0, 2).map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="h-12 w-12 object-cover rounded" />
                     ))}
-                    {(troca.fotos_urls?.length || 0) > 3 && (
-                      <div className="h-10 w-10 bg-slate-200 rounded flex items-center justify-center text-[10px] font-medium">
-                        +{troca.fotos_urls.length - 3}
+                    {(troca.fotos_urls?.length || 0) > 2 && (
+                      <div className="h-12 w-12 bg-slate-200 rounded flex items-center justify-center text-xs font-medium">
+                        +{troca.fotos_urls.length - 2}
                       </div>
                     )}
                   </div>
                 )}
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEditSalvo(troca)} className="h-8 w-8">
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => deleteMutation.mutate(troca.id)}
+                    className="h-8 w-8 text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
             </Card>
           ))
