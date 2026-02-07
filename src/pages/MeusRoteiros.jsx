@@ -122,14 +122,15 @@ export default function MeusRoteiros() {
       />
 
       <Tabs value={selectedDia} onValueChange={setSelectedDia} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-6">
+        <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1 mb-6">
           {diasSemana.map(dia => {
             const roteirosDia = roteirosVendedor.filter(r => r.dia_semana === dia.valor);
             return (
-              <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs">
-                {dia.label.substring(0, 3)}
+              <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs flex-1 min-w-[40px] px-1 py-1.5">
+                <span className="hidden sm:inline">{dia.label.substring(0, 3)}</span>
+                <span className="sm:hidden">{dia.label.substring(0, 1)}</span>
                 {roteirosDia.length > 0 && (
-                  <Badge className="ml-1 bg-amber-500 text-white" variant="secondary">
+                  <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1" variant="secondary">
                     {roteirosDia[0]?.clientes_ids?.length || 0}
                   </Badge>
                 )}
@@ -350,27 +351,29 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
 
   return (
     <Card className={isReagendamento ? 'border-orange-300 bg-orange-50/50' : ''}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Badge className={isReagendamento ? 'bg-orange-500 text-white text-lg px-3' : 'bg-amber-500 text-white text-lg px-3'}>
+      <CardHeader className="p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <Badge className={`${isReagendamento ? 'bg-orange-500' : 'bg-amber-500'} text-white text-sm px-2 shrink-0`}>
               {ordem}
             </Badge>
-            <div>
-              <CardTitle className="text-lg">
-                {cliente.cliente_codigo} - {cliente.cliente_nome_fantasia || cliente.cliente_nome}
-                {isReagendamento && <span className="ml-2 text-orange-600 font-medium text-sm">(Reagendado)</span>}
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base leading-tight break-words">
+                {cliente.cliente_codigo && <span className="font-bold">{cliente.cliente_codigo}</span>}
+                {cliente.cliente_codigo && ' - '}
+                {cliente.cliente_nome_fantasia || cliente.cliente_nome}
+                {isReagendamento && <span className="ml-1 text-orange-600 font-medium text-xs">(Reag.)</span>}
               </CardTitle>
-              <p className="text-sm text-slate-500">
+              <p className="text-xs text-slate-500 truncate">
                 {cliente.cliente_cidade}{cliente.cliente_bairro ? `, ${cliente.cliente_bairro}` : ''}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8">
-                  <Navigation className="w-4 h-4 text-blue-600" />
+                <Button variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8">
+                  <Navigation className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -926,23 +929,24 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   }
 
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-col sm:flex-row gap-2">
       <Button 
         onClick={handleCheckin}
         disabled={loading}
-        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
+        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-sm"
       >
-        <MapPin className="w-4 h-4 mr-2" />
-        {loading ? 'Obtendo localização...' : 'Check-in'}
+        <MapPin className="w-4 h-4 mr-1 sm:mr-2" />
+        {loading ? 'Localizando...' : 'Check-in'}
       </Button>
       <Button 
         onClick={handleNaoAtendimento}
         disabled={loading}
         variant="outline"
-        className="border-red-300 text-red-700 hover:bg-red-50"
+        className="border-red-300 text-red-700 hover:bg-red-50 text-sm"
       >
-        <XCircle className="w-4 h-4 mr-2" />
-        Não Atendimento
+        <XCircle className="w-4 h-4 mr-1 sm:mr-2" />
+        <span className="hidden sm:inline">Não Atendimento</span>
+        <span className="sm:hidden">N/A</span>
       </Button>
     </div>
   );
@@ -988,17 +992,17 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
     return (
       <div className="space-y-3">
         <Alert className="bg-green-50 border-green-200">
-          <CheckCircle className="w-4 h-4 text-green-600" />
-          <AlertDescription className="text-green-800">
+          <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+          <AlertDescription className="text-green-800 text-xs sm:text-sm">
             Visita concluída em {new Date(visita.checkout_time).toLocaleString('pt-BR')}
             {visitaRegistro && (
               <div className="mt-1 text-xs">
-                <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
+                <strong>Nº:</strong> {visitaRegistro.numero_visita}
               </div>
             )}
           </AlertDescription>
         </Alert>
-        <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
           <div>
             <span className="text-slate-500">Check-in:</span>
             <p className="font-medium">{new Date(visita.checkin_time).toLocaleTimeString('pt-BR')}</p>
