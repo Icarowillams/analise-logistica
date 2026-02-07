@@ -216,21 +216,21 @@ export default function Layout({ children, currentPageName }) {
       `}</style>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-neutral-900 z-50 flex items-center justify-between px-4 shadow-xl">
-        <div className="flex items-center gap-3">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-neutral-900 z-50 flex items-center justify-between px-3 shadow-xl">
+        <div className="flex items-center gap-2">
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
             alt="Pão & Mel" 
-            className="h-10 w-auto"
+            className="h-8 w-auto"
           />
         </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="text-white hover:bg-neutral-800"
+          className="text-white hover:bg-neutral-800 h-9 w-9"
         >
-          {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </Button>
       </div>
 
@@ -346,8 +346,8 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* Main Content */}
-      <main className="lg:ml-72 min-h-screen pt-16 lg:pt-0">
-        <div className="p-4 md:p-6 lg:p-8 animate-fade-in">
+      <main className="lg:ml-72 min-h-screen pt-14 lg:pt-0">
+        <div className="p-3 sm:p-4 md:p-6 lg:p-8 animate-fade-in">
           {children}
         </div>
       </main>
