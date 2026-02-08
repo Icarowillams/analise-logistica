@@ -22,7 +22,8 @@ import {
   Settings,
   TrendingUp,
   Shield,
-  Languages
+  Languages,
+  HelpCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
