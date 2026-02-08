@@ -166,7 +166,7 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 honeycomb-bg">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 honeycomb-bg" translate="no" lang="pt-BR">
       <style>{`
         :root {
           --primary: 45 100% 51%;
