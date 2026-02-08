@@ -21,12 +21,22 @@ import {
   Upload,
   Settings,
   TrendingUp,
-  Shield
+  Shield,
+  HelpCircle,
+  Languages,
+  MapPinOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -253,17 +263,77 @@ export default function Layout({ children, currentPageName }) {
         {/* User Info & Logout */}
         <div className="px-4 py-3 border-b border-neutral-700/50">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-neutral-400 truncate">
+            <div className="text-sm text-neutral-400 truncate flex-1 mr-2">
               {currentUser?.email}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => base44.auth.logout()}
-              className="text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-neutral-400 hover:text-yellow-400 hover:bg-yellow-500/10"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <HelpCircle className="w-5 h-5 text-yellow-500" />
+                      Ajuda - Configurações do Navegador
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    {/* Desativar Tradução */}
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Languages className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-semibold text-blue-900">Desativar Tradução Automática</h3>
+                      </div>
+                      <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                        <li>Clique no ícone do Google Tradutor (se aparecer)</li>
+                        <li>Selecione <strong>"Nunca traduzir este site"</strong></li>
+                        <li>Ou vá em Configurações → Idiomas</li>
+                        <li>Desmarque "Oferecer tradução de páginas"</li>
+                      </ol>
+                    </div>
+                    
+                    {/* Desativar Localização */}
+                    <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <MapPinOff className="w-5 h-5 text-orange-600" />
+                        <h3 className="font-semibold text-orange-900">Desativar Localização</h3>
+                      </div>
+                      <p className="text-sm text-orange-800 mb-2"><strong>No Chrome:</strong></p>
+                      <ol className="text-sm text-orange-800 space-y-1 list-decimal list-inside">
+                        <li>Clique no cadeado 🔒 ao lado do endereço</li>
+                        <li>Clique em <strong>"Configurações do site"</strong></li>
+                        <li>Em <strong>"Localização"</strong>, selecione <strong>"Bloquear"</strong></li>
+                      </ol>
+                      <p className="text-sm text-orange-800 mt-3 mb-2"><strong>No celular:</strong></p>
+                      <ol className="text-sm text-orange-800 space-y-1 list-decimal list-inside">
+                        <li>Vá em <strong>Configurações do celular</strong></li>
+                        <li>Procure <strong>"Localização"</strong> ou <strong>"GPS"</strong></li>
+                        <li>Desative ou selecione <strong>"Somente enquanto usa o app"</strong></li>
+                      </ol>
+                    </div>
+                    
+                    <p className="text-xs text-slate-500 text-center">
+                      Se precisar de mais ajuda, entre em contato com o suporte.
+                    </p>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => base44.auth.logout()}
+                className="text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
