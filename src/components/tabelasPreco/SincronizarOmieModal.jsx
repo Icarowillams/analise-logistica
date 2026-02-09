@@ -40,6 +40,8 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
     }
   };
 
+  const [limpandoVinculos, setLimpandoVinculos] = useState(false);
+
   const resetState = () => {
     setEtapa('selecao');
     setResultados([]);
