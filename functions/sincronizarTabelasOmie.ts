@@ -213,6 +213,7 @@ Deno.serve(async (req) => {
         cOrigem: "CMC",
         produtos: { cTodosProdutos: "S" },
         clientes: { cTodosClientes: "S" },
+        outrasInfo: { nCodOrigTab: 0, nPercAcrescimo: 0, nPercDesconto: 0 },
         caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
       };
 
