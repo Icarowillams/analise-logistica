@@ -615,53 +615,32 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     onSuccess();
   };
 
-  const finalizarCheckin = async () => {
+  const finalizarPedidoInfo = async () => {
     // Validações
     if (pedidoSolicitado === false && !motivoSelecionado) {
       toast.error('Por favor, selecione o motivo da não solicitação');
       return;
     }
 
-    const agora = new Date();
-    const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
-
     const motivoObj = motivos.find(m => m.id === motivoSelecionado);
 
-    // Criar registro na VisitaRoteiro
-    const dataVisitaRoteiro = {
-      roteiro_id: roteiroId || '',
-      vendedor_id: vendedor.id,
-      vendedor_nome: vendedor.nome,
+    // Buscar a visita que acabou de ser criada para atualizar com info do pedido
+    const visitasRecentes = await base44.entities.Visita.filter({
       cliente_id: cliente.cliente_id,
-      cliente_nome: cliente.cliente_nome,
-      cliente_codigo: cliente.cliente_codigo,
-      cliente_cidade: cliente.cliente_cidade,
-      data_visita: agora.toISOString().split('T')[0],
-      checkin_time: agora.toISOString(),
-      checkin_latitude: locationData.latitude,
-      checkin_longitude: locationData.longitude,
-      status: 'checkin_realizado'
-    };
-
-    // Criar registro na Visita
-    const dataVisita = {
-      numero_visita: numeroVisita,
-      roteiro_id: roteiroId || '',
-      cliente_id: cliente.cliente_id,
-      cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
-      vendedor_nome: vendedor.nome,
-      data_visita: agora.toISOString().split('T')[0],
-      hora_checkin: agora.toTimeString().split(' ')[0],
-      latitude_checkin: locationData.latitude,
-      longitude_checkin: locationData.longitude,
-      pedido_solicitado: pedidoSolicitado,
-      motivo_nao_solicitacao_id: pedidoSolicitado === false ? motivoSelecionado : null,
-      motivo_nao_solicitacao_descricao: pedidoSolicitado === false ? motivoObj?.descricao : null
-    };
-
-    await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
-    await createVisitaRegistroMutation.mutateAsync(dataVisita);
+      data_visita: new Date().toISOString().split('T')[0]
+    });
+    
+    const visitaRecente = visitasRecentes[0];
+    
+    if (visitaRecente) {
+      // Atualizar a visita com a informação do pedido
+      await base44.entities.Visita.update(visitaRecente.id, {
+        pedido_solicitado: pedidoSolicitado,
+        motivo_nao_solicitacao_id: pedidoSolicitado === false ? motivoSelecionado : null,
+        motivo_nao_solicitacao_descricao: pedidoSolicitado === false ? motivoObj?.descricao : null
+      });
+    }
 
     // Se era um reagendamento, marcar como realizado
     if (reagendamentoId) {
@@ -686,15 +665,16 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         vendedor_nome: vendedor.nome,
         data_reagendamento: amanha.toISOString().split('T')[0],
         motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
-        visita_original_id: numeroVisita,
+        visita_original_id: visitaRecente?.numero_visita,
         status: 'pendente'
       });
       
-      toast.success(`✅ Check-in realizado e reagendado para amanhã! Visita #${numeroVisita}`);
+      toast.success(`Informação do pedido salva e reagendado para amanhã!`);
     } else {
-      toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+      toast.success(`Informação do pedido salva!`);
     }
 
+    queryClient.invalidateQueries(['visitas']);
     setShowPedidoDialog(false);
     setPedidoSolicitado(null);
     setMotivoSelecionado('');
