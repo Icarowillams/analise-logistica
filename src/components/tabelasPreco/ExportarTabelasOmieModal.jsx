@@ -15,7 +15,13 @@ export default function ExportarTabelasOmieModal({ open, onOpenChange, tabelas =
   const [etapa, setEtapa] = useState('selecao'); // selecao | processando | resultado
   const [progresso, setProgresso] = useState({ atual: 0, total: 0 });
 
-  const tabelasAtivas = useMemo(() => tabelas.filter(t => t.status === 'ativo'), [tabelas]);
+  const tabelasAtivas = useMemo(() => {
+    return tabelas.filter(t => t.status === 'ativo').sort((a, b) => {
+      const aIsAux = a.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      const bIsAux = b.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      return aIsAux - bIsAux;
+    });
+  }, [tabelas]);
 
   const toggleTabela = (id) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
