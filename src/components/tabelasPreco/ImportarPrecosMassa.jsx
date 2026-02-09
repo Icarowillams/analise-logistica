@@ -32,6 +32,9 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     setErrors([]);
     setProgress(0);
     setResults(null);
+    setFailedImports([]);
+    setShowErrorLog(false);
+    setEditingError(null);
   };
 
   const handleClose = () => {
