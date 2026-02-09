@@ -317,6 +317,18 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
               <Trash2 className="w-4 h-4 mr-1" />
               Limpar Tudo
             </Button>
+            {invalidCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleResolverPendentes}
+                disabled={isProcessing}
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                <RefreshCw className={`w-4 h-4 mr-1 ${isProcessing ? 'animate-spin' : ''}`} />
+                Resolver Pendentes
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={handleImportAllValid}
