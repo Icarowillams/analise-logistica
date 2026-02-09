@@ -67,6 +67,9 @@ function GerenciarTabelas() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({ nome: '', status: 'ativo' });
+  const [expandedTabelas, setExpandedTabelas] = useState([]);
+  const [filtroCategoria, setFiltroCategoria] = useState('all');
+  const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
 
   const queryClient = useQueryClient();
 
