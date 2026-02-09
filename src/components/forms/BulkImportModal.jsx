@@ -102,8 +102,8 @@ export default function BulkImportModal({
       return item;
     });
 
+    // Não resetar aqui - deixar a página pai controlar quando fechar
     await onImport(data);
-    resetForm();
   };
 
   const resetForm = () => {
