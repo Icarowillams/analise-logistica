@@ -851,13 +851,19 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     );
   }
 
-  // Dialog de Check-in (para quem tem permissão de marcar solicitou pedido)
-  if (showPedidoDialog) {
+  // Se já fez check-in e precisa responder sobre pedido
+  if (checkinRealizado && showPedidoDialog) {
     return (
       <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+        <div className="bg-green-100 border border-green-300 rounded-lg p-3 mb-2">
+          <p className="text-green-800 text-sm font-medium flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Check-in realizado! Nº Visita: {visitaNumero}
+          </p>
+        </div>
         <h3 className="text-base font-semibold text-blue-800 flex items-center gap-2">
           <CheckCircle className="w-5 h-5" />
-          Registrar Check-in
+          Informação do Pedido
         </h3>
 
         <div>
