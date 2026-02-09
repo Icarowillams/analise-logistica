@@ -227,7 +227,15 @@ function GerenciarTabelas() {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end gap-2 mb-4">
+        <Button 
+          onClick={() => setExportOmieOpen(true)}
+          variant="outline"
+          className="border-amber-400 text-amber-700 hover:bg-amber-50"
+        >
+          <Upload className="w-4 h-4 mr-2" />
+          Exportar para Omie
+        </Button>
         <Button 
           onClick={handleNew}
           className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
