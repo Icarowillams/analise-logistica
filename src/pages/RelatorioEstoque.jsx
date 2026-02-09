@@ -77,6 +77,13 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Funcao.list()
   });
 
+  const { data: visitas = [] } = useQuery({
+    queryKey: ['visitas'],
+    queryFn: () => base44.entities.Visita.list('-data_visita', 5000)
+  });
+
+  const visitasMap = useMemo(() => visitas.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [visitas]);
+
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   
   // Funções de filtro
