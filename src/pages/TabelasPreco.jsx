@@ -234,15 +234,150 @@ function GerenciarTabelas() {
         </Button>
       </div>
 
-      <DataTable
-        data={tabelas}
-        columns={columns}
-        searchFields={['nome']}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        pageSize={1000}
-        isLoading={isLoading}
-      />
+      {/* Lista de Tabelas com expansão */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Filtros de Categoria/Subcategoria */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Categoria</Label>
+              <Select value={filtroCategoria} onValueChange={(v) => { setFiltroCategoria(v); setFiltroSubCategoria('all'); }}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Categorias</SelectItem>
+                  {categorias.filter(c => c.status === 'ativo').map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Subcategoria</Label>
+              <Select value={filtroSubCategoria} onValueChange={setFiltroSubCategoria}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Subcategorias</SelectItem>
+                  {subCategoriasFiltradas.filter(sc => sc.status === 'ativo').map(sc => (
+                    <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabelas expansíveis */}
+        <div className="divide-y divide-slate-200">
+          {tabelas.map(tabela => {
+            const data = precosPorTabela[tabela.id];
+            const isExpanded = expandedTabelas.includes(tabela.id);
+            
+            return (
+              <div key={tabela.id}>
+                <div 
+                  className="flex justify-between items-center p-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleTabela(tabela.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    {isExpanded ? (
+                      <ChevronDown className="w-5 h-5 text-slate-500" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-slate-500" />
+                    )}
+                    <span className="font-semibold text-slate-800">{tabela.nome}</span>
+                    <Badge className={tabela.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
+                      {tabela.status}
+                    </Badge>
+                    <Badge className="bg-amber-100 text-amber-700">
+                      {data?.precos.length || 0} produtos
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleEdit(tabela)}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    >
+                      Editar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleDelete(tabela)}
+                      className="text-slate-600 hover:text-slate-700 hover:bg-slate-100"
+                    >
+                      Excluir
+                    </Button>
+                  </div>
+                </div>
+                
+                {isExpanded && data && (
+                  <div className="bg-slate-50 border-t border-slate-200">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-amber-100">
+                            <th className="p-2 text-left border-b border-slate-300 w-[80px] font-bold text-sm">COD</th>
+                            <th className="p-2 text-left border-b border-slate-300 font-bold text-sm">PRODUTO</th>
+                            <th className="p-2 text-left border-b border-slate-300 w-[150px] font-bold text-sm">CATEGORIA</th>
+                            <th className="p-2 text-right border-b border-slate-300 w-[120px] font-bold text-sm">VALOR UNIT.</th>
+                            <th className="p-2 text-right border-b border-slate-300 w-[120px] font-bold text-sm">VALOR AÇÃO</th>
+                            <th className="p-2 text-center border-b border-slate-300 w-[80px] font-bold text-sm">AÇÃO</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.precos.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="p-4 text-center text-slate-500">
+                                Nenhum produto cadastrado nesta tabela
+                              </td>
+                            </tr>
+                          ) : (
+                            data.precos.map((p, idx) => {
+                              const categoria = categorias.find(c => c.id === p.produto?.categoria_id);
+                              return (
+                                <tr key={p.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                                  <td className="p-2 border-b border-slate-200 text-sm font-mono">
+                                    {p.produto?.codigo}
+                                  </td>
+                                  <td className="p-2 border-b border-slate-200 text-sm">
+                                    {p.produto?.nome}
+                                  </td>
+                                  <td className="p-2 border-b border-slate-200 text-sm text-slate-600">
+                                    {categoria?.nome || '-'}
+                                  </td>
+                                  <td className="p-2 border-b border-slate-200 text-right text-sm font-medium">
+                                    {p.valor_unitario?.toFixed(2).replace('.', ',')}
+                                  </td>
+                                  <td className="p-2 border-b border-slate-200 text-right text-sm font-medium text-amber-700">
+                                    {p.valor_acao > 0 ? p.valor_acao.toFixed(2).replace('.', ',') : '-'}
+                                  </td>
+                                  <td className="p-2 border-b border-slate-200 text-center">
+                                    {p.ativacao_acao ? (
+                                      <Badge className="bg-green-100 text-green-700 text-xs">Ativa</Badge>
+                                    ) : (
+                                      <span className="text-slate-400 text-xs">-</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <FormModal
         open={formOpen}
