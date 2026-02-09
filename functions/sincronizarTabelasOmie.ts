@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
         cCodigo: tabela.nome.substring(0, 20).toUpperCase().replace(/\s+/g, '_'),
         cOrigem: "API",
         produtos: { cTodosProdutos: "S", nCodFamilia: 0, cNCM: "", nCodCaract: 0, cConteudo: "", nCodFornec: 0 },
-        clientes: { cTodosClientes: "S", nCodTag: 0, cTag: "", cUF: "" },
+        clientes: { cTodosClientes: "S" },
         outrasInfo: { nCodOrigTab: 0, nPercAcrescimo: 0, nPercDesconto: 0 },
         caracteristicas: { cTemValidade: "N", dDtInicial: "", dDtFinal: "", cTemDesconto: "N", nDescSugerido: 0, nPercDescMax: 0, cArredPreco: "N" }
       };
