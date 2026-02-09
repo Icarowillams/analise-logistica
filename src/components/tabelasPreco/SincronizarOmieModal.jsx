@@ -24,8 +24,16 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
   const [resolverErrosOpen, setResolverErrosOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const tabelasAtivas = useMemo(() => tabelas.filter(t => t.status === 'ativo'), [tabelas]);
-  const tabelasVinculadas = useMemo(() => tabelas.filter(t => t.omie_id), [tabelas]);
+  const sortAuxiliarFirst = (list) => {
+    return [...list].sort((a, b) => {
+      const aIsAux = a.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      const bIsAux = b.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      return aIsAux - bIsAux;
+    });
+  };
+
+  const tabelasAtivas = useMemo(() => sortAuxiliarFirst(tabelas.filter(t => t.status === 'ativo')), [tabelas]);
+  const tabelasVinculadas = useMemo(() => sortAuxiliarFirst(tabelas.filter(t => t.omie_id)), [tabelas]);
 
   const toggleTabela = (id) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
