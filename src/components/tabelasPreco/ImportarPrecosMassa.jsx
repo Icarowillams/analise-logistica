@@ -6,9 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Download, RefreshCw } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Download, RefreshCw, XCircle, Edit2, Trash2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produtos, onSuccess }) {
   const [mode, setMode] = useState('upload'); // 'upload' ou 'paste'
