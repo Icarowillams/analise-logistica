@@ -16,14 +16,36 @@ import {
   Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle, X
 } from 'lucide-react';
 
+// Função para obter início da semana (domingo)
+function getInicioSemana(data) {
+  const d = new Date(data);
+  const diaSemana = d.getDay();
+  d.setDate(d.getDate() - diaSemana);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 export default function RelatorioEstoque() {
   const [filtroCliente, setFiltroCliente] = useState('todos');
   const [busca, setBusca] = useState('');
   const [clientesExpandidos, setClientesExpandidos] = useState({});
   const [visitasExpandidas, setVisitasExpandidas] = useState({});
   const [apenasUltimoEstoque, setApenasUltimoEstoque] = useState(false);
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+  
+  // Período padrão: início da semana até hoje
+  const hoje = new Date();
+  const inicioSemanaAtual = getInicioSemana(hoje);
+  const [dataInicio, setDataInicio] = useState(inicioSemanaAtual.toISOString().split('T')[0]);
+  const [dataFim, setDataFim] = useState(hoje.toISOString().split('T')[0]);
+  
+  // Filtros adicionais (como em RelatorioRoteiros)
+  const [filtros, setFiltros] = useState({
+    vendedores_ids: [],
+    funcoes_ids: []
+  });
+  const [showFiltros, setShowFiltros] = useState(true);
+  const [buscaVendedor, setBuscaVendedor] = useState('');
+  const [buscaFuncao, setBuscaFuncao] = useState('');
 
   const { data: estoqueVisitaAll = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
