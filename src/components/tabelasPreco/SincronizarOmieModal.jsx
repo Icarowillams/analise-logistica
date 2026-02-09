@@ -276,7 +276,12 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
             >
               <Checkbox checked={selectedIds.includes(tabela.id)} />
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-slate-800 text-sm">{tabela.nome}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-800 text-sm">{tabela.nome}</span>
+                  {tabela.nome?.toUpperCase().includes('TABELA AUXILIAR') && (
+                    <Badge className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">1ª</Badge>
+                  )}
+                </div>
                 {showOmieStatus && (
                   <div className="flex items-center gap-1 mt-0.5">
                     {tabela.omie_id ? (
