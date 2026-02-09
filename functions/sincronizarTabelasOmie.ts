@@ -259,42 +259,6 @@ Deno.serve(async (req) => {
         omie_id: omieIdFinal,
         omie_cod_int: codInt
       });
-      };
-
-      let result;
-      if (nCodTabPreco) {
-        payload.nCodTabPreco = nCodTabPreco;
-        result = await omieCall(OMIE_URL_TABELA, "AlterarTabelaPreco", payload);
-      } else {
-        result = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
-      }
-      await delay(1000);
-
-      if (result.faultstring) {
-        return Response.json({ sucesso: false, erro: result.faultstring });
-      }
-
-      const omieIdFinal = result.nCodTabPreco || nCodTabPreco;
-
-      // Atualizar vínculo no Base44
-      await base44.asServiceRole.entities.TabelaPreco.update(tabela.id, {
-        omie_id: omieIdFinal,
-        omie_cod_int: codInt
-      });
-
-      // Atualizar produtos da tabela no Omie
-      await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
-        nCodTabPreco: omieIdFinal,
-        cCodIntTabPreco: codInt
-      });
-      await delay(1000);
-
-      return Response.json({
-        sucesso: true,
-        mensagem: nCodTabPreco ? "Tabela atualizada no Omie" : "Tabela criada no Omie",
-        omie_id: omieIdFinal,
-        omie_cod_int: codInt
-      });
     }
 
     // ==========================================
