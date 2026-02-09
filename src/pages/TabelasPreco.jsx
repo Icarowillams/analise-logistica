@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2 } from 'lucide-react';
+import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import ImportarPrecosMassa from '@/components/tabelasPreco/ImportarPrecosMassa';
 import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
 import SincronizarOmieModal from '@/components/tabelasPreco/SincronizarOmieModal';
+import AjustarPrecosOriginaisModal from '@/components/tabelasPreco/AjustarPrecosOriginaisModal';
 
 export default function TabelasPreco() {
   const [activeTab, setActiveTab] = useState("tabelas");
@@ -72,6 +73,7 @@ function GerenciarTabelas() {
   const [filtroCategoria, setFiltroCategoria] = useState('all');
   const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
   const [sincOmieOpen, setSincOmieOpen] = useState(false);
+  const [ajustarPrecosOpen, setAjustarPrecosOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -228,6 +230,14 @@ function GerenciarTabelas() {
   return (
     <div>
       <div className="flex justify-end gap-2 mb-4">
+        <Button 
+          onClick={() => setAjustarPrecosOpen(true)}
+          variant="outline"
+          className="border-purple-400 text-purple-700 hover:bg-purple-50"
+        >
+          <Zap className="w-4 h-4 mr-2" />
+          Ajustar Preços Omie (R$ 1,00)
+        </Button>
         <Button 
           onClick={() => setSincOmieOpen(true)}
           variant="outline"
@@ -450,6 +460,14 @@ function GerenciarTabelas() {
         precoCounts={Object.fromEntries(
           tabelas.map(t => [t.id, precosPorTabela[t.id]?.precos?.length || 0])
         )}
+      />
+
+      <AjustarPrecosOriginaisModal
+        open={ajustarPrecosOpen}
+        onOpenChange={setAjustarPrecosOpen}
+        tabelas={tabelas}
+        produtos={produtos}
+        precos={allPrecos}
       />
     </div>
   );
