@@ -107,23 +107,30 @@ Deno.serve(async (req) => {
                     cOrigem: "CMC",
                     produtos: { cTodosProdutos: "S" },
                     clientes: { cTodosClientes: "S" },
-                    outrasInfo: {},
                     caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
                 });
                 await delay(1500);
 
                 if (alterResult.faultstring) {
-                    resultados.push({
-                        tabela_id: tabela.id,
-                        tabela_nome: tabela.nome,
-                        etapa: "alterar_tabela",
-                        sucesso: false,
-                        mensagem: alterResult.faultstring,
-                        itens_resultados: []
-                    });
-                    continue;
+                    // Se omie_id obsoleto, tentar incluir nova
+                    if (alterResult.faultstring.includes("não cadastrada") || alterResult.faultstring.includes("nao cadastrada")) {
+                        nCodTabPreco = null;
+                        // Cai no bloco de incluir abaixo
+                    } else {
+                        resultados.push({
+                            tabela_id: tabela.id,
+                            tabela_nome: tabela.nome,
+                            etapa: "alterar_tabela",
+                            sucesso: false,
+                            mensagem: alterResult.faultstring,
+                            itens_resultados: []
+                        });
+                        continue;
+                    }
                 }
-            } else {
+            }
+            
+            if (!nCodTabPreco) {
                 // Incluir nova tabela
                 const inclResult = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", {
                     cCodIntTabPreco: codInt,
@@ -132,7 +139,6 @@ Deno.serve(async (req) => {
                     cOrigem: "CMC",
                     produtos: { cTodosProdutos: "S" },
                     clientes: { cTodosClientes: "S" },
-                    outrasInfo: {},
                     caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
                 });
                 await delay(1500);

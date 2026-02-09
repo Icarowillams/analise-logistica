@@ -213,7 +213,6 @@ Deno.serve(async (req) => {
         cOrigem: "CMC",
         produtos: { cTodosProdutos: "S" },
         clientes: { cTodosClientes: "S" },
-        outrasInfo: {},
         caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
       };
 
@@ -222,10 +221,19 @@ Deno.serve(async (req) => {
         payload.nCodTabPreco = nCodTabPreco;
       }
 
-      const tabelaResult = nCodTabPreco
+      let tabelaResult = nCodTabPreco
         ? await omieCall(OMIE_URL_TABELA, "AlterarTabelaPreco", payload)
         : await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
       await delay(1000);
+
+      // Se deu erro de tabela não cadastrada (omie_id obsoleto), tentar incluir nova
+      if (tabelaResult.faultstring && nCodTabPreco && 
+          (tabelaResult.faultstring.includes("não cadastrada") || tabelaResult.faultstring.includes("nao cadastrada"))) {
+        delete payload.nCodTabPreco;
+        tabelaResult = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
+        await delay(1000);
+        nCodTabPreco = null; // resetar para pegar o novo
+      }
 
       if (tabelaResult.faultstring) {
         return Response.json({ sucesso: false, erro: tabelaResult.faultstring });
