@@ -509,21 +509,27 @@ export default function Clientes() {
       const batchSize = 50;
       
       if (toCreate.length > 0) {
+        console.log('Iniciando criação de', toCreate.length, 'clientes...');
         for (let i = 0; i < toCreate.length; i += batchSize) {
           const batch = toCreate.slice(i, i + batchSize);
+          console.log(`Criando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(toCreate.length/batchSize)}`);
           await base44.entities.Cliente.bulkCreate(batch);
         }
+        console.log('Criação concluída!');
       }
 
-      // Executar atualizações em lotes paralelos de 20
+      // Executar atualizações em lotes menores de 10 para evitar timeout
       if (toUpdate.length > 0) {
-        const updateBatchSize = 20;
+        const updateBatchSize = 10;
+        console.log('Iniciando atualização de', toUpdate.length, 'clientes...');
         for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
           const batch = toUpdate.slice(i, i + updateBatchSize);
+          console.log(`Atualizando lote ${Math.floor(i/updateBatchSize) + 1}/${Math.ceil(toUpdate.length/updateBatchSize)}`);
           await Promise.all(batch.map(item => 
             base44.entities.Cliente.update(item.id, item.data)
           ));
         }
+        console.log('Atualização concluída!');
       }
     } catch (error) {
       console.error('Erro na importação:', error);
