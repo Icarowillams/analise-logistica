@@ -104,35 +104,11 @@ Deno.serve(async (req) => {
                     cCodIntTabPreco: codInt,
                     cNome: tabela.nome,
                     cCodigo: tabela.nome.substring(0, 20).toUpperCase().replace(/\s+/g, '_'),
-                    cOrigem: "API",
-                    produtos: {
-                        cTodosProdutos: "S",
-                        nCodFamilia: 0,
-                        cNCM: "",
-                        nCodCaract: 0,
-                        cConteudo: "",
-                        nCodFornec: 0
-                    },
-                    clientes: {
-                        cTodosClientes: "S",
-                        nCodTag: 0,
-                        cTag: "",
-                        cUF: ""
-                    },
-                    outrasInfo: {
-                        nCodOrigTab: 0,
-                        nPercAcrescimo: 0,
-                        nPercDesconto: 0
-                    },
-                    caracteristicas: {
-                        cTemValidade: "N",
-                        dDtInicial: "",
-                        dDtFinal: "",
-                        cTemDesconto: "N",
-                        nDescSugerido: 0,
-                        nPercDescMax: 0,
-                        cArredPreco: "N"
-                    }
+                    cOrigem: "PRD",
+                    produtos: { cTodosProdutos: "S" },
+                    clientes: { cTodosClientes: "S" },
+                    outrasInfo: { nPercAcrescimo: 0, nPercDesconto: 0 },
+                    caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
                 });
                 await delay(1500);
 
@@ -153,35 +129,11 @@ Deno.serve(async (req) => {
                     cCodIntTabPreco: codInt,
                     cNome: tabela.nome,
                     cCodigo: tabela.nome.substring(0, 20).toUpperCase().replace(/\s+/g, '_'),
-                    cOrigem: "API",
-                    produtos: {
-                        cTodosProdutos: "S",
-                        nCodFamilia: 0,
-                        cNCM: "",
-                        nCodCaract: 0,
-                        cConteudo: "",
-                        nCodFornec: 0
-                    },
-                    clientes: {
-                        cTodosClientes: "S",
-                        nCodTag: 0,
-                        cTag: "",
-                        cUF: ""
-                    },
-                    outrasInfo: {
-                        nCodOrigTab: 0,
-                        nPercAcrescimo: 0,
-                        nPercDesconto: 0
-                    },
-                    caracteristicas: {
-                        cTemValidade: "N",
-                        dDtInicial: "",
-                        dDtFinal: "",
-                        cTemDesconto: "N",
-                        nDescSugerido: 0,
-                        nPercDescMax: 0,
-                        cArredPreco: "N"
-                    }
+                    cOrigem: "PRD",
+                    produtos: { cTodosProdutos: "S" },
+                    clientes: { cTodosClientes: "S" },
+                    outrasInfo: { nPercAcrescimo: 0, nPercDesconto: 0 },
+                    caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
                 });
                 await delay(1500);
 
