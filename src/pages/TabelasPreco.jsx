@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap } from 'lucide-react';
+import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap, Sparkles } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
