@@ -123,7 +123,18 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
       if (p.codigo) produtosMap[p.codigo.trim()] = p.id;
     });
 
-    const updated = failedImports.map(item => {
+    // Deduplicar: manter apenas 1 item por combinação tabela_nome + cod_produto
+    const seenKeys = new Set();
+    const deduped = [];
+    
+    for (const item of failedImports) {
+      const key = `${(item.tabela_nome || '').trim().toUpperCase()}_${(item.cod_produto || '').trim()}`;
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      deduped.push(item);
+    }
+
+    const updated = deduped.map(item => {
       let changed = false;
       const newItem = { ...item };
 
@@ -146,7 +157,6 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
       }
 
       if (changed) {
-        // Limpar erro se agora está válido
         const isNowValid = newItem.tabela_id && newItem.produto_id && newItem.valor_unitario > 0;
         if (isNowValid) {
           newItem.erro_importacao = null;
