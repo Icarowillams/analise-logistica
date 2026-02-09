@@ -228,17 +228,13 @@ export default function RelatorioEstoque() {
 
     // Se "apenas último estoque" estiver marcado, filtrar para mostrar apenas a última data com estoque lançado
     if (apenasUltimoEstoque && dados.length > 0) {
-      // Encontrar todas as datas únicas de lançamento de estoque
-      const datasComEstoque = [...new Set(dados.map(e => e.data_visita || e.created_date?.split('T')[0]).filter(Boolean))];
-      // Ordenar datas do mais recente para o mais antigo
+      const datasComEstoque = [...new Set(dados.map(e => e.created_date?.split('T')[0]).filter(Boolean))];
       datasComEstoque.sort((a, b) => b.localeCompare(a));
-      // Pegar a última data (mais recente)
       const ultimaDataEstoque = datasComEstoque[0];
-      // Filtrar apenas registros desta data
       if (ultimaDataEstoque) {
         dados = dados.filter(e => {
-          const dataVisita = e.data_visita || e.created_date?.split('T')[0];
-          return dataVisita === ultimaDataEstoque;
+          const dataRegistro = e.created_date?.split('T')[0];
+          return dataRegistro === ultimaDataEstoque;
         });
       }
     }
