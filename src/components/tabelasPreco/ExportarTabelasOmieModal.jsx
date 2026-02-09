@@ -131,7 +131,12 @@ export default function ExportarTabelasOmieModal({ open, onOpenChange, tabelas =
                   >
                     <Checkbox checked={selectedIds.includes(tabela.id)} />
                     <div className="flex-1">
-                      <span className="font-medium text-slate-800">{tabela.nome}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-800">{tabela.nome}</span>
+                        {tabela.nome?.toUpperCase().includes('TABELA AUXILIAR') && (
+                          <Badge className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">1ª</Badge>
+                        )}
+                      </div>
                     </div>
                     <Badge className="bg-slate-100 text-slate-600 text-xs">
                       {precoCounts[tabela.id] || 0} produtos
