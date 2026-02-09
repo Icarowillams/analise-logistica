@@ -479,8 +479,171 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
               <ul className="text-sm text-emerald-700">
                 <li>✅ {results.created} preços criados</li>
                 <li>🔄 {results.updated} preços atualizados</li>
-                {results.errors > 0 && <li>❌ {results.errors} erros</li>}
+                {results.errors > 0 && (
+                  <li className="text-red-600">
+                    ❌ {results.errors} erros 
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="text-red-600 p-0 ml-2 h-auto"
+                      onClick={() => setShowErrorLog(true)}
+                    >
+                      (Ver detalhes)
+                    </Button>
+                  </li>
+                )}
               </ul>
+            </div>
+          )}
+
+          {/* Log de Erros */}
+          {showErrorLog && failedImports.length > 0 && (
+            <div className="border border-red-200 rounded-lg overflow-hidden">
+              <div className="p-3 bg-red-50 border-b border-red-200 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <XCircle className="w-5 h-5 text-red-500" />
+                  <span className="font-medium text-red-800">
+                    Log de Erros ({failedImports.length} registros)
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={handleRetryAllErrors}
+                    disabled={isProcessing}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Reimportar Válidos
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="ghost"
+                    onClick={() => setShowErrorLog(false)}
+                    className="text-xs"
+                  >
+                    Ocultar
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-red-100 sticky top-0">
+                    <tr>
+                      <th className="p-2 text-left">Tabela</th>
+                      <th className="p-2 text-left">Cód. Produto</th>
+                      <th className="p-2 text-right">Valor Informado</th>
+                      <th className="p-2 text-left">Erro</th>
+                      <th className="p-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {failedImports.map((item) => (
+                      <tr key={item.id} className="border-b border-red-100 hover:bg-red-50">
+                        <td className="p-2 font-medium">{item.tabela_nome || '-'}</td>
+                        <td className="p-2 font-mono">{item.cod_produto || '-'}</td>
+                        <td className="p-2 text-right">
+                          R$ {item.valor_unitario?.toFixed(2) || '0.00'}
+                        </td>
+                        <td className="p-2">
+                          <span className="text-red-600 text-xs bg-red-100 px-2 py-1 rounded">
+                            {item.erro_importacao || item.erro}
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          <div className="flex justify-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleEditErrorItem(item)}
+                              className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRemoveErrorItem(item.id)}
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Modal de Edição de Erro */}
+          {editingError && (
+            <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg space-y-3">
+              <h4 className="font-medium text-blue-800 flex items-center gap-2">
+                <Edit2 className="w-4 h-4" />
+                Corrigir Item com Erro
+              </h4>
+              <p className="text-xs text-blue-600">
+                Erro original: {editingError.erro_importacao || editingError.erro}
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">Tabela</Label>
+                  <Select
+                    value={editingError.new_tabela_id}
+                    onValueChange={(val) => setEditingError(prev => ({ ...prev, new_tabela_id: val }))}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecionar tabela" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tabelas.map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Produto</Label>
+                  <Select
+                    value={editingError.new_produto_id}
+                    onValueChange={(val) => setEditingError(prev => ({ ...prev, new_produto_id: val }))}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecionar produto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {produtos.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.codigo} - {p.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Valor Unitário (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingError.new_valor}
+                    onChange={(e) => setEditingError(prev => ({ ...prev, new_valor: e.target.value }))}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setEditingError(null)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" onClick={handleSaveEditedItem} className="bg-blue-600 hover:bg-blue-700">
+                  Salvar e Importar
+                </Button>
+              </div>
             </div>
           )}
 
