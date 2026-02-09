@@ -450,11 +450,6 @@ function GerenciarPrecos() {
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
-  const { data: allPrecos = [] } = useQuery({
-    queryKey: ['todosPrecos'],
-    queryFn: () => base44.entities.PrecoProduto.list()
-  });
-
   // Fetch existing prices for the selected product
   const { data: existingPrices = [], refetch: refetchPrices } = useQuery({
     queryKey: ['precosProduto', selectedProduct?.id],
