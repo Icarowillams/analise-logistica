@@ -161,13 +161,23 @@ export default function RelatorioEstoque() {
 
   // Dados agrupados por cliente > visita (data + usuário) > produtos
   const dadosAgrupados = useMemo(() => {
-    let dados = estoqueVisita.map(e => ({
-      ...e,
-      cliente: clientesMap[e.cliente_id],
-      produto: produtosMap[e.produto_id],
-      vendedor: vendedoresMap[e.vendedor_id],
-      prazoVencimento: calcularPrazoVencimento(e.data_validade)
-    }));
+    let dados = estoqueVisita.map(e => {
+      const visitaRelacionada = e.visita_id ? visitasMap[e.visita_id] : null;
+      // Pegar vendedor do registro OU da visita vinculada
+      const vendedorId = e.vendedor_id || visitaRelacionada?.vendedor_id;
+      const vendedor = vendedoresMap[vendedorId];
+      // Pegar data da visita vinculada OU da data de criação
+      const dataVisitaCalc = visitaRelacionada?.data_visita || e.created_date?.split('T')[0];
+      return {
+        ...e,
+        cliente: clientesMap[e.cliente_id],
+        produto: produtosMap[e.produto_id],
+        vendedor: vendedor,
+        vendedor_id: vendedorId,
+        data_visita_calc: dataVisitaCalc,
+        prazoVencimento: calcularPrazoVencimento(e.data_validade)
+      };
+    });
 
     // Filtro por período - usar created_date já que EstoqueVisita não tem data_visita
     if (dataInicio) {
