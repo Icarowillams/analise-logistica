@@ -384,7 +384,11 @@ export default function Clientes() {
     // Buscar todos os clientes existentes para verificar duplicatas
     const existingClients = await base44.entities.Cliente.list();
     // Normalizar códigos (trim e lowercase) para garantir comparação correta
-    const existingClientsMap = new Map(existingClients.map(c => [String(c.codigo || '').trim().toLowerCase(), c]));
+    const existingClientsMap = {};
+    existingClients.forEach(c => {
+      const key = String(c.codigo || '').trim().toLowerCase();
+      existingClientsMap[key] = c;
+    });
     
     const findId = (list, name) => {
       if (!name) return null;
@@ -465,7 +469,7 @@ export default function Clientes() {
     for (const clienteData of clientesData) {
       // Normalizar código para comparação
       const codigoNormalizado = String(clienteData.codigo || '').trim().toLowerCase();
-      const existingClient = existingClientsMap.get(codigoNormalizado);
+      const existingClient = existingClientsMap[codigoNormalizado];
       
       if (modoImportacao === 'atualizacao') {
         // Modo atualização: só atualiza clientes existentes
