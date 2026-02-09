@@ -7,11 +7,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Upload, Download, CheckCircle, XCircle, Loader2, AlertTriangle, 
-  Trash2, RefreshCw, Link2, Link2Off, ArrowUpDown
+  Trash2, RefreshCw, Link2, Link2Off, ArrowUpDown, Wrench
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import ResolverErrosOmieModal from './ResolverErrosOmieModal';
 
 export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [], precoCounts = {} }) {
   const [activeTab, setActiveTab] = useState('exportar');
@@ -20,6 +21,7 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
   const [resultados, setResultados] = useState([]);
   const [etapa, setEtapa] = useState('selecao');
   const [progresso, setProgresso] = useState('');
+  const [resolverErrosOpen, setResolverErrosOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const tabelasAtivas = useMemo(() => tabelas.filter(t => t.status === 'ativo'), [tabelas]);
