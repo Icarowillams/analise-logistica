@@ -402,6 +402,27 @@ export default function RelatorioRoteiros() {
       }
     });
 
+    // Ordenar concluídos por horário de check-in (do primeiro ao último)
+    concluidos.sort((a, b) => {
+      const checkinA = a.visitaRoteiro?.checkin_time ? new Date(a.visitaRoteiro.checkin_time).getTime() : 0;
+      const checkinB = b.visitaRoteiro?.checkin_time ? new Date(b.visitaRoteiro.checkin_time).getTime() : 0;
+      return checkinA - checkinB;
+    });
+
+    // Ordenar em atendimento por horário de check-in
+    emAtendimento.sort((a, b) => {
+      const checkinA = a.visitaRoteiro?.checkin_time ? new Date(a.visitaRoteiro.checkin_time).getTime() : 0;
+      const checkinB = b.visitaRoteiro?.checkin_time ? new Date(b.visitaRoteiro.checkin_time).getTime() : 0;
+      return checkinA - checkinB;
+    });
+
+    // Ordenar não atendidos por horário de check-in
+    semAtendimento.sort((a, b) => {
+      const checkinA = a.visitaRoteiro?.checkin_time ? new Date(a.visitaRoteiro.checkin_time).getTime() : 0;
+      const checkinB = b.visitaRoteiro?.checkin_time ? new Date(b.visitaRoteiro.checkin_time).getTime() : 0;
+      return checkinA - checkinB;
+    });
+
     return { concluidos, emAtendimento, semAtendimento, semCheckin };
   };
 
