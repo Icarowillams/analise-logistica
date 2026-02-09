@@ -530,9 +530,7 @@ export default function Clientes() {
     }
 
     queryClient.invalidateQueries(['clientes']);
-    setIsImporting(false);
-    setBulkOpen(false);
-
+    
     // Mensagem de sucesso
     const messages = [];
     if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cliente(s) cadastrado(s)`);
@@ -541,6 +539,10 @@ export default function Clientes() {
       messages.push(`${naoEncontrados} código(s) não encontrado(s)`);
     }
     toast.success(`✅ ${messages.join(' | ')}!`);
+    
+    // Fechar modal e resetar estado APÓS sucesso
+    setIsImporting(false);
+    setBulkOpen(false);
   };
 
   const bulkColumns = [
