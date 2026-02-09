@@ -514,20 +514,27 @@ export default function Clientes() {
           const batch = toCreate.slice(i, i + batchSize);
           console.log(`Criando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(toCreate.length/batchSize)}`);
           await base44.entities.Cliente.bulkCreate(batch);
+          // Delay entre lotes para evitar rate limit
+          if (i + batchSize < toCreate.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações em lotes menores de 10 para evitar timeout
+      // Executar atualizações sequencialmente (um por vez) para evitar rate limit
       if (toUpdate.length > 0) {
-        const updateBatchSize = 10;
         console.log('Iniciando atualização de', toUpdate.length, 'clientes...');
-        for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
-          const batch = toUpdate.slice(i, i + updateBatchSize);
-          console.log(`Atualizando lote ${Math.floor(i/updateBatchSize) + 1}/${Math.ceil(toUpdate.length/updateBatchSize)}`);
-          await Promise.all(batch.map(item => 
-            base44.entities.Cliente.update(item.id, item.data)
-          ));
+        for (let i = 0; i < toUpdate.length; i++) {
+          const item = toUpdate[i];
+          if ((i + 1) % 20 === 0 || i === 0) {
+            console.log(`Atualizando cliente ${i + 1}/${toUpdate.length}...`);
+          }
+          await base44.entities.Cliente.update(item.id, item.data);
+          // Pequeno delay entre cada atualização para evitar rate limit
+          if (i < toUpdate.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
         console.log('Atualização concluída!');
       }
