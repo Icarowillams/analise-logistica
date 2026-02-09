@@ -217,6 +217,50 @@ Deno.serve(async (req) => {
         caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
       };
 
+      // Se é alteração, adicionar nCodTabPreco
+      if (nCodTabPreco) {
+        payload.nCodTabPreco = nCodTabPreco;
+      }
+
+      const tabelaResult = nCodTabPreco
+        ? await omieCall(OMIE_URL_TABELA, "AlterarTabelaPreco", payload)
+        : await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
+      await delay(1000);
+
+      if (tabelaResult.faultstring) {
+        return Response.json({ sucesso: false, erro: tabelaResult.faultstring });
+      }
+
+      const omieIdFinal = tabelaResult.nCodTabPreco || nCodTabPreco;
+
+      // Atualizar vínculo no Base44
+      await base44.asServiceRole.entities.TabelaPreco.update(tabela.id, {
+        omie_id: omieIdFinal,
+        omie_cod_int: codInt
+      });
+
+      // Atualizar produtos da tabela no Omie
+      await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
+        nCodTabPreco: omieIdFinal,
+        cCodIntTabPreco: codInt
+      });
+      await delay(1000);
+
+      // ATIVAR a tabela para que ela funcione
+      await omieCall(OMIE_URL_TABELA, "AtivarTabelaPreco", {
+        nCodTabPreco: omieIdFinal,
+        cCodIntTabPreco: codInt
+      });
+      await delay(1000);
+
+      return Response.json({
+        sucesso: true,
+        mensagem: nCodTabPreco ? "Tabela atualizada no Omie" : "Tabela criada no Omie",
+        omie_id: omieIdFinal,
+        omie_cod_int: codInt
+      });
+      };
+
       let result;
       if (nCodTabPreco) {
         payload.nCodTabPreco = nCodTabPreco;
