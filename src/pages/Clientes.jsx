@@ -344,6 +344,9 @@ export default function Clientes() {
   };
 
   const handleBulkImport = async (data) => {
+    // Evitar chamadas duplicadas
+    if (isImporting) return;
+    
     // Validar campos importantes em branco
     const warnings = [];
     let emptyCodigoCount = 0;
