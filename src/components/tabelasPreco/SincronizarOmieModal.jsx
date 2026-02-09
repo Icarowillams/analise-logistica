@@ -106,10 +106,19 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
     setEtapa('processando');
     const todosResultados = [];
 
-    for (let i = 0; i < selectedIds.length; i++) {
-      const tabelaId = selectedIds[i];
+    // Ordenar: TABELA AUXILIAR sempre primeiro
+    const idsOrdenados = [...selectedIds].sort((a, b) => {
+      const tA = tabelas.find(t => t.id === a);
+      const tB = tabelas.find(t => t.id === b);
+      const aIsAux = tA?.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      const bIsAux = tB?.nome?.toUpperCase().includes('TABELA AUXILIAR') ? 0 : 1;
+      return aIsAux - bIsAux;
+    });
+
+    for (let i = 0; i < idsOrdenados.length; i++) {
+      const tabelaId = idsOrdenados[i];
       const tabela = tabelas.find(t => t.id === tabelaId);
-      setProgresso(`Exportando tabela ${i + 1}/${selectedIds.length}: ${tabela?.nome || ''}`);
+      setProgresso(`Exportando tabela ${i + 1}/${idsOrdenados.length}: ${tabela?.nome || ''}`);
 
       // 1. Exportar a tabela (criar/atualizar no Omie)
       const resTbl = await base44.functions.invoke('sincronizarTabelasOmie', {
