@@ -21,6 +21,9 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
+  const [failedImports, setFailedImports] = useState([]); // Log de erros de importação
+  const [showErrorLog, setShowErrorLog] = useState(false);
+  const [editingError, setEditingError] = useState(null);
 
   const resetState = () => {
     setFile(null);
