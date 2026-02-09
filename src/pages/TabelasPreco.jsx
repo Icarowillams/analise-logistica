@@ -469,6 +469,24 @@ function GerenciarPrecos() {
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
+  const { data: allPrecos = [] } = useQuery({
+    queryKey: ['todosPrecos'],
+    queryFn: () => base44.entities.PrecoProduto.list()
+  });
+
+  // Agrupar preços por tabela para impressão
+  const precosPorTabela = useMemo(() => {
+    const grouped = {};
+    tabelas.forEach(t => {
+      const precos = allPrecos.filter(p => p.tabela_id === t.id).map(preco => {
+        const produto = produtos.find(prod => prod.id === preco.produto_id);
+        return { ...preco, produto };
+      }).filter(p => p.produto).sort((a, b) => (a.produto?.codigo || '').localeCompare(b.produto?.codigo || ''));
+      grouped[t.id] = { tabela: t, precos };
+    });
+    return grouped;
+  }, [tabelas, allPrecos, produtos]);
+
   // Fetch existing prices for the selected product
   const { data: existingPrices = [], refetch: refetchPrices } = useQuery({
     queryKey: ['precosProduto', selectedProduct?.id],
