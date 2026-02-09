@@ -162,17 +162,17 @@ export default function RelatorioEstoque() {
       prazoVencimento: calcularPrazoVencimento(e.data_validade)
     }));
 
-    // Filtro por período
+    // Filtro por período - usar created_date já que EstoqueVisita não tem data_visita
     if (dataInicio) {
       dados = dados.filter(e => {
-        const dataVisita = e.data_visita || e.created_date?.split('T')[0];
-        return dataVisita >= dataInicio;
+        const dataRegistro = e.created_date ? e.created_date.split('T')[0] : null;
+        return dataRegistro && dataRegistro >= dataInicio;
       });
     }
     if (dataFim) {
       dados = dados.filter(e => {
-        const dataVisita = e.data_visita || e.created_date?.split('T')[0];
-        return dataVisita <= dataFim;
+        const dataRegistro = e.created_date ? e.created_date.split('T')[0] : null;
+        return dataRegistro && dataRegistro <= dataFim;
       });
     }
 
