@@ -532,12 +532,16 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             longitude: position.coords.longitude
           });
           
+          setVisitaNumero(numeroVisita);
+          setCheckinRealizado(true);
           setLoading(false);
           
           // Se tem permissão, mostrar dialog de pedido (mas check-in já foi feito)
+          // NÃO chamar onSuccess ainda - manter na tela para responder questionário
           if (podeMarcarSolicitouPedido) {
             setShowPedidoDialog(true);
           } else {
+            // Só chamar onSuccess se não tiver permissão de marcar pedido
             onSuccess();
           }
         },
