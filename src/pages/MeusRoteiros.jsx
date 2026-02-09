@@ -455,17 +455,13 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   );
 
   const createVisitaMutation = useMutation({
-    mutationFn: (data) => base44.entities.VisitaRoteiro.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['visitasRoteiro']);
-    }
+    mutationFn: (data) => base44.entities.VisitaRoteiro.create(data)
+    // NÃO invalidar queries aqui - vai ser feito manualmente depois
   });
 
   const createVisitaRegistroMutation = useMutation({
-    mutationFn: (data) => base44.entities.Visita.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['visitas']);
-    }
+    mutationFn: (data) => base44.entities.Visita.create(data)
+    // NÃO invalidar queries aqui - vai ser feito manualmente depois
   });
 
   const createReagendamentoMutation = useMutation({
