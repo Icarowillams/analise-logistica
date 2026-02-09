@@ -349,76 +349,168 @@ export default function RelatorioEstoque() {
         </CardContent>
       </Card>
 
-      {/* Filtros */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader className="pb-2 sm:pb-4">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
-            <CardTitle className="text-sm sm:text-base">Filtros</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-            <div>
-              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Início</label>
-              <Input
-                type="date"
-                value={dataInicio}
-                onChange={e => setDataInicio(e.target.value)}
-                className="h-8 sm:h-9 text-xs sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Fim</label>
-              <Input
-                type="date"
-                value={dataFim}
-                onChange={e => setDataFim(e.target.value)}
-                className="h-8 sm:h-9 text-xs sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Cliente</label>
-              <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-                <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {clientesComEstoque.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs sm:text-sm font-medium text-slate-700 mb-1 block">Buscar</label>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-slate-400" />
+      {/* Painel de Filtros */}
+      {showFiltros && (
+        <Card className="border-0 shadow-lg">
+          <CardContent className="p-3 sm:p-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-6 gap-2 sm:gap-4">
+              {/* Filtro de Período - Data Início */}
+              <div>
+                <Label className="text-xs mb-1 block">Data Início</Label>
                 <Input
-                  placeholder="Buscar..."
-                  value={busca}
-                  onChange={e => setBusca(e.target.value)}
-                  className="pl-7 sm:pl-9 h-8 sm:h-9 text-xs sm:text-sm"
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                  className="h-9"
                 />
               </div>
+              
+              {/* Filtro de Período - Data Fim */}
+              <div>
+                <Label className="text-xs mb-1 block">Data Fim</Label>
+                <Input
+                  type="date"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              
+              {/* Filtro Funcionário */}
+              <div>
+                <Label className="text-xs mb-1 block">Funcionário</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
+                      <span className="truncate">
+                        {filtros.vendedores_ids.length === 0 
+                          ? 'Todos' 
+                          : filtros.vendedores_ids.length === 1 
+                            ? vendedores.find(v => v.id === filtros.vendedores_ids[0])?.nome
+                            : `${filtros.vendedores_ids.length} selecionados`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <Input
+                      placeholder="Buscar funcionário..."
+                      value={buscaVendedor}
+                      onChange={(e) => setBuscaVendedor(e.target.value)}
+                      className="h-8 mb-2"
+                    />
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {vendedoresFiltradosLista.map(v => (
+                          <div key={v.id} className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`vend-${v.id}`}
+                              checked={filtros.vendedores_ids.includes(v.id)}
+                              onCheckedChange={() => toggleVendedorFiltro(v.id)}
+                            />
+                            <label htmlFor={`vend-${v.id}`} className="text-sm cursor-pointer flex-1 truncate">{v.nome}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              
+              {/* Filtro Função */}
+              <div>
+                <Label className="text-xs mb-1 block">Função</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
+                      <span className="truncate">
+                        {filtros.funcoes_ids.length === 0 
+                          ? 'Todas' 
+                          : filtros.funcoes_ids.length === 1 
+                            ? funcoes.find(f => f.id === filtros.funcoes_ids[0])?.nome
+                            : `${filtros.funcoes_ids.length} selecionadas`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <Input
+                      placeholder="Buscar função..."
+                      value={buscaFuncao}
+                      onChange={(e) => setBuscaFuncao(e.target.value)}
+                      className="h-8 mb-2"
+                    />
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {funcoesFiltradosLista.map(f => (
+                          <div key={f.id} className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`func-${f.id}`}
+                              checked={filtros.funcoes_ids.includes(f.id)}
+                              onCheckedChange={() => toggleFuncaoFiltro(f.id)}
+                            />
+                            <label htmlFor={`func-${f.id}`} className="text-sm cursor-pointer flex-1 truncate">{f.nome}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              
+              {/* Buscar Cliente/Produto */}
+              <div>
+                <Label className="text-xs mb-1 block">Buscar</Label>
+                <Input
+                  placeholder="Cliente ou produto..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              
+              {/* Cliente específico */}
+              <div>
+                <Label className="text-xs mb-1 block">Cliente</Label>
+                <Select value={filtroCliente} onValueChange={setFiltroCliente}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {clientesComEstoque.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Checkbox
-              id="apenasUltimoEstoque"
-              checked={apenasUltimoEstoque}
-              onCheckedChange={setApenasUltimoEstoque}
-            />
-            <Label htmlFor="apenasUltimoEstoque" className="text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
-              Apenas último estoque
-            </Label>
-            {apenasUltimoEstoque && dadosAgrupados.length > 0 && dadosAgrupados[0]?.visitas[0]?.data && (
-              <Badge className="bg-blue-100 text-blue-700 text-[10px] sm:text-xs">
-                {new Date(dadosAgrupados[0].visitas[0].data + 'T12:00:00').toLocaleDateString('pt-BR')}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            
+            <div className="flex flex-wrap items-center justify-between mt-3 gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="apenasUltimoEstoque"
+                  checked={apenasUltimoEstoque}
+                  onCheckedChange={setApenasUltimoEstoque}
+                />
+                <Label htmlFor="apenasUltimoEstoque" className="text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
+                  Apenas último estoque
+                </Label>
+                {apenasUltimoEstoque && dadosAgrupados.length > 0 && dadosAgrupados[0]?.visitas[0]?.data && (
+                  <Badge className="bg-blue-100 text-blue-700 text-[10px] sm:text-xs">
+                    {new Date(dadosAgrupados[0].visitas[0].data + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  </Badge>
+                )}
+              </div>
+              
+              {temFiltrosAtivos && (
+                <Button variant="ghost" size="sm" onClick={limparFiltros} className="text-slate-600 gap-1">
+                  <X className="w-4 h-4" />
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista Agrupada por Cliente */}
       <Card className="border-0 shadow-lg">
