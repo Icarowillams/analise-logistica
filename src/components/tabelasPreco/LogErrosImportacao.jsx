@@ -122,20 +122,22 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
     let successCount = 0;
     const stillFailed = [];
 
-    const existingPrices = await base44.entities.PrecoProduto.list();
+    try {
+      const existingPrices = await base44.entities.PrecoProduto.list();
 
-    for (const item of validItems) {
-      try {
+      // Separar em novos e existentes
+      const toCreate = [];
+      const toUpdate = [];
+
+      for (const item of validItems) {
         const existing = existingPrices.find(
           p => p.produto_id === item.produto_id && p.tabela_id === item.tabela_id
         );
 
         if (existing) {
-          await base44.entities.PrecoProduto.update(existing.id, {
-            valor_unitario: item.valor_unitario
-          });
+          toUpdate.push({ id: existing.id, data: { valor_unitario: item.valor_unitario }, item });
         } else {
-          await base44.entities.PrecoProduto.create({
+          toCreate.push({
             produto_id: item.produto_id,
             tabela_id: item.tabela_id,
             valor_unitario: item.valor_unitario,
@@ -143,10 +145,44 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
             ativacao_acao: false
           });
         }
-        successCount++;
-      } catch (err) {
-        stillFailed.push({ ...item, erro_importacao: err.message });
       }
+
+      // Criar novos em lote (batch de 50)
+      const batchSize = 50;
+      for (let i = 0; i < toCreate.length; i += batchSize) {
+        const batch = toCreate.slice(i, i + batchSize);
+        try {
+          await base44.entities.PrecoProduto.bulkCreate(batch);
+          successCount += batch.length;
+        } catch (err) {
+          // Se falhar em lote, tentar individualmente
+          for (const createItem of batch) {
+            try {
+              await base44.entities.PrecoProduto.create(createItem);
+              successCount++;
+            } catch (e) {
+              const original = validItems.find(v => v.produto_id === createItem.produto_id && v.tabela_id === createItem.tabela_id);
+              stillFailed.push({ ...original, erro_importacao: e.message });
+            }
+          }
+        }
+      }
+
+      // Atualizar existentes em paralelo (batch de 20)
+      const updateBatchSize = 20;
+      for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
+        const batch = toUpdate.slice(i, i + updateBatchSize);
+        await Promise.all(batch.map(async ({ id, data, item }) => {
+          try {
+            await base44.entities.PrecoProduto.update(id, data);
+            successCount++;
+          } catch (e) {
+            stillFailed.push({ ...item, erro_importacao: e.message });
+          }
+        }));
+      }
+    } catch (err) {
+      toast.error('Erro geral: ' + err.message);
     }
 
     const invalidItems = failedImports.filter(item => 
