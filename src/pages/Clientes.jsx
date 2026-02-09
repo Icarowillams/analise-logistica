@@ -522,21 +522,24 @@ export default function Clientes() {
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações sequencialmente (um por vez) para evitar rate limit
+      // Executar atualizações via backend function para evitar rate limit
       if (toUpdate.length > 0) {
-        console.log('Iniciando atualização de', toUpdate.length, 'clientes...');
-        for (let i = 0; i < toUpdate.length; i++) {
-          const item = toUpdate[i];
-          if ((i + 1) % 20 === 0 || i === 0) {
-            console.log(`Atualizando cliente ${i + 1}/${toUpdate.length}...`);
-          }
-          await base44.entities.Cliente.update(item.id, item.data);
-          // Pequeno delay entre cada atualização para evitar rate limit
-          if (i < toUpdate.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+        console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
+        toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde.`);
+        
+        const response = await base44.functions.invoke('bulkUpdateClientes', {
+          clientes: toUpdate
+        });
+        
+        console.log('Resposta do backend:', response.data);
+        
+        if (response.data?.error) {
+          throw new Error(response.data.error);
         }
-        console.log('Atualização concluída!');
+        
+        if (response.data?.erros > 0) {
+          toast.warning(`${response.data.atualizados} atualizados, ${response.data.erros} erros`);
+        }
       }
     } catch (error) {
       console.error('Erro na importação:', error);
