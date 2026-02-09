@@ -16,9 +16,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImportarPrecosMassa from '@/components/tabelasPreco/ImportarPrecosMassa';
+import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
 
 export default function TabelasPreco() {
   const [activeTab, setActiveTab] = useState("tabelas");
+
+  const { data: tabelas = [] } = useQuery({
+    queryKey: ['tabelasPreco'],
+    queryFn: () => base44.entities.TabelaPreco.list()
+  });
+
+  const { data: produtos = [] } = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => base44.entities.Produto.list()
+  });
   
   return (
     <div className="space-y-6">
@@ -29,9 +40,10 @@ export default function TabelasPreco() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+        <TabsList className="grid w-full max-w-[500px] grid-cols-3 mb-6">
           <TabsTrigger value="tabelas">Tabelas</TabsTrigger>
           <TabsTrigger value="precos">Preços</TabsTrigger>
+          <TabsTrigger value="erros">Log de Erros</TabsTrigger>
         </TabsList>
         
         <TabsContent value="tabelas" className="animate-in fade-in-50 duration-300">
@@ -40,6 +52,10 @@ export default function TabelasPreco() {
         
         <TabsContent value="precos" className="animate-in fade-in-50 duration-300">
           <GerenciarPrecos />
+        </TabsContent>
+
+        <TabsContent value="erros" className="animate-in fade-in-50 duration-300">
+          <LogErrosImportacao tabelas={tabelas} produtos={produtos} />
         </TabsContent>
       </Tabs>
     </div>
