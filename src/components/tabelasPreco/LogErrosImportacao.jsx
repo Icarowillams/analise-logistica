@@ -185,11 +185,17 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
     try {
       const existingPrices = await base44.entities.PrecoProduto.list();
 
-      // Separar em novos e existentes
+      // Separar em novos e existentes, deduplicando por produto_id + tabela_id
       const toCreate = [];
       const toUpdate = [];
+      const seenKeys = new Set();
 
       for (const item of validItems) {
+        const key = `${item.produto_id}_${item.tabela_id}`;
+        // Ignorar duplicatas no próprio lote (manter apenas o primeiro)
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+
         const existing = existingPrices.find(
           p => p.produto_id === item.produto_id && p.tabela_id === item.tabela_id
         );
