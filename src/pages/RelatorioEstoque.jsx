@@ -180,6 +180,25 @@ export default function RelatorioEstoque() {
     if (filtroCliente !== 'todos') {
       dados = dados.filter(e => e.cliente_id === filtroCliente);
     }
+    
+    // Filtro por vendedores selecionados
+    if (filtros.vendedores_ids.length > 0) {
+      dados = dados.filter(e => filtros.vendedores_ids.includes(e.vendedor_id));
+    }
+    
+    // Filtro por funções selecionadas
+    if (filtros.funcoes_ids.length > 0) {
+      const nomesFuncoesSelecionadas = funcoes
+        .filter(f => filtros.funcoes_ids.includes(f.id))
+        .map(f => f.nome?.toLowerCase());
+      
+      const vendedoresDasFuncoes = vendedores.filter(v => 
+        filtros.funcoes_ids.includes(v.funcao_id) || 
+        nomesFuncoesSelecionadas.includes(v.funcao?.toLowerCase())
+      ).map(v => v.id);
+      dados = dados.filter(e => vendedoresDasFuncoes.includes(e.vendedor_id));
+    }
+    
     if (busca) {
       const termo = busca.toLowerCase();
       dados = dados.filter(e => 
