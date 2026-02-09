@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImportarPrecosMassa from '@/components/tabelasPreco/ImportarPrecosMassa';
 import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
+import ExportarTabelasOmieModal from '@/components/tabelasPreco/ExportarTabelasOmieModal';
 
 export default function TabelasPreco() {
   const [activeTab, setActiveTab] = useState("tabelas");
