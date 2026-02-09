@@ -676,8 +676,10 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       toast.success(`Informação do pedido salva!`);
     }
 
+    queryClient.invalidateQueries(['visitasRoteiro']);
     queryClient.invalidateQueries(['visitas']);
     setShowPedidoDialog(false);
+    setCheckinRealizado(false);
     setPedidoSolicitado(null);
     setMotivoSelecionado('');
     setMotivoSearch('');
