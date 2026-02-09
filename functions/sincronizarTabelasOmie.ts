@@ -253,14 +253,14 @@ Deno.serve(async (req) => {
         nCodTabPreco: omieIdFinal,
         cCodIntTabPreco: codInt
       });
-      await delay(1000);
+      await delay(1500);
 
       // ATIVAR a tabela para que ela funcione
       await omieCall(OMIE_URL_TABELA, "AtivarTabelaPreco", {
         nCodTabPreco: omieIdFinal,
         cCodIntTabPreco: codInt
       });
-      await delay(1000);
+      await delay(1500);
 
       return Response.json({
         sucesso: true,

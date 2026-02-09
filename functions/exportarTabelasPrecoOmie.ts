@@ -159,12 +159,12 @@ Deno.serve(async (req) => {
                 nCodTabPreco = inclResult.nCodTabPreco;
             }
 
-            // 2. Atualizar produtos na tabela
+            // 2. Atualizar produtos na tabela (IMPORTANTE: deve ser feito ANTES de definir preços)
             const atualizarResult = await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
                 nCodTabPreco: nCodTabPreco,
                 cCodIntTabPreco: codInt
             });
-            await delay(1500);
+            await delay(2000);
 
             // 3. Para cada preço, alterar o preço do item na tabela
             const itensResultados = [];
