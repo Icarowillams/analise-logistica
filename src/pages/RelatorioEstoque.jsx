@@ -264,7 +264,7 @@ export default function RelatorioEstoque() {
       }
       
       // Agrupar por data de visita + vendedor
-      const dataVisita = e.data_visita || e.created_date?.split('T')[0] || 'sem_data';
+      const dataVisita = e.data_visita_calc || e.created_date?.split('T')[0] || 'sem_data';
       const vendedorId = e.vendedor_id || 'sem_vendedor';
       const visitaKey = `${dataVisita}_${vendedorId}`;
       
