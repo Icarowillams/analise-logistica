@@ -189,8 +189,18 @@ export default function RelatorioEstoque() {
     }
     
     // Filtro por vendedores selecionados
+    // Busca por vendedor_id no EstoqueVisita E também por visita_id vinculada a visitas do vendedor
     if (filtros.vendedores_ids.length > 0) {
-      dados = dados.filter(e => filtros.vendedores_ids.includes(e.vendedor_id));
+      // Pegar IDs de visitas feitas pelos vendedores selecionados
+      const visitasIdsDoVendedor = new Set(
+        visitas
+          .filter(v => filtros.vendedores_ids.includes(v.vendedor_id))
+          .map(v => v.id)
+      );
+      dados = dados.filter(e => 
+        filtros.vendedores_ids.includes(e.vendedor_id) || 
+        (e.visita_id && visitasIdsDoVendedor.has(e.visita_id))
+      );
     }
     
     // Filtro por funções selecionadas
