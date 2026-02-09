@@ -326,6 +326,22 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
         </div>
       </ScrollArea>
 
+      {/* Botão Resolver Erros se houver erros de produto não encontrado */}
+      {resultados.some(r => r.erros_itens && r.erros_itens.some(i => i.mensagem?.includes('não encontrado no Omie'))) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-sm text-amber-700 mb-2">
+            Alguns produtos não existem no Omie. Use o botão abaixo para exportá-los automaticamente e re-enviar os preços.
+          </p>
+          <Button
+            onClick={() => setResolverErrosOpen(true)}
+            className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold"
+          >
+            <Wrench className="w-4 h-4 mr-2" />
+            Resolver Erros Automaticamente
+          </Button>
+        </div>
+      )}
+
       <div className="flex justify-end pt-2">
         <Button onClick={() => { resetState(); }}>Voltar</Button>
         <Button className="ml-2" variant="outline" onClick={handleClose}>Fechar</Button>
@@ -463,6 +479,14 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
           </Tabs>
         )}
       </DialogContent>
+
+      <ResolverErrosOmieModal
+        open={resolverErrosOpen}
+        onOpenChange={setResolverErrosOpen}
+        resultados={resultados}
+        tabelas={tabelas}
+        produtos={[]}
+      />
     </Dialog>
   );
 }
