@@ -796,14 +796,15 @@ export default function Clientes() {
                 <div>
                   <Label>Rede/Franquia</Label>
                   <Select 
-                    value={formData.rede_id} 
-                    onValueChange={(v) => setFormData({ ...formData, rede_id: v })}
+                    value={formData.rede_id || '_none_'} 
+                    onValueChange={(v) => setFormData({ ...formData, rede_id: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Sem Rede</SelectItem>
                       {redes.map(r => (
                         <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
                       ))}
