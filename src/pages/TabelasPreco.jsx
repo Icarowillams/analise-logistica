@@ -231,7 +231,15 @@ function GerenciarTabelas() {
 
   return (
     <div>
-      <div className="flex justify-end gap-2 mb-4">
+      <div className="flex justify-end gap-2 mb-4 flex-wrap">
+        <Button 
+          onClick={() => setTratarTabelasOpen(true)}
+          variant="outline"
+          className="border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+        >
+          <Sparkles className="w-4 h-4 mr-2" />
+          Tratar Tabelas
+        </Button>
         <Button 
           onClick={() => setAjustarPrecosOpen(true)}
           variant="outline"
