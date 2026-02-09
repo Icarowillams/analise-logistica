@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
         cCodIntTabPreco: codInt,
         cNome: tabela.nome,
         cCodigo: tabela.nome.substring(0, 20).toUpperCase().replace(/\s+/g, '_'),
-        cOrigem: "PRD",
+        cOrigem: "CMC",
         produtos: { cTodosProdutos: "S" },
         clientes: { cTodosClientes: "S" },
         outrasInfo: { nPercAcrescimo: 0, nPercDesconto: 0 },
