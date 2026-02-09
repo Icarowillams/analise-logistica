@@ -10,8 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle
+  Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle, X
 } from 'lucide-react';
 
 export default function RelatorioEstoque() {
