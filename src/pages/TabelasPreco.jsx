@@ -71,6 +71,7 @@ function GerenciarTabelas() {
   const [expandedTabelas, setExpandedTabelas] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState('all');
   const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
+  const [exportOmieOpen, setExportOmieOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
