@@ -438,8 +438,6 @@ function GerenciarPrecos() {
   const [showDropdownNome, setShowDropdownNome] = useState(false);
   const [prices, setPrices] = useState({});
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [expandedTabelas, setExpandedTabelas] = useState([]);
-  const [tabelaSelecionada, setTabelaSelecionada] = useState('all');
   const queryClient = useQueryClient();
 
   const { data: produtos = [] } = useQuery({
