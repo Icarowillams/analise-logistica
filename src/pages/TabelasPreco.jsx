@@ -436,6 +436,15 @@ function GerenciarTabelas() {
         onConfirm={() => deleteMutation.mutate(selected?.id)}
         isDeleting={deleteMutation.isPending}
       />
+
+      <ExportarTabelasOmieModal
+        open={exportOmieOpen}
+        onOpenChange={setExportOmieOpen}
+        tabelas={tabelas}
+        precoCounts={Object.fromEntries(
+          tabelas.map(t => [t.id, precosPorTabela[t.id]?.precos?.length || 0])
+        )}
+      />
     </div>
   );
 }
