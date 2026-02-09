@@ -486,8 +486,58 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          // Registrar check-in imediatamente ao clicar no botão
-          await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
+          // Registrar check-in IMEDIATAMENTE ao clicar no botão
+          const agora = new Date();
+          const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+
+          const dataVisitaRoteiro = {
+            roteiro_id: roteiroId || '',
+            vendedor_id: vendedor.id,
+            vendedor_nome: vendedor.nome,
+            cliente_id: cliente.cliente_id,
+            cliente_nome: cliente.cliente_nome,
+            cliente_codigo: cliente.cliente_codigo,
+            cliente_cidade: cliente.cliente_cidade,
+            data_visita: agora.toISOString().split('T')[0],
+            checkin_time: agora.toISOString(),
+            checkin_latitude: position.coords.latitude,
+            checkin_longitude: position.coords.longitude,
+            status: 'checkin_realizado'
+          };
+
+          const dataVisita = {
+            numero_visita: numeroVisita,
+            roteiro_id: roteiroId || '',
+            cliente_id: cliente.cliente_id,
+            cliente_nome: cliente.cliente_nome,
+            vendedor_id: vendedor.id,
+            vendedor_nome: vendedor.nome,
+            data_visita: agora.toISOString().split('T')[0],
+            hora_checkin: agora.toTimeString().split(' ')[0],
+            latitude_checkin: position.coords.latitude,
+            longitude_checkin: position.coords.longitude,
+            pedido_solicitado: null // Será atualizado depois
+          };
+
+          await createVisitaMutation.mutateAsync(dataVisitaRoteiro);
+          await createVisitaRegistroMutation.mutateAsync(dataVisita);
+
+          toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
+          
+          // Salvar dados da localização para uso posterior
+          setLocationData({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+          
+          setLoading(false);
+          
+          // Se tem permissão, mostrar dialog de pedido (mas check-in já foi feito)
+          if (podeMarcarSolicitouPedido) {
+            setShowPedidoDialog(true);
+          } else {
+            onSuccess();
+          }
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
