@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight } from 'lucide-react';
+import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
@@ -305,6 +305,12 @@ function GerenciarTabelas() {
                     <Badge className="bg-amber-100 text-amber-700">
                       {data?.precos.length || 0} produtos
                     </Badge>
+                    {tabela.omie_id && (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                        <Link2 className="w-3 h-3 mr-1" />
+                        Omie #{tabela.omie_id}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button 
