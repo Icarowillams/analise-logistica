@@ -108,6 +108,66 @@ export default function LogErrosImportacao({ tabelas, produtos }) {
     }
   };
 
+  // Tentar resolver erros pendentes (re-vincular tabelas e produtos pelo nome/código)
+  const handleResolverPendentes = async () => {
+    setIsProcessing(true);
+    let resolvedCount = 0;
+
+    const tabelasMap = {};
+    tabelas.forEach(t => {
+      tabelasMap[t.nome?.trim().toUpperCase()] = t.id;
+    });
+
+    const produtosMap = {};
+    produtos.forEach(p => {
+      if (p.codigo) produtosMap[p.codigo.trim()] = p.id;
+    });
+
+    const updated = failedImports.map(item => {
+      let changed = false;
+      const newItem = { ...item };
+
+      // Tentar resolver tabela pelo nome
+      if (!item.tabela_id && item.tabela_nome) {
+        const tabelaKey = item.tabela_nome.trim().toUpperCase();
+        if (tabelasMap[tabelaKey]) {
+          newItem.tabela_id = tabelasMap[tabelaKey];
+          changed = true;
+        }
+      }
+
+      // Tentar resolver produto pelo código
+      if (!item.produto_id && item.cod_produto) {
+        const codKey = item.cod_produto.trim();
+        if (produtosMap[codKey]) {
+          newItem.produto_id = produtosMap[codKey];
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        // Limpar erro se agora está válido
+        const isNowValid = newItem.tabela_id && newItem.produto_id && newItem.valor_unitario > 0;
+        if (isNowValid) {
+          newItem.erro_importacao = null;
+          newItem.erro = null;
+          resolvedCount++;
+        }
+      }
+
+      return newItem;
+    });
+
+    setFailedImports(updated);
+    setIsProcessing(false);
+
+    if (resolvedCount > 0) {
+      toast.success(`${resolvedCount} itens resolvidos! Agora clique em "Importar" para salvá-los.`);
+    } else {
+      toast.warning('Nenhum item pôde ser resolvido automaticamente. Verifique se os nomes das tabelas e códigos dos produtos estão corretos.');
+    }
+  };
+
   const handleImportAllValid = async () => {
     const validItems = failedImports.filter(item => 
       item.tabela_id && item.produto_id && item.valor_unitario > 0
