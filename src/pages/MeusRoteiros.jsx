@@ -486,19 +486,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          setLocationData({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-          
-          // Verificar se tem permissão para marcar solicitou pedido
-          if (podeMarcarSolicitouPedido) {
-            setLoading(false);
-            setShowPedidoDialog(true);
-          } else {
-            // Usuário sem permissão - registrar direto sem perguntar
-            await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
-          }
+          // Registrar check-in imediatamente ao clicar no botão
+          await finalizarCheckinDireto(position.coords.latitude, position.coords.longitude);
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
