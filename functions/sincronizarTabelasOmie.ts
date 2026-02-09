@@ -191,7 +191,8 @@ Deno.serve(async (req) => {
       const tabela = tabelas.find(t => t.id === tabela_id);
       if (!tabela) return Response.json({ error: "Tabela não encontrada" }, { status: 404 });
 
-      const codInt = tabela.omie_cod_int || `TP_${tabela.id}`;
+      // Omie limita cCodIntTabPreco a 20 caracteres
+      const codInt = tabela.omie_cod_int || `TP${tabela.id}`.substring(0, 20);
       let nCodTabPreco = tabela.omie_id || null;
 
       // Verificar se já existe no Omie
