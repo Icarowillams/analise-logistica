@@ -322,12 +322,13 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // AlterarPrecoItem define o preço customizado (CMC) para o produto na tabela
         const itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
           nCodTabPreco: tabela.omie_id,
           nCodProd: nCodProd,
-          nValorTabela: valorAtual
+          nValorTabela: Number(valorAtual.toFixed(2))
         });
-        await delay(1000);
+        await delay(1500);
 
         const sucesso = !itemResult.faultstring;
         
