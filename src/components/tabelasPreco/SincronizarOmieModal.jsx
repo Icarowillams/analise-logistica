@@ -461,8 +461,40 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
             {/* EXCLUIR */}
             <TabsContent value="excluir">
               <p className="text-sm text-slate-600 mb-3">
-                Excluir tabelas do Omie. O vínculo será removido mas a tabela permanece no sistema local.
+                Excluir tabelas do Omie ou limpar vínculos locais.
               </p>
+
+              {/* Botão Limpar Todos os Vínculos */}
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-orange-700 mb-2 font-medium">
+                  Se as tabelas foram excluídas diretamente no Omie e o sistema ainda mostra vínculo, use o botão abaixo para limpar TODOS os vínculos locais.
+                </p>
+                <Button
+                  onClick={async () => {
+                    if (!confirm('Tem certeza? Isso vai remover o omie_id e omie_cod_int de TODAS as tabelas no sistema local. As tabelas continuam existindo, só perdem o vínculo com o Omie.')) return;
+                    setLimpandoVinculos(true);
+                    let count = 0;
+                    for (const t of tabelas) {
+                      if (t.omie_id || t.omie_cod_int) {
+                        await base44.entities.TabelaPreco.update(t.id, { omie_id: null, omie_cod_int: null });
+                        count++;
+                      }
+                    }
+                    setLimpandoVinculos(false);
+                    queryClient.invalidateQueries(['tabelasPreco']);
+                    toast.success(`Vínculos removidos de ${count} tabela(s)`);
+                  }}
+                  disabled={limpandoVinculos}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                >
+                  {limpandoVinculos ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Limpando...</>
+                  ) : (
+                    <><Link2Off className="w-4 h-4 mr-2" /> Limpar TODOS os Vínculos Omie (local)</>
+                  )}
+                </Button>
+              </div>
+
               {renderTabelaList(tabelasVinculadas, true)}
               <div className="flex justify-between items-center pt-4 border-t mt-4">
                 <span className="text-sm text-slate-500">{selectedIds.length} selecionada(s)</span>
