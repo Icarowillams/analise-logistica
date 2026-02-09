@@ -536,14 +536,6 @@ function GerenciarPrecos() {
     setShowDropdownNome(false);
   };
 
-  const toggleTabela = (tabelaId) => {
-    setExpandedTabelas(prev => 
-      prev.includes(tabelaId) 
-        ? prev.filter(id => id !== tabelaId) 
-        : [...prev, tabelaId]
-    );
-  };
-
   // Função para imprimir tabela
   const handlePrint = (tabelaId = null) => {
     const tabelasParaImprimir = tabelaId ? [tabelaId] : tabelas.map(t => t.id);
