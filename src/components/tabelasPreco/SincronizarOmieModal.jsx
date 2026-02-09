@@ -124,13 +124,13 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
       const errosItens = [];
 
       while (!concluido) {
-        setProgresso(`${tabela?.nome}: exportando preços (lote ${lote / 10 + 1})...`);
+        setProgresso(`${tabela?.nome}: exportando preços (lote ${lote / 5 + 1})...`);
 
         const resPrecos = await base44.functions.invoke('sincronizarTabelasOmie', {
           acao: 'exportar_precos',
           tabela_id: tabelaId,
           lote_inicio: lote,
-          lote_tamanho: 10
+          lote_tamanho: 5
         });
 
         const dp = resPrecos.data;
