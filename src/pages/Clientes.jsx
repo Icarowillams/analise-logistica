@@ -498,16 +498,24 @@ export default function Clientes() {
     }
 
     try {
-      // Executar criações (apenas no modo cadastro)
+      // Executar criações em lotes de 50 (apenas no modo cadastro)
+      const batchSize = 50;
+      
       if (toCreate.length > 0) {
-        await base44.entities.Cliente.bulkCreate(toCreate);
+        for (let i = 0; i < toCreate.length; i += batchSize) {
+          const batch = toCreate.slice(i, i + batchSize);
+          await base44.entities.Cliente.bulkCreate(batch);
+        }
       }
 
-      // Executar atualizações em massa
+      // Executar atualizações em lotes paralelos de 20
       if (toUpdate.length > 0) {
-        // Atualizar um por um para garantir que funcione
-        for (const item of toUpdate) {
-          await base44.entities.Cliente.update(item.id, item.data);
+        const updateBatchSize = 20;
+        for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
+          const batch = toUpdate.slice(i, i + updateBatchSize);
+          await Promise.all(batch.map(item => 
+            base44.entities.Cliente.update(item.id, item.data)
+          ));
         }
       }
     } catch (error) {
