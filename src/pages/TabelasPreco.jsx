@@ -78,6 +78,69 @@ function GerenciarTabelas() {
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
+  const { data: produtos = [] } = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => base44.entities.Produto.list()
+  });
+
+  const { data: allPrecos = [] } = useQuery({
+    queryKey: ['todosPrecos'],
+    queryFn: () => base44.entities.PrecoProduto.list()
+  });
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => base44.entities.Categoria.list()
+  });
+
+  const { data: subCategorias = [] } = useQuery({
+    queryKey: ['subCategorias'],
+    queryFn: () => base44.entities.SubCategoria.list()
+  });
+
+  // Agrupar preços por tabela
+  const precosPorTabela = useMemo(() => {
+    const grouped = {};
+    tabelas.forEach(t => {
+      let precos = allPrecos.filter(p => p.tabela_id === t.id).map(preco => {
+        const produto = produtos.find(prod => prod.id === preco.produto_id);
+        return { ...preco, produto };
+      }).filter(p => p.produto);
+
+      // Filtrar por categoria
+      if (filtroCategoria !== 'all') {
+        precos = precos.filter(p => p.produto?.categoria_id === filtroCategoria);
+      }
+
+      // Filtrar por subcategoria
+      if (filtroSubCategoria !== 'all') {
+        precos = precos.filter(p => p.produto?.sub_categoria_id === filtroSubCategoria);
+      }
+
+      precos.sort((a, b) => (a.produto?.codigo || '').localeCompare(b.produto?.codigo || ''));
+      
+      grouped[t.id] = {
+        tabela: t,
+        precos
+      };
+    });
+    return grouped;
+  }, [tabelas, allPrecos, produtos, filtroCategoria, filtroSubCategoria]);
+
+  const toggleTabela = (tabelaId) => {
+    setExpandedTabelas(prev => 
+      prev.includes(tabelaId) 
+        ? prev.filter(id => id !== tabelaId) 
+        : [...prev, tabelaId]
+    );
+  };
+
+  // Subcategorias filtradas pela categoria selecionada
+  const subCategoriasFiltradas = useMemo(() => {
+    if (filtroCategoria === 'all') return subCategorias;
+    return subCategorias.filter(sc => sc.categoria_id === filtroCategoria);
+  }, [subCategorias, filtroCategoria]);
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.TabelaPreco.create(data),
     onSuccess: () => {
