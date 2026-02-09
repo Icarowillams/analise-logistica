@@ -134,10 +134,12 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
     setIsProcessing(true);
     setProgress(0);
+    setFailedImports([]);
 
     let created = 0;
     let updated = 0;
     let errorsCount = 0;
+    const failedList = [];
 
     // Buscar todos os preços existentes
     const existingPrices = await base44.entities.PrecoProduto.list();
@@ -171,19 +173,150 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         }
       } catch (err) {
         errorsCount++;
+        failedList.push({
+          ...row,
+          erro_importacao: err.message || 'Erro desconhecido ao salvar no banco',
+          id: `failed_${i}_${Date.now()}`
+        });
       }
 
       setProgress(Math.round(((i + 1) / validRows.length) * 100));
     }
 
-    setResults({ created, updated, errors: errorsCount, total: validRows.length });
+    // Adicionar também os registros com erro de validação ao log
+    const validationErrors = preview.filter(r => r.erro).map((row, idx) => ({
+      ...row,
+      erro_importacao: row.erro,
+      id: `validation_${idx}_${Date.now()}`
+    }));
+
+    const allFailed = [...failedList, ...validationErrors];
+    setFailedImports(allFailed);
+    
+    if (allFailed.length > 0) {
+      setShowErrorLog(true);
+    }
+
+    setResults({ created, updated, errors: errorsCount + validationErrors.length, total: preview.length });
     setIsProcessing(false);
     
-    if (errorsCount === 0) {
+    if (errorsCount === 0 && validationErrors.length === 0) {
       toast.success(`✅ Importação concluída! ${created} criados, ${updated} atualizados`);
       onSuccess?.();
     } else {
-      toast.warning(`⚠️ Importação com erros: ${errorsCount} falhas`);
+      toast.warning(`⚠️ Importação com erros: ${allFailed.length} falhas`);
+    }
+  };
+
+  // Função para editar item com erro
+  const handleEditErrorItem = (item) => {
+    setEditingError({
+      ...item,
+      new_tabela_id: item.tabela_id || '',
+      new_produto_id: item.produto_id || '',
+      new_valor: item.valor_unitario || 0
+    });
+  };
+
+  // Função para salvar item editado
+  const handleSaveEditedItem = async () => {
+    if (!editingError) return;
+
+    const { new_tabela_id, new_produto_id, new_valor } = editingError;
+
+    if (!new_tabela_id || !new_produto_id || new_valor <= 0) {
+      toast.error('Preencha todos os campos corretamente');
+      return;
+    }
+
+    try {
+      // Verificar se já existe
+      const existingPrices = await base44.entities.PrecoProduto.list();
+      const existing = existingPrices.find(
+        p => p.produto_id === new_produto_id && p.tabela_id === new_tabela_id
+      );
+
+      if (existing) {
+        await base44.entities.PrecoProduto.update(existing.id, {
+          valor_unitario: parseFloat(new_valor)
+        });
+        toast.success('Preço atualizado com sucesso!');
+      } else {
+        await base44.entities.PrecoProduto.create({
+          produto_id: new_produto_id,
+          tabela_id: new_tabela_id,
+          valor_unitario: parseFloat(new_valor),
+          valor_acao: 0,
+          ativacao_acao: false
+        });
+        toast.success('Preço criado com sucesso!');
+      }
+
+      // Remover do log de erros
+      setFailedImports(prev => prev.filter(f => f.id !== editingError.id));
+      setEditingError(null);
+      onSuccess?.();
+    } catch (err) {
+      toast.error('Erro ao salvar: ' + err.message);
+    }
+  };
+
+  // Função para remover item do log de erros
+  const handleRemoveErrorItem = (itemId) => {
+    setFailedImports(prev => prev.filter(f => f.id !== itemId));
+  };
+
+  // Função para tentar importar todos os erros corrigidos
+  const handleRetryAllErrors = async () => {
+    const itemsToRetry = failedImports.filter(item => item.tabela_id && item.produto_id && item.valor_unitario > 0);
+    
+    if (itemsToRetry.length === 0) {
+      toast.error('Nenhum item válido para reimportar');
+      return;
+    }
+
+    setIsProcessing(true);
+    let successCount = 0;
+    const stillFailed = [];
+
+    const existingPrices = await base44.entities.PrecoProduto.list();
+
+    for (const item of itemsToRetry) {
+      try {
+        const existing = existingPrices.find(
+          p => p.produto_id === item.produto_id && p.tabela_id === item.tabela_id
+        );
+
+        if (existing) {
+          await base44.entities.PrecoProduto.update(existing.id, {
+            valor_unitario: item.valor_unitario
+          });
+        } else {
+          await base44.entities.PrecoProduto.create({
+            produto_id: item.produto_id,
+            tabela_id: item.tabela_id,
+            valor_unitario: item.valor_unitario,
+            valor_acao: 0,
+            ativacao_acao: false
+          });
+        }
+        successCount++;
+      } catch (err) {
+        stillFailed.push({ ...item, erro_importacao: err.message });
+      }
+    }
+
+    // Manter os que não tinham dados válidos + os que ainda falharam
+    const invalidItems = failedImports.filter(item => !item.tabela_id || !item.produto_id || item.valor_unitario <= 0);
+    setFailedImports([...invalidItems, ...stillFailed]);
+    setIsProcessing(false);
+
+    if (successCount > 0) {
+      toast.success(`${successCount} itens importados com sucesso!`);
+      onSuccess?.();
+    }
+    if (stillFailed.length > 0) {
+      toast.warning(`${stillFailed.length} itens ainda com erro`);
     }
   };
 
