@@ -479,6 +479,11 @@ function GerenciarTabelas() {
         produtos={produtos}
         precos={allPrecos}
       />
+
+      <TratarTabelasModal
+        open={tratarTabelasOpen}
+        onOpenChange={setTratarTabelasOpen}
+      />
     </div>
   );
 }
