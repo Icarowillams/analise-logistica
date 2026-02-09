@@ -193,7 +193,14 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     const allFailed = [...failedList, ...validationErrors];
     setFailedImports(allFailed);
     
+    // Salvar erros no localStorage para a aba de Log de Erros
     if (allFailed.length > 0) {
+      const existingErrors = JSON.parse(localStorage.getItem('importacao_precos_erros') || '[]');
+      const newErrors = allFailed.map((err, idx) => ({
+        ...err,
+        id: `error_${Date.now()}_${idx}`
+      }));
+      localStorage.setItem('importacao_precos_erros', JSON.stringify([...existingErrors, ...newErrors]));
       setShowErrorLog(true);
     }
 
