@@ -423,6 +423,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   const [motivoNaoAtendSearch, setMotivoNaoAtendSearch] = useState('');
   const [motivoSelecionado, setMotivoSelecionado] = useState('');
   const [locationData, setLocationData] = useState(null);
+  const [checkinRealizado, setCheckinRealizado] = useState(false);
+  const [visitaNumero, setVisitaNumero] = useState('');
   
   // Estados para Não Atendido
   const [motivoNaoAtendimento, setMotivoNaoAtendimento] = useState('');
