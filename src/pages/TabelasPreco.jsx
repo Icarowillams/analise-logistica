@@ -71,7 +71,7 @@ function GerenciarTabelas() {
   const [expandedTabelas, setExpandedTabelas] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState('all');
   const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
-  const [exportOmieOpen, setExportOmieOpen] = useState(false);
+  const [sincOmieOpen, setSincOmieOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -229,12 +229,12 @@ function GerenciarTabelas() {
     <div>
       <div className="flex justify-end gap-2 mb-4">
         <Button 
-          onClick={() => setExportOmieOpen(true)}
+          onClick={() => setSincOmieOpen(true)}
           variant="outline"
           className="border-amber-400 text-amber-700 hover:bg-amber-50"
         >
           <Upload className="w-4 h-4 mr-2" />
-          Exportar para Omie
+          Sincronizar Omie
         </Button>
         <Button 
           onClick={handleNew}
@@ -437,9 +437,9 @@ function GerenciarTabelas() {
         isDeleting={deleteMutation.isPending}
       />
 
-      <ExportarTabelasOmieModal
-        open={exportOmieOpen}
-        onOpenChange={setExportOmieOpen}
+      <SincronizarOmieModal
+        open={sincOmieOpen}
+        onOpenChange={setSincOmieOpen}
         tabelas={tabelas}
         precoCounts={Object.fromEntries(
           tabelas.map(t => [t.id, precosPorTabela[t.id]?.precos?.length || 0])
