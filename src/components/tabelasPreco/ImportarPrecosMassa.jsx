@@ -141,46 +141,89 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     let errorsCount = 0;
     const failedList = [];
 
-    // Buscar todos os preços existentes
-    const existingPrices = await base44.entities.PrecoProduto.list();
+    try {
+      // Buscar todos os preços existentes
+      const existingPrices = await base44.entities.PrecoProduto.list();
+      setProgress(10);
 
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
-      
-      try {
-        // Verificar se já existe preço para este produto/tabela
+      // Separar registros novos dos existentes
+      const toCreate = [];
+      const toUpdate = [];
+
+      for (const row of validRows) {
         const existing = existingPrices.find(
           p => p.produto_id === row.produto_id && p.tabela_id === row.tabela_id
         );
 
         if (existing) {
           if (importMode === 'atualizar') {
-            await base44.entities.PrecoProduto.update(existing.id, {
-              valor_unitario: row.valor_unitario
-            });
-            updated++;
+            toUpdate.push({ id: existing.id, data: { valor_unitario: row.valor_unitario }, row });
           }
-          // Se modo cadastrar, pula registros existentes
         } else {
-          await base44.entities.PrecoProduto.create({
+          toCreate.push({
             produto_id: row.produto_id,
             tabela_id: row.tabela_id,
             valor_unitario: row.valor_unitario,
             valor_acao: 0,
             ativacao_acao: false
           });
-          created++;
         }
-      } catch (err) {
-        errorsCount++;
-        failedList.push({
-          ...row,
-          erro_importacao: err.message || 'Erro desconhecido ao salvar no banco',
-          id: `failed_${i}_${Date.now()}`
-        });
       }
 
-      setProgress(Math.round(((i + 1) / validRows.length) * 100));
+      setProgress(20);
+
+      // Criar novos em lote (batch de 50)
+      const batchSize = 50;
+      for (let i = 0; i < toCreate.length; i += batchSize) {
+        const batch = toCreate.slice(i, i + batchSize);
+        try {
+          await base44.entities.PrecoProduto.bulkCreate(batch);
+          created += batch.length;
+        } catch (err) {
+          // Se falhar em lote, tentar individualmente
+          for (const item of batch) {
+            try {
+              await base44.entities.PrecoProduto.create(item);
+              created++;
+            } catch (e) {
+              errorsCount++;
+              const row = validRows.find(r => r.produto_id === item.produto_id && r.tabela_id === item.tabela_id);
+              failedList.push({
+                ...row,
+                erro_importacao: e.message || 'Erro ao criar',
+                id: `failed_create_${Date.now()}_${errorsCount}`
+              });
+            }
+          }
+        }
+        setProgress(20 + Math.round((i / toCreate.length) * 40));
+      }
+
+      setProgress(60);
+
+      // Atualizar existentes (batch de 20 para updates)
+      const updateBatchSize = 20;
+      for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
+        const batch = toUpdate.slice(i, i + updateBatchSize);
+        await Promise.all(batch.map(async ({ id, data, row }) => {
+          try {
+            await base44.entities.PrecoProduto.update(id, data);
+            updated++;
+          } catch (e) {
+            errorsCount++;
+            failedList.push({
+              ...row,
+              erro_importacao: e.message || 'Erro ao atualizar',
+              id: `failed_update_${Date.now()}_${errorsCount}`
+            });
+          }
+        }));
+        setProgress(60 + Math.round((i / toUpdate.length) * 35));
+      }
+
+      setProgress(95);
+    } catch (err) {
+      toast.error('Erro geral na importação: ' + err.message);
     }
 
     // Adicionar também os registros com erro de validação ao log
