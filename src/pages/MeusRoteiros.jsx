@@ -932,22 +932,27 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             <Button
               variant="outline"
               onClick={() => {
+                // Pular - apenas invalida queries e fecha
+                queryClient.invalidateQueries(['visitasRoteiro']);
+                queryClient.invalidateQueries(['visitas']);
                 setShowPedidoDialog(false);
+                setCheckinRealizado(false);
                 setPedidoSolicitado(null);
                 setMotivoSelecionado('');
                 setMotivoSearch('');
                 setReagendarNaoSolicitou(false);
+                onSuccess();
               }}
               className="flex-1"
             >
-              Cancelar
+              Pular
             </Button>
             <Button
-              onClick={finalizarCheckin}
-              disabled={(pedidoSolicitado === false && !motivoSelecionado) || createVisitaMutation.isPending || createVisitaRegistroMutation.isPending}
+              onClick={finalizarPedidoInfo}
+              disabled={(pedidoSolicitado === false && !motivoSelecionado)}
               className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600"
             >
-              Confirmar Check-in
+              Confirmar
             </Button>
           </div>
         )}
