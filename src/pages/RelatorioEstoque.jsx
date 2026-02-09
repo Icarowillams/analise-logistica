@@ -72,7 +72,49 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
+  
+  // Funções de filtro
+  const limparFiltros = () => {
+    setFiltros({ vendedores_ids: [], funcoes_ids: [] });
+    setBuscaVendedor('');
+    setBuscaFuncao('');
+  };
+
+  const toggleVendedorFiltro = (vendedorId) => {
+    setFiltros(prev => ({
+      ...prev,
+      vendedores_ids: prev.vendedores_ids.includes(vendedorId)
+        ? prev.vendedores_ids.filter(v => v !== vendedorId)
+        : [...prev.vendedores_ids, vendedorId]
+    }));
+  };
+
+  const toggleFuncaoFiltro = (funcaoId) => {
+    setFiltros(prev => ({
+      ...prev,
+      funcoes_ids: prev.funcoes_ids.includes(funcaoId)
+        ? prev.funcoes_ids.filter(f => f !== funcaoId)
+        : [...prev.funcoes_ids, funcaoId]
+    }));
+  };
+
+  const vendedoresFiltradosLista = useMemo(() => {
+    if (!buscaVendedor) return vendedores.filter(v => v.status === 'ativo');
+    return vendedores.filter(v => v.status === 'ativo' && v.nome?.toLowerCase().includes(buscaVendedor.toLowerCase()));
+  }, [vendedores, buscaVendedor]);
+
+  const funcoesFiltradosLista = useMemo(() => {
+    if (!buscaFuncao) return funcoes.filter(f => f.status === 'ativo');
+    return funcoes.filter(f => f.status === 'ativo' && f.nome?.toLowerCase().includes(buscaFuncao.toLowerCase()));
+  }, [funcoes, buscaFuncao]);
+
+  const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || busca;
   const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
