@@ -605,6 +605,58 @@ export default function ClienteMapa() {
             </ScrollArea>
           </div>
 
+          {/* Lista de clientes sem localização */}
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-3 border-b bg-slate-100">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Sem Localização ({clientesSemCoordenada.length})
+                </h3>
+                {clientesSemCoordenada.length > 0 && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-7 text-xs border-slate-300 text-slate-600 hover:bg-slate-200"
+                    onClick={() => exportarClientes(clientesSemCoordenada, 'clientes_sem_localizacao')}
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Exportar
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Clientes sem coordenadas cadastradas
+              </p>
+            </div>
+            <ScrollArea className="h-[150px]">
+              {clientesSemCoordenada.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-sm">
+                  Todos os clientes possuem localização
+                </div>
+              ) : (
+                <div className="p-2 space-y-2">
+                  {clientesSemCoordenada.map(cliente => (
+                    <div 
+                      key={cliente.id} 
+                      className="p-3 rounded-lg border bg-slate-50 border-slate-200 hover:bg-slate-100"
+                    >
+                      <div className="font-medium text-sm text-slate-800">
+                        {cliente.nome_fantasia || cliente.razao_social}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Código: {cliente.codigo}
+                      </div>
+                      <div className="text-xs text-slate-600 mt-1">
+                        {cliente.cidade || 'Sem cidade'} - {cliente.estado || 'Sem estado'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
           {/* Lista de clientes fora da região */}
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="p-3 border-b bg-purple-50">
@@ -629,7 +681,7 @@ export default function ClienteMapa() {
                 Clientes fora dos estados de atendimento selecionados
               </p>
             </div>
-            <ScrollArea className="h-[200px]">
+            <ScrollArea className="h-[150px]">
               {clientesForaRegiaoLista.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 text-sm">
                   {estadosSelecionados.length === 0 
