@@ -494,21 +494,6 @@ function GerenciarPrecos() {
     ).slice(0, 20);
   }, [produtos, searchNome]);
 
-  // Agrupar preços por tabela
-  const precosPorTabela = useMemo(() => {
-    const grouped = {};
-    tabelas.forEach(t => {
-      grouped[t.id] = {
-        tabela: t,
-        precos: allPrecos.filter(p => p.tabela_id === t.id).map(preco => {
-          const produto = produtos.find(prod => prod.id === preco.produto_id);
-          return { ...preco, produto };
-        }).filter(p => p.produto).sort((a, b) => (a.produto?.codigo || '').localeCompare(b.produto?.codigo || ''))
-      };
-    });
-    return grouped;
-  }, [tabelas, allPrecos, produtos]);
-
   const savePriceMutation = useMutation({
     mutationFn: async (priceData) => {
       if (priceData.id) {
