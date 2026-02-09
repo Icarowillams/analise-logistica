@@ -75,6 +75,7 @@ function GerenciarTabelas() {
   const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
   const [sincOmieOpen, setSincOmieOpen] = useState(false);
   const [ajustarPrecosOpen, setAjustarPrecosOpen] = useState(false);
+  const [tratarTabelasOpen, setTratarTabelasOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
