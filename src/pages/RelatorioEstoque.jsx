@@ -72,9 +72,9 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
-  const { data: funcoes = [] } = useQuery({
-    queryKey: ['funcoes'],
-    queryFn: () => base44.entities.Funcao.list()
+  const { data: redes = [] } = useQuery({
+    queryKey: ['redes'],
+    queryFn: () => base44.entities.Rede.list()
   });
 
   const { data: visitas = [] } = useQuery({
