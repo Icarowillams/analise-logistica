@@ -693,19 +693,30 @@ export default function Permissoes() {
                   <CardTitle className="text-base">Permissões - Cadastros</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {['criar', 'editar', 'excluir', 'importar_massa', 'visualizar', 'exportar'].map(perm => (
-                    <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
-                      <Checkbox
-                        id={`cadastros-${perm}`}
-                        checked={permissaoAtual.permissoes_cadastros?.[perm] || false}
-                        onCheckedChange={() => togglePermissao('permissoes_cadastros', perm)}
-                        disabled={!modoEdicao}
-                      />
-                      <Label htmlFor={`cadastros-${perm}`} className={modoEdicao ? "cursor-pointer capitalize" : "capitalize text-slate-600"}>
-                        {perm.replace('_', ' ')}
-                      </Label>
-                    </div>
-                  ))}
+                  {['criar', 'editar', 'excluir', 'importar_massa', 'visualizar', 'exportar', 'importar_atualizar_omie'].map(perm => {
+                    const labels = {
+                      criar: 'Criar',
+                      editar: 'Editar',
+                      excluir: 'Excluir',
+                      importar_massa: 'Importar em Massa',
+                      visualizar: 'Visualizar',
+                      exportar: 'Exportar',
+                      importar_atualizar_omie: 'Importar/Atualizar Omie'
+                    };
+                    return (
+                      <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
+                        <Checkbox
+                          id={`cadastros-${perm}`}
+                          checked={permissaoAtual.permissoes_cadastros?.[perm] || false}
+                          onCheckedChange={() => togglePermissao('permissoes_cadastros', perm)}
+                          disabled={!modoEdicao}
+                        />
+                        <Label htmlFor={`cadastros-${perm}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
+                          {labels[perm]}
+                        </Label>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
 
