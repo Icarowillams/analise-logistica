@@ -19,6 +19,7 @@ import ExportarFaltantesOmieModal from '@/components/produtos/ExportarFaltantesO
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Produtos() {
+  const podeOmie = useOmiePermissao();
   const [activeTab, setActiveTab] = useState("cadastro");
   const [isEditing, setIsEditing] = useState(false);
   
@@ -303,22 +304,26 @@ export default function Produtos() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={() => setFaltantesOmieOpen(true)}
-            variant="outline"
-            className="border-green-200 text-green-700 hover:bg-green-50"
-          >
-            <SearchCheck className="w-4 h-4 mr-2" />
-            Faltantes Omie
-          </Button>
-          <Button
-            onClick={() => setExportOmieOpen(true)}
-            variant="outline"
-            className="border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Exportar Omie
-          </Button>
+          {podeOmie && (
+            <>
+              <Button
+                onClick={() => setFaltantesOmieOpen(true)}
+                variant="outline"
+                className="border-green-200 text-green-700 hover:bg-green-50"
+              >
+                <SearchCheck className="w-4 h-4 mr-2" />
+                Faltantes Omie
+              </Button>
+              <Button
+                onClick={() => setExportOmieOpen(true)}
+                variant="outline"
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Exportar Omie
+              </Button>
+            </>
+          )}
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
