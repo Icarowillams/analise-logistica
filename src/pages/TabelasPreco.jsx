@@ -23,6 +23,7 @@ import TratarTabelasModal from '@/components/tabelasPreco/TratarTabelasModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function TabelasPreco() {
+  const podeOmie = useOmiePermissao();
   const [activeTab, setActiveTab] = useState("tabelas");
 
   const { data: tabelas = [] } = useQuery({
@@ -51,7 +52,7 @@ export default function TabelasPreco() {
         </TabsList>
         
         <TabsContent value="tabelas" className="animate-in fade-in-50 duration-300">
-          <GerenciarTabelas />
+          <GerenciarTabelas podeOmie={podeOmie} />
         </TabsContent>
         
         <TabsContent value="precos" className="animate-in fade-in-50 duration-300">
@@ -66,7 +67,7 @@ export default function TabelasPreco() {
   );
 }
 
-function GerenciarTabelas() {
+function GerenciarTabelas({ podeOmie }) {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -233,30 +234,34 @@ function GerenciarTabelas() {
   return (
     <div>
       <div className="flex justify-end gap-2 mb-4 flex-wrap">
-        <Button 
-          onClick={() => setTratarTabelasOpen(true)}
-          variant="outline"
-          className="border-emerald-400 text-emerald-700 hover:bg-emerald-50"
-        >
-          <Sparkles className="w-4 h-4 mr-2" />
-          Tratar Tabelas
-        </Button>
-        <Button 
-          onClick={() => setAjustarPrecosOpen(true)}
-          variant="outline"
-          className="border-purple-400 text-purple-700 hover:bg-purple-50"
-        >
-          <Zap className="w-4 h-4 mr-2" />
-          Ajustar Preços Omie (R$ 1,00)
-        </Button>
-        <Button 
-          onClick={() => setSincOmieOpen(true)}
-          variant="outline"
-          className="border-amber-400 text-amber-700 hover:bg-amber-50"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Sincronizar Omie
-        </Button>
+        {podeOmie && (
+          <>
+            <Button 
+              onClick={() => setTratarTabelasOpen(true)}
+              variant="outline"
+              className="border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Tratar Tabelas
+            </Button>
+            <Button 
+              onClick={() => setAjustarPrecosOpen(true)}
+              variant="outline"
+              className="border-purple-400 text-purple-700 hover:bg-purple-50"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              Ajustar Preços Omie (R$ 1,00)
+            </Button>
+            <Button 
+              onClick={() => setSincOmieOpen(true)}
+              variant="outline"
+              className="border-amber-400 text-amber-700 hover:bg-amber-50"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Sincronizar Omie
+            </Button>
+          </>
+        )}
         <Button 
           onClick={handleNew}
           className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
