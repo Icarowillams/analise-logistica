@@ -358,7 +358,7 @@ export default function Permissoes() {
     if (modoSelecao === 'funcao' && funcaoSelecionada) {
       gerarPermissaoModelo();
       setModoEdicao(false);
-      setFuncionariosSelecionados([]);
+      setFuncionariosFuncaoSelecionados([]);
     }
   }, [funcaoSelecionada, modoSelecao]);
 
