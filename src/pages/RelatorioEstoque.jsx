@@ -117,8 +117,9 @@ export default function RelatorioEstoque() {
   }, [vendedores, buscaVendedor]);
 
   const redesFiltradosLista = useMemo(() => {
-    if (!buscaRede) return redes.filter(r => r.status === 'ativo');
-    return redes.filter(r => r.status === 'ativo' && r.nome?.toLowerCase().includes(buscaRede.toLowerCase()));
+    const ativas = redes.filter(r => r.status !== 'inativo');
+    if (!buscaRede) return ativas;
+    return ativas.filter(r => r.nome?.toLowerCase().includes(buscaRede.toLowerCase()));
   }, [redes, buscaRede]);
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.redes_ids.length > 0 || busca;
