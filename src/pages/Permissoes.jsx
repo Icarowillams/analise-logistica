@@ -579,10 +579,14 @@ export default function Permissoes() {
                   <Button 
                     onClick={salvarPermissoes} 
                     className="bg-gradient-to-r from-purple-500 to-indigo-600"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending || aplicandoEmMassa}
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    Salvar Permissões
+                    {aplicandoEmMassa 
+                      ? 'Aplicando...' 
+                      : funcionariosSelecionados.length > 1 
+                        ? `Aplicar para ${funcionariosSelecionados.length} Funcionário(s)` 
+                        : 'Salvar Permissões'}
                   </Button>
                 ) : (
                   <Button 
