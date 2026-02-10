@@ -329,21 +329,44 @@ export default function Permissoes() {
             </TabsList>
 
             <TabsContent value="funcionario" className="mt-4">
-              <Select value={funcionarioSelecionado} onValueChange={setFuncionarioSelecionado}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione um funcionário..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendedores.map(v => {
-                    const funcao = funcoes.find(f => f.id === v.funcao_id);
-                    return (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.nome} {funcao ? `(${funcao.nome})` : ''} - {v.email || 'Sem email'}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Input
+                  placeholder="Buscar funcionário por nome ou email..."
+                  value={buscaFuncionario}
+                  onChange={(e) => setBuscaFuncionario(e.target.value)}
+                  className="mb-2"
+                />
+                <ScrollArea className="h-64 border rounded-lg p-2">
+                  <div className="space-y-1">
+                    {vendedores
+                      .filter(v => {
+                        if (!buscaFuncionario) return true;
+                        const t = buscaFuncionario.toLowerCase();
+                        return v.nome?.toLowerCase().includes(t) || v.email?.toLowerCase().includes(t);
+                      })
+                      .map(v => {
+                        const funcao = funcoes.find(f => f.id === v.funcao_id);
+                        const isSelected = funcionarioSelecionado === v.id;
+                        return (
+                          <div
+                            key={v.id}
+                            onClick={() => setFuncionarioSelecionado(v.id)}
+                            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                              isSelected ? 'bg-amber-100 border border-amber-300' : 'hover:bg-slate-50 border border-transparent'
+                            }`}
+                          >
+                            <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium text-slate-800">{v.nome}</span>
+                              {funcao && <span className="text-xs text-slate-500 ml-1">({funcao.nome})</span>}
+                              <span className="text-xs text-slate-400 ml-2">{v.email || ''}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </ScrollArea>
+              </div>
             </TabsContent>
 
             <TabsContent value="funcao" className="mt-4 space-y-4">
