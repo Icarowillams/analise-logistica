@@ -417,26 +417,34 @@ export default function Permissoes() {
                   onChange={(e) => setBuscaFuncionario(e.target.value)}
                   className="mb-2"
                 />
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-500">
+                    {funcionariosSelecionados.length > 0 
+                      ? `${funcionariosSelecionados.length} selecionado(s)` 
+                      : 'Selecione um ou mais funcionários'}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={toggleTodosFuncionariosFiltrados}>
+                    {funcionariosFiltrados.every(v => funcionariosSelecionados.includes(v.id)) && funcionariosFiltrados.length > 0
+                      ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                  </Button>
+                </div>
                 <ScrollArea className="h-64 border rounded-lg p-2">
                   <div className="space-y-1">
-                    {vendedores
-                      .filter(v => {
-                        if (!buscaFuncionario) return true;
-                        const t = buscaFuncionario.toLowerCase();
-                        return v.nome?.toLowerCase().includes(t) || v.email?.toLowerCase().includes(t);
-                      })
-                      .map(v => {
+                    {funcionariosFiltrados.map(v => {
                         const funcao = funcoes.find(f => f.id === v.funcao_id);
-                        const isSelected = funcionarioSelecionado === v.id;
+                        const isSelected = funcionariosSelecionados.includes(v.id);
                         return (
                           <div
                             key={v.id}
-                            onClick={() => setFuncionarioSelecionado(v.id)}
+                            onClick={() => toggleFuncionarioSelecionado(v.id)}
                             className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
                               isSelected ? 'bg-amber-100 border border-amber-300' : 'hover:bg-slate-50 border border-transparent'
                             }`}
                           >
-                            <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleFuncionarioSelecionado(v.id)}
+                            />
                             <div className="flex-1 min-w-0">
                               <span className="text-sm font-medium text-slate-800">{v.nome}</span>
                               {funcao && <span className="text-xs text-slate-500 ml-1">({funcao.nome})</span>}
