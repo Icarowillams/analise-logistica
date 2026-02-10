@@ -597,8 +597,8 @@ export default function Permissoes() {
                     <Copy className="w-4 h-4 mr-2" />
                     {aplicandoEmMassa 
                       ? 'Aplicando...' 
-                      : funcionariosSelecionados.length > 0 
-                        ? `Aplicar para ${funcionariosSelecionados.length} Funcionário(s) Selecionado(s)`
+                      : funcionariosFuncaoSelecionados.length > 0 
+                        ? `Aplicar para ${funcionariosFuncaoSelecionados.length} Funcionário(s) Selecionado(s)`
                         : `Aplicar para Todos (${funcionariosDaFuncao.length})`
                     }
                   </Button>
