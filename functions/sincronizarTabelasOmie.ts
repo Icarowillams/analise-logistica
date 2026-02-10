@@ -267,13 +267,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const valorAtual = (preco.ativacao_acao && preco.valor_acao > 0) ? preco.valor_acao : (preco.valor_unitario || 0);
-        if (valorAtual <= 0) {
+        let valorAtual = (preco.ativacao_acao && preco.valor_acao > 0) ? preco.valor_acao : (preco.valor_unitario || 0);
+        
+        // Para TABELA AUXILIAR, enviar todos os produtos mesmo com preço 0 (usar R$0.01 como mínimo)
+        // Isso garante que todos os produtos sejam cadastrados na tabela do Omie
+        const isAuxiliar = tabela?.nome?.toUpperCase().includes('TABELA AUXILIAR');
+        
+        if (valorAtual <= 0 && !isAuxiliar) {
           itensResultados.push({
             produto_id: produto.id, produto_nome: produto.nome, produto_codigo: produto.codigo,
             sucesso: false, mensagem: "Preço zero ou negativo, ignorado."
           });
           continue;
+        }
+        
+        // Se auxiliar e preço 0, usar 0.01 para garantir cadastro
+        if (valorAtual <= 0 && isAuxiliar) {
+          valorAtual = 0.01;
+          console.log(`[AUXILIAR] Produto ${produto.codigo} - ${produto.nome}: preço 0, usando R$0.01 para garantir cadastro no Omie`);
         }
 
         // Tentar AlterarPrecoItem (usar omieIdTabela em vez de tabela.omie_id)
