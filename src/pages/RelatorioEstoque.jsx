@@ -433,39 +433,39 @@ export default function RelatorioEstoque() {
                 </Popover>
               </div>
               
-              {/* Filtro Função */}
+              {/* Filtro Rede */}
               <div>
-                <Label className="text-xs mb-1 block">Função</Label>
+                <Label className="text-xs mb-1 block">Rede</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full h-9 justify-between text-left font-normal">
                       <span className="truncate">
-                        {filtros.funcoes_ids.length === 0 
+                        {filtros.redes_ids.length === 0 
                           ? 'Todas' 
-                          : filtros.funcoes_ids.length === 1 
-                            ? funcoes.find(f => f.id === filtros.funcoes_ids[0])?.nome
-                            : `${filtros.funcoes_ids.length} selecionadas`}
+                          : filtros.redes_ids.length === 1 
+                            ? redes.find(r => r.id === filtros.redes_ids[0])?.nome
+                            : `${filtros.redes_ids.length} selecionadas`}
                       </span>
                       <ChevronDown className="w-4 h-4 opacity-50" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-56 p-2" align="start">
                     <Input
-                      placeholder="Buscar função..."
-                      value={buscaFuncao}
-                      onChange={(e) => setBuscaFuncao(e.target.value)}
+                      placeholder="Buscar rede..."
+                      value={buscaRede}
+                      onChange={(e) => setBuscaRede(e.target.value)}
                       className="h-8 mb-2"
                     />
                     <ScrollArea className="h-48">
                       <div className="space-y-2">
-                        {funcoesFiltradosLista.map(f => (
-                          <div key={f.id} className="flex items-center gap-2">
+                        {redesFiltradosLista.map(r => (
+                          <div key={r.id} className="flex items-center gap-2">
                             <Checkbox 
-                              id={`func-${f.id}`}
-                              checked={filtros.funcoes_ids.includes(f.id)}
-                              onCheckedChange={() => toggleFuncaoFiltro(f.id)}
+                              id={`rede-${r.id}`}
+                              checked={filtros.redes_ids.includes(r.id)}
+                              onCheckedChange={() => toggleRedeFiltro(r.id)}
                             />
-                            <label htmlFor={`func-${f.id}`} className="text-sm cursor-pointer flex-1 truncate">{f.nome}</label>
+                            <label htmlFor={`rede-${r.id}`} className="text-sm cursor-pointer flex-1 truncate">{r.nome}</label>
                           </div>
                         ))}
                       </div>
