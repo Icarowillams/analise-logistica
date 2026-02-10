@@ -393,7 +393,7 @@ export default function Permissoes() {
         <CardContent>
           <Tabs value={modoSelecao} onValueChange={(v) => {
             setModoSelecao(v);
-            setFuncionarioSelecionado('');
+            setFuncionariosSelecionados([]);
             setFuncaoSelecionada('');
             setPermissaoAtual(null);
             setModoEdicao(false);
