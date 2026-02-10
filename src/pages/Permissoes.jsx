@@ -59,14 +59,15 @@ const RELATORIOS_PERMISSOES = [
 export default function Permissoes() {
   const queryClient = useQueryClient();
   const [modoSelecao, setModoSelecao] = useState('funcionario'); // 'funcionario' ou 'funcao'
-  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
+  const [funcionariosSelecionados, setFuncionariosSelecionados] = useState([]);
   const [funcaoSelecionada, setFuncaoSelecionada] = useState('');
   const [permissaoAtual, setPermissaoAtual] = useState(null);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
-  const [funcionariosSelecionados, setFuncionariosSelecionados] = useState([]);
+  const [funcionariosFuncaoSelecionados, setFuncionariosFuncaoSelecionados] = useState([]);
   const [listaFuncionariosAberta, setListaFuncionariosAberta] = useState(false);
   const [buscaFuncionario, setBuscaFuncionario] = useState('');
+  const [buscaFuncionarioFuncao, setBuscaFuncionarioFuncao] = useState('');
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
