@@ -341,7 +341,7 @@ export default function RelatorioEstoque() {
           <Button onClick={() => setShowFiltros(!showFiltros)} variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm">
             <Filter className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Filtros</span>
-            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white text-[10px] px-1">{filtros.vendedores_ids.length + filtros.funcoes_ids.length + (busca ? 1 : 0)}</Badge>}
+            {temFiltrosAtivos && <Badge className="bg-amber-500 text-white text-[10px] px-1">{filtros.vendedores_ids.length + filtros.redes_ids.length + (busca ? 1 : 0)}</Badge>}
           </Button>
           <Button onClick={exportarCSV} variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm">
             <Download className="w-3 h-3 sm:w-4 sm:h-4" />
