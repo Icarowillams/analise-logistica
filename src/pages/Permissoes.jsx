@@ -185,12 +185,10 @@ export default function Permissoes() {
     });
   };
 
-  const salvarPermissoes = () => {
+  const salvarPermissoes = async () => {
     if (!permissaoAtual || !modoEdicao) return;
 
-    const dataToSave = {
-      vendedor_id: permissaoAtual.vendedor_id,
-      vendedor_email: permissaoAtual.vendedor_email,
+    const permissoesBase = {
       abas_visiveis: permissaoAtual.abas_visiveis || [],
       visibilidade_clientes: permissaoAtual.visibilidade_clientes || 'todos',
       permissoes_metas: permissaoAtual.permissoes_metas || {},
@@ -201,10 +199,39 @@ export default function Permissoes() {
       permissoes_relatorios: permissaoAtual.permissoes_relatorios || {}
     };
 
-    if (permissaoAtual.id) {
-      updateMutation.mutate({ id: permissaoAtual.id, data: dataToSave });
-    } else {
-      createMutation.mutate(dataToSave);
+    if (funcionariosSelecionados.length === 1) {
+      const dataToSave = {
+        vendedor_id: permissaoAtual.vendedor_id,
+        vendedor_email: permissaoAtual.vendedor_email,
+        ...permissoesBase
+      };
+      if (permissaoAtual.id) {
+        updateMutation.mutate({ id: permissaoAtual.id, data: dataToSave });
+      } else {
+        createMutation.mutate(dataToSave);
+      }
+    } else if (funcionariosSelecionados.length > 1) {
+      setAplicandoEmMassa(true);
+      let atualizados = 0, criados = 0;
+      for (const funcId of funcionariosSelecionados) {
+        const vendedor = vendedores.find(v => v.id === funcId);
+        const permExistente = permissoes.find(p => p.vendedor_id === funcId);
+        const dataToSave = {
+          vendedor_id: funcId,
+          vendedor_email: vendedor?.email || '',
+          ...permissoesBase
+        };
+        if (permExistente) {
+          await base44.entities.Permissao.update(permExistente.id, dataToSave);
+          atualizados++;
+        } else {
+          await base44.entities.Permissao.create(dataToSave);
+          criados++;
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['permissoes'] });
+      setAplicandoEmMassa(false);
+      toast.success(`Permissões aplicadas! ${criados} criadas, ${atualizados} atualizadas.`);
     }
     setModoEdicao(false);
   };
