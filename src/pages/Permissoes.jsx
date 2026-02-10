@@ -515,10 +515,66 @@ export default function Permissoes() {
           </div>
 
         <Tabs defaultValue="abas" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-2">
             <TabsTrigger value="abas">Abas Visíveis</TabsTrigger>
             <TabsTrigger value="niveis">Níveis de Acesso</TabsTrigger>
           </TabsList>
+
+          {/* Botões Marcar/Desmarcar Todas */}
+          {modoEdicao && (
+            <div className="flex gap-2 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPermissaoAtual(prev => ({
+                    ...prev,
+                    abas_visiveis: ABAS_SISTEMA.map(a => a.id),
+                    permissoes_metas: { visualizar: true, criar: true, alterar: true, excluir: true, exportar: true },
+                    permissoes_cadastros: { criar: true, editar: true, excluir: true, importar_massa: true, visualizar: true, exportar: true, importar_atualizar_omie: true },
+                    permissoes_importar: { visualizar: true, importar: true, importar_massa: true, excluir_lancamento: true },
+                    permissoes_analises: { visualizar: true, utilizar_filtros: true, exportar: true },
+                    permissoes_visitas: { visualizar: true, iniciar_roteiro: true, finalizar_roteiro: true, importar_fotos: true, marcar_solicitou_pedido: true, importar_ultimo_estoque: true, informar_estoque: true, informar_trocas: true },
+                    permissoes_relatorios: {
+                      rel_roteiros_visualizar: true, rel_roteiros_filtros: true, rel_roteiros_exportar: true,
+                      rel_estoque_visualizar: true, rel_estoque_filtros: true, rel_estoque_exportar: true,
+                      rel_trocas_visualizar: true, rel_trocas_filtros: true, rel_trocas_exportar: true,
+                      analise_visitas_visualizar: true, analise_visitas_filtros: true, analise_visitas_exportar: true
+                    }
+                  }));
+                }}
+                className="gap-1 text-green-700 border-green-300 hover:bg-green-50"
+              >
+                <CheckSquare className="w-4 h-4" />
+                Marcar Todas
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPermissaoAtual(prev => ({
+                    ...prev,
+                    abas_visiveis: [],
+                    permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
+                    permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false, importar_atualizar_omie: false },
+                    permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
+                    permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
+                    permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+                    permissoes_relatorios: {
+                      rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
+                      rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
+                      rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
+                      analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
+                    }
+                  }));
+                }}
+                className="gap-1 text-red-700 border-red-300 hover:bg-red-50"
+              >
+                <Square className="w-4 h-4" />
+                Desmarcar Todas
+              </Button>
+            </div>
+          )}
 
           <TabsContent value="abas" className="space-y-4">
             <Card className="border-0 shadow-lg">
