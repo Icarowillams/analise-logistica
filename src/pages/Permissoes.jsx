@@ -514,13 +514,13 @@ export default function Permissoes() {
                             <div 
                               key={func.id} 
                               className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-slate-100 ${
-                                funcionariosSelecionados.includes(func.id) ? 'bg-amber-50 border border-amber-200' : 'bg-white border'
+                                funcionariosFuncaoSelecionados.includes(func.id) ? 'bg-amber-50 border border-amber-200' : 'bg-white border'
                               }`}
-                              onClick={() => toggleFuncionarioSelecionado(func.id)}
+                              onClick={() => toggleFuncionarioFuncaoSelecionado(func.id)}
                             >
                               <Checkbox
-                                checked={funcionariosSelecionados.includes(func.id)}
-                                onCheckedChange={() => toggleFuncionarioSelecionado(func.id)}
+                                checked={funcionariosFuncaoSelecionados.includes(func.id)}
+                                onCheckedChange={() => toggleFuncionarioFuncaoSelecionado(func.id)}
                               />
                               <Label className="cursor-pointer text-sm flex-1">
                                 {func.nome}
