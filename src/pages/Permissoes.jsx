@@ -481,10 +481,10 @@ export default function Permissoes() {
                           <Users className="w-4 h-4" />
                           <span>
                             <strong>{funcionariosDaFuncao.length}</strong> funcionário(s) com esta função
-                            {funcionariosSelecionados.length > 0 && (
-                              <span className="ml-2 text-amber-600">
-                                ({funcionariosSelecionados.length} selecionado(s))
-                              </span>
+                            {funcionariosFuncaoSelecionados.length > 0 && (
+                             <span className="ml-2 text-amber-600">
+                               ({funcionariosFuncaoSelecionados.length} selecionado(s))
+                             </span>
                             )}
                           </span>
                         </div>
