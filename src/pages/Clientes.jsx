@@ -20,6 +20,7 @@ import ClientesComErroOmie from '@/components/clientes/ClientesComErroOmie';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
+  const podeOmie = useOmiePermissao();
   const [activeTab, setActiveTab] = useState("cadastro");
   const [isEditing, setIsEditing] = useState(false);
   
@@ -660,22 +661,26 @@ export default function Clientes() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={() => setCorrigirErrosOpen(true)}
-            variant="outline"
-            className="border-red-200 text-red-700 hover:bg-red-50"
-          >
-            <Ban className="w-4 h-4 mr-2" />
-            Corrigir Erros Omie
-          </Button>
-          <Button
-            onClick={() => setOmieModalOpen(true)}
-            variant="outline"
-            className="border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Exportar Omie
-          </Button>
+          {podeOmie && (
+            <>
+              <Button
+                onClick={() => setCorrigirErrosOpen(true)}
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50"
+              >
+                <Ban className="w-4 h-4 mr-2" />
+                Corrigir Erros Omie
+              </Button>
+              <Button
+                onClick={() => setOmieModalOpen(true)}
+                variant="outline"
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Exportar Omie
+              </Button>
+            </>
+          )}
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
