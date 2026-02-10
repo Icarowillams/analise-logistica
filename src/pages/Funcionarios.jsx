@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Funcionarios() {
+  const podeOmie = useOmiePermissao();
   const [activeTab, setActiveTab] = useState("cadastro");
   const [isEditing, setIsEditing] = useState(false);
   
@@ -257,14 +258,16 @@ export default function Funcionarios() {
           icon={Users}
         />
         <div className="flex gap-2">
-          <Button
-            onClick={() => setExportarOmieOpen(true)}
-            variant="outline"
-            className="border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Exportar Omie
-          </Button>
+          {podeOmie && (
+            <Button
+              onClick={() => setExportarOmieOpen(true)}
+              variant="outline"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Exportar Omie
+            </Button>
+          )}
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
