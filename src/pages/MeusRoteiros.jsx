@@ -406,6 +406,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
             visita={visitaExistente} 
             cliente={cliente} 
             permissaoUsuario={permissaoUsuario}
+            vendedor={vendedor}
           />
         ) : null}
       </CardContent>
