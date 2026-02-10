@@ -124,7 +124,7 @@ export default function Permissoes() {
           abas_visiveis: [],
           visibilidade_clientes: 'todos',
           permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
-          permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false },
+          permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false, importar_atualizar_omie: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
           permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
           permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
