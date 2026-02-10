@@ -112,16 +112,18 @@ export default function Permissoes() {
     }
   });
 
+  // Quando exatamente 1 funcionário é selecionado, carrega suas permissões
   useEffect(() => {
-    if (funcionarioSelecionado) {
+    if (modoSelecao === 'funcionario' && funcionariosSelecionados.length === 1) {
       setModoEdicao(false);
-      const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
+      const funcId = funcionariosSelecionados[0];
+      const perm = permissoes.find(p => p.vendedor_id === funcId);
       if (perm) {
         setPermissaoAtual(perm);
       } else {
-        const vendedor = vendedores.find(v => v.id === funcionarioSelecionado);
+        const vendedor = vendedores.find(v => v.id === funcId);
         setPermissaoAtual({
-          vendedor_id: funcionarioSelecionado,
+          vendedor_id: funcId,
           vendedor_email: vendedor?.email || '',
           abas_visiveis: [],
           visibilidade_clientes: 'todos',
@@ -138,8 +140,30 @@ export default function Permissoes() {
           }
         });
       }
+    } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length > 1) {
+      setModoEdicao(false);
+      // Quando múltiplos selecionados, usar modelo em branco para aplicar em massa
+      setPermissaoAtual({
+        vendedor_id: 'modelo_massa',
+        vendedor_email: '',
+        abas_visiveis: [],
+        visibilidade_clientes: 'todos',
+        permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
+        permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, exportar: false, importar_atualizar_omie: false },
+        permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
+        permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
+        permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+        permissoes_relatorios: { 
+          rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
+          rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
+          rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
+          analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
+        }
+      });
+    } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length === 0) {
+      setPermissaoAtual(null);
     }
-  }, [funcionarioSelecionado, permissoes, vendedores]);
+  }, [funcionariosSelecionados, permissoes, vendedores, modoSelecao]);
 
   const toggleAba = (abaId) => {
     if (!permissaoAtual || !modoEdicao) return;
