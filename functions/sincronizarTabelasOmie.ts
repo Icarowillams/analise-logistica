@@ -274,9 +274,9 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Tentar AlterarPrecoItem
+        // Tentar AlterarPrecoItem (usar omieIdTabela em vez de tabela.omie_id)
         let itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
-          nCodTabPreco: tabela.omie_id, nCodProd: nCodProd,
+          nCodTabPreco: omieIdTabela, nCodProd: nCodProd,
           nValorTabela: Number(valorAtual.toFixed(2))
         });
         await delay(2000);
@@ -287,14 +287,14 @@ Deno.serve(async (req) => {
              itemResult.faultstring.includes("não localizado") ||
              itemResult.faultstring.includes("nao encontrado"))) {
 
-          console.log(`[RETRY] Incluindo produto ${nCodProd} na tabela ${tabela.omie_id}...`);
+          console.log(`[RETRY] Incluindo produto ${nCodProd} na tabela ${omieIdTabela}...`);
           await omieCall(OMIE_URL_TABELA, "IncluirProdutoTabPreco", {
-            nCodTabPreco: tabela.omie_id, nCodProd: nCodProd
+            nCodTabPreco: omieIdTabela, nCodProd: nCodProd
           });
           await delay(2000);
 
           itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
-            nCodTabPreco: tabela.omie_id, nCodProd: nCodProd,
+            nCodTabPreco: omieIdTabela, nCodProd: nCodProd,
             nValorTabela: Number(valorAtual.toFixed(2))
           });
           await delay(2000);
