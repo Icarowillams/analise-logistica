@@ -225,12 +225,16 @@ Deno.serve(async (req) => {
     // EXPORTAR PREÇOS DE UMA TABELA → OMIE
     // ==========================================
     if (acao === "exportar_precos") {
-      const { tabela_id, lote_inicio = 0, lote_tamanho = 5 } = body;
+      const { tabela_id, lote_inicio = 0, lote_tamanho = 5, omie_id_override } = body;
       if (!tabela_id) return Response.json({ error: "tabela_id obrigatório" }, { status: 400 });
 
       const tabelas = await base44.asServiceRole.entities.TabelaPreco.list();
       const tabela = tabelas.find(t => t.id === tabela_id);
-      if (!tabela || !tabela.omie_id) {
+      
+      // Usar omie_id_override se fornecido (caso a tabela acabou de ser exportada e o BD ainda não atualizou)
+      const omieIdTabela = omie_id_override || tabela?.omie_id;
+      
+      if (!tabela || !omieIdTabela) {
         return Response.json({ error: "Tabela não vinculada ao Omie" }, { status: 400 });
       }
 
