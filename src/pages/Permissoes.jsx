@@ -504,9 +504,9 @@ export default function Permissoes() {
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={toggleTodosFuncionarios}
+                            onClick={toggleTodosFuncionariosFuncao}
                           >
-                            {funcionariosSelecionados.length === funcionariosDaFuncao.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                            {funcionariosFuncaoSelecionados.length === funcionariosDaFuncao.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
                           </Button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
