@@ -65,6 +65,7 @@ export default function Permissoes() {
   const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
   const [funcionariosSelecionados, setFuncionariosSelecionados] = useState([]);
   const [listaFuncionariosAberta, setListaFuncionariosAberta] = useState(false);
+  const [buscaFuncionario, setBuscaFuncionario] = useState('');
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
