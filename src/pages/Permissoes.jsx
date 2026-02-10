@@ -497,10 +497,16 @@ export default function Permissoes() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="px-4 pb-4 space-y-2">
-                        <div className="flex items-center justify-between border-b pb-2 mb-2">
-                          <span className="text-sm text-slate-600">
-                            Selecione os funcionários específicos ou deixe em branco para aplicar a todos
-                          </span>
+                       <Input
+                         placeholder="Buscar funcionário..."
+                         value={buscaFuncionarioFuncao}
+                         onChange={(e) => setBuscaFuncionarioFuncao(e.target.value)}
+                         className="mb-2"
+                       />
+                       <div className="flex items-center justify-between border-b pb-2 mb-2">
+                         <span className="text-sm text-slate-600">
+                           Selecione os funcionários específicos ou deixe em branco para aplicar a todos
+                         </span>
                           <Button 
                             variant="outline" 
                             size="sm"
