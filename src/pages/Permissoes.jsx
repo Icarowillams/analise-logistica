@@ -256,9 +256,8 @@ export default function Permissoes() {
     let atualizados = 0;
     let criados = 0;
 
-    // Se nenhum funcionário foi selecionado, aplica para todos da função
-    const funcionariosParaAplicar = funcionariosSelecionados.length > 0 
-      ? funcionariosDaFuncao.filter(f => funcionariosSelecionados.includes(f.id))
+    const funcionariosParaAplicar = funcionariosFuncaoSelecionados.length > 0 
+      ? funcionariosDaFuncao.filter(f => funcionariosFuncaoSelecionados.includes(f.id))
       : funcionariosDaFuncao;
 
     for (const funcionario of funcionariosParaAplicar) {
@@ -282,7 +281,7 @@ export default function Permissoes() {
     queryClient.invalidateQueries({ queryKey: ['permissoes'] });
     setAplicandoEmMassa(false);
     setModoEdicao(false);
-    setFuncionariosSelecionados([]);
+    setFuncionariosFuncaoSelecionados([]);
     toast.success(`Permissões aplicadas! ${criados} criadas, ${atualizados} atualizadas.`);
   };
 
