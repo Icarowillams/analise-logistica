@@ -121,8 +121,16 @@ Deno.serve(async (req) => {
 
                 console.log(`[EXPORTANDO] Código ${produto.codigo} - ${produto.nome}`);
 
-                const resultado = await omieCall(OMIE_URL, "IncluirProduto", produtoOmie);
+                let resultado = await omieCall(OMIE_URL, "IncluirProduto", produtoOmie);
                 await delay(3000);
+
+                // Se EAN duplicado, re-tentar sem o EAN
+                if (resultado.faultstring && resultado.faultstring.includes("EAN")) {
+                    console.log(`[RETRY] EAN duplicado para ${produto.codigo}. Re-enviando sem EAN...`);
+                    delete produtoOmie.ean;
+                    resultado = await omieCall(OMIE_URL, "IncluirProduto", produtoOmie);
+                    await delay(3000);
+                }
 
                 const sucesso = !resultado.faultstring;
                 resultados.push({
@@ -131,7 +139,7 @@ Deno.serve(async (req) => {
                     nome: produto.nome,
                     sucesso,
                     codigo_omie: resultado.codigo_produto || null,
-                    mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
+                    mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso" + (produtoOmie.ean === undefined ? " (sem EAN - duplicado)" : "")
                 });
 
                 console.log(`[RESULTADO] ${produto.codigo}: ${sucesso ? 'OK' : resultado.faultstring}`);
