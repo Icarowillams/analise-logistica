@@ -20,6 +20,7 @@ import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
 import SincronizarOmieModal from '@/components/tabelasPreco/SincronizarOmieModal';
 import AjustarPrecosOriginaisModal from '@/components/tabelasPreco/AjustarPrecosOriginaisModal';
 import TratarTabelasModal from '@/components/tabelasPreco/TratarTabelasModal';
+import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function TabelasPreco() {
   const [activeTab, setActiveTab] = useState("tabelas");

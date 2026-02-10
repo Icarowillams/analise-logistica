@@ -8,6 +8,7 @@ import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import ExportarVendedoresOmieModal from '@/components/funcionarios/ExportarVendedoresOmieModal';
+import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

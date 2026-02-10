@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProdutoConsulta from '@/components/produtos/ProdutoConsulta';
 import ExportarProdutosOmieModal from '@/components/produtos/ExportarProdutosOmieModal';
 import ExportarFaltantesOmieModal from '@/components/produtos/ExportarFaltantesOmieModal';
+import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Produtos() {
   const [activeTab, setActiveTab] = useState("cadastro");

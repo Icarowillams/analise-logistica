@@ -17,6 +17,7 @@ import ClienteConsulta from '@/components/clientes/ClienteConsulta';
 import ClienteMapa from '@/components/clientes/ClienteMapa';
 import ExportarOmieModal from '@/components/clientes/ExportarOmieModal';
 import ClientesComErroOmie from '@/components/clientes/ClientesComErroOmie';
+import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
   const [activeTab, setActiveTab] = useState("cadastro");
