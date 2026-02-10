@@ -118,7 +118,8 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
     for (let i = 0; i < idsOrdenados.length; i++) {
       const tabelaId = idsOrdenados[i];
       const tabela = tabelas.find(t => t.id === tabelaId);
-      setProgresso(`Exportando tabela ${i + 1}/${idsOrdenados.length}: ${tabela?.nome || ''}`);
+      const isAuxiliar = tabela?.nome?.toUpperCase().includes('TABELA AUXILIAR');
+      setProgresso(`Exportando tabela ${i + 1}/${idsOrdenados.length}: ${tabela?.nome || ''}${isAuxiliar ? ' (PRIORITÁRIA)' : ''}`);
 
       // 1. Exportar a tabela (criar/atualizar no Omie)
       const resTbl = await base44.functions.invoke('sincronizarTabelasOmie', {
@@ -135,7 +136,9 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
         continue;
       }
 
-      // 2. Exportar preços em lotes
+      const omieIdExportado = resTbl.data.omie_id;
+
+      // 2. Exportar preços em lotes (usar omie_id retornado da exportação)
       let lote = 0;
       let concluido = false;
       let itensOk = 0;
@@ -148,6 +151,7 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
         const resPrecos = await base44.functions.invoke('sincronizarTabelasOmie', {
           acao: 'exportar_precos',
           tabela_id: tabelaId,
+          omie_id_override: omieIdExportado,
           lote_inicio: lote,
           lote_tamanho: 5
         });
@@ -167,7 +171,7 @@ export default function SincronizarOmieModal({ open, onOpenChange, tabelas = [],
         nome: tabela?.nome,
         sucesso: true,
         mensagem: `Tabela exportada. ${itensOk} preços OK, ${itensErro} erros.`,
-        omie_id: resTbl.data.omie_id,
+        omie_id: omieIdExportado,
         erros_itens: errosItens
       });
     }
