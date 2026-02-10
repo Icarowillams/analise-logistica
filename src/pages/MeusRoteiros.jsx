@@ -995,7 +995,151 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   );
 }
 
-function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
+function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario }) {
+  const queryClient = useQueryClient();
+  const [pedidoSolicitado, setPedidoSolicitado] = useState(null);
+  const [motivoSelecionado, setMotivoSelecionado] = useState('');
+  const [motivoSearch, setMotivoSearch] = useState('');
+  const [reagendarNaoSolicitou, setReagendarNaoSolicitou] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const { data: motivos = [] } = useQuery({
+    queryKey: ['motivosNaoSolicitacao'],
+    queryFn: () => base44.entities.MotivoNaoSolicitacao.list()
+  });
+
+  const motivosFiltrados = motivos.filter(m => 
+    m.descricao?.toLowerCase().includes(motivoSearch.toLowerCase()) && m.status === 'ativo'
+  );
+
+  const salvarPedidoInfo = async () => {
+    if (pedidoSolicitado === false && !motivoSelecionado) {
+      toast.error('Por favor, selecione o motivo da não solicitação');
+      return;
+    }
+
+    setSalvando(true);
+    const motivoObj = motivos.find(m => m.id === motivoSelecionado);
+
+    await base44.entities.Visita.update(visitaRegistro.id, {
+      pedido_solicitado: pedidoSolicitado,
+      motivo_nao_solicitacao_id: pedidoSolicitado === false ? motivoSelecionado : null,
+      motivo_nao_solicitacao_descricao: pedidoSolicitado === false ? motivoObj?.descricao : null
+    });
+
+    if (pedidoSolicitado === false && reagendarNaoSolicitou) {
+      const amanha = new Date();
+      amanha.setDate(amanha.getDate() + 1);
+      
+      await base44.entities.VisitaReagendada.create({
+        cliente_id: cliente.cliente_id,
+        cliente_nome: cliente.cliente_nome,
+        cliente_codigo: cliente.cliente_codigo,
+        cliente_cidade: cliente.cliente_cidade,
+        vendedor_id: vendedor.id,
+        vendedor_nome: vendedor.nome,
+        data_reagendamento: amanha.toISOString().split('T')[0],
+        motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
+        visita_original_id: visitaRegistro.numero_visita,
+        status: 'pendente'
+      });
+      toast.success('Informação do pedido salva e reagendado para amanhã!');
+    } else {
+      toast.success('Informação do pedido salva!');
+    }
+
+    queryClient.invalidateQueries(['visitas']);
+    queryClient.invalidateQueries(['visitasRoteiro']);
+    queryClient.invalidateQueries(['visitasReagendadas']);
+    setSalvando(false);
+  };
+
+  return (
+    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+      <h3 className="text-base font-semibold text-blue-800 flex items-center gap-2">
+        <CheckCircle className="w-5 h-5" />
+        Informação do Pedido
+      </h3>
+
+      <div>
+        <Label className="text-base font-semibold mb-3 block">O pedido foi solicitado?</Label>
+        <div className="flex gap-3">
+          <Button
+            onClick={() => setPedidoSolicitado(true)}
+            variant={pedidoSolicitado === true ? 'default' : 'outline'}
+            className={pedidoSolicitado === true ? 'bg-green-600 hover:bg-green-700' : ''}
+          >
+            Sim
+          </Button>
+          <Button
+            onClick={() => setPedidoSolicitado(false)}
+            variant={pedidoSolicitado === false ? 'default' : 'outline'}
+            className={pedidoSolicitado === false ? 'bg-red-600 hover:bg-red-700' : ''}
+          >
+            Não
+          </Button>
+        </div>
+      </div>
+
+      {pedidoSolicitado === false && (
+        <div className="space-y-3 animate-in fade-in-50">
+          <div className="space-y-2">
+            <Label>Buscar motivo</Label>
+            <Input
+              placeholder="Digite para buscar..."
+              value={motivoSearch}
+              onChange={(e) => setMotivoSearch(e.target.value)}
+            />
+            <Label>Motivo da não solicitação *</Label>
+            <Select value={motivoSelecionado} onValueChange={setMotivoSelecionado}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o motivo..." />
+              </SelectTrigger>
+              <SelectContent>
+                {motivosFiltrados.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {motivoSelecionado && (
+            <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="reagendar-nao-solicitou-det"
+                  checked={reagendarNaoSolicitou}
+                  onCheckedChange={setReagendarNaoSolicitou}
+                />
+                <label htmlFor="reagendar-nao-solicitou-det" className="text-sm font-medium text-orange-900 cursor-pointer flex items-center gap-2">
+                  <CalendarPlus className="w-4 h-4" />
+                  Reagendar para o dia seguinte?
+                </label>
+              </div>
+              {reagendarNaoSolicitou && (
+                <p className="text-xs text-orange-600 mt-2">
+                  O cliente será adicionado ao roteiro de amanhã como uma exceção pontual.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {pedidoSolicitado !== null && (
+        <Button
+          onClick={salvarPedidoInfo}
+          disabled={salvando || (pedidoSolicitado === false && !motivoSelecionado)}
+          className="w-full bg-gradient-to-r from-blue-500 to-blue-600"
+        >
+          {salvando ? 'Salvando...' : 'Confirmar'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
   const { data: visitaRegistro } = useQuery({
     queryKey: ['visitaRegistro', visita.id],
@@ -1008,9 +1152,13 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
     }
   });
 
-  // Verificar permissões de estoque e trocas
+  // Verificar permissões
   const podeInformarEstoque = permissaoUsuario?.permissoes_visitas?.informar_estoque !== false;
   const podeInformarTrocas = permissaoUsuario?.permissoes_visitas?.informar_trocas !== false;
+  const podeMarcarSolicitouPedido = permissaoUsuario?.permissoes_visitas?.marcar_solicitou_pedido !== false;
+
+  // Pedido ainda não foi respondido se pedido_solicitado é null/undefined
+  const pedidoPendente = visitaRegistro && visitaRegistro.pedido_solicitado === null || visitaRegistro && visitaRegistro.pedido_solicitado === undefined;
 
   // Se não atendido, mostrar apenas o status
   if (visita.status === 'nao_atendido') {
@@ -1068,18 +1216,31 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
 
   return (
     <div className="space-y-4">
-      <Alert className="bg-blue-50 border-blue-200">
-        <Clock className="w-4 h-4 text-blue-600" />
-        <AlertDescription className="text-blue-800">
-          Check-in realizado às {new Date(visita.checkin_time).toLocaleTimeString('pt-BR')}
-          {visitaRegistro && (
-            <div className="mt-1 text-xs">
-              <strong>Nº Visita:</strong> {visitaRegistro.numero_visita}
-            </div>
-          )}
+      <Alert className="bg-green-50 border-green-200">
+        <CheckCircle className="w-4 h-4 text-green-600" />
+        <AlertDescription className="text-green-800">
+          Check-in realizado! Nº Visita: {visitaRegistro?.numero_visita || '...'}
         </AlertDescription>
       </Alert>
 
+      {/* Seção de Pedido - fixa e persistente */}
+      {podeMarcarSolicitouPedido && pedidoPendente && (
+        <PedidoInfoSection 
+          visitaRegistro={visitaRegistro} 
+          cliente={cliente} 
+          vendedor={vendedor}
+          permissaoUsuario={permissaoUsuario} 
+        />
+      )}
+
+      {/* Mostrar resultado do pedido se já respondido */}
+      {visitaRegistro && visitaRegistro.pedido_solicitado === true && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800 text-sm">
+            <strong>✅ Pedido solicitado</strong>
+          </AlertDescription>
+        </Alert>
+      )}
       {visitaRegistro && visitaRegistro.pedido_solicitado === false && (
         <Alert className="bg-amber-50 border-amber-200">
           <AlertDescription className="text-amber-800 text-sm">
@@ -1119,7 +1280,15 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario }) {
         </Tabs>
       )}
 
-      <CheckoutButton visitaId={visita.id} />
+      {/* Botão de finalizar - só habilitado se pedido já foi respondido ou não tem permissão de marcar pedido */}
+      {(!podeMarcarSolicitouPedido || !pedidoPendente) ? (
+        <CheckoutButton visitaId={visita.id} />
+      ) : (
+        <Button disabled className="w-full opacity-50">
+          <CheckCircle className="w-4 h-4 mr-2" />
+          Responda sobre o pedido para finalizar
+        </Button>
+      )}
     </div>
   );
 }
