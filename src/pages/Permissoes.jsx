@@ -285,7 +285,7 @@ export default function Permissoes() {
     toast.success(`Permissões aplicadas! ${criados} criadas, ${atualizados} atualizadas.`);
   };
 
-  // Toggle seleção de funcionário individual
+  // Toggle seleção de funcionário (por funcionário)
   const toggleFuncionarioSelecionado = (funcionarioId) => {
     setFuncionariosSelecionados(prev => 
       prev.includes(funcionarioId)
@@ -294,12 +294,41 @@ export default function Permissoes() {
     );
   };
 
-  // Selecionar/Desselecionar todos
-  const toggleTodosFuncionarios = () => {
-    if (funcionariosSelecionados.length === funcionariosDaFuncao.length) {
-      setFuncionariosSelecionados([]);
+  // Toggle seleção de funcionário (por função)
+  const toggleFuncionarioFuncaoSelecionado = (funcionarioId) => {
+    setFuncionariosFuncaoSelecionados(prev => 
+      prev.includes(funcionarioId)
+        ? prev.filter(id => id !== funcionarioId)
+        : [...prev, funcionarioId]
+    );
+  };
+
+  // Selecionar/Desselecionar todos (por função)
+  const toggleTodosFuncionariosFuncao = () => {
+    if (funcionariosFuncaoSelecionados.length === funcionariosDaFuncao.length) {
+      setFuncionariosFuncaoSelecionados([]);
     } else {
-      setFuncionariosSelecionados(funcionariosDaFuncao.map(f => f.id));
+      setFuncionariosFuncaoSelecionados(funcionariosDaFuncao.map(f => f.id));
+    }
+  };
+
+  // Funcionários filtrados pela busca (aba por funcionário)
+  const funcionariosFiltrados = useMemo(() => {
+    return vendedores.filter(v => {
+      if (!buscaFuncionario) return true;
+      const t = buscaFuncionario.toLowerCase();
+      return v.nome?.toLowerCase().includes(t) || v.email?.toLowerCase().includes(t);
+    });
+  }, [vendedores, buscaFuncionario]);
+
+  // Selecionar/Desselecionar todos filtrados (por funcionário)
+  const toggleTodosFuncionariosFiltrados = () => {
+    const ids = funcionariosFiltrados.map(v => v.id);
+    const todosJaSelecionados = ids.every(id => funcionariosSelecionados.includes(id));
+    if (todosJaSelecionados) {
+      setFuncionariosSelecionados(prev => prev.filter(id => !ids.includes(id)));
+    } else {
+      setFuncionariosSelecionados(prev => [...new Set([...prev, ...ids])]);
     }
   };
 
