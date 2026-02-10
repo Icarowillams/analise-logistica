@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send, SearchCheck } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProdutoConsulta from '@/components/produtos/ProdutoConsulta';
 import ExportarProdutosOmieModal from '@/components/produtos/ExportarProdutosOmieModal';
+import ExportarFaltantesOmieModal from '@/components/produtos/ExportarFaltantesOmieModal';
 
 export default function Produtos() {
   const [activeTab, setActiveTab] = useState("cadastro");
@@ -26,6 +27,7 @@ export default function Produtos() {
   const [isImporting, setIsImporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [exportOmieOpen, setExportOmieOpen] = useState(false);
+  const [faltantesOmieOpen, setFaltantesOmieOpen] = useState(false);
   const [modoProduto, setModoProduto] = useState('cadastro');
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
@@ -300,6 +302,14 @@ export default function Produtos() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={() => setFaltantesOmieOpen(true)}
+            variant="outline"
+            className="border-green-200 text-green-700 hover:bg-green-50"
+          >
+            <SearchCheck className="w-4 h-4 mr-2" />
+            Faltantes Omie
+          </Button>
           <Button
             onClick={() => setExportOmieOpen(true)}
             variant="outline"
@@ -643,6 +653,11 @@ export default function Produtos() {
       <ExportarProdutosOmieModal
         open={exportOmieOpen}
         onOpenChange={setExportOmieOpen}
+      />
+
+      <ExportarFaltantesOmieModal
+        open={faltantesOmieOpen}
+        onOpenChange={setFaltantesOmieOpen}
       />
 
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
