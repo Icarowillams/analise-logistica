@@ -88,9 +88,9 @@ export default function RelatorioEstoque() {
   
   // Funções de filtro
   const limparFiltros = () => {
-    setFiltros({ vendedores_ids: [], funcoes_ids: [] });
+    setFiltros({ vendedores_ids: [], redes_ids: [] });
     setBuscaVendedor('');
-    setBuscaFuncao('');
+    setBuscaRede('');
   };
 
   const toggleVendedorFiltro = (vendedorId) => {
@@ -102,12 +102,12 @@ export default function RelatorioEstoque() {
     }));
   };
 
-  const toggleFuncaoFiltro = (funcaoId) => {
+  const toggleRedeFiltro = (redeId) => {
     setFiltros(prev => ({
       ...prev,
-      funcoes_ids: prev.funcoes_ids.includes(funcaoId)
-        ? prev.funcoes_ids.filter(f => f !== funcaoId)
-        : [...prev.funcoes_ids, funcaoId]
+      redes_ids: prev.redes_ids.includes(redeId)
+        ? prev.redes_ids.filter(r => r !== redeId)
+        : [...prev.redes_ids, redeId]
     }));
   };
 
@@ -116,12 +116,12 @@ export default function RelatorioEstoque() {
     return vendedores.filter(v => v.status === 'ativo' && v.nome?.toLowerCase().includes(buscaVendedor.toLowerCase()));
   }, [vendedores, buscaVendedor]);
 
-  const funcoesFiltradosLista = useMemo(() => {
-    if (!buscaFuncao) return funcoes.filter(f => f.status === 'ativo');
-    return funcoes.filter(f => f.status === 'ativo' && f.nome?.toLowerCase().includes(buscaFuncao.toLowerCase()));
-  }, [funcoes, buscaFuncao]);
+  const redesFiltradosLista = useMemo(() => {
+    if (!buscaRede) return redes.filter(r => r.status === 'ativo');
+    return redes.filter(r => r.status === 'ativo' && r.nome?.toLowerCase().includes(buscaRede.toLowerCase()));
+  }, [redes, buscaRede]);
 
-  const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || busca;
+  const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.redes_ids.length > 0 || busca;
   const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
