@@ -207,7 +207,8 @@ Deno.serve(async (req) => {
 
       // Atualizar produtos na tabela
       await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
-        nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt
+        nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt,
+        nPercAcrescimo: 0, nPercDesconto: 0
       });
       await delay(3000);
 
