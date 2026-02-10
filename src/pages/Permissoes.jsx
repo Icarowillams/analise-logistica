@@ -564,8 +564,10 @@ export default function Permissoes() {
                   onClick={() => {
                     setModoEdicao(false);
                     if (modoSelecao === 'funcionario') {
-                      const perm = permissoes.find(p => p.vendedor_id === funcionarioSelecionado);
-                      if (perm) setPermissaoAtual(perm);
+                      if (funcionariosSelecionados.length === 1) {
+                        const perm = permissoes.find(p => p.vendedor_id === funcionariosSelecionados[0]);
+                        if (perm) setPermissaoAtual(perm);
+                      }
                     } else {
                       gerarPermissaoModelo();
                     }
