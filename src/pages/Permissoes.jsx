@@ -516,7 +516,11 @@ export default function Permissoes() {
                           </Button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                          {funcionariosDaFuncao.map(func => (
+                          {funcionariosDaFuncao.filter(func => {
+                            if (!buscaFuncionarioFuncao) return true;
+                            const t = buscaFuncionarioFuncao.toLowerCase();
+                            return func.nome?.toLowerCase().includes(t) || func.email?.toLowerCase().includes(t);
+                          }).map(func => (
                             <div 
                               key={func.id} 
                               className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-slate-100 ${
