@@ -537,6 +537,7 @@ export default function Permissoes() {
                               </Label>
                             </div>
                           ))}
+                        </div>
                       </div>
                     </CollapsibleContent>
                   </div>
