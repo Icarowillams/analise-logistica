@@ -299,7 +299,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 }
 
 function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
-  const [showVisita, setShowVisita] = useState(false);
+  const [showVisita, setShowVisita] = useState(!!visitaExistente);
 
   const getStatusBadge = () => {
     if (!visitaExistente) {
