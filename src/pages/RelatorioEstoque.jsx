@@ -284,7 +284,7 @@ export default function RelatorioEstoque() {
         visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
       }))
       .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
-  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, visitasMap, filtroCliente, busca, apenasUltimoEstoque, dataInicio, dataFim, filtros, funcoes, vendedores, visitas]);
+  }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, visitasMap, filtroCliente, busca, apenasUltimoEstoque, dataInicio, dataFim, filtros, clientes, vendedores, visitas]);
 
   const toggleCliente = (clienteId) => {
     setClientesExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));
