@@ -537,7 +537,16 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           if (podeMarcarSolicitouPedido) {
             setShowPedidoDialog(true);
           } else {
-            // Só chamar onSuccess se não tiver permissão de marcar pedido
+            // Sem permissão de marcar pedido: finalizar direto
+            // Marcar reagendamento como realizado se aplicável
+            if (reagendamentoId) {
+              await updateReagendamentoMutation.mutateAsync({
+                id: reagendamentoId,
+                data: { status: 'realizada' }
+              });
+            }
+            queryClient.invalidateQueries(['visitasRoteiro']);
+            queryClient.invalidateQueries(['visitas']);
             onSuccess();
           }
         },
