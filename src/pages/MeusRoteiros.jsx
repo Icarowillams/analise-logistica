@@ -533,23 +533,19 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           setCheckinRealizado(true);
           setLoading(false);
           
-          // Se tem permissão, mostrar dialog de pedido (mas check-in já foi feito)
-          // NÃO chamar onSuccess ainda - manter na tela para responder questionário
-          if (podeMarcarSolicitouPedido) {
-            setShowPedidoDialog(true);
-          } else {
-            // Sem permissão de marcar pedido: finalizar direto
-            // Marcar reagendamento como realizado se aplicável
-            if (reagendamentoId) {
-              await updateReagendamentoMutation.mutateAsync({
-                id: reagendamentoId,
-                data: { status: 'realizada' }
-              });
-            }
-            queryClient.invalidateQueries(['visitasRoteiro']);
-            queryClient.invalidateQueries(['visitas']);
-            onSuccess();
+          // Marcar reagendamento como realizado se aplicável
+          if (reagendamentoId) {
+            await updateReagendamentoMutation.mutateAsync({
+              id: reagendamentoId,
+              data: { status: 'realizada' }
+            });
           }
+          
+          // Invalidar queries para que VisitaDetalhes carregue com a visita criada
+          queryClient.invalidateQueries(['visitasRoteiro']);
+          queryClient.invalidateQueries(['visitas']);
+          // A pergunta do pedido agora fica persistente dentro de VisitaDetalhes
+          onSuccess();
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
