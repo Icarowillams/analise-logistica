@@ -294,7 +294,7 @@ Deno.serve(async (req) => {
         });
         await delay(2000);
 
-        // Se produto não está na tabela, forçar AtualizarProdutos e tentar de novo
+        // Se produto não está na tabela, incluir produto na tabela e tentar de novo
         if (itemResult.faultstring &&
             (itemResult.faultstring.includes("não encontrado") ||
              itemResult.faultstring.includes("não localizado") ||
@@ -302,15 +302,25 @@ Deno.serve(async (req) => {
              itemResult.faultstring.includes("não cadastrado na Tabela") ||
              itemResult.faultstring.includes("nao cadastrado na Tabela"))) {
 
-          console.log(`[RETRY] Produto ${nCodProd} não está na tabela ${omieIdTabela}. Rodando AtualizarProdutos...`);
+          console.log(`[RETRY] Produto ${nCodProd} (${produto.codigo}) não na tabela ${omieIdTabela}. Tentando IncluirProdutoTabPreco...`);
           
-          // Usar codInt da tabela para AtualizarProdutos
-          const codIntTabela = tabela.omie_cod_int || `TP${tabela.id}`.substring(0, 20);
-          await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
-            nCodTabPreco: omieIdTabela, cCodIntTabPreco: codIntTabela,
-            nPercAcrescimo: 0, nPercDesconto: 0
+          // Incluir o produto específico na tabela
+          const inclResult = await omieCall(OMIE_URL_TABELA, "IncluirProdutoTabPreco", {
+            nCodTabPreco: omieIdTabela, nCodProd: nCodProd
           });
-          await delay(3000);
+          await delay(2000);
+          
+          console.log(`[RETRY] IncluirProdutoTabPreco resultado: ${JSON.stringify(inclResult).substring(0, 200)}`);
+
+          // Se falhou, tentar AtualizarProdutos para re-sincronizar toda a tabela
+          if (inclResult.faultstring) {
+            console.log(`[RETRY] IncluirProdutoTabPreco falhou. Tentando AtualizarProdutos...`);
+            const codIntTabela = tabela.omie_cod_int || `TP${tabela.id}`.substring(0, 20);
+            await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
+              nCodTabPreco: omieIdTabela, cCodIntTabPreco: codIntTabela
+            });
+            await delay(3000);
+          }
 
           // Tentar alterar o preço novamente
           itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
