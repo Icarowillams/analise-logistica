@@ -616,9 +616,9 @@ export default function RelatorioEstoque() {
                               </div>
                             </CollapsibleTrigger>
 
-                            {/* Produtos da Visita */}
+                            {/* Produtos da Visita - Agrupados por Produto */}
                             <CollapsibleContent>
-                              <div className="bg-white px-2 sm:px-6 py-2 sm:py-3 space-y-2">
+                              <div className="bg-white px-2 sm:px-6 py-2 sm:py-3 space-y-0">
                                 {/* Cabeçalho - Desktop Only */}
                                 <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
                                   <div className="col-span-4">Produto</div>
@@ -628,66 +628,109 @@ export default function RelatorioEstoque() {
                                   <div className="col-span-3 text-center">Lançamento</div>
                                 </div>
                                 
-                                {visita.produtos.map((prod, pIdx) => (
-                                  <div key={pIdx}>
-                                    {/* Mobile Layout - Card Style */}
-                                    <div className="sm:hidden p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-semibold text-slate-800 leading-tight">{prod.produto?.nome || 'Produto N/A'}</p>
-                                          {prod.produto?.codigo && (
-                                            <p className="text-[10px] text-slate-400">Cód: {prod.produto.codigo}</p>
-                                          )}
+                                {(() => {
+                                  // Agrupar registros por produto_id
+                                  const produtosAgrupados = {};
+                                  visita.produtos.forEach(prod => {
+                                    const prodId = prod.produto_id || 'sem_id';
+                                    if (!produtosAgrupados[prodId]) {
+                                      produtosAgrupados[prodId] = {
+                                        produto: prod.produto,
+                                        registros: [],
+                                        totalQuantidade: 0
+                                      };
+                                    }
+                                    produtosAgrupados[prodId].registros.push(prod);
+                                    produtosAgrupados[prodId].totalQuantidade += (prod.quantidade || 0);
+                                  });
+                                  
+                                  // Ordenar por nome do produto
+                                  const gruposOrdenados = Object.values(produtosAgrupados).sort((a, b) => 
+                                    (a.produto?.nome || '').localeCompare(b.produto?.nome || '')
+                                  );
+                                  
+                                  return gruposOrdenados.map((grupo, gIdx) => (
+                                    <div key={gIdx} className="border-b border-slate-100 last:border-b-0">
+                                      {grupo.registros.map((prod, pIdx) => (
+                                        <div key={pIdx}>
+                                          {/* Mobile Layout - Card Style */}
+                                          <div className="sm:hidden p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2 my-1">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-semibold text-slate-800 leading-tight">{prod.produto?.nome || 'Produto N/A'}</p>
+                                                {prod.produto?.codigo && (
+                                                  <p className="text-[10px] text-slate-400">Cód: {prod.produto.codigo}</p>
+                                                )}
+                                              </div>
+                                              <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5 shrink-0">
+                                                {prod.quantidade || 0} un.
+                                              </Badge>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="text-[10px] text-slate-500">
+                                                <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                              </div>
+                                              <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
+                                                {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
+                                              </Badge>
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-1.5">
+                                              <Clock className="w-2.5 h-2.5" />
+                                              {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                            </div>
+                                          </div>
+                                          
+                                          {/* Desktop Layout - Grid */}
+                                          <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50">
+                                            <div className="col-span-4">
+                                              <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
+                                              {prod.produto?.codigo && (
+                                                <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
+                                              )}
+                                            </div>
+                                            <div className="col-span-1 text-center">
+                                              <Badge className="bg-blue-100 text-blue-700">
+                                                {prod.quantidade || 0}
+                                              </Badge>
+                                            </div>
+                                            <div className="col-span-2 text-center text-sm text-slate-600">
+                                              {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                            </div>
+                                            <div className="col-span-2 text-center">
+                                              <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
+                                                {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
+                                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                                )}
+                                                {getLabelPrazo(prod.prazoVencimento)}
+                                              </Badge>
+                                            </div>
+                                            <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
+                                              <Clock className="w-3 h-3" />
+                                              {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                            </div>
+                                          </div>
                                         </div>
-                                        <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5 shrink-0">
-                                          {prod.quantidade || 0} un.
-                                        </Badge>
-                                      </div>
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="text-[10px] text-slate-500">
-                                          <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                      ))}
+                                      
+                                      {/* Subtotal do produto */}
+                                      <div className="sm:hidden px-2.5 py-1.5 mb-1">
+                                        <div className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-200">
+                                          <span className="text-[10px] font-bold text-amber-800 truncate">Total {grupo.produto?.nome || 'Produto'}</span>
+                                          <Badge className="bg-amber-500 text-white text-[10px] font-bold px-2 shrink-0">{grupo.totalQuantidade} un.</Badge>
                                         </div>
-                                        <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
-                                          {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
-                                        </Badge>
                                       </div>
-                                      <div className="text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-1.5">
-                                        <Clock className="w-2.5 h-2.5" />
-                                        {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                      <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-1.5 px-3 bg-amber-50 rounded-lg mx-1 mb-1 border border-amber-200">
+                                        <div className="col-span-4">
+                                          <span className="text-amber-800 font-bold text-sm">Total: {grupo.produto?.nome || 'Produto'}</span>
+                                        </div>
+                                        <div className="col-span-1 text-center">
+                                          <Badge className="bg-amber-500 text-white font-bold">{grupo.totalQuantidade}</Badge>
+                                        </div>
+                                        <div className="col-span-7"></div>
                                       </div>
                                     </div>
-                                    
-                                    {/* Desktop Layout - Grid */}
-                                    <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50">
-                                      <div className="col-span-4">
-                                        <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
-                                        {prod.produto?.codigo && (
-                                          <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
-                                        )}
-                                      </div>
-                                      <div className="col-span-1 text-center">
-                                        <Badge className="bg-blue-100 text-blue-700">
-                                          {prod.quantidade || 0}
-                                        </Badge>
-                                      </div>
-                                      <div className="col-span-2 text-center text-sm text-slate-600">
-                                        {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
-                                      </div>
-                                      <div className="col-span-2 text-center">
-                                        <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
-                                          {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
-                                            <AlertTriangle className="w-3 h-3 mr-1" />
-                                          )}
-                                          {getLabelPrazo(prod.prazoVencimento)}
-                                        </Badge>
-                                      </div>
-                                      <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
-                                        <Clock className="w-3 h-3" />
-                                        {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
+                                  ));
+                                })()}
                               </div>
                             </CollapsibleContent>
                           </Collapsible>
