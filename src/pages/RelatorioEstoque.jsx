@@ -213,17 +213,10 @@ export default function RelatorioEstoque() {
       );
     }
     
-    // Filtro por funções selecionadas
-    if (filtros.funcoes_ids.length > 0) {
-      const nomesFuncoesSelecionadas = funcoes
-        .filter(f => filtros.funcoes_ids.includes(f.id))
-        .map(f => f.nome?.toLowerCase());
-      
-      const vendedoresDasFuncoes = vendedores.filter(v => 
-        filtros.funcoes_ids.includes(v.funcao_id) || 
-        nomesFuncoesSelecionadas.includes(v.funcao?.toLowerCase())
-      ).map(v => v.id);
-      dados = dados.filter(e => vendedoresDasFuncoes.includes(e.vendedor_id));
+    // Filtro por redes selecionadas
+    if (filtros.redes_ids.length > 0) {
+      const clientesDasRedes = clientes.filter(c => filtros.redes_ids.includes(c.rede_id)).map(c => c.id);
+      dados = dados.filter(e => clientesDasRedes.includes(e.cliente_id));
     }
     
     if (busca) {
