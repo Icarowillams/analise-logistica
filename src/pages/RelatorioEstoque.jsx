@@ -41,11 +41,11 @@ export default function RelatorioEstoque() {
   // Filtros adicionais (como em RelatorioRoteiros)
   const [filtros, setFiltros] = useState({
     vendedores_ids: [],
-    funcoes_ids: []
+    redes_ids: []
   });
   const [showFiltros, setShowFiltros] = useState(true);
   const [buscaVendedor, setBuscaVendedor] = useState('');
-  const [buscaFuncao, setBuscaFuncao] = useState('');
+  const [buscaRede, setBuscaRede] = useState('');
 
   const { data: estoqueVisitaAll = [], isLoading } = useQuery({
     queryKey: ['estoqueVisita'],
