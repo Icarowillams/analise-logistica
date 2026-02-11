@@ -167,8 +167,8 @@ export default function RelatorioEstoque() {
       // Pegar vendedor do registro OU da visita vinculada
       const vendedorId = e.vendedor_id || visitaRelacionada?.vendedor_id;
       const vendedor = vendedoresMap[vendedorId];
-      // Pegar data da visita vinculada OU da data de criação
-      const dataVisitaCalc = visitaRelacionada?.data_visita || e.created_date?.split('T')[0];
+      // Usar created_date para a data do estoque (data de lançamento)
+      const dataVisitaCalc = e.created_date?.split('T')[0] || visitaRelacionada?.data_visita;
       return {
         ...e,
         cliente: clientesMap[e.cliente_id],
