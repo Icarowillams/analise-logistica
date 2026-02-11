@@ -70,6 +70,7 @@ export default function PedidoPdf({ pedidoId }) {
       <div ref={printRef} className="bg-white p-8 border rounded-xl shadow-sm text-sm max-w-3xl mx-auto">
         {/* Header */}
         <div className="pdf-header">
+          <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" alt="Pão e Mel" style={{height: '70px', margin: '0 auto 8px', display: 'block'}} />
           <h1>PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME</h1>
           <p className="subtitle">PAO E MEL</p>
           {pedido.numero_pedido && <div className="pedido-num">Pedido Nº {pedido.numero_pedido}</div>}
