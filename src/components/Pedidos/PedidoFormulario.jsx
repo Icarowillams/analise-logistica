@@ -32,6 +32,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [valorUnitario, setValorUnitario] = useState(0);
   const [itensLocal, setItensLocal] = useState([]);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
+  const [motivoTrocaId, setMotivoTrocaId] = useState('');
 
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
@@ -52,6 +53,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryKey: ['precosProduto', tabelaPrecoId],
     queryFn: () => tabelaPrecoId ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoId }) : [],
     enabled: !!tabelaPrecoId
+  });
+
+  const { data: motivosTroca = [] } = useQuery({
+    queryKey: ['motivosTroca'],
+    queryFn: () => base44.entities.MotivoTroca.list(),
+    enabled: tipo === 'troca'
   });
 
   // Load existing pedido if editing
@@ -91,7 +98,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         produto_nome: item.produto_nome,
         quantidade: item.quantidade,
         valor_unitario: item.valor_unitario,
-        valor_total: item.valor_total
+        valor_total: item.valor_total,
+        motivo_troca_id: item.motivo_troca_id || '',
+        motivo_troca_descricao: item.motivo_troca_descricao || ''
       })));
     }
   }, [existingItems]);
@@ -140,13 +149,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
 
     const produto = produtos.find(p => p.id === selectedProdutoId);
+    const motivoObj = motivosTroca.find(m => m.id === motivoTrocaId);
     const novoItem = {
       produto_id: selectedProdutoId,
       produto_codigo: produto?.codigo || '',
       produto_nome: produto?.nome || '',
       quantidade: parseFloat(quantidade),
       valor_unitario: valorUnitario,
-      valor_total: valorTotal
+      valor_total: valorTotal,
+      motivo_troca_id: tipo === 'troca' ? motivoTrocaId : '',
+      motivo_troca_descricao: tipo === 'troca' ? (motivoObj?.descricao || '') : ''
     };
 
     if (editingItemIndex !== null) {
@@ -162,6 +174,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     setProdutoSearch('');
     setQuantidade('');
     setValorUnitario(0);
+    setMotivoTrocaId('');
     toast.success('Item adicionado!');
   };
 
@@ -174,6 +187,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     setSelectedProdutoId(item.produto_id);
     setQuantidade(String(item.quantidade));
     setValorUnitario(item.valor_unitario);
+    setMotivoTrocaId(item.motivo_troca_id || '');
     setEditingItemIndex(index);
   };
 
@@ -233,7 +247,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
     // Create items
     for (const item of itensLocal) {
-      await base44.entities.PedidoItem.create({
+      const itemData = {
         pedido_id: savedPedidoId,
         produto_id: item.produto_id,
         produto_codigo: item.produto_codigo,
@@ -241,7 +255,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         quantidade: item.quantidade,
         valor_unitario: item.valor_unitario,
         valor_total: item.valor_total
-      });
+      };
+      if (tipo === 'troca' && item.motivo_troca_id) {
+        itemData.motivo_troca_id = item.motivo_troca_id;
+        itemData.motivo_troca_descricao = item.motivo_troca_descricao;
+      }
+      await base44.entities.PedidoItem.create(itemData);
     }
 
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
@@ -350,6 +369,19 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 <Label>Quantidade *</Label>
                 <Input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} placeholder="0" />
               </div>
+              {tipo === 'troca' && (
+                <div>
+                  <Label>Motivo da Troca</Label>
+                  <Select value={motivoTrocaId} onValueChange={setMotivoTrocaId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o motivo..." /></SelectTrigger>
+                    <SelectContent>
+                      {motivosTroca.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="p-3 text-center">
@@ -377,7 +409,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                     <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium truncate">{item.produto_codigo} - {item.produto_nome}</p>
-                        <p className="text-xs text-slate-500">Qtd: {item.quantidade} | Unit: R$ {item.valor_unitario.toFixed(2)} | Total: R$ {item.valor_total.toFixed(2)}</p>
+                        <p className="text-xs text-slate-500">
+                          Qtd: {item.quantidade} | Unit: R$ {item.valor_unitario.toFixed(2)} | Total: R$ {item.valor_total.toFixed(2)}
+                          {item.motivo_troca_descricao ? ` | Motivo: ${item.motivo_troca_descricao}` : ''}
+                        </p>
                       </div>
                       <div className="flex gap-1 ml-2">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => editarItem(idx)}>
