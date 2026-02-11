@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Search, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Save, Search, Trash2, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar }) {
@@ -381,7 +381,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                       </div>
                       <div className="flex gap-1 ml-2">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => editarItem(idx)}>
-                          <Search className="w-3 h-3" />
+                          <Pencil className="w-3 h-3" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => removerItem(idx)}>
                           <Trash2 className="w-3 h-3" />
