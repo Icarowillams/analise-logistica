@@ -280,42 +280,18 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label>Plano de Pagamento</Label>
-                  <Select value={planoPagamentoId} onValueChange={setPlanoPagamentoId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      {planosPagamento.filter(p => p.status === 'ativo').map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs text-slate-500">Plano de Pagamento</Label>
+                  <p className="text-sm font-medium">{planoAtual?.nome || '-'}</p>
                 </div>
                 <div>
-                  <Label>Tabela de Preço</Label>
-                  <Select value={tabelaPrecoId} onValueChange={setTabelaPrecoId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      {tabelasPreco.filter(t => t.status === 'ativo').map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs text-slate-500">Tabela de Preço</Label>
+                  <p className="text-sm font-medium">{tabelaAtual?.nome || '-'}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label>Modelo da Nota</Label>
-                  {tipo === 'troca' ? (
-                    <Input value="D1" disabled />
-                  ) : (
-                    <Select value={modeloNota} onValueChange={setModeloNota}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="55">55</SelectItem>
-                        <SelectItem value="nfce">NFCe</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
+                  <Label className="text-xs text-slate-500">Modelo da Nota</Label>
+                  <p className="text-sm font-medium">{tipo === 'troca' ? 'D1' : modeloNota === 'nfce' ? 'NFCe' : '55'}</p>
                 </div>
                 <div>
                   <Label>Data Previsão de Entrega</Label>
