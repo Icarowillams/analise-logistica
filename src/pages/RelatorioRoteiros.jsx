@@ -756,8 +756,27 @@ export default function RelatorioRoteiros() {
                         diasComRoteiro.forEach(diaSemana => {
                           const datasNoPeriodo = getDatasNoPeriodo(dataInicio, dataFim, diaSemana);
                           if (datasNoPeriodo.length > 0) {
-                            datasPorDiaSemana[diaSemana] = datasNoPeriodo;
+                            datasPorDiaSemana[diaSemana] = new Set(datasNoPeriodo);
                           }
+                        });
+                        
+                        // Também incluir datas com visitas realizadas (roteiro pode ter sido alterado/excluído)
+                        const visitasDoVendedor = datasComVisitasRealizadas[vendedor.id] || {};
+                        Object.entries(visitasDoVendedor).forEach(([diaSemana, datasSet]) => {
+                          if (!datasPorDiaSemana[diaSemana]) {
+                            datasPorDiaSemana[diaSemana] = new Set();
+                          }
+                          datasSet.forEach(d => datasPorDiaSemana[diaSemana].add(d));
+                        });
+                        
+                        // Converter Sets para arrays
+                        Object.keys(datasPorDiaSemana).forEach(dia => {
+                          datasPorDiaSemana[dia] = Array.from(datasPorDiaSemana[dia]);
+                        });
+                        
+                        // Remover dias sem datas
+                        Object.keys(datasPorDiaSemana).forEach(dia => {
+                          if (datasPorDiaSemana[dia].length === 0) delete datasPorDiaSemana[dia];
                         });
 
                         // Ordenar dias da semana
