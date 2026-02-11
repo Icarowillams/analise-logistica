@@ -46,10 +46,20 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     const lines = text.trim().split('\n');
     if (lines.length < 2) return { data: [], errors: ['Arquivo vazio ou sem dados'] };
 
-    const headers = lines[0].split(/[,;\t]/).map(h => h.trim().toUpperCase());
+    // Detectar separador: se a primeira linha tem ; usa ;, se tem \t usa \t, senão usa ,
+    const firstLine = lines[0];
+    let separator;
+    if (firstLine.includes('\t')) {
+      separator = '\t';
+    } else if (firstLine.includes(';')) {
+      separator = ';';
+    } else {
+      separator = ',';
+    }
+
+    const headers = firstLine.split(separator).map(h => h.trim().toUpperCase());
     
     // Verificar colunas obrigatórias
-    const requiredCols = ['TABELA', 'COD PRODUTO', 'VALOR UNITARIO'];
     const colMap = {
       'TABELA': headers.findIndex(h => h.includes('TABELA')),
       'COD_PRODUTO': headers.findIndex(h => h.includes('COD') && h.includes('PRODUTO')),
@@ -67,12 +77,21 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
     const data = [];
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(/[,;\t]/).map(v => v.trim());
+      const values = lines[i].split(separator).map(v => v.trim());
       if (values.length < 3 || !values[colMap.TABELA]) continue;
 
       const tabelaNome = values[colMap.TABELA]?.toUpperCase();
       const codProduto = values[colMap.COD_PRODUTO];
-      let valorStr = values[colMap.VALOR_UNITARIO]?.replace(',', '.') || '0';
+      // Tratar valor: substituir vírgula por ponto e remover espaços/caracteres extras
+      let valorStr = (values[colMap.VALOR_UNITARIO] || '0').replace(/\s/g, '').replace(',', '.');
+      // Se o separador for vírgula e o valor ficou partido (ex: "5" na coluna valor e "81" na próxima)
+      // reunir com ponto decimal
+      if (separator === ',' && colMap.VALOR_UNITARIO < values.length - 1) {
+        const nextVal = values[colMap.VALOR_UNITARIO + 1]?.trim();
+        if (nextVal && /^\d+$/.test(nextVal) && /^\d+$/.test(valorStr.replace('.', ''))) {
+          valorStr = valorStr + '.' + nextVal;
+        }
+      }
       const valor = parseFloat(valorStr);
 
       // Encontrar tabela e produto
