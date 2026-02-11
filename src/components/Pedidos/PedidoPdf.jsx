@@ -35,14 +35,26 @@ export default function PedidoPdf({ pedidoId }) {
     win.document.write(`
       <html><head><title>Pedido_${pedido.numero_pedido || 'N/A'}</title>
       <style>
-        body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-        th, td { border: 1px solid #333; padding: 4px 6px; text-align: left; font-size: 11px; }
-        th { background: #f0f0f0; font-weight: bold; }
-        .header { text-align: center; margin-bottom: 12px; }
-        .section { margin-top: 12px; font-weight: bold; border-bottom: 1px solid #333; padding-bottom: 2px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; padding: 30px; color: #1a1a1a; background: #fff; }
+        .pdf-header { text-align: center; padding-bottom: 16px; border-bottom: 3px solid #d97706; margin-bottom: 20px; }
+        .pdf-header h1 { font-size: 18px; font-weight: 700; color: #92400e; letter-spacing: 0.5px; }
+        .pdf-header .subtitle { font-size: 11px; color: #78716c; margin-top: 2px; }
+        .pdf-header .pedido-num { font-size: 14px; font-weight: 700; color: #1a1a1a; margin-top: 10px; display: inline-block; background: #fef3c7; padding: 4px 16px; border-radius: 4px; }
+        .pdf-header .pedido-data { font-size: 11px; color: #78716c; margin-top: 4px; }
+        .section-title { font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 1px; padding: 6px 0 4px; margin-top: 16px; border-bottom: 1.5px solid #e5e7eb; margin-bottom: 8px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 11px; }
+        .info-grid .label { color: #78716c; font-size: 10px; }
+        .info-grid .value { font-weight: 500; color: #1a1a1a; }
+        .info-row { margin-bottom: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+        thead th { background: #fef3c7; color: #92400e; font-weight: 700; padding: 8px 6px; text-align: left; border-bottom: 2px solid #d97706; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tbody td { padding: 7px 6px; border-bottom: 1px solid #f3f4f6; }
+        tbody tr:nth-child(even) { background: #fafafa; }
+        tfoot td { padding: 10px 6px; font-weight: 700; border-top: 2px solid #d97706; background: #fef3c7; }
         .right { text-align: right; }
+        .obs-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 8px 12px; margin-top: 8px; font-size: 11px; }
+        .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #a8a29e; border-top: 1px solid #e5e7eb; padding-top: 12px; }
       </style></head><body>${content.innerHTML}</body></html>
     `);
     win.document.close();
@@ -55,53 +67,59 @@ export default function PedidoPdf({ pedidoId }) {
         <Download className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
       </Button>
 
-      <div ref={printRef} className="bg-white p-6 border rounded-lg text-sm">
-        <div className="text-center mb-4">
-          <h2 className="font-bold text-lg">PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME</h2>
-          <p className="text-xs">PAO E MEL</p>
-          {pedido.numero_pedido && <p className="mt-2 font-bold">Pedido {pedido.numero_pedido}</p>}
-          <p className="text-xs">{dataEmissao}</p>
+      <div ref={printRef} className="bg-white p-8 border rounded-xl shadow-sm text-sm max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="pdf-header">
+          <h1>PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME</h1>
+          <p className="subtitle">PAO E MEL</p>
+          {pedido.numero_pedido && <div className="pedido-num">Pedido Nº {pedido.numero_pedido}</div>}
+          <p className="pedido-data">{dataEmissao}</p>
         </div>
 
-        <div className="section">CLIENTE</div>
+        {/* Cliente */}
+        <div className="section-title">Dados do Cliente</div>
         <div className="info-grid">
-          <div><strong>Código:</strong> {pedido.cliente_codigo}</div>
-          <div><strong>CPF/CNPJ:</strong> {pedido.cliente_cpf_cnpj}</div>
-          <div><strong>Nome/Razão:</strong> {pedido.cliente_nome}</div>
-          <div><strong>Fantasia:</strong> {pedido.cliente_nome_fantasia}</div>
-          <div><strong>Endereço:</strong> {pedido.cliente_endereco}, {pedido.cliente_numero}</div>
-          <div><strong>Bairro:</strong> {pedido.cliente_bairro}</div>
-          <div><strong>Cidade:</strong> {pedido.cliente_cidade} - {pedido.cliente_estado}</div>
-          <div><strong>CEP:</strong> {pedido.cliente_cep}</div>
+          <div className="info-row"><span className="label">Código</span><br /><span className="value">{pedido.cliente_codigo}</span></div>
+          <div className="info-row"><span className="label">CPF/CNPJ</span><br /><span className="value">{pedido.cliente_cpf_cnpj || '-'}</span></div>
+          <div className="info-row"><span className="label">Nome/Razão Social</span><br /><span className="value">{pedido.cliente_nome}</span></div>
+          <div className="info-row"><span className="label">Nome Fantasia</span><br /><span className="value">{pedido.cliente_nome_fantasia || '-'}</span></div>
+          <div className="info-row"><span className="label">Endereço</span><br /><span className="value">{[pedido.cliente_endereco, pedido.cliente_numero].filter(Boolean).join(', ')}</span></div>
+          <div className="info-row"><span className="label">Bairro</span><br /><span className="value">{pedido.cliente_bairro || '-'}</span></div>
+          <div className="info-row"><span className="label">Cidade / UF</span><br /><span className="value">{[pedido.cliente_cidade, pedido.cliente_estado].filter(Boolean).join(' - ')}</span></div>
+          <div className="info-row"><span className="label">CEP</span><br /><span className="value">{pedido.cliente_cep || '-'}</span></div>
         </div>
 
-        <div className="section">INFORMAÇÕES DO PEDIDO</div>
+        {/* Info Pedido */}
+        <div className="section-title">Informações do Pedido</div>
         <div className="info-grid">
-          <div><strong>Vendedor:</strong> {pedido.vendedor_nome}</div>
-          <div><strong>Modelo:</strong> {modeloLabel}</div>
-          <div><strong>Pagamento:</strong> {pedido.plano_pagamento_nome}</div>
-          <div><strong>Tabela:</strong> {pedido.tabela_preco_nome}</div>
-          <div><strong>Data Emissão:</strong> {dataEmissao}</div>
-          <div><strong>Data Envio:</strong> {dataEnvio}</div>
-          {pedido.numero_pedido_compra && <div><strong>Nº Ped. Compra:</strong> {pedido.numero_pedido_compra}</div>}
+          <div className="info-row"><span className="label">Vendedor</span><br /><span className="value">{pedido.vendedor_nome}</span></div>
+          <div className="info-row"><span className="label">Modelo da Nota</span><br /><span className="value">{modeloLabel}</span></div>
+          <div className="info-row"><span className="label">Plano de Pagamento</span><br /><span className="value">{pedido.plano_pagamento_nome || '-'}</span></div>
+          <div className="info-row"><span className="label">Tabela de Preço</span><br /><span className="value">{pedido.tabela_preco_nome || '-'}</span></div>
+          <div className="info-row"><span className="label">Data Emissão</span><br /><span className="value">{dataEmissao}</span></div>
+          <div className="info-row"><span className="label">Data Envio</span><br /><span className="value">{dataEnvio || '-'}</span></div>
+          {pedido.numero_pedido_compra && <div className="info-row"><span className="label">Nº Ped. Compra</span><br /><span className="value">{pedido.numero_pedido_compra}</span></div>}
+          {pedido.data_previsao_entrega && <div className="info-row"><span className="label">Previsão Entrega</span><br /><span className="value">{new Date(pedido.data_previsao_entrega + 'T12:00:00').toLocaleDateString('pt-BR')}</span></div>}
         </div>
 
+        {/* Observações */}
         {pedido.observacoes && (
           <>
-            <div className="section">OBSERVAÇÃO</div>
-            <p>{pedido.observacoes}</p>
+            <div className="section-title">Observações</div>
+            <div className="obs-box">{pedido.observacoes}</div>
           </>
         )}
 
-        <div className="section">DADOS DOS PRODUTOS</div>
+        {/* Produtos */}
+        <div className="section-title">Produtos</div>
         <table>
           <thead>
             <tr>
-              <th>Cód.</th>
+              <th style={{width:'60px'}}>Cód.</th>
               <th>Descrição do Produto</th>
-              <th className="right">Qtd.</th>
-              <th className="right">Vl. Unit.</th>
-              <th className="right">Vl. Total</th>
+              <th className="right" style={{width:'60px'}}>Qtd.</th>
+              <th className="right" style={{width:'80px'}}>Vl. Unit.</th>
+              <th className="right" style={{width:'90px'}}>Vl. Total</th>
             </tr>
           </thead>
           <tbody>
@@ -110,18 +128,23 @@ export default function PedidoPdf({ pedidoId }) {
                 <td>{item.produto_codigo}</td>
                 <td>{item.produto_nome}</td>
                 <td className="right">{item.quantidade}</td>
-                <td className="right">{(item.valor_unitario || 0).toFixed(2)}</td>
-                <td className="right">{(item.valor_total || 0).toFixed(2)}</td>
+                <td className="right">R$ {(item.valor_unitario || 0).toFixed(2)}</td>
+                <td className="right">R$ {(item.valor_total || 0).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="4" className="right"><strong>TOTAL</strong></td>
-              <td className="right"><strong>{totalProdutos.toFixed(2)}</strong></td>
+              <td colSpan="4" className="right">TOTAL</td>
+              <td className="right">R$ {totalProdutos.toFixed(2)}</td>
             </tr>
           </tfoot>
         </table>
+
+        {/* Footer */}
+        <div className="footer">
+          Documento gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — Pão e Mel
+        </div>
       </div>
     </div>
   );
