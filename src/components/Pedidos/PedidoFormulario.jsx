@@ -109,6 +109,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [selectedProdutoId, precosAll, tabelaPrecoId]);
 
+  // Auto-select product when search matches a code exactly
+  useEffect(() => {
+    if (produtoSearch.trim()) {
+      const match = produtos.find(p => p.codigo === produtoSearch.trim());
+      if (match) {
+        setSelectedProdutoId(match.id);
+      }
+    }
+  }, [produtoSearch, produtos]);
+
   const produtosFiltrados = useMemo(() => {
     const s = produtoSearch.toLowerCase();
     if (!s) return produtos.slice(0, 50);
@@ -165,7 +175,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     setQuantidade(String(item.quantidade));
     setValorUnitario(item.valor_unitario);
     setEditingItemIndex(index);
-    setActiveTab('produto');
   };
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
@@ -260,10 +269,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="pedido">Pedido</TabsTrigger>
           <TabsTrigger value="produto">Produto</TabsTrigger>
-          <TabsTrigger value="itens">Itens ({itensLocal.length})</TabsTrigger>
         </TabsList>
 
         {/* Tab Pedido */}
@@ -315,27 +323,28 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
           <Card>
             <CardContent className="pt-4 space-y-4">
               <div>
-                <Label>Buscar Produto</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    placeholder="Código ou nome..."
-                    value={produtoSearch}
-                    onChange={(e) => setProdutoSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
                 <Label>Produto *</Label>
-                <Select value={selectedProdutoId} onValueChange={setSelectedProdutoId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o produto..." /></SelectTrigger>
-                  <SelectContent>
-                    {produtosFiltrados.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.codigo} - {p.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <div className="relative w-36 shrink-0">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      placeholder="Cód..."
+                      value={produtoSearch}
+                      onChange={(e) => setProdutoSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Select value={selectedProdutoId} onValueChange={(val) => { setSelectedProdutoId(val); const p = produtos.find(pr => pr.id === val); if (p) setProdutoSearch(p.codigo || ''); }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o produto..." /></SelectTrigger>
+                      <SelectContent>
+                        {produtosFiltrados.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.codigo} - {p.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
               <div>
                 <Label>Quantidade *</Label>
@@ -386,43 +395,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
           </Card>
         </TabsContent>
 
-        {/* Tab Itens */}
-        <TabsContent value="itens">
-          <Card>
-            <CardContent className="pt-4">
-              {itensLocal.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">Nenhum item adicionado</p>
-              ) : (
-                <div className="space-y-2">
-                  {itensLocal.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm">{item.produto_codigo} - {item.produto_nome}</p>
-                        <div className="flex gap-4 text-xs text-slate-500 mt-1">
-                          <span>Qtd: {item.quantidade}</span>
-                          <span>Unit: R$ {item.valor_unitario.toFixed(2)}</span>
-                          <span className="font-semibold text-slate-700">Total: R$ {item.valor_total.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 ml-2">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => editarItem(idx)}>
-                          <Search className="w-3 h-3" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => removerItem(idx)}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-200 mt-3">
-                    <span className="font-semibold">Total do Pedido</span>
-                    <span className="font-bold text-lg">R$ {totalPedido.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+
       </Tabs>
 
       {/* Save button */}
