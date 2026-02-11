@@ -595,7 +595,7 @@ export default function RelatorioEstoque() {
                                     <div className="flex items-center gap-1.5">
                                       <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
                                       <span className="font-medium text-slate-700 text-xs sm:text-sm">
-                                        {new Date(visita.data).toLocaleDateString('pt-BR')}
+                                        {new Date(visita.data + 'T12:00:00').toLocaleDateString('pt-BR')}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1 text-slate-500">
