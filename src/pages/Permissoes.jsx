@@ -200,7 +200,8 @@ export default function Permissoes() {
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
       permissoes_visitas: permissaoAtual.permissoes_visitas || {},
-      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {}
+      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {},
+      permissoes_pedidos: permissaoAtual.permissoes_pedidos || {}
     };
 
     if (funcionariosSelecionados.length === 1) {
@@ -254,7 +255,8 @@ export default function Permissoes() {
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
       permissoes_visitas: permissaoAtual.permissoes_visitas || {},
-      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {}
+      permissoes_relatorios: permissaoAtual.permissoes_relatorios || {},
+      permissoes_pedidos: permissaoAtual.permissoes_pedidos || {}
     };
 
     let atualizados = 0;
@@ -353,7 +355,8 @@ export default function Permissoes() {
         rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
         rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
         analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
-      }
+      },
+      permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
     });
   };
 
@@ -650,7 +653,8 @@ export default function Permissoes() {
                       rel_estoque_visualizar: true, rel_estoque_filtros: true, rel_estoque_exportar: true,
                       rel_trocas_visualizar: true, rel_trocas_filtros: true, rel_trocas_exportar: true,
                       analise_visitas_visualizar: true, analise_visitas_filtros: true, analise_visitas_exportar: true
-                    }
+                    },
+                    permissoes_pedidos: { visualizar: true, digitar_pedido_venda: true, digitar_pedido_troca: true, enviar_pedido: true, editar_pedido: true, excluir_pedido: true }
                   }));
                 }}
                 className="gap-1 text-green-700 border-green-300 hover:bg-green-50"
@@ -675,7 +679,8 @@ export default function Permissoes() {
                       rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
                       rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
                       analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
-                    }
+                    },
+                    permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
                   }));
                 }}
                 className="gap-1 text-red-700 border-red-300 hover:bg-red-50"
@@ -702,6 +707,7 @@ export default function Permissoes() {
                       {grupo === 'dashboard' && 'Dashboard'}
                       {grupo === 'visitas' && 'Visitas'}
                       {grupo === 'relatorios' && 'Relatórios'}
+                      {grupo === 'pedidos' && 'Pedidos'}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {abas.map(aba => (
@@ -900,6 +906,38 @@ export default function Permissoes() {
                           disabled={!modoEdicao}
                         />
                         <Label htmlFor={`visitas-${perm}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
+                          {labels[perm]}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Pedidos */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-base">Permissões - Pedidos</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {['visualizar', 'digitar_pedido_venda', 'digitar_pedido_troca', 'enviar_pedido', 'editar_pedido', 'excluir_pedido'].map(perm => {
+                    const labels = {
+                      visualizar: 'Visualizar',
+                      digitar_pedido_venda: 'Digitar Pedido de Venda',
+                      digitar_pedido_troca: 'Digitar Pedido de Troca',
+                      enviar_pedido: 'Enviar Pedido',
+                      editar_pedido: 'Editar Pedido',
+                      excluir_pedido: 'Excluir Pedido (antes de enviar)'
+                    };
+                    return (
+                      <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
+                        <Checkbox
+                          id={`pedidos-${perm}`}
+                          checked={permissaoAtual.permissoes_pedidos?.[perm] || false}
+                          onCheckedChange={() => togglePermissao('permissoes_pedidos', perm)}
+                          disabled={!modoEdicao}
+                        />
+                        <Label htmlFor={`pedidos-${perm}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
                           {labels[perm]}
                         </Label>
                       </div>
