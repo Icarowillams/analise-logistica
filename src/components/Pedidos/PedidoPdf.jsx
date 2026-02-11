@@ -260,6 +260,10 @@ export default function PedidoPdf({ pedidoId }) {
               <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>{items.length} ite{items.length === 1 ? 'm' : 'ns'}</td>
               <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'13px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>R$ {fmtMoney(totalProdutos)}</td>
             </tr>
+            <tr>
+              <td colSpan="4" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
+              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
+            </tr>
           </tfoot>
         </table>
 
