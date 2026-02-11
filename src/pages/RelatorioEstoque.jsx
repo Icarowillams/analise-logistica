@@ -137,7 +137,7 @@ export default function RelatorioEstoque() {
     if (!dataValidade) return null;
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    const validade = new Date(dataValidade);
+    const validade = new Date(dataValidade + 'T12:00:00');
     validade.setHours(0, 0, 0, 0);
     const diffTime = validade - hoje;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
