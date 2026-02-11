@@ -87,6 +87,7 @@ export default function PedidoPdf({ pedidoId }) {
   };
 
   const fmtMoney = (v) => (v || 0).toFixed(2);
+  const fmtMoney3 = (v) => (v || 0).toFixed(3);
 
   return (
     <div className="space-y-4">
@@ -262,7 +263,7 @@ export default function PedidoPdf({ pedidoId }) {
             </tr>
             <tr>
               <td colSpan="4" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
-              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
+              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney3(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
             </tr>
           </tfoot>
         </table>
