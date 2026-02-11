@@ -240,10 +240,15 @@ export default function RelatorioRoteiros() {
     return resultado;
   }, [roteirosPermitidos, filtros, vendedores, clientesMap, funcoes]);
 
+  // Incluir vendedores que têm roteiros OU que tiveram visitas no período
   const vendedoresComRoteiros = useMemo(() => {
     const vendedorIds = new Set(roteirosFiltrados.map(r => r.vendedor_id));
+    // Também incluir vendedores que tiveram visitas no período (roteiro pode ter sido excluído)
+    visitasNoPeriodo.forEach(v => {
+      if (v.vendedor_id) vendedorIds.add(v.vendedor_id);
+    });
     return vendedores.filter(v => vendedorIds.has(v.id) && v.status === 'ativo');
-  }, [vendedores, roteirosFiltrados]);
+  }, [vendedores, roteirosFiltrados, visitasNoPeriodo]);
 
   const roteirosPorVendedor = useMemo(() => {
     const agrupado = {};
