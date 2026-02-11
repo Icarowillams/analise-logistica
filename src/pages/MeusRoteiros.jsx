@@ -770,6 +770,10 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       });
     }
 
+    // Invalidar queries e aguardar ANTES de chamar onSuccess
+    await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+
     setShowNaoAtendidoDialog(false);
     setMotivoNaoAtendimento('');
     setMotivoNaoAtendSearch('');
