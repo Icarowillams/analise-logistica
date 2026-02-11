@@ -308,7 +308,7 @@ export default function RelatorioEstoque() {
             e.produto?.nome || '',
             e.produto?.codigo || '',
             e.quantidade || 0,
-            e.data_validade ? new Date(e.data_validade).toLocaleDateString('pt-BR') : '',
+            e.data_validade ? new Date(e.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '',
             prazo,
             e.vendedor?.nome || ''
           ].join(';'));
