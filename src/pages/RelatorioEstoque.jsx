@@ -662,7 +662,7 @@ export default function RelatorioEstoque() {
                                             </div>
                                             <div className="flex items-center justify-between gap-2">
                                               <div className="text-[10px] text-slate-500">
-                                                <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                                <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                               </div>
                                               <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
                                                 {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
