@@ -229,6 +229,18 @@ export default function PedidoPdf({ pedidoId }) {
           {pedido.observacoes || ''}
         </div>
 
+        {/* ===== AVISO DE TROCA ===== */}
+        {pedido.tipo === 'troca' && (
+          <div style={{ background:'#FFF3CD', border:'2px solid #D97706', marginTop:'8px', padding:'8px 10px', textAlign:'center' }}>
+            <span style={{ fontSize:'13px', fontWeight:700, color:'#92400E', textTransform:'uppercase', letterSpacing:'1px' }}>
+              ⚠ PEDIDO DE TROCA — MODELO D1
+            </span>
+            <div style={{ fontSize:'9px', color:'#92400E', marginTop:'2px' }}>
+              Este documento refere-se a um pedido de troca de mercadorias. Os motivos estão descritos abaixo de cada item.
+            </div>
+          </div>
+        )}
+
         {/* ===== DADOS DOS PRODUTOS ===== */}
         <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
           DADOS DOS PRODUTOS
@@ -245,13 +257,22 @@ export default function PedidoPdf({ pedidoId }) {
           </thead>
           <tbody>
             {items.map((item, idx) => (
-              <tr key={idx}>
-                <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.produto_codigo}</td>
-                <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.produto_nome}</td>
-                <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.quantidade}</td>
-                <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_unitario)}</td>
-                <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_total)}</td>
-              </tr>
+              <React.Fragment key={idx}>
+                <tr>
+                  <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{item.produto_codigo}</td>
+                  <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{item.produto_nome}</td>
+                  <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{item.quantidade}</td>
+                  <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{fmtMoney(item.valor_unitario)}</td>
+                  <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{fmtMoney(item.valor_total)}</td>
+                </tr>
+                {pedido.tipo === 'troca' && item.motivo_troca_descricao && (
+                  <tr>
+                    <td colSpan="5" style={{ border:'1px solid #999', borderTop:'none', padding:'2px 5px 4px 20px', fontSize:'8px', color:'#92400E', background:'#FFFBEB' }}>
+                      <strong>Motivo da troca:</strong> {item.motivo_troca_descricao}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
           <tfoot>
