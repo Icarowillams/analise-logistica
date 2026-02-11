@@ -63,6 +63,12 @@ export default function PedidoPdf({ pedidoId }) {
     enabled: !!pedidoId
   });
 
+  const { data: empresas = [] } = useQuery({
+    queryKey: ['empresa-pdf'],
+    queryFn: () => base44.entities.Empresa.list()
+  });
+  const empresa = empresas[0];
+
   if (!pedido) return <p className="text-center py-8 text-slate-500">Carregando...</p>;
 
   const modeloLabel = pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === 'nfce' ? 'NFCe' : '55';
@@ -98,8 +104,13 @@ export default function PedidoPdf({ pedidoId }) {
                 <img src={LOGO_URL} alt="Logo" style={{ height:'60px' }} />
               </td>
               <td style={{ textAlign:'center', padding:'6px' }}>
-                <div style={{ fontSize:'13px', fontWeight:700 }}>PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME</div>
-                <div style={{ fontSize:'9px', color:'#555' }}>PAO E MEL</div>
+                <div style={{ fontSize:'13px', fontWeight:700 }}>{empresa?.razao_social || 'PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME'}</div>
+                <div style={{ fontSize:'9px', color:'#555' }}>{empresa?.nome_fantasia || 'PAO E MEL'}</div>
+                {empresa && (
+                  <div style={{ fontSize:'8px', color:'#555', marginTop:'2px' }}>
+                    CNPJ: {empresa.cnpj} — IE: {empresa.inscricao_estadual || '-'} — Tel: {empresa.telefone || '-'}
+                  </div>
+                )}
               </td>
               <td style={{ width:'140px', borderLeft:'1.5px solid #000', padding:'6px', fontSize:'10px' }}>
                 <div><span style={{ fontWeight:700 }}>Pedido</span></div>
@@ -159,35 +170,6 @@ export default function PedidoPdf({ pedidoId }) {
               <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
                 <span style={{ fontSize:'8px', color:'#555', display:'block' }}>UF / CEP</span>
                 <span style={{ fontSize:'10px', fontWeight:500 }}>{pedido.cliente_estado || '-'} / {pedido.cliente_cep || '-'}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* ===== VALORES ===== */}
-        <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
-          VALORES
-        </div>
-        <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
-          <tbody>
-            <tr>
-              <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>VALOR TOTAL PRODUTOS</span>
-                <span style={{ fontSize:'10px', fontWeight:600 }}>{fmtMoney(totalProdutos)}</span>
-              </td>
-              <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>TOTAL ITENS</span>
-                <span style={{ fontSize:'10px', fontWeight:600 }}>{items.length}</span>
-              </td>
-              <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>TOTAL QUANTIDADE</span>
-                <span style={{ fontSize:'10px', fontWeight:600 }}>{totalQtd}</span>
-              </td>
-            </tr>
-            <tr>
-              <td colSpan="3" style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>VALOR TOTAL DO PEDIDO</span>
-                <span style={{ fontSize:'12px', fontWeight:700 }}>R$ {fmtMoney(totalProdutos)}</span>
               </td>
             </tr>
           </tbody>
@@ -273,10 +255,10 @@ export default function PedidoPdf({ pedidoId }) {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="2" style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>TOTAL</td>
-              <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', fontWeight:700, background:'#f5f5f5', textAlign:'center' }}>{totalQtd}</td>
-              <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}></td>
-              <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>{fmtMoney(totalProdutos)}</td>
+              <td colSpan="2" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>TOTAL GERAL</td>
+              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'11px', fontWeight:700, background:'#e5e5e5', textAlign:'center' }}>{totalQtd}</td>
+              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>{items.length} ite{items.length === 1 ? 'm' : 'ns'}</td>
+              <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'13px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>R$ {fmtMoney(totalProdutos)}</td>
             </tr>
           </tfoot>
         </table>

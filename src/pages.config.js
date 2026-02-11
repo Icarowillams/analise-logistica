@@ -87,6 +87,7 @@ import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
 import Pedidos from './pages/Pedidos';
+import Empresa from './pages/Empresa';
 import __Layout from './Layout.jsx';
 
 
@@ -131,6 +132,7 @@ export const PAGES = {
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
     "Pedidos": Pedidos,
+    "Empresa": Empresa,
 }
 
 export const pagesConfig = {
