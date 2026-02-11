@@ -57,6 +57,7 @@ import Dashboard from './pages/Dashboard';
 import DashboardClientes from './pages/DashboardClientes';
 import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardVendedor from './pages/DashboardVendedor';
+import Empresa from './pages/Empresa';
 import Funcionarios from './pages/Funcionarios';
 import Funcoes from './pages/Funcoes';
 import Home from './pages/Home';
@@ -72,6 +73,7 @@ import MeusRoteiros from './pages/MeusRoteiros';
 import MotivosTroca from './pages/MotivosTroca';
 import PainelGestorVisita from './pages/PainelGestorVisita';
 import PainelRodrigosM from './pages/PainelRodrigosM';
+import Pedidos from './pages/Pedidos';
 import Permissoes from './pages/Permissoes';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Produtos from './pages/Produtos';
@@ -86,8 +88,6 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import Pedidos from './pages/Pedidos';
-import Empresa from './pages/Empresa';
 import __Layout from './Layout.jsx';
 
 
@@ -102,6 +102,7 @@ export const PAGES = {
     "DashboardClientes": DashboardClientes,
     "DashboardTrocas": DashboardTrocas,
     "DashboardVendedor": DashboardVendedor,
+    "Empresa": Empresa,
     "Funcionarios": Funcionarios,
     "Funcoes": Funcoes,
     "Home": Home,
@@ -117,6 +118,7 @@ export const PAGES = {
     "MotivosTroca": MotivosTroca,
     "PainelGestorVisita": PainelGestorVisita,
     "PainelRodrigosM": PainelRodrigosM,
+    "Pedidos": Pedidos,
     "Permissoes": Permissoes,
     "PlanosPagamento": PlanosPagamento,
     "Produtos": Produtos,
@@ -131,8 +133,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "Pedidos": Pedidos,
-    "Empresa": Empresa,
 }
 
 export const pagesConfig = {

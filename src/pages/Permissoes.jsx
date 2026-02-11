@@ -46,7 +46,9 @@ const ABAS_SISTEMA = [
   { id: 'PainelGestorVisita', nome: 'Painel de Roteiros', grupo: 'visitas' },
   { id: 'RelatorioRoteiros', nome: 'Roteiros/Visitas', grupo: 'relatorios' },
   { id: 'RelatorioEstoque', nome: 'Estoque', grupo: 'relatorios' },
-  { id: 'RelatorioTrocas', nome: 'Trocas', grupo: 'relatorios' }
+  { id: 'RelatorioTrocas', nome: 'Trocas', grupo: 'relatorios' },
+  { id: 'Pedidos', nome: 'Pedidos', grupo: 'pedidos' },
+  { id: 'Empresa', nome: 'Empresa', grupo: 'cadastros' }
 ];
 
 const RELATORIOS_PERMISSOES = [
@@ -137,7 +139,8 @@ export default function Permissoes() {
             rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
             rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
             analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
-          }
+          },
+          permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
         });
       }
     } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length > 1) {
@@ -158,7 +161,8 @@ export default function Permissoes() {
           rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
           rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
           analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
-        }
+        },
+        permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
       });
     } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length === 0) {
       setPermissaoAtual(null);
