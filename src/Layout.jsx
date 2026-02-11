@@ -146,6 +146,11 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Meus Roteiros', path: 'MeusRoteiros' },
           { title: 'Painel de Roteiros', path: 'PainelGestorVisita' }
         ]
+      },
+      {
+        title: 'Pedidos',
+        icon: CreditCard,
+        path: 'Pedidos'
       }
     ];
 
