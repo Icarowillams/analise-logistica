@@ -290,6 +290,24 @@ export default function RelatorioRoteiros() {
     return diasSemanaConfig.find(d => d.ordem === diaSemana);
   };
 
+  // Obter todas as datas com visitas realizadas para um vendedor em um dia da semana,
+  // mesmo que o roteiro tenha sido alterado/excluído
+  const datasComVisitasRealizadas = useMemo(() => {
+    const resultado = {}; // {vendedorId: {diaSemana: Set<data>}}
+    
+    visitasNoPeriodo.forEach(v => {
+      if (!v.data_visita || !v.vendedor_id) return;
+      const diaConfig = getDiaSemanaReal(v.data_visita);
+      if (!diaConfig) return;
+      
+      if (!resultado[v.vendedor_id]) resultado[v.vendedor_id] = {};
+      if (!resultado[v.vendedor_id][diaConfig.valor]) resultado[v.vendedor_id][diaConfig.valor] = new Set();
+      resultado[v.vendedor_id][diaConfig.valor].add(v.data_visita);
+    });
+    
+    return resultado;
+  }, [visitasNoPeriodo]);
+
   const limparFiltros = () => {
     setFiltros({ vendedores_ids: [], funcoes_ids: [], cliente_busca: '' });
     setBuscaVendedor('');
