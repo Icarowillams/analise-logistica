@@ -1188,7 +1188,12 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-            <Badge className="bg-slate-600 text-white text-[10px] sm:text-xs px-1.5">{clienteInfo.ordem}</Badge>
+            {clienteInfo.ordem !== 999 && (
+              <Badge className="bg-slate-600 text-white text-[10px] sm:text-xs px-1.5">{clienteInfo.ordem}</Badge>
+            )}
+            {clienteInfo.roteiroAlterado && (
+              <Badge className="bg-orange-500 text-white text-[10px] sm:text-xs px-1.5">Rot. Anterior</Badge>
+            )}
             {(cliente?.codigo || clienteInfo.cliente_codigo) && (
               <Badge variant="outline" className="text-[10px] sm:text-xs px-1">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
             )}
