@@ -104,7 +104,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
           { title: 'Rotas', path: 'Rotas' },
-          { title: 'Roteiros', path: 'Roteiros' }
+          { title: 'Roteiros', path: 'Roteiros' },
+          { title: 'Empresa', path: 'Empresa' }
         ]
       },
       {
