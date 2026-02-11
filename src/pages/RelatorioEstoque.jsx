@@ -688,7 +688,7 @@ export default function RelatorioEstoque() {
                                               </Badge>
                                             </div>
                                             <div className="col-span-2 text-center text-sm text-slate-600">
-                                              {prod.data_validade ? new Date(prod.data_validade).toLocaleDateString('pt-BR') : '-'}
+                                              {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                             </div>
                                             <div className="col-span-2 text-center">
                                               <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
