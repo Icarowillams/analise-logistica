@@ -32,8 +32,8 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit }
   const { data: editingPedido } = useQuery({
     queryKey: ['pedido-edit', editingPedidoId],
     queryFn: async () => {
-      const pedidos = await base44.entities.Pedido.filter({ id: editingPedidoId });
-      return pedidos[0];
+      const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
+      return allPedidos.find(p => p.id === editingPedidoId);
     },
     enabled: !!editingPedidoId
   });
