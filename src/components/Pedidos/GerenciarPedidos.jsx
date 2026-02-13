@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoPdf from './PedidoPdf';
+import CancelarPedidoModal from './CancelarPedidoModal';
 
 export default function GerenciarPedidos({ onEditPedido }) {
   const queryClient = useQueryClient();
@@ -28,6 +29,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [enviandoOmieId, setEnviandoOmieId] = useState(null);
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [cancelarPedido, setCancelarPedido] = useState(null);
+  const [cancelarOpen, setCancelarOpen] = useState(false);
 
   React.useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
@@ -173,35 +176,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
   };
 
-  const [excluindoId, setExcluindoId] = useState(null);
-
-  const excluirPedido = async (pedido) => {
-    if (!confirm(`Excluir o pedido ${pedido.numero_pedido ? '#' + pedido.numero_pedido : ''} do cliente ${pedido.cliente_nome}?`)) return;
-    setExcluindoId(pedido.id);
+  const handleCancelarPedido = async (pedido, motivo) => {
     try {
-      // Cancelar no Omie se foi enviado
-      if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-        try {
-          const resp = await base44.functions.invoke('cancelarPedidoOmie', { omie_codigo_pedido: pedido.omie_codigo_pedido });
-          const result = resp.data;
-          if (!result.sucesso) {
-            toast.warning(`Erro ao cancelar no Omie: ${result.erro}. Pedido será excluído localmente.`);
-          }
-        } catch (omieErr) {
-          toast.warning('Falha ao cancelar no Omie. Pedido será excluído localmente.');
-        }
+      const resp = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+      const result = resp.data;
+      if (result.sucesso) {
+        toast.success(result.mensagem);
+      } else {
+        toast.error('Erro: ' + (result.erro || result.error));
       }
-
-      const items = allItems.filter(i => i.pedido_id === pedido.id);
-      for (const item of items) {
-        await base44.entities.PedidoItem.delete(item.id);
-      }
-      await base44.entities.Pedido.delete(pedido.id);
       queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedidoItems-all-gestao'] });
-      toast.success('Pedido excluído e cancelado no Omie');
-    } finally {
-      setExcluindoId(null);
+    } catch (err) {
+      toast.error('Erro ao cancelar: ' + err.message);
     }
   };
 
