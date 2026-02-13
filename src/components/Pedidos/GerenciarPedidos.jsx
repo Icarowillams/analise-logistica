@@ -260,6 +260,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
               <SelectItem value="pendente">Pendente</SelectItem>
               <SelectItem value="enviado">Enviado</SelectItem>
               <SelectItem value="liberado">Liberado</SelectItem>
+              <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
           <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
