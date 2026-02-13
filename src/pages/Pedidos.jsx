@@ -33,7 +33,9 @@ export default function Pedidos() {
     setActiveTab('digitar');
   };
 
-  if (!vendedorAtual) {
+  const isAdmin = currentUser?.role === 'admin';
+
+  if (!vendedorAtual && !isAdmin) {
     return (
       <div>
         <PageHeader title="Pedidos" icon={ShoppingCart} />
@@ -48,20 +50,29 @@ export default function Pedidos() {
 
   return (
     <div>
-      <PageHeader title="Pedidos" subtitle={`Vendedor: ${vendedorAtual.nome}`} icon={ShoppingCart} />
+      <PageHeader title="Pedidos" subtitle={vendedorAtual ? `Vendedor: ${vendedorAtual.nome}` : 'Gestão de Pedidos'} icon={ShoppingCart} />
       
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>
-          <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>
+        <TabsList className={`grid w-full mb-6 ${vendedorAtual ? 'grid-cols-3' : 'grid-cols-1'}`}>
+          {vendedorAtual && <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>}
+          {vendedorAtual && <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>}
+          <TabsTrigger value="gerenciar">Gerenciar Pedidos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="digitar">
-          <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} />
-        </TabsContent>
+        {vendedorAtual && (
+          <TabsContent value="digitar">
+            <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="envio">
-          <EnvioPedidos vendedor={vendedorAtual} onEditPedido={handleEditPedido} />
+        {vendedorAtual && (
+          <TabsContent value="envio">
+            <EnvioPedidos vendedor={vendedorAtual} onEditPedido={handleEditPedido} />
+          </TabsContent>
+        )}
+
+        <TabsContent value="gerenciar">
+          <GerenciarPedidos onEditPedido={handleEditPedido} />
         </TabsContent>
       </Tabs>
     </div>
