@@ -40,6 +40,7 @@ export default function Clientes() {
     data_primeiro_contato: '', status: 'ativo'
   });
   const [supervisorNome, setSupervisorNome] = useState('');
+  const [docErro, setDocErro] = useState('');
 
   const queryClient = useQueryClient();
 
