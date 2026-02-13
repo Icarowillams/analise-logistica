@@ -118,9 +118,15 @@ Deno.serve(async (req) => {
             });
         }
 
+        // Log completo do pedido Omie para entender a estrutura
+        console.log('[faturarPedidoOmie] Estrutura pedidoOmie keys:', Object.keys(pedidoOmie));
+        console.log('[faturarPedidoOmie] pedidoOmie.pedido_venda_produto keys:', pedidoOmie.pedido_venda_produto ? Object.keys(pedidoOmie.pedido_venda_produto) : 'N/A');
+        
+        // O ConsultarPedido pode retornar dentro de pedido_venda_produto
+        const pedidoData = pedidoOmie.pedido_venda_produto || pedidoOmie;
+        
         // Modificar a etapa e enviar via AlterarPedidoVenda
-        // Remover campos read-only que causam erro
-        const pedidoParaAlterar = JSON.parse(JSON.stringify(pedidoOmie));
+        const pedidoParaAlterar = JSON.parse(JSON.stringify(pedidoData));
         
         // Definir a nova etapa
         if (pedidoParaAlterar.cabecalho) {
@@ -128,12 +134,8 @@ Deno.serve(async (req) => {
         }
         
         // Remover campos que o Omie não aceita em alteração
-        delete pedidoParaAlterar.infoCadastro;
-        delete pedidoParaAlterar.exportacao;
-        delete pedidoParaAlterar.infoCadastro;
-        delete pedidoParaAlterar.total_pedido;
-        delete pedidoParaAlterar.MarketPlace;
-        delete pedidoParaAlterar.marketplace;
+        const camposRemover = ['infoCadastro', 'exportacao', 'total_pedido', 'MarketPlace', 'marketplace', 'lista_parcelas'];
+        camposRemover.forEach(c => delete pedidoParaAlterar[c]);
         
         // Limpar campos read-only dos itens
         if (pedidoParaAlterar.det) {
@@ -146,6 +148,7 @@ Deno.serve(async (req) => {
         }
 
         console.log('[faturarPedidoOmie] Enviando AlterarPedidoVenda com etapa:', etapaDestino);
+        console.log('[faturarPedidoOmie] Payload keys:', Object.keys(pedidoParaAlterar));
         
         const response2 = await fetch(OMIE_URL, {
             method: "POST",
