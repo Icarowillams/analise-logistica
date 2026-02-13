@@ -116,18 +116,19 @@ export default function GerenciarPedidos({ onEditPedido }) {
         });
       }
 
-      // Faturar automaticamente no Omie (mover para etapa 50)
+      // Mover para etapa 20 (Separar) no Omie ao liberar
+      // Nota: Omie NÃO permite mover para etapa 50 via API - só internamente
       if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
         try {
-          const faturarResp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id });
+          const faturarResp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id, etapa: "20" });
           const faturarResult = faturarResp.data;
           if (faturarResult.sucesso) {
-            toast.success('Pedido liberado e movido para Faturar no Omie!');
+            toast.success('Pedido liberado e movido para Separar no Omie!');
           } else {
-            toast.warning(`Pedido liberado, mas erro ao faturar no Omie: ${faturarResult.erro}`);
+            toast.warning(`Pedido liberado, mas erro no Omie: ${faturarResult.erro}`);
           }
         } catch (omieErr) {
-          toast.warning('Pedido liberado, mas falhou ao faturar no Omie');
+          toast.warning('Pedido liberado, mas falhou ao mover etapa no Omie');
         }
       } else {
         toast.success('Pedido liberado com sucesso!');
