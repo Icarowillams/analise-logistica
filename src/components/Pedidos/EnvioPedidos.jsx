@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Search, FileText, ShoppingCart, Pencil, Trash2 } from 'lucide-react';
+import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import PedidoPdf from './PedidoPdf';
 
@@ -65,31 +65,62 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   const enviarPedido = async (pedido) => {
     setEnviandoId(pedido.id);
-    const numero = await getNextNumero();
-    await base44.entities.Pedido.update(pedido.id, {
-      status: 'enviado',
-      numero_pedido: numero,
-      data_envio: new Date().toISOString()
-    });
-    queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    toast.success(`Pedido #${numero} enviado!`);
-    setEnviandoId(null);
+    try {
+      const numero = await getNextNumero();
+      await base44.entities.Pedido.update(pedido.id, {
+        status: 'enviado',
+        numero_pedido: numero,
+        data_envio: new Date().toISOString()
+      });
+
+      // Enviar para o Omie (etapa 10 = Pedido de Venda)
+      try {
+        const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
+        const result = response.data;
+        if (result.sucesso) {
+          toast.success(`Pedido #${numero} enviado ao Omie!`);
+        } else {
+          toast.warning(`Pedido #${numero} salvo, mas erro no Omie: ${result.erro}`);
+        }
+      } catch (omieErr) {
+        toast.warning(`Pedido #${numero} salvo localmente, mas falhou no envio ao Omie`);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    } catch (err) {
+      toast.error('Erro ao enviar pedido: ' + err.message);
+    } finally {
+      setEnviandoId(null);
+    }
   };
 
   const enviarTodos = async () => {
     if (pendentes.length === 0) return;
     setEnviandoTodos(true);
     let startNum = await getNextNumero();
+    let sucessoCount = 0;
+    let erroCount = 0;
     for (const pedido of pendentes) {
       await base44.entities.Pedido.update(pedido.id, {
         status: 'enviado',
         numero_pedido: startNum,
         data_envio: new Date().toISOString()
       });
+      try {
+        const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
+        if (response.data.sucesso) sucessoCount++;
+        else erroCount++;
+      } catch {
+        erroCount++;
+      }
       startNum++;
     }
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    toast.success(`${pendentes.length} pedidos enviados!`);
+    if (erroCount > 0) {
+      toast.warning(`${sucessoCount} enviados ao Omie, ${erroCount} com erro`);
+    } else {
+      toast.success(`${sucessoCount} pedidos enviados ao Omie!`);
+    }
     setEnviandoTodos(false);
   };
 
