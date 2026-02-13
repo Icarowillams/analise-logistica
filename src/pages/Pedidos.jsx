@@ -78,15 +78,16 @@ export default function Pedidos() {
       <PageHeader title="Pedidos" subtitle={vendedorAtual ? `Vendedor: ${vendedorAtual.nome}` : 'Gestão de Pedidos'} icon={ShoppingCart} />
       
       <Tabs value={activeTab || 'gerenciar'} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
-        <TabsList className={`grid w-full mb-6 ${vendedorAtual ? 'grid-cols-3' : 'grid-cols-1'}`}>
+        <TabsList className={`grid w-full mb-6 ${vendedorAtual ? 'grid-cols-3' : (isAdmin ? 'grid-cols-2' : 'grid-cols-1')}`}>
           {vendedorAtual && <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>}
           {vendedorAtual && <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>}
+          {!vendedorAtual && isAdmin && editingPedidoId && <TabsTrigger value="digitar">Editar Pedido</TabsTrigger>}
           <TabsTrigger value="gerenciar">Gerenciar Pedidos</TabsTrigger>
         </TabsList>
 
         {vendedorAtual && (
           <TabsContent value="digitar">
-            <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} />
+            <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => { setEditingPedidoId(null); if (!vendedores.find(v => v.email?.toLowerCase() === currentUser?.email?.toLowerCase())) { setVendedorAtual(null); setActiveTab('gerenciar'); } }} />
           </TabsContent>
         )}
 
