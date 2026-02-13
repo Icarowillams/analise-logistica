@@ -1015,19 +1015,27 @@ export default function Clientes() {
                 </div>
                 <div>
                   <Label>Estado (UF)</Label>
-                  <Input
-                    value={formData.estado}
-                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                    placeholder="UF"
-                    maxLength={2}
+                  <Select
+                    value={formData.estado ? formData.estado.toUpperCase() : '_none_'}
+                    onValueChange={(v) => setFormData({ ...formData, estado: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhum</SelectItem>
+                      {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf => (
+                        <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>CEP</Label>
                   <Input
                     value={formData.cep}
-                    onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, cep: formatarCEP(e.target.value) })}
                     placeholder="00000-000"
                     disabled={!isEditing}
                   />
