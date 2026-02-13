@@ -12,7 +12,7 @@ import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos';
 export default function Pedidos() {
   const [currentUser, setCurrentUser] = useState(null);
   const [vendedorAtual, setVendedorAtual] = useState(null);
-  const [activeTab, setActiveTab] = useState('digitar');
+  const [activeTab, setActiveTab] = useState(null);
   const [editingPedidoId, setEditingPedidoId] = useState(null);
 
   const { data: vendedores = [] } = useQuery({
