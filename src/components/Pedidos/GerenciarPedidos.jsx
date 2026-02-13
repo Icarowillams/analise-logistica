@@ -378,7 +378,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         ) : (
                           <Undo2 className="w-3 h-3 mr-1" />
                         )}
-                        Voltar Enviado
+                        Pendente
                       </Button>
                     )}
 
