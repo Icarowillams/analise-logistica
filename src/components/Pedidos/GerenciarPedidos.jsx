@@ -101,22 +101,35 @@ export default function GerenciarPedidos({ onEditPedido }) {
           return;
         }
 
-        // Liberar com flag de pendência ignorada
         await base44.entities.Pedido.update(pedido.id, {
           status: 'liberado',
           liberado_por: currentUser?.email || '',
           data_liberacao: new Date().toISOString(),
           pendencia_financeira_ignorada: true
         });
-        toast.success(`Pedido liberado (com pendência financeira ignorada)`);
       } else {
-        // Liberar normalmente
         await base44.entities.Pedido.update(pedido.id, {
           status: 'liberado',
           liberado_por: currentUser?.email || '',
           data_liberacao: new Date().toISOString(),
           pendencia_financeira_ignorada: false
         });
+      }
+
+      // Faturar automaticamente no Omie (mover para etapa 50)
+      if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+        try {
+          const faturarResp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id });
+          const faturarResult = faturarResp.data;
+          if (faturarResult.sucesso) {
+            toast.success('Pedido liberado e movido para Faturar no Omie!');
+          } else {
+            toast.warning(`Pedido liberado, mas erro ao faturar no Omie: ${faturarResult.erro}`);
+          }
+        } catch (omieErr) {
+          toast.warning('Pedido liberado, mas falhou ao faturar no Omie');
+        }
+      } else {
         toast.success('Pedido liberado com sucesso!');
       }
 
@@ -333,25 +346,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       </Button>
                     )}
 
-                    {/* Faturar no Omie (só se liberado e já enviado ao Omie) */}
-                    {pedido.status === 'liberado' && pedido.omie_enviado && (
-                      <Button
-                        size="sm"
-                        onClick={() => enviarParaFaturar(pedido)}
-                        disabled={enviandoOmieId === pedido.id}
-                        className="text-xs bg-indigo-600 hover:bg-indigo-700"
-                      >
-                        {enviandoOmieId === pedido.id ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <Send className="w-3 h-3 mr-1" />
-                        )}
-                        Faturar
-                      </Button>
-                    )}
-                    {pedido.status === 'liberado' && !pedido.omie_enviado && (
-                      <Badge className="bg-amber-100 text-amber-700 text-[10px]">
-                        Aguardando envio ao Omie
+                    {pedido.status === 'liberado' && (
+                      <Badge className="bg-green-100 text-green-700 text-[10px]">
+                        ✓ Liberado
                       </Badge>
                     )}
 

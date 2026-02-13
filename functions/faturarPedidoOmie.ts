@@ -43,8 +43,8 @@ Deno.serve(async (req) => {
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
                 param: [{
-                    nCodPed: pedido.omie_codigo_pedido,
-                    cEtapa: "50"
+                    codigo_pedido: pedido.omie_codigo_pedido,
+                    etapa: "50"
                 }]
             })
         });
