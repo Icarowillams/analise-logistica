@@ -17,7 +17,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Apenas administradores podem faturar pedidos' }, { status: 403 });
         }
 
-        const { pedido_id } = await req.json();
+        const body = await req.json();
+        const { pedido_id, etapa } = body;
+
         if (!pedido_id) {
             return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
         }
@@ -33,13 +35,12 @@ Deno.serve(async (req) => {
         }
 
         const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
-        console.log('[faturarPedidoOmie] Alterando etapa do pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Tipo:', typeof codigoPedidoOmie);
+        // Omie NÃO permite TrocarEtapaPedido para "50" (Faturar) via API.
+        // A etapa 50 só é feita pelo processo de faturamento interno do Omie.
+        // Então usamos etapa "20" (Separar) como default ao liberar.
+        const etapaDestino = etapa || "20";
 
-        // Etapa destino: recebido via request ou default "20" (segunda coluna/separação)
-        // Nota: Omie não permite TrocarEtapaPedido para "50" (Faturar) via API - 
-        // a etapa 50 é feita pelo processo de faturamento interno do Omie.
-        const body = await req.json().catch(() => ({}));
-        const etapaDestino = body.etapa || "20";
+        console.log('[faturarPedidoOmie] Pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Etapa destino:', etapaDestino);
 
         const payload = {
             call: "TrocarEtapaPedido",
@@ -50,9 +51,8 @@ Deno.serve(async (req) => {
                 etapa: etapaDestino
             }]
         };
-        console.log('[faturarPedidoOmie] Payload enviado:', JSON.stringify(payload));
+        console.log('[faturarPedidoOmie] Payload:', JSON.stringify(payload));
 
-        // Alterar etapa do pedido no Omie para 50 (Faturar)
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
         });
 
         const resultadoText = await response.text();
-        console.log('[faturarPedidoOmie] Resposta Omie (raw):', resultadoText.substring(0, 2000));
+        console.log('[faturarPedidoOmie] Resposta Omie:', resultadoText.substring(0, 2000));
 
         let resultado;
         try {
@@ -72,31 +72,28 @@ Deno.serve(async (req) => {
             });
         }
 
+        // Verificar erro: codigo_status != "0" indica falha
         if (resultado.faultstring || resultado.faultcode) {
             const erro = resultado.faultstring || resultado.faultcode;
             console.error('[faturarPedidoOmie] Erro Omie:', erro);
-
-            await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                omie_erro: erro
-            });
-
-            return Response.json({
-                sucesso: false,
-                erro: erro
-            });
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: erro });
+            return Response.json({ sucesso: false, erro });
         }
 
-        // Atualizar pedido no Base44
-        await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-            omie_erro: null
-        });
+        if (resultado.codigo_status && resultado.codigo_status !== "0") {
+            const erro = resultado.descricao_status || 'Erro desconhecido do Omie';
+            console.error('[faturarPedidoOmie] Erro Omie (status):', erro);
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: erro });
+            return Response.json({ sucesso: false, erro });
+        }
 
-        console.log('[faturarPedidoOmie] Pedido movido para Faturar com sucesso!');
-        console.log('[faturarPedidoOmie] Resposta completa:', JSON.stringify(resultado));
+        // Sucesso
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: null });
+        console.log('[faturarPedidoOmie] Etapa alterada com sucesso!');
 
         return Response.json({
             sucesso: true,
-            mensagem: resultado.descricao_status || 'Pedido movido para Faturar no Omie'
+            mensagem: resultado.descricao_status || `Pedido movido para etapa ${etapaDestino} no Omie`
         });
 
     } catch (error) {
