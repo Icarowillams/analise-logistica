@@ -38,6 +38,17 @@ export default function Pedidos() {
 
   const isAdmin = currentUser?.role === 'admin';
 
+  if (!currentUser) {
+    return (
+      <div>
+        <PageHeader title="Pedidos" icon={ShoppingCart} />
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+        </div>
+      </div>
+    );
+  }
+
   if (!vendedorAtual && !isAdmin) {
     return (
       <div>
