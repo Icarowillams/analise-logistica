@@ -67,6 +67,12 @@ Deno.serve(async (req) => {
         // Remover campos somente-leitura que podem causar erro
         delete pedidoAlterado.infoCadastro;
         delete pedidoAlterado.total_pedido;
+        if (pedidoAlterado.cabecalho) {
+            delete pedidoAlterado.cabecalho.numero_pedido;
+            delete pedidoAlterado.cabecalho.bloqueado;
+            delete pedidoAlterado.cabecalho.importado_api;
+            delete pedidoAlterado.cabecalho.origem_pedido;
+        }
 
         console.log('[faturarPedidoOmie] Alterando pedido para etapa 50...');
         
