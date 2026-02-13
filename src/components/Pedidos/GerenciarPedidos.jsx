@@ -349,7 +349,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     )}
                     {pedido.status === 'cancelado' && (
                       <div className="text-red-600 text-[10px] mt-1">
-                        <p className="font-semibold">✕ Cancelado por: {pedido.cancelado_por || '-'}</p>
+                        <p className="font-semibold">✕ Cancelado por: {vendedores.find(v => v.email?.toLowerCase() === pedido.cancelado_por?.toLowerCase())?.nome || pedido.cancelado_por || '-'}</p>
                         <p>Data: {pedido.data_cancelamento ? new Date(pedido.data_cancelamento).toLocaleString('pt-BR') : '-'}</p>
                         <p>Motivo: {pedido.motivo_cancelamento || '-'}</p>
                       </div>

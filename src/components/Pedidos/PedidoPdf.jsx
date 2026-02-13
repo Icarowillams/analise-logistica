@@ -323,7 +323,7 @@ export default function PedidoPdf({ pedidoId }) {
                 <tr>
                   <td style={{ border:'1px solid #FCA5A5', padding:'2px 5px', background:'#FEF2F2' }}>
                     <span style={{ fontSize:'8px', color:'#991B1B', display:'block' }}>CANCELADO POR</span>
-                    <span style={{ fontSize:'10px', fontWeight:500, color:'#991B1B' }}>{pedido.cancelado_por || '-'}</span>
+                    <span style={{ fontSize:'10px', fontWeight:500, color:'#991B1B' }}>{pedido.cancelado_por_nome || pedido.cancelado_por || '-'}</span>
                   </td>
                   <td style={{ border:'1px solid #FCA5A5', padding:'2px 5px', background:'#FEF2F2' }}>
                     <span style={{ fontSize:'8px', color:'#991B1B', display:'block' }}>DATA/HORA</span>
