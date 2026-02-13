@@ -269,6 +269,7 @@ export default function Clientes() {
       data_primeiro_contato: '', status: 'ativo'
     });
     setSupervisorNome('');
+    setDocErro('');
     setSelected(null);
   };
 
