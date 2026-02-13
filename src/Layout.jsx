@@ -272,6 +272,32 @@ export default function Layout({ children, currentPageName }) {
               {currentUser?.email}
             </div>
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-neutral-400 hover:text-green-400 hover:bg-green-500/10"
+                onClick={() => {
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        alert(`Localização ativada!\nLat: ${pos.coords.latitude.toFixed(6)}\nLng: ${pos.coords.longitude.toFixed(6)}`);
+                      },
+                      (err) => {
+                        if (err.code === 1) {
+                          alert('Permissão de localização negada. Vá nas configurações do navegador e permita o acesso à localização para este site.');
+                        } else {
+                          alert('Não foi possível obter a localização. Verifique as permissões do navegador.');
+                        }
+                      },
+                      { enableHighAccuracy: true }
+                    );
+                  } else {
+                    alert('Seu navegador não suporta geolocalização.');
+                  }
+                }}
+              >
+                <MapPin className="w-4 h-4" />
+              </Button>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button
