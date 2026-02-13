@@ -116,7 +116,22 @@ export default function GerenciarPedidos({ onEditPedido }) {
         });
       }
 
-      toast.success('Pedido liberado! Fature pelo painel do Omie.');
+      // Mover para Faturar (etapa 50) no Omie automaticamente
+      if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+        try {
+          const faturarResp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id });
+          const faturarResult = faturarResp.data;
+          if (faturarResult.sucesso) {
+            toast.success('Pedido liberado e movido para Faturar no Omie!');
+          } else {
+            toast.warning(`Pedido liberado, mas erro no Omie: ${faturarResult.erro}`);
+          }
+        } catch (omieErr) {
+          toast.warning('Pedido liberado, mas falhou ao mover etapa no Omie');
+        }
+      } else {
+        toast.success('Pedido liberado!');
+      }
 
       queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
     } catch (err) {
