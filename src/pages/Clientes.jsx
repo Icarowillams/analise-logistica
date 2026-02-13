@@ -826,10 +826,26 @@ export default function Clientes() {
                   <Label>CPF/CNPJ</Label>
                   <Input
                     value={formData.cpf_cnpj}
-                    onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
-                    placeholder="CPF ou CNPJ"
+                    onChange={(e) => {
+                      const formatado = formatarDocumento(e.target.value);
+                      setFormData({ ...formData, cpf_cnpj: formatado });
+                      const limpo = e.target.value.replace(/\D/g, '');
+                      if (limpo.length === 11 || limpo.length === 14) {
+                        const res = validarDocumento(limpo);
+                        setDocErro(res.valido ? '' : res.erro);
+                      } else {
+                        setDocErro('');
+                      }
+                    }}
+                    placeholder="000.000.000-00 ou 00.000.000/0001-00"
                     disabled={!isEditing}
+                    className={docErro ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
+                  {docErro && (
+                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> {docErro} — Omie rejeitará este documento
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Plano de Pagamento</Label>
