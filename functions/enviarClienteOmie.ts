@@ -12,17 +12,48 @@ Deno.serve(async (req) => {
         // Automação de entidade envia: { event, data, old_data }
         const { event, data: cliente } = body;
 
-        if (!cliente || !cliente.id) {
+        console.log('[enviarClienteOmie] Payload recebido:', JSON.stringify(body).substring(0, 500));
+        console.log('[enviarClienteOmie] Event:', JSON.stringify(event));
+
+        // Se payload_too_large, buscar dados do cliente via SDK
+        let clienteData = cliente;
+        if (body.payload_too_large && event?.entity_id) {
+            console.log('[enviarClienteOmie] Payload muito grande, buscando cliente via SDK...');
+            const clientes = await base44.asServiceRole.entities.Cliente.filter({ id: event.entity_id });
+            clienteData = clientes?.[0] || cliente;
+        }
+
+        if (!clienteData || (!clienteData.id && !event?.entity_id)) {
+            console.log('[enviarClienteOmie] Cliente não informado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
         }
 
-        // Só enviar clientes ativos para o Omie
-        if (cliente.status !== 'ativo') {
-            console.log('Cliente ignorado (não ativo):', cliente.razao_social, '- Status:', cliente.status);
+        // Se o data veio vazio mas temos o entity_id, buscar
+        if (!clienteData?.razao_social && event?.entity_id) {
+            console.log('[enviarClienteOmie] Data vazio, buscando cliente pelo entity_id:', event.entity_id);
+            const clientes = await base44.asServiceRole.entities.Cliente.filter({});
+            clienteData = clientes.find(c => c.id === event.entity_id);
+            if (!clienteData) {
+                console.log('[enviarClienteOmie] Cliente não encontrado pelo entity_id');
+                return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
+            }
+        }
+
+        // Usar o ID do evento se não vier no data
+        if (!clienteData.id && event?.entity_id) {
+            clienteData.id = event.entity_id;
+        }
+
+        console.log('[enviarClienteOmie] Cliente a enviar:', clienteData.razao_social, '- Status:', clienteData.status, '- ID:', clienteData.id);
+
+        // Só enviar clientes ativos para o Omie (tratar vazio/undefined como ativo)
+        const statusCliente = (clienteData.status || 'ativo').toLowerCase().trim();
+        if (statusCliente === 'inativo') {
+            console.log('[enviarClienteOmie] Cliente ignorado (inativo):', clienteData.razao_social);
             return Response.json({ 
                 sucesso: false, 
                 ignorado: true,
-                mensagem: 'Cliente não está ativo, não será enviado ao Omie'
+                mensagem: 'Cliente está inativo, não será enviado ao Omie'
             });
         }
 
