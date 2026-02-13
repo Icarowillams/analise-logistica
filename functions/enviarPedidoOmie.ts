@@ -152,8 +152,8 @@ Deno.serve(async (req) => {
         const parcelas = gerarParcelas(plano, pedido.valor_total || 0, dataBase);
 
         // Definir etapa
-        // 10 = Orçamento, 20 = Pedido, 50 = Separar/Faturar
-        const etapa = "50";
+        // 10 = Pedido de Venda, 20 = Separar, 50 = Faturar
+        const etapa = "10";
 
         // Montar payload do pedido
         const pedidoOmie = {
