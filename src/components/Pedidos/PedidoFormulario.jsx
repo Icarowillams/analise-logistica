@@ -66,8 +66,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryKey: ['pedido-detail', editingPedidoId],
     queryFn: async () => {
       if (!editingPedidoId) return null;
-      const pedidos = await base44.entities.Pedido.filter({});
-      return pedidos.find(p => p.id === editingPedidoId);
+      const p = await base44.entities.Pedido.list('-created_date', 5000);
+      return p.find(x => x.id === editingPedidoId);
     },
     enabled: !!editingPedidoId
   });
