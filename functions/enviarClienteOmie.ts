@@ -15,28 +15,17 @@ Deno.serve(async (req) => {
         console.log('[enviarClienteOmie] Payload recebido:', JSON.stringify(body).substring(0, 500));
         console.log('[enviarClienteOmie] Event:', JSON.stringify(event));
 
-        // Se payload_too_large, buscar dados do cliente via SDK
+        // Se payload_too_large ou data veio vazio, buscar dados do cliente via SDK
         let clienteData = cliente;
-        if (body.payload_too_large && event?.entity_id) {
-            console.log('[enviarClienteOmie] Payload muito grande, buscando cliente via SDK...');
-            const clientes = await base44.asServiceRole.entities.Cliente.filter({ id: event.entity_id });
-            clienteData = clientes?.[0] || cliente;
+        if ((body.payload_too_large || !clienteData || !clienteData.razao_social) && event?.entity_id) {
+            console.log('[enviarClienteOmie] Buscando cliente via SDK, entity_id:', event.entity_id);
+            clienteData = await base44.asServiceRole.entities.Cliente.get(event.entity_id);
+            console.log('[enviarClienteOmie] Cliente encontrado via SDK:', clienteData?.razao_social);
         }
 
         if (!clienteData || (!clienteData.id && !event?.entity_id)) {
             console.log('[enviarClienteOmie] Cliente não informado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
-        }
-
-        // Se o data veio vazio mas temos o entity_id, buscar
-        if (!clienteData?.razao_social && event?.entity_id) {
-            console.log('[enviarClienteOmie] Data vazio, buscando cliente pelo entity_id:', event.entity_id);
-            const clientes = await base44.asServiceRole.entities.Cliente.filter({});
-            clienteData = clientes.find(c => c.id === event.entity_id);
-            if (!clienteData) {
-                console.log('[enviarClienteOmie] Cliente não encontrado pelo entity_id');
-                return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
-            }
         }
 
         // Usar o ID do evento se não vier no data
