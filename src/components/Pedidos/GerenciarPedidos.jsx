@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Search, CheckCircle2, Trash2, Pencil, Eye, DollarSign,
-  Loader2, AlertTriangle, Undo2, Lock, Unlock, FileText, Filter
+  Loader2, AlertTriangle, Undo2, Lock, Unlock, FileText, Filter, Send, CloudOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DebitosClienteModal from './DebitosClienteModal';
@@ -25,6 +25,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [debitosClienteNome, setDebitosClienteNome] = useState('');
   const [debitosOpen, setDebitosOpen] = useState(false);
   const [liberandoId, setLiberandoId] = useState(null);
+  const [enviandoOmieId, setEnviandoOmieId] = useState(null);
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -153,6 +154,31 @@ export default function GerenciarPedidos({ onEditPedido }) {
     toast.success('Pedido excluído');
   };
 
+  const enviarParaOmie = async (pedido) => {
+    if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+      toast.info(`Este pedido já foi enviado ao Omie (Cód: ${pedido.omie_codigo_pedido})`);
+      return;
+    }
+    if (!confirm(`Enviar o pedido #${pedido.numero_pedido || ''} do cliente ${pedido.cliente_nome} para o Omie?`)) return;
+    
+    setEnviandoOmieId(pedido.id);
+    try {
+      const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
+      const result = response.data;
+      
+      if (result.sucesso) {
+        toast.success(`Pedido enviado ao Omie! Código: ${result.codigo_pedido_omie || 'OK'}`);
+        queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+      } else {
+        toast.error(`Erro Omie: ${result.erro}`);
+      }
+    } catch (err) {
+      toast.error('Erro ao enviar para Omie: ' + err.message);
+    } finally {
+      setEnviandoOmieId(null);
+    }
+  };
+
   const verDebitos = (pedido) => {
     setDebitosClienteId(pedido.cliente_id);
     setDebitosClienteNome(pedido.cliente_nome || pedido.cliente_codigo);
@@ -276,6 +302,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     <p>Pgto: {pedido.plano_pagamento_nome || '-'} | Itens: {items.length} | Vl: R$ {(pedido.valor_total || 0).toFixed(2)}</p>
                     <p>Data: {dataEmissao} {pedido.numero_pedido ? `| Nº ${pedido.numero_pedido}` : ''}</p>
                     <p>Tipo: {pedido.tipo === 'troca' ? 'Troca' : 'Venda'} | Modelo: {pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === '55' ? '55' : 'NFCe'}</p>
+                    {pedido.omie_enviado && (
+                      <p className="text-green-600 font-medium">✓ Omie: {pedido.omie_codigo_pedido || 'Enviado'}</p>
+                    )}
+                    {pedido.omie_erro && !pedido.omie_enviado && (
+                      <p className="text-red-500 text-[10px]">Omie erro: {pedido.omie_erro}</p>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -298,6 +330,44 @@ export default function GerenciarPedidos({ onEditPedido }) {
                           <Unlock className="w-3 h-3 mr-1" />
                         )}
                         Liberar
+                      </Button>
+                    )}
+
+                    {/* Enviar ao Omie (só se liberado) */}
+                    {pedido.status === 'liberado' && !pedido.omie_enviado && (
+                      <Button
+                        size="sm"
+                        onClick={() => enviarParaOmie(pedido)}
+                        disabled={enviandoOmieId === pedido.id}
+                        className="text-xs bg-indigo-600 hover:bg-indigo-700"
+                      >
+                        {enviandoOmieId === pedido.id ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        ) : (
+                          <Send className="w-3 h-3 mr-1" />
+                        )}
+                        Enviar Omie
+                      </Button>
+                    )}
+                    {pedido.status === 'liberado' && pedido.omie_enviado && (
+                      <Badge className="bg-indigo-100 text-indigo-700 text-[10px]">
+                        ✓ No Omie
+                      </Badge>
+                    )}
+                    {pedido.omie_erro && !pedido.omie_enviado && pedido.status === 'liberado' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => enviarParaOmie(pedido)}
+                        disabled={enviandoOmieId === pedido.id}
+                        className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        {enviandoOmieId === pedido.id ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        ) : (
+                          <CloudOff className="w-3 h-3 mr-1" />
+                        )}
+                        Reenviar Omie
                       </Button>
                     )}
 
