@@ -26,6 +26,27 @@ Deno.serve(async (req) => {
             });
         }
 
+        // Mapear nome completo do estado para sigla UF
+        const estadoParaUF = {
+            'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+            'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+            'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+            'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+            'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+            'rio grande do sul': 'RS', 'rondonia': 'RO', 'roraima': 'RR', 'santa catarina': 'SC',
+            'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+        };
+
+        let estadoNormalizado = (cliente.estado || '').trim();
+        // Se tem mais de 2 caracteres, tentar converter nome completo para sigla
+        if (estadoNormalizado.length > 2) {
+            const chave = estadoNormalizado.toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            estadoNormalizado = estadoParaUF[chave] || estadoNormalizado.substring(0, 2).toUpperCase();
+        } else {
+            estadoNormalizado = estadoNormalizado.toUpperCase();
+        }
+
         // Mapear campos do Base44 para Omie
         const clienteOmie = {
             codigo_cliente_integracao: cliente.id,
@@ -37,7 +58,7 @@ Deno.serve(async (req) => {
             endereco_numero: cliente.numero || "",
             bairro: cliente.bairro || "",
             cidade: cliente.cidade || "",
-            estado: cliente.estado || "",
+            estado: estadoNormalizado,
             cep: cliente.cep || "",
             pessoa_fisica: (cliente.cpf_cnpj && cliente.cpf_cnpj.length <= 14) ? "S" : "N"
         };
