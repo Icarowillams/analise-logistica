@@ -234,7 +234,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const statusConfig = {
     pendente: { label: 'Pendente', class: 'bg-amber-500' },
     enviado: { label: 'Enviado', class: 'bg-blue-500' },
-    liberado: { label: 'Liberado', class: 'bg-green-500' }
+    liberado: { label: 'Liberado', class: 'bg-green-500' },
+    cancelado: { label: 'Cancelado', class: 'bg-red-500' }
   };
 
   const totalValor = pedidosFiltrados.reduce((s, p) => s + (p.valor_total || 0), 0);
@@ -345,6 +346,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     {pedido.omie_erro && !pedido.omie_enviado && (
                       <p className="text-red-500 text-[10px]">Omie erro: {pedido.omie_erro}</p>
                     )}
+                    {pedido.status === 'cancelado' && (
+                      <div className="text-red-600 text-[10px] mt-1">
+                        <p className="font-semibold">✕ Cancelado por: {pedido.cancelado_por || '-'}</p>
+                        <p>Data: {pedido.data_cancelamento ? new Date(pedido.data_cancelamento).toLocaleString('pt-BR') : '-'}</p>
+                        <p>Motivo: {pedido.motivo_cancelamento || '-'}</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -400,10 +408,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <FileText className="w-3 h-3 mr-1" /> PDF
                     </Button>
 
-                    {/* Excluir */}
-                    <Button size="sm" variant="ghost" onClick={() => excluirPedido(pedido)} disabled={excluindoId === pedido.id} className="text-xs text-red-500 hover:text-red-700">
-                      {excluindoId === pedido.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                    </Button>
+                    {/* Cancelar (não disponível se já cancelado) */}
+                    {pedido.status !== 'cancelado' && (
+                      <Button size="sm" variant="ghost" onClick={() => { setCancelarPedido(pedido); setCancelarOpen(true); }} className="text-xs text-red-500 hover:text-red-700">
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
