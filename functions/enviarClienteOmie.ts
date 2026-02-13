@@ -47,20 +47,27 @@ Deno.serve(async (req) => {
             estadoNormalizado = estadoNormalizado.toUpperCase();
         }
 
+        // Normalizar CEP (apenas dígitos, 8 caracteres)
+        let cepNormalizado = (cliente.cep || '').replace(/\D/g, '');
+        if (cepNormalizado.length > 8) cepNormalizado = cepNormalizado.substring(0, 8);
+
+        // Normalizar CPF/CNPJ (remover pontuação)
+        const cnpjCpfLimpo = (cliente.cpf_cnpj || '').replace(/[.\-\/\s]/g, '');
+
         // Mapear campos do Base44 para Omie
         const clienteOmie = {
             codigo_cliente_integracao: cliente.id,
-            razao_social: cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome",
-            nome_fantasia: cliente.nome_fantasia || cliente.razao_social || "",
-            cnpj_cpf: cliente.cpf_cnpj || "",
+            razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
+            nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
+            cnpj_cpf: cnpjCpfLimpo,
             email: "",
-            endereco: cliente.endereco || "",
-            endereco_numero: cliente.numero || "",
-            bairro: cliente.bairro || "",
-            cidade: cliente.cidade || "",
+            endereco: (cliente.endereco || "").substring(0, 60),
+            endereco_numero: (cliente.numero || "").substring(0, 10),
+            bairro: (cliente.bairro || "").substring(0, 60),
+            cidade: (cliente.cidade || "").substring(0, 60),
             estado: estadoNormalizado,
-            cep: cliente.cep || "",
-            pessoa_fisica: (cliente.cpf_cnpj && cliente.cpf_cnpj.length <= 14) ? "S" : "N"
+            cep: cepNormalizado,
+            pessoa_fisica: (cnpjCpfLimpo.length <= 11) ? "S" : "N"
         };
 
         const response = await fetch(OMIE_URL, {
