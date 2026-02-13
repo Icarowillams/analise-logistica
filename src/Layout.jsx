@@ -459,6 +459,7 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
+      <Toaster richColors position="top-right" />
     </div>
   );
 }
