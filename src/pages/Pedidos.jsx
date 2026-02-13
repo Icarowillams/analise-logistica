@@ -25,6 +25,9 @@ export default function Pedidos() {
       setCurrentUser(user);
       const vendedor = vendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
       setVendedorAtual(vendedor);
+      if (!activeTab) {
+        setActiveTab(vendedor ? 'digitar' : 'gerenciar');
+      }
     }).catch(() => {});
   }, [vendedores]);
 
