@@ -89,7 +89,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
       if (debitos.tem_pendencia) {
         const confirmar = window.confirm(
-          `⚠️ ATENÇÃO: O cliente ${pedito.cliente_nome || pedido.cliente_codigo} está com pendência financeira!\n\n` +
+          `⚠️ ATENÇÃO: O cliente ${pedido.cliente_nome || pedido.cliente_codigo} está com pendência financeira!\n\n` +
           `- ${debitos.titulos_atrasados} título(s) atrasado(s)\n` +
           `- Total em débito: R$ ${(debitos.total_debitos || 0).toFixed(2)}\n\n` +
           `Deseja liberar o pedido mesmo assim?`
