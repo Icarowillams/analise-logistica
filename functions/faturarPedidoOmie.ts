@@ -32,36 +32,51 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Este pedido ainda não foi enviado ao Omie' }, { status: 400 });
         }
 
-        console.log('[faturarPedidoOmie] Alterando etapa do pedido:', pedido.id, '- Código Omie:', pedido.omie_codigo_pedido);
+        const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
+        console.log('[faturarPedidoOmie] Alterando etapa do pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Tipo:', typeof codigoPedidoOmie);
+
+        const payload = {
+            call: "TrocarEtapaPedido",
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [{
+                codigo_pedido: codigoPedidoOmie,
+                etapa: "50"
+            }]
+        };
+        console.log('[faturarPedidoOmie] Payload enviado:', JSON.stringify(payload));
 
         // Alterar etapa do pedido no Omie para 50 (Faturar)
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "TrocarEtapaPedido",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{
-                    codigo_pedido: pedido.omie_codigo_pedido,
-                    etapa: "50"
-                }]
-            })
+            body: JSON.stringify(payload)
         });
 
-        const resultado = await response.json();
-        console.log('[faturarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 1000));
+        const resultadoText = await response.text();
+        console.log('[faturarPedidoOmie] Resposta Omie (raw):', resultadoText.substring(0, 2000));
 
-        if (resultado.faultstring) {
-            console.error('[faturarPedidoOmie] Erro Omie:', resultado.faultstring);
+        let resultado;
+        try {
+            resultado = JSON.parse(resultadoText);
+        } catch (e) {
+            return Response.json({
+                sucesso: false,
+                erro: 'Resposta inválida do Omie: ' + resultadoText.substring(0, 500)
+            });
+        }
+
+        if (resultado.faultstring || resultado.faultcode) {
+            const erro = resultado.faultstring || resultado.faultcode;
+            console.error('[faturarPedidoOmie] Erro Omie:', erro);
 
             await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                omie_erro: resultado.faultstring
+                omie_erro: erro
             });
 
             return Response.json({
                 sucesso: false,
-                erro: resultado.faultstring
+                erro: erro
             });
         }
 
@@ -71,10 +86,11 @@ Deno.serve(async (req) => {
         });
 
         console.log('[faturarPedidoOmie] Pedido movido para Faturar com sucesso!');
+        console.log('[faturarPedidoOmie] Resposta completa:', JSON.stringify(resultado));
 
         return Response.json({
             sucesso: true,
-            mensagem: resultado.cDescStatus || 'Pedido movido para Faturar no Omie'
+            mensagem: resultado.descricao_status || 'Pedido movido para Faturar no Omie'
         });
 
     } catch (error) {
