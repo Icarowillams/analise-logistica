@@ -33,111 +33,37 @@ Deno.serve(async (req) => {
         let omieCancelado = false;
         let omieErro = null;
 
-        // Cancelar no Omie se foi enviado
+        // Excluir no Omie se foi enviado
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
             const codigoPedido = Number(pedido.omie_codigo_pedido);
-            console.log('[cancelarPedidoOmie] Cancelando pedido Omie:', codigoPedido);
+            console.log('[cancelarPedidoOmie] Excluindo pedido Omie:', codigoPedido);
 
-            // Tentativa 1: TrocarEtapaPedido para etapa 60 (Cancelado)
-            const response1 = await fetch(OMIE_URL, {
+            // Usar ExcluirPedido - método correto da API Omie para cancelar/excluir pedidos
+            const response = await fetch(OMIE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    call: "TrocarEtapaPedido",
+                    call: "ExcluirPedido",
                     app_key: OMIE_APP_KEY,
                     app_secret: OMIE_APP_SECRET,
                     param: [{
-                        codigo_pedido: codigoPedido,
-                        etapa: "60"
+                        codigo_pedido: codigoPedido
                     }]
                 })
             });
 
-            const result1Text = await response1.text();
-            console.log('[cancelarPedidoOmie] Resposta TrocarEtapaPedido:', result1Text.substring(0, 1000));
+            const resultText = await response.text();
+            console.log('[cancelarPedidoOmie] Resposta ExcluirPedido:', resultText.substring(0, 1000));
 
-            let result1;
-            try { result1 = JSON.parse(result1Text); } catch (e) { /* continua */ }
+            let result;
+            try { result = JSON.parse(resultText); } catch (e) { /* continua */ }
 
-            const desc1 = result1?.descricao_status || '';
-            const isSuccess1 = result1 && !result1.faultstring && !result1.faultcode
-                && !desc1.toLowerCase().includes('não é possível');
-
-            if (isSuccess1) {
+            if (result && !result.faultstring && !result.faultcode) {
                 omieCancelado = true;
-                console.log('[cancelarPedidoOmie] Sucesso com TrocarEtapaPedido!');
+                console.log('[cancelarPedidoOmie] Sucesso ao excluir pedido no Omie!');
             } else {
-                console.log('[cancelarPedidoOmie] TrocarEtapaPedido falhou, tentando AlterarPedidoVenda...');
-
-                // Tentativa 2: ConsultarPedido + AlterarPedidoVenda com etapa 60
-                const consultaResp = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: "ConsultarPedido",
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [{ codigo_pedido: codigoPedido }]
-                    })
-                });
-
-                const consultaText = await consultaResp.text();
-                let pedidoOmie;
-                try { pedidoOmie = JSON.parse(consultaText); } catch (e) { /* */ }
-
-                if (pedidoOmie && !pedidoOmie.faultstring) {
-                    const pedidoData = pedidoOmie.pedido_venda_produto || pedidoOmie;
-                    const pedidoParaAlterar = JSON.parse(JSON.stringify(pedidoData));
-
-                    if (pedidoParaAlterar.cabecalho) {
-                        pedidoParaAlterar.cabecalho.etapa = "60";
-                        delete pedidoParaAlterar.cabecalho.numero_pedido;
-                        delete pedidoParaAlterar.cabecalho.origem_pedido;
-                        delete pedidoParaAlterar.cabecalho.bloqueado;
-                        delete pedidoParaAlterar.cabecalho.importado_api;
-                        delete pedidoParaAlterar.cabecalho.quantidade_itens;
-                    }
-
-                    const camposRemover = ['infoCadastro', 'exportacao', 'total_pedido', 'MarketPlace', 'marketplace', 'lista_parcelas'];
-                    camposRemover.forEach(c => delete pedidoParaAlterar[c]);
-
-                    if (pedidoParaAlterar.det) {
-                        pedidoParaAlterar.det = pedidoParaAlterar.det.map(item => {
-                            delete item.infAdic;
-                            delete item.inf_adic;
-                            delete item.rastreabilidade;
-                            delete item.imposto;
-                            return item;
-                        });
-                    }
-
-                    const response2 = await fetch(OMIE_URL, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            call: "AlterarPedidoVenda",
-                            app_key: OMIE_APP_KEY,
-                            app_secret: OMIE_APP_SECRET,
-                            param: [pedidoParaAlterar]
-                        })
-                    });
-
-                    const result2Text = await response2.text();
-                    console.log('[cancelarPedidoOmie] Resposta AlterarPedidoVenda:', result2Text.substring(0, 1000));
-
-                    let result2;
-                    try { result2 = JSON.parse(result2Text); } catch (e) { /* */ }
-
-                    if (result2 && !result2.faultstring && !result2.faultcode) {
-                        omieCancelado = true;
-                        console.log('[cancelarPedidoOmie] Sucesso com AlterarPedidoVenda!');
-                    } else {
-                        omieErro = result2?.faultstring || 'Falha ao cancelar no Omie';
-                        console.error('[cancelarPedidoOmie] Erro:', omieErro);
-                    }
-                } else {
-                    omieErro = pedidoOmie?.faultstring || 'Falha ao consultar pedido no Omie';
-                }
+                omieErro = result?.faultstring || 'Falha ao excluir no Omie';
+                console.error('[cancelarPedidoOmie] Erro Omie:', omieErro);
             }
         }
 
@@ -150,14 +76,14 @@ Deno.serve(async (req) => {
             omie_erro: omieErro
         });
 
-        console.log('[cancelarPedidoOmie] Pedido cancelado localmente. Omie cancelado:', omieCancelado);
+        console.log('[cancelarPedidoOmie] Pedido cancelado localmente. Omie excluído:', omieCancelado);
 
         return Response.json({
             sucesso: true,
             omie_cancelado: omieCancelado,
             omie_erro: omieErro,
             mensagem: omieCancelado
-                ? 'Pedido cancelado no sistema e no Omie'
+                ? 'Pedido cancelado no sistema e excluído no Omie'
                 : (pedido.omie_enviado ? `Pedido cancelado no sistema. Omie: ${omieErro || 'não enviado'}` : 'Pedido cancelado no sistema')
         });
 
