@@ -415,8 +415,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     </Button>
 
                     {/* Excluir */}
-                    <Button size="sm" variant="ghost" onClick={() => excluirPedido(pedido)} className="text-xs text-red-500 hover:text-red-700">
-                      <Trash2 className="w-3 h-3" />
+                    <Button size="sm" variant="ghost" onClick={() => excluirPedido(pedido)} disabled={excluindoId === pedido.id} className="text-xs text-red-500 hover:text-red-700">
+                      {excluindoId === pedido.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                     </Button>
                   </div>
                 </CardContent>
