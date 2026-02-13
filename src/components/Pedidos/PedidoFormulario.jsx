@@ -205,7 +205,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
     const pedidoData = {
       tipo,
-      status: 'pendente',
       cliente_id: cliente.id,
       cliente_codigo: cliente.codigo || '',
       cliente_nome: cliente.razao_social || '',
@@ -240,6 +239,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         await base44.entities.PedidoItem.delete(item.id);
       }
     } else {
+      pedidoData.status = 'pendente';
       const created = await base44.entities.Pedido.create(pedidoData);
       savedPedidoId = created.id;
       setPedidoId(created.id);
@@ -263,9 +263,27 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       await base44.entities.PedidoItem.create(itemData);
     }
 
+    // Se o pedido já foi enviado ao Omie, sincronizar alterações
+    if (pedidoId && existingPedido?.omie_enviado && existingPedido?.omie_codigo_pedido) {
+      try {
+        const resp = await base44.functions.invoke('editarPedidoOmie', { pedido_id: savedPedidoId });
+        const result = resp.data;
+        if (result.sucesso) {
+          toast.success('Pedido salvo e atualizado no Omie!');
+        } else {
+          toast.warning(`Pedido salvo, mas erro ao atualizar no Omie: ${result.erro}`);
+        }
+      } catch (omieErr) {
+        toast.warning('Pedido salvo localmente, mas falhou ao sincronizar com Omie');
+      }
+    } else {
+      toast.success('Pedido salvo com sucesso!');
+    }
+
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     queryClient.invalidateQueries({ queryKey: ['pedido-items'] });
-    toast.success('Pedido salvo com sucesso!');
+    queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+    queryClient.invalidateQueries({ queryKey: ['pedidoItems-all-gestao'] });
     setSalvando(false);
     onVoltar();
   };
