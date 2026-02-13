@@ -170,6 +170,7 @@ Deno.serve(async (req) => {
                 modalidade: "9" // 9 = sem frete
             },
             informacoes_adicionais: {
+                codigo_categoria: "1.01.03",
                 consumidor_final: "S",
                 enviar_email: "N"
             }
