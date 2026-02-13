@@ -131,6 +131,12 @@ Deno.serve(async (req) => {
         // Definir a nova etapa
         if (pedidoParaAlterar.cabecalho) {
             pedidoParaAlterar.cabecalho.etapa = etapaDestino;
+            // Remover campos read-only do cabecalho
+            delete pedidoParaAlterar.cabecalho.numero_pedido;
+            delete pedidoParaAlterar.cabecalho.origem_pedido;
+            delete pedidoParaAlterar.cabecalho.bloqueado;
+            delete pedidoParaAlterar.cabecalho.importado_api;
+            delete pedidoParaAlterar.cabecalho.quantidade_itens;
         }
         
         // Remover campos que o Omie não aceita em alteração
@@ -143,6 +149,8 @@ Deno.serve(async (req) => {
                 delete item.infAdic;
                 delete item.inf_adic;
                 delete item.rastreabilidade;
+                // Remover impostos calculados (read-only)
+                delete item.imposto;
                 return item;
             });
         }
