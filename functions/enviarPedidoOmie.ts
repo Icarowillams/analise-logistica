@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
 
         // Definir etapa
         // 10 = Orçamento, 20 = Pedido, 50 = Separar/Faturar
-        const etapa = "10";
+        const etapa = "50";
 
         // Montar payload do pedido
         const pedidoOmie = {
