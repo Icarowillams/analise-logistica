@@ -839,14 +839,19 @@ export default function Clientes() {
                 <div>
                   <Label>Vendedor</Label>
                   <Select 
-                    value={formData.vendedor_id} 
+                    value={formData.vendedor_id || '_none_'} 
                     onValueChange={(v) => {
-                      setFormData({ ...formData, vendedor_id: v });
+                      const vendedorId = v === '_none_' ? '' : v;
+                      setFormData({ ...formData, vendedor_id: vendedorId });
                       // Buscar supervisor do vendedor selecionado
-                      const vendedor = vendedores.find(vend => vend.id === v);
-                      if (vendedor && vendedor.supervisor_id) {
-                        const supervisor = vendedores.find(sup => sup.id === vendedor.supervisor_id);
-                        setSupervisorNome(supervisor ? supervisor.nome : '');
+                      if (vendedorId) {
+                        const vendedor = vendedores.find(vend => vend.id === vendedorId);
+                        if (vendedor && vendedor.supervisor_id) {
+                          const supervisor = vendedores.find(sup => sup.id === vendedor.supervisor_id);
+                          setSupervisorNome(supervisor ? supervisor.nome : '');
+                        } else {
+                          setSupervisorNome('');
+                        }
                       } else {
                         setSupervisorNome('');
                       }
@@ -857,6 +862,7 @@ export default function Clientes() {
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhum</SelectItem>
                       {vendedores.map(v => (
                         <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
                       ))}
