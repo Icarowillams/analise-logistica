@@ -767,14 +767,15 @@ export default function Clientes() {
                 <div>
                   <Label>Plano de Pagamento</Label>
                   <Select 
-                    value={formData.plano_pagamento_id} 
-                    onValueChange={(v) => setFormData({ ...formData, plano_pagamento_id: v })}
+                    value={formData.plano_pagamento_id || '_none_'} 
+                    onValueChange={(v) => setFormData({ ...formData, plano_pagamento_id: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhum</SelectItem>
                       {planosPagamento.map(p => (
                         <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
                       ))}
@@ -784,14 +785,15 @@ export default function Clientes() {
                 <div>
                   <Label>Tabela de Preço</Label>
                   <Select 
-                    value={formData.tabela_id} 
-                    onValueChange={(v) => setFormData({ ...formData, tabela_id: v })}
+                    value={formData.tabela_id || '_none_'} 
+                    onValueChange={(v) => setFormData({ ...formData, tabela_id: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhuma</SelectItem>
                       {tabelas.map(t => (
                         <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
                       ))}
@@ -801,14 +803,15 @@ export default function Clientes() {
                 <div>
                   <Label>Segmento</Label>
                   <Select 
-                    value={formData.segmento_id} 
-                    onValueChange={(v) => setFormData({ ...formData, segmento_id: v })}
+                    value={formData.segmento_id || '_none_'} 
+                    onValueChange={(v) => setFormData({ ...formData, segmento_id: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhum</SelectItem>
                       {segmentos.map(s => (
                         <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                       ))}
