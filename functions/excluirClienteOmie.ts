@@ -9,11 +9,23 @@ Deno.serve(async (req) => {
         const base44 = createClientFromRequest(req);
         const body = await req.json();
         
+        // Automação de entidade envia: { event, data, old_data, payload_too_large }
         const { event, data: cliente } = body;
 
-        if (!cliente || !cliente.id) {
+        console.log('[excluirClienteOmie] Payload recebido:', JSON.stringify(body).substring(0, 500));
+        console.log('[excluirClienteOmie] Event:', JSON.stringify(event));
+
+        // Determinar o ID do cliente para usar como codigo_cliente_integracao
+        // Na exclusão, o data pode vir com os dados do registro antes da exclusão
+        const clienteId = event?.entity_id || cliente?.id;
+        const clienteNome = cliente?.razao_social || cliente?.nome_fantasia || 'N/A';
+
+        if (!clienteId) {
+            console.log('[excluirClienteOmie] Nenhum ID de cliente encontrado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
         }
+
+        console.log('[excluirClienteOmie] Excluindo cliente do Omie - ID:', clienteId, '- Nome:', clienteNome);
 
         const response = await fetch(OMIE_URL, {
             method: "POST",
@@ -23,29 +35,41 @@ Deno.serve(async (req) => {
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
                 param: [{
-                    codigo_cliente_integracao: cliente.id
+                    codigo_cliente_integracao: clienteId
                 }]
             })
         });
 
         const resultado = await response.json();
 
+        console.log('[excluirClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
+
         if (resultado.faultstring) {
-            console.error('Erro Omie ao excluir:', resultado.faultstring);
+            // Se o erro for "Cliente não encontrado", considerar como sucesso (já foi excluído)
+            const erroLower = resultado.faultstring.toLowerCase();
+            if (erroLower.includes('não encontrado') || erroLower.includes('não cadastrado') || erroLower.includes('not found')) {
+                console.log('[excluirClienteOmie] Cliente já não existe no Omie (ignorando erro):', resultado.faultstring);
+                return Response.json({ 
+                    sucesso: true, 
+                    mensagem: 'Cliente já não existia no Omie'
+                });
+            }
+
+            console.error('[excluirClienteOmie] Erro Omie ao excluir:', resultado.faultstring);
             return Response.json({ 
                 sucesso: false, 
                 erro: resultado.faultstring 
             });
         }
 
-        console.log('Cliente excluído do Omie:', cliente.razao_social);
+        console.log('[excluirClienteOmie] Cliente excluído do Omie com sucesso:', clienteNome);
         return Response.json({ 
             sucesso: true, 
             mensagem: 'Cliente excluído do Omie com sucesso'
         });
 
     } catch (error) {
-        console.error('Erro ao excluir cliente:', error.message);
+        console.error('[excluirClienteOmie] Erro:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });

@@ -4,6 +4,66 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
+// Mapa de nome completo do estado para sigla UF
+const estadoParaUF = {
+    'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+    'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+    'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+    'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+    'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+    'rio grande do sul': 'RS', 'rondonia': 'RO', 'roraima': 'RR', 'santa catarina': 'SC',
+    'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+};
+
+function normalizarEstado(estado) {
+    let normalizado = (estado || '').trim();
+    if (normalizado.length > 2) {
+        const chave = normalizado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        normalizado = estadoParaUF[chave] || normalizado.substring(0, 2).toUpperCase();
+    } else {
+        normalizado = normalizado.toUpperCase();
+    }
+    return normalizado;
+}
+
+function mapearClienteParaOmie(cliente) {
+    const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
+    const estadoNorm = normalizarEstado(cliente.estado);
+    const cepNorm = (cliente.cep || "").replace(/[^\d]/g, "").substring(0, 8);
+    const isPessoaFisica = cpfCnpj.length <= 11;
+
+    const clienteOmie = {
+        codigo_cliente_integracao: cliente.id,
+        razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
+        nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
+        cnpj_cpf: cpfCnpj,
+        pessoa_fisica: isPessoaFisica ? "S" : "N",
+        endereco: (cliente.endereco || "").substring(0, 60),
+        endereco_numero: (cliente.numero || "S/N").substring(0, 10),
+        bairro: (cliente.bairro || "").substring(0, 60),
+        complemento: "",
+        cidade: (cliente.cidade || "").substring(0, 60),
+        estado: estadoNorm,
+        cep: cepNorm,
+        contato: "",
+        email: "",
+        contribuinte: isPessoaFisica ? "N" : "S",
+        observacao: "",
+        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+    };
+
+    // Remover campos vazios
+    const camposObrigatorios = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo'];
+    for (const [key, value] of Object.entries(clienteOmie)) {
+        if (camposObrigatorios.includes(key)) continue;
+        if (value === '' || value === null || value === undefined) {
+            delete clienteOmie[key];
+        }
+    }
+
+    return clienteOmie;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -20,7 +80,6 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        // Processar no máximo 100 clientes por chamada (para não dar timeout)
         const LOTE_MAX = 100;
         const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
@@ -32,7 +91,6 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Buscar clientes do Base44
         const clientes = await base44.entities.Cliente.list();
         const clientesParaExportar = clientes.filter(c => clientesDoLote.includes(c.id));
 
@@ -40,25 +98,7 @@ Deno.serve(async (req) => {
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         for (const cliente of clientesParaExportar) {
-            // Validar e limpar dados antes de enviar
-            const estado = (cliente.estado || "").replace(/[^a-zA-Z]/g, "").substring(0, 2).toUpperCase();
-            const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
-            
-            const clienteOmie = {
-                codigo_cliente_integracao: cliente.id,
-                razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
-                nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 60),
-                cnpj_cpf: cpfCnpj,
-                email: "",
-                endereco: (cliente.endereco || "N/A").substring(0, 60),
-                endereco_numero: (cliente.numero || "S/N").substring(0, 10),
-                bairro: (cliente.bairro || "N/A").substring(0, 60),
-                cidade: (cliente.cidade || "N/A").substring(0, 40),
-                estado: estado || "PE",
-                cep: (cliente.cep || "00000000").replace(/[^\d]/g, "").substring(0, 8),
-                pessoa_fisica: cpfCnpj.length <= 11 ? "S" : "N"
-            };
-
+            const clienteOmie = mapearClienteParaOmie(cliente);
             const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
 
             try {
@@ -92,7 +132,6 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // Aguardar 1000ms entre requisições para evitar bloqueio da API Omie
             await delay(1000);
         }
 
