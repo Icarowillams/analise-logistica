@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             sucesso: true,
-            cliente_id: cliente.id,
+            cliente_id: clienteData.id,
             codigo_omie: resultado.codigo_cliente_omie,
             mensagem: resultado.descricao_status || "Cliente enviado com sucesso"
         });
