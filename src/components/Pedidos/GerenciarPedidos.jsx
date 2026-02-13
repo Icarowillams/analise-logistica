@@ -361,7 +361,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <DollarSign className="w-3 h-3 mr-1" /> Débitos
                     </Button>
 
-                    {/* Liberar pedido (só se enviado) */}
+                    {/* Liberar pedido (só se enviado e não cancelado) */}
                     {pedido.status === 'enviado' && (
                       <Button
                         size="sm"
@@ -396,7 +396,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       </Button>
                     )}
 
-                    {/* Editar (se pendente) */}
+                    {/* Editar (se pendente e não cancelado) */}
                     {pedido.status === 'pendente' && (
                       <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
                         <Pencil className="w-3 h-3 mr-1" /> Editar
@@ -427,6 +427,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         onOpenChange={setDebitosOpen}
         clienteId={debitosClienteId}
         clienteNome={debitosClienteNome}
+      />
+
+      <CancelarPedidoModal
+        open={cancelarOpen}
+        onOpenChange={setCancelarOpen}
+        pedido={cancelarPedido}
+        onConfirm={handleCancelarPedido}
       />
     </div>
   );
