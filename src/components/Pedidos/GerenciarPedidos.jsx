@@ -173,16 +173,36 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
   };
 
+  const [excluindoId, setExcluindoId] = useState(null);
+
   const excluirPedido = async (pedido) => {
     if (!confirm(`Excluir o pedido ${pedido.numero_pedido ? '#' + pedido.numero_pedido : ''} do cliente ${pedido.cliente_nome}?`)) return;
-    const items = allItems.filter(i => i.pedido_id === pedido.id);
-    for (const item of items) {
-      await base44.entities.PedidoItem.delete(item.id);
+    setExcluindoId(pedido.id);
+    try {
+      // Cancelar no Omie se foi enviado
+      if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+        try {
+          const resp = await base44.functions.invoke('cancelarPedidoOmie', { omie_codigo_pedido: pedido.omie_codigo_pedido });
+          const result = resp.data;
+          if (!result.sucesso) {
+            toast.warning(`Erro ao cancelar no Omie: ${result.erro}. Pedido será excluído localmente.`);
+          }
+        } catch (omieErr) {
+          toast.warning('Falha ao cancelar no Omie. Pedido será excluído localmente.');
+        }
+      }
+
+      const items = allItems.filter(i => i.pedido_id === pedido.id);
+      for (const item of items) {
+        await base44.entities.PedidoItem.delete(item.id);
+      }
+      await base44.entities.Pedido.delete(pedido.id);
+      queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedidoItems-all-gestao'] });
+      toast.success('Pedido excluído e cancelado no Omie');
+    } finally {
+      setExcluindoId(null);
     }
-    await base44.entities.Pedido.delete(pedido.id);
-    queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
-    queryClient.invalidateQueries({ queryKey: ['pedidoItems-all-gestao'] });
-    toast.success('Pedido excluído');
   };
 
   const enviarParaFaturar = async (pedido) => {
