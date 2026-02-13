@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
             'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
         };
 
-        let estadoNormalizado = (cliente.estado || '').trim();
+        let estadoNormalizado = (clienteData.estado || '').trim();
         // Se tem mais de 2 caracteres, tentar converter nome completo para sigla
         if (estadoNormalizado.length > 2) {
             const chave = estadoNormalizado.toLowerCase()
@@ -79,23 +79,23 @@ Deno.serve(async (req) => {
         }
 
         // Normalizar CEP (apenas dígitos, 8 caracteres)
-        let cepNormalizado = (cliente.cep || '').replace(/\D/g, '');
+        let cepNormalizado = (clienteData.cep || '').replace(/\D/g, '');
         if (cepNormalizado.length > 8) cepNormalizado = cepNormalizado.substring(0, 8);
 
         // Normalizar CPF/CNPJ (remover pontuação)
-        const cnpjCpfLimpo = (cliente.cpf_cnpj || '').replace(/[.\-\/\s]/g, '');
+        const cnpjCpfLimpo = (clienteData.cpf_cnpj || '').replace(/[.\-\/\s]/g, '');
 
         // Mapear campos do Base44 para Omie
         const clienteOmie = {
-            codigo_cliente_integracao: cliente.id,
-            razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
-            nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
+            codigo_cliente_integracao: clienteData.id,
+            razao_social: (clienteData.razao_social || clienteData.nome_fantasia || "Cliente sem nome").substring(0, 60),
+            nome_fantasia: (clienteData.nome_fantasia || clienteData.razao_social || "").substring(0, 100),
             cnpj_cpf: cnpjCpfLimpo,
             email: "",
-            endereco: (cliente.endereco || "").substring(0, 60),
-            endereco_numero: (cliente.numero || "").substring(0, 10),
-            bairro: (cliente.bairro || "").substring(0, 60),
-            cidade: (cliente.cidade || "").substring(0, 60),
+            endereco: (clienteData.endereco || "").substring(0, 60),
+            endereco_numero: (clienteData.numero || "").substring(0, 10),
+            bairro: (clienteData.bairro || "").substring(0, 60),
+            cidade: (clienteData.cidade || "").substring(0, 60),
             estado: estadoNormalizado,
             cep: cepNormalizado,
             pessoa_fisica: (cnpjCpfLimpo.length <= 11) ? "S" : "N"
