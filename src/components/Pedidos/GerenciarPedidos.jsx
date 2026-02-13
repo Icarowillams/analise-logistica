@@ -154,26 +154,26 @@ export default function GerenciarPedidos({ onEditPedido }) {
     toast.success('Pedido excluído');
   };
 
-  const enviarParaOmie = async (pedido) => {
-    if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-      toast.info(`Este pedido já foi enviado ao Omie (Cód: ${pedido.omie_codigo_pedido})`);
+  const enviarParaFaturar = async (pedido) => {
+    if (!pedido.omie_enviado || !pedido.omie_codigo_pedido) {
+      toast.error('Este pedido ainda não foi enviado ao Omie');
       return;
     }
-    if (!confirm(`Enviar o pedido #${pedido.numero_pedido || ''} do cliente ${pedido.cliente_nome} para o Omie?`)) return;
+    if (!confirm(`Mover o pedido #${pedido.numero_pedido || ''} do cliente ${pedido.cliente_nome} para Faturar no Omie?`)) return;
     
     setEnviandoOmieId(pedido.id);
     try {
-      const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
+      const response = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id });
       const result = response.data;
       
       if (result.sucesso) {
-        toast.success(`Pedido enviado ao Omie! Código: ${result.codigo_pedido_omie || 'OK'}`);
+        toast.success(`Pedido movido para Faturar no Omie!`);
         queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
       } else {
         toast.error(`Erro Omie: ${result.erro}`);
       }
     } catch (err) {
-      toast.error('Erro ao enviar para Omie: ' + err.message);
+      toast.error('Erro ao faturar no Omie: ' + err.message);
     } finally {
       setEnviandoOmieId(null);
     }
@@ -333,11 +333,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       </Button>
                     )}
 
-                    {/* Enviar ao Omie (só se liberado) */}
-                    {pedido.status === 'liberado' && !pedido.omie_enviado && (
+                    {/* Faturar no Omie (só se liberado e já enviado ao Omie) */}
+                    {pedido.status === 'liberado' && pedido.omie_enviado && (
                       <Button
                         size="sm"
-                        onClick={() => enviarParaOmie(pedido)}
+                        onClick={() => enviarParaFaturar(pedido)}
                         disabled={enviandoOmieId === pedido.id}
                         className="text-xs bg-indigo-600 hover:bg-indigo-700"
                       >
@@ -346,29 +346,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         ) : (
                           <Send className="w-3 h-3 mr-1" />
                         )}
-                        Enviar Omie
+                        Faturar
                       </Button>
                     )}
-                    {pedido.status === 'liberado' && pedido.omie_enviado && (
-                      <Badge className="bg-indigo-100 text-indigo-700 text-[10px]">
-                        ✓ No Omie
+                    {pedido.status === 'liberado' && !pedido.omie_enviado && (
+                      <Badge className="bg-amber-100 text-amber-700 text-[10px]">
+                        Aguardando envio ao Omie
                       </Badge>
-                    )}
-                    {pedido.omie_erro && !pedido.omie_enviado && pedido.status === 'liberado' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => enviarParaOmie(pedido)}
-                        disabled={enviandoOmieId === pedido.id}
-                        className="text-xs text-red-600 border-red-200 hover:bg-red-50"
-                      >
-                        {enviandoOmieId === pedido.id ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <CloudOff className="w-3 h-3 mr-1" />
-                        )}
-                        Reenviar Omie
-                      </Button>
                     )}
 
                     {/* Tornar Pendente (se enviado ou liberado) */}
