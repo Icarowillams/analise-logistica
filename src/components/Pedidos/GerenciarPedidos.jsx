@@ -370,10 +370,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       </Badge>
                     )}
 
-                    {/* Tornar Pendente (se enviado ou liberado) */}
-                    {(pedido.status === 'enviado' || pedido.status === 'liberado') && (
-                      <Button size="sm" variant="outline" onClick={() => tornarPendente(pedido)} className="text-xs text-amber-700 border-amber-200 hover:bg-amber-50">
-                        <Undo2 className="w-3 h-3 mr-1" /> Pendente
+                    {/* Voltar para Enviado (se liberado) */}
+                    {pedido.status === 'liberado' && (
+                      <Button size="sm" variant="outline" onClick={() => tornarPendente(pedido)} disabled={tornandoPendenteId === pedido.id} className="text-xs text-amber-700 border-amber-200 hover:bg-amber-50">
+                        {tornandoPendenteId === pedido.id ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        ) : (
+                          <Undo2 className="w-3 h-3 mr-1" />
+                        )}
+                        Voltar Enviado
                       </Button>
                     )}
 
