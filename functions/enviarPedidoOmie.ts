@@ -195,6 +195,39 @@ Deno.serve(async (req) => {
             pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
         }
 
+        // Buscar conta corrente no Omie
+        let codigoContaCorrente = null;
+        try {
+            const ccResponse = await fetch("https://app.omie.com.br/api/v1/geral/contacorrente/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    call: "ListarContasCorrentes",
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [{ pagina: 1, registros_por_pagina: 50 }]
+                })
+            });
+            const ccData = await ccResponse.json();
+            if (ccData.ListarContasCorrentes && ccData.ListarContasCorrentes.length > 0) {
+                // Pegar a primeira conta corrente ativa
+                const contaPadrao = ccData.ListarContasCorrentes.find(c => c.cPadrao === "S") || ccData.ListarContasCorrentes[0];
+                codigoContaCorrente = contaPadrao.nCodCC;
+                console.log('[enviarPedidoOmie] Conta corrente encontrada:', codigoContaCorrente, contaPadrao.cDescricao);
+            }
+
+            if (!ccData.faultstring && ccData.conta_corrente_lista) {
+                const contaPadrao2 = ccData.conta_corrente_lista.find(c => c.padrao === "S") || ccData.conta_corrente_lista[0];
+                codigoContaCorrente = contaPadrao2.nCodCC || contaPadrao2.codigo;
+            }
+        } catch (ccErr) {
+            console.log('[enviarPedidoOmie] Erro ao buscar conta corrente:', ccErr.message);
+        }
+
+        if (codigoContaCorrente) {
+            pedidoOmie.informacoes_adicionais.codigo_conta_corrente = codigoContaCorrente;
+        }
+
         console.log('[enviarPedidoOmie] Enviando pedido:', pedido.id, '- Cliente:', pedido.cliente_nome);
         console.log('[enviarPedidoOmie] Payload:', JSON.stringify(pedidoOmie).substring(0, 2000));
 
