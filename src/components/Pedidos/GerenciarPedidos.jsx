@@ -397,8 +397,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       </Button>
                     )}
 
-                    {/* Editar (se pendente e não cancelado) */}
-                    {pedido.status === 'pendente' && (
+                    {/* Editar (se não cancelado) */}
+                    {pedido.status !== 'cancelado' && (
                       <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
                         <Pencil className="w-3 h-3 mr-1" /> Editar
                       </Button>
