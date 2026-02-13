@@ -35,13 +35,19 @@ Deno.serve(async (req) => {
         const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
         console.log('[faturarPedidoOmie] Alterando etapa do pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Tipo:', typeof codigoPedidoOmie);
 
+        // Etapa destino: recebido via request ou default "20" (segunda coluna/separação)
+        // Nota: Omie não permite TrocarEtapaPedido para "50" (Faturar) via API - 
+        // a etapa 50 é feita pelo processo de faturamento interno do Omie.
+        const body = await req.json().catch(() => ({}));
+        const etapaDestino = body.etapa || "20";
+
         const payload = {
             call: "TrocarEtapaPedido",
             app_key: OMIE_APP_KEY,
             app_secret: OMIE_APP_SECRET,
             param: [{
                 codigo_pedido: codigoPedidoOmie,
-                etapa: "50"
+                etapa: etapaDestino
             }]
         };
         console.log('[faturarPedidoOmie] Payload enviado:', JSON.stringify(payload));
