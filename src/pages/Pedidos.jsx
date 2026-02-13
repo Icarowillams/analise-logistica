@@ -55,7 +55,7 @@ export default function Pedidos() {
     <div>
       <PageHeader title="Pedidos" subtitle={vendedorAtual ? `Vendedor: ${vendedorAtual.nome}` : 'Gestão de Pedidos'} icon={ShoppingCart} />
       
-      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
+      <Tabs value={activeTab || 'gerenciar'} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
         <TabsList className={`grid w-full mb-6 ${vendedorAtual ? 'grid-cols-3' : 'grid-cols-1'}`}>
           {vendedorAtual && <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>}
           {vendedorAtual && <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>}
