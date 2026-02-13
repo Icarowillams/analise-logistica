@@ -31,8 +31,19 @@ export default function Pedidos() {
     }).catch(() => {});
   }, [vendedores]);
 
-  const handleEditPedido = (pedidoId) => {
+  const handleEditPedido = async (pedidoId) => {
     setEditingPedidoId(pedidoId);
+    // Se admin sem vendedor vinculado, precisa de um vendedor temporário para o formulário
+    if (!vendedorAtual && isAdmin) {
+      try {
+        const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
+        const pedido = allPedidos.find(p => p.id === pedidoId);
+        if (pedido) {
+          const vend = vendedores.find(v => v.id === pedido.vendedor_id);
+          if (vend) setVendedorAtual(vend);
+        }
+      } catch (e) {}
+    }
     setActiveTab('digitar');
   };
 
