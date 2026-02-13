@@ -116,16 +116,18 @@ Deno.serve(async (req) => {
 
         const resultado = await response.json();
 
+        console.log('[enviarClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
+
         if (resultado.faultstring) {
-            console.error('Erro Omie:', resultado.faultstring);
+            console.error('[enviarClienteOmie] Erro Omie:', resultado.faultstring);
             return Response.json({ 
                 sucesso: false, 
                 erro: resultado.faultstring,
-                cliente_id: cliente.id
+                cliente_id: clienteData.id
             });
         }
 
-        console.log('Cliente enviado para Omie:', cliente.razao_social, '- Código Omie:', resultado.codigo_cliente_omie);
+        console.log('[enviarClienteOmie] Cliente enviado para Omie:', clienteData.razao_social, '- Código Omie:', resultado.codigo_cliente_omie);
 
         return Response.json({
             sucesso: true,
