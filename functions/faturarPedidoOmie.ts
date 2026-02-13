@@ -66,15 +66,22 @@ Deno.serve(async (req) => {
             // continua para tentativa 2
         }
 
-        // Se tentativa 1 deu certo
-        if (resultado1 && !resultado1.faultstring && !resultado1.faultcode) {
+        // Se tentativa 1 deu certo (verificar se não é mensagem de erro disfarçada)
+        const descStatus1 = resultado1?.descricao_status || '';
+        const isRealSuccess1 = resultado1 && !resultado1.faultstring && !resultado1.faultcode 
+            && !descStatus1.toLowerCase().includes('não é possível')
+            && !descStatus1.toLowerCase().includes('utilize o processo');
+        
+        if (isRealSuccess1) {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: null });
             console.log('[faturarPedidoOmie] Sucesso na Tentativa 1!');
             return Response.json({
                 sucesso: true,
-                mensagem: resultado1.descricao_status || `Pedido movido para etapa ${etapaDestino} no Omie`
+                mensagem: descStatus1 || `Pedido movido para etapa ${etapaDestino} no Omie`
             });
         }
+        
+        console.log('[faturarPedidoOmie] Tentativa 1 falhou:', resultado1?.faultstring || descStatus1);
 
         // Tentativa 2: Primeiro consultar o pedido no Omie, depois usar AlterarPedidoVenda
         console.log('[faturarPedidoOmie] Tentativa 2: ConsultarPedido + AlterarPedidoVenda');
