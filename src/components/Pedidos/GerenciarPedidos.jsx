@@ -141,18 +141,36 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
   };
 
+  const [tornandoPendenteId, setTornandoPendenteId] = useState(null);
+
   const tornarPendente = async (pedido) => {
     if (!confirm('Deseja tornar este pedido pendente novamente?')) return;
-    await base44.entities.Pedido.update(pedido.id, {
-      status: 'pendente',
-      numero_pedido: null,
-      data_envio: null,
-      liberado_por: null,
-      data_liberacao: null,
-      pendencia_financeira_ignorada: false
-    });
-    queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
-    toast.success('Pedido retornado para pendente');
+    setTornandoPendenteId(pedido.id);
+    try {
+      // Voltar para etapa 10 no Omie se foi enviado
+      if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+        try {
+          const resp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id, etapa: "10" });
+          const result = resp.data;
+          if (!result.sucesso) {
+            toast.warning(`Pedido voltou para pendente, mas erro no Omie: ${result.erro}`);
+          }
+        } catch (omieErr) {
+          toast.warning('Pedido voltou para pendente, mas falhou ao voltar etapa no Omie');
+        }
+      }
+
+      await base44.entities.Pedido.update(pedido.id, {
+        status: 'enviado',
+        liberado_por: null,
+        data_liberacao: null,
+        pendencia_financeira_ignorada: false
+      });
+      queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+      toast.success('Pedido retornado para Enviado (etapa 10 no Omie)');
+    } finally {
+      setTornandoPendenteId(null);
+    }
   };
 
   const excluirPedido = async (pedido) => {
