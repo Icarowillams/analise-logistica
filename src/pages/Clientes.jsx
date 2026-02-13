@@ -881,14 +881,15 @@ export default function Clientes() {
                 <div>
                   <Label>Rota</Label>
                   <Select 
-                    value={formData.rota_id} 
-                    onValueChange={(v) => setFormData({ ...formData, rota_id: v })}
+                    value={formData.rota_id || '_none_'} 
+                    onValueChange={(v) => setFormData({ ...formData, rota_id: v === '_none_' ? '' : v })}
                     disabled={!isEditing}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhuma</SelectItem>
                       {rotas.map(r => (
                         <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
                       ))}
