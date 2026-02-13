@@ -67,10 +67,20 @@ Deno.serve(async (req) => {
             }
         }
 
+        // Buscar nome do funcionário pelo email
+        let nomeUsuario = user.full_name || user.email;
+        try {
+            const vendedores = await base44.asServiceRole.entities.Vendedor.filter({ email: user.email });
+            if (vendedores.length > 0) {
+                nomeUsuario = vendedores[0].nome;
+            }
+        } catch (e) { /* usa full_name como fallback */ }
+
         // Atualizar pedido no Base44 como cancelado
         await base44.asServiceRole.entities.Pedido.update(pedido_id, {
             status: 'cancelado',
             cancelado_por: user.email,
+            cancelado_por_nome: nomeUsuario,
             data_cancelamento: new Date().toISOString(),
             motivo_cancelamento: motivo.trim(),
             omie_erro: omieErro
