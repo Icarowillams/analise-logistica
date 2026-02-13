@@ -79,8 +79,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
         }
 
-        if (pedido.status !== 'liberado') {
-            return Response.json({ error: 'Apenas pedidos liberados podem ser enviados ao Omie' }, { status: 400 });
+        if (pedido.status !== 'enviado' && pedido.status !== 'liberado') {
+            return Response.json({ error: 'Apenas pedidos enviados ou liberados podem ser enviados ao Omie' }, { status: 400 });
         }
 
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
