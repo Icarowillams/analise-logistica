@@ -95,8 +95,31 @@ export default function PedidoPdf({ pedidoId }) {
         <Download className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
       </Button>
 
-      <div ref={printRef} className="bg-white border rounded-xl shadow-sm max-w-4xl mx-auto" style={{ padding: '20px', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#000' }}>
+      <div ref={printRef} className="bg-white border rounded-xl shadow-sm max-w-4xl mx-auto" style={{ padding: '20px', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#000', position: 'relative' }}>
         
+        {/* ===== MARCA D'ÁGUA CANCELADO ===== */}
+        {pedido.status === 'cancelado' && (
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-35deg)',
+            fontSize: '80px', fontWeight: 900, color: 'rgba(220, 38, 38, 0.18)',
+            textTransform: 'uppercase', letterSpacing: '12px', pointerEvents: 'none', zIndex: 10,
+            whiteSpace: 'nowrap'
+          }}>
+            CANCELADO
+          </div>
+        )}
+
+        {/* ===== TARJA CANCELADO ===== */}
+        {pedido.status === 'cancelado' && (
+          <div style={{
+            background: '#DC2626', color: '#FFF', textAlign: 'center', padding: '8px',
+            fontSize: '14px', fontWeight: 700, letterSpacing: '2px', marginBottom: '8px',
+            textTransform: 'uppercase'
+          }}>
+            ✕ PEDIDO CANCELADO
+          </div>
+        )}
+
         {/* ===== HEADER ===== */}
         <table className="header-table" style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
           <tbody>
@@ -288,6 +311,37 @@ export default function PedidoPdf({ pedidoId }) {
             </tr>
           </tfoot>
         </table>
+
+        {/* ===== INFO CANCELAMENTO ===== */}
+        {pedido.status === 'cancelado' && (
+          <>
+            <div style={{ background:'#FEE2E2', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #DC2626', borderBottom:'none', marginTop:'8px', color:'#991B1B' }}>
+              DADOS DO CANCELAMENTO
+            </div>
+            <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #DC2626' }}>
+              <tbody>
+                <tr>
+                  <td style={{ border:'1px solid #FCA5A5', padding:'2px 5px', background:'#FEF2F2' }}>
+                    <span style={{ fontSize:'8px', color:'#991B1B', display:'block' }}>CANCELADO POR</span>
+                    <span style={{ fontSize:'10px', fontWeight:500, color:'#991B1B' }}>{pedido.cancelado_por || '-'}</span>
+                  </td>
+                  <td style={{ border:'1px solid #FCA5A5', padding:'2px 5px', background:'#FEF2F2' }}>
+                    <span style={{ fontSize:'8px', color:'#991B1B', display:'block' }}>DATA/HORA</span>
+                    <span style={{ fontSize:'10px', fontWeight:500, color:'#991B1B' }}>
+                      {pedido.data_cancelamento ? new Date(pedido.data_cancelamento).toLocaleString('pt-BR') : '-'}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan="2" style={{ border:'1px solid #FCA5A5', padding:'4px 5px', background:'#FEF2F2' }}>
+                    <span style={{ fontSize:'8px', color:'#991B1B', display:'block' }}>MOTIVO DO CANCELAMENTO</span>
+                    <span style={{ fontSize:'10px', fontWeight:600, color:'#991B1B' }}>{pedido.motivo_cancelamento || '-'}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
 
         {/* Footer */}
         <div style={{ textAlign:'center', marginTop:'16px', fontSize:'8px', color:'#888' }}>
