@@ -40,8 +40,9 @@ Deno.serve(async (req) => {
         const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
         console.log('[faturarPedidoOmie] Pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Etapa destino:', etapaDestino);
 
-        // Usar o método TrocarEtapaPedido - muito mais simples e direto
-        const response = await fetch(OMIE_URL, {
+        // Tentativa 1: TrocarEtapaPedido
+        console.log('[faturarPedidoOmie] Tentativa 1: TrocarEtapaPedido com etapa', etapaDestino);
+        const response1 = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -55,33 +56,128 @@ Deno.serve(async (req) => {
             })
         });
 
-        const resultadoText = await response.text();
-        console.log('[faturarPedidoOmie] Resposta TrocarEtapaPedido:', resultadoText.substring(0, 2000));
+        const resultado1Text = await response1.text();
+        console.log('[faturarPedidoOmie] Resposta Tentativa 1:', resultado1Text.substring(0, 2000));
 
-        let resultado;
+        let resultado1;
         try {
-            resultado = JSON.parse(resultadoText);
+            resultado1 = JSON.parse(resultado1Text);
         } catch (e) {
+            // continua para tentativa 2
+        }
+
+        // Se tentativa 1 deu certo
+        if (resultado1 && !resultado1.faultstring && !resultado1.faultcode) {
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: null });
+            console.log('[faturarPedidoOmie] Sucesso na Tentativa 1!');
             return Response.json({
-                sucesso: false,
-                erro: 'Resposta inválida do Omie: ' + resultadoText.substring(0, 500)
+                sucesso: true,
+                mensagem: resultado1.descricao_status || `Pedido movido para etapa ${etapaDestino} no Omie`
             });
         }
 
-        if (resultado.faultstring || resultado.faultcode) {
-            const erro = resultado.faultstring || resultado.faultcode;
-            console.error('[faturarPedidoOmie] Erro Omie:', erro);
+        // Tentativa 2: Primeiro consultar o pedido no Omie, depois usar AlterarPedidoVenda
+        console.log('[faturarPedidoOmie] Tentativa 2: ConsultarPedido + AlterarPedidoVenda');
+        
+        // Consultar pedido completo no Omie
+        const consultaResp = await fetch(OMIE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                call: "ConsultarPedido",
+                app_key: OMIE_APP_KEY,
+                app_secret: OMIE_APP_SECRET,
+                param: [{ codigo_pedido: codigoPedidoOmie }]
+            })
+        });
+
+        const consultaText = await consultaResp.text();
+        console.log('[faturarPedidoOmie] ConsultarPedido resposta (primeiros 1000 chars):', consultaText.substring(0, 1000));
+        
+        let pedidoOmie;
+        try {
+            pedidoOmie = JSON.parse(consultaText);
+        } catch (e) {
+            return Response.json({
+                sucesso: false,
+                erro: 'Falha ao consultar pedido no Omie'
+            });
+        }
+
+        if (pedidoOmie.faultstring) {
+            return Response.json({
+                sucesso: false,
+                erro: 'Erro ao consultar pedido: ' + pedidoOmie.faultstring
+            });
+        }
+
+        // Modificar a etapa e enviar via AlterarPedidoVenda
+        // Remover campos read-only que causam erro
+        const pedidoParaAlterar = JSON.parse(JSON.stringify(pedidoOmie));
+        
+        // Definir a nova etapa
+        if (pedidoParaAlterar.cabecalho) {
+            pedidoParaAlterar.cabecalho.etapa = etapaDestino;
+        }
+        
+        // Remover campos que o Omie não aceita em alteração
+        delete pedidoParaAlterar.infoCadastro;
+        delete pedidoParaAlterar.exportacao;
+        delete pedidoParaAlterar.infoCadastro;
+        delete pedidoParaAlterar.total_pedido;
+        delete pedidoParaAlterar.MarketPlace;
+        delete pedidoParaAlterar.marketplace;
+        
+        // Limpar campos read-only dos itens
+        if (pedidoParaAlterar.det) {
+            pedidoParaAlterar.det = pedidoParaAlterar.det.map(item => {
+                delete item.infAdic;
+                delete item.inf_adic;
+                delete item.rastreabilidade;
+                return item;
+            });
+        }
+
+        console.log('[faturarPedidoOmie] Enviando AlterarPedidoVenda com etapa:', etapaDestino);
+        
+        const response2 = await fetch(OMIE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                call: "AlterarPedidoVenda",
+                app_key: OMIE_APP_KEY,
+                app_secret: OMIE_APP_SECRET,
+                param: [pedidoParaAlterar]
+            })
+        });
+
+        const resultado2Text = await response2.text();
+        console.log('[faturarPedidoOmie] Resposta Tentativa 2:', resultado2Text.substring(0, 2000));
+
+        let resultado2;
+        try {
+            resultado2 = JSON.parse(resultado2Text);
+        } catch (e) {
+            return Response.json({
+                sucesso: false,
+                erro: 'Resposta inválida do Omie: ' + resultado2Text.substring(0, 500)
+            });
+        }
+
+        if (resultado2.faultstring || resultado2.faultcode) {
+            const erro = resultado2.faultstring || resultado2.faultcode;
+            console.error('[faturarPedidoOmie] Erro Omie Tentativa 2:', erro);
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: erro });
             return Response.json({ sucesso: false, erro });
         }
 
-        // Sucesso
+        // Sucesso na tentativa 2
         await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: null });
-        console.log('[faturarPedidoOmie] Pedido movido para etapa', etapaDestino, 'com sucesso!');
+        console.log('[faturarPedidoOmie] Sucesso na Tentativa 2!');
 
         return Response.json({
             sucesso: true,
-            mensagem: resultado.descricao_status || `Pedido movido para etapa ${etapaDestino} no Omie`
+            mensagem: resultado2.descricao_status || `Pedido movido para etapa ${etapaDestino} no Omie`
         });
 
     } catch (error) {
