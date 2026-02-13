@@ -331,8 +331,73 @@ export default function Clientes() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Buscar supervisor_id do vendedor selecionado
+    
+    // Validar CPF/CNPJ antes de salvar
+    const docLimpo = (formData.cpf_cnpj || '').replace(/\D/g, '');
+    if (docLimpo.length > 0) {
+      const resultado = validarDocumento(docLimpo);
+      if (!resultado.valido) {
+        setDocErro(resultado.erro);
+        toast.error(`❌ ${resultado.erro}. O Omie rejeita documentos inválidos.`);
+        return;
+      }
+    }
+
+    // Validar razão social (obrigatório Omie, max 60 chars)
+    if (!formData.razao_social || formData.razao_social.trim().length === 0) {
+      toast.error('❌ Razão Social é obrigatória.');
+      return;
+    }
+
+    // Normalizar dados para formato Omie
     let dataToSave = { ...formData };
+    
+    // Estado: sempre uppercase, 2 letras
+    if (dataToSave.estado) {
+      dataToSave.estado = dataToSave.estado.trim().toUpperCase().substring(0, 2);
+    }
+    
+    // CEP: apenas dígitos, 8 caracteres
+    if (dataToSave.cep) {
+      dataToSave.cep = dataToSave.cep.replace(/\D/g, '').substring(0, 8);
+    }
+    
+    // CPF/CNPJ: armazenar apenas dígitos (Omie rejeita formatado em alguns casos)
+    if (dataToSave.cpf_cnpj) {
+      dataToSave.cpf_cnpj = dataToSave.cpf_cnpj.replace(/\D/g, '');
+    }
+    
+    // Razão social: max 60 chars (limite Omie)
+    if (dataToSave.razao_social) {
+      dataToSave.razao_social = dataToSave.razao_social.trim().substring(0, 60);
+    }
+    
+    // Nome fantasia: max 100 chars (limite Omie)
+    if (dataToSave.nome_fantasia) {
+      dataToSave.nome_fantasia = dataToSave.nome_fantasia.trim().substring(0, 100);
+    }
+    
+    // Endereço: max 60 chars
+    if (dataToSave.endereco) {
+      dataToSave.endereco = dataToSave.endereco.trim().substring(0, 60);
+    }
+    
+    // Número: max 10 chars
+    if (dataToSave.numero) {
+      dataToSave.numero = dataToSave.numero.trim().substring(0, 10);
+    }
+    
+    // Bairro: max 60 chars
+    if (dataToSave.bairro) {
+      dataToSave.bairro = dataToSave.bairro.trim().substring(0, 60);
+    }
+    
+    // Cidade: max 60 chars
+    if (dataToSave.cidade) {
+      dataToSave.cidade = dataToSave.cidade.trim().substring(0, 60);
+    }
+
+    // Buscar supervisor_id do vendedor selecionado
     if (formData.vendedor_id) {
       const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
       if (vendedor && vendedor.supervisor_id) {
