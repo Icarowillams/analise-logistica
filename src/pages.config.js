@@ -88,6 +88,8 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import EmissaoPedidos from './pages/EmissaoPedidos';
+import GerenciarPedidosPage from './pages/GerenciarPedidosPage';
 import __Layout from './Layout.jsx';
 
 
@@ -133,6 +135,8 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "EmissaoPedidos": EmissaoPedidos,
+    "GerenciarPedidosPage": GerenciarPedidosPage,
 }
 
 export const pagesConfig = {
