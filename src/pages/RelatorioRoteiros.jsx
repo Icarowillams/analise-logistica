@@ -247,8 +247,26 @@ export default function RelatorioRoteiros() {
     visitasNoPeriodo.forEach(v => {
       if (v.vendedor_id) vendedorIds.add(v.vendedor_id);
     });
-    return vendedores.filter(v => vendedorIds.has(v.id) && v.status === 'ativo');
-  }, [vendedores, roteirosFiltrados, visitasNoPeriodo]);
+    let resultado = vendedores.filter(v => vendedorIds.has(v.id) && v.status === 'ativo');
+    
+    // Filtrar pela seleção de funcionários
+    if (filtros.vendedores_ids.length > 0) {
+      resultado = resultado.filter(v => filtros.vendedores_ids.includes(v.id));
+    }
+    
+    // Filtrar pela seleção de funções
+    if (filtros.funcoes_ids.length > 0) {
+      const nomesFuncoesSelecionadas = funcoes
+        .filter(f => filtros.funcoes_ids.includes(f.id))
+        .map(f => f.nome?.toLowerCase());
+      resultado = resultado.filter(v => 
+        filtros.funcoes_ids.includes(v.funcao_id) || 
+        nomesFuncoesSelecionadas.includes(v.funcao?.toLowerCase())
+      );
+    }
+    
+    return resultado;
+  }, [vendedores, roteirosFiltrados, visitasNoPeriodo, filtros, funcoes]);
 
   const roteirosPorVendedor = useMemo(() => {
     const agrupado = {};
