@@ -130,8 +130,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
           { title: 'Dashboard Clientes', path: 'DashboardClientes' },
           { title: 'Análise de Visitas', path: 'AnaliseVisitas' },
-          { title: 'Mapa de Visitas', path: 'MapaVendas' },
-          { title: 'Mapa de Vendas', path: 'MapaVendas' }
+          { title: 'Mapa de Visitas', path: 'MapaVendas' }
         ]
       },
       {
