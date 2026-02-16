@@ -57,9 +57,11 @@ import Dashboard from './pages/Dashboard';
 import DashboardClientes from './pages/DashboardClientes';
 import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardVendedor from './pages/DashboardVendedor';
+import EmissaoPedidos from './pages/EmissaoPedidos';
 import Empresa from './pages/Empresa';
 import Funcionarios from './pages/Funcionarios';
 import Funcoes from './pages/Funcoes';
+import GerenciarPedidosPage from './pages/GerenciarPedidosPage';
 import Home from './pages/Home';
 import Importacoes from './pages/Importacoes';
 import ImportarVendas from './pages/ImportarVendas';
@@ -88,8 +90,6 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import EmissaoPedidos from './pages/EmissaoPedidos';
-import GerenciarPedidosPage from './pages/GerenciarPedidosPage';
 import __Layout from './Layout.jsx';
 
 
@@ -104,9 +104,11 @@ export const PAGES = {
     "DashboardClientes": DashboardClientes,
     "DashboardTrocas": DashboardTrocas,
     "DashboardVendedor": DashboardVendedor,
+    "EmissaoPedidos": EmissaoPedidos,
     "Empresa": Empresa,
     "Funcionarios": Funcionarios,
     "Funcoes": Funcoes,
+    "GerenciarPedidosPage": GerenciarPedidosPage,
     "Home": Home,
     "Importacoes": Importacoes,
     "ImportarVendas": ImportarVendas,
@@ -135,8 +137,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "EmissaoPedidos": EmissaoPedidos,
-    "GerenciarPedidosPage": GerenciarPedidosPage,
 }
 
 export const pagesConfig = {

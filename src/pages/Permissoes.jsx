@@ -49,6 +49,7 @@ const ABAS_SISTEMA = [
   { id: 'RelatorioTrocas', nome: 'Trocas', grupo: 'relatorios' },
   { id: 'EmissaoPedidos', nome: 'Emissão de Pedidos', grupo: 'pedidos' },
   { id: 'GerenciarPedidosPage', nome: 'Gerenciar Pedidos', grupo: 'pedidos' },
+  { id: 'MapaVendas', nome: 'Mapa de Vendas', grupo: 'analises' },
   { id: 'Empresa', nome: 'Empresa', grupo: 'cadastros' }
 ];
 
