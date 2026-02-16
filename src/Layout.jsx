@@ -153,7 +153,10 @@ export default function Layout({ children, currentPageName }) {
       {
         title: 'Pedidos',
         icon: CreditCard,
-        path: 'Pedidos'
+        submenu: [
+          { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
+          { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' }
+        ]
       }
     ];
 
