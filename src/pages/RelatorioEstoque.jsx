@@ -169,7 +169,7 @@ export default function RelatorioEstoque() {
   // Para cada cliente > produto > data_validade, calcula a diferença entre estoques de visitas consecutivas
   // IMPORTANTE: usa TODOS os registros de estoque (sem filtro de período) para que o cálculo
   // seja correto mesmo quando o período filtrado não inclui o registro anterior.
-  const vendaPeriodoMap = useMemo(() => {
+  const vendaPeriodoCalc = useMemo(() => {
     // Map: `${cliente_id}_${produto_id}_${data_validade}` => array de registros
     const gavetas = {};
     
