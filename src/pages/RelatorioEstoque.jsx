@@ -777,8 +777,9 @@ export default function RelatorioEstoque() {
                                           {/* Desktop Layout - Grid */}
                                           {(() => {
                                             const vp = vendaPeriodoMap[prod.id];
+                                            const troca = trocasPorEstoqueId[prod.id] || 0;
                                             return (
-                                              <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50">
+                                              <div className="hidden sm:grid gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
                                                 <div className="col-span-3">
                                                   <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
                                                   {prod.produto?.codigo && (
@@ -790,7 +791,7 @@ export default function RelatorioEstoque() {
                                                     {prod.quantidade || 0}
                                                   </Badge>
                                                 </div>
-                                                <div className="col-span-1 text-center">
+                                                <div className="col-span-2 text-center">
                                                   {vp !== null && vp !== undefined ? (
                                                     <Badge className={`text-xs ${vp > 0 ? 'bg-emerald-500 text-white' : vp < 0 ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
                                                       {vp > 0 ? '+' : ''}{vp}
@@ -799,10 +800,19 @@ export default function RelatorioEstoque() {
                                                     <span className="text-xs text-slate-400">-</span>
                                                   )}
                                                 </div>
+                                                <div className="col-span-1 text-center">
+                                                  {troca > 0 ? (
+                                                    <Badge className="text-xs bg-orange-100 text-orange-700">
+                                                      {troca}
+                                                    </Badge>
+                                                  ) : (
+                                                    <span className="text-xs text-slate-400">-</span>
+                                                  )}
+                                                </div>
                                                 <div className="col-span-2 text-center text-sm text-slate-600">
                                                   {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                                 </div>
-                                                <div className="col-span-2 text-center">
+                                                <div className="col-span-3 text-center">
                                                   <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
                                                     {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
                                                       <AlertTriangle className="w-3 h-3 mr-1" />
@@ -810,7 +820,7 @@ export default function RelatorioEstoque() {
                                                     {getLabelPrazo(prod.prazoVencimento)}
                                                   </Badge>
                                                 </div>
-                                                <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
+                                                <div className="col-span-4 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
                                                   <Clock className="w-3 h-3" />
                                                   {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
                                                 </div>
