@@ -167,8 +167,10 @@ export default function RelatorioEstoque() {
 
   // ======== CÁLCULO DE VENDA PERÍODO (GAVETA) ========
   // Para cada cliente > produto > data_validade, calcula a diferença entre estoques de visitas consecutivas
+  // IMPORTANTE: usa TODOS os registros de estoque (sem filtro de período) para que o cálculo
+  // seja correto mesmo quando o período filtrado não inclui o registro anterior.
   const vendaPeriodoMap = useMemo(() => {
-    // Map: `${cliente_id}_${produto_id}_${data_validade}` => array de { data_registro, quantidade, visita_id }
+    // Map: `${cliente_id}_${produto_id}_${data_validade}` => array de registros
     const gavetas = {};
     
     estoqueVisita.forEach(e => {
@@ -176,16 +178,15 @@ export default function RelatorioEstoque() {
       const dataVal = e.data_validade || 'sem_validade';
       const key = `${e.cliente_id}_${e.produto_id}_${dataVal}`;
       if (!gavetas[key]) gavetas[key] = [];
-      const dataReg = e.created_date?.split('T')[0] || '';
       gavetas[key].push({
-        data_registro: dataReg,
+        created_date: e.created_date || '',
         quantidade: e.quantidade || 0,
         visita_id: e.visita_id,
         id: e.id
       });
     });
 
-    // Indexar trocas por cliente + produto + data_validade + data_registro
+    // Indexar trocas por cliente + produto + data_validade + data_registro (dia)
     const trocasIndex = {};
     trocasVisita.forEach(t => {
       if (!t.cliente_id || !t.produto_id) return;
@@ -196,31 +197,32 @@ export default function RelatorioEstoque() {
       trocasIndex[key] += (t.quantidade || 0);
     });
 
-    // Para cada gaveta, ordenar por data_registro e calcular venda período
-    // venda_periodo = estoque_anterior - estoque_atual - trocas_no_dia_atual
+    // Para cada gaveta, ordenar por created_date COMPLETO (timestamp) e calcular venda período
     const resultado = {}; // key: estoqueVisita.id => venda_periodo (number | null)
     
     Object.entries(gavetas).forEach(([gavetaKey, registros]) => {
-      // Ordenar por data de registro ASC
-      registros.sort((a, b) => a.data_registro.localeCompare(b.data_registro));
+      // Ordenar por created_date completo (timestamp) ASC para precisão
+      registros.sort((a, b) => a.created_date.localeCompare(b.created_date));
       
       for (let i = 0; i < registros.length; i++) {
         if (i === 0) {
-          // Primeiro registro da gaveta - sem estoque anterior, não há cálculo
+          // Primeiro registro da gaveta - sem estoque anterior
           resultado[registros[i].id] = null;
         } else {
           const anterior = registros[i - 1];
           const atual = registros[i];
-          // Buscar trocas do mesmo cliente/produto/validade na data do registro atual
+          // Buscar trocas do mesmo cliente/produto/validade na data (dia) do registro atual
           const parts = gavetaKey.split('_');
           const clienteId = parts[0];
           const produtoId = parts[1];
           const dataVal = parts.slice(2).join('_');
-          const trocaKey = `${clienteId}_${produtoId}_${dataVal}_${atual.data_registro}`;
+          const dataRegDia = atual.created_date.split('T')[0];
+          const trocaKey = `${clienteId}_${produtoId}_${dataVal}_${dataRegDia}`;
           const trocasQtd = trocasIndex[trocaKey] || 0;
           
-          // Venda Período = Estoque Anterior - Estoque Atual - Trocas
-          const vendaPeriodo = anterior.quantidade - atual.quantidade - trocasQtd;
+          // Venda Período = Estoque Anterior - Estoque Atual + Trocas
+          // Trocas são somadas pois representam devoluções (não são vendas reais)
+          const vendaPeriodo = anterior.quantidade - atual.quantidade + trocasQtd;
           resultado[atual.id] = vendaPeriodo;
         }
       }
