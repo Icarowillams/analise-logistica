@@ -684,8 +684,9 @@ export default function RelatorioEstoque() {
                               <div className="bg-white px-2 sm:px-6 py-2 sm:py-3 space-y-0">
                                 {/* Cabeçalho - Desktop Only */}
                                 <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
-                                  <div className="col-span-4">Produto</div>
+                                  <div className="col-span-3">Produto</div>
                                   <div className="col-span-1 text-center">Qtd</div>
+                                  <div className="col-span-1 text-center">Venda Per.</div>
                                   <div className="col-span-2 text-center">Validade</div>
                                   <div className="col-span-2 text-center">Prazo</div>
                                   <div className="col-span-3 text-center">Lançamento</div>
