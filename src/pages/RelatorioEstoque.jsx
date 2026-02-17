@@ -238,11 +238,8 @@ export default function RelatorioEstoque() {
       }
     });
     
-    return { resultado, trocasPorEstoqueId };
+    return { vendaPeriodoMap: resultado, trocasPorEstoqueId };
   }, [estoqueVisita, trocasVisita]);
-
-  const vendaPeriodoMap = vendaPeriodoCalc.resultado;
-  const trocasPorEstoqueId = vendaPeriodoCalc.trocasPorEstoqueId;
 
   // Dados agrupados por cliente > visita (data + usuário) > produtos
   const dadosAgrupados = useMemo(() => {
