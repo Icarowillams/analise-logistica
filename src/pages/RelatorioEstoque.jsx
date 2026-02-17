@@ -165,6 +165,70 @@ export default function RelatorioEstoque() {
     return `${diasRestantes} dias para vencer`;
   };
 
+  // ======== CÁLCULO DE VENDA PERÍODO (GAVETA) ========
+  // Para cada cliente > produto > data_validade, calcula a diferença entre estoques de visitas consecutivas
+  const vendaPeriodoMap = useMemo(() => {
+    // Map: `${cliente_id}_${produto_id}_${data_validade}` => array de { data_registro, quantidade, visita_id }
+    const gavetas = {};
+    
+    estoqueVisita.forEach(e => {
+      if (!e.cliente_id || !e.produto_id) return;
+      const dataVal = e.data_validade || 'sem_validade';
+      const key = `${e.cliente_id}_${e.produto_id}_${dataVal}`;
+      if (!gavetas[key]) gavetas[key] = [];
+      const dataReg = e.created_date?.split('T')[0] || '';
+      gavetas[key].push({
+        data_registro: dataReg,
+        quantidade: e.quantidade || 0,
+        visita_id: e.visita_id,
+        id: e.id
+      });
+    });
+
+    // Indexar trocas por cliente + produto + data_validade + data_registro
+    const trocasIndex = {};
+    trocasVisita.forEach(t => {
+      if (!t.cliente_id || !t.produto_id) return;
+      const dataVal = t.data_validade || 'sem_validade';
+      const dataReg = t.created_date?.split('T')[0] || '';
+      const key = `${t.cliente_id}_${t.produto_id}_${dataVal}_${dataReg}`;
+      if (!trocasIndex[key]) trocasIndex[key] = 0;
+      trocasIndex[key] += (t.quantidade || 0);
+    });
+
+    // Para cada gaveta, ordenar por data_registro e calcular venda período
+    // venda_periodo = estoque_anterior - estoque_atual - trocas_no_dia_atual
+    const resultado = {}; // key: estoqueVisita.id => venda_periodo (number | null)
+    
+    Object.entries(gavetas).forEach(([gavetaKey, registros]) => {
+      // Ordenar por data de registro ASC
+      registros.sort((a, b) => a.data_registro.localeCompare(b.data_registro));
+      
+      for (let i = 0; i < registros.length; i++) {
+        if (i === 0) {
+          // Primeiro registro da gaveta - sem estoque anterior, não há cálculo
+          resultado[registros[i].id] = null;
+        } else {
+          const anterior = registros[i - 1];
+          const atual = registros[i];
+          // Buscar trocas do mesmo cliente/produto/validade na data do registro atual
+          const parts = gavetaKey.split('_');
+          const clienteId = parts[0];
+          const produtoId = parts[1];
+          const dataVal = parts.slice(2).join('_');
+          const trocaKey = `${clienteId}_${produtoId}_${dataVal}_${atual.data_registro}`;
+          const trocasQtd = trocasIndex[trocaKey] || 0;
+          
+          // Venda Período = Estoque Anterior - Estoque Atual - Trocas
+          const vendaPeriodo = anterior.quantidade - atual.quantidade - trocasQtd;
+          resultado[atual.id] = vendaPeriodo;
+        }
+      }
+    });
+    
+    return resultado;
+  }, [estoqueVisita, trocasVisita]);
+
   // Dados agrupados por cliente > visita (data + usuário) > produtos
   const dadosAgrupados = useMemo(() => {
     let dados = estoqueVisita.map(e => {
