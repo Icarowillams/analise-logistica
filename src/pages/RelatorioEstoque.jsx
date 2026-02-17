@@ -831,35 +831,57 @@ export default function RelatorioEstoque() {
                                       ))}
                                       
                                       {/* Subtotal do produto */}
-                                      <div className="sm:hidden px-2.5 py-1.5 mb-1">
-                                        <div className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-200">
-                                          <span className="text-[10px] font-bold text-amber-800 truncate">Total {grupo.produto?.nome || 'Produto'}</span>
-                                          <Badge className="bg-amber-500 text-white text-[10px] font-bold px-2 shrink-0">{grupo.totalQuantidade} un.</Badge>
-                                        </div>
-                                      </div>
-                                      <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-1.5 px-3 bg-amber-50 rounded-lg mx-1 mb-1 border border-amber-200">
-                                        <div className="col-span-3">
-                                          <span className="text-amber-800 font-bold text-sm">Total: {grupo.produto?.nome || 'Produto'}</span>
-                                        </div>
-                                        <div className="col-span-1 text-center">
-                                          <Badge className="bg-amber-500 text-white font-bold">{grupo.totalQuantidade}</Badge>
-                                        </div>
-                                        <div className="col-span-1 text-center">
-                                          {(() => {
-                                            const totalVP = grupo.registros.reduce((sum, r) => {
-                                              const vp = vendaPeriodoMap[r.id];
-                                              return vp !== null && vp !== undefined ? sum + vp : sum;
-                                            }, 0);
-                                            const hasVP = grupo.registros.some(r => vendaPeriodoMap[r.id] !== null && vendaPeriodoMap[r.id] !== undefined);
-                                            return hasVP ? (
-                                              <Badge className={`text-xs font-bold ${totalVP > 0 ? 'bg-emerald-500 text-white' : totalVP < 0 ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                                                {totalVP > 0 ? '+' : ''}{totalVP}
-                                              </Badge>
-                                            ) : null;
-                                          })()}
-                                        </div>
-                                        <div className="col-span-7"></div>
-                                      </div>
+                                      {(() => {
+                                        const totalVP = grupo.registros.reduce((sum, r) => {
+                                          const vp = vendaPeriodoMap[r.id];
+                                          return vp !== null && vp !== undefined ? sum + vp : sum;
+                                        }, 0);
+                                        const hasVP = grupo.registros.some(r => vendaPeriodoMap[r.id] !== null && vendaPeriodoMap[r.id] !== undefined);
+                                        const totalTrocas = grupo.registros.reduce((sum, r) => sum + (trocasPorEstoqueId[r.id] || 0), 0);
+                                        return (
+                                          <>
+                                            <div className="sm:hidden px-2.5 py-1.5 mb-1">
+                                              <div className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-200">
+                                                <span className="text-[10px] font-bold text-amber-800 truncate">Total {grupo.produto?.nome || 'Produto'}</span>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                  <Badge className="bg-amber-500 text-white text-[10px] font-bold px-2">{grupo.totalQuantidade} un.</Badge>
+                                                  {hasVP && (
+                                                    <Badge className={`text-[10px] font-bold px-2 ${totalVP > 0 ? 'bg-emerald-500 text-white' : totalVP < 0 ? 'bg-red-500 text-white' : 'bg-slate-300 text-slate-700'}`}>
+                                                      VP: {totalVP > 0 ? '+' : ''}{totalVP}
+                                                    </Badge>
+                                                  )}
+                                                  {totalTrocas > 0 && (
+                                                    <Badge className="text-[10px] font-bold px-2 bg-orange-100 text-orange-700">
+                                                      T: {totalTrocas}
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="hidden sm:grid gap-2 items-center py-1.5 px-3 bg-amber-50 rounded-lg mx-1 mb-1 border border-amber-200" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
+                                              <div className="col-span-3">
+                                                <span className="text-amber-800 font-bold text-sm">Total: {grupo.produto?.nome || 'Produto'}</span>
+                                              </div>
+                                              <div className="col-span-1 text-center">
+                                                <Badge className="bg-amber-500 text-white font-bold">{grupo.totalQuantidade}</Badge>
+                                              </div>
+                                              <div className="col-span-2 text-center">
+                                                {hasVP && (
+                                                  <Badge className={`font-bold ${totalVP > 0 ? 'bg-emerald-500 text-white' : totalVP < 0 ? 'bg-red-500 text-white' : 'bg-slate-300 text-slate-700'}`}>
+                                                    {totalVP > 0 ? '+' : ''}{totalVP}
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                              <div className="col-span-1 text-center">
+                                                {totalTrocas > 0 && (
+                                                  <Badge className="font-bold bg-orange-500 text-white">{totalTrocas}</Badge>
+                                                )}
+                                              </div>
+                                              <div className="col-span-9"></div>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   ));
                                 })()}
