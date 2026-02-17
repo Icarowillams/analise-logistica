@@ -197,6 +197,16 @@ export default function RelatorioEstoque() {
       trocasIndex[key] += (t.quantidade || 0);
     });
 
+    // Indexar trocas por estoqueVisita.id para exibir na coluna "Troca"
+    const trocasPorEstoqueId = {};
+    estoqueVisita.forEach(e => {
+      if (!e.cliente_id || !e.produto_id) return;
+      const dataVal = e.data_validade || 'sem_validade';
+      const dataRegDia = e.created_date?.split('T')[0] || '';
+      const trocaKey = `${e.cliente_id}_${e.produto_id}_${dataVal}_${dataRegDia}`;
+      trocasPorEstoqueId[e.id] = trocasIndex[trocaKey] || 0;
+    });
+
     // Para cada gaveta, ordenar por created_date COMPLETO (timestamp) e calcular venda período
     const resultado = {}; // key: estoqueVisita.id => venda_periodo (number | null)
     
