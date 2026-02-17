@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle, X
+  Package, Filter, Calendar, Download, Search, ChevronDown, ChevronRight, User, Clock, AlertTriangle, X, TrendingDown
 } from 'lucide-react';
 
 // Função para obter início da semana (domingo)
@@ -683,13 +683,13 @@ export default function RelatorioEstoque() {
                             <CollapsibleContent>
                               <div className="bg-white px-2 sm:px-6 py-2 sm:py-3 space-y-0">
                                 {/* Cabeçalho - Desktop Only */}
-                                <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b">
+                                <div className="hidden sm:grid grid-cols-14 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b" style={{gridTemplateColumns: 'repeat(14, minmax(0, 1fr))'}}>
                                   <div className="col-span-3">Produto</div>
                                   <div className="col-span-1 text-center">Qtd</div>
-                                  <div className="col-span-1 text-center">Venda Per.</div>
+                                  <div className="col-span-2 text-center">Venda Período</div>
                                   <div className="col-span-2 text-center">Validade</div>
                                   <div className="col-span-2 text-center">Prazo</div>
-                                  <div className="col-span-3 text-center">Lançamento</div>
+                                  <div className="col-span-4 text-center">Lançamento</div>
                                 </div>
                                 
                                 {(() => {
@@ -718,87 +718,79 @@ export default function RelatorioEstoque() {
                                       {grupo.registros.map((prod, pIdx) => (
                                         <div key={pIdx}>
                                           {/* Mobile Layout - Card Style */}
-                                          {(() => {
-                                            const vp = vendaPeriodoMap[prod.id];
-                                            return (
-                                              <div className="sm:hidden p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2 my-1">
-                                                <div className="flex items-start justify-between gap-2">
-                                                  <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-semibold text-slate-800 leading-tight">{prod.produto?.nome || 'Produto N/A'}</p>
-                                                    {prod.produto?.codigo && (
-                                                      <p className="text-[10px] text-slate-400">Cód: {prod.produto.codigo}</p>
-                                                    )}
-                                                  </div>
-                                                  <div className="flex items-center gap-1.5 shrink-0">
-                                                    <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5">
-                                                      {prod.quantidade || 0} un.
-                                                    </Badge>
-                                                    {vp !== null && vp !== undefined && (
-                                                      <Badge className={`text-[10px] px-1.5 ${vp > 0 ? 'bg-emerald-100 text-emerald-700' : vp < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                        VP: {vp > 0 ? '+' : ''}{vp}
-                                                      </Badge>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-center justify-between gap-2">
-                                                  <div className="text-[10px] text-slate-500">
-                                                    <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                                                  </div>
-                                                  <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
-                                                    {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
-                                                  </Badge>
-                                                </div>
-                                                <div className="text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-1.5">
-                                                  <Clock className="w-2.5 h-2.5" />
-                                                  {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
-                                                </div>
+                                          <div className="sm:hidden p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2 my-1">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-semibold text-slate-800 leading-tight">{prod.produto?.nome || 'Produto N/A'}</p>
+                                                {prod.produto?.codigo && (
+                                                  <p className="text-[10px] text-slate-400">Cód: {prod.produto.codigo}</p>
+                                                )}
                                               </div>
-                                            );
-                                          })()}
+                                              <div className="flex items-center gap-1.5 shrink-0">
+                                                <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5">
+                                                  {prod.quantidade || 0} un.
+                                                </Badge>
+                                                {vendaPeriodoMap[prod.id] !== null && vendaPeriodoMap[prod.id] !== undefined && (
+                                                  <Badge className={`text-[10px] px-1.5 ${vendaPeriodoMap[prod.id] > 0 ? 'bg-emerald-100 text-emerald-700' : vendaPeriodoMap[prod.id] < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                    <TrendingDown className="w-2.5 h-2.5 mr-0.5" />
+                                                    {vendaPeriodoMap[prod.id] > 0 ? '+' : ''}{vendaPeriodoMap[prod.id]}
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="text-[10px] text-slate-500">
+                                                <span className="font-medium">Val:</span> {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                              </div>
+                                              <Badge className={`text-[10px] px-1.5 ${getCorPrazo(prod.prazoVencimento)}`}>
+                                                {prod.prazoVencimento !== null ? (prod.prazoVencimento < 0 ? `Venc. ${Math.abs(prod.prazoVencimento)}d` : `${prod.prazoVencimento}d`) : '-'}
+                                              </Badge>
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-1.5">
+                                              <Clock className="w-2.5 h-2.5" />
+                                              {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                            </div>
+                                          </div>
                                           
                                           {/* Desktop Layout - Grid */}
-                                          {(() => {
-                                            const vp = vendaPeriodoMap[prod.id];
-                                            return (
-                                              <div className="hidden sm:grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50">
-                                                <div className="col-span-3">
-                                                  <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
-                                                  {prod.produto?.codigo && (
-                                                    <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
-                                                  )}
-                                                </div>
-                                                <div className="col-span-1 text-center">
-                                                  <Badge className="bg-blue-100 text-blue-700">
-                                                    {prod.quantidade || 0}
-                                                  </Badge>
-                                                </div>
-                                                <div className="col-span-1 text-center">
-                                                  {vp !== null && vp !== undefined ? (
-                                                    <Badge className={`text-xs ${vp > 0 ? 'bg-emerald-500 text-white' : vp < 0 ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                                                      {vp > 0 ? '+' : ''}{vp}
-                                                    </Badge>
-                                                  ) : (
-                                                    <span className="text-xs text-slate-400">-</span>
-                                                  )}
-                                                </div>
-                                                <div className="col-span-2 text-center text-sm text-slate-600">
-                                                  {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                                                </div>
-                                                <div className="col-span-2 text-center">
-                                                  <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
-                                                    {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
-                                                      <AlertTriangle className="w-3 h-3 mr-1" />
-                                                    )}
-                                                    {getLabelPrazo(prod.prazoVencimento)}
-                                                  </Badge>
-                                                </div>
-                                                <div className="col-span-3 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
-                                                  <Clock className="w-3 h-3" />
-                                                  {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
-                                                </div>
-                                              </div>
-                                            );
-                                          })()}
+                                          <div className="hidden sm:grid gap-2 items-center py-2 px-3 rounded-lg hover:bg-slate-50" style={{gridTemplateColumns: 'repeat(14, minmax(0, 1fr))'}}>
+                                            <div className="col-span-3">
+                                              <span className="text-slate-700 font-medium">{prod.produto?.nome || 'Produto N/A'}</span>
+                                              {prod.produto?.codigo && (
+                                                <span className="text-xs text-slate-400 ml-2">({prod.produto.codigo})</span>
+                                              )}
+                                            </div>
+                                            <div className="col-span-1 text-center">
+                                              <Badge className="bg-blue-100 text-blue-700">
+                                                {prod.quantidade || 0}
+                                              </Badge>
+                                            </div>
+                                            <div className="col-span-2 text-center">
+                                              {vendaPeriodoMap[prod.id] !== null && vendaPeriodoMap[prod.id] !== undefined ? (
+                                                <Badge className={`text-xs ${vendaPeriodoMap[prod.id] > 0 ? 'bg-emerald-500 text-white' : vendaPeriodoMap[prod.id] < 0 ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                                  <TrendingDown className="w-3 h-3 mr-1" />
+                                                  {vendaPeriodoMap[prod.id] > 0 ? '+' : ''}{vendaPeriodoMap[prod.id]}
+                                                </Badge>
+                                              ) : (
+                                                <span className="text-xs text-slate-400">-</span>
+                                              )}
+                                            </div>
+                                            <div className="col-span-2 text-center text-sm text-slate-600">
+                                              {prod.data_validade ? new Date(prod.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                            </div>
+                                            <div className="col-span-2 text-center">
+                                              <Badge className={`text-xs ${getCorPrazo(prod.prazoVencimento)}`}>
+                                                {prod.prazoVencimento !== null && prod.prazoVencimento < 7 && (
+                                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                                )}
+                                                {getLabelPrazo(prod.prazoVencimento)}
+                                              </Badge>
+                                            </div>
+                                            <div className="col-span-4 text-center flex items-center justify-center gap-1 text-xs text-slate-500">
+                                              <Clock className="w-3 h-3" />
+                                              {prod.created_date ? new Date(prod.created_date).toLocaleString('pt-BR') : '-'}
+                                            </div>
+                                          </div>
                                         </div>
                                       ))}
                                       
