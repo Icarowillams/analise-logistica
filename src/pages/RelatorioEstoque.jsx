@@ -82,6 +82,11 @@ export default function RelatorioEstoque() {
     queryFn: () => base44.entities.Visita.list('-data_visita', 5000)
   });
 
+  const { data: trocasVisita = [] } = useQuery({
+    queryKey: ['trocasVisita'],
+    queryFn: () => base44.entities.TrocaVisita.list('-created_date', 5000)
+  });
+
   const visitasMap = useMemo(() => visitas.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [visitas]);
 
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
