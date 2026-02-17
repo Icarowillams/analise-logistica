@@ -380,12 +380,13 @@ export default function RelatorioEstoque() {
   };
 
   const exportarCSV = () => {
-    const linhas = ['Data Lançamento;Cliente;Código Cliente;Produto;Código Produto;Quantidade;Venda Período;Data Validade;Prazo Vencimento;Vendedor'];
+    const linhas = ['Data Lançamento;Cliente;Código Cliente;Produto;Código Produto;Quantidade;Venda Período;Troca;Data Validade;Prazo Vencimento;Vendedor'];
     dadosAgrupados.forEach(cliente => {
       cliente.visitas.forEach(visita => {
         visita.produtos.forEach(e => {
           const prazo = e.prazoVencimento !== null ? `${e.prazoVencimento} dias` : '';
           const vp = vendaPeriodoMap[e.id];
+          const troca = trocasPorEstoqueId[e.id] || 0;
           linhas.push([
             e.created_date ? new Date(e.created_date).toLocaleString('pt-BR') : '',
             e.cliente?.nome_fantasia || e.cliente?.razao_social || '',
@@ -394,6 +395,7 @@ export default function RelatorioEstoque() {
             e.produto?.codigo || '',
             e.quantidade || 0,
             vp !== null && vp !== undefined ? vp : '',
+            troca > 0 ? troca : '',
             e.data_validade ? new Date(e.data_validade + 'T12:00:00').toLocaleDateString('pt-BR') : '',
             prazo,
             e.vendedor?.nome || ''
