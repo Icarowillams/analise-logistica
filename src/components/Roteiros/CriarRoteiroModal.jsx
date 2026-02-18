@@ -66,15 +66,18 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
       setFormData({
         vendedor_id: roteiro.vendedor_id || '',
         dia_semana: roteiro.dia_semana || '',
-        clientes_selecionados: roteiro.clientes_detalhes?.map(c => ({
-          id: c.cliente_id,
-          nome: c.cliente_nome,
-          nome_fantasia: c.nome_fantasia,
-          codigo: c.cliente_codigo,
-          cidade: c.cliente_cidade,
-          bairro: c.cliente_bairro,
-          ordem: c.ordem
-        })) || []
+        clientes_selecionados: roteiro.clientes_detalhes?.map(c => {
+          const clienteCompleto = clientes.find(cl => cl.id === c.cliente_id);
+          return {
+            id: c.cliente_id,
+            nome: clienteCompleto?.razao_social || c.cliente_nome,
+            nome_fantasia: clienteCompleto?.nome_fantasia || c.nome_fantasia || '',
+            codigo: clienteCompleto?.codigo || c.cliente_codigo,
+            cidade: clienteCompleto?.cidade || c.cliente_cidade,
+            bairro: clienteCompleto?.bairro || c.cliente_bairro,
+            ordem: c.ordem
+          };
+        }) || []
       });
     } else {
       setFormData({
