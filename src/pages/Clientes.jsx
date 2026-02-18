@@ -31,6 +31,7 @@ export default function Clientes() {
   const [isImporting, setIsImporting] = useState(false);
   const [modoImportacao, setModoImportacao] = useState('cadastro'); // 'cadastro' ou 'atualizacao'
   const [omieModalOpen, setOmieModalOpen] = useState(false);
+  const [sincronizarOmieOpen, setSincronizarOmieOpen] = useState(false);
   const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
