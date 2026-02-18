@@ -1158,6 +1158,11 @@ export default function Clientes() {
         onOpenChange={setOmieModalOpen}
       />
 
+      <SincronizarOmieClientesModal
+        open={sincronizarOmieOpen}
+        onOpenChange={setSincronizarOmieOpen}
+      />
+
       <ClientesComErroOmie
         open={corrigirErrosOpen}
         onOpenChange={setCorrigirErrosOpen}
