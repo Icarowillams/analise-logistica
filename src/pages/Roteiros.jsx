@@ -33,6 +33,7 @@ export default function Roteiros() {
   const [filters, setFilters] = useState({
     dia: '',
     vendedor: '',
+    funcao: '',
     busca: ''
   });
 
@@ -200,6 +201,10 @@ export default function Roteiros() {
   const filteredRoteiros = roteiros.filter(r => {
     if (filters.dia && r.dia_semana !== filters.dia) return false;
     if (filters.vendedor && r.vendedor_id !== filters.vendedor) return false;
+    if (filters.funcao) {
+      const vendedor = vendedores.find(v => v.id === r.vendedor_id);
+      if (!vendedor || vendedor.funcao_id !== filters.funcao) return false;
+    }
     if (filters.busca) {
       const busca = filters.busca.toLowerCase();
       const matchNome = r.vendedor_nome?.toLowerCase().includes(busca);
@@ -286,7 +291,7 @@ export default function Roteiros() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <Label>Filtrar por dia</Label>
                   <Select value={filters.dia} onValueChange={(v) => setFilters({...filters, dia: v})}>
@@ -315,6 +320,20 @@ export default function Roteiros() {
                       <SelectItem value={null}>Todos os funcionários</SelectItem>
                       {vendedores.map(v => (
                         <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Filtrar por função</Label>
+                  <Select value={filters.funcao} onValueChange={(v) => setFilters({...filters, funcao: v})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as funções" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={null}>Todas as funções</SelectItem>
+                      {funcoes.map(f => (
+                        <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
