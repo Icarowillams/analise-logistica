@@ -206,7 +206,8 @@ export default function Roteiros() {
       const matchDia = r.dia_semana?.toLowerCase().includes(busca);
       const matchCliente = r.clientes_detalhes?.some(c => 
         c.cliente_codigo?.toLowerCase().includes(busca) ||
-        c.cliente_nome?.toLowerCase().includes(busca)
+        c.cliente_nome?.toLowerCase().includes(busca) ||
+        c.nome_fantasia?.toLowerCase().includes(busca)
       );
       return matchNome || matchDia || matchCliente;
     }
