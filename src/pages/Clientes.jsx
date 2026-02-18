@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { validarDocumento, formatarDocumento, formatarCEP } from '@/components/clientes/validarCpfCnpj';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
