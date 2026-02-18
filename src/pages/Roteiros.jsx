@@ -49,6 +49,11 @@ export default function Roteiros() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Roteiro.delete(id),
     onSuccess: () => {
