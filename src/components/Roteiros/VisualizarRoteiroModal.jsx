@@ -82,7 +82,10 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
                           <Badge variant="outline" className="text-xs font-mono">{codigoCliente}</Badge>
                           <h4 className="font-semibold text-lg">{nomeExibir}</h4>
                         </div>
-                        <p className="text-sm text-slate-600 mt-1">{clienteCompleto?.cidade || cliente.cliente_cidade}</p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {clienteCompleto?.bairro && <span>{clienteCompleto.bairro} - </span>}
+                          {clienteCompleto?.cidade || cliente.cliente_cidade}
+                        </p>
                       </div>
                     </div>
                   );
