@@ -521,7 +521,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                               </div>
                               <Badge className="bg-amber-100 text-amber-700">{index + 1}</Badge>
                               <div className="flex-1">
-                                <p className="font-medium text-sm">{cliente.nome_fantasia || cliente.nome}</p>
+                                <p className="font-medium text-sm">{cliente.nome}</p>
+                                {cliente.nome_fantasia && (
+                                  <p className="text-xs text-slate-600">{cliente.nome_fantasia}</p>
+                                )}
                                 <p className="text-xs text-slate-500">
                                   {cliente.codigo} • {cliente.cidade}
                                 </p>
