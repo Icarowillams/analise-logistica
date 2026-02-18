@@ -202,8 +202,13 @@ export default function Roteiros() {
     if (filters.vendedor && r.vendedor_id !== filters.vendedor) return false;
     if (filters.busca) {
       const busca = filters.busca.toLowerCase();
-      return r.vendedor_nome?.toLowerCase().includes(busca) ||
-             r.dia_semana?.toLowerCase().includes(busca);
+      const matchNome = r.vendedor_nome?.toLowerCase().includes(busca);
+      const matchDia = r.dia_semana?.toLowerCase().includes(busca);
+      const matchCliente = r.clientes_detalhes?.some(c => 
+        c.cliente_codigo?.toLowerCase().includes(busca) ||
+        c.cliente_nome?.toLowerCase().includes(busca)
+      );
+      return matchNome || matchDia || matchCliente;
     }
     return true;
   }).sort((a, b) => (ordemDias[a.dia_semana] || 99) - (ordemDias[b.dia_semana] || 99));
