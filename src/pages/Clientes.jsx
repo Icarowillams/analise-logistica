@@ -742,6 +742,14 @@ export default function Clientes() {
                 Corrigir Erros Omie
               </Button>
               <Button
+                onClick={() => setSincronizarOmieOpen(true)}
+                variant="outline"
+                className="border-green-200 text-green-700 hover:bg-green-50"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Sincronizar Omie
+              </Button>
+              <Button
                 onClick={() => setOmieModalOpen(true)}
                 variant="outline"
                 className="border-blue-200 text-blue-700 hover:bg-blue-50"
