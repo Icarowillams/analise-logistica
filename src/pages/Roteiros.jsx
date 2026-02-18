@@ -187,6 +187,16 @@ export default function Roteiros() {
     setDeleteOpen(true);
   };
 
+  const ordemDias = {
+    'segunda-feira': 1,
+    'terca-feira': 2,
+    'quarta-feira': 3,
+    'quinta-feira': 4,
+    'sexta-feira': 5,
+    'sabado': 6,
+    'domingo': 7
+  };
+
   const filteredRoteiros = roteiros.filter(r => {
     if (filters.dia && r.dia_semana !== filters.dia) return false;
     if (filters.vendedor && r.vendedor_id !== filters.vendedor) return false;
@@ -196,7 +206,7 @@ export default function Roteiros() {
              r.dia_semana?.toLowerCase().includes(busca);
     }
     return true;
-  });
+  }).sort((a, b) => (ordemDias[a.dia_semana] || 99) - (ordemDias[b.dia_semana] || 99));
 
   const getDiaLabel = (dia) => {
     const labels = {
