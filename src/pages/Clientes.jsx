@@ -289,6 +289,7 @@ export default function Clientes() {
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
       cpf_cnpj: item.cpf_cnpj || item.cnpj || '',
+      inscricao_estadual: item.inscricao_estadual || '',
       endereco: item.endereco || '',
       numero: item.numero || '',
       bairro: item.bairro || '',
