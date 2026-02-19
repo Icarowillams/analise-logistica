@@ -83,11 +83,8 @@ function mapearClienteParaOmie(clienteData) {
         email: "",
 
         // --- Tributação ---
-        // contribuinte: 
-        //   "S" = Contribuinte (tem IE), 
-        //   "N" = Não Contribuinte, 
-        //   "I" = Isento
         contribuinte: isPessoaFisica ? "N" : "S",
+        inscricao_estadual: clienteData.inscricao_estadual || "",
         
         // --- Observações ---
         observacao: "",
