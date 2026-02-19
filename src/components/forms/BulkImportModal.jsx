@@ -35,15 +35,56 @@ export default function BulkImportModal({
   const [allRows, setAllRows] = useState([]);
   const [errors, setErrors] = useState([]);
 
+  const removeQuotes = (val) => {
+    if (!val) return '';
+    let v = val.trim();
+    // Remove aspas duplas envolventes
+    if (v.startsWith('"') && v.endsWith('"')) {
+      v = v.slice(1, -1);
+    }
+    // Remove aspas simples envolventes
+    if (v.startsWith("'") && v.endsWith("'")) {
+      v = v.slice(1, -1);
+    }
+    // Remove aspas duplas escapadas internas
+    v = v.replace(/""/g, '"');
+    return v.trim();
+  };
+
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if ((ch === ';' || ch === ',' || ch === '\t') && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   const parseCSV = (text) => {
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
     
-    const headers = lines[0].split(/[,;\t]/).map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    const headerValues = parseCSVLine(lines[0]);
+    const headers = headerValues.map(h => removeQuotes(h).toLowerCase().replace(/\s+/g, '_'));
     return lines.slice(1).map((line, idx) => {
-      const values = line.split(/[,;\t]/);
+      const values = parseCSVLine(line);
       const row = { _rowNum: idx + 2 };
-      headers.forEach((h, i) => { row[h] = values[i]?.trim() || ''; });
+      headers.forEach((h, i) => { row[h] = removeQuotes(values[i] || ''); });
       return row;
     });
   };
