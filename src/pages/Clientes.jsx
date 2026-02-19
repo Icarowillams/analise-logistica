@@ -677,8 +677,8 @@ export default function Clientes() {
   ];
 
   const bulkExampleData = [
-    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', tabela_preco: 'Tabela 1', vendedor: 'João Silva', cidade: 'São Paulo', estado: 'SP', latitude: '-23.5505', longitude: '-46.6333', status: 'ativo' },
-    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo' }
+    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', inscricao_estadual: '123456789', tabela_preco: 'Tabela 1', vendedor: 'João Silva', cidade: 'São Paulo', estado: 'SP', latitude: '-23.5505', longitude: '-46.6333', status: 'ativo' },
+    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', inscricao_estadual: '987654321', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo' }
   ];
 
   const handleExport = async (clientesFiltrados = null) => {
