@@ -47,6 +47,7 @@ function mapearClienteParaOmie(cliente) {
         contato: "",
         email: "",
         contribuinte: isPessoaFisica ? "N" : "S",
+        inscricao_estadual: cliente.inscricao_estadual || "",
         observacao: "",
         inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
     };
