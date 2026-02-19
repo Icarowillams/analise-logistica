@@ -35,7 +35,7 @@ export default function Clientes() {
   const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
-    codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '',
+    codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: 'nfe@paoemel.com.br',
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     latitude: '', longitude: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
