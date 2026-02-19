@@ -355,6 +355,21 @@ export default function Clientes() {
 
     // Normalizar dados para formato Omie
     let dataToSave = { ...formData };
+
+    // Remover aspas de todos os campos texto
+    const removeQuotes = (val) => {
+      if (typeof val !== 'string') return val;
+      let v = val.trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1).trim();
+      }
+      return v;
+    };
+    for (const key of Object.keys(dataToSave)) {
+      if (typeof dataToSave[key] === 'string') {
+        dataToSave[key] = removeQuotes(dataToSave[key]);
+      }
+    }
     
     // Estado: sempre uppercase, 2 letras
     if (dataToSave.estado) {
