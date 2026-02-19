@@ -9,43 +9,55 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { clientes } = await req.json();
+    const { clientes, lote_inicio = 0 } = await req.json();
 
     if (!clientes || !Array.isArray(clientes) || clientes.length === 0) {
       return Response.json({ error: 'Nenhum cliente fornecido' }, { status: 400 });
     }
 
-    console.log(`Iniciando atualização de ${clientes.length} clientes...`);
+    // Processar apenas 30 clientes por chamada para evitar timeout
+    const LOTE_MAX = 30;
+    const lote = clientes.slice(lote_inicio, lote_inicio + LOTE_MAX);
+
+    if (lote.length === 0) {
+      return Response.json({ 
+        concluido: true,
+        atualizados: 0,
+        erros: 0,
+        detalhesErros: []
+      });
+    }
+
+    console.log(`Lote ${lote_inicio}: processando ${lote.length} de ${clientes.length} clientes`);
 
     let atualizados = 0;
-    let erros = [];
+    const erros = [];
 
-    // Atualizar um por um com delay para evitar rate limit
-    for (let i = 0; i < clientes.length; i++) {
-      const cliente = clientes[i];
+    for (let i = 0; i < lote.length; i++) {
+      const cliente = lote[i];
       try {
         await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
         atualizados++;
-        
-        // Log de progresso a cada 20 clientes
-        if ((i + 1) % 20 === 0) {
-          console.log(`Progresso: ${i + 1}/${clientes.length} clientes atualizados`);
-        }
-        
-        // Delay de 50ms entre cada atualização
-        if (i < clientes.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
       } catch (error) {
         console.error(`Erro ao atualizar cliente ${cliente.id}:`, error.message);
         erros.push({ id: cliente.id, error: error.message });
       }
+
+      // Delay de 50ms entre cada atualização
+      if (i < lote.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
     }
 
-    console.log(`Atualização concluída: ${atualizados} atualizados, ${erros.length} erros`);
+    const proximoLote = lote_inicio + LOTE_MAX;
+    const concluido = proximoLote >= clientes.length;
+
+    console.log(`Lote concluído: ${atualizados} atualizados, ${erros.length} erros. Concluído: ${concluido}`);
 
     return Response.json({
-      success: true,
+      concluido,
+      proximo_lote: concluido ? null : proximoLote,
+      total_geral: clientes.length,
       atualizados,
       erros: erros.length,
       detalhesErros: erros
