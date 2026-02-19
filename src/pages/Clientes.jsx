@@ -671,7 +671,7 @@ export default function Clientes() {
     }
     
     const headers = [
-      'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj',
+      'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj', 'inscricao_estadual',
       'plano_pagamento', 'tabela_preco', 'segmento', 'rede', 'vendedor', 'rota',
       'endereco', 'numero', 'bairro', 'cidade', 'estado', 'cep',
       'latitude', 'longitude', 'status'
