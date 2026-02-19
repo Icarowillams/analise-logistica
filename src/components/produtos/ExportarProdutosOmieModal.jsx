@@ -23,8 +23,8 @@ export default function ExportarProdutosOmieModal({ open, onOpenChange }) {
   const [totalErros, setTotalErros] = useState(0);
 
   const { data: produtos = [], isLoading } = useQuery({
-    queryKey: ['produtos'],
-    queryFn: () => base44.entities.Produto.list()
+    queryKey: ['produtos-todos'],
+    queryFn: () => base44.entities.Produto.list('nome', 9999)
   });
 
   const exportarEmLotes = async (produto_ids) => {
