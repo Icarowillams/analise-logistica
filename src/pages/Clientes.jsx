@@ -611,23 +611,38 @@ export default function Clientes() {
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações via backend function para evitar rate limit
+      // Executar atualizações via backend function em lotes para evitar timeout 504
       if (toUpdate.length > 0) {
         console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
         toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde.`);
         
-        const response = await base44.functions.invoke('bulkUpdateClientes', {
-          clientes: toUpdate
-        });
-        
-        console.log('Resposta do backend:', response.data);
-        
-        if (response.data?.error) {
-          throw new Error(response.data.error);
+        let loteAtual = 0;
+        let totalAtualizados = 0;
+        let totalErros = 0;
+
+        while (true) {
+          const response = await base44.functions.invoke('bulkUpdateClientes', {
+            clientes: toUpdate,
+            lote_inicio: loteAtual
+          });
+          
+          const data = response.data;
+          
+          if (data?.error) {
+            throw new Error(data.error);
+          }
+
+          totalAtualizados += data.atualizados || 0;
+          totalErros += data.erros || 0;
+
+          if (data.concluido) break;
+          loteAtual = data.proximo_lote;
         }
         
-        if (response.data?.erros > 0) {
-          toast.warning(`${response.data.atualizados} atualizados, ${response.data.erros} erros`);
+        console.log(`Atualização concluída: ${totalAtualizados} atualizados, ${totalErros} erros`);
+        
+        if (totalErros > 0) {
+          toast.warning(`${totalAtualizados} atualizados, ${totalErros} erros`);
         }
       }
     } catch (error) {
