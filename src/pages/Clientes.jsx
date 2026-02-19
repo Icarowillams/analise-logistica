@@ -835,7 +835,7 @@ export default function Clientes() {
                   />
                 </div>
                 <div>
-                  <Label>CPF/CNPJ</Label>
+                  <Label>CPF/CNPJ *</Label>
                   <Input
                     value={formData.cpf_cnpj}
                     onChange={(e) => {
@@ -850,6 +850,7 @@ export default function Clientes() {
                       }
                     }}
                     placeholder="000.000.000-00 ou 00.000.000/0001-00"
+                    required
                     disabled={!isEditing}
                     className={docErro ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
@@ -858,6 +859,15 @@ export default function Clientes() {
                       <AlertCircle className="w-3 h-3" /> {docErro} — Omie rejeitará este documento
                     </p>
                   )}
+                </div>
+                <div>
+                  <Label>Inscrição Estadual</Label>
+                  <Input
+                    value={formData.inscricao_estadual}
+                    onChange={(e) => setFormData({ ...formData, inscricao_estadual: e.target.value })}
+                    placeholder="Ex: 123456789"
+                    disabled={!isEditing}
+                  />
                 </div>
                 <div>
                   <Label>Plano de Pagamento</Label>
