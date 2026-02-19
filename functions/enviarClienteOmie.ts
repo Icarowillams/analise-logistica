@@ -35,6 +35,23 @@ function normalizarCpfCnpj(doc) {
     return (doc || '').replace(/[.\-\/\s]/g, '');
 }
 
+function removerAspas(val) {
+    if (typeof val !== 'string') return val;
+    let v = val.trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1).trim();
+    }
+    return v;
+}
+
+function limparCamposTexto(obj) {
+    const limpo = {};
+    for (const [key, value] of Object.entries(obj)) {
+        limpo[key] = typeof value === 'string' ? removerAspas(value) : value;
+    }
+    return limpo;
+}
+
 function mapearClienteParaOmie(clienteData) {
     const cnpjCpfLimpo = normalizarCpfCnpj(clienteData.cpf_cnpj);
     const estadoNorm = normalizarEstado(clienteData.estado);
