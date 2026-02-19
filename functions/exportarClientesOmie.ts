@@ -60,7 +60,7 @@ function mapearClienteParaOmie(cliente) {
         estado: estadoNorm,
         cep: cepNorm,
         contato: "",
-        email: "",
+        email: (cliente.email || "nfe@paoemel.com.br").substring(0, 500),
         contribuinte: isPessoaFisica ? "N" : "S",
         inscricao_estadual: cliente.inscricao_estadual || "",
         observacao: "",
