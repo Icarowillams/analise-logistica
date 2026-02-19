@@ -64,7 +64,8 @@ function mapearClienteParaOmie(cliente) {
         contribuinte: isPessoaFisica ? "N" : "S",
         inscricao_estadual: cliente.inscricao_estadual || "",
         observacao: "",
-        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
+        tags: cliente.codigo ? [{ tag: `COD:${cliente.codigo}` }] : []
     };
 
     // Remover campos vazios

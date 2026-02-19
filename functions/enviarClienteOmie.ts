@@ -90,7 +90,10 @@ function mapearClienteParaOmie(clienteData) {
         observacao: "",
         
         // --- Inatividade ---
-        inativo: (clienteData.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+        inativo: (clienteData.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
+
+        // --- Tags (código interno) ---
+        tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : []
     };
 
     // Remover campos vazios para não sobrescrever dados no Omie com strings vazias
