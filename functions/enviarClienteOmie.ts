@@ -80,7 +80,7 @@ function mapearClienteParaOmie(clienteData) {
 
         // --- Contato ---
         contato: "",
-        email: "",
+        email: (clienteData.email || "nfe@paoemel.com.br").substring(0, 500),
 
         // --- Tributação ---
         contribuinte: isPessoaFisica ? "N" : "S",
