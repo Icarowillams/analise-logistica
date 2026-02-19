@@ -65,9 +65,9 @@ function mapearClienteParaOmie(cliente) {
         inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
     };
 
-    const camposObrigatorios = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo'];
+    const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
     for (const [key, value] of Object.entries(clienteOmie)) {
-        if (camposObrigatorios.includes(key)) continue;
+        if (camposSempreEnviar.includes(key)) continue;
         if (value === '' || value === null || value === undefined) {
             delete clienteOmie[key];
         }
