@@ -264,7 +264,7 @@ export default function Clientes() {
 
   const resetForm = () => {
     setFormData({
-      codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', inscricao_estadual: '',
+      codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', inscricao_estadual: '', email: 'nfe@paoemel.com.br',
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       latitude: '', longitude: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
