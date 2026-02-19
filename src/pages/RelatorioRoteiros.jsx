@@ -417,7 +417,7 @@ export default function RelatorioRoteiros() {
 
         const clienteInfo = {
           cliente_id: clienteDetalhe.cliente_id,
-          cliente_nome: clienteDetalhe.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social,
+          cliente_nome: clienteCompleto?.nome_fantasia || clienteDetalhe.nome_fantasia || clienteDetalhe.cliente_nome || clienteCompleto?.razao_social,
           cliente_codigo: clienteDetalhe.cliente_codigo || clienteCompleto?.codigo,
           ordem: idx + 1,
           cliente: clienteCompleto,
@@ -456,7 +456,7 @@ export default function RelatorioRoteiros() {
 
       const clienteInfo = {
         cliente_id: clienteId,
-        cliente_nome: visitaRot.cliente_nome || clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || 'Cliente removido',
+        cliente_nome: clienteCompleto?.nome_fantasia || visitaRot.cliente_nome || clienteCompleto?.razao_social || 'Cliente removido',
         cliente_codigo: visitaRot.cliente_codigo || clienteCompleto?.codigo || '-',
         ordem: 999,
         cliente: clienteCompleto,
