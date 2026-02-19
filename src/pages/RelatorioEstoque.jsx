@@ -250,9 +250,11 @@ export default function RelatorioEstoque() {
       const vendedor = vendedoresMap[vendedorId];
       // Usar created_date para a data do estoque (data de lançamento)
       const dataVisitaCalc = e.created_date?.split('T')[0] || visitaRelacionada?.data_visita;
+      // Se o cliente não está no mapa, criar objeto com nome salvo no registro
+      const clienteObj = clientesMap[e.cliente_id] || (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);
       return {
         ...e,
-        cliente: clientesMap[e.cliente_id],
+        cliente: clienteObj,
         produto: produtosMap[e.produto_id],
         vendedor: vendedor,
         vendedor_id: vendedorId,
