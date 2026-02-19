@@ -4,7 +4,6 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
-// Mapa de nome completo do estado para sigla UF
 const estadoParaUF = {
     'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
     'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
@@ -36,7 +35,6 @@ function removerAspas(val) {
 }
 
 function mapearClienteParaOmie(cliente) {
-    // Limpar aspas de campos texto
     for (const key of Object.keys(cliente)) {
         if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
     }
@@ -64,11 +62,9 @@ function mapearClienteParaOmie(cliente) {
         contribuinte: isPessoaFisica ? "N" : "S",
         inscricao_estadual: cliente.inscricao_estadual || "",
         observacao: "",
-        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
-        tags: cliente.codigo ? [{ tag: `COD:${cliente.codigo}` }] : []
+        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
     };
 
-    // Remover campos vazios
     const camposObrigatorios = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo'];
     for (const [key, value] of Object.entries(clienteOmie)) {
         if (camposObrigatorios.includes(key)) continue;
@@ -96,7 +92,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        const LOTE_MAX = 100;
+        const LOTE_MAX = 50;
         const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
         if (clientesDoLote.length === 0) {
@@ -107,14 +103,24 @@ Deno.serve(async (req) => {
             });
         }
 
-        const clientes = await base44.entities.Cliente.list();
-        const clientesParaExportar = clientes.filter(c => clientesDoLote.includes(c.id));
+        // Buscar clientes do lote individualmente via service role para garantir que todos sejam encontrados
+        const clientesParaExportar = [];
+        for (const id of clientesDoLote) {
+            try {
+                const cliente = await base44.asServiceRole.entities.Cliente.get(id);
+                if (cliente) clientesParaExportar.push(cliente);
+            } catch (e) {
+                console.log(`Cliente ${id} não encontrado: ${e.message}`);
+            }
+        }
+
+        console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes encontrados de ${clientesDoLote.length} IDs`);
 
         const resultados = [];
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         for (const cliente of clientesParaExportar) {
-            const clienteOmie = mapearClienteParaOmie(cliente);
+            const clienteOmie = mapearClienteParaOmie({ ...cliente });
             const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
 
             try {
@@ -134,6 +140,7 @@ Deno.serve(async (req) => {
                 resultados.push({
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
+                    nome_fantasia: cliente.nome_fantasia,
                     sucesso: !resultado.faultstring,
                     codigo_omie: resultado.codigo_cliente_omie || null,
                     mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
@@ -142,13 +149,14 @@ Deno.serve(async (req) => {
                 resultados.push({
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
+                    nome_fantasia: cliente.nome_fantasia,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
                 });
             }
 
-            await delay(1000);
+            await delay(500);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
@@ -169,6 +177,7 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
+        console.error('Erro geral:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
