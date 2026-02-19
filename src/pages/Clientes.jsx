@@ -658,6 +658,7 @@ export default function Clientes() {
     { key: 'razao_social', label: 'Razão Social', required: true },
     { key: 'nome_fantasia', label: 'Nome Fantasia' },
     { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+    { key: 'inscricao_estadual', label: 'Inscrição Estadual' },
     { key: 'plano_pagamento', label: 'Plano Pagamento' },
     { key: 'tabela_preco', label: 'Tabela Preço' },
     { key: 'segmento', label: 'Segmento' },
