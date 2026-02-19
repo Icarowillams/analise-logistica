@@ -80,7 +80,7 @@ export default function BulkImportModal({
     if (lines.length === 0) return [];
     
     const headerValues = parseCSVLine(lines[0]);
-    const headers = headerValues.map(h => removeQuotes(h).toLowerCase().replace(/\s+/g, '_'));
+    const headers = headerValues.map(h => removeQuotes(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_'));
     return lines.slice(1).map((line, idx) => {
       const values = parseCSVLine(line);
       const row = { _rowNum: idx + 2 };
