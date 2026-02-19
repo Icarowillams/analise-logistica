@@ -887,6 +887,16 @@ export default function Clientes() {
                   />
                 </div>
                 <div>
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="nfe@paoemel.com.br"
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
                   <Label>Plano de Pagamento</Label>
                   <Select 
                     value={formData.plano_pagamento_id || '_none_'} 
