@@ -144,6 +144,8 @@ Deno.serve(async (req) => {
             const jaExistem = [];
 
             for (const c of clientesBase44) {
+                if ((c.status || 'ativo').toLowerCase() !== 'ativo') continue;
+
                 const cpfCnpjNorm = (c.cpf_cnpj || "").replace(/[^\d]/g, "");
                 const existePorIntegracao = omieIntegracaoSet.has(c.id);
                 const existePorCpfCnpj = cpfCnpjNorm.length >= 11 && omieCpfCnpjSet.has(cpfCnpjNorm);
