@@ -139,6 +139,9 @@ Deno.serve(async (req) => {
             clienteData.id = event.entity_id;
         }
 
+        // Limpar aspas de todos os campos texto
+        clienteData = limparCamposTexto(clienteData);
+
         console.log('[enviarClienteOmie] Cliente a enviar:', clienteData.razao_social, '- Status:', clienteData.status, '- ID:', clienteData.id);
 
         // Só enviar clientes ativos/prospectos para o Omie 
