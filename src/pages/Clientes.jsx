@@ -290,6 +290,7 @@ export default function Clientes() {
       nome_fantasia: item.nome_fantasia || '',
       cpf_cnpj: item.cpf_cnpj || item.cnpj || '',
       inscricao_estadual: item.inscricao_estadual || '',
+      email: item.email || 'nfe@paoemel.com.br',
       endereco: item.endereco || '',
       numero: item.numero || '',
       bairro: item.bairro || '',
