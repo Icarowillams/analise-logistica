@@ -26,7 +26,21 @@ function normalizarEstado(estado) {
     return normalizado;
 }
 
+function removerAspas(val) {
+    if (typeof val !== 'string') return val;
+    let v = val.trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1).trim();
+    }
+    return v;
+}
+
 function mapearClienteParaOmie(cliente) {
+    // Limpar aspas de campos texto
+    for (const key of Object.keys(cliente)) {
+        if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
+    }
+
     const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
     const estadoNorm = normalizarEstado(cliente.estado);
     const cepNorm = (cliente.cep || "").replace(/[^\d]/g, "").substring(0, 8);
@@ -48,6 +62,7 @@ function mapearClienteParaOmie(cliente) {
         contato: "",
         email: "",
         contribuinte: isPessoaFisica ? "N" : "S",
+        inscricao_estadual: cliente.inscricao_estadual || "",
         observacao: "",
         inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
     };
