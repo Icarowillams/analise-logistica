@@ -688,6 +688,7 @@ export default function Clientes() {
       c.razao_social || '',
       c.nome_fantasia || '',
       c.cpf_cnpj || '',
+      c.inscricao_estadual || '',
       getName(planosPagamento, c.plano_pagamento_id),
       getName(tabelas, c.tabela_id),
       getName(segmentos, c.segmento_id),
