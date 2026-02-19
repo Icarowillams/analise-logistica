@@ -92,7 +92,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        const LOTE_MAX = 50;
+        // Processar apenas 10 clientes por chamada para evitar timeout
+        const LOTE_MAX = 10;
         const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
         if (clientesDoLote.length === 0) {
@@ -103,18 +104,14 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Buscar clientes do lote individualmente via service role para garantir que todos sejam encontrados
-        const clientesParaExportar = [];
-        for (const id of clientesDoLote) {
-            try {
-                const cliente = await base44.asServiceRole.entities.Cliente.get(id);
-                if (cliente) clientesParaExportar.push(cliente);
-            } catch (e) {
-                console.log(`Cliente ${id} não encontrado: ${e.message}`);
-            }
-        }
+        // Buscar clientes em paralelo (mais rápido que sequencial)
+        const clientePromises = clientesDoLote.map(id => 
+            base44.asServiceRole.entities.Cliente.get(id).catch(() => null)
+        );
+        const clienteResults = await Promise.all(clientePromises);
+        const clientesParaExportar = clienteResults.filter(Boolean);
 
-        console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes encontrados de ${clientesDoLote.length} IDs`);
+        console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes de ${clientesDoLote.length} IDs`);
 
         const resultados = [];
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -156,7 +153,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            await delay(500);
+            await delay(350);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
