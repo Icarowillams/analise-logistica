@@ -15,7 +15,7 @@ export default function ExportarProdutosOmieModal({ open, onOpenChange }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [resultados, setResultados] = useState(null);
-  const [apenasAtivos, setApenasAtivos] = useState(true);
+  const [apenasAtivos, setApenasAtivos] = useState(false);
   const [progressoExportacao, setProgressoExportacao] = useState(0);
   const [exportando, setExportando] = useState(false);
   const [totalProcessado, setTotalProcessado] = useState(0);
