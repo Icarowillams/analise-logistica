@@ -719,7 +719,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     const visitasRecentes = await base44.entities.Visita.filter({
       cliente_id: cliente.cliente_id,
       vendedor_id: vendedor.id,
-      data_visita: new Date().toISOString().split('T')[0]
+      data_visita: formatLocalDate(new Date())
     });
     
     const visitaRecente = visitasRecentes[0];
