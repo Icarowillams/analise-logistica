@@ -170,14 +170,6 @@ function getInicioSemana(data) {
   return d;
 }
 
-// Função auxiliar para formatar data local como YYYY-MM-DD (evita problemas de fuso com toISOString)
-function formatDateLocal(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
   // Calcular data correspondente ao dia selecionado DENTRO da semana atual (dom-sáb)
   const hoje = new Date();
@@ -198,7 +190,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   // A data selecionada é sempre DENTRO da semana atual
   const dataSelecionada = new Date(inicioSemana);
   dataSelecionada.setDate(inicioSemana.getDate() + diaSelecionadoNumero);
-  const dataSelecionadaStr = formatDateLocal(dataSelecionada);
+  const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
 
   // Calcular fim da semana atual (sábado)
   const fimSemana = new Date(inicioSemana);
@@ -206,8 +198,8 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   fimSemana.setHours(23, 59, 59, 999);
 
   // Filtrar visitas apenas da semana atual (comparar apenas strings de data YYYY-MM-DD)
-  const inicioSemanaStr = formatDateLocal(inicioSemana);
-  const fimSemanaStr = formatDateLocal(fimSemana);
+  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
+  const fimSemanaStr = fimSemana.toISOString().split('T')[0];
   const visitasDaSemana = visitas.filter(v => {
     const dv = v.data_visita; // já é string YYYY-MM-DD
     return dv >= inicioSemanaStr && dv <= fimSemanaStr;
@@ -241,9 +233,10 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
             Reagendamentos ({reagendadasParaHoje.length})
           </h3>
           {reagendadasParaHoje.map((reagendada) => {
-            const visitaExistente = visitasDaSemana
-              .filter(v => v.cliente_id === reagendada.cliente_id)
-              .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || null;
+            const visitaExistente = visitas.find(v => 
+              v.cliente_id === reagendada.cliente_id && 
+              v.data_visita === dataSelecionadaStr
+            );
 
             // Buscar dados completos do cliente
             const clienteCompleto = clientes.find(c => c.id === reagendada.cliente_id);
@@ -276,9 +269,10 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
       {/* Clientes do Roteiro Fixo */}
       {clientesDoRoteiro.map((cliente, idx) => {
         // Buscar visita mais recente da semana para este cliente/roteiro
-        // Filtrar por roteiro_id + cliente_id na semana inteira (o check-in pode ter sido feito em data diferente do dia do roteiro)
+        // Filtrar APENAS pela data selecionada (dia específico da semana)
+        // Ordenar por created_date desc para pegar a mais recente em caso de duplicatas
         const visitasCliente = visitasDaSemana
-          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id)
+          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id && v.data_visita === dataSelecionadaStr)
           .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
         const visitaExistente = visitasCliente[0] || null;
 
@@ -456,26 +450,16 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
 function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, permissaoUsuario, vendedor }) {
   const queryClient = useQueryClient();
   
-  // Buscar visitas da semana atual (não apenas do dia)
-  const inicioSemana = getInicioSemana(new Date());
-  const fimSemana = new Date(inicioSemana);
-  fimSemana.setDate(inicioSemana.getDate() + 6);
-  const inicioStr = formatDateLocal(inicioSemana);
-  const fimStr = formatDateLocal(fimSemana);
-  
   const { data: visitaDireta } = useQuery({
     queryKey: ['visitaRoteiroDireta', clienteId, roteiroId],
     queryFn: async () => {
       const results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: clienteId,
         vendedor_id: vendedorId,
+        data_visita: new Date().toISOString().split('T')[0]
       });
-      // Filtrar pela semana atual e roteiro
-      const daSemana = results.filter(v => {
-        const dv = v.data_visita;
-        return dv >= inicioStr && dv <= fimStr && (!roteiroId || v.roteiro_id === roteiroId);
-      });
-      const sorted = daSemana.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+      // Pegar a mais recente
+      const sorted = results.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
       return sorted[0] || null;
     },
     refetchInterval: (query) => query.state.data ? false : 2000,
@@ -576,7 +560,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           // Registrar check-in IMEDIATAMENTE ao clicar no botão
           const agora = new Date();
           const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
-          const dataVisitaLocal = formatDateLocal(agora);
 
           const dataVisitaRoteiro = {
             roteiro_id: roteiroId || '',
@@ -586,7 +569,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             cliente_codigo: cliente.cliente_codigo,
             cliente_cidade: cliente.cliente_cidade,
-            data_visita: dataVisitaLocal,
+            data_visita: agora.toISOString().split('T')[0],
             checkin_time: agora.toISOString(),
             checkin_latitude: position.coords.latitude,
             checkin_longitude: position.coords.longitude,
@@ -600,7 +583,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             vendedor_id: vendedor.id,
             vendedor_nome: vendedor.nome,
-            data_visita: dataVisitaLocal,
+            data_visita: agora.toISOString().split('T')[0],
             hora_checkin: agora.toTimeString().split(' ')[0],
             latitude_checkin: position.coords.latitude,
             longitude_checkin: position.coords.longitude,
@@ -674,7 +657,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   const finalizarCheckinDireto = async (latitude, longitude) => {
     const agora = new Date();
     const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
-    const dataVisitaLocal = formatDateLocal(agora);
 
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId,
@@ -684,7 +666,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       checkin_time: agora.toISOString(),
       checkin_latitude: latitude,
       checkin_longitude: longitude,
@@ -698,7 +680,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: latitude,
       longitude_checkin: longitude,
@@ -726,7 +708,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     const visitasRecentes = await base44.entities.Visita.filter({
       cliente_id: cliente.cliente_id,
       vendedor_id: vendedor.id,
-      data_visita: formatDateLocal(new Date())
+      data_visita: new Date().toISOString().split('T')[0]
     });
     
     const visitaRecente = visitasRecentes[0];
@@ -794,8 +776,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
 
     const motivoNaoAtendObj = motivosNaoAtend.find(m => m.id === motivoNaoAtendimento);
 
-    const dataVisitaLocal = formatDateLocal(agora);
-
     // Criar registro na VisitaRoteiro
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId || '',
@@ -805,7 +785,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       checkin_time: agora.toISOString(),
       checkin_latitude: locationData.latitude,
       checkin_longitude: locationData.longitude,
@@ -821,7 +801,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: locationData.latitude,
       longitude_checkin: locationData.longitude,
@@ -843,7 +823,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: formatDateLocal(amanha),
+        data_reagendamento: amanha.toISOString().split('T')[0],
         motivo_nao_atendimento: motivoNaoAtendObj?.descricao,
         visita_original_id: numeroVisita,
         status: 'pendente'
