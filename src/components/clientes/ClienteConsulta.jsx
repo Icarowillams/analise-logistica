@@ -160,6 +160,13 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         if (cliente.latitude && cliente.longitude) return false;
       }
 
+      // Filter by Inscrição Estadual
+      if (filters.inscricaoEstadual === true) {
+        if (!cliente.inscricao_estadual || cliente.inscricao_estadual.trim() === '') return false;
+      } else if (filters.inscricaoEstadual === false) {
+        if (cliente.inscricao_estadual && cliente.inscricao_estadual.trim() !== '') return false;
+      }
+
       return true;
     });
   }, [clientes, filters, vendedores]);
