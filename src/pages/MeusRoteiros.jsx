@@ -460,8 +460,8 @@ function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, per
   const inicioSemana = getInicioSemana(new Date());
   const fimSemana = new Date(inicioSemana);
   fimSemana.setDate(inicioSemana.getDate() + 6);
-  const inicioStr = inicioSemana.toISOString().split('T')[0];
-  const fimStr = fimSemana.toISOString().split('T')[0];
+  const inicioStr = formatDateLocal(inicioSemana);
+  const fimStr = formatDateLocal(fimSemana);
   
   const { data: visitaDireta } = useQuery({
     queryKey: ['visitaRoteiroDireta', clienteId, roteiroId],
