@@ -197,8 +197,9 @@ function getInicioSemana(data) {
 }
 
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
-  // Calcular data correspondente ao dia selecionado
+  // Calcular data correspondente ao dia selecionado usando data LOCAL
   const hoje = new Date();
+  const hojeStr = getLocalDateStr(hoje);
   const diaAtualMap = {
     'domingo': 0,
     'segunda-feira': 1,
@@ -216,19 +217,20 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   
   const dataSelecionada = new Date(hoje);
   dataSelecionada.setDate(hoje.getDate() + diffDias);
-  const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
+  const dataSelecionadaStr = getLocalDateStr(dataSelecionada);
 
-  // Calcular início e fim da semana atual (domingo a sábado)
-  const inicioSemana = getInicioSemana(hoje);
+  // Calcular início e fim da semana atual (domingo a sábado) usando data LOCAL
+  const inicioSemana = new Date(hoje);
+  inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+  const inicioSemanaStr = getLocalDateStr(inicioSemana);
+  
   const fimSemana = new Date(inicioSemana);
   fimSemana.setDate(inicioSemana.getDate() + 6);
-  fimSemana.setHours(23, 59, 59, 999);
+  const fimSemanaStr = getLocalDateStr(fimSemana);
 
-  // Filtrar visitas apenas da semana atual (comparar apenas strings de data YYYY-MM-DD)
-  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
-  const fimSemanaStr = fimSemana.toISOString().split('T')[0];
+  // Filtrar visitas apenas da semana atual (comparar strings de data YYYY-MM-DD)
   const visitasDaSemana = visitas.filter(v => {
-    const dv = v.data_visita; // já é string YYYY-MM-DD
+    const dv = v.data_visita;
     return dv >= inicioSemanaStr && dv <= fimSemanaStr;
   });
 
