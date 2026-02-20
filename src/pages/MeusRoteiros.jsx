@@ -401,23 +401,32 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
         </div>
       </CardHeader>
       <CardContent>
-        {!visitaExistente || visitaExistente.status === 'pendente' ? (
+        {checkinRealizado || (visitaExistente && visitaExistente.status !== 'pendente') ? (
+          visitaExistente ? (
+            <VisitaDetalhes 
+              visita={visitaExistente} 
+              cliente={cliente} 
+              permissaoUsuario={permissaoUsuario}
+              vendedor={vendedor}
+            />
+          ) : (
+            <Alert className="bg-blue-50 border-blue-200">
+              <CheckCircle className="w-4 h-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                Check-in realizado! Carregando detalhes da visita...
+              </AlertDescription>
+            </Alert>
+          )
+        ) : (
           <CheckinButton 
             cliente={cliente} 
             roteiroId={roteiroId} 
             vendedor={vendedor}
-            onSuccess={() => setShowVisita(true)}
+            onSuccess={() => setCheckinFeito(true)}
             reagendamentoId={reagendamentoId}
             permissaoUsuario={permissaoUsuario}
           />
-        ) : showVisita || visitaExistente ? (
-          <VisitaDetalhes 
-            visita={visitaExistente} 
-            cliente={cliente} 
-            permissaoUsuario={permissaoUsuario}
-            vendedor={vendedor}
-          />
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );
