@@ -194,10 +194,12 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   fimSemana.setDate(inicioSemana.getDate() + 6);
   fimSemana.setHours(23, 59, 59, 999);
 
-  // Filtrar visitas apenas da semana atual
+  // Filtrar visitas apenas da semana atual (comparar apenas strings de data YYYY-MM-DD)
+  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
+  const fimSemanaStr = fimSemana.toISOString().split('T')[0];
   const visitasDaSemana = visitas.filter(v => {
-    const dataVisita = new Date(v.data_visita);
-    return dataVisita >= inicioSemana && dataVisita <= fimSemana;
+    const dv = v.data_visita; // já é string YYYY-MM-DD
+    return dv >= inicioSemanaStr && dv <= fimSemanaStr;
   });
 
   // Filtrar visitas reagendadas para este dia
