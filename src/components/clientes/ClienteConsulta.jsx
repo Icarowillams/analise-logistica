@@ -355,6 +355,24 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               </div>
             </div>
 
+            {/* Inscrição Estadual */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Inscrição Estadual</label>
+              <Select
+                value={filters.inscricaoEstadual === null ? 'all' : filters.inscricaoEstadual ? 'com' : 'sem'}
+                onValueChange={(val) => setFilters({...filters, inscricaoEstadual: val === 'all' ? null : val === 'com'})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="com">Com IE informada</SelectItem>
+                  <SelectItem value="sem">Sem IE informada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
           </div>
           
           <div className="mt-4 flex justify-end">
