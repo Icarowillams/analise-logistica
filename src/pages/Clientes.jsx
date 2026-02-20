@@ -637,8 +637,16 @@ export default function Clientes() {
     console.log('Importação - Para atualizar:', toUpdate.length);
     console.log('Importação - Não encontrados:', naoEncontrados);
     if (clientesData.length > 0) {
-      console.log('Importação - Exemplo campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
+      console.log('Importação - Campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
       console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
+      // Log primeiros 3 registros para debug
+      clientesData.slice(0, 3).forEach((c, i) => {
+        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
+      });
+    }
+    if (toUpdate.length > 0) {
+      console.log('Importação - Campos do primeiro update:', JSON.stringify(Object.keys(toUpdate[0].data)));
+      console.log('Importação - Primeiro update estado:', toUpdate[0].data.estado, '| ie:', toUpdate[0].data.inscricao_estadual);
     }
 
     // Se modo atualização e nenhum cliente foi encontrado
