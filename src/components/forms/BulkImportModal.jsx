@@ -121,8 +121,10 @@ export default function BulkImportModal({
       'email': 'email',
     };
     const headers = headerValues.map(h => {
-      const normalized = removeQuotes(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
-      return headerAliases[normalized] || normalized;
+      const raw = removeQuotes(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const withUnderscores = raw.replace(/\s+/g, '_');
+      // Try both underscore and space versions for alias matching
+      return headerAliases[withUnderscores] || headerAliases[raw] || withUnderscores;
     });
     return lines.slice(1).map((line, idx) => {
       const values = parseCSVLine(line);
