@@ -67,9 +67,10 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
         vendedor_id: roteiro.vendedor_id || '',
         dia_semana: roteiro.dia_semana || '',
         clientes_selecionados: roteiro.clientes_detalhes?.map(c => {
-          const clienteCompleto = clientes.find(cl => cl.id === c.cliente_id);
+          const clienteCompleto = clientes.find(cl => cl.id === c.cliente_id) 
+            || (c.cliente_codigo ? clientes.find(cl => cl.codigo === c.cliente_codigo) : undefined);
           return {
-            id: c.cliente_id,
+            id: clienteCompleto?.id || c.cliente_id,
             nome: clienteCompleto?.razao_social || c.cliente_nome,
             nome_fantasia: clienteCompleto?.nome_fantasia || c.nome_fantasia || '',
             codigo: clienteCompleto?.codigo || c.cliente_codigo,
