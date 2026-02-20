@@ -20,14 +20,20 @@ Deno.serve(async (req) => {
     let atualizados = 0;
     const erros = [];
 
-    // Processar em paralelo, 10 de cada vez
-    const CONCURRENCY = 10;
+    // Processar sequencialmente em pequenos grupos de 5 para evitar timeout
+    const CONCURRENCY = 5;
     for (let i = 0; i < clientes.length; i += CONCURRENCY) {
       const chunk = clientes.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
-        chunk.map(cliente => 
-          base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data)
-        )
+        chunk.map(async (cliente) => {
+          try {
+            await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
+          } catch (err) {
+            // Retry once on failure
+            await new Promise(r => setTimeout(r, 500));
+            await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
+          }
+        })
       );
       
       results.forEach((result, idx) => {
