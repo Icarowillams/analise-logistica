@@ -60,7 +60,8 @@ export default function MeusRoteiros() {
     5: 'sexta-feira',
     6: 'sabado'
   };
-  const diaAtual = diaAtualMap[new Date().getDay()];
+  const hojeLocal = new Date();
+  const diaAtual = diaAtualMap[hojeLocal.getDay()];
   const [selectedDia, setSelectedDia] = useState(diaAtual);
 
   const queryClient = useQueryClient();
