@@ -58,17 +58,13 @@ export default function MeusRoteiros() {
   const { data: visitas = [] } = useQuery({
     queryKey: ['visitasRoteiro', vendedorAtual?.id],
     queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedorAtual?.id }),
-    enabled: !!vendedorAtual,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    enabled: !!vendedorAtual
   });
 
   const { data: visitasRegistros = [] } = useQuery({
     queryKey: ['visitas', vendedorAtual?.id],
     queryFn: () => base44.entities.Visita.filter({ vendedor_id: vendedorAtual?.id }),
-    enabled: !!vendedorAtual,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    enabled: !!vendedorAtual
   });
 
   const { data: visitasReagendadas = [] } = useQuery({
@@ -161,14 +157,6 @@ export default function MeusRoteiros() {
   );
 }
 
-// Função auxiliar para formatar data local como YYYY-MM-DD (sem conversão UTC)
-function formatLocalDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 // Função auxiliar para calcular início da semana (domingo)
 function getInicioSemana(data) {
   const d = new Date(data);
@@ -179,7 +167,7 @@ function getInicioSemana(data) {
 }
 
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
-  // Calcular data correspondente ao dia selecionado DENTRO da semana atual (dom-sáb)
+  // Calcular data correspondente ao dia selecionado
   const hoje = new Date();
   const diaAtualMap = {
     'domingo': 0,
@@ -191,23 +179,24 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
     'sabado': 6
   };
   
-  // Calcular início da semana atual (domingo)
-  const inicioSemana = getInicioSemana(hoje);
+  const diaAtualNumero = hoje.getDay();
   const diaSelecionadoNumero = diaAtualMap[dia];
+  let diffDias = diaSelecionadoNumero - diaAtualNumero;
+  if (diffDias < 0) diffDias += 7;
   
-  // A data selecionada é sempre DENTRO da semana atual
-  const dataSelecionada = new Date(inicioSemana);
-  dataSelecionada.setDate(inicioSemana.getDate() + diaSelecionadoNumero);
-  const dataSelecionadaStr = formatLocalDate(dataSelecionada);
+  const dataSelecionada = new Date(hoje);
+  dataSelecionada.setDate(hoje.getDate() + diffDias);
+  const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
 
-  // Calcular fim da semana atual (sábado)
+  // Calcular início e fim da semana atual (domingo a sábado)
+  const inicioSemana = getInicioSemana(hoje);
   const fimSemana = new Date(inicioSemana);
   fimSemana.setDate(inicioSemana.getDate() + 6);
   fimSemana.setHours(23, 59, 59, 999);
 
   // Filtrar visitas apenas da semana atual (comparar apenas strings de data YYYY-MM-DD)
-  const inicioSemanaStr = formatLocalDate(inicioSemana);
-  const fimSemanaStr = formatLocalDate(fimSemana);
+  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
+  const fimSemanaStr = fimSemana.toISOString().split('T')[0];
   const visitasDaSemana = visitas.filter(v => {
     const dv = v.data_visita; // já é string YYYY-MM-DD
     return dv >= inicioSemanaStr && dv <= fimSemanaStr;
@@ -241,10 +230,10 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
             Reagendamentos ({reagendadasParaHoje.length})
           </h3>
           {reagendadasParaHoje.map((reagendada) => {
-            const visitasReag = visitas
-              .filter(v => v.cliente_id === reagendada.cliente_id && v.data_visita === dataSelecionadaStr)
-              .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-            const visitaExistente = visitasReag[0] || null;
+            const visitaExistente = visitas.find(v => 
+              v.cliente_id === reagendada.cliente_id && 
+              v.data_visita === dataSelecionadaStr
+            );
 
             // Buscar dados completos do cliente
             const clienteCompleto = clientes.find(c => c.id === reagendada.cliente_id);
@@ -277,10 +266,9 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
       {/* Clientes do Roteiro Fixo */}
       {clientesDoRoteiro.map((cliente, idx) => {
         // Buscar visita mais recente da semana para este cliente/roteiro
-        // Filtrar APENAS pela data selecionada (dia específico da semana)
         // Ordenar por created_date desc para pegar a mais recente em caso de duplicatas
         const visitasCliente = visitasDaSemana
-          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id && v.data_visita === dataSelecionadaStr)
+          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id)
           .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
         const visitaExistente = visitasCliente[0] || null;
 
@@ -320,12 +308,22 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   const [checkinFeito, setCheckinFeito] = useState(false);
   const queryClient = useQueryClient();
 
-  // A visita efetiva vem direto da prop (já filtrada por data no RoteirosDia)
-  const visitaEfetiva = visitaExistente;
-  
-  // O check-in é considerado realizado se:
-  // 1. O usuário acabou de fazer o check-in (estado local)
-  // 2. Já existe uma visita com status diferente de 'pendente'
+  // Buscar a visita diretamente quando o check-in local foi feito mas visitaExistente ainda não chegou
+  const { data: visitaLocal } = useQuery({
+    queryKey: ['visitaRoteiroDireta', cliente.cliente_id, roteiroId],
+    queryFn: async () => {
+      const results = await base44.entities.VisitaRoteiro.filter({
+        cliente_id: cliente.cliente_id,
+        vendedor_id: vendedor.id,
+        data_visita: new Date().toISOString().split('T')[0]
+      });
+      return results[0] || null;
+    },
+    enabled: checkinFeito && !visitaExistente,
+    refetchInterval: (query) => query.state.data ? false : 2000,
+  });
+
+  const visitaEfetiva = visitaExistente || visitaLocal;
   const checkinRealizado = checkinFeito || (visitaEfetiva && visitaEfetiva.status !== 'pendente');
 
   const getStatusBadge = () => {
@@ -431,14 +429,12 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
               vendedor={vendedor}
             />
           ) : (
-            <RefetchingVisitaLoader
-              clienteId={cliente.cliente_id}
-              vendedorId={vendedor.id}
-              roteiroId={roteiroId}
-              cliente={cliente}
-              permissaoUsuario={permissaoUsuario}
-              vendedor={vendedor}
-            />
+            <Alert className="bg-blue-50 border-blue-200">
+              <CheckCircle className="w-4 h-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                Check-in realizado! Carregando detalhes da visita...
+              </AlertDescription>
+            </Alert>
           )
         ) : (
           <CheckinButton 
@@ -452,45 +448,6 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, permissaoUsuario, vendedor }) {
-  const queryClient = useQueryClient();
-  
-  const { data: visitaDireta } = useQuery({
-    queryKey: ['visitaRoteiroDireta', clienteId, roteiroId],
-    queryFn: async () => {
-      const results = await base44.entities.VisitaRoteiro.filter({
-        cliente_id: clienteId,
-        vendedor_id: vendedorId,
-        data_visita: formatLocalDate(new Date())
-      });
-      // Pegar a mais recente
-      const sorted = results.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-      return sorted[0] || null;
-    },
-    refetchInterval: (query) => query.state.data ? false : 2000,
-  });
-
-  if (visitaDireta) {
-    return (
-      <VisitaDetalhes 
-        visita={visitaDireta} 
-        cliente={cliente} 
-        permissaoUsuario={permissaoUsuario}
-        vendedor={vendedor}
-      />
-    );
-  }
-
-  return (
-    <Alert className="bg-blue-50 border-blue-200">
-      <CheckCircle className="w-4 h-4 text-blue-600" />
-      <AlertDescription className="text-blue-800">
-        Check-in realizado! Carregando detalhes da visita...
-      </AlertDescription>
-    </Alert>
   );
 }
 
@@ -569,8 +526,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           const agora = new Date();
           const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
 
-          const dataVisitaLocal = formatLocalDate(agora);
-
           const dataVisitaRoteiro = {
             roteiro_id: roteiroId || '',
             vendedor_id: vendedor.id,
@@ -579,7 +534,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             cliente_codigo: cliente.cliente_codigo,
             cliente_cidade: cliente.cliente_cidade,
-            data_visita: dataVisitaLocal,
+            data_visita: agora.toISOString().split('T')[0],
             checkin_time: agora.toISOString(),
             checkin_latitude: position.coords.latitude,
             checkin_longitude: position.coords.longitude,
@@ -593,7 +548,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             vendedor_id: vendedor.id,
             vendedor_nome: vendedor.nome,
-            data_visita: dataVisitaLocal,
+            data_visita: agora.toISOString().split('T')[0],
             hora_checkin: agora.toTimeString().split(' ')[0],
             latitude_checkin: position.coords.latitude,
             longitude_checkin: position.coords.longitude,
@@ -667,7 +622,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   const finalizarCheckinDireto = async (latitude, longitude) => {
     const agora = new Date();
     const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
-    const dataVisitaLocal = formatLocalDate(agora);
 
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId,
@@ -677,7 +631,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       checkin_time: agora.toISOString(),
       checkin_latitude: latitude,
       checkin_longitude: longitude,
@@ -691,7 +645,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: latitude,
       longitude_checkin: longitude,
@@ -719,7 +673,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
     const visitasRecentes = await base44.entities.Visita.filter({
       cliente_id: cliente.cliente_id,
       vendedor_id: vendedor.id,
-      data_visita: formatLocalDate(new Date())
+      data_visita: new Date().toISOString().split('T')[0]
     });
     
     const visitaRecente = visitasRecentes[0];
@@ -754,7 +708,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: formatLocalDate(amanha),
+        data_reagendamento: amanha.toISOString().split('T')[0],
         motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
         visita_original_id: visitaRecente?.numero_visita,
         status: 'pendente'
@@ -787,8 +741,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
 
     const motivoNaoAtendObj = motivosNaoAtend.find(m => m.id === motivoNaoAtendimento);
 
-    const dataVisitaLocal = formatLocalDate(agora);
-
     // Criar registro na VisitaRoteiro
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId || '',
@@ -798,7 +750,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       checkin_time: agora.toISOString(),
       checkin_latitude: locationData.latitude,
       checkin_longitude: locationData.longitude,
@@ -814,7 +766,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: dataVisitaLocal,
+      data_visita: agora.toISOString().split('T')[0],
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: locationData.latitude,
       longitude_checkin: locationData.longitude,
@@ -836,7 +788,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: formatLocalDate(amanha),
+        data_reagendamento: amanha.toISOString().split('T')[0],
         motivo_nao_atendimento: motivoNaoAtendObj?.descricao,
         visita_original_id: numeroVisita,
         status: 'pendente'
@@ -1014,7 +966,7 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: formatLocalDate(amanha),
+        data_reagendamento: amanha.toISOString().split('T')[0],
         motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
         visita_original_id: visitaRegistro.numero_visita,
         status: 'pendente'
@@ -1117,20 +1069,16 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
 
 function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
-  const queryClient = useQueryClient();
   const { data: visitaRegistro } = useQuery({
-    queryKey: ['visitaRegistro', visita.id, cliente.cliente_id, visita.data_visita],
+    queryKey: ['visitaRegistro', visita.id, visita.cliente_id || cliente.cliente_id],
     queryFn: async () => {
-      const resultados = await base44.entities.Visita.filter({ 
+      const visitas = await base44.entities.Visita.filter({ 
         cliente_id: cliente.cliente_id,
         data_visita: visita.data_visita 
       });
-      // Pegar a mais recente
-      const sorted = resultados.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-      return sorted[0] || null;
+      return visitas[0] || null;
     },
-    refetchInterval: (query) => query.state.data ? false : 3000,
-    staleTime: 0,
+    refetchInterval: (data) => data ? false : 3000, // Refetch every 3s until data arrives
   });
 
   // Verificar permissões
@@ -1289,27 +1237,20 @@ function CheckoutButton({ visitaId }) {
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const checkoutData = {
+        const data = {
           checkout_time: new Date().toISOString(),
           checkout_latitude: position.coords.latitude,
           checkout_longitude: position.coords.longitude,
           status: 'concluida'
         };
         
-        // AGUARDAR a atualização completar antes de invalidar
-        await base44.entities.VisitaRoteiro.update(visitaId, checkoutData);
+        await base44.entities.VisitaRoteiro.update(visitaId, data);
+        toast.success('✅ Visita finalizada com sucesso!');
         
-        // Pequeno delay para garantir que o banco persistiu
-        await new Promise(r => setTimeout(r, 500));
-        
-        // Forçar refetch de TODAS as queries relacionadas e aguardar
+        // Forçar refetch de todas as queries relacionadas
         await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
-        await queryClient.refetchQueries({ queryKey: ['visitasRoteiro'] });
         await queryClient.invalidateQueries({ queryKey: ['visitaRoteiroDireta'] });
         await queryClient.invalidateQueries({ queryKey: ['visitas'] });
-        await queryClient.invalidateQueries({ queryKey: ['visitaRegistro'] });
-        
-        toast.success('✅ Visita finalizada com sucesso!');
         setLoading(false);
       },
       (error) => {
