@@ -448,16 +448,26 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
 function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, permissaoUsuario, vendedor }) {
   const queryClient = useQueryClient();
   
+  // Buscar visitas da semana atual (não apenas do dia)
+  const inicioSemana = getInicioSemana(new Date());
+  const fimSemana = new Date(inicioSemana);
+  fimSemana.setDate(inicioSemana.getDate() + 6);
+  const inicioStr = inicioSemana.toISOString().split('T')[0];
+  const fimStr = fimSemana.toISOString().split('T')[0];
+  
   const { data: visitaDireta } = useQuery({
     queryKey: ['visitaRoteiroDireta', clienteId, roteiroId],
     queryFn: async () => {
       const results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: clienteId,
         vendedor_id: vendedorId,
-        data_visita: new Date().toISOString().split('T')[0]
       });
-      // Pegar a mais recente
-      const sorted = results.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+      // Filtrar pela semana atual e roteiro
+      const daSemana = results.filter(v => {
+        const dv = v.data_visita;
+        return dv >= inicioStr && dv <= fimStr && (!roteiroId || v.roteiro_id === roteiroId);
+      });
+      const sorted = daSemana.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
       return sorted[0] || null;
     },
     refetchInterval: (query) => query.state.data ? false : 2000,
