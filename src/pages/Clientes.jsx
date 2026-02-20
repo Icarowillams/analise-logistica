@@ -591,14 +591,32 @@ export default function Clientes() {
       if (modoImportacao === 'atualizacao') {
         // Modo atualização: só atualiza clientes existentes
         if (existingClient) {
-          toUpdate.push({ id: existingClient.id, data: clienteData });
+          // Remover campos vazios para não sobrescrever dados existentes
+          const cleanData = { ...clienteData };
+          Object.keys(cleanData).forEach(key => {
+            if (key === '_rowNum') return;
+            const val = cleanData[key];
+            if (val === '' || val === null || val === undefined) {
+              delete cleanData[key];
+            }
+          });
+          toUpdate.push({ id: existingClient.id, data: cleanData });
         } else {
           naoEncontrados++;
         }
       } else {
         // Modo cadastro: cria novos e atualiza existentes
         if (existingClient) {
-          toUpdate.push({ id: existingClient.id, data: clienteData });
+          // Remover campos vazios para não sobrescrever dados existentes
+          const cleanData = { ...clienteData };
+          Object.keys(cleanData).forEach(key => {
+            if (key === '_rowNum') return;
+            const val = cleanData[key];
+            if (val === '' || val === null || val === undefined) {
+              delete cleanData[key];
+            }
+          });
+          toUpdate.push({ id: existingClient.id, data: cleanData });
         } else {
           toCreate.push(clienteData);
         }
