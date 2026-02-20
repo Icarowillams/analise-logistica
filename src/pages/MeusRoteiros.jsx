@@ -1270,20 +1270,27 @@ function CheckoutButton({ visitaId }) {
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const data = {
+        const checkoutData = {
           checkout_time: new Date().toISOString(),
           checkout_latitude: position.coords.latitude,
           checkout_longitude: position.coords.longitude,
           status: 'concluida'
         };
         
-        await base44.entities.VisitaRoteiro.update(visitaId, data);
-        toast.success('✅ Visita finalizada com sucesso!');
+        // AGUARDAR a atualização completar antes de invalidar
+        await base44.entities.VisitaRoteiro.update(visitaId, checkoutData);
         
-        // Forçar refetch de todas as queries relacionadas
+        // Pequeno delay para garantir que o banco persistiu
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Forçar refetch de TODAS as queries relacionadas e aguardar
         await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+        await queryClient.refetchQueries({ queryKey: ['visitasRoteiro'] });
         await queryClient.invalidateQueries({ queryKey: ['visitaRoteiroDireta'] });
         await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+        await queryClient.invalidateQueries({ queryKey: ['visitaRegistro'] });
+        
+        toast.success('✅ Visita finalizada com sucesso!');
         setLoading(false);
       },
       (error) => {
