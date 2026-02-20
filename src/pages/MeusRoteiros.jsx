@@ -198,7 +198,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   // A data selecionada é sempre DENTRO da semana atual
   const dataSelecionada = new Date(inicioSemana);
   dataSelecionada.setDate(inicioSemana.getDate() + diaSelecionadoNumero);
-  const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
+  const dataSelecionadaStr = formatDateLocal(dataSelecionada);
 
   // Calcular fim da semana atual (sábado)
   const fimSemana = new Date(inicioSemana);
@@ -206,8 +206,8 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   fimSemana.setHours(23, 59, 59, 999);
 
   // Filtrar visitas apenas da semana atual (comparar apenas strings de data YYYY-MM-DD)
-  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
-  const fimSemanaStr = fimSemana.toISOString().split('T')[0];
+  const inicioSemanaStr = formatDateLocal(inicioSemana);
+  const fimSemanaStr = formatDateLocal(fimSemana);
   const visitasDaSemana = visitas.filter(v => {
     const dv = v.data_visita; // já é string YYYY-MM-DD
     return dv >= inicioSemanaStr && dv <= fimSemanaStr;
