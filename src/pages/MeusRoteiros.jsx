@@ -269,10 +269,9 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
       {/* Clientes do Roteiro Fixo */}
       {clientesDoRoteiro.map((cliente, idx) => {
         // Buscar visita mais recente da semana para este cliente/roteiro
-        // Filtrar APENAS pela data selecionada (dia específico da semana)
-        // Ordenar por created_date desc para pegar a mais recente em caso de duplicatas
+        // Filtrar por roteiro_id + cliente_id na semana inteira (o check-in pode ter sido feito em data diferente do dia do roteiro)
         const visitasCliente = visitasDaSemana
-          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id && v.data_visita === dataSelecionadaStr)
+          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id)
           .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
         const visitaExistente = visitasCliente[0] || null;
 
