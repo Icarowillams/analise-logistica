@@ -20,6 +20,13 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
     clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), 
   [clientes]);
 
+  const clientesMapByCodigo = useMemo(() => 
+    clientes.reduce((acc, c) => { if (c.codigo) acc[c.codigo] = c; return acc; }, {}), 
+  [clientes]);
+
+  const findCliente = (clienteId, clienteCodigo) => 
+    clientesMap[clienteId] || (clienteCodigo ? clientesMapByCodigo[clienteCodigo] : undefined);
+
   if (!roteiro) return null;
 
   const getDiaLabel = (dia) => {
