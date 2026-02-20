@@ -528,10 +528,35 @@ export default function Clientes() {
         if (isNaN(lng)) lng = null;
       }
 
+      // Normalizar estado: converter nome completo para sigla UF
+      const estadoUfMap = {
+        'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+        'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+        'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+        'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+        'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ',
+        'rio grande do norte': 'RN', 'rio grande do sul': 'RS', 'rondonia': 'RO',
+        'roraima': 'RR', 'santa catarina': 'SC', 'sao paulo': 'SP', 'sergipe': 'SE',
+        'tocantins': 'TO'
+      };
+      let estadoNormalizado = item.estado || '';
+      if (estadoNormalizado) {
+        const estadoLower = estadoNormalizado.toLowerCase().trim()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (estadoUfMap[estadoLower]) {
+          estadoNormalizado = estadoUfMap[estadoLower];
+        } else {
+          // Já pode ser sigla, manter como está (uppercase)
+          estadoNormalizado = estadoNormalizado.trim().toUpperCase();
+        }
+      }
+
       const clienteData = {
         ...item,
         latitude: lat,
         longitude: lng,
+        estado: estadoNormalizado || item.estado,
+        inscricao_estadual: item.inscricao_estadual || '',
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
         tabela_id: findId(tabelas, item.tabela_preco),
         segmento_id: findId(segmentos, item.segmento),
