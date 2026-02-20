@@ -464,7 +464,7 @@ function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, per
       const results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: clienteId,
         vendedor_id: vendedorId,
-        data_visita: new Date().toISOString().split('T')[0]
+        data_visita: formatLocalDate(new Date())
       });
       // Pegar a mais recente
       const sorted = results.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
