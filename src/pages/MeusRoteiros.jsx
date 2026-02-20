@@ -161,6 +161,14 @@ export default function MeusRoteiros() {
   );
 }
 
+// Função auxiliar para formatar data local como YYYY-MM-DD (sem conversão UTC)
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Função auxiliar para calcular início da semana (domingo)
 function getInicioSemana(data) {
   const d = new Date(data);
