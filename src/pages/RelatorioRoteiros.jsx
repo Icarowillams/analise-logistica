@@ -232,7 +232,7 @@ export default function RelatorioRoteiros() {
       const busca = filtros.cliente_busca.toLowerCase();
       resultado = resultado.filter(r => 
         r.clientes_detalhes?.some(c => {
-          const clienteCompleto = clientesMap[c.cliente_id];
+          const clienteCompleto = findCliente(c.cliente_id, c.cliente_codigo);
           const nomeFantasia = clienteCompleto?.nome_fantasia?.toLowerCase() || '';
           const razaoSocial = clienteCompleto?.razao_social?.toLowerCase() || c.cliente_nome?.toLowerCase() || '';
           const codigo = clienteCompleto?.codigo?.toLowerCase() || c.cliente_codigo?.toLowerCase() || '';
