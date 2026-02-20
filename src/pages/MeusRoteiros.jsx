@@ -576,6 +576,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           // Registrar check-in IMEDIATAMENTE ao clicar no botão
           const agora = new Date();
           const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+          const dataVisitaLocal = formatDateLocal(agora);
 
           const dataVisitaRoteiro = {
             roteiro_id: roteiroId || '',
@@ -585,7 +586,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             cliente_codigo: cliente.cliente_codigo,
             cliente_cidade: cliente.cliente_cidade,
-            data_visita: agora.toISOString().split('T')[0],
+            data_visita: dataVisitaLocal,
             checkin_time: agora.toISOString(),
             checkin_latitude: position.coords.latitude,
             checkin_longitude: position.coords.longitude,
@@ -599,7 +600,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             cliente_nome: cliente.cliente_nome,
             vendedor_id: vendedor.id,
             vendedor_nome: vendedor.nome,
-            data_visita: agora.toISOString().split('T')[0],
+            data_visita: dataVisitaLocal,
             hora_checkin: agora.toTimeString().split(' ')[0],
             latitude_checkin: position.coords.latitude,
             longitude_checkin: position.coords.longitude,
