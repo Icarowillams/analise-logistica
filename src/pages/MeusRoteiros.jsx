@@ -1051,14 +1051,15 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
 function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
   const { data: visitaRegistro } = useQuery({
-    queryKey: ['visitaRegistro', visita.id],
+    queryKey: ['visitaRegistro', visita.id, visita.cliente_id || cliente.cliente_id],
     queryFn: async () => {
       const visitas = await base44.entities.Visita.filter({ 
         cliente_id: cliente.cliente_id,
         data_visita: visita.data_visita 
       });
-      return visitas[0];
-    }
+      return visitas[0] || null;
+    },
+    refetchInterval: (data) => data ? false : 3000, // Refetch every 3s until data arrives
   });
 
   // Verificar permissões
