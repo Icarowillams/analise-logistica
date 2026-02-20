@@ -170,6 +170,14 @@ function getInicioSemana(data) {
   return d;
 }
 
+// Função auxiliar para formatar data local como YYYY-MM-DD (evita problemas de fuso com toISOString)
+function formatDateLocal(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
   // Calcular data correspondente ao dia selecionado DENTRO da semana atual (dom-sáb)
   const hoje = new Date();
