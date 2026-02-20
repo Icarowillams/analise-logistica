@@ -265,11 +265,12 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
       {/* Clientes do Roteiro Fixo */}
       {clientesDoRoteiro.map((cliente, idx) => {
-        // Buscar visita apenas da semana atual para este cliente/roteiro
-        const visitaExistente = visitasDaSemana.find(v => 
-          v.cliente_id === cliente.cliente_id && 
-          v.roteiro_id === roteiro.id
-        );
+        // Buscar visita mais recente da semana para este cliente/roteiro
+        // Ordenar por created_date desc para pegar a mais recente em caso de duplicatas
+        const visitasCliente = visitasDaSemana
+          .filter(v => v.cliente_id === cliente.cliente_id && v.roteiro_id === roteiro.id)
+          .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+        const visitaExistente = visitasCliente[0] || null;
 
         // Buscar dados completos do cliente (por ID ou por código como fallback)
         const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id) 
