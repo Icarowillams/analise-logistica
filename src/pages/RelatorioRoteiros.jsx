@@ -409,7 +409,7 @@ export default function RelatorioRoteiros() {
     // Se existe roteiro fixo atual, processar seus clientes
     if (roteiroFixo?.clientes_detalhes) {
       roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
-        const clienteCompleto = clientesMap[clienteDetalhe.cliente_id];
+        const clienteCompleto = findCliente(clienteDetalhe.cliente_id, clienteDetalhe.cliente_codigo);
         const visitaRot = visitasPorCliente[clienteDetalhe.cliente_id];
         clientesProcessados.add(clienteDetalhe.cliente_id);
         
