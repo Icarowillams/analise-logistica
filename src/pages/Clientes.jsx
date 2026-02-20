@@ -648,12 +648,12 @@ export default function Clientes() {
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações via backend function em lotes
+      // Executar atualizações via backend function em lotes pequenos (sequencial com delay)
       if (toUpdate.length > 0) {
         console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
-        toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde.`);
+        toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde, isso pode levar alguns minutos.`);
         
-        const LOTE_SIZE = 50;
+        const LOTE_SIZE = 10;
         let totalAtualizados = 0;
         let totalErros = 0;
 
@@ -662,24 +662,27 @@ export default function Clientes() {
           const loteNum = Math.floor(i/LOTE_SIZE) + 1;
           const totalLotes = Math.ceil(toUpdate.length/LOTE_SIZE);
           console.log(`Enviando lote ${loteNum}/${totalLotes} (${lote.length} clientes)`);
-          toast.info(`Atualizando lote ${loteNum}/${totalLotes}...`);
+          
+          if (loteNum % 10 === 0 || loteNum === 1) {
+            toast.info(`Atualizando lote ${loteNum}/${totalLotes}... (${totalAtualizados} atualizados até agora)`);
+          }
           
           const response = await base44.functions.invoke('bulkUpdateClientes', {
             clientes: lote
           });
           
-          const data = response.data;
+          const respData = response.data;
           
-          if (data?.error) {
-            throw new Error(data.error);
+          if (respData?.error) {
+            throw new Error(respData.error);
           }
 
-          totalAtualizados += data.atualizados || 0;
-          totalErros += data.erros || 0;
+          totalAtualizados += respData.atualizados || 0;
+          totalErros += respData.erros || 0;
           
           // Delay entre lotes para evitar sobrecarga
           if (i + LOTE_SIZE < toUpdate.length) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
         
