@@ -167,7 +167,7 @@ function getInicioSemana(data) {
 }
 
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
-  // Calcular data correspondente ao dia selecionado
+  // Calcular data correspondente ao dia selecionado DENTRO da semana atual (dom-sáb)
   const hoje = new Date();
   const diaAtualMap = {
     'domingo': 0,
@@ -179,17 +179,16 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
     'sabado': 6
   };
   
-  const diaAtualNumero = hoje.getDay();
+  // Calcular início da semana atual (domingo)
+  const inicioSemana = getInicioSemana(hoje);
   const diaSelecionadoNumero = diaAtualMap[dia];
-  let diffDias = diaSelecionadoNumero - diaAtualNumero;
-  if (diffDias < 0) diffDias += 7;
   
-  const dataSelecionada = new Date(hoje);
-  dataSelecionada.setDate(hoje.getDate() + diffDias);
+  // A data selecionada é sempre DENTRO da semana atual
+  const dataSelecionada = new Date(inicioSemana);
+  dataSelecionada.setDate(inicioSemana.getDate() + diaSelecionadoNumero);
   const dataSelecionadaStr = dataSelecionada.toISOString().split('T')[0];
 
-  // Calcular início e fim da semana atual (domingo a sábado)
-  const inicioSemana = getInicioSemana(hoje);
+  // Calcular fim da semana atual (sábado)
   const fimSemana = new Date(inicioSemana);
   fimSemana.setDate(inicioSemana.getDate() + 6);
   fimSemana.setHours(23, 59, 59, 999);
