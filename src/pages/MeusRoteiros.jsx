@@ -1223,48 +1223,48 @@ function CheckoutButton({ visitaId }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
-  const updateVisitaMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.VisitaRoteiro.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['visitasRoteiro']);
-    }
-  });
-
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     setLoading(true);
     
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const data = {
-            checkout_time: new Date().toISOString(),
-            checkout_latitude: position.coords.latitude,
-            checkout_longitude: position.coords.longitude,
-            status: 'concluida'
-          };
-          
-          updateVisitaMutation.mutate({ id: visitaId, data });
-          setLoading(false);
-        },
-        (error) => {
-          alert('Erro ao obter localização. Verifique as permissões do navegador.');
-          setLoading(false);
-        }
-      );
-    } else {
+    if (!navigator.geolocation) {
       alert('Geolocalização não suportada pelo navegador');
       setLoading(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const data = {
+          checkout_time: new Date().toISOString(),
+          checkout_latitude: position.coords.latitude,
+          checkout_longitude: position.coords.longitude,
+          status: 'concluida'
+        };
+        
+        await base44.entities.VisitaRoteiro.update(visitaId, data);
+        toast.success('✅ Visita finalizada com sucesso!');
+        
+        // Forçar refetch de todas as queries relacionadas
+        await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+        await queryClient.invalidateQueries({ queryKey: ['visitaRoteiroDireta'] });
+        await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+        setLoading(false);
+      },
+      (error) => {
+        alert('Erro ao obter localização. Verifique as permissões do navegador.');
+        setLoading(false);
+      }
+    );
   };
 
   return (
     <Button 
       onClick={handleCheckout}
-      disabled={loading || updateVisitaMutation.isPending}
+      disabled={loading}
       className="w-full bg-gradient-to-r from-green-500 to-green-600"
     >
       <CheckCircle className="w-4 h-4 mr-2" />
-      {loading || updateVisitaMutation.isPending ? 'Obtendo localização...' : 'Finalizar Visita (Check-out)'}
+      {loading ? 'Finalizando...' : 'Finalizar Visita (Check-out)'}
     </Button>
   );
 }
