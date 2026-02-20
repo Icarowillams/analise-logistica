@@ -347,7 +347,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
       const results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: cliente.cliente_id,
         vendedor_id: vendedor.id,
-        data_visita: new Date().toISOString().split('T')[0]
+        data_visita: getLocalDateStr()
       });
       return results[0] || null;
     },
