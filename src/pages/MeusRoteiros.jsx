@@ -657,6 +657,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
   const finalizarCheckinDireto = async (latitude, longitude) => {
     const agora = new Date();
     const numeroVisita = `V${agora.getTime()}-${vendedor.id.substring(0, 8)}`;
+    const dataHoje = getLocalDateStr(agora);
+    const horaAgora = getLocalTimeStr(agora);
+    const checkinISO = getLocalISOString(agora);
 
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId,
@@ -666,8 +669,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: agora.toISOString().split('T')[0],
-      checkin_time: agora.toISOString(),
+      data_visita: dataHoje,
+      checkin_time: checkinISO,
       checkin_latitude: latitude,
       checkin_longitude: longitude,
       status: 'checkin_realizado'
@@ -680,8 +683,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: agora.toISOString().split('T')[0],
-      hora_checkin: agora.toTimeString().split(' ')[0],
+      data_visita: dataHoje,
+      hora_checkin: horaAgora,
       latitude_checkin: latitude,
       longitude_checkin: longitude,
       pedido_solicitado: null
