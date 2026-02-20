@@ -361,7 +361,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
               <CardTitle className="text-sm sm:text-base leading-tight break-words">
                 {cliente.cliente_codigo && <span className="font-bold">{cliente.cliente_codigo}</span>}
                 {cliente.cliente_codigo && ' - '}
-                {cliente.cliente_nome_fantasia || cliente.cliente_nome}
+                {cliente.cliente_nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome}
                 {isReagendamento && <span className="ml-1 text-orange-600 font-medium text-xs">(Reag.)</span>}
               </CardTitle>
               <p className="text-xs text-slate-500 truncate">
