@@ -187,7 +187,11 @@ export default function RelatorioRoteiros() {
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
 
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
+  const clientesMapByCodigo = useMemo(() => clientes.reduce((acc, c) => { if (c.codigo) acc[c.codigo] = c; return acc; }, {}), [clientes]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
+  
+  // Helper para buscar cliente por ID ou fallback por código
+  const findCliente = (clienteId, clienteCodigo) => clientesMap[clienteId] || (clienteCodigo ? clientesMapByCodigo[clienteCodigo] : undefined);
 
   // Filtrar visitas pelo período
   const visitasNoPeriodo = useMemo(() => {
