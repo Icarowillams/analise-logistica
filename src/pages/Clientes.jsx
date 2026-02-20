@@ -555,8 +555,6 @@ export default function Clientes() {
         ...item,
         latitude: lat,
         longitude: lng,
-        estado: estadoNormalizado || item.estado,
-        inscricao_estadual: item.inscricao_estadual || '',
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
         tabela_id: findId(tabelas, item.tabela_preco),
         segmento_id: findId(segmentos, item.segmento),
@@ -566,6 +564,16 @@ export default function Clientes() {
         rota_id: findId(rotas, item.rota),
         status: normalizedStatus
       };
+
+      // Só incluir estado se veio preenchido no CSV
+      if (estadoNormalizado && estadoNormalizado.trim() !== '') {
+        clienteData.estado = estadoNormalizado;
+      }
+
+      // Só incluir inscricao_estadual se veio preenchido no CSV
+      if (item.inscricao_estadual && String(item.inscricao_estadual).trim() !== '') {
+        clienteData.inscricao_estadual = String(item.inscricao_estadual).trim();
+      }
 
       // Remove temporary name fields
       delete clienteData.plano_pagamento;
