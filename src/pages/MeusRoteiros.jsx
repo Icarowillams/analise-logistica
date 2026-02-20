@@ -58,7 +58,9 @@ export default function MeusRoteiros() {
   const { data: visitas = [] } = useQuery({
     queryKey: ['visitasRoteiro', vendedorAtual?.id],
     queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedorAtual?.id }),
-    enabled: !!vendedorAtual
+    enabled: !!vendedorAtual,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const { data: visitasRegistros = [] } = useQuery({
