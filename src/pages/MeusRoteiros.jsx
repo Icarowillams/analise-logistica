@@ -787,6 +787,8 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
 
     const motivoNaoAtendObj = motivosNaoAtend.find(m => m.id === motivoNaoAtendimento);
 
+    const dataVisitaLocal = formatLocalDate(agora);
+
     // Criar registro na VisitaRoteiro
     const dataVisitaRoteiro = {
       roteiro_id: roteiroId || '',
@@ -796,7 +798,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       cliente_codigo: cliente.cliente_codigo,
       cliente_cidade: cliente.cliente_cidade,
-      data_visita: agora.toISOString().split('T')[0],
+      data_visita: dataVisitaLocal,
       checkin_time: agora.toISOString(),
       checkin_latitude: locationData.latitude,
       checkin_longitude: locationData.longitude,
@@ -812,7 +814,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       cliente_nome: cliente.cliente_nome,
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
-      data_visita: agora.toISOString().split('T')[0],
+      data_visita: dataVisitaLocal,
       hora_checkin: agora.toTimeString().split(' ')[0],
       latitude_checkin: locationData.latitude,
       longitude_checkin: locationData.longitude,
