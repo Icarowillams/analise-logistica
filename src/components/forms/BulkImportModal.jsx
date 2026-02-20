@@ -84,20 +84,30 @@ export default function BulkImportModal({
     const headerAliases = {
       'inscricao_estadual': 'inscricao_estadual',
       'inscricao estadual': 'inscricao_estadual',
+      'inscricaoestadual': 'inscricao_estadual',
       'insc_estadual': 'inscricao_estadual',
       'insc estadual': 'inscricao_estadual',
+      'insc.estadual': 'inscricao_estadual',
+      'insc._estadual': 'inscricao_estadual',
       'ie': 'inscricao_estadual',
+      'i.e.': 'inscricao_estadual',
+      'i.e': 'inscricao_estadual',
       'razao_social': 'razao_social',
       'razao social': 'razao_social',
+      'razaosocial': 'razao_social',
       'nome_fantasia': 'nome_fantasia',
       'nome fantasia': 'nome_fantasia',
+      'nomefantasia': 'nome_fantasia',
       'cpf_cnpj': 'cpf_cnpj',
       'cpf/cnpj': 'cpf_cnpj',
       'cpf cnpj': 'cpf_cnpj',
+      'cpfcnpj': 'cpf_cnpj',
       'plano_pagamento': 'plano_pagamento',
       'plano pagamento': 'plano_pagamento',
+      'planopagamento': 'plano_pagamento',
       'tabela_preco': 'tabela_preco',
       'tabela preco': 'tabela_preco',
+      'tabelapreco': 'tabela_preco',
       'tabela_de_preco': 'tabela_preco',
       'tabela de preco': 'tabela_preco',
       'endereco': 'endereco',
@@ -107,6 +117,7 @@ export default function BulkImportModal({
       'estado': 'estado',
       'estado_(uf)': 'estado',
       'estado (uf)': 'estado',
+      'estado(uf)': 'estado',
       'uf': 'estado',
       'cep': 'cep',
       'codigo': 'codigo',
@@ -119,13 +130,18 @@ export default function BulkImportModal({
       'longitude': 'longitude',
       'status': 'status',
       'email': 'email',
+      'data_primeiro_contato': 'data_primeiro_contato',
+      'data primeiro contato': 'data_primeiro_contato',
     };
     const headers = headerValues.map(h => {
       const raw = removeQuotes(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const withUnderscores = raw.replace(/\s+/g, '_');
-      // Try both underscore and space versions for alias matching
-      return headerAliases[withUnderscores] || headerAliases[raw] || withUnderscores;
+      const noSpaces = raw.replace(/\s+/g, '');
+      // Try multiple formats for alias matching
+      return headerAliases[withUnderscores] || headerAliases[raw] || headerAliases[noSpaces] || withUnderscores;
     });
+    console.log('BulkImportModal - Headers brutos:', JSON.stringify(headerValues.map(h => removeQuotes(h))));
+    console.log('BulkImportModal - Headers normalizados:', JSON.stringify(headers));
     return lines.slice(1).map((line, idx) => {
       const values = parseCSVLine(line);
       const row = { _rowNum: idx + 2 };
