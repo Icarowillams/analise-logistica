@@ -1277,8 +1277,9 @@ function CheckoutButton({ visitaId }) {
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        const agora = new Date();
         const data = {
-          checkout_time: new Date().toISOString(),
+          checkout_time: getLocalISOString(agora),
           checkout_latitude: position.coords.latitude,
           checkout_longitude: position.coords.longitude,
           status: 'concluida'
