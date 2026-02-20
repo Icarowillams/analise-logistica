@@ -451,7 +451,7 @@ export default function RelatorioRoteiros() {
     Object.entries(visitasPorCliente).forEach(([clienteId, visitaRot]) => {
       if (clientesProcessados.has(clienteId)) return;
       
-      const clienteCompleto = clientesMap[clienteId];
+      const clienteCompleto = findCliente(clienteId, visitaRot.cliente_codigo);
       const visitaReg = visitasRegistroNoPeriodo.find(v =>
         v.cliente_id === clienteId &&
         v.vendedor_id === vendedorId &&
