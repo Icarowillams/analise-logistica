@@ -620,13 +620,16 @@ export default function Clientes() {
         console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
         toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde.`);
         
-        const LOTE_SIZE = 100;
+        const LOTE_SIZE = 50;
         let totalAtualizados = 0;
         let totalErros = 0;
 
         for (let i = 0; i < toUpdate.length; i += LOTE_SIZE) {
           const lote = toUpdate.slice(i, i + LOTE_SIZE);
-          console.log(`Enviando lote ${Math.floor(i/LOTE_SIZE) + 1}/${Math.ceil(toUpdate.length/LOTE_SIZE)} (${lote.length} clientes)`);
+          const loteNum = Math.floor(i/LOTE_SIZE) + 1;
+          const totalLotes = Math.ceil(toUpdate.length/LOTE_SIZE);
+          console.log(`Enviando lote ${loteNum}/${totalLotes} (${lote.length} clientes)`);
+          toast.info(`Atualizando lote ${loteNum}/${totalLotes}...`);
           
           const response = await base44.functions.invoke('bulkUpdateClientes', {
             clientes: lote
@@ -640,6 +643,11 @@ export default function Clientes() {
 
           totalAtualizados += data.atualizados || 0;
           totalErros += data.erros || 0;
+          
+          // Delay entre lotes para evitar sobrecarga
+          if (i + LOTE_SIZE < toUpdate.length) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
         
         console.log(`Atualização concluída: ${totalAtualizados} atualizados, ${totalErros} erros`);
