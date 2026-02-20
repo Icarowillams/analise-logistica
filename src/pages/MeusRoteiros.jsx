@@ -17,6 +17,35 @@ import { toast } from 'sonner';
 import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
 import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
 
+// Helper: retorna data local no formato YYYY-MM-DD (sem depender de UTC)
+function getLocalDateStr(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Helper: retorna hora local no formato HH:MM:SS
+function getLocalTimeStr(date = new Date()) {
+  return date.toLocaleTimeString('pt-BR', { hour12: false });
+}
+
+// Helper: retorna datetime local no formato ISO-like mas preservando o fuso local
+function getLocalISOString(date = new Date()) {
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const mm = String(Math.abs(offset) % 60).padStart(2, '0');
+  const y = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${y}-${mo}-${d}T${h}:${mi}:${s}.${ms}${sign}${hh}:${mm}`;
+}
+
 export default function MeusRoteiros() {
   const [currentUser, setCurrentUser] = useState(null);
   const [vendedorAtual, setVendedorAtual] = useState(null);
