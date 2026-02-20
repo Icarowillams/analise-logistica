@@ -173,9 +173,14 @@ export default function BulkImportModal({
   };
 
   const handleImport = async () => {
-    // Mapear para o formato correto
+    // Mapear para o formato correto - incluir TODOS os campos do row, não apenas os definidos em columns
+    const columnKeys = new Set(columns.map(c => c.key));
+    const columnTypes = {};
+    columns.forEach(col => { if (col.type) columnTypes[col.key] = col.type; });
+
     const data = allRows.map(row => {
       const item = {};
+      // Primeiro, incluir todos os campos que batem com columns
       columns.forEach(col => {
         if (row[col.key] !== undefined && row[col.key] !== '') {
           if (col.type === 'number') {
@@ -185,8 +190,20 @@ export default function BulkImportModal({
           }
         }
       });
+      // Também incluir campos adicionais do row que não estão em columns (exceto _rowNum)
+      Object.keys(row).forEach(key => {
+        if (key === '_rowNum') return;
+        if (!columnKeys.has(key) && row[key] !== undefined && row[key] !== '') {
+          item[key] = row[key];
+        }
+      });
       return item;
     });
+
+    console.log('BulkImportModal - Campos do primeiro registro:', data.length > 0 ? JSON.stringify(Object.keys(data[0])) : 'vazio');
+    if (data.length > 0) {
+      console.log('BulkImportModal - Primeiro registro:', JSON.stringify(data[0]));
+    }
 
     // Não resetar aqui - deixar a página pai controlar quando fechar
     await onImport(data);
