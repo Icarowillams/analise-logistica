@@ -310,22 +310,12 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   const [checkinFeito, setCheckinFeito] = useState(false);
   const queryClient = useQueryClient();
 
-  // Buscar a visita diretamente quando o check-in local foi feito mas visitaExistente ainda não chegou
-  const { data: visitaLocal } = useQuery({
-    queryKey: ['visitaRoteiroDireta', cliente.cliente_id, roteiroId],
-    queryFn: async () => {
-      const results = await base44.entities.VisitaRoteiro.filter({
-        cliente_id: cliente.cliente_id,
-        vendedor_id: vendedor.id,
-        data_visita: new Date().toISOString().split('T')[0]
-      });
-      return results[0] || null;
-    },
-    enabled: checkinFeito && !visitaExistente,
-    refetchInterval: (query) => query.state.data ? false : 2000,
-  });
-
-  const visitaEfetiva = visitaExistente || visitaLocal;
+  // A visita efetiva vem direto da prop (já filtrada por data no RoteirosDia)
+  const visitaEfetiva = visitaExistente;
+  
+  // O check-in é considerado realizado se:
+  // 1. O usuário acabou de fazer o check-in (estado local)
+  // 2. Já existe uma visita com status diferente de 'pendente'
   const checkinRealizado = checkinFeito || (visitaEfetiva && visitaEfetiva.status !== 'pendente');
 
   const getStatusBadge = () => {
