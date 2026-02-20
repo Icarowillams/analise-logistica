@@ -445,6 +445,45 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   );
 }
 
+function RefetchingVisitaLoader({ clienteId, vendedorId, roteiroId, cliente, permissaoUsuario, vendedor }) {
+  const queryClient = useQueryClient();
+  
+  const { data: visitaDireta } = useQuery({
+    queryKey: ['visitaRoteiroDireta', clienteId, roteiroId],
+    queryFn: async () => {
+      const results = await base44.entities.VisitaRoteiro.filter({
+        cliente_id: clienteId,
+        vendedor_id: vendedorId,
+        data_visita: new Date().toISOString().split('T')[0]
+      });
+      // Pegar a mais recente
+      const sorted = results.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+      return sorted[0] || null;
+    },
+    refetchInterval: (query) => query.state.data ? false : 2000,
+  });
+
+  if (visitaDireta) {
+    return (
+      <VisitaDetalhes 
+        visita={visitaDireta} 
+        cliente={cliente} 
+        permissaoUsuario={permissaoUsuario}
+        vendedor={vendedor}
+      />
+    );
+  }
+
+  return (
+    <Alert className="bg-blue-50 border-blue-200">
+      <CheckCircle className="w-4 h-4 text-blue-600" />
+      <AlertDescription className="text-blue-800">
+        Check-in realizado! Carregando detalhes da visita...
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoId, permissaoUsuario }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
