@@ -585,6 +585,10 @@ export default function Clientes() {
     console.log('Importação - Para criar:', toCreate.length);
     console.log('Importação - Para atualizar:', toUpdate.length);
     console.log('Importação - Não encontrados:', naoEncontrados);
+    if (clientesData.length > 0) {
+      console.log('Importação - Exemplo campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
+      console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
+    }
 
     // Se modo atualização e nenhum cliente foi encontrado
     if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
