@@ -417,10 +417,10 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
         </div>
       </CardHeader>
       <CardContent>
-        {checkinRealizado || (visitaExistente && visitaExistente.status !== 'pendente') ? (
-          visitaExistente ? (
+        {checkinRealizado ? (
+          visitaEfetiva ? (
             <VisitaDetalhes 
-              visita={visitaExistente} 
+              visita={visitaEfetiva} 
               cliente={cliente} 
               permissaoUsuario={permissaoUsuario}
               vendedor={vendedor}
