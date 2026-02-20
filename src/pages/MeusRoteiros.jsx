@@ -1006,7 +1006,7 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: amanha.toISOString().split('T')[0],
+        data_reagendamento: getLocalDateStr(amanha),
         motivo_nao_atendimento: `Não solicitou pedido: ${motivoObj?.descricao}`,
         visita_original_id: visitaRegistro.numero_visita,
         status: 'pendente'
