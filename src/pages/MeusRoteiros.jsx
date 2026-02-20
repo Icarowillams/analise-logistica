@@ -187,15 +187,6 @@ export default function MeusRoteiros() {
   );
 }
 
-// Função auxiliar para calcular início da semana (domingo)
-function getInicioSemana(data) {
-  const d = new Date(data);
-  const diaSemana = d.getDay(); // 0 = domingo
-  d.setDate(d.getDate() - diaSemana);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
   // Calcular data correspondente ao dia selecionado usando data LOCAL
   const hoje = new Date();
