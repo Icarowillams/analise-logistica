@@ -559,9 +559,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             });
           }
           
-          // Invalidar queries para que VisitaDetalhes carregue com a visita criada
-          queryClient.invalidateQueries(['visitasRoteiro']);
-          queryClient.invalidateQueries(['visitas']);
+          // Invalidar queries e AGUARDAR para que VisitaDetalhes carregue com a visita criada
+          await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+          await queryClient.invalidateQueries({ queryKey: ['visitas'] });
           // A pergunta do pedido agora fica persistente dentro de VisitaDetalhes
           onSuccess();
         },
