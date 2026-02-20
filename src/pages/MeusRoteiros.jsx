@@ -272,10 +272,11 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
         // Buscar dados completos do cliente
         const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id);
 
+        const nomeFantasia = clienteCompleto?.nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome_fantasia;
         const clienteAtualizado = {
           ...cliente,
           cliente_nome: clienteCompleto?.razao_social || cliente.cliente_nome,
-          cliente_nome_fantasia: clienteCompleto?.nome_fantasia || cliente.cliente_nome_fantasia,
+          cliente_nome_fantasia: nomeFantasia,
           cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
           cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
           cliente_bairro: clienteCompleto?.bairro || cliente.cliente_bairro
