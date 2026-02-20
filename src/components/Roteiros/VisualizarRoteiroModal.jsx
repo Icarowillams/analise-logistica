@@ -76,7 +76,7 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
               <h3 className="font-semibold mb-4">Sequência de Visitas:</h3>
               <div className="space-y-3">
                 {roteiro.clientes_detalhes?.map((cliente, idx) => {
-                  const clienteCompleto = clientesMap[cliente.cliente_id];
+                  const clienteCompleto = findCliente(cliente.cliente_id, cliente.cliente_codigo);
                   const nomeExibir = clienteCompleto?.nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome;
                   const codigoCliente = clienteCompleto?.codigo || cliente.cliente_codigo;
                   return (
