@@ -1067,7 +1067,7 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const podeMarcarSolicitouPedido = permissaoUsuario?.permissoes_visitas?.marcar_solicitou_pedido !== false;
 
   // Pedido ainda não foi respondido se pedido_solicitado é null/undefined
-  const pedidoPendente = visitaRegistro && visitaRegistro.pedido_solicitado === null || visitaRegistro && visitaRegistro.pedido_solicitado === undefined;
+  const pedidoPendente = visitaRegistro && (visitaRegistro.pedido_solicitado === null || visitaRegistro.pedido_solicitado === undefined);
 
   // Se não atendido, mostrar apenas o status
   if (visita.status === 'nao_atendido') {
