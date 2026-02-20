@@ -9,55 +9,41 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { clientes, lote_inicio = 0 } = await req.json();
+    const { clientes } = await req.json();
 
     if (!clientes || !Array.isArray(clientes) || clientes.length === 0) {
       return Response.json({ error: 'Nenhum cliente fornecido' }, { status: 400 });
     }
 
-    // Processar apenas 30 clientes por chamada para evitar timeout
-    const LOTE_MAX = 30;
-    const lote = clientes.slice(lote_inicio, lote_inicio + LOTE_MAX);
-
-    if (lote.length === 0) {
-      return Response.json({ 
-        concluido: true,
-        atualizados: 0,
-        erros: 0,
-        detalhesErros: []
-      });
-    }
-
-    console.log(`Lote ${lote_inicio}: processando ${lote.length} de ${clientes.length} clientes`);
+    console.log(`Processando lote de ${clientes.length} clientes`);
 
     let atualizados = 0;
     const erros = [];
 
-    for (let i = 0; i < lote.length; i++) {
-      const cliente = lote[i];
-      try {
-        await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
-        atualizados++;
-      } catch (error) {
-        console.error(`Erro ao atualizar cliente ${cliente.id}:`, error.message);
-        erros.push({ id: cliente.id, error: error.message });
-      }
-
-      // Delay de 50ms entre cada atualização
-      if (i < lote.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+    // Processar em paralelo, 10 de cada vez
+    const CONCURRENCY = 10;
+    for (let i = 0; i < clientes.length; i += CONCURRENCY) {
+      const chunk = clientes.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map(cliente => 
+          base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data)
+        )
+      );
+      
+      results.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          atualizados++;
+        } else {
+          const cliente = chunk[idx];
+          console.error(`Erro cliente ${cliente.id}:`, result.reason?.message);
+          erros.push({ id: cliente.id, error: result.reason?.message });
+        }
+      });
     }
 
-    const proximoLote = lote_inicio + LOTE_MAX;
-    const concluido = proximoLote >= clientes.length;
-
-    console.log(`Lote concluído: ${atualizados} atualizados, ${erros.length} erros. Concluído: ${concluido}`);
+    console.log(`Concluído: ${atualizados} atualizados, ${erros.length} erros`);
 
     return Response.json({
-      concluido,
-      proximo_lote: concluido ? null : proximoLote,
-      total_geral: clientes.length,
       atualizados,
       erros: erros.length,
       detalhesErros: erros
