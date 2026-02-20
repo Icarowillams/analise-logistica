@@ -303,24 +303,40 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
 function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
   const [checkinFeito, setCheckinFeito] = useState(false);
+  const queryClient = useQueryClient();
 
-  // Determinar se check-in foi realizado (por dados do servidor OU ação local)
-  const checkinRealizado = checkinFeito || (visitaExistente && visitaExistente.status !== 'pendente');
+  // Buscar a visita diretamente quando o check-in local foi feito mas visitaExistente ainda não chegou
+  const { data: visitaLocal } = useQuery({
+    queryKey: ['visitaRoteiroDireta', cliente.cliente_id, roteiroId],
+    queryFn: async () => {
+      const results = await base44.entities.VisitaRoteiro.filter({
+        cliente_id: cliente.cliente_id,
+        vendedor_id: vendedor.id,
+        data_visita: new Date().toISOString().split('T')[0]
+      });
+      return results[0] || null;
+    },
+    enabled: checkinFeito && !visitaExistente,
+    refetchInterval: (query) => query.state.data ? false : 2000,
+  });
+
+  const visitaEfetiva = visitaExistente || visitaLocal;
+  const checkinRealizado = checkinFeito || (visitaEfetiva && visitaEfetiva.status !== 'pendente');
 
   const getStatusBadge = () => {
-    if (checkinRealizado && !visitaExistente) {
+    if (checkinRealizado && !visitaEfetiva) {
       return <Badge className="bg-blue-500">Check-in Realizado</Badge>;
     }
-    if (!visitaExistente) {
+    if (!visitaEfetiva) {
       return <Badge variant="outline" className="bg-slate-100">Pendente</Badge>;
     }
-    if (visitaExistente.status === 'checkin_realizado') {
+    if (visitaEfetiva.status === 'checkin_realizado') {
       return <Badge className="bg-blue-500">Check-in Realizado</Badge>;
     }
-    if (visitaExistente.status === 'concluida') {
+    if (visitaEfetiva.status === 'concluida') {
       return <Badge className="bg-green-500">Concluída</Badge>;
     }
-    if (visitaExistente.status === 'nao_atendido') {
+    if (visitaEfetiva.status === 'nao_atendido') {
       return <Badge className="bg-red-500">Não Atendido</Badge>;
     }
     return <Badge variant="outline">Pendente</Badge>;
