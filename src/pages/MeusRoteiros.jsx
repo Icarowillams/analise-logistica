@@ -836,7 +836,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
         cliente_cidade: cliente.cliente_cidade,
         vendedor_id: vendedor.id,
         vendedor_nome: vendedor.nome,
-        data_reagendamento: amanha.toISOString().split('T')[0],
+        data_reagendamento: formatLocalDate(amanha),
         motivo_nao_atendimento: motivoNaoAtendObj?.descricao,
         visita_original_id: numeroVisita,
         status: 'pendente'
