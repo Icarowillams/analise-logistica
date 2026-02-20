@@ -302,9 +302,15 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 }
 
 function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
-  const [showVisita, setShowVisita] = useState(!!visitaExistente);
+  const [checkinFeito, setCheckinFeito] = useState(false);
+
+  // Determinar se check-in foi realizado (por dados do servidor OU ação local)
+  const checkinRealizado = checkinFeito || (visitaExistente && visitaExistente.status !== 'pendente');
 
   const getStatusBadge = () => {
+    if (checkinRealizado && !visitaExistente) {
+      return <Badge className="bg-blue-500">Check-in Realizado</Badge>;
+    }
     if (!visitaExistente) {
       return <Badge variant="outline" className="bg-slate-100">Pendente</Badge>;
     }
