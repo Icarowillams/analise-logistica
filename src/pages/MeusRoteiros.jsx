@@ -233,10 +233,9 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
             Reagendamentos ({reagendadasParaHoje.length})
           </h3>
           {reagendadasParaHoje.map((reagendada) => {
-            const visitaExistente = visitas.find(v => 
-              v.cliente_id === reagendada.cliente_id && 
-              v.data_visita === dataSelecionadaStr
-            );
+            const visitaExistente = visitasDaSemana
+              .filter(v => v.cliente_id === reagendada.cliente_id)
+              .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || null;
 
             // Buscar dados completos do cliente
             const clienteCompleto = clientes.find(c => c.id === reagendada.cliente_id);
