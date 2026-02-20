@@ -196,29 +196,32 @@ export default function BulkImportModal({
 
     const data = allRows.map(row => {
       const item = {};
-      // Primeiro, incluir todos os campos que batem com columns
-      columns.forEach(col => {
-        if (row[col.key] !== undefined && row[col.key] !== '') {
-          if (col.type === 'number') {
-            item[col.key] = parseFloat(row[col.key]) || 0;
-          } else {
-            item[col.key] = row[col.key];
-          }
-        }
-      });
-      // Também incluir campos adicionais do row que não estão em columns (exceto _rowNum)
+      // Incluir TODOS os campos do row (exceto _rowNum), independente se estão em columns ou não
       Object.keys(row).forEach(key => {
         if (key === '_rowNum') return;
-        if (!columnKeys.has(key) && row[key] !== undefined && row[key] !== '') {
-          item[key] = row[key];
+        const val = row[key];
+        if (val === undefined || val === '') return;
+        // Aplicar conversão de tipo se definido em columns
+        if (columnTypes[key] === 'number') {
+          item[key] = parseFloat(val) || 0;
+        } else {
+          item[key] = val;
         }
       });
       return item;
     });
 
+    console.log('BulkImportModal - Total registros:', data.length);
     console.log('BulkImportModal - Campos do primeiro registro:', data.length > 0 ? JSON.stringify(Object.keys(data[0])) : 'vazio');
     if (data.length > 0) {
-      console.log('BulkImportModal - Primeiro registro:', JSON.stringify(data[0]));
+      console.log('BulkImportModal - Primeiro registro completo:', JSON.stringify(data[0]));
+      // Log especifico para IE e estado
+      console.log('BulkImportModal - inscricao_estadual:', data[0].inscricao_estadual, '| estado:', data[0].estado);
+    }
+    // Log dos headers detectados no allRows
+    if (allRows.length > 0) {
+      console.log('BulkImportModal - Todas as chaves do primeiro row:', JSON.stringify(Object.keys(allRows[0])));
+      console.log('BulkImportModal - Valores IE/estado do primeiro row:', 'inscricao_estadual=', allRows[0].inscricao_estadual, '| estado=', allRows[0].estado);
     }
 
     // Não resetar aqui - deixar a página pai controlar quando fechar
