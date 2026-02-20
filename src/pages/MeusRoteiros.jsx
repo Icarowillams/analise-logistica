@@ -1102,16 +1102,20 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
 
 function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
+  const queryClient = useQueryClient();
   const { data: visitaRegistro } = useQuery({
-    queryKey: ['visitaRegistro', visita.id, visita.cliente_id || cliente.cliente_id],
+    queryKey: ['visitaRegistro', visita.id, cliente.cliente_id, visita.data_visita],
     queryFn: async () => {
-      const visitas = await base44.entities.Visita.filter({ 
+      const resultados = await base44.entities.Visita.filter({ 
         cliente_id: cliente.cliente_id,
         data_visita: visita.data_visita 
       });
-      return visitas[0] || null;
+      // Pegar a mais recente
+      const sorted = resultados.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+      return sorted[0] || null;
     },
-    refetchInterval: (data) => data ? false : 3000, // Refetch every 3s until data arrives
+    refetchInterval: (query) => query.state.data ? false : 3000,
+    staleTime: 0,
   });
 
   // Verificar permissões
