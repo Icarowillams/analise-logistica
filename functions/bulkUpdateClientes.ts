@@ -20,31 +20,44 @@ Deno.serve(async (req) => {
     let atualizados = 0;
     const erros = [];
 
-    // Processar sequencialmente em pequenos grupos de 5 para evitar timeout
-    const CONCURRENCY = 5;
-    for (let i = 0; i < clientes.length; i += CONCURRENCY) {
-      const chunk = clientes.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(
-        chunk.map(async (cliente) => {
-          try {
-            await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
-          } catch (err) {
-            // Retry once on failure
-            await new Promise(r => setTimeout(r, 500));
-            await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
-          }
-        })
-      );
-      
-      results.forEach((result, idx) => {
-        if (result.status === 'fulfilled') {
+    // Processar 1 por vez com delay para evitar rate limit
+    for (let i = 0; i < clientes.length; i++) {
+      const cliente = clientes[i];
+      let tentativas = 0;
+      let sucesso = false;
+
+      while (tentativas < 3 && !sucesso) {
+        try {
+          await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
           atualizados++;
-        } else {
-          const cliente = chunk[idx];
-          console.error(`Erro cliente ${cliente.id}:`, result.reason?.message);
-          erros.push({ id: cliente.id, error: result.reason?.message });
+          sucesso = true;
+        } catch (err) {
+          tentativas++;
+          if (err.message?.includes('429') || err.message?.includes('Rate limit')) {
+            // Esperar mais tempo a cada tentativa
+            const waitTime = tentativas * 2000;
+            console.log(`Rate limit no cliente ${cliente.id}, aguardando ${waitTime}ms (tentativa ${tentativas})`);
+            await new Promise(r => setTimeout(r, waitTime));
+          } else if (tentativas >= 3) {
+            console.error(`Erro cliente ${cliente.id} após ${tentativas} tentativas:`, err.message);
+            erros.push({ id: cliente.id, error: err.message });
+          } else {
+            await new Promise(r => setTimeout(r, 1000));
+          }
         }
-      });
+      }
+
+      if (!sucesso && tentativas >= 3) {
+        // Já registrado nos erros acima via catch
+        if (!erros.find(e => e.id === cliente.id)) {
+          erros.push({ id: cliente.id, error: 'Falha após 3 tentativas' });
+        }
+      }
+
+      // Delay entre cada cliente para evitar rate limit
+      if (i < clientes.length - 1) {
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
 
     console.log(`Concluído: ${atualizados} atualizados, ${erros.length} erros`);
