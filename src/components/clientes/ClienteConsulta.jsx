@@ -22,7 +22,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     cidade: '',
     bairro: '',
     search: '',
-    semLocalizacao: false
+    semLocalizacao: false,
+    inscricaoEstadual: null // null = sem filtro, true = com IE, false = sem IE
   });
 
   const { data: clientesAll = [], isLoading } = useQuery({
