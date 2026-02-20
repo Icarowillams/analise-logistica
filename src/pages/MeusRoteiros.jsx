@@ -274,7 +274,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
         const clienteAtualizado = {
           ...cliente,
-          cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.cliente_nome,
+          cliente_nome: clienteCompleto?.razao_social || cliente.cliente_nome,
           cliente_nome_fantasia: clienteCompleto?.nome_fantasia || cliente.cliente_nome_fantasia,
           cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
           cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
