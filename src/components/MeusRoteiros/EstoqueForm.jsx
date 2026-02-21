@@ -258,27 +258,36 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
 
   const handleImportarUltimoEstoque = async () => {
     try {
+      // Buscar todas as visitas concluídas deste cliente
       const todasVisitas = await base44.entities.VisitaRoteiro.filter({ 
         cliente_id: clienteId,
         status: 'concluida'
       });
       
       if (todasVisitas.length === 0) {
-        alert('Este cliente não possui estoque informado anteriormente.');
+        alert('Este cliente não possui visitas concluídas anteriormente.');
         return;
       }
 
+      // Ordenar pela mais recente primeiro
       const visitasOrdenadas = todasVisitas.sort((a, b) => 
-        new Date(b.checkout_time) - new Date(a.checkout_time)
+        new Date(b.checkout_time || b.created_date) - new Date(a.checkout_time || a.created_date)
       );
       
-      const ultimaVisita = visitasOrdenadas[0];
-      const estoquesAnteriores = await base44.entities.EstoqueVisita.filter({ 
-        visita_id: ultimaVisita.id 
-      });
+      // Percorrer visitas até encontrar uma que tenha estoque
+      let estoquesAnteriores = [];
+      for (const vis of visitasOrdenadas) {
+        const estoques = await base44.entities.EstoqueVisita.filter({ 
+          visita_id: vis.id 
+        });
+        if (estoques.length > 0) {
+          estoquesAnteriores = estoques;
+          break;
+        }
+      }
 
       if (estoquesAnteriores.length === 0) {
-        alert('Este cliente não possui estoque informado anteriormente.');
+        alert('Este cliente não possui estoque informado em nenhuma visita anterior.');
         return;
       }
 
