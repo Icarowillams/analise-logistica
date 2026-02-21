@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import EstoqueForm from '@/components/MeusRoteiros/EstoqueForm';
 import TrocasForm from '@/components/MeusRoteiros/TrocasForm';
+import ObservacoesVisita from '@/components/MeusRoteiros/ObservacoesVisita';
 
 // Helper: retorna data local no formato YYYY-MM-DD (sem depender de UTC)
 function getLocalDateStr(date = new Date()) {
@@ -1230,6 +1231,9 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
           )}
         </Tabs>
       )}
+
+      {/* Observações da Visita */}
+      <ObservacoesVisita visitaRegistro={visitaRegistro} />
 
       {/* Botão de finalizar - só habilitado se pedido já foi respondido ou não tem permissão de marcar pedido */}
       {(!podeMarcarSolicitouPedido || !pedidoPendente) ? (
