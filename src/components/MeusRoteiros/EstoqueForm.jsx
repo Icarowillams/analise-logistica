@@ -291,8 +291,8 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
         data_validade: estoque.data_validade,
         data_fabricacao: estoque.data_fabricacao,
         horario_fabricacao: estoque.horario_fabricacao,
-        foto_url: estoque.foto_url,
-        fotos_urls: estoque.fotos_urls || [],
+        foto_url: null,
+        fotos_urls: [],
         vendedor_id: vendedorAtual?.id || '',
         vendedor_nome: vendedorAtual?.nome || ''
       }));
