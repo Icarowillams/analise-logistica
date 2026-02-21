@@ -50,6 +50,7 @@
 import AnaliseVisitas from './pages/AnaliseVisitas';
 import AtualizarSupervisores from './pages/AtualizarSupervisores';
 import Categorias from './pages/Categorias';
+import Clientes from './pages/Clientes';
 import ConfigurarIntegracao from './pages/ConfigurarIntegracao';
 import ConfigurarWebhook from './pages/ConfigurarWebhook';
 import Dashboard from './pages/Dashboard';
@@ -70,6 +71,7 @@ import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
 import MetasProduto from './pages/MetasProduto';
 import MetasTroca from './pages/MetasTroca';
+import MeusRoteiros from './pages/MeusRoteiros';
 import MotivosTroca from './pages/MotivosTroca';
 import PainelGestorVisita from './pages/PainelGestorVisita';
 import PainelRodrigosM from './pages/PainelRodrigosM';
@@ -88,8 +90,6 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import MeusRoteiros from './pages/MeusRoteiros';
-import Clientes from './pages/Clientes';
 import __Layout from './Layout.jsx';
 
 
@@ -97,6 +97,7 @@ export const PAGES = {
     "AnaliseVisitas": AnaliseVisitas,
     "AtualizarSupervisores": AtualizarSupervisores,
     "Categorias": Categorias,
+    "Clientes": Clientes,
     "ConfigurarIntegracao": ConfigurarIntegracao,
     "ConfigurarWebhook": ConfigurarWebhook,
     "Dashboard": Dashboard,
@@ -117,6 +118,7 @@ export const PAGES = {
     "MetasPrecoMedio": MetasPrecoMedio,
     "MetasProduto": MetasProduto,
     "MetasTroca": MetasTroca,
+    "MeusRoteiros": MeusRoteiros,
     "MotivosTroca": MotivosTroca,
     "PainelGestorVisita": PainelGestorVisita,
     "PainelRodrigosM": PainelRodrigosM,
@@ -135,8 +137,6 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "MeusRoteiros": MeusRoteiros,
-    "Clientes": Clientes,
 }
 
 export const pagesConfig = {

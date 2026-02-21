@@ -273,7 +273,6 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
                   cliente_bairro: clienteCompleto?.bairro
                 }}
                 ordem="R"
-                visitaExistente={visitaExistente}
                 roteiroId={null}
                 vendedor={vendedor}
                 isReagendamento={true}
@@ -315,7 +314,6 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
             key={cliente.cliente_id}
             cliente={clienteAtualizado}
             ordem={idx + 1}
-            visitaExistente={visitaExistente}
             roteiroId={roteiro.id}
             vendedor={vendedor}
             permissaoUsuario={permissaoUsuario}
@@ -327,31 +325,30 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   );
 }
 
-function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
-  const [checkinFeito, setCheckinFeito] = useState(false);
+function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
   const queryClient = useQueryClient();
 
-  // Buscar a visita diretamente quando o check-in local foi feito mas visitaExistente ainda não chegou
-  const { data: visitaLocal } = useQuery({
-    queryKey: ['visitaRoteiroDireta', cliente.cliente_id, roteiroId],
+  // Query dedicada: busca a visita do dia para este cliente/vendedor diretamente do backend
+  const { data: todayVisita, isLoading: isLoadingVisita } = useQuery({
+    queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
       const results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: cliente.cliente_id,
         vendedor_id: vendedor.id,
-        data_visita: getLocalDateStr()
-      });
+        data_visita: getLocalDateStr(),
+      }, '-created_date', 1);
       return results[0] || null;
     },
-    enabled: checkinFeito && !visitaExistente,
-    refetchInterval: (query) => query.state.data ? false : 2000,
+    enabled: !!vendedor?.id && !!cliente?.cliente_id,
+    staleTime: 5 * 60 * 1000,
   });
 
-  const visitaEfetiva = visitaExistente || visitaLocal;
-  const checkinRealizado = checkinFeito || (visitaEfetiva && visitaEfetiva.status !== 'pendente');
+  const visitaEfetiva = todayVisita;
+  const checkinRealizado = !!visitaEfetiva && visitaEfetiva.status !== 'pendente';
 
   const getStatusBadge = () => {
-    if (checkinRealizado && !visitaEfetiva) {
-      return <Badge className="bg-blue-500">Check-in Realizado</Badge>;
+    if (isLoadingVisita) {
+      return <Badge className="bg-slate-300 animate-pulse">...</Badge>;
     }
     if (!visitaEfetiva) {
       return <Badge variant="outline" className="bg-slate-100">Pendente</Badge>;
@@ -444,27 +441,17 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
       </CardHeader>
       <CardContent>
         {checkinRealizado ? (
-          visitaEfetiva ? (
-            <VisitaDetalhes 
-              visita={visitaEfetiva} 
-              cliente={cliente} 
-              permissaoUsuario={permissaoUsuario}
-              vendedor={vendedor}
-            />
-          ) : (
-            <Alert className="bg-blue-50 border-blue-200">
-              <CheckCircle className="w-4 h-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
-                Check-in realizado! Carregando detalhes da visita...
-              </AlertDescription>
-            </Alert>
-          )
+          <VisitaDetalhes 
+            visita={visitaEfetiva} 
+            cliente={cliente} 
+            permissaoUsuario={permissaoUsuario}
+            vendedor={vendedor}
+          />
         ) : (
           <CheckinButton 
             cliente={cliente} 
             roteiroId={roteiroId} 
             vendedor={vendedor}
-            onSuccess={() => setCheckinFeito(true)}
             reagendamentoId={reagendamentoId}
             permissaoUsuario={permissaoUsuario}
           />
@@ -474,7 +461,7 @@ function ClienteCard({ cliente, ordem, visitaExistente, roteiroId, vendedor, isR
   );
 }
 
-function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoId, permissaoUsuario }) {
+function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissaoUsuario }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [showPedidoDialog, setShowPedidoDialog] = useState(false);
@@ -593,7 +580,6 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
           });
           
           setVisitaNumero(numeroVisita);
-          setCheckinRealizado(true);
           setLoading(false);
           
           // Marcar reagendamento como realizado se aplicável
@@ -604,11 +590,10 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
             });
           }
           
-          // Invalidar queries e AGUARDAR para que VisitaDetalhes carregue com a visita criada
+          // Invalidar queries para forçar refetch
+          await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
           await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
           await queryClient.invalidateQueries({ queryKey: ['visitas'] });
-          // A pergunta do pedido agora fica persistente dentro de VisitaDetalhes
-          onSuccess();
         },
         (error) => {
           toast.error('Erro ao obter localização. Verifique as permissões do navegador.');
@@ -686,7 +671,9 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
 
     toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
     setLoading(false);
-    onSuccess();
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitas'] });
   };
 
   const finalizarPedidoInfo = async () => {
@@ -747,15 +734,14 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       toast.success(`Informação do pedido salva!`);
     }
 
-    queryClient.invalidateQueries(['visitasRoteiro']);
-    queryClient.invalidateQueries(['visitas']);
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitas'] });
     setShowPedidoDialog(false);
-    setCheckinRealizado(false);
     setPedidoSolicitado(null);
     setMotivoSelecionado('');
     setMotivoSearch('');
     setReagendarNaoSolicitou(false);
-    onSuccess();
   };
 
   const finalizarNaoAtendimento = async () => {
@@ -838,15 +824,16 @@ function CheckinButton({ cliente, roteiroId, vendedor, onSuccess, reagendamentoI
       });
     }
 
-    // Invalidar queries e aguardar ANTES de chamar onSuccess
+    // Invalidar queries e aguardar
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
     await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
     await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitasReagendadas'] });
 
     setShowNaoAtendidoDialog(false);
     setMotivoNaoAtendimento('');
     setMotivoNaoAtendSearch('');
     setReagendarDiaSeguinte(false);
-    onSuccess();
   };
 
   // Dialog de Não Atendimento
@@ -1007,9 +994,11 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
       toast.success('Informação do pedido salva!');
     }
 
-    queryClient.invalidateQueries(['visitas']);
-    queryClient.invalidateQueries(['visitasRoteiro']);
-    queryClient.invalidateQueries(['visitasReagendadas']);
+    await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitasReagendadas'] });
+    await queryClient.invalidateQueries({ queryKey: ['visitaRegistro', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
     setSalvando(false);
   };
 
@@ -1101,15 +1090,17 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
 function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
   const { data: visitaRegistro } = useQuery({
-    queryKey: ['visitaRegistro', visita.id, visita.cliente_id || cliente.cliente_id],
+    queryKey: ['visitaRegistro', cliente.cliente_id, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
       const visitas = await base44.entities.Visita.filter({ 
         cliente_id: cliente.cliente_id,
-        data_visita: visita.data_visita 
+        vendedor_id: vendedor.id,
+        data_visita: getLocalDateStr()
       });
-      return visitas[0] || null;
+      return visitas.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || null;
     },
-    refetchInterval: (data) => data ? false : 3000, // Refetch every 3s until data arrives
+    enabled: !!vendedor?.id && !!cliente?.cliente_id,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Verificar permissões
@@ -1281,8 +1272,9 @@ function CheckoutButton({ visitaId }) {
         
         // Forçar refetch de todas as queries relacionadas
         await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
-        await queryClient.invalidateQueries({ queryKey: ['visitaRoteiroDireta'] });
         await queryClient.invalidateQueries({ queryKey: ['visitas'] });
+        await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita'] });
+        await queryClient.invalidateQueries({ queryKey: ['visitaRegistro'] });
         setLoading(false);
       },
       (error) => {
