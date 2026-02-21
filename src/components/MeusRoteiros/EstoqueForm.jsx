@@ -258,41 +258,29 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
 
   const handleImportarUltimoEstoque = async () => {
     try {
-      // Buscar todas as visitas concluídas deste cliente
-      const todasVisitas = await base44.entities.VisitaRoteiro.filter({ 
-        cliente_id: clienteId,
-        status: 'concluida'
+      // Buscar estoques diretamente pelo cliente_id (mais confiável que buscar via visita)
+      const todosEstoques = await base44.entities.EstoqueVisita.filter({ 
+        cliente_id: clienteId 
       });
-      
-      if (todasVisitas.length === 0) {
-        alert('Este cliente não possui visitas concluídas anteriormente.');
+
+      if (todosEstoques.length === 0) {
+        alert('Este cliente não possui estoque informado anteriormente.');
         return;
       }
 
-      // Ordenar pela mais recente primeiro
-      const visitasOrdenadas = todasVisitas.sort((a, b) => 
-        new Date(b.checkout_time || b.created_date) - new Date(a.checkout_time || a.created_date)
+      // Ordenar por data de criação (mais recente primeiro)
+      const estoquesOrdenados = todosEstoques.sort((a, b) => 
+        new Date(b.created_date) - new Date(a.created_date)
       );
-      
-      // Percorrer visitas até encontrar uma que tenha estoque
-      let estoquesAnteriores = [];
-      for (const vis of visitasOrdenadas) {
-        const estoques = await base44.entities.EstoqueVisita.filter({ 
-          visita_id: vis.id 
-        });
-        if (estoques.length > 0) {
-          estoquesAnteriores = estoques;
-          break;
-        }
-      }
 
-      if (estoquesAnteriores.length === 0) {
-        alert('Este cliente não possui estoque informado em nenhuma visita anterior.');
-        return;
-      }
+      // Pegar o visita_id do estoque mais recente para agrupar
+      const ultimaVisitaId = estoquesOrdenados[0].visita_id;
+      
+      // Filtrar todos os estoques dessa mesma visita
+      const estoquesUltimaVisita = estoquesOrdenados.filter(e => e.visita_id === ultimaVisitaId);
 
       // Importar como itens pendentes (não salva direto)
-      const itensImportados = estoquesAnteriores.map(estoque => ({
+      const itensImportados = estoquesUltimaVisita.map(estoque => ({
         visita_id: visitaId,
         cliente_id: clienteId,
         cliente_nome: clienteNome,
@@ -304,12 +292,13 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
         data_fabricacao: estoque.data_fabricacao,
         horario_fabricacao: estoque.horario_fabricacao,
         foto_url: estoque.foto_url,
+        fotos_urls: estoque.fotos_urls || [],
         vendedor_id: vendedorAtual?.id || '',
         vendedor_nome: vendedorAtual?.nome || ''
       }));
 
       setItensPendentes([...itensPendentes, ...itensImportados]);
-      alert('Último estoque importado para a lista pendente!');
+      alert(`${itensImportados.length} itens importados para a lista pendente!`);
     } catch (error) {
       alert('Erro ao importar estoque: ' + error.message);
     }
