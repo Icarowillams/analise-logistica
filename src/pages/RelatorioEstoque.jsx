@@ -252,7 +252,9 @@ export default function RelatorioEstoque() {
       const dataVisitaCalc = e.created_date?.split('T')[0] || visitaRelacionada?.data_visita;
       // Se o cliente não está no mapa, criar objeto com nome salvo no registro
       const clienteObjRaw = clientesMap[e.cliente_id];
-      const clienteObj = clienteObjRaw || (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);
+      const clienteObj = clienteObjRaw 
+        ? { ...clienteObjRaw, nome_fantasia: clienteObjRaw.nome_fantasia || clienteObjRaw.razao_social }
+        : (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);
       return {
         ...e,
         cliente: clienteObj,
@@ -364,11 +366,17 @@ export default function RelatorioEstoque() {
 
     // Converter para array e ordenar visitas por data desc
     return Object.values(porCliente)
-      .map(cliente => ({
-        ...cliente,
-        visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
-      }))
-      .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
+      .map(cliente => {
+        // Garantir que o display_nome sempre priorize nome_fantasia do cadastro
+        const cObj = cliente.cliente;
+        const displayNome = cObj?.nome_fantasia || cObj?.razao_social || 'Cliente não identificado';
+        return {
+          ...cliente,
+          display_nome: displayNome,
+          visitas: Object.values(cliente.visitas).sort((a, b) => b.data.localeCompare(a.data))
+        };
+      })
+      .sort((a, b) => a.display_nome.localeCompare(b.display_nome));
   }, [estoqueVisita, clientesMap, produtosMap, vendedoresMap, visitasMap, filtroCliente, busca, apenasUltimoEstoque, dataInicio, dataFim, filtros, clientes, vendedores, visitas]);
 
   const toggleCliente = (clienteId) => {
@@ -646,7 +654,7 @@ export default function RelatorioEstoque() {
                         )}
                         <div className="text-left min-w-0 flex-1">
                           <div className="font-semibold text-slate-900 text-sm sm:text-base truncate">
-                            {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
+                            {clienteData.display_nome}
                           </div>
                           <div className="text-xs sm:text-sm text-slate-500">
                             {clienteData.totalProdutos} lanç. • {clienteData.totalItens} un.

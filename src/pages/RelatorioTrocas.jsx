@@ -154,7 +154,9 @@ export default function RelatorioTrocas() {
       const dataVisitaCalc = visitaRelacionada?.data_visita || t.created_date?.split('T')[0];
       // Se o cliente não está no mapa, criar objeto com nome salvo na troca
       const clienteObjRaw = clientesMap[t.cliente_id];
-      const clienteObj = clienteObjRaw || (t.cliente_nome ? { nome_fantasia: t.cliente_nome, razao_social: t.cliente_nome } : null);
+      const clienteObj = clienteObjRaw
+        ? { ...clienteObjRaw, nome_fantasia: clienteObjRaw.nome_fantasia || clienteObjRaw.razao_social }
+        : (t.cliente_nome ? { nome_fantasia: t.cliente_nome, razao_social: t.cliente_nome } : null);
       return {
         ...t,
         cliente: clienteObj,
@@ -277,11 +279,16 @@ export default function RelatorioTrocas() {
     });
 
     return Object.values(porCliente)
-      .map(c => ({
-        ...c,
-        visitas: Object.values(c.visitas).sort((a, b) => b.data.localeCompare(a.data))
-      }))
-      .sort((a, b) => (a.cliente?.nome_fantasia || a.cliente?.razao_social || '').localeCompare(b.cliente?.nome_fantasia || b.cliente?.razao_social || ''));
+      .map(c => {
+        const cObj = c.cliente;
+        const displayNome = cObj?.nome_fantasia || cObj?.razao_social || 'Cliente não identificado';
+        return {
+          ...c,
+          display_nome: displayNome,
+          visitas: Object.values(c.visitas).sort((a, b) => b.data.localeCompare(a.data))
+        };
+      })
+      .sort((a, b) => a.display_nome.localeCompare(b.display_nome));
   }, [trocasVisita, clientesMap, produtosMap, vendedoresMap, visitasMap, filtroCliente, busca, apenasUltimaTroca, dataInicio, dataFim, filtros, clientes, vendedores, visitas]);
 
   const toggleCliente = (clienteId) => {
@@ -537,7 +544,7 @@ export default function RelatorioTrocas() {
                         {clientesExpandidos[clienteData.clienteId] ? <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />}
                         <div className="text-left min-w-0 flex-1">
                           <div className="font-semibold text-slate-900 text-sm sm:text-base truncate">
-                            {clienteData.cliente?.nome_fantasia || clienteData.cliente?.razao_social || 'Cliente não identificado'}
+                            {clienteData.display_nome}
                           </div>
                           <div className="text-xs sm:text-sm text-slate-500">
                             {clienteData.totalProdutos} lanç. • {clienteData.totalItens} un.

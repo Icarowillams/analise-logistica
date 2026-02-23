@@ -421,7 +421,7 @@ export default function RelatorioRoteiros() {
 
         const clienteInfo = {
           cliente_id: clienteDetalhe.cliente_id,
-          cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || clienteDetalhe.nome_fantasia || clienteDetalhe.cliente_nome,
+          cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || clienteDetalhe.nome_fantasia || clienteDetalhe.razao_social || clienteDetalhe.cliente_nome,
           cliente_codigo: clienteDetalhe.cliente_codigo || clienteCompleto?.codigo,
           ordem: idx + 1,
           cliente: clienteCompleto,
