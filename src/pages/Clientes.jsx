@@ -589,11 +589,11 @@ export default function Clientes() {
       const existingClient = existingClientsMap[codigoNormalizado];
       
       if (modoImportacao === 'atualizacao') {
-        // Modo atualização: só atualiza clientes existentes
+        // Modo atualização: atualiza existentes e cadastra novos
         if (existingClient) {
           toUpdate.push({ id: existingClient.id, data: clienteData });
         } else {
-          naoEncontrados++;
+          toCreate.push(clienteData);
         }
       } else {
         // Modo cadastro: cria novos e atualiza existentes
@@ -623,10 +623,10 @@ export default function Clientes() {
       console.log('Importação - Primeiro update estado:', toUpdate[0].data.estado, '| ie:', toUpdate[0].data.inscricao_estadual);
     }
 
-    // Se modo atualização e nenhum cliente foi encontrado
-    if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
+    // Se modo atualização e nenhum cliente foi encontrado nem para criar
+    if (modoImportacao === 'atualizacao' && toUpdate.length === 0 && toCreate.length === 0) {
       setIsImporting(false);
-      toast.error(`❌ Nenhum cliente encontrado para atualização. Verifique se os códigos estão corretos.`);
+      toast.error(`❌ Nenhum cliente encontrado para atualização ou cadastro. Verifique os dados.`);
       return;
     }
 
