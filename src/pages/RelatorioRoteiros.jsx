@@ -421,7 +421,7 @@ export default function RelatorioRoteiros() {
 
         const clienteInfo = {
           cliente_id: clienteDetalhe.cliente_id,
-          cliente_nome: clienteCompleto?.nome_fantasia || clienteDetalhe.nome_fantasia || clienteDetalhe.cliente_nome || clienteCompleto?.razao_social,
+          cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || clienteDetalhe.nome_fantasia || clienteDetalhe.cliente_nome,
           cliente_codigo: clienteDetalhe.cliente_codigo || clienteCompleto?.codigo,
           ordem: idx + 1,
           cliente: clienteCompleto,
@@ -460,7 +460,7 @@ export default function RelatorioRoteiros() {
 
       const clienteInfo = {
         cliente_id: clienteId,
-        cliente_nome: clienteCompleto?.nome_fantasia || visitaRot.cliente_nome || clienteCompleto?.razao_social || 'Cliente removido',
+        cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || visitaRot.cliente_nome || 'Cliente removido',
         cliente_codigo: visitaRot.cliente_codigo || clienteCompleto?.codigo || '-',
         ordem: 999,
         cliente: clienteCompleto,
@@ -1002,7 +1002,7 @@ export default function RelatorioRoteiros() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MapPin className="w-5 h-5 text-blue-600" />
-              Localização - {selectedVisita?.cliente?.nome_fantasia || selectedVisita?.cliente_nome}
+              Localização - {selectedVisita?.cliente_nome || selectedVisita?.cliente?.nome_fantasia || selectedVisita?.cliente?.razao_social}
             </DialogTitle>
           </DialogHeader>
           {(() => {
@@ -1122,7 +1122,7 @@ export default function RelatorioRoteiros() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Image className="w-5 h-5 text-purple-600" />
-              Fotos - {selectedVisita?.cliente?.nome_fantasia || selectedVisita?.cliente_nome}
+              Fotos - {selectedVisita?.cliente_nome || selectedVisita?.cliente?.nome_fantasia || selectedVisita?.cliente?.razao_social}
             </DialogTitle>
           </DialogHeader>
           <Tabs defaultValue="estoque" className="w-full">
@@ -1219,7 +1219,7 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
             {(cliente?.codigo || clienteInfo.cliente_codigo) && (
               <Badge variant="outline" className="text-[10px] sm:text-xs px-1">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
             )}
-            <span className="font-semibold text-slate-900 text-xs sm:text-sm truncate">{cliente?.nome_fantasia || cliente?.razao_social || clienteInfo.cliente_nome}</span>
+            <span className="font-semibold text-slate-900 text-xs sm:text-sm truncate">{clienteInfo.cliente_nome || cliente?.nome_fantasia || cliente?.razao_social}</span>
           </div>
           <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 truncate">
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}

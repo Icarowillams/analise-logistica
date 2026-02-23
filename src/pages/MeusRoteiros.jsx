@@ -266,9 +266,8 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
               <ClienteCard 
                 key={`reagendada-${reagendada.id}`}
                 cliente={{
-                  cliente_id: reagendada.cliente_id,
+                  cliente_id: clienteCompleto?.id || reagendada.cliente_id,
                   cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || reagendada.cliente_nome,
-                  cliente_nome_fantasia: clienteCompleto?.nome_fantasia,
                   cliente_codigo: clienteCompleto?.codigo || reagendada.cliente_codigo,
                   cliente_cidade: clienteCompleto?.cidade || reagendada.cliente_cidade,
                   cliente_bairro: clienteCompleto?.bairro
@@ -299,12 +298,11 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
         const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id) 
           || clientes.find(c => c.codigo === cliente.cliente_codigo);
 
-        const nomeFantasia = clienteCompleto?.nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome_fantasia;
+        const displayNome = clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.nome_fantasia || cliente.cliente_nome;
         const clienteAtualizado = {
           ...cliente,
           cliente_id: clienteCompleto?.id || cliente.cliente_id,
-          cliente_nome: clienteCompleto?.razao_social || cliente.cliente_nome,
-          cliente_nome_fantasia: nomeFantasia,
+          cliente_nome: displayNome,
           cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
           cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
           cliente_bairro: clienteCompleto?.bairro || cliente.cliente_bairro
@@ -410,7 +408,7 @@ function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, rea
               <CardTitle className="text-sm sm:text-base leading-tight break-words">
                 {cliente.cliente_codigo && <span className="font-bold">{cliente.cliente_codigo}</span>}
                 {cliente.cliente_codigo && ' - '}
-                {cliente.cliente_nome_fantasia || cliente.nome_fantasia || cliente.cliente_nome}
+                {cliente.cliente_nome}
                 {isReagendamento && <span className="ml-1 text-orange-600 font-medium text-xs">(Reag.)</span>}
               </CardTitle>
               <p className="text-xs text-slate-500 truncate">

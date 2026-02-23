@@ -153,7 +153,8 @@ export default function RelatorioTrocas() {
       const vendedor = vendedoresMap[vendedorId];
       const dataVisitaCalc = visitaRelacionada?.data_visita || t.created_date?.split('T')[0];
       // Se o cliente não está no mapa, criar objeto com nome salvo na troca
-      const clienteObj = clientesMap[t.cliente_id] || (t.cliente_nome ? { nome_fantasia: t.cliente_nome, razao_social: t.cliente_nome } : null);
+      const clienteObjRaw = clientesMap[t.cliente_id];
+      const clienteObj = clienteObjRaw || (t.cliente_nome ? { nome_fantasia: t.cliente_nome, razao_social: t.cliente_nome } : null);
       return {
         ...t,
         cliente: clienteObj,
