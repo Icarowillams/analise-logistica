@@ -252,10 +252,7 @@ export default function RelatorioEstoque() {
       const dataVisitaCalc = e.created_date?.split('T')[0] || visitaRelacionada?.data_visita;
       // Se o cliente não está no mapa, criar objeto com nome salvo no registro
       const clienteObjRaw = clientesMap[e.cliente_id];
-      // Sempre priorizar nome_fantasia do cadastro atual, mesmo que o registro antigo tenha razao_social
-      const clienteObj = clienteObjRaw 
-        ? { ...clienteObjRaw, nome_fantasia: clienteObjRaw.nome_fantasia || clienteObjRaw.razao_social }
-        : (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);
+      const clienteObj = clienteObjRaw || (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);
       return {
         ...e,
         cliente: clienteObj,
