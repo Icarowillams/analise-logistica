@@ -785,12 +785,17 @@ export default function Clientes() {
 
     queryClient.invalidateQueries(['clientes']);
     
-    // Mensagem de sucesso
+    // Mensagem de sucesso detalhada
     const messages = [];
-    if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cliente(s) cadastrado(s)`);
-    if (toUpdate.length > 0) messages.push(`${toUpdate.length} cliente(s) atualizado(s)`);
+    if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cadastrado(s)`);
+    if (toUpdate.length > 0) messages.push(`${toUpdate.length} atualizado(s)`);
     if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
       messages.push(`${naoEncontrados} código(s) não encontrado(s)`);
+    }
+    const totalProcessado = toCreate.length + toUpdate.length + naoEncontrados;
+    const totalRecebido = data.length;
+    if (totalProcessado !== totalRecebido) {
+      messages.push(`⚠️ ${totalRecebido - totalProcessado} registro(s) não processado(s)`);
     }
     toast.success(`✅ ${messages.join(' | ')}!`);
     
