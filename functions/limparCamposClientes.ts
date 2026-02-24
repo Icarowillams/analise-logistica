@@ -9,50 +9,77 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Buscar todos os clientes
-    const clientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-    console.log(`Total de clientes encontrados: ${clientes.length}`);
+    const { offset = 0, limit = 50 } = await req.json().catch(() => ({}));
+
+    // Buscar clientes com paginação
+    const todosClientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
+    const total = todosClientes.length;
+    
+    // Filtrar apenas os que têm inscricao_estadual ou estado preenchidos
+    const clientesComDados = todosClientes.filter(c => 
+      (c.inscricao_estadual && c.inscricao_estadual.trim() !== '') || 
+      (c.estado && c.estado.trim() !== '')
+    );
+    
+    const totalComDados = clientesComDados.length;
+    const lote = clientesComDados.slice(offset, offset + limit);
+    
+    console.log(`Total clientes: ${total}, Com dados para limpar: ${totalComDados}, Processando offset ${offset}, lote de ${lote.length}`);
+
+    if (lote.length === 0) {
+      return Response.json({ 
+        concluido: true,
+        total,
+        totalComDados,
+        mensagem: 'Nenhum cliente restante para processar neste offset'
+      });
+    }
 
     let atualizados = 0;
     let erros = 0;
+    const detalhesErros = [];
 
-    // Processar em lotes de 5 com retry
-    const BATCH = 5;
-    for (let i = 0; i < clientes.length; i += BATCH) {
-      const batch = clientes.slice(i, i + BATCH);
-      
-      const results = await Promise.all(batch.map(async (cliente) => {
-        for (let t = 1; t <= 5; t++) {
-          try {
-            await base44.asServiceRole.entities.Cliente.update(cliente.id, {
-              inscricao_estadual: '',
-              estado: ''
-            });
-            return true;
-          } catch (err) {
-            if (t === 5) {
-              console.error(`Falha cliente ${cliente.id}: ${err.message}`);
-              return false;
-            }
-            await new Promise(r => setTimeout(r, 500 * Math.pow(2, t)));
-          }
+    // Processar UM por vez com delay grande entre cada
+    for (const cliente of lote) {
+      let sucesso = false;
+      for (let tentativa = 1; tentativa <= 5; tentativa++) {
+        try {
+          await base44.asServiceRole.entities.Cliente.update(cliente.id, {
+            inscricao_estadual: '',
+            estado: ''
+          });
+          sucesso = true;
+          atualizados++;
+          break;
+        } catch (err) {
+          console.log(`Retry ${tentativa}/5 cliente ${cliente.id}: ${err.message}`);
+          // Delay crescente: 2s, 4s, 8s, 16s, 32s
+          await new Promise(r => setTimeout(r, 2000 * Math.pow(2, tentativa - 1)));
         }
-      }));
-
-      atualizados += results.filter(r => r).length;
-      erros += results.filter(r => !r).length;
-
-      if (i + BATCH < clientes.length) {
-        await new Promise(r => setTimeout(r, 300));
       }
+      if (!sucesso) {
+        erros++;
+        detalhesErros.push({ id: cliente.id, codigo: cliente.codigo });
+      }
+      
+      // Delay de 1 segundo entre cada cliente
+      await new Promise(r => setTimeout(r, 1000));
     }
 
-    console.log(`Concluído: ${atualizados} atualizados, ${erros} erros`);
+    const proximoOffset = offset + limit;
+    const temMais = proximoOffset < totalComDados;
+
+    console.log(`Lote concluído: ${atualizados} atualizados, ${erros} erros. Tem mais: ${temMais}`);
 
     return Response.json({ 
-      total: clientes.length, 
+      concluido: !temMais,
+      total,
+      totalComDados,
+      processados: lote.length,
       atualizados, 
-      erros 
+      erros,
+      detalhesErros,
+      proximoOffset: temMais ? proximoOffset : null
     });
   } catch (error) {
     console.error('Erro:', error);
