@@ -699,11 +699,19 @@ function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissa
     const motivoObj = motivos.find(m => m.id === motivoSelecionado);
 
     // Buscar a visita que acabou de ser criada para atualizar com info do pedido
-    const visitasRecentes = await base44.entities.Visita.filter({
+    let visitasRecentes = await base44.entities.Visita.filter({
       cliente_id: cliente.cliente_id,
       vendedor_id: vendedor.id,
       data_visita: getLocalDateStr()
     });
+    // Fallback por cliente_codigo
+    if (visitasRecentes.length === 0 && cliente.cliente_codigo) {
+      const allV = await base44.entities.Visita.filter({
+        vendedor_id: vendedor.id,
+        data_visita: getLocalDateStr()
+      });
+      visitasRecentes = allV.filter(v => v.cliente_codigo === cliente.cliente_codigo || v.cliente_nome === cliente.cliente_nome);
+    }
     
     const visitaRecente = visitasRecentes[0];
     
