@@ -607,10 +607,12 @@ export default function Clientes() {
       const existingClient = existingClientsMap[codigoNormalizado];
       
       if (modoImportacao === 'atualizacao') {
-        // Modo atualização: só atualiza clientes existentes
+        // Modo atualização: atualiza existentes E cria os que não existem
         if (existingClient) {
           toUpdate.push({ id: existingClient.id, data: clienteData });
         } else {
+          // Cliente não encontrado no banco → cadastrar como novo
+          toCreate.push(clienteData);
           naoEncontrados++;
           naoEncontradosDetalhes.push({ linha: idx + 2, codigo: clienteData.codigo, razao: clienteData.razao_social });
         }
