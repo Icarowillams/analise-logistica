@@ -394,12 +394,23 @@ export default function RelatorioRoteiros() {
       v.data_visita === dataEspecifica
     );
 
-    // Criar mapa de visitas por cliente_id
+    // Criar mapa de visitas por cliente_id (priorizar a mais completa: concluída > checkin > outras)
     const visitasPorCliente = {};
     visitasDaData.forEach(v => {
-      if (!visitasPorCliente[v.cliente_id] || 
-          (v.checkout_time && !visitasPorCliente[v.cliente_id].checkout_time)) {
+      const existente = visitasPorCliente[v.cliente_id];
+      if (!existente) {
         visitasPorCliente[v.cliente_id] = v;
+      } else {
+        // Priorizar visita concluída, depois com checkout, depois mais recente
+        const prioridade = (vis) => {
+          if (vis.status === 'concluida') return 3;
+          if (vis.checkout_time) return 2;
+          if (vis.checkin_time) return 1;
+          return 0;
+        };
+        if (prioridade(v) > prioridade(existente)) {
+          visitasPorCliente[v.cliente_id] = v;
+        }
       }
     });
 
