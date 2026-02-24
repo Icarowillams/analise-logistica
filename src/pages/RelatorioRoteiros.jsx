@@ -868,7 +868,6 @@ export default function RelatorioRoteiros() {
                                         {datasDesteDia.map(data => {
                                           const visitasDaData = visitasNoPeriodo.filter(v => 
                                             v.vendedor_id === vendedor.id && 
-                                            v.roteiro_id === roteiroFixoDoDia?.id &&
                                             v.data_visita === data
                                           );
                                           const hoje = new Date().toISOString().split('T')[0];
