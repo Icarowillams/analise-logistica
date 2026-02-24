@@ -664,25 +664,25 @@ export default function Clientes() {
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações via backend function em lotes maiores
+      // Executar atualizações via backend function em lotes pequenos para garantir 100%
       if (toUpdate.length > 0) {
         console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
         
-        const LOTE_SIZE = 200;
+        // Lotes de 50 para dar mais tempo ao backend processar com retries
+        const LOTE_SIZE = 50;
         let totalAtualizados = 0;
-        let totalErros = 0;
-        let errosDetalhes = [];
+        let errosAcumulados = [];
         const totalLotes = Math.ceil(toUpdate.length / LOTE_SIZE);
 
         for (let i = 0; i < toUpdate.length; i += LOTE_SIZE) {
           const lote = toUpdate.slice(i, i + LOTE_SIZE);
           const loteNum = Math.floor(i / LOTE_SIZE) + 1;
-          toast.info(`Atualizando lote ${loteNum}/${totalLotes} (${lote.length} clientes)... ${totalAtualizados} já atualizados`);
+          toast.info(`Atualizando lote ${loteNum}/${totalLotes} (${lote.length} clientes)... ${totalAtualizados}/${toUpdate.length} concluídos`);
           
-          // Retry com backoff para cada lote
+          // Retry com backoff para cada chamada ao backend
           let tentativa = 0;
           let response;
-          while (tentativa < 4) {
+          while (tentativa < 5) {
             try {
               response = await base44.functions.invoke('bulkUpdateClientes', {
                 clientes: lote
@@ -690,10 +690,10 @@ export default function Clientes() {
               break;
             } catch (err) {
               tentativa++;
-              if (tentativa >= 4) throw err;
-              const delay = 2000 * Math.pow(2, tentativa);
+              if (tentativa >= 5) throw err;
+              const delay = 3000 * Math.pow(2, tentativa);
               console.log(`Retry lote ${loteNum} (tentativa ${tentativa}, aguardando ${delay}ms)`);
-              toast.warning(`Lote ${loteNum} falhou, tentando novamente (${tentativa}/3)...`);
+              toast.warning(`Lote ${loteNum} falhou, tentando novamente (${tentativa}/4)...`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
@@ -705,24 +705,63 @@ export default function Clientes() {
           }
 
           totalAtualizados += data.atualizados || 0;
-          totalErros += data.erros || 0;
           if (data.detalhesErros?.length > 0) {
-            errosDetalhes = [...errosDetalhes, ...data.detalhesErros];
+            errosAcumulados = [...errosAcumulados, ...data.detalhesErros];
           }
           
-          // Delay curto entre lotes
+          // Delay entre lotes para não sobrecarregar
           if (i + LOTE_SIZE < toUpdate.length) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-        
-        console.log(`Atualização concluída: ${totalAtualizados} atualizados, ${totalErros} erros`);
-        if (errosDetalhes.length > 0) {
-          console.log('Detalhes dos erros:', JSON.stringify(errosDetalhes.slice(0, 10)));
+
+        // REPROCESSAMENTO: se houver erros, tenta novamente os que falharam
+        if (errosAcumulados.length > 0) {
+          console.log(`Reprocessando ${errosAcumulados.length} clientes que falharam...`);
+          toast.info(`Reprocessando ${errosAcumulados.length} clientes que falharam...`);
+          
+          // Montar lista dos que falharam
+          const idsComErro = new Set(errosAcumulados.map(e => e.id));
+          const clientesParaRetry = toUpdate.filter(c => idsComErro.has(c.id));
+          
+          // Enviar em lotes de 20 com delay maior
+          const RETRY_LOTE = 20;
+          let retryAtualizados = 0;
+          let retryErros = [];
+          
+          for (let i = 0; i < clientesParaRetry.length; i += RETRY_LOTE) {
+            const lote = clientesParaRetry.slice(i, i + RETRY_LOTE);
+            const loteNum = Math.floor(i / RETRY_LOTE) + 1;
+            const totalRetryLotes = Math.ceil(clientesParaRetry.length / RETRY_LOTE);
+            toast.info(`Reprocessando lote ${loteNum}/${totalRetryLotes}...`);
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            try {
+              const response = await base44.functions.invoke('bulkUpdateClientes', {
+                clientes: lote
+              });
+              const data = response.data;
+              retryAtualizados += data.atualizados || 0;
+              if (data.detalhesErros?.length > 0) {
+                retryErros = [...retryErros, ...data.detalhesErros];
+              }
+            } catch (err) {
+              console.error('Erro no reprocessamento:', err);
+              retryErros.push(...lote.map(c => ({ id: c.id, error: err.message })));
+            }
+          }
+          
+          totalAtualizados += retryAtualizados;
+          errosAcumulados = retryErros;
+          console.log(`Reprocessamento: +${retryAtualizados} atualizados, ${retryErros.length} erros restantes`);
         }
         
-        if (totalErros > 0) {
-          toast.warning(`${totalAtualizados} atualizados, ${totalErros} erros. Verifique o console para detalhes.`);
+        console.log(`Atualização final: ${totalAtualizados}/${toUpdate.length} atualizados`);
+        
+        if (errosAcumulados.length > 0) {
+          console.error('Erros finais:', JSON.stringify(errosAcumulados));
+          toast.error(`${errosAcumulados.length} clientes não puderam ser atualizados. IDs: ${errosAcumulados.slice(0, 5).map(e => e.id).join(', ')}${errosAcumulados.length > 5 ? '...' : ''}`);
         }
       }
     } catch (error) {

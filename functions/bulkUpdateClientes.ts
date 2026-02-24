@@ -17,57 +17,84 @@ Deno.serve(async (req) => {
 
     console.log(`Processando lote de ${clientes.length} clientes`);
 
-    let atualizados = 0;
-    const erros = [];
-
-    // Função de update com retry e backoff exponencial
-    const updateComRetry = async (cliente, tentativa = 1) => {
-      try {
-        await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
-        return true;
-      } catch (err) {
-        const isRateLimit = err.message?.includes('rate') || err.message?.includes('429') || err.message?.includes('Too Many') || err.status === 429;
-        if (tentativa <= 5) {
-          // Backoff exponencial: 1s, 2s, 4s, 8s, 16s
-          const delay = Math.min(1000 * Math.pow(2, tentativa - 1), 16000);
-          console.log(`Retry ${tentativa}/5 para cliente ${cliente.id} (aguardando ${delay}ms)${isRateLimit ? ' [rate limit]' : ''}`);
+    // Função de update com retry agressivo (até 7 tentativas com backoff exponencial)
+    const updateComRetry = async (cliente) => {
+      let lastError = null;
+      for (let tentativa = 1; tentativa <= 7; tentativa++) {
+        try {
+          await base44.asServiceRole.entities.Cliente.update(cliente.id, cliente.data);
+          return { success: true, id: cliente.id };
+        } catch (err) {
+          lastError = err;
+          // Backoff exponencial: 500ms, 1s, 2s, 4s, 8s, 16s, 32s
+          const delay = Math.min(500 * Math.pow(2, tentativa - 1), 32000);
+          console.log(`Retry ${tentativa}/7 cliente ${cliente.id} (aguardando ${delay}ms): ${err.message}`);
           await new Promise(r => setTimeout(r, delay));
-          return updateComRetry(cliente, tentativa + 1);
         }
-        throw err;
       }
+      return { success: false, id: cliente.id, error: lastError?.message || 'Erro desconhecido' };
     };
 
-    // Processar em chunks de 10 com concorrência controlada
-    const CONCURRENCY = 10;
+    // Processar sequencialmente em grupos pequenos de 3 para minimizar rate limit
+    const CONCURRENCY = 3;
+    let resultados = [];
+
     for (let i = 0; i < clientes.length; i += CONCURRENCY) {
       const chunk = clientes.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(
-        chunk.map(cliente => updateComRetry(cliente))
-      );
+      const results = await Promise.all(chunk.map(c => updateComRetry(c)));
+      resultados.push(...results);
       
-      results.forEach((result, idx) => {
-        if (result.status === 'fulfilled') {
-          atualizados++;
-        } else {
-          const cliente = chunk[idx];
-          console.error(`Erro cliente ${cliente.id}:`, result.reason?.message);
-          erros.push({ id: cliente.id, error: result.reason?.message });
-        }
-      });
-
-      // Pequeno delay entre chunks para não sobrecarregar
+      // Delay entre chunks
       if (i + CONCURRENCY < clientes.length) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
       }
     }
 
-    console.log(`Concluído: ${atualizados} atualizados, ${erros.length} erros`);
+    // Separar sucessos e falhas
+    let atualizados = resultados.filter(r => r.success).length;
+    let falhas = resultados.filter(r => !r.success);
+
+    // SEGUNDA RODADA: reprocessar todos que falharam, um por um, com delay maior
+    if (falhas.length > 0) {
+      console.log(`Segunda rodada: reprocessando ${falhas.length} clientes que falharam`);
+      const clientesParaReprocessar = clientes.filter(c => falhas.some(f => f.id === c.id));
+      
+      for (const cliente of clientesParaReprocessar) {
+        // Esperar 2 segundos entre cada um para evitar qualquer rate limit
+        await new Promise(r => setTimeout(r, 2000));
+        const result = await updateComRetry(cliente);
+        if (result.success) {
+          atualizados++;
+          falhas = falhas.filter(f => f.id !== cliente.id);
+        }
+      }
+    }
+
+    // TERCEIRA RODADA: última tentativa para os restantes, um por um, delay de 5s
+    if (falhas.length > 0) {
+      console.log(`Terceira rodada: ${falhas.length} clientes restantes`);
+      const clientesRestantes = clientes.filter(c => falhas.some(f => f.id === c.id));
+      
+      for (const cliente of clientesRestantes) {
+        await new Promise(r => setTimeout(r, 5000));
+        const result = await updateComRetry(cliente);
+        if (result.success) {
+          atualizados++;
+          falhas = falhas.filter(f => f.id !== cliente.id);
+        }
+      }
+    }
+
+    const errosFinais = falhas.map(f => ({ id: f.id, error: f.error }));
+    console.log(`Concluído: ${atualizados} atualizados, ${errosFinais.length} erros definitivos`);
+    if (errosFinais.length > 0) {
+      console.log('Erros finais:', JSON.stringify(errosFinais));
+    }
 
     return Response.json({
       atualizados,
-      erros: erros.length,
-      detalhesErros: erros
+      erros: errosFinais.length,
+      detalhesErros: errosFinais
     });
   } catch (error) {
     console.error('Erro geral:', error);
