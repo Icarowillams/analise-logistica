@@ -629,6 +629,12 @@ export default function Clientes() {
       });
     }
 
+    // Informar descartados/não encontrados
+    if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
+      const exemplos = naoEncontradosDetalhes.slice(0, 10).map(d => `${d.codigo} (${d.razao || 'sem nome'})`).join(', ');
+      toast.warning(`⚠️ ${naoEncontrados} cliente(s) não encontrados no banco (códigos inexistentes): ${exemplos}${naoEncontrados > 10 ? '...' : ''}`);
+    }
+
     // Se modo atualização e nenhum cliente foi encontrado
     if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
       setIsImporting(false);
