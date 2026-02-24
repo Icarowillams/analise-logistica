@@ -827,14 +827,10 @@ export default function RelatorioRoteiros() {
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
                           
-                          // Buscar o roteiro fixo para contar visitas corretamente
-                          const roteiroFixoDoDia = roteirosVend.find(r => r.dia_semana === diaSemana);
-                          
-                          // Contar visitas realizadas neste dia (visitas com check-in do roteiro específico)
+                          // Contar visitas realizadas neste dia (por vendedor e data, sem filtrar roteiro_id)
                           const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
                             const visitasDaData = visitasNoPeriodo.filter(v => 
                               v.vendedor_id === vendedor.id && 
-                              v.roteiro_id === roteiroFixoDoDia?.id &&
                               v.data_visita === data
                             );
                             return acc + visitasDaData.length;
