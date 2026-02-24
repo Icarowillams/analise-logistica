@@ -452,10 +452,9 @@ export default function Clientes() {
       if (!item.status || item.status.trim() === '') emptyStatusCount++;
     });
 
-    // Se for modo atualização, código é obrigatório
+    // Se for modo atualização, avisar sobre registros sem código (mas não bloquear)
     if (modoImportacao === 'atualizacao' && emptyCodigoCount > 0) {
-      toast.error(`❌ Para atualização cadastral, todos os registros precisam ter código. ${emptyCodigoCount} registro(s) sem código.`);
-      return;
+      toast.warning(`⚠️ ${emptyCodigoCount} registro(s) sem código serão ignorados na atualização.`);
     }
 
     if (warnings.length > 0 && modoImportacao === 'cadastro') {
