@@ -425,8 +425,13 @@ export default function RelatorioRoteiros() {
     if (roteiroFixo?.clientes_detalhes) {
       roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
         const clienteCompleto = findCliente(clienteDetalhe.cliente_id, clienteDetalhe.cliente_codigo);
-        const visitaRot = visitasPorCliente[clienteDetalhe.cliente_id];
+        // Match por cliente_id direto OU por cliente_codigo (fallback para IDs duplicados)
+        const visitaRot = visitasPorCliente[clienteDetalhe.cliente_id] 
+          || (clienteDetalhe.cliente_codigo ? visitasPorCodigo[clienteDetalhe.cliente_codigo] : null)
+          || (clienteCompleto?.id ? visitasPorCliente[clienteCompleto.id] : null);
         clientesProcessados.add(clienteDetalhe.cliente_id);
+        // Também marcar como processado o cliente_id da visita (pode ser diferente)
+        if (visitaRot) clientesProcessados.add(visitaRot.cliente_id);
         
         const visitaReg = visitaRot ? visitasRegistroNoPeriodo.find(v =>
           v.cliente_id === clienteDetalhe.cliente_id &&
