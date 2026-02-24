@@ -582,8 +582,11 @@ export default function Clientes() {
     const toCreate = [];
     const toUpdate = [];
     let naoEncontrados = 0;
+    const descartados = [];
+    const naoEncontradosDetalhes = [];
 
-    for (const clienteData of clientesData) {
+    for (let idx = 0; idx < clientesData.length; idx++) {
+      const clienteData = clientesData[idx];
       // Normalizar código para comparação
       const codigoNormalizado = String(clienteData.codigo || '').trim().toLowerCase();
       const existingClient = existingClientsMap[codigoNormalizado];
@@ -594,6 +597,7 @@ export default function Clientes() {
           toUpdate.push({ id: existingClient.id, data: clienteData });
         } else {
           naoEncontrados++;
+          naoEncontradosDetalhes.push({ linha: idx + 2, codigo: clienteData.codigo, razao: clienteData.razao_social });
         }
       } else {
         // Modo cadastro: cria novos e atualiza existentes
@@ -605,22 +609,24 @@ export default function Clientes() {
       }
     }
 
-    console.log('Importação - Modo:', modoImportacao);
-    console.log('Importação - Total no arquivo:', clientesData.length);
-    console.log('Importação - Para criar:', toCreate.length);
-    console.log('Importação - Para atualizar:', toUpdate.length);
-    console.log('Importação - Não encontrados:', naoEncontrados);
-    if (clientesData.length > 0) {
-      console.log('Importação - Campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
-      console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
-      // Log primeiros 3 registros para debug
-      clientesData.slice(0, 3).forEach((c, i) => {
-        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
-      });
+    // Log completo
+    console.log('=== RELATÓRIO DE IMPORTAÇÃO ===');
+    console.log('Modo:', modoImportacao);
+    console.log('Total recebido do modal:', data.length);
+    console.log('Total após processamento:', clientesData.length);
+    console.log('Diferença (descartados):', data.length - clientesData.length);
+    console.log('Para criar:', toCreate.length);
+    console.log('Para atualizar:', toUpdate.length);
+    console.log('Não encontrados:', naoEncontrados);
+    
+    if (naoEncontradosDetalhes.length > 0) {
+      console.log('Códigos não encontrados (primeiros 20):', JSON.stringify(naoEncontradosDetalhes.slice(0, 20)));
     }
-    if (toUpdate.length > 0) {
-      console.log('Importação - Campos do primeiro update:', JSON.stringify(Object.keys(toUpdate[0].data)));
-      console.log('Importação - Primeiro update estado:', toUpdate[0].data.estado, '| ie:', toUpdate[0].data.inscricao_estadual);
+    
+    if (clientesData.length > 0) {
+      clientesData.slice(0, 3).forEach((c, i) => {
+        console.log(`Registro ${i+1}: codigo=${c.codigo}, razao=${c.razao_social}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
+      });
     }
 
     // Se modo atualização e nenhum cliente foi encontrado
