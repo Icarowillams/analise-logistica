@@ -1,16 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Trash2, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Trash2, Loader2, CheckCircle, AlertCircle, StopCircle } from 'lucide-react';
 
 export default function LimparDadosClientes() {
-  const [status, setStatus] = useState('idle'); // idle, loading, done
+  const [status, setStatus] = useState('idle');
   const [progresso, setProgresso] = useState({ total: 0, processados: 0, erros: 0 });
   const [log, setLog] = useState([]);
+  const cancelRef = useRef(false);
+  const logEndRef = useRef(null);
 
-  const addLog = (msg) => setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  const addLog = (msg) => {
+    setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const atualizarCliente = async (id) => {
+    for (let t = 1; t <= 5; t++) {
+      try {
+        await base44.entities.Cliente.update(id, {
+          inscricao_estadual: '',
+          estado: ''
+        });
+        return true;
+      } catch (err) {
+        if (t === 5) return false;
+        // Delay crescente: 2s, 4s, 8s, 16s, 32s
+        await delay(2000 * Math.pow(2, t - 1));
+      }
+    }
+    return false;
+  };
 
   const iniciarLimpeza = async () => {
+    cancelRef.current = false;
     setStatus('loading');
     setLog([]);
     
@@ -33,62 +58,61 @@ export default function LimparDadosClientes() {
 
     setProgresso({ total: comDados.length, processados: 0, erros: 0 });
 
-    // Enviar em lotes de 10 IDs por vez ao backend
-    const LOTE = 10;
     let totalOk = 0;
     let totalErros = 0;
-    const totalLotes = Math.ceil(comDados.length / LOTE);
+    const idsComErro = [];
 
-    for (let i = 0; i < comDados.length; i += LOTE) {
-      const lote = comDados.slice(i, i + LOTE);
-      const loteNum = Math.floor(i / LOTE) + 1;
-      const ids = lote.map(c => c.id);
+    // Processar UM cliente por vez direto do frontend
+    for (let i = 0; i < comDados.length; i++) {
+      if (cancelRef.current) {
+        addLog('⛔ Processo cancelado pelo usuário.');
+        break;
+      }
 
-      addLog(`Lote ${loteNum}/${totalLotes} - Enviando ${ids.length} clientes...`);
+      const cliente = comDados[i];
+      const ok = await atualizarCliente(cliente.id);
+      
+      if (ok) {
+        totalOk++;
+      } else {
+        totalErros++;
+        idsComErro.push(cliente.id);
+        addLog(`❌ Falha: ${cliente.razao_social || cliente.codigo || cliente.id}`);
+      }
 
-      let tentativa = 0;
-      let response;
-      while (tentativa < 3) {
-        try {
-          response = await base44.functions.invoke('limparCamposClientes', { clienteIds: ids });
-          break;
-        } catch (err) {
-          tentativa++;
-          if (tentativa >= 3) {
-            addLog(`❌ Lote ${loteNum} falhou após 3 tentativas: ${err.message}`);
-            totalErros += ids.length;
-            setProgresso(prev => ({ ...prev, processados: prev.processados + ids.length, erros: prev.erros + ids.length }));
-            response = null;
-            break;
-          }
-          addLog(`⚠️ Lote ${loteNum} retry ${tentativa}/3...`);
-          await new Promise(r => setTimeout(r, 10000));
+      setProgresso({ total: comDados.length, processados: i + 1, erros: totalErros });
+
+      // Log a cada 50 clientes
+      if ((i + 1) % 50 === 0) {
+        addLog(`Progresso: ${i + 1}/${comDados.length} (${totalOk} ok, ${totalErros} erros)`);
+      }
+
+      // Delay de 500ms entre cada cliente
+      await delay(500);
+    }
+
+    // Reprocessar os que falharam
+    if (idsComErro.length > 0 && !cancelRef.current) {
+      addLog(`\nReprocessando ${idsComErro.length} clientes que falharam...`);
+      await delay(10000); // esperar 10s antes de reprocessar
+
+      for (let i = 0; i < idsComErro.length; i++) {
+        if (cancelRef.current) break;
+        
+        const ok = await atualizarCliente(idsComErro[i]);
+        if (ok) {
+          totalOk++;
+          totalErros--;
+          setProgresso(prev => ({ ...prev, erros: prev.erros - 1 }));
         }
-      }
-
-      if (response?.data) {
-        const data = response.data;
-        totalOk += data.atualizados || 0;
-        totalErros += data.erros || 0;
-        setProgresso(prev => ({
-          ...prev,
-          processados: prev.processados + (data.atualizados || 0) + (data.erros || 0),
-          erros: prev.erros + (data.erros || 0)
-        }));
-        addLog(`✅ Lote ${loteNum}: ${data.atualizados} ok, ${data.erros} erros`);
-      }
-
-      // Delay de 5 segundos entre lotes
-      if (i + LOTE < comDados.length) {
-        addLog(`Aguardando 5s antes do próximo lote...`);
-        await new Promise(r => setTimeout(r, 5000));
+        await delay(2000); // 2s entre cada no reprocessamento
       }
     }
 
     addLog(`\n========== RESULTADO FINAL ==========`);
-    addLog(`Total processados: ${totalOk + totalErros}`);
-    addLog(`Atualizados com sucesso: ${totalOk}`);
-    addLog(`Erros: ${totalErros}`);
+    addLog(`Total: ${comDados.length}`);
+    addLog(`Limpos com sucesso: ${totalOk}`);
+    addLog(`Erros persistentes: ${totalErros}`);
 
     setStatus('done');
   };
@@ -100,7 +124,7 @@ export default function LimparDadosClientes() {
       <div className="bg-white rounded-xl p-6 shadow-sm border">
         <h1 className="text-xl font-bold mb-2">Limpar Inscrição Estadual e Estado</h1>
         <p className="text-slate-500 mb-6">
-          Esta operação vai limpar os campos "Inscrição Estadual" e "Estado" de TODOS os clientes que possuem esses dados preenchidos.
+          Remove os dados de "Inscrição Estadual" e "Estado" de todos os clientes. Os campos continuam existindo, apenas os valores são apagados.
         </p>
 
         {status === 'idle' && (
@@ -112,9 +136,19 @@ export default function LimparDadosClientes() {
 
         {status === 'loading' && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-amber-600">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="font-medium">Processando... {progresso.processados}/{progresso.total} ({pct}%)</span>
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
+              <span className="font-medium text-amber-600">
+                Processando... {progresso.processados}/{progresso.total} ({pct}%)
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="ml-auto text-red-600 border-red-200"
+                onClick={() => cancelRef.current = true}
+              >
+                <StopCircle className="w-4 h-4 mr-1" /> Parar
+              </Button>
             </div>
             <div className="w-full bg-slate-200 rounded-full h-3">
               <div 
@@ -122,6 +156,9 @@ export default function LimparDadosClientes() {
                 style={{ width: `${pct}%` }}
               />
             </div>
+            <p className="text-xs text-slate-400">
+              Estimativa: ~{Math.ceil((progresso.total - progresso.processados) * 0.5 / 60)} min restantes
+            </p>
           </div>
         )}
 
@@ -132,18 +169,19 @@ export default function LimparDadosClientes() {
           </div>
         )}
 
-        {progresso.erros > 0 && (
+        {progresso.erros > 0 && status === 'done' && (
           <div className="flex items-center gap-2 text-red-600 mt-2">
             <AlertCircle className="w-5 h-5" />
-            <span>{progresso.erros} cliente(s) com erro</span>
+            <span>{progresso.erros} cliente(s) com erro persistente</span>
           </div>
         )}
 
         {log.length > 0 && (
-          <div className="mt-6 bg-slate-900 rounded-lg p-4 max-h-96 overflow-y-auto">
+          <div className="mt-6 bg-slate-900 rounded-lg p-4 max-h-80 overflow-y-auto">
             {log.map((msg, i) => (
               <div key={i} className="text-green-400 text-xs font-mono">{msg}</div>
             ))}
+            <div ref={logEndRef} />
           </div>
         )}
 
