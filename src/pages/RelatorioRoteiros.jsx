@@ -457,8 +457,9 @@ export default function RelatorioRoteiros() {
       });
     }
 
-    // Agora processar visitas realizadas de clientes que NÃO estão no roteiro atual
+    // Agora processar visitas realizadas de clientes que NÃO estão no roteiro fixo atual
     // (clientes que foram removidos do roteiro ou roteiro que foi excluído)
+    // Estes são genuinamente de um roteiro anterior/diferente
     Object.entries(visitasPorCliente).forEach(([clienteId, visitaRot]) => {
       if (clientesProcessados.has(clienteId)) return;
       
