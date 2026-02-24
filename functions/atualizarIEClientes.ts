@@ -1,5 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
   const user = await base44.auth.me();
@@ -25,10 +29,9 @@ Deno.serve(async (req) => {
 
   let atualizados = 0;
   let naoEncontrados = [];
-  let erros = [];
 
-  // Processar em lotes de 20
-  const batchSize = 20;
+  // Processar em lotes de 5 com delay para evitar rate limit
+  const batchSize = 5;
   for (let i = 0; i < dados.length; i += batchSize) {
     const batch = dados.slice(i, i + batchSize);
     const promises = batch.map(async (item) => {
@@ -52,6 +55,10 @@ Deno.serve(async (req) => {
       }
     });
     await Promise.all(promises);
+    // Delay entre lotes para evitar rate limit
+    if (i + batchSize < dados.length) {
+      await sleep(500);
+    }
   }
 
   return Response.json({ 
