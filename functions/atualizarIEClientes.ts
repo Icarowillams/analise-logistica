@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
 
   let atualizados = 0;
   let naoEncontrados = [];
+  let erros = [];
 
   // Processar sequencialmente com delay para evitar rate limit e timeout
   for (let i = 0; i < dados.length; i++) {
