@@ -407,9 +407,6 @@ export default function RelatorioRoteiros() {
     const clientesProcessados = new Set();
 
     // Se existe roteiro fixo atual, processar seus clientes
-    // IMPORTANTE: Buscar visita por cliente_id independente do roteiro_id,
-    // pois se o roteiro foi recriado, o roteiro_id mudou mas as visitas já registradas
-    // apontam para o ID antigo. O que importa é: mesmo vendedor + mesmo cliente + mesma data.
     if (roteiroFixo?.clientes_detalhes) {
       roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
         const clienteCompleto = findCliente(clienteDetalhe.cliente_id, clienteDetalhe.cliente_codigo);
@@ -450,7 +447,7 @@ export default function RelatorioRoteiros() {
     }
 
     // Agora processar visitas realizadas de clientes que NÃO estão no roteiro atual
-    // (clientes que foram removidos do roteiro ou que o roteiro foi excluído)
+    // (clientes que foram removidos do roteiro ou roteiro que foi excluído)
     Object.entries(visitasPorCliente).forEach(([clienteId, visitaRot]) => {
       if (clientesProcessados.has(clienteId)) return;
       
@@ -470,7 +467,7 @@ export default function RelatorioRoteiros() {
         visitaRoteiro: visitaRot,
         visitaRegistro: visitaReg,
         dataVisita: visitaRot.data_visita || dataEspecifica,
-        roteiroAlterado: true // Cliente não está no roteiro fixo atual
+        roteiroAlterado: true // Flag para indicar que este cliente veio de um roteiro anterior
       };
 
       if (visitaRot.status === 'nao_atendido') {
@@ -827,10 +824,14 @@ export default function RelatorioRoteiros() {
                           const isDiaExpanded = expandedDias[keyDia];
                           const dataSelecionada = selectedDates[keyDia] || datasDesteDia[0]; // Mais recente por padrão
                           
-                          // Contar visitas realizadas neste dia (por vendedor e data, sem filtrar roteiro_id)
+                          // Buscar o roteiro fixo para contar visitas corretamente
+                          const roteiroFixoDoDia = roteirosVend.find(r => r.dia_semana === diaSemana);
+                          
+                          // Contar visitas realizadas neste dia (visitas com check-in do roteiro específico)
                           const visitasRealizadasNoDia = datasDesteDia.reduce((acc, data) => {
                             const visitasDaData = visitasNoPeriodo.filter(v => 
                               v.vendedor_id === vendedor.id && 
+                              v.roteiro_id === roteiroFixoDoDia?.id &&
                               v.data_visita === data
                             );
                             return acc + visitasDaData.length;
@@ -868,6 +869,7 @@ export default function RelatorioRoteiros() {
                                         {datasDesteDia.map(data => {
                                           const visitasDaData = visitasNoPeriodo.filter(v => 
                                             v.vendedor_id === vendedor.id && 
+                                            v.roteiro_id === roteiroFixoDoDia?.id &&
                                             v.data_visita === data
                                           );
                                           const hoje = new Date().toISOString().split('T')[0];
