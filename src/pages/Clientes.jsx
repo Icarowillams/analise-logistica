@@ -631,42 +631,72 @@ export default function Clientes() {
     }
 
     try {
-      // Executar criações em lotes de 50 (apenas no modo cadastro)
-      const batchSize = 50;
+      // Executar criações em lotes de 100
+      const batchSize = 100;
       
       if (toCreate.length > 0) {
         console.log('Iniciando criação de', toCreate.length, 'clientes...');
+        const totalLotesCriacao = Math.ceil(toCreate.length / batchSize);
         for (let i = 0; i < toCreate.length; i += batchSize) {
           const batch = toCreate.slice(i, i + batchSize);
-          console.log(`Criando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(toCreate.length/batchSize)}`);
-          await base44.entities.Cliente.bulkCreate(batch);
-          // Delay entre lotes para evitar rate limit
+          const loteNum = Math.floor(i / batchSize) + 1;
+          toast.info(`Criando lote ${loteNum}/${totalLotesCriacao} (${batch.length} clientes)...`);
+          
+          // Retry com backoff para criação
+          let tentativa = 0;
+          while (tentativa < 4) {
+            try {
+              await base44.entities.Cliente.bulkCreate(batch);
+              break;
+            } catch (err) {
+              tentativa++;
+              if (tentativa >= 4) throw err;
+              const delay = 1000 * Math.pow(2, tentativa);
+              console.log(`Retry criação lote ${loteNum} (tentativa ${tentativa}, aguardando ${delay}ms)`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+          
           if (i + batchSize < toCreate.length) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
           }
         }
         console.log('Criação concluída!');
       }
 
-      // Executar atualizações via backend function em lotes
+      // Executar atualizações via backend function em lotes maiores
       if (toUpdate.length > 0) {
         console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
-        toast.info(`Atualizando ${toUpdate.length} clientes... Aguarde.`);
         
-        const LOTE_SIZE = 50;
+        const LOTE_SIZE = 200;
         let totalAtualizados = 0;
         let totalErros = 0;
+        let errosDetalhes = [];
+        const totalLotes = Math.ceil(toUpdate.length / LOTE_SIZE);
 
         for (let i = 0; i < toUpdate.length; i += LOTE_SIZE) {
           const lote = toUpdate.slice(i, i + LOTE_SIZE);
-          const loteNum = Math.floor(i/LOTE_SIZE) + 1;
-          const totalLotes = Math.ceil(toUpdate.length/LOTE_SIZE);
-          console.log(`Enviando lote ${loteNum}/${totalLotes} (${lote.length} clientes)`);
-          toast.info(`Atualizando lote ${loteNum}/${totalLotes}...`);
+          const loteNum = Math.floor(i / LOTE_SIZE) + 1;
+          toast.info(`Atualizando lote ${loteNum}/${totalLotes} (${lote.length} clientes)... ${totalAtualizados} já atualizados`);
           
-          const response = await base44.functions.invoke('bulkUpdateClientes', {
-            clientes: lote
-          });
+          // Retry com backoff para cada lote
+          let tentativa = 0;
+          let response;
+          while (tentativa < 4) {
+            try {
+              response = await base44.functions.invoke('bulkUpdateClientes', {
+                clientes: lote
+              });
+              break;
+            } catch (err) {
+              tentativa++;
+              if (tentativa >= 4) throw err;
+              const delay = 2000 * Math.pow(2, tentativa);
+              console.log(`Retry lote ${loteNum} (tentativa ${tentativa}, aguardando ${delay}ms)`);
+              toast.warning(`Lote ${loteNum} falhou, tentando novamente (${tentativa}/3)...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
           
           const data = response.data;
           
@@ -676,17 +706,23 @@ export default function Clientes() {
 
           totalAtualizados += data.atualizados || 0;
           totalErros += data.erros || 0;
+          if (data.detalhesErros?.length > 0) {
+            errosDetalhes = [...errosDetalhes, ...data.detalhesErros];
+          }
           
-          // Delay entre lotes para evitar sobrecarga
+          // Delay curto entre lotes
           if (i + LOTE_SIZE < toUpdate.length) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
         
         console.log(`Atualização concluída: ${totalAtualizados} atualizados, ${totalErros} erros`);
+        if (errosDetalhes.length > 0) {
+          console.log('Detalhes dos erros:', JSON.stringify(errosDetalhes.slice(0, 10)));
+        }
         
         if (totalErros > 0) {
-          toast.warning(`${totalAtualizados} atualizados, ${totalErros} erros`);
+          toast.warning(`${totalAtualizados} atualizados, ${totalErros} erros. Verifique o console para detalhes.`);
         }
       }
     } catch (error) {
