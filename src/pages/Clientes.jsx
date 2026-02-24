@@ -488,21 +488,6 @@ export default function Clientes() {
       return found ? found.id : null;
     };
 
-    console.log('=== DIAGNÓSTICO PRÉ-PROCESSAMENTO ===');
-    console.log('Total registros recebidos do modal:', data.length);
-    
-    // Verificar quantos tem razão social
-    const semRazao = data.filter(d => !d.razao_social || d.razao_social.trim() === '');
-    const semCodigo = data.filter(d => !d.codigo || String(d.codigo).trim() === '');
-    console.log('Sem razao_social:', semRazao.length);
-    console.log('Sem codigo:', semCodigo.length);
-    if (semRazao.length > 0) {
-      console.log('Primeiros sem razão:', JSON.stringify(semRazao.slice(0, 5).map(d => ({codigo: d.codigo, razao: d.razao_social, cpf: d.cpf_cnpj}))));
-    }
-    if (semCodigo.length > 0) {
-      console.log('Primeiros sem código:', JSON.stringify(semCodigo.slice(0, 5).map(d => ({codigo: d.codigo, razao: d.razao_social, cpf: d.cpf_cnpj}))));
-    }
-
     const clientesData = data.map(item => {
       // Validate and normalize status
       const validStatuses = ['ativo', 'inativo', 'prospecto'];
@@ -597,11 +582,8 @@ export default function Clientes() {
     const toCreate = [];
     const toUpdate = [];
     let naoEncontrados = 0;
-    const descartados = [];
-    const naoEncontradosDetalhes = [];
 
-    for (let idx = 0; idx < clientesData.length; idx++) {
-      const clienteData = clientesData[idx];
+    for (const clienteData of clientesData) {
       // Normalizar código para comparação
       const codigoNormalizado = String(clienteData.codigo || '').trim().toLowerCase();
       const existingClient = existingClientsMap[codigoNormalizado];
@@ -612,7 +594,6 @@ export default function Clientes() {
           toUpdate.push({ id: existingClient.id, data: clienteData });
         } else {
           naoEncontrados++;
-          naoEncontradosDetalhes.push({ linha: idx + 2, codigo: clienteData.codigo, razao: clienteData.razao_social });
         }
       } else {
         // Modo cadastro: cria novos e atualiza existentes
@@ -624,30 +605,22 @@ export default function Clientes() {
       }
     }
 
-    // Log completo
-    console.log('=== RELATÓRIO DE IMPORTAÇÃO ===');
-    console.log('Modo:', modoImportacao);
-    console.log('Total recebido do modal:', data.length);
-    console.log('Total após processamento:', clientesData.length);
-    console.log('Diferença (descartados):', data.length - clientesData.length);
-    console.log('Para criar:', toCreate.length);
-    console.log('Para atualizar:', toUpdate.length);
-    console.log('Não encontrados:', naoEncontrados);
-    
-    if (naoEncontradosDetalhes.length > 0) {
-      console.log('Códigos não encontrados (primeiros 20):', JSON.stringify(naoEncontradosDetalhes.slice(0, 20)));
-    }
-    
+    console.log('Importação - Modo:', modoImportacao);
+    console.log('Importação - Total no arquivo:', clientesData.length);
+    console.log('Importação - Para criar:', toCreate.length);
+    console.log('Importação - Para atualizar:', toUpdate.length);
+    console.log('Importação - Não encontrados:', naoEncontrados);
     if (clientesData.length > 0) {
+      console.log('Importação - Campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
+      console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
+      // Log primeiros 3 registros para debug
       clientesData.slice(0, 3).forEach((c, i) => {
-        console.log(`Registro ${i+1}: codigo=${c.codigo}, razao=${c.razao_social}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
+        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
       });
     }
-
-    // Informar descartados/não encontrados
-    if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
-      const exemplos = naoEncontradosDetalhes.slice(0, 10).map(d => `${d.codigo} (${d.razao || 'sem nome'})`).join(', ');
-      toast.warning(`⚠️ ${naoEncontrados} cliente(s) não encontrados no banco (códigos inexistentes): ${exemplos}${naoEncontrados > 10 ? '...' : ''}`);
+    if (toUpdate.length > 0) {
+      console.log('Importação - Campos do primeiro update:', JSON.stringify(Object.keys(toUpdate[0].data)));
+      console.log('Importação - Primeiro update estado:', toUpdate[0].data.estado, '| ie:', toUpdate[0].data.inscricao_estadual);
     }
 
     // Se modo atualização e nenhum cliente foi encontrado
@@ -800,17 +773,12 @@ export default function Clientes() {
 
     queryClient.invalidateQueries(['clientes']);
     
-    // Mensagem de sucesso detalhada
+    // Mensagem de sucesso
     const messages = [];
-    if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cadastrado(s)`);
-    if (toUpdate.length > 0) messages.push(`${toUpdate.length} atualizado(s)`);
+    if (toCreate.length > 0) messages.push(`${toCreate.length} novo(s) cliente(s) cadastrado(s)`);
+    if (toUpdate.length > 0) messages.push(`${toUpdate.length} cliente(s) atualizado(s)`);
     if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
       messages.push(`${naoEncontrados} código(s) não encontrado(s)`);
-    }
-    const totalProcessado = toCreate.length + toUpdate.length + naoEncontrados;
-    const totalRecebido = data.length;
-    if (totalProcessado !== totalRecebido) {
-      messages.push(`⚠️ ${totalRecebido - totalProcessado} registro(s) não processado(s)`);
     }
     toast.success(`✅ ${messages.join(' | ')}!`);
     

@@ -196,14 +196,14 @@ export default function BulkImportModal({
 
     const data = allRows.map(row => {
       const item = {};
-      // Incluir TODOS os campos do row (exceto _rowNum), mesmo vazios
+      // Incluir TODOS os campos do row (exceto _rowNum), independente se estão em columns ou não
       Object.keys(row).forEach(key => {
         if (key === '_rowNum') return;
         const val = row[key];
-        if (val === undefined) return;
+        if (val === undefined || val === '') return;
         // Aplicar conversão de tipo se definido em columns
         if (columnTypes[key] === 'number') {
-          item[key] = val === '' ? 0 : (parseFloat(val) || 0);
+          item[key] = parseFloat(val) || 0;
         } else {
           item[key] = val;
         }
