@@ -407,6 +407,9 @@ export default function RelatorioRoteiros() {
     const clientesProcessados = new Set();
 
     // Se existe roteiro fixo atual, processar seus clientes
+    // IMPORTANTE: Buscar visita por cliente_id independente do roteiro_id,
+    // pois se o roteiro foi recriado, o roteiro_id mudou mas as visitas já registradas
+    // apontam para o ID antigo. O que importa é: mesmo vendedor + mesmo cliente + mesma data.
     if (roteiroFixo?.clientes_detalhes) {
       roteiroFixo.clientes_detalhes.forEach((clienteDetalhe, idx) => {
         const clienteCompleto = findCliente(clienteDetalhe.cliente_id, clienteDetalhe.cliente_codigo);
@@ -447,7 +450,7 @@ export default function RelatorioRoteiros() {
     }
 
     // Agora processar visitas realizadas de clientes que NÃO estão no roteiro atual
-    // (clientes que foram removidos do roteiro ou roteiro que foi excluído)
+    // (clientes que foram removidos do roteiro ou que o roteiro foi excluído)
     Object.entries(visitasPorCliente).forEach(([clienteId, visitaRot]) => {
       if (clientesProcessados.has(clienteId)) return;
       
