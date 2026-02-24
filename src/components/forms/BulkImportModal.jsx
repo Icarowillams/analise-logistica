@@ -319,7 +319,7 @@ export default function BulkImportModal({
                     }}>
                       ✏️ Atualização Cadastral
                     </span>
-                    <span className="text-xs text-slate-500">Apenas atualiza clientes existentes</span>
+                    <span className="text-xs text-slate-500">Atualiza existentes e cadastra novos</span>
                   </div>
                 </label>
               </div>
