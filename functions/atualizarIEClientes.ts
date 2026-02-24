@@ -75,6 +75,8 @@ Deno.serve(async (req) => {
     atualizados, 
     total: dados.length,
     nao_encontrados: naoEncontrados.length,
-    nao_encontrados_codigos: naoEncontrados.slice(0, 50)
+    nao_encontrados_codigos: naoEncontrados.slice(0, 50),
+    erros: erros.length,
+    erros_codigos: erros.slice(0, 50)
   });
 });
