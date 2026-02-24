@@ -604,7 +604,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissa
           }
           
           // Invalidar queries para forçar refetch
-          await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+          await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
           await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
           await queryClient.invalidateQueries({ queryKey: ['visitas'] });
         },
@@ -684,7 +684,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissa
 
     toast.success(`✅ Check-in realizado! Visita #${numeroVisita}`);
     setLoading(false);
-    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
     await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
     await queryClient.invalidateQueries({ queryKey: ['visitas'] });
   };
@@ -747,7 +747,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissa
       toast.success(`Informação do pedido salva!`);
     }
 
-    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
     await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
     await queryClient.invalidateQueries({ queryKey: ['visitas'] });
     setShowPedidoDialog(false);
@@ -838,7 +838,7 @@ function CheckinButton({ cliente, roteiroId, vendedor, reagendamentoId, permissa
     }
 
     // Invalidar queries e aguardar
-    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
     await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
     await queryClient.invalidateQueries({ queryKey: ['visitas'] });
     await queryClient.invalidateQueries({ queryKey: ['visitasReagendadas'] });
@@ -1010,8 +1010,8 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
     await queryClient.invalidateQueries({ queryKey: ['visitas'] });
     await queryClient.invalidateQueries({ queryKey: ['visitasRoteiro'] });
     await queryClient.invalidateQueries({ queryKey: ['visitasReagendadas'] });
-    await queryClient.invalidateQueries({ queryKey: ['visitaRegistro', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
-    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['visitaRegistro', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
+    await queryClient.invalidateQueries({ queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()] });
     setSalvando(false);
   };
 
@@ -1103,16 +1103,25 @@ function PedidoInfoSection({ visitaRegistro, cliente, vendedor, permissaoUsuario
 function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
   const [activeTab, setActiveTab] = useState('estoque');
   const { data: visitaRegistro } = useQuery({
-    queryKey: ['visitaRegistro', cliente.cliente_id, vendedor.id, getLocalDateStr()],
+    queryKey: ['visitaRegistro', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
-      const visitas = await base44.entities.Visita.filter({ 
+      // Buscar por cliente_id primeiro
+      let visitas = await base44.entities.Visita.filter({ 
         cliente_id: cliente.cliente_id,
         vendedor_id: vendedor.id,
         data_visita: getLocalDateStr()
       });
+      // Fallback: buscar por cliente_codigo
+      if (visitas.length === 0 && cliente.cliente_codigo) {
+        const allVisitas = await base44.entities.Visita.filter({
+          vendedor_id: vendedor.id,
+          data_visita: getLocalDateStr()
+        });
+        visitas = allVisitas.filter(v => v.cliente_codigo === cliente.cliente_codigo || v.cliente_nome === cliente.cliente_nome);
+      }
       return visitas.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || null;
     },
-    enabled: !!vendedor?.id && !!cliente?.cliente_id,
+    enabled: !!vendedor?.id && (!!cliente?.cliente_id || !!cliente?.cliente_codigo),
     staleTime: 5 * 60 * 1000,
   });
 
