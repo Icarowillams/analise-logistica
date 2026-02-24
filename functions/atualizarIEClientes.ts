@@ -30,34 +30,43 @@ Deno.serve(async (req) => {
   let atualizados = 0;
   let naoEncontrados = [];
 
-  // Processar em lotes de 5 com delay para evitar rate limit
-  const batchSize = 5;
-  for (let i = 0; i < dados.length; i += batchSize) {
-    const batch = dados.slice(i, i + batchSize);
-    const promises = batch.map(async (item) => {
-      const cliente = clienteMap[item.codigo];
-      if (!cliente) {
-        naoEncontrados.push(item.codigo);
-        return;
-      }
-      
-      const updateData = {};
-      if (item.inscricao_estadual !== undefined && item.inscricao_estadual !== null) {
-        updateData.inscricao_estadual = item.inscricao_estadual;
-      }
-      if (item.estado && item.estado.length === 2) {
-        updateData.estado = item.estado;
-      }
-      
-      if (Object.keys(updateData).length > 0) {
+  // Processar sequencialmente com delay para evitar rate limit e timeout
+  for (let i = 0; i < dados.length; i++) {
+    const item = dados[i];
+    const cliente = clienteMap[item.codigo];
+    if (!cliente) {
+      naoEncontrados.push(item.codigo);
+      continue;
+    }
+    
+    const updateData = {};
+    if (item.inscricao_estadual !== undefined && item.inscricao_estadual !== null) {
+      updateData.inscricao_estadual = item.inscricao_estadual;
+    }
+    if (item.estado && item.estado.length === 2) {
+      updateData.estado = item.estado;
+    }
+    
+    if (Object.keys(updateData).length > 0) {
+      try {
         await base44.asServiceRole.entities.Cliente.update(cliente.id, updateData);
         atualizados++;
+      } catch (e) {
+        // Se rate limit, esperar e tentar de novo
+        if (e.message?.includes('Rate limit') || e.message?.includes('429')) {
+          await sleep(2000);
+          try {
+            await base44.asServiceRole.entities.Cliente.update(cliente.id, updateData);
+            atualizados++;
+          } catch (e2) {
+            erros.push(item.codigo);
+          }
+        } else {
+          erros.push(item.codigo);
+        }
       }
-    });
-    await Promise.all(promises);
-    // Delay entre lotes para evitar rate limit
-    if (i + batchSize < dados.length) {
-      await sleep(500);
+      // Pequeno delay entre cada update
+      if (i % 3 === 0) await sleep(200);
     }
   }
 
