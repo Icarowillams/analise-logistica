@@ -327,16 +327,30 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
   const queryClient = useQueryClient();
 
-  // Query dedicada: busca a visita do dia para este cliente/vendedor diretamente do backend
+  // Query dedicada: busca a visita do dia para este cliente/vendedor
+  // Busca por cliente_id OU por cliente_codigo (para lidar com IDs duplicados de clientes reimportados)
   const { data: todayVisita, isLoading: isLoadingVisita } = useQuery({
-    queryKey: ['clientTodayVisita', cliente.cliente_id, vendedor.id, getLocalDateStr()],
+    queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
-      const results = await base44.entities.VisitaRoteiro.filter({
+      // Tentar por cliente_id primeiro
+      let results = await base44.entities.VisitaRoteiro.filter({
         cliente_id: cliente.cliente_id,
         vendedor_id: vendedor.id,
         data_visita: getLocalDateStr(),
       }, '-created_date', 1);
-      return results[0] || null;
+      if (results.length > 0) return results[0];
+      
+      // Fallback: buscar por cliente_codigo se o ID não encontrou
+      if (cliente.cliente_codigo) {
+        const allResults = await base44.entities.VisitaRoteiro.filter({
+          vendedor_id: vendedor.id,
+          data_visita: getLocalDateStr(),
+          cliente_codigo: cliente.cliente_codigo,
+        }, '-created_date', 1);
+        if (allResults.length > 0) return allResults[0];
+      }
+      
+      return null;
     },
     enabled: !!vendedor?.id && !!cliente?.cliente_id,
     staleTime: 5 * 60 * 1000,
