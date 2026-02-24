@@ -467,7 +467,7 @@ export default function RelatorioRoteiros() {
         visitaRoteiro: visitaRot,
         visitaRegistro: visitaReg,
         dataVisita: visitaRot.data_visita || dataEspecifica,
-        roteiroAlterado: true // Flag para indicar que este cliente veio de um roteiro anterior
+        roteiroAlterado: true // Cliente não está no roteiro fixo atual
       };
 
       if (visitaRot.status === 'nao_atendido') {
