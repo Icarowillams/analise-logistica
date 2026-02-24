@@ -76,23 +76,7 @@ export default function BulkImportModal({
   };
 
   const parseCSV = (text) => {
-    // Normalizar quebras de linha (Windows \r\n → \n)
-    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const rawLines = normalizedText.split('\n');
-    
-    console.log('parseCSV - Total linhas brutas:', rawLines.length);
-    console.log('parseCSV - Primeiras 3 linhas brutas:', JSON.stringify(rawLines.slice(0, 3)));
-    console.log('parseCSV - Últimas 3 linhas brutas:', JSON.stringify(rawLines.slice(-3)));
-    
-    // Filtrar: manter apenas linhas que tenham algum conteúdo real (não só separadores)
-    const lines = rawLines.filter(line => {
-      // Remover todos os separadores e espaços - se sobrar algo, a linha tem dado
-      const stripped = line.replace(/[;\t,\s"']/g, '');
-      return stripped.length > 0;
-    });
-    
-    console.log('parseCSV - Linhas após filtro:', lines.length, '(header + dados = esperado', lines.length - 1, 'registros)');
-    
+    const lines = text.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
     
     const headerValues = parseCSVLine(lines[0]);
@@ -319,7 +303,7 @@ export default function BulkImportModal({
                     }}>
                       ✏️ Atualização Cadastral
                     </span>
-                    <span className="text-xs text-slate-500">Atualiza existentes e cadastra novos</span>
+                    <span className="text-xs text-slate-500">Apenas atualiza clientes existentes</span>
                   </div>
                 </label>
               </div>

@@ -452,9 +452,10 @@ export default function Clientes() {
       if (!item.status || item.status.trim() === '') emptyStatusCount++;
     });
 
-    // Se for modo atualização, avisar sobre registros sem código (mas não bloquear)
+    // Se for modo atualização, código é obrigatório
     if (modoImportacao === 'atualizacao' && emptyCodigoCount > 0) {
-      toast.warning(`⚠️ ${emptyCodigoCount} registro(s) sem código serão ignorados na atualização.`);
+      toast.error(`❌ Para atualização cadastral, todos os registros precisam ter código. ${emptyCodigoCount} registro(s) sem código.`);
+      return;
     }
 
     if (warnings.length > 0 && modoImportacao === 'cadastro') {
@@ -606,12 +607,10 @@ export default function Clientes() {
       const existingClient = existingClientsMap[codigoNormalizado];
       
       if (modoImportacao === 'atualizacao') {
-        // Modo atualização: atualiza existentes E cria os que não existem
+        // Modo atualização: só atualiza clientes existentes
         if (existingClient) {
           toUpdate.push({ id: existingClient.id, data: clienteData });
         } else {
-          // Cliente não encontrado no banco → cadastrar como novo
-          toCreate.push(clienteData);
           naoEncontrados++;
           naoEncontradosDetalhes.push({ linha: idx + 2, codigo: clienteData.codigo, razao: clienteData.razao_social });
         }
@@ -645,16 +644,16 @@ export default function Clientes() {
       });
     }
 
-    // Informar novos clientes que serão cadastrados (modo atualização)
+    // Informar descartados/não encontrados
     if (naoEncontrados > 0 && modoImportacao === 'atualizacao') {
       const exemplos = naoEncontradosDetalhes.slice(0, 10).map(d => `${d.codigo} (${d.razao || 'sem nome'})`).join(', ');
-      toast.info(`ℹ️ ${naoEncontrados} cliente(s) novos serão cadastrados: ${exemplos}${naoEncontrados > 10 ? '...' : ''}`);
+      toast.warning(`⚠️ ${naoEncontrados} cliente(s) não encontrados no banco (códigos inexistentes): ${exemplos}${naoEncontrados > 10 ? '...' : ''}`);
     }
 
-    // Se modo atualização e não tem nada para fazer
-    if (modoImportacao === 'atualizacao' && toUpdate.length === 0 && toCreate.length === 0) {
+    // Se modo atualização e nenhum cliente foi encontrado
+    if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
       setIsImporting(false);
-      toast.error(`❌ Nenhum cliente encontrado para atualização ou cadastro. Verifique se os códigos estão corretos.`);
+      toast.error(`❌ Nenhum cliente encontrado para atualização. Verifique se os códigos estão corretos.`);
       return;
     }
 
