@@ -76,7 +76,12 @@ export default function BulkImportModal({
   };
 
   const parseCSV = (text) => {
-    const lines = text.split('\n').filter(line => line.trim());
+    const rawLines = text.split('\n');
+    // Manter linhas que tenham pelo menos algum conteúdo entre separadores
+    const lines = rawLines.filter(line => {
+      const stripped = line.replace(/[;\t,]/g, '').trim();
+      return stripped.length > 0;
+    });
     if (lines.length === 0) return [];
     
     const headerValues = parseCSVLine(lines[0]);
