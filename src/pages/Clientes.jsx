@@ -488,6 +488,21 @@ export default function Clientes() {
       return found ? found.id : null;
     };
 
+    console.log('=== DIAGNÓSTICO PRÉ-PROCESSAMENTO ===');
+    console.log('Total registros recebidos do modal:', data.length);
+    
+    // Verificar quantos tem razão social
+    const semRazao = data.filter(d => !d.razao_social || d.razao_social.trim() === '');
+    const semCodigo = data.filter(d => !d.codigo || String(d.codigo).trim() === '');
+    console.log('Sem razao_social:', semRazao.length);
+    console.log('Sem codigo:', semCodigo.length);
+    if (semRazao.length > 0) {
+      console.log('Primeiros sem razão:', JSON.stringify(semRazao.slice(0, 5).map(d => ({codigo: d.codigo, razao: d.razao_social, cpf: d.cpf_cnpj}))));
+    }
+    if (semCodigo.length > 0) {
+      console.log('Primeiros sem código:', JSON.stringify(semCodigo.slice(0, 5).map(d => ({codigo: d.codigo, razao: d.razao_social, cpf: d.cpf_cnpj}))));
+    }
+
     const clientesData = data.map(item => {
       // Validate and normalize status
       const validStatuses = ['ativo', 'inativo', 'prospecto'];
