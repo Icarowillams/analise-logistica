@@ -204,9 +204,11 @@ export default function AnaliseVisitas() {
     return total;
   }, [roteirosFiltrados, dataInicio, dataFim]);
 
-  // Visitas realizadas (apenas concluídas - sem contar em andamento)
+  // Visitas realizadas (status concluida ou checkin_realizado)
   const visitasRealizadas = useMemo(() => {
-    return visitasRoteiroFiltradas.filter(v => v.status === 'concluida');
+    return visitasRoteiroFiltradas.filter(v => 
+      v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento'
+    );
   }, [visitasRoteiroFiltradas]);
 
   // Visitas não atendidas
