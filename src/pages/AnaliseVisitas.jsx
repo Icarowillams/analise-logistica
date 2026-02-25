@@ -520,7 +520,7 @@ export default function AnaliseVisitas() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Início</label>
               <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
@@ -530,18 +530,53 @@ export default function AnaliseVisitas() {
               <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Vendedor</label>
-              <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Supervisor</label>
+              <Select value={filtroSupervisor} onValueChange={(val) => { setFiltroSupervisor(val); setFiltroFuncionarios([]); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
-                  {vendedores
-                    .filter(v => vendedoresPermitidosIds === null || vendedoresPermitidosIds.has(v.id))
-                    .map(v => (
-                      <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                    ))}
+                  {supervisores.sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Funcionário</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal">
+                    {filtroFuncionarios.length === 0 
+                      ? 'Todos' 
+                      : `${filtroFuncionarios.length} selecionado(s)`}
+                    <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {funcionariosParaFiltro.map(v => (
+                      <div 
+                        key={v.id}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer"
+                        onClick={() => toggleFuncionario(v.id)}
+                      >
+                        <Checkbox checked={filtroFuncionarios.includes(v.id)} />
+                        <span className="text-sm">{v.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {filtroFuncionarios.length > 0 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full mt-2 text-xs"
+                      onClick={() => setFiltroFuncionarios([])}
+                    >
+                      Limpar seleção
+                    </Button>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Rota</label>
@@ -561,7 +596,7 @@ export default function AnaliseVisitas() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-between font-normal">
                     {filtroFuncoes.length === 0 
-                      ? 'Todas as funções' 
+                      ? 'Todas' 
                       : `${filtroFuncoes.length} selecionada(s)`}
                     <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
                   </Button>
