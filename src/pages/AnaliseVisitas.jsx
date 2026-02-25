@@ -82,17 +82,30 @@ export default function AnaliseVisitas() {
     return rotas.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
   }, [rotas]);
 
-  // Vendedores filtrados por função
+  // Mapa de funcao_id -> nome para lookup
+  const funcoesMap = useMemo(() => {
+    const m = {};
+    funcoes.forEach(f => { m[f.id] = f.nome; });
+    return m;
+  }, [funcoes]);
+
+  // Vendedores filtrados por função (usa funcao_id se preenchido, senão usa campo legado funcao)
   const vendedoresIdsPorFuncao = useMemo(() => {
     if (filtroFuncoes.length === 0) return null; // sem filtro
+    // Nomes das funções selecionadas
+    const nomesSelecionados = filtroFuncoes.map(id => funcoesMap[id]?.toLowerCase()).filter(Boolean);
     const ids = new Set();
     vendedores.forEach(v => {
-      if (filtroFuncoes.includes(v.funcao_id)) {
+      // Tenta por funcao_id primeiro
+      if (v.funcao_id && filtroFuncoes.includes(v.funcao_id)) {
+        ids.add(v.id);
+      } else if (!v.funcao_id && v.funcao && nomesSelecionados.includes(v.funcao.toLowerCase())) {
+        // Fallback: comparar campo legado funcao (string) com nome da função
         ids.add(v.id);
       }
     });
     return ids;
-  }, [vendedores, filtroFuncoes]);
+  }, [vendedores, filtroFuncoes, funcoesMap]);
 
   // Visitas filtradas por período e vendedor/rota/função (usa VisitaRoteiro para dados de execução)
   const visitasRoteiroFiltradas = useMemo(() => {
