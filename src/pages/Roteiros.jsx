@@ -745,10 +745,10 @@ function ImportarTab() {
         return;
       }
 
-      // Criar roteiros em massa
-      const roteirosParaCriar = [];
+      // Montar roteiros para envio ao backend (upsert)
+      const roteirosParaImportar = [];
       for (const [key, data] of roteirosMap.entries()) {
-        roteirosParaCriar.push({
+        roteirosParaImportar.push({
           vendedor_id: data.vendedor_id,
           vendedor_nome: data.vendedor_nome,
           dia_semana: data.dia_semana,
@@ -756,6 +756,7 @@ function ImportarTab() {
           clientes_detalhes: data.clientes.map((c, idx) => ({
             cliente_id: c.id,
             cliente_nome: c.razao_social || c.nome_fantasia,
+            nome_fantasia: c.nome_fantasia,
             cliente_codigo: c.codigo,
             cliente_cidade: c.cidade,
             ordem: idx + 1
@@ -764,20 +765,34 @@ function ImportarTab() {
         });
       }
 
-      if (roteirosParaCriar.length > 0) {
-        await base44.entities.Roteiro.bulkCreate(roteirosParaCriar);
-      }
+      if (roteirosParaImportar.length > 0) {
+        // Enviar via backend function que faz upsert (atualiza existentes, cria novos)
+        const response = await base44.functions.invoke('bulkImportRoteiros', {
+          roteiros: roteirosParaImportar
+        });
+        const resultado = response.data;
 
-      queryClient.invalidateQueries(['roteiros']);
-      
-      let msg = `✅ ${roteirosParaCriar.length} roteiros criados com sucesso!`;
-      if (clientesNaoEncontrados.size > 0) {
-        msg += `\n\n⚠️ ${clientesNaoEncontrados.size} cliente(s) não cadastrado(s) foram salvos no log.`;
+        queryClient.invalidateQueries(['roteiros']);
+        
+        let msg = `✅ Importação concluída!\n\n📊 ${resultado.criados || 0} roteiros criados\n🔄 ${resultado.atualizados || 0} roteiros atualizados`;
+        if (clientesNaoEncontrados.size > 0) {
+          msg += `\n\n⚠️ ${clientesNaoEncontrados.size} cliente(s) não cadastrado(s) foram salvos no log.`;
+        }
+        if (resultado.erros > 0) {
+          msg += `\n\n❌ ${resultado.erros} roteiros com erros.`;
+        }
+        if (erros.length > clientesNaoEncontrados.size) {
+          msg += `\n\n⚠️ ${erros.length - clientesNaoEncontrados.size} outras linhas com erros foram ignoradas.`;
+        }
+        alert(msg);
+      } else {
+        queryClient.invalidateQueries(['roteiros']);
+        let msg = 'Nenhum roteiro válido para importar.';
+        if (clientesNaoEncontrados.size > 0) {
+          msg += `\n\n⚠️ ${clientesNaoEncontrados.size} cliente(s) não cadastrado(s) foram salvos no log.`;
+        }
+        alert(msg);
       }
-      if (erros.length > clientesNaoEncontrados.size) {
-        msg += `\n\n⚠️ ${erros.length - clientesNaoEncontrados.size} outras linhas com erros foram ignoradas.`;
-      }
-      alert(msg);
       setImportData('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (error) {

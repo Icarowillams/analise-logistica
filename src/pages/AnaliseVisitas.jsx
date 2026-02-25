@@ -7,13 +7,15 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
+  LineChart, Line, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { 
   TrendingUp, Users, MapPin, Filter, Calendar, 
-  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText
+  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,6 +29,7 @@ export default function AnaliseVisitas() {
   const [dataFim, setDataFim] = useState(() => new Date().toISOString().split('T')[0]);
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
   const [filtroRota, setFiltroRota] = useState('todos');
+  const [filtroFuncoes, setFiltroFuncoes] = useState([]);
 
   // Visita = registro de contabilização, VisitaRoteiro = registro de execução do roteiro
   const { data: visitas = [] } = useQuery({
@@ -59,6 +62,11 @@ export default function AnaliseVisitas() {
     queryFn: () => base44.entities.Cliente.list()
   });
 
+  const { data: funcoes = [] } = useQuery({
+    queryKey: ['funcoes'],
+    queryFn: () => base44.entities.Funcao.list()
+  });
+
   // Permissões de visibilidade de clientes
   const { filtrarClientes, filtrarPorCliente, filtrarRoteiros, vendedoresPermitidosIds } = useClientesPermissao();
 
@@ -74,17 +82,29 @@ export default function AnaliseVisitas() {
     return rotas.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
   }, [rotas]);
 
-  // Visitas filtradas por período e vendedor/rota (usa VisitaRoteiro para dados de execução)
+  // Vendedores filtrados por função
+  const vendedoresIdsPorFuncao = useMemo(() => {
+    if (filtroFuncoes.length === 0) return null; // sem filtro
+    const ids = new Set();
+    vendedores.forEach(v => {
+      if (filtroFuncoes.includes(v.funcao_id)) {
+        ids.add(v.id);
+      }
+    });
+    return ids;
+  }, [vendedores, filtroFuncoes]);
+
+  // Visitas filtradas por período e vendedor/rota/função (usa VisitaRoteiro para dados de execução)
   const visitasRoteiroFiltradas = useMemo(() => {
     let resultado = visitasRoteiro.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
       if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
+      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(v.vendedor_id)) return false;
       return true;
     });
-    // Aplicar filtro de permissão por cliente
     return filtrarPorCliente(resultado);
-  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota, filtrarPorCliente]);
+  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota, vendedoresIdsPorFuncao, filtrarPorCliente]);
 
   // Manter compatibilidade com visitas da entidade Visita
   const visitasFiltradas = useMemo(() => {
@@ -92,11 +112,11 @@ export default function AnaliseVisitas() {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
       if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
+      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(v.vendedor_id)) return false;
       return true;
     });
-    // Aplicar filtro de permissão por cliente
     return filtrarPorCliente(resultado);
-  }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota, filtrarPorCliente]);
+  }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota, vendedoresIdsPorFuncao, filtrarPorCliente]);
 
   // Roteiros filtrados por permissão de clientes da base
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
@@ -105,9 +125,10 @@ export default function AnaliseVisitas() {
   const roteirosFiltrados = useMemo(() => {
     return roteirosPermitidos.filter(r => {
       if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
+      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(r.vendedor_id)) return false;
       return true;
     });
-  }, [roteirosPermitidos, filtroVendedor]);
+  }, [roteirosPermitidos, filtroVendedor, vendedoresIdsPorFuncao]);
 
   // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 
@@ -220,17 +241,41 @@ export default function AnaliseVisitas() {
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
 
-  // Visitas por dia (baseado em VisitaRoteiro)
+  // Visitas por dia (baseado em VisitaRoteiro) + pendentes do roteiro
   const visitasPorDia = useMemo(() => {
     const map = {};
     visitasRoteiroFiltradas.forEach(v => {
       const data = v.data_visita;
-      if (!map[data]) map[data] = { data, realizadas: 0, naoRealizadas: 0 };
+      if (!map[data]) map[data] = { data, realizadas: 0, naoRealizadas: 0, pendentes: 0 };
       
       if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
         map[data].realizadas++;
       } else if (v.status === 'nao_atendido') {
         map[data].naoRealizadas++;
+      } else if (v.status === 'pendente') {
+        map[data].pendentes++;
+      }
+    });
+
+    // Calcular pendentes baseados no roteiro para dias que têm visitas mas podem ter clientes não visitados
+    const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
+    diasNoPeriodo.forEach(dia => {
+      const diaSemana = getDiaSemana(dia);
+      let agendadasNoDia = 0;
+      roteirosFiltrados.forEach(r => {
+        if (r.dia_semana === diaSemana) {
+          agendadasNoDia += (r.clientes_ids?.length || 0);
+        }
+      });
+      
+      if (agendadasNoDia > 0) {
+        if (!map[dia]) map[dia] = { data: dia, realizadas: 0, naoRealizadas: 0, pendentes: 0 };
+        const visitadasNoDia = map[dia].realizadas + map[dia].naoRealizadas + map[dia].pendentes;
+        // Se há mais agendadas que visitadas, a diferença são pendentes adicionais
+        const pendentesDiff = agendadasNoDia - visitadasNoDia;
+        if (pendentesDiff > 0) {
+          map[dia].pendentes += pendentesDiff;
+        }
       }
     });
 
@@ -241,7 +286,7 @@ export default function AnaliseVisitas() {
         ...item,
         dataFormatada: new Date(item.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
       }));
-  }, [visitasRoteiroFiltradas]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, dataInicio, dataFim]);
 
   // Clientes por vendedor
   const clientesPorVendedor = useMemo(() => {
@@ -262,12 +307,6 @@ export default function AnaliseVisitas() {
       .sort((a, b) => b.clientes - a.clientes)
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
-
-  // Distribuição de visitas por status
-  const distribuicaoVisitas = useMemo(() => [
-    { name: 'Realizadas', value: stats.totalRealizadas, color: '#10b981' },
-    { name: 'Não Realizadas', value: stats.totalNaoAtendidas, color: '#ef4444' }
-  ].filter(item => item.value > 0), [stats]);
 
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
@@ -332,6 +371,15 @@ export default function AnaliseVisitas() {
     setDataFim(new Date().toISOString().split('T')[0]);
     setFiltroVendedor('todos');
     setFiltroRota('todos');
+    setFiltroFuncoes([]);
+  };
+
+  const toggleFuncao = (funcaoId) => {
+    setFiltroFuncoes(prev => 
+      prev.includes(funcaoId) 
+        ? prev.filter(id => id !== funcaoId) 
+        : [...prev, funcaoId]
+    );
   };
 
   return (
@@ -359,7 +407,7 @@ export default function AnaliseVisitas() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Início</label>
               <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
@@ -393,6 +441,43 @@ export default function AnaliseVisitas() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Função</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal">
+                    {filtroFuncoes.length === 0 
+                      ? 'Todas as funções' 
+                      : `${filtroFuncoes.length} selecionada(s)`}
+                    <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2" align="start">
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {funcoes.filter(f => f.status === 'ativo').map(f => (
+                      <div 
+                        key={f.id}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer"
+                        onClick={() => toggleFuncao(f.id)}
+                      >
+                        <Checkbox checked={filtroFuncoes.includes(f.id)} />
+                        <span className="text-sm">{f.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {filtroFuncoes.length > 0 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full mt-2 text-xs"
+                      onClick={() => setFiltroFuncoes([])}
+                    >
+                      Limpar seleção
+                    </Button>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </CardContent>
@@ -437,57 +522,29 @@ export default function AnaliseVisitas() {
         />
       </div>
 
-      {/* Gráficos lado a lado */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Evolução Diária de Visitas */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              <CardTitle className="text-lg">Evolução Diária de Visitas</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={visitasPorDia}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="dataFormatada" fontSize={11} />
-                <YAxis fontSize={11} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="realizadas" name="Realizado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="naoRealizadas" name="Não Realizado" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Distribuição de Visitas */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-purple-600" />
-              <CardTitle className="text-lg">Distribuição de Visitas</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={distribuicaoVisitas} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" width={120} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="value" name="Quantidade">
-                  {distribuicaoVisitas.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Evolução Diária de Visitas - largura total */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-indigo-600" />
+            <CardTitle className="text-lg">Evolução Diária de Visitas</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={350}>
+            <LineChart data={visitasPorDia}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="dataFormatada" fontSize={11} />
+              <YAxis fontSize={11} />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="realizadas" name="Realizadas" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="naoRealizadas" name="Não Realizadas" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="pendentes" name="Pendentes" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* Tabela de Performance por Funcionário */}
       <Card className="border-0 shadow-lg">
