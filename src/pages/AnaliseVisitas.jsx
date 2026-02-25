@@ -321,7 +321,7 @@ export default function AnaliseVisitas() {
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
 
-  // Tabela de Performance por Funcionário (baseado em VisitaRoteiro + Visita para pedidos)
+  // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
     const map = {};
     
@@ -335,8 +335,6 @@ export default function AnaliseVisitas() {
           agendadas: 0,
           realizadas: 0,
           naoRealizadas: 0,
-          emAndamento: 0,
-          pendentes: 0,
           comPedido: 0,
           semPedido: 0
         };
@@ -349,7 +347,7 @@ export default function AnaliseVisitas() {
       });
     });
     
-    // Contar visitas do VisitaRoteiro (status e andamento)
+    // Contar visitas do VisitaRoteiro
     visitasRoteiroFiltradas.forEach(v => {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!map[vendedorId]) {
@@ -358,49 +356,33 @@ export default function AnaliseVisitas() {
           agendadas: 0,
           realizadas: 0,
           naoRealizadas: 0,
-          emAndamento: 0,
-          pendentes: 0,
           comPedido: 0,
           semPedido: 0
         };
       }
       
-      if (v.status === 'concluida') {
+      // Contar como realizada se status for concluida, checkin_realizado ou em_andamento
+      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
         map[vendedorId].realizadas++;
-      } else if (v.status === 'checkin_realizado' || v.status === 'em_andamento') {
-        map[vendedorId].emAndamento++;
       } else if (v.status === 'nao_atendido') {
         map[vendedorId].naoRealizadas++;
-      } else if (v.status === 'pendente') {
-        map[vendedorId].pendentes++;
       }
-    });
-
-    // Calcular pendentes: agendadas - (realizadas + naoRealizadas + emAndamento + pendentes já contados)
-    Object.keys(map).forEach(vendedorId => {
-      const item = map[vendedorId];
-      const totalComStatus = item.realizadas + item.naoRealizadas + item.emAndamento + item.pendentes;
-      if (item.agendadas > totalComStatus) {
-        item.pendentes = item.agendadas - item.realizadas - item.naoRealizadas - item.emAndamento;
-      }
-    });
-    
-    // Usar entidade Visita para contar pedidos (pedido_solicitado está na Visita, não no VisitaRoteiro)
-    visitasFiltradas.forEach(v => {
-      const vendedorId = v.vendedor_id || 'sem_vendedor';
-      if (!map[vendedorId]) return;
       
-      if (v.pedido_solicitado === true) {
-        map[vendedorId].comPedido++;
-      } else if (v.pedido_solicitado === false) {
-        map[vendedorId].semPedido++;
+      // Contar pedido solicitado: true = com pedido, false = sem pedido
+      // Considerar para visitas que já foram atendidas (concluída, checkin, em_andamento)
+      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        if (v.pedido_solicitado === true) {
+          map[vendedorId].comPedido++;
+        } else if (v.pedido_solicitado === false) {
+          map[vendedorId].semPedido++;
+        }
       }
     });
     
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasRoteiroFiltradas, visitasFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
 
   const limparFiltros = () => {
     const d = new Date();
@@ -602,8 +584,6 @@ export default function AnaliseVisitas() {
                   <TableHead className="font-semibold text-center">Agendadas</TableHead>
                   <TableHead className="font-semibold text-center text-green-600">Realizadas</TableHead>
                   <TableHead className="font-semibold text-center text-red-600">Não Realizadas</TableHead>
-                  <TableHead className="font-semibold text-center text-amber-600">Em Andamento</TableHead>
-                  <TableHead className="font-semibold text-center text-slate-500">Pendentes</TableHead>
                   <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
                   <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
                   <TableHead className="font-semibold text-center">Ações</TableHead>
@@ -624,12 +604,6 @@ export default function AnaliseVisitas() {
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-amber-600 font-medium">{item.emAndamento}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-slate-500 font-medium">{item.pendentes}</span>
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="text-blue-600 font-medium">{item.comPedido}</span>
