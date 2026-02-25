@@ -158,25 +158,23 @@ export default function AnaliseVisitas() {
   const visitasRoteiroFiltradas = useMemo(() => {
     let resultado = visitasRoteiro.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
-      if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
-      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(v.vendedor_id)) return false;
+      if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(v.vendedor_id)) return false;
       return true;
     });
     return filtrarPorCliente(resultado);
-  }, [visitasRoteiro, dataInicio, dataFim, filtroVendedor, filtroRota, vendedoresIdsPorFuncao, filtrarPorCliente]);
+  }, [visitasRoteiro, dataInicio, dataFim, filtroRota, vendedoresIdsFiltrados, filtrarPorCliente]);
 
   // Manter compatibilidade com visitas da entidade Visita
   const visitasFiltradas = useMemo(() => {
     let resultado = visitas.filter(v => {
       if (v.data_visita < dataInicio || v.data_visita > dataFim) return false;
-      if (filtroVendedor !== 'todos' && v.vendedor_id !== filtroVendedor) return false;
       if (filtroRota !== 'todos' && v.roteiro_id !== filtroRota) return false;
-      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(v.vendedor_id)) return false;
+      if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(v.vendedor_id)) return false;
       return true;
     });
     return filtrarPorCliente(resultado);
-  }, [visitas, dataInicio, dataFim, filtroVendedor, filtroRota, vendedoresIdsPorFuncao, filtrarPorCliente]);
+  }, [visitas, dataInicio, dataFim, filtroRota, vendedoresIdsFiltrados, filtrarPorCliente]);
 
   // Roteiros filtrados por permissão de clientes da base
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
@@ -184,11 +182,10 @@ export default function AnaliseVisitas() {
   // Roteiros filtrados
   const roteirosFiltrados = useMemo(() => {
     return roteirosPermitidos.filter(r => {
-      if (filtroVendedor !== 'todos' && r.vendedor_id !== filtroVendedor) return false;
-      if (vendedoresIdsPorFuncao && !vendedoresIdsPorFuncao.has(r.vendedor_id)) return false;
+      if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(r.vendedor_id)) return false;
       return true;
     });
-  }, [roteirosPermitidos, filtroVendedor, vendedoresIdsPorFuncao]);
+  }, [roteirosPermitidos, vendedoresIdsFiltrados]);
 
   // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 
