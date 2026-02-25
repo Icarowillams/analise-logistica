@@ -639,6 +639,12 @@ export default function AnaliseVisitas() {
                       <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
                     </TableCell>
                     <TableCell className="text-center">
+                      <span className="text-amber-600 font-medium">{item.emAndamento}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-yellow-600 font-medium">{item.pendentes}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
                       <span className="text-blue-600 font-medium">{item.comPedido}</span>
                     </TableCell>
                     <TableCell className="text-center">
