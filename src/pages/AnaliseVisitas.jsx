@@ -27,7 +27,8 @@ export default function AnaliseVisitas() {
     return d.toISOString().split('T')[0];
   });
   const [dataFim, setDataFim] = useState(() => new Date().toISOString().split('T')[0]);
-  const [filtroVendedor, setFiltroVendedor] = useState('todos');
+  const [filtroFuncionarios, setFiltroFuncionarios] = useState([]);
+  const [filtroSupervisor, setFiltroSupervisor] = useState('todos');
   const [filtroRota, setFiltroRota] = useState('todos');
   const [filtroFuncoes, setFiltroFuncoes] = useState([]);
 
@@ -89,23 +90,69 @@ export default function AnaliseVisitas() {
     return m;
   }, [funcoes]);
 
+  // Lista de supervisores (vendedores que são referenciados como supervisor_id)
+  const supervisores = useMemo(() => {
+    const supervisorIds = new Set();
+    vendedores.forEach(v => {
+      if (v.supervisor_id && vendedoresMap[v.supervisor_id]) {
+        supervisorIds.add(v.supervisor_id);
+      }
+    });
+    return Array.from(supervisorIds).map(id => vendedoresMap[id]).filter(Boolean);
+  }, [vendedores, vendedoresMap]);
+
   // Vendedores filtrados por função (usa funcao_id se preenchido, senão usa campo legado funcao)
   const vendedoresIdsPorFuncao = useMemo(() => {
     if (filtroFuncoes.length === 0) return null; // sem filtro
-    // Nomes das funções selecionadas
     const nomesSelecionados = filtroFuncoes.map(id => funcoesMap[id]?.toLowerCase()).filter(Boolean);
     const ids = new Set();
     vendedores.forEach(v => {
-      // Tenta por funcao_id primeiro
       if (v.funcao_id && filtroFuncoes.includes(v.funcao_id)) {
         ids.add(v.id);
       } else if (!v.funcao_id && v.funcao && nomesSelecionados.includes(v.funcao.toLowerCase())) {
-        // Fallback: comparar campo legado funcao (string) com nome da função
         ids.add(v.id);
       }
     });
     return ids;
   }, [vendedores, filtroFuncoes, funcoesMap]);
+
+  // IDs dos vendedores filtrados por supervisor
+  const vendedoresIdsPorSupervisor = useMemo(() => {
+    if (filtroSupervisor === 'todos') return null;
+    const ids = new Set();
+    vendedores.forEach(v => {
+      if (v.supervisor_id === filtroSupervisor) {
+        ids.add(v.id);
+      }
+    });
+    return ids;
+  }, [vendedores, filtroSupervisor]);
+
+  // Combinar todos os filtros de vendedores (funcionários selecionados, função, supervisor)
+  const vendedoresIdsFiltrados = useMemo(() => {
+    // Se nenhum filtro ativo, retorna null (sem filtro)
+    if (filtroFuncionarios.length === 0 && !vendedoresIdsPorFuncao && !vendedoresIdsPorSupervisor) return null;
+    
+    // Começar com todos os vendedores
+    let ids = new Set(vendedores.map(v => v.id));
+    
+    // Filtrar por funcionários selecionados
+    if (filtroFuncionarios.length > 0) {
+      ids = new Set(filtroFuncionarios.filter(id => ids.has(id)));
+    }
+    
+    // Filtrar por função
+    if (vendedoresIdsPorFuncao) {
+      ids = new Set([...ids].filter(id => vendedoresIdsPorFuncao.has(id)));
+    }
+    
+    // Filtrar por supervisor
+    if (vendedoresIdsPorSupervisor) {
+      ids = new Set([...ids].filter(id => vendedoresIdsPorSupervisor.has(id)));
+    }
+    
+    return ids;
+  }, [filtroFuncionarios, vendedoresIdsPorFuncao, vendedoresIdsPorSupervisor, vendedores]);
 
   // Visitas filtradas por período e vendedor/rota/função (usa VisitaRoteiro para dados de execução)
   const visitasRoteiroFiltradas = useMemo(() => {
