@@ -321,6 +321,16 @@ export default function AnaliseVisitas() {
       .slice(0, 10);
   }, [visitasFiltradas, vendedoresMap]);
 
+  // Mapa de pedido_solicitado da entidade Visita (por chave vendedor+cliente+data)
+  const visitaPedidoMap = useMemo(() => {
+    const m = {};
+    visitasFiltradas.forEach(v => {
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      m[key] = v.pedido_solicitado;
+    });
+    return m;
+  }, [visitasFiltradas]);
+
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
     const map = {};
@@ -335,6 +345,8 @@ export default function AnaliseVisitas() {
           agendadas: 0,
           realizadas: 0,
           naoRealizadas: 0,
+          emAndamento: 0,
+          pendentes: 0,
           comPedido: 0,
           semPedido: 0
         };
@@ -356,33 +368,52 @@ export default function AnaliseVisitas() {
           agendadas: 0,
           realizadas: 0,
           naoRealizadas: 0,
+          emAndamento: 0,
+          pendentes: 0,
           comPedido: 0,
           semPedido: 0
         };
       }
       
-      // Contar como realizada se status for concluida, checkin_realizado ou em_andamento
-      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+      if (v.status === 'concluida') {
         map[vendedorId].realizadas++;
       } else if (v.status === 'nao_atendido') {
         map[vendedorId].naoRealizadas++;
+      } else if (v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        map[vendedorId].emAndamento++;
+      } else if (v.status === 'pendente') {
+        map[vendedorId].pendentes++;
       }
       
-      // Contar pedido solicitado: true = com pedido, false = sem pedido
-      // Considerar para visitas que já foram atendidas (concluída, checkin, em_andamento)
+      // Buscar pedido_solicitado: primeiro tenta do VisitaRoteiro, senão cruza com Visita
+      const pedido = v.pedido_solicitado != null 
+        ? v.pedido_solicitado 
+        : visitaPedidoMap[`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`];
+      
+      // Contar apenas para visitas atendidas (concluída, checkin, em_andamento)
       if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
-        if (v.pedido_solicitado === true) {
+        if (pedido === true) {
           map[vendedorId].comPedido++;
-        } else if (v.pedido_solicitado === false) {
+        } else if (pedido === false) {
           map[vendedorId].semPedido++;
         }
+      }
+    });
+
+    // Calcular pendentes adicionais (agendadas - todas as que já tem registro)
+    Object.keys(map).forEach(vendedorId => {
+      const item = map[vendedorId];
+      const totalComRegistro = item.realizadas + item.naoRealizadas + item.emAndamento + item.pendentes;
+      const pendentesDiff = item.agendadas - totalComRegistro;
+      if (pendentesDiff > 0) {
+        item.pendentes += pendentesDiff;
       }
     });
     
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap]);
 
   const limparFiltros = () => {
     const d = new Date();
