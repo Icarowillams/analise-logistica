@@ -355,8 +355,15 @@ export default function AnaliseVisitas() {
         map[vendedorId].naoRealizadas++;
       }
       
-      if (v.pedido_solicitado === true) map[vendedorId].comPedido++;
-      if (v.pedido_solicitado === false) map[vendedorId].semPedido++;
+      // Contar pedido solicitado: true = com pedido, false = sem pedido
+      // Considerar para visitas que já foram atendidas (concluída, checkin, em_andamento)
+      if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        if (v.pedido_solicitado === true) {
+          map[vendedorId].comPedido++;
+        } else if (v.pedido_solicitado === false) {
+          map[vendedorId].semPedido++;
+        }
+      }
     });
     
     return Object.values(map)
