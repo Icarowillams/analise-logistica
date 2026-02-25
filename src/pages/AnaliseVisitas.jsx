@@ -615,6 +615,8 @@ export default function AnaliseVisitas() {
                   <TableHead className="font-semibold text-center">Agendadas</TableHead>
                   <TableHead className="font-semibold text-center text-green-600">Realizadas</TableHead>
                   <TableHead className="font-semibold text-center text-red-600">Não Realizadas</TableHead>
+                  <TableHead className="font-semibold text-center text-amber-600">Em Andamento</TableHead>
+                  <TableHead className="font-semibold text-center text-yellow-600">Pendentes</TableHead>
                   <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
                   <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
                   <TableHead className="font-semibold text-center">Ações</TableHead>
