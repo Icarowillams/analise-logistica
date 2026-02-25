@@ -464,7 +464,8 @@ export default function AnaliseVisitas() {
     d.setDate(1);
     setDataInicio(d.toISOString().split('T')[0]);
     setDataFim(new Date().toISOString().split('T')[0]);
-    setFiltroVendedor('todos');
+    setFiltroFuncionarios([]);
+    setFiltroSupervisor('todos');
     setFiltroRota('todos');
     setFiltroFuncoes([]);
   };
@@ -476,6 +477,23 @@ export default function AnaliseVisitas() {
         : [...prev, funcaoId]
     );
   };
+
+  const toggleFuncionario = (vendedorId) => {
+    setFiltroFuncionarios(prev => 
+      prev.includes(vendedorId) 
+        ? prev.filter(id => id !== vendedorId) 
+        : [...prev, vendedorId]
+    );
+  };
+
+  // Lista de funcionários para o filtro (respeitando permissões e filtro de supervisor)
+  const funcionariosParaFiltro = useMemo(() => {
+    let lista = vendedores.filter(v => vendedoresPermitidosIds === null || vendedoresPermitidosIds.has(v.id));
+    if (filtroSupervisor !== 'todos') {
+      lista = lista.filter(v => v.supervisor_id === filtroSupervisor);
+    }
+    return lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  }, [vendedores, vendedoresPermitidosIds, filtroSupervisor]);
 
   return (
     <div className="space-y-6">
