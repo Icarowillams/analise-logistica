@@ -190,19 +190,10 @@ export default function AnaliseVisitas() {
   // ========== KPIs (baseados em VisitaRoteiro para dados de execução) ==========
 
   // Calcular total de visitas agendadas no período
+  // Usa o total de registros de VisitaRoteiro como base real (inclui visitas extras)
   const totalAgendadas = useMemo(() => {
-    const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
-    let total = 0;
-    diasNoPeriodo.forEach(dia => {
-      const diaSemana = getDiaSemana(dia);
-      roteirosFiltrados.forEach(r => {
-        if (r.dia_semana === diaSemana) {
-          total += (r.clientes_ids?.length || 0);
-        }
-      });
-    });
-    return total;
-  }, [roteirosFiltrados, dataInicio, dataFim]);
+    return visitasRoteiroFiltradas.length;
+  }, [visitasRoteiroFiltradas]);
 
   // Visitas realizadas (status concluida ou checkin_realizado)
   const visitasRealizadas = useMemo(() => {
@@ -379,31 +370,7 @@ export default function AnaliseVisitas() {
   const performancePorFuncionario = useMemo(() => {
     const map = {};
     
-    // Calcular visitas agendadas por vendedor no período
-    const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
-    roteirosFiltrados.forEach(r => {
-      const vendedorId = r.vendedor_id;
-      if (!map[vendedorId]) {
-        map[vendedorId] = {
-          nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
-          agendadas: 0,
-          realizadas: 0,
-          naoRealizadas: 0,
-          emAndamento: 0,
-          pendentes: 0,
-          comPedido: 0,
-          semPedido: 0
-        };
-      }
-      diasNoPeriodo.forEach(dia => {
-        const diaSemana = getDiaSemana(dia);
-        if (r.dia_semana === diaSemana) {
-          map[vendedorId].agendadas += (r.clientes_ids?.length || 0);
-        }
-      });
-    });
-    
-    // Contar visitas do VisitaRoteiro
+    // Contar agendadas e status a partir dos registros reais de VisitaRoteiro
     visitasRoteiroFiltradas.forEach(v => {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!map[vendedorId]) {
@@ -418,6 +385,9 @@ export default function AnaliseVisitas() {
           semPedido: 0
         };
       }
+
+      // Cada registro de VisitaRoteiro conta como 1 agendamento
+      map[vendedorId].agendadas++;
       
       if (v.status === 'concluida') {
         map[vendedorId].realizadas++;
@@ -444,16 +414,6 @@ export default function AnaliseVisitas() {
       }
     });
 
-    // Calcular pendentes adicionais (agendadas - todas as que já tem registro)
-    Object.keys(map).forEach(vendedorId => {
-      const item = map[vendedorId];
-      const totalComRegistro = item.realizadas + item.naoRealizadas + item.emAndamento + item.pendentes;
-      const pendentesDiff = item.agendadas - totalComRegistro;
-      if (pendentesDiff > 0) {
-        item.pendentes += pendentesDiff;
-      }
-    });
-    
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
