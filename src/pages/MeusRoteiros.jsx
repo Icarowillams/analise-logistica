@@ -328,32 +328,29 @@ function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, rea
   const queryClient = useQueryClient();
 
   // Query dedicada: busca a visita do dia para este cliente/vendedor
-  // Busca por cliente_id OU por cliente_codigo (para lidar com IDs duplicados de clientes reimportados)
+  // Busca por cliente_id E cliente_codigo (para máxima compatibilidade)
   const { data: todayVisita, isLoading: isLoadingVisita } = useQuery({
     queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
-      // Tentar por cliente_id primeiro
-      let results = await base44.entities.VisitaRoteiro.filter({
-        cliente_id: cliente.cliente_id,
+      const hoje = getLocalDateStr();
+      
+      // Buscar todas as visitas do vendedor no dia
+      const todasVisitasDia = await base44.entities.VisitaRoteiro.filter({
         vendedor_id: vendedor.id,
-        data_visita: getLocalDateStr(),
-      }, '-created_date', 1);
-      if (results.length > 0) return results[0];
+        data_visita: hoje,
+      }, '-created_date');
       
-      // Fallback: buscar por cliente_codigo se o ID não encontrou
-      if (cliente.cliente_codigo) {
-        const allResults = await base44.entities.VisitaRoteiro.filter({
-          vendedor_id: vendedor.id,
-          data_visita: getLocalDateStr(),
-          cliente_codigo: cliente.cliente_codigo,
-        }, '-created_date', 1);
-        if (allResults.length > 0) return allResults[0];
-      }
+      // Filtrar por cliente_id OU cliente_codigo (mais robusto)
+      const visitaCliente = todasVisitasDia.find(v => 
+        v.cliente_id === cliente.cliente_id || 
+        (cliente.cliente_codigo && v.cliente_codigo === cliente.cliente_codigo)
+      );
       
-      return null;
+      return visitaCliente || null;
     },
     enabled: !!vendedor?.id && !!cliente?.cliente_id,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0, // Sempre refetch ao montar o componente
+    cacheTime: 5 * 60 * 1000,
   });
 
   const visitaEfetiva = todayVisita;
