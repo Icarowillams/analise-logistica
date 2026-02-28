@@ -859,7 +859,11 @@ export default function RelatorioEstoque() {
                                           return vp !== null && vp !== undefined ? sum + vp : sum;
                                         }, 0);
                                         const hasVP = grupo.registros.some(r => vendaPeriodoMap[r.id] !== null && vendaPeriodoMap[r.id] !== undefined);
-                                        const totalTrocas = grupo.registros.reduce((sum, r) => sum + (trocasPorEstoqueId[r.id] || 0), 0);
+                                        // Buscar total de trocas do Relatório de Trocas (todas as trocas do cliente+produto, independente de data/validade)
+                                        const clienteId = grupo.registros[0]?.cliente_id;
+                                        const produtoId = grupo.registros[0]?.produto_id;
+                                        const trocaTotalKey = `${clienteId}_${produtoId}`;
+                                        const totalTrocasRelatorio = trocasTotalPorClienteProduto[trocaTotalKey] || 0;
                                         return (
                                           <>
                                             <div className="sm:hidden px-2.5 py-1.5 mb-1">
@@ -872,9 +876,9 @@ export default function RelatorioEstoque() {
                                                       VP: {totalVP > 0 ? '+' : ''}{totalVP}
                                                     </Badge>
                                                   )}
-                                                  {totalTrocas > 0 && (
+                                                  {totalTrocasRelatorio > 0 && (
                                                     <Badge className="text-[10px] font-bold px-2 bg-orange-100 text-orange-700">
-                                                      T: {totalTrocas}
+                                                      T: {totalTrocasRelatorio}
                                                     </Badge>
                                                   )}
                                                 </div>
@@ -895,8 +899,8 @@ export default function RelatorioEstoque() {
                                                 )}
                                               </div>
                                               <div className="col-span-1 text-center">
-                                                {totalTrocas > 0 && (
-                                                  <Badge className="font-bold bg-orange-500 text-white">{totalTrocas}</Badge>
+                                                {totalTrocasRelatorio > 0 && (
+                                                  <Badge className="font-bold bg-orange-500 text-white">{totalTrocasRelatorio}</Badge>
                                                 )}
                                               </div>
                                               <div className="col-span-9"></div>
