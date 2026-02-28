@@ -169,6 +169,18 @@ export default function RelatorioEstoque() {
   // Para cada cliente > produto > data_validade, calcula a diferença entre estoques de visitas consecutivas
   // IMPORTANTE: usa TODOS os registros de estoque (sem filtro de período) para que o cálculo
   // seja correto mesmo quando o período filtrado não inclui o registro anterior.
+  // Trocas totais por cliente+produto (independente de data validade e data de registro)
+  const trocasTotalPorClienteProduto = useMemo(() => {
+    const map = {};
+    trocasVisita.forEach(t => {
+      if (!t.cliente_id || !t.produto_id) return;
+      const key = `${t.cliente_id}_${t.produto_id}`;
+      if (!map[key]) map[key] = 0;
+      map[key] += (t.quantidade || 0);
+    });
+    return map;
+  }, [trocasVisita]);
+
   const { vendaPeriodoMap, trocasPorEstoqueId } = useMemo(() => {
     // Map: `${cliente_id}_${produto_id}_${data_validade}` => array de registros
     const gavetas = {};
@@ -186,7 +198,7 @@ export default function RelatorioEstoque() {
       });
     });
 
-    // Indexar trocas por cliente + produto + data_validade + data_registro (dia)
+    // Indexar trocas por cliente + produto + data_validade + data_registro (dia) para venda período
     const trocasIndex = {};
     trocasVisita.forEach(t => {
       if (!t.cliente_id || !t.produto_id) return;
@@ -197,7 +209,7 @@ export default function RelatorioEstoque() {
       trocasIndex[key] += (t.quantidade || 0);
     });
 
-    // Indexar trocas por estoqueVisita.id para exibir na coluna "Troca"
+    // Indexar trocas por estoqueVisita.id para exibir na coluna "Troca" (mantém lógica por validade+data para linha individual)
     const trocasPorEstoqueId = {};
     estoqueVisita.forEach(e => {
       if (!e.cliente_id || !e.produto_id) return;
