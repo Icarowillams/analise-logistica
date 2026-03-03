@@ -294,9 +294,9 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
           .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
         const visitaExistente = visitasCliente[0] || null;
 
-        // Buscar dados completos do cliente (por ID ou por código como fallback)
-        const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id) 
-          || clientes.find(c => c.codigo === cliente.cliente_codigo);
+        // Buscar dados completos do cliente priorizando código sobre ID
+        const clienteCompleto = (cliente.cliente_codigo ? clientes.find(c => c.codigo === cliente.cliente_codigo) : undefined)
+          || clientes.find(c => c.id === cliente.cliente_id);
 
         const displayNome = clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.nome_fantasia || cliente.cliente_nome;
         const clienteAtualizado = {
