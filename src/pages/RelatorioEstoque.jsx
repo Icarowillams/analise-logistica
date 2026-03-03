@@ -90,6 +90,7 @@ export default function RelatorioEstoque() {
   const visitasMap = useMemo(() => visitas.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [visitas]);
 
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
+  const clientesMapByCodigo = useMemo(() => clientes.reduce((acc, c) => { if (c.codigo) acc[c.codigo] = c; return acc; }, {}), [clientes]);
   
   // Funções de filtro
   const limparFiltros = () => {
@@ -262,8 +263,8 @@ export default function RelatorioEstoque() {
       const vendedor = vendedoresMap[vendedorId];
       // Usar created_date para a data do estoque (data de lançamento)
       const dataVisitaCalc = e.created_date?.split('T')[0] || visitaRelacionada?.data_visita;
-      // Se o cliente não está no mapa, criar objeto com nome salvo no registro
-      const clienteObjRaw = clientesMap[e.cliente_id];
+      // Buscar cliente priorizando codigo sobre id
+      const clienteObjRaw = (e.cliente_codigo ? clientesMapByCodigo[e.cliente_codigo] : undefined) || clientesMap[e.cliente_id];
       const clienteObj = clienteObjRaw 
         ? { ...clienteObjRaw, nome_fantasia: clienteObjRaw.nome_fantasia || clienteObjRaw.razao_social }
         : (e.cliente_nome ? { nome_fantasia: e.cliente_nome, razao_social: e.cliente_nome } : null);

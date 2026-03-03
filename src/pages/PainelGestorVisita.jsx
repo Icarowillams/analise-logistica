@@ -86,6 +86,13 @@ export default function PainelGestorVisita() {
     }, {});
   }, [clientes]);
 
+  const clientesMapByCodigo = useMemo(() => {
+    return clientes.reduce((acc, c) => {
+      if (c.codigo) acc[c.codigo] = c;
+      return acc;
+    }, {});
+  }, [clientes]);
+
   // Funcionários para filtro (com roteiros)
   const funcionariosParaFiltro = useMemo(() => {
     const ids = new Set();
@@ -556,15 +563,19 @@ export default function PainelGestorVisita() {
               <div>
                 <h4 className="font-semibold mb-2">Clientes do Roteiro:</h4>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {roteiroSelecionado.clientes_detalhes?.map((cliente, idx) => (
+                  {roteiroSelecionado.clientes_detalhes?.map((cliente, idx) => {
+                    const clienteCompleto = (cliente.codigo ? clientesMapByCodigo[cliente.codigo] : undefined) || clientesMap[cliente.id];
+                    const nome = clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.nome_fantasia || cliente.razao_social;
+                    return (
                     <div key={cliente.id} className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
                       <Badge className="bg-amber-500 text-white">{idx + 1}</Badge>
                       <div>
-                        <p className="font-medium text-sm">{cliente.razao_social || cliente.nome_fantasia}</p>
-                        <p className="text-xs text-slate-500">{cliente.codigo} • {cliente.cidade}</p>
+                        <p className="font-medium text-sm">{nome}</p>
+                        <p className="text-xs text-slate-500">{clienteCompleto?.codigo || cliente.codigo} • {clienteCompleto?.cidade || cliente.cidade}</p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -909,7 +920,7 @@ function VisitasPendentesCalendario({ roteiros, visitas, vendedoresMap, clientes
                         <div className="flex items-start justify-between">
                           <div>
                             <p className="font-medium text-sm text-slate-800">
-                              {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
+                              {item.cliente?.nome_fantasia || item.cliente?.razao_social || 'Cliente não encontrado'}
                             </p>
                             <p className="text-xs text-slate-500">
                               {item.cliente?.codigo} • {item.cliente?.cidade}
@@ -1287,7 +1298,7 @@ function ClientesList({ clientes, tipo }) {
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm text-slate-800 truncate">
-                {item.cliente?.razao_social || item.cliente?.nome_fantasia || 'Cliente não encontrado'}
+                {item.cliente?.nome_fantasia || item.cliente?.razao_social || 'Cliente não encontrado'}
               </p>
               <p className="text-xs text-slate-500">
                 {item.cliente?.codigo} • {item.cliente?.cidade || 'Sem cidade'}
@@ -1398,7 +1409,12 @@ function VisitasDoDia({ visitas, vendedoresMap, clientesMap }) {
                     {visita.vendedor_nome || vendedoresMap[visita.vendedor_id]?.nome || 'N/A'}
                   </td>
                   <td className="p-3 text-sm text-slate-700">
-                    {visita.cliente_nome || clientesMap[visita.cliente_id]?.razao_social || 'N/A'}
+                    {(() => {
+                      const cByCod = visita.cliente_codigo ? clientesMapByCodigo[visita.cliente_codigo] : undefined;
+                      const cById = clientesMap[visita.cliente_id];
+                      const c = cByCod || cById;
+                      return c?.nome_fantasia || c?.razao_social || visita.cliente_nome || 'N/A';
+                    })()}
                   </td>
                   <td className="p-3 text-center text-sm">
                     <Badge variant="outline">

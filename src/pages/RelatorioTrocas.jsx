@@ -82,6 +82,7 @@ export default function RelatorioTrocas() {
 
   const visitasMap = useMemo(() => visitas.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [visitas]);
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
+  const clientesMapByCodigo = useMemo(() => clientes.reduce((acc, c) => { if (c.codigo) acc[c.codigo] = c; return acc; }, {}), [clientes]);
   const produtosMap = useMemo(() => produtos.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}), [produtos]);
   const vendedoresMap = useMemo(() => vendedores.reduce((acc, v) => { acc[v.id] = v; return acc; }, {}), [vendedores]);
 
@@ -152,8 +153,8 @@ export default function RelatorioTrocas() {
       const vendedorId = t.vendedor_id || visitaRelacionada?.vendedor_id;
       const vendedor = vendedoresMap[vendedorId];
       const dataVisitaCalc = visitaRelacionada?.data_visita || t.created_date?.split('T')[0];
-      // Se o cliente não está no mapa, criar objeto com nome salvo na troca
-      const clienteObjRaw = clientesMap[t.cliente_id];
+      // Buscar cliente priorizando codigo sobre id
+      const clienteObjRaw = (t.cliente_codigo ? clientesMapByCodigo[t.cliente_codigo] : undefined) || clientesMap[t.cliente_id];
       const clienteObj = clienteObjRaw
         ? { ...clienteObjRaw, nome_fantasia: clienteObjRaw.nome_fantasia || clienteObjRaw.razao_social }
         : (t.cliente_nome ? { nome_fantasia: t.cliente_nome, razao_social: t.cliente_nome } : null);
