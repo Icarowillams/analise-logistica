@@ -295,19 +295,13 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
         const visitaExistente = visitasCliente[0] || null;
 
         // Buscar dados completos do cliente (por ID ou por código como fallback)
-        const clientePorId = clientes.find(c => c.id === cliente.cliente_id);
-        const clientePorCodigo = !clientePorId && cliente.cliente_codigo 
-          ? clientes.find(c => c.codigo === cliente.cliente_codigo) 
-          : null;
-        const clienteCompleto = clientePorId || clientePorCodigo;
+        const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id) 
+          || clientes.find(c => c.codigo === cliente.cliente_codigo);
 
-        // SEMPRE priorizar nome_fantasia do cadastro atualizado
         const displayNome = clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.nome_fantasia || cliente.cliente_nome;
-        // Usar o ID real do cadastro (pode ter mudado se cliente foi recriado)
-        const clienteIdReal = clienteCompleto?.id || cliente.cliente_id;
         const clienteAtualizado = {
           ...cliente,
-          cliente_id: clienteIdReal,
+          cliente_id: clienteCompleto?.id || cliente.cliente_id,
           cliente_nome: displayNome,
           cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
           cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
@@ -316,14 +310,13 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
         return (
           <ClienteCard 
-            key={clienteIdReal}
+            key={cliente.cliente_id}
             cliente={clienteAtualizado}
             ordem={idx + 1}
             roteiroId={roteiro.id}
             vendedor={vendedor}
             permissaoUsuario={permissaoUsuario}
             clienteCompleto={clienteCompleto}
-            clienteIdOriginal={cliente.cliente_id}
           />
         );
       })}
@@ -331,11 +324,11 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   );
 }
 
-function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto, clienteIdOriginal }) {
+function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, reagendamentoId, permissaoUsuario, clienteCompleto }) {
   const queryClient = useQueryClient();
 
   // Query dedicada: busca a visita do dia para este cliente/vendedor
-  // Busca por cliente_id, cliente_id_original (do roteiro) E cliente_codigo (para máxima compatibilidade)
+  // Busca por cliente_id E cliente_codigo (para máxima compatibilidade)
   const { data: todayVisita, isLoading: isLoadingVisita } = useQuery({
     queryKey: ['clientTodayVisita', cliente.cliente_id, cliente.cliente_codigo, vendedor.id, getLocalDateStr()],
     queryFn: async () => {
@@ -347,17 +340,16 @@ function ClienteCard({ cliente, ordem, roteiroId, vendedor, isReagendamento, rea
         data_visita: hoje,
       }, '-created_date');
       
-      // Filtrar por cliente_id atual, cliente_id original do roteiro, OU cliente_codigo
+      // Filtrar por cliente_id OU cliente_codigo (mais robusto)
       const visitaCliente = todasVisitasDia.find(v => 
         v.cliente_id === cliente.cliente_id || 
-        (clienteIdOriginal && v.cliente_id === clienteIdOriginal) ||
         (cliente.cliente_codigo && v.cliente_codigo === cliente.cliente_codigo)
       );
       
       return visitaCliente || null;
     },
     enabled: !!vendedor?.id && !!cliente?.cliente_id,
-    staleTime: 0,
+    staleTime: 0, // Sempre refetch ao montar o componente
     cacheTime: 5 * 60 * 1000,
   });
 
