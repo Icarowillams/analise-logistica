@@ -295,13 +295,19 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
         const visitaExistente = visitasCliente[0] || null;
 
         // Buscar dados completos do cliente (por ID ou por código como fallback)
-        const clienteCompleto = clientes.find(c => c.id === cliente.cliente_id) 
-          || clientes.find(c => c.codigo === cliente.cliente_codigo);
+        const clientePorId = clientes.find(c => c.id === cliente.cliente_id);
+        const clientePorCodigo = !clientePorId && cliente.cliente_codigo 
+          ? clientes.find(c => c.codigo === cliente.cliente_codigo) 
+          : null;
+        const clienteCompleto = clientePorId || clientePorCodigo;
 
+        // SEMPRE priorizar nome_fantasia do cadastro atualizado
         const displayNome = clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || cliente.nome_fantasia || cliente.cliente_nome;
+        // Usar o ID real do cadastro (pode ter mudado se cliente foi recriado)
+        const clienteIdReal = clienteCompleto?.id || cliente.cliente_id;
         const clienteAtualizado = {
           ...cliente,
-          cliente_id: clienteCompleto?.id || cliente.cliente_id,
+          cliente_id: clienteIdReal,
           cliente_nome: displayNome,
           cliente_codigo: clienteCompleto?.codigo || cliente.cliente_codigo,
           cliente_cidade: clienteCompleto?.cidade || cliente.cliente_cidade,
