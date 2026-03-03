@@ -316,13 +316,14 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
 
         return (
           <ClienteCard 
-            key={cliente.cliente_id}
+            key={clienteIdReal}
             cliente={clienteAtualizado}
             ordem={idx + 1}
             roteiroId={roteiro.id}
             vendedor={vendedor}
             permissaoUsuario={permissaoUsuario}
             clienteCompleto={clienteCompleto}
+            clienteIdOriginal={cliente.cliente_id}
           />
         );
       })}
