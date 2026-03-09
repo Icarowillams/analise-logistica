@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Download, Send, CheckCircle, Camera, Image, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Download, Send, CheckCircle, Camera, Image, X, Package } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { useMixCliente } from '@/components/hooks/useMixCliente';
