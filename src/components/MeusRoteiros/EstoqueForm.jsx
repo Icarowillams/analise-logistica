@@ -9,8 +9,9 @@ import { Card } from '@/components/ui/card';
 import { Plus, Edit, Trash2, Download, Send, CheckCircle, Camera, Image, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { useMixCliente } from '@/components/hooks/useMixCliente';
 
-export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
+export default function EstoqueForm({ visitaId, clienteId, clienteNome, clienteCodigo }) {
   const [formData, setFormData] = useState({
     produto_id: '',
     quantidade: '',
@@ -30,10 +31,18 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome }) {
 
   const queryClient = useQueryClient();
 
-  const { data: produtos = [] } = useQuery({
+  const mixProdutosIds = useMixCliente(clienteId, clienteCodigo);
+
+  const { data: todosProds = [] } = useQuery({
     queryKey: ['produtos'],
     queryFn: () => base44.entities.Produto.list()
   });
+
+  // Filtrar produtos pelo mix do cliente (se existir)
+  const produtos = useMemo(() => {
+    if (!mixProdutosIds) return todosProds;
+    return todosProds.filter(p => mixProdutosIds.has(p.id));
+  }, [todosProds, mixProdutosIds]);
 
   const { data: subCategorias = [] } = useQuery({
     queryKey: ['subCategorias'],

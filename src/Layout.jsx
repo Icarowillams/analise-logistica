@@ -107,6 +107,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
           { title: 'Rotas', path: 'Rotas' },
           { title: 'Roteiros', path: 'Roteiros' },
+          { title: 'Mix de Produtos', path: 'MixProdutos' },
           { title: 'Empresa', path: 'Empresa' }
         ]
       },

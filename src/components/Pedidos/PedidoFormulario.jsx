@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Save, Search, Trash2, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { useMixCliente } from '@/components/hooks/useMixCliente';
 
 export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar }) {
   const queryClient = useQueryClient();
@@ -44,10 +45,18 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
-  const { data: produtos = [] } = useQuery({
+  const mixProdutosIds = useMixCliente(cliente.id, cliente.codigo);
+
+  const { data: todosProds = [] } = useQuery({
     queryKey: ['produtos'],
     queryFn: () => base44.entities.Produto.filter({ status: 'ativo' })
   });
+
+  // Filtrar produtos pelo mix do cliente (se existir)
+  const produtos = useMemo(() => {
+    if (!mixProdutosIds) return todosProds;
+    return todosProds.filter(p => mixProdutosIds.has(p.id));
+  }, [todosProds, mixProdutosIds]);
 
   const { data: precosAll = [] } = useQuery({
     queryKey: ['precosProduto', tabelaPrecoId],
