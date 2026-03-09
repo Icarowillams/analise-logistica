@@ -181,7 +181,7 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome, clienteC
       visita_id: visitaId,
       cliente_id: clienteId,
       cliente_nome: clienteNome,
-      produto_id: formData.produto_id || null,
+      produto_id: formData.produto_id || 'FOTO_AVULSA',
       produto_nome: produto?.nome || 'Foto Avulsa',
       produto_codigo: produto?.codigo || '',
       quantidade: formData.quantidade ? parseFloat(formData.quantidade) : 0,
