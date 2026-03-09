@@ -564,6 +564,34 @@ export default function EstoqueForm({ visitaId, clienteId, clienteNome, clienteC
         </div>
       )}
 
+      {/* Produtos do Mix sem estoque registrado */}
+      {mixProdutosIds && (() => {
+        const produtosComEstoque = new Set([
+          ...estoques.map(e => e.produto_id),
+          ...itensPendentes.map(i => i.produto_id)
+        ].filter(Boolean));
+        const produtosSemEstoque = produtos.filter(p => !produtosComEstoque.has(p.id));
+        if (produtosSemEstoque.length === 0) return null;
+        return (
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm flex items-center gap-2 text-slate-500">
+              <Package className="w-4 h-4" />
+              Mix sem estoque ({produtosSemEstoque.length})
+            </h4>
+            {produtosSemEstoque.map(p => (
+              <Card key={p.id} className="p-3 border-dashed border-slate-300 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm text-slate-500">{p.codigo} - {p.nome}</p>
+                    <p className="text-xs text-red-500">Estoque: 0</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Itens já enviados/salvos */}
       <div className="space-y-2">
         <h4 className="font-semibold text-sm flex items-center gap-2">
