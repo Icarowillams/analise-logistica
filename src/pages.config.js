@@ -71,7 +71,6 @@ import MetasPositivacao from './pages/MetasPositivacao';
 import MetasPrecoMedio from './pages/MetasPrecoMedio';
 import MetasProduto from './pages/MetasProduto';
 import MetasTroca from './pages/MetasTroca';
-import MeusRoteiros from './pages/MeusRoteiros';
 import MotivosTroca from './pages/MotivosTroca';
 import PainelGestorVisita from './pages/PainelGestorVisita';
 import PainelRodrigosM from './pages/PainelRodrigosM';
@@ -90,7 +89,7 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import MixProdutos from './pages/MixProdutos';
+import MeusRoteiros from './pages/MeusRoteiros';
 import __Layout from './Layout.jsx';
 
 
@@ -119,7 +118,6 @@ export const PAGES = {
     "MetasPrecoMedio": MetasPrecoMedio,
     "MetasProduto": MetasProduto,
     "MetasTroca": MetasTroca,
-    "MeusRoteiros": MeusRoteiros,
     "MotivosTroca": MotivosTroca,
     "PainelGestorVisita": PainelGestorVisita,
     "PainelRodrigosM": PainelRodrigosM,
@@ -138,7 +136,7 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "MixProdutos": MixProdutos,
+    "MeusRoteiros": MeusRoteiros,
 }
 
 export const pagesConfig = {

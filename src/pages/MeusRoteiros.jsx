@@ -1246,7 +1246,7 @@ function VisitaDetalhes({ visita, cliente, permissaoUsuario, vendedor }) {
 
           {podeInformarEstoque && (
             <TabsContent value="estoque">
-              <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} clienteCodigo={cliente.cliente_codigo} />
+              <EstoqueForm visitaId={visita.id} clienteId={cliente.cliente_id} clienteNome={cliente.cliente_nome} />
             </TabsContent>
           )}
 
