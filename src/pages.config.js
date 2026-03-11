@@ -84,13 +84,14 @@ import RelatorioEstoque from './pages/RelatorioEstoque';
 import RelatorioRoteiros from './pages/RelatorioRoteiros';
 import RelatorioTrocas from './pages/RelatorioTrocas';
 import RelatoriosGestorVisita from './pages/RelatoriosGestorVisita';
+import RotaSupervisores from './pages/RotaSupervisores';
 import Rotas from './pages/Rotas';
 import Roteiros from './pages/Roteiros';
 import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
-import RotaSupervisores from './pages/RotaSupervisores';
+import RelatorioDetalhadoVisitas from './pages/RelatorioDetalhadoVisitas';
 import __Layout from './Layout.jsx';
 
 
@@ -132,13 +133,14 @@ export const PAGES = {
     "RelatorioRoteiros": RelatorioRoteiros,
     "RelatorioTrocas": RelatorioTrocas,
     "RelatoriosGestorVisita": RelatoriosGestorVisita,
+    "RotaSupervisores": RotaSupervisores,
     "Rotas": Rotas,
     "Roteiros": Roteiros,
     "Segmentos": Segmentos,
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
-    "RotaSupervisores": RotaSupervisores,
+    "RelatorioDetalhadoVisitas": RelatorioDetalhadoVisitas,
 }
 
 export const pagesConfig = {
