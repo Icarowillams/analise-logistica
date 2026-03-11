@@ -617,7 +617,7 @@ export default function RelatorioRoteiros() {
         const datasNoPeriodo = getDatasNoPeriodo(dataInicio, dataFim, roteiro.dia_semana);
         
         datasNoPeriodo.forEach(data => {
-          const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(roteiro, data);
+          const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(vendedor.id, data);
           [...concluidos, ...emAtendimento, ...semAtendimento].forEach(c => {
             const status = concluidos.includes(c) ? 'Concluído' : emAtendimento.includes(c) ? 'Em Atendimento' : 'Sem Atendimento';
             const checkin = c.visitaRoteiro?.checkin_time ? new Date(c.visitaRoteiro.checkin_time).toLocaleString('pt-BR') : '-';
