@@ -437,7 +437,7 @@ export default function AnaliseVisitas() {
           pendentes: 0,
           comPedido: 0,
           semPedido: 0,
-          reagendadas: 0
+          reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
         };
       }
       diasNoPeriodo.forEach(dia => {
@@ -462,7 +462,7 @@ export default function AnaliseVisitas() {
           pendentes: 0,
           comPedido: 0,
           semPedido: 0,
-          reagendadas: 0
+          reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
         };
       }
       
