@@ -381,42 +381,17 @@ export default function AnaliseVisitas() {
     return m;
   }, [visitasFiltradas]);
 
-  // Reagendamentos filtrados por período e vendedor — com breakdown de status
+  // Reagendamentos filtrados por período e vendedor
   const reagendamentosPorVendedor = useMemo(() => {
     const map = {};
     reagendamentos.forEach(r => {
       if (r.data_reagendamento < dataInicio || r.data_reagendamento > dataFim) return;
       if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(r.vendedor_id)) return;
-      if (!map[r.vendedor_id]) map[r.vendedor_id] = { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 };
-      map[r.vendedor_id].total++;
-      
-      // Buscar VisitaRoteiro correspondente na data do reagendamento para este cliente/vendedor
-      const visitaCorrespondente = visitasRoteiroFiltradas.find(v => 
-        v.vendedor_id === r.vendedor_id && 
-        v.cliente_id === r.cliente_id && 
-        v.data_visita === r.data_reagendamento
-      );
-      
-      if (visitaCorrespondente) {
-        if (visitaCorrespondente.status === 'concluida') {
-          map[r.vendedor_id].realizadas++;
-        } else if (visitaCorrespondente.status === 'nao_atendido') {
-          map[r.vendedor_id].naoRealizadas++;
-        } else if (visitaCorrespondente.status === 'checkin_realizado' || visitaCorrespondente.status === 'em_andamento') {
-          map[r.vendedor_id].emAndamento++;
-        } else {
-          map[r.vendedor_id].pendentes++;
-        }
-      } else if (r.status === 'realizada') {
-        map[r.vendedor_id].realizadas++;
-      } else if (r.status === 'cancelada') {
-        map[r.vendedor_id].naoRealizadas++;
-      } else {
-        map[r.vendedor_id].pendentes++;
-      }
+      if (!map[r.vendedor_id]) map[r.vendedor_id] = 0;
+      map[r.vendedor_id]++;
     });
     return map;
-  }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados, visitasRoteiroFiltradas]);
+  }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados]);
 
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
@@ -436,7 +411,8 @@ export default function AnaliseVisitas() {
           emAndamento: 0,
           pendentes: 0,
           comPedido: 0,
-          semPedido: 0
+          semPedido: 0,
+          reagendadas: 0
         };
       }
       diasNoPeriodo.forEach(dia => {
@@ -460,7 +436,8 @@ export default function AnaliseVisitas() {
           emAndamento: 0,
           pendentes: 0,
           comPedido: 0,
-          semPedido: 0
+          semPedido: 0,
+          reagendadas: 0
         };
       }
       
@@ -497,7 +474,7 @@ export default function AnaliseVisitas() {
       if (pendentesDiff > 0) {
         item.pendentes += pendentesDiff;
       }
-      // reagendamentos are now shown as a separate row
+      item.reagendadas = reagendamentosPorVendedor[vendedorId] || 0;
     });
     
     return Object.values(map)
@@ -778,88 +755,56 @@ export default function AnaliseVisitas() {
                   <TableHead className="font-semibold text-center text-yellow-600">Pendentes</TableHead>
                   <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
                   <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
+                  <TableHead className="font-semibold text-center text-purple-600">Reagendadas</TableHead>
                   <TableHead className="font-semibold text-center">Relatório</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {performancePorFuncionario.map((item, index) => {
-                  const reag = reagendamentosPorVendedor[item.vendedorId];
-                  return (
-                    <React.Fragment key={index}>
-                      {/* Linha principal do vendedor */}
-                      <TableRow className="hover:bg-slate-50">
-                        <TableCell>
-                          <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                            {index + 1}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">{item.nome}</TableCell>
-                        <TableCell className="text-center">{item.agendadas}</TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-green-600 font-medium">{item.realizadas}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-amber-600 font-medium">{item.emAndamento}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-yellow-600 font-medium">{item.pendentes}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-blue-600 font-medium">{item.comPedido}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-orange-600 font-medium">{item.semPedido}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
-                            onClick={() => {
-                              window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
-                                `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
-                            }}
-                          >
-                            <FileText className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                      {/* Linha de reagendamento */}
-                      {reag && reag.total > 0 && (
-                        <TableRow className="bg-purple-50/50 hover:bg-purple-50">
-                          <TableCell></TableCell>
-                          <TableCell>
-                            <span className="text-purple-700 font-medium text-xs flex items-center gap-1">
-                              <RefreshCw className="w-3 h-3" />
-                              Reagendamento
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-purple-600 font-medium">{reag.total}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-green-600 font-medium">{reag.realizadas}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-red-600 font-medium">{reag.naoRealizadas}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-amber-600 font-medium">{reag.emAndamento}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-yellow-600 font-medium">{reag.pendentes}</span>
-                          </TableCell>
-                          <TableCell className="text-center">—</TableCell>
-                          <TableCell className="text-center">—</TableCell>
-                          <TableCell></TableCell>
-                        </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                {performancePorFuncionario.map((item, index) => (
+                  <TableRow key={index} className="hover:bg-slate-50">
+                    <TableCell>
+                      <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                        {index + 1}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{item.nome}</TableCell>
+                    <TableCell className="text-center">{item.agendadas}</TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-green-600 font-medium">{item.realizadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-amber-600 font-medium">{item.emAndamento}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-yellow-600 font-medium">{item.pendentes}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-blue-600 font-medium">{item.comPedido}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-orange-600 font-medium">{item.semPedido}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-purple-600 font-medium">{item.reagendadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
+                        onClick={() => {
+                          window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
+                            `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                        }}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>

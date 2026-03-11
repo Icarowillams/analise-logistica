@@ -80,7 +80,6 @@ import Permissoes from './pages/Permissoes';
 import PlanosPagamento from './pages/PlanosPagamento';
 import Produtos from './pages/Produtos';
 import Redes from './pages/Redes';
-import RelatorioDetalhadoVisitas from './pages/RelatorioDetalhadoVisitas';
 import RelatorioEstoque from './pages/RelatorioEstoque';
 import RelatorioRoteiros from './pages/RelatorioRoteiros';
 import RelatorioTrocas from './pages/RelatorioTrocas';
@@ -92,6 +91,7 @@ import Segmentos from './pages/Segmentos';
 import SincronizarGestorVisita from './pages/SincronizarGestorVisita';
 import TabelasPreco from './pages/TabelasPreco';
 import UnidadesMedida from './pages/UnidadesMedida';
+import RelatorioDetalhadoVisitas from './pages/RelatorioDetalhadoVisitas';
 import __Layout from './Layout.jsx';
 
 
@@ -129,7 +129,6 @@ export const PAGES = {
     "PlanosPagamento": PlanosPagamento,
     "Produtos": Produtos,
     "Redes": Redes,
-    "RelatorioDetalhadoVisitas": RelatorioDetalhadoVisitas,
     "RelatorioEstoque": RelatorioEstoque,
     "RelatorioRoteiros": RelatorioRoteiros,
     "RelatorioTrocas": RelatorioTrocas,
@@ -141,6 +140,7 @@ export const PAGES = {
     "SincronizarGestorVisita": SincronizarGestorVisita,
     "TabelasPreco": TabelasPreco,
     "UnidadesMedida": UnidadesMedida,
+    "RelatorioDetalhadoVisitas": RelatorioDetalhadoVisitas,
 }
 
 export const pagesConfig = {
