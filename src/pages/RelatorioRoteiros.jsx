@@ -878,6 +878,19 @@ export default function RelatorioRoteiros() {
                           datasSet.forEach(d => datasPorDiaSemana[diaSemana].add(d));
                         });
                         
+                        // Também incluir datas de reagendamentos
+                        reagendamentos.forEach(r => {
+                          if (r.vendedor_id !== vendedor.id) return;
+                          if (!r.data_reagendamento || r.data_reagendamento < dataInicio || r.data_reagendamento > dataFim) return;
+                          const diaReag = getDiaSemanaReal(r.data_reagendamento);
+                          if (diaReag) {
+                            if (!datasPorDiaSemana[diaReag.valor]) {
+                              datasPorDiaSemana[diaReag.valor] = new Set();
+                            }
+                            datasPorDiaSemana[diaReag.valor].add(r.data_reagendamento);
+                          }
+                        });
+                        
                         // Converter Sets para arrays
                         Object.keys(datasPorDiaSemana).forEach(dia => {
                           datasPorDiaSemana[dia] = Array.from(datasPorDiaSemana[dia]);
