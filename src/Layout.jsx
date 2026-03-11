@@ -147,6 +147,7 @@ export default function Layout({ children, currentPageName }) {
         icon: TrendingUp,
         submenu: [
           { title: 'Meus Roteiros', path: 'MeusRoteiros' },
+          { title: 'Rota Supervisores', path: 'RotaSupervisores' },
           { title: 'Painel de Roteiros', path: 'PainelGestorVisita' }
         ]
       },
