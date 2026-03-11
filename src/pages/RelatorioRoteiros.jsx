@@ -182,6 +182,11 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.Funcao.list()
   });
 
+  const { data: reagendamentos = [] } = useQuery({
+    queryKey: ['reagendamentos'],
+    queryFn: () => base44.entities.VisitaReagendada.list('-data_reagendamento', 5000)
+  });
+
   const { filtrarClientes, filtrarRoteiros } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
