@@ -785,49 +785,78 @@ export default function AnaliseVisitas() {
               </TableHeader>
               <TableBody>
                 {performancePorFuncionario.map((item, index) => (
-                  <TableRow key={index} className="hover:bg-slate-50">
-                    <TableCell>
-                      <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                        {index + 1}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{item.nome}</TableCell>
-                    <TableCell className="text-center">{item.agendadas}</TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-green-600 font-medium">{item.realizadas}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-amber-600 font-medium">{item.emAndamento}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-yellow-600 font-medium">{item.pendentes}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-blue-600 font-medium">{item.comPedido}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-orange-600 font-medium">{item.semPedido}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="text-purple-600 font-medium">{item.reagendadas}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
-                        onClick={() => {
-                          window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
-                            `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
-                        }}
-                      >
-                        <FileText className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <React.Fragment key={index}>
+                    <TableRow className="hover:bg-slate-50">
+                      <TableCell>
+                        <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                          {index + 1}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-medium">{item.nome}</TableCell>
+                      <TableCell className="text-center">{item.agendadas}</TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-green-600 font-medium">{item.realizadas}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-red-600 font-medium">{item.naoRealizadas}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-amber-600 font-medium">{item.emAndamento}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-yellow-600 font-medium">{item.pendentes}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-blue-600 font-medium">{item.comPedido}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-orange-600 font-medium">{item.semPedido}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
+                          onClick={() => {
+                            window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
+                              `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                          }}
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {/* Linha de Reagendamento */}
+                    {item.reagendamento.total > 0 && (
+                      <TableRow className="bg-purple-50/50">
+                        <TableCell></TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 pl-4">
+                            <RefreshCw className="w-3.5 h-3.5 text-purple-600" />
+                            <span className="text-sm text-purple-700 font-medium">Reagendamento</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-purple-600 font-medium">{item.reagendamento.total}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-green-600 font-medium">{item.reagendamento.realizadas}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-red-600 font-medium">{item.reagendamento.naoRealizadas}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-amber-600 font-medium">{item.reagendamento.emAndamento}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-yellow-600 font-medium">{item.reagendamento.pendentes}</span>
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell></TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 ))}
               </TableBody>
             </Table>
