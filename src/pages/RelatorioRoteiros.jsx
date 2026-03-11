@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Route, Users, MapPin, Download, CheckCircle, XCircle, Clock, AlertTriangle, 
-  Eye, Image, ChevronDown, ChevronRight, Calendar, Filter, X
+  Eye, Image, ChevronDown, ChevronRight, Calendar, Filter, X, RefreshCw
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
