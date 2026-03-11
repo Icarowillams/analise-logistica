@@ -530,7 +530,49 @@ export default function RelatorioRoteiros() {
     emAtendimento.sort(sortByCheckin);
     semAtendimento.sort(sortByCheckin);
 
-    return { concluidos, emAtendimento, semAtendimento, semCheckin };
+    // Processar reagendamentos para esta data
+    const reagKey = `${vendedorId}_${dataEspecifica}`;
+    const reagendadosNaData = reagendamentosPorVendedorData[reagKey] || [];
+    
+    const reagendados = reagendadosNaData.map(r => {
+      const clienteCompleto = findCliente(r.cliente_id, r.cliente_codigo);
+      
+      // Tentar encontrar VisitaRoteiro correspondente na data reagendada
+      const visitaCorrespondente = visitasPorCliente[r.cliente_id] 
+        || (r.cliente_codigo ? visitasPorCodigo[r.cliente_codigo] : null);
+      
+      // Calcular data original: usar data_original do registro, ou created_date
+      const dataOriginal = r.data_original || (r.created_date ? r.created_date.split('T')[0] : null);
+      
+      let statusReag = 'pendente';
+      if (visitaCorrespondente) {
+        if (visitaCorrespondente.status === 'concluida') statusReag = 'concluido';
+        else if (visitaCorrespondente.status === 'nao_atendido') statusReag = 'semAtendimento';
+        else if (visitaCorrespondente.status === 'checkin_realizado' || visitaCorrespondente.status === 'em_andamento') statusReag = 'emAtendimento';
+        else statusReag = 'pendente';
+      } else if (r.status === 'realizada') {
+        statusReag = 'concluido';
+      } else if (r.status === 'cancelada') {
+        statusReag = 'semAtendimento';
+      }
+      
+      return {
+        cliente_id: r.cliente_id,
+        cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || r.cliente_nome,
+        cliente_codigo: r.cliente_codigo || clienteCompleto?.codigo,
+        ordem: 999,
+        cliente: clienteCompleto,
+        visitaRoteiro: visitaCorrespondente || null,
+        visitaRegistro: null,
+        dataVisita: dataEspecifica,
+        isReagendamento: true,
+        dataOriginal: dataOriginal,
+        motivoOriginal: r.motivo_nao_atendimento,
+        statusReagendamento: statusReag
+      };
+    });
+
+    return { concluidos, emAtendimento, semAtendimento, semCheckin, reagendados };
   };
 
   const toggleVendedor = (vendedorId) => {
