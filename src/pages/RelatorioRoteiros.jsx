@@ -1311,7 +1311,10 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-            {clienteInfo.ordem !== 999 && (
+            {clienteInfo.isReagendamento && (
+              <Badge className="bg-purple-600 text-white text-[10px] sm:text-xs px-1.5 font-bold">R</Badge>
+            )}
+            {clienteInfo.ordem !== 999 && !clienteInfo.isReagendamento && (
               <Badge className="bg-slate-600 text-white text-[10px] sm:text-xs px-1.5">{clienteInfo.ordem}</Badge>
             )}
             {clienteInfo.roteiroAlterado && (
