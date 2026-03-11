@@ -14,7 +14,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { 
-  TrendingUp, Users, MapPin, Filter, Calendar, 
+  TrendingUp, Users, MapPin, Filter, Calendar,
   CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown, RefreshCw
 } from 'lucide-react';
 import { createPageUrl } from '@/utils';
