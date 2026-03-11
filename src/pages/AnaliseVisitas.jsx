@@ -720,9 +720,25 @@ export default function AnaliseVisitas() {
       {/* Tabela de Performance por Funcionário */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-orange-600" />
-            <CardTitle className="text-lg">Tabela de Performance por Funcionário</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-orange-600" />
+              <CardTitle className="text-lg">Tabela de Performance por Funcionário</CardTitle>
+            </div>
+            {performancePorFuncionario.length > 0 && (
+              <Button
+                size="sm"
+                className="bg-gradient-to-r from-orange-500 to-red-600 text-white gap-1.5"
+                onClick={() => {
+                  const ids = performancePorFuncionario.map(p => p.vendedorId).join(',');
+                  window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
+                    `&vendedor_ids=${ids}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                }}
+              >
+                <FileText className="w-4 h-4" />
+                Relatório Geral
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -739,7 +755,8 @@ export default function AnaliseVisitas() {
                   <TableHead className="font-semibold text-center text-yellow-600">Pendentes</TableHead>
                   <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
                   <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
-                  <TableHead className="font-semibold text-center">Ações</TableHead>
+                  <TableHead className="font-semibold text-center text-purple-600">Reagendadas</TableHead>
+                  <TableHead className="font-semibold text-center">Relatório</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -771,7 +788,18 @@ export default function AnaliseVisitas() {
                       <span className="text-orange-600 font-medium">{item.semPedido}</span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50">
+                      <span className="text-purple-600 font-medium">{item.reagendadas}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
+                        onClick={() => {
+                          window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
+                            `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                        }}
+                      >
                         <FileText className="w-4 h-4" />
                       </Button>
                     </TableCell>
