@@ -187,6 +187,19 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.VisitaReagendada.list('-data_reagendamento', 5000)
   });
 
+  // Reagendamentos por vendedor+data_reagendamento
+  const reagendamentosPorVendedorData = useMemo(() => {
+    const map = {};
+    reagendamentos.forEach(r => {
+      if (!r.data_reagendamento || !r.vendedor_id) return;
+      if (r.data_reagendamento < dataInicio || r.data_reagendamento > dataFim) return;
+      const key = `${r.vendedor_id}_${r.data_reagendamento}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return map;
+  }, [reagendamentos, dataInicio, dataFim]);
+
   const { filtrarClientes, filtrarRoteiros } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
