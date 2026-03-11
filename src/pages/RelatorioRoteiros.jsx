@@ -1058,6 +1058,26 @@ export default function RelatorioRoteiros() {
                                             </div>
                                           </div>
                                         )}
+
+                                        {/* Reagendados */}
+                                        {reagendados && reagendados.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-1">
+                                              <RefreshCw className="w-4 h-4" /> Reagendados ({reagendados.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {reagendados.map((c, idx) => (
+                                                <ClienteCard 
+                                                  key={`reag-${idx}`} 
+                                                  clienteInfo={c} 
+                                                  tipo={c.statusReagendamento}
+                                                  onOpenMap={() => handleOpenMap(c)}
+                                                  onOpenPhotos={() => handleOpenPhotos(c)}
+                                                />
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </>
                                     </div>
                                   );
