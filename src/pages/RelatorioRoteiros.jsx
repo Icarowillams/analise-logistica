@@ -1284,11 +1284,17 @@ function calcularTempoEmLoja(checkinTime, checkoutTime) {
 function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
   const { cliente, visitaRoteiro, visitaRegistro } = clienteInfo;
 
-  const bgColor = tipo === 'concluido' ? 'bg-green-50 border-green-200' : 
-                  tipo === 'emAtendimento' ? 'bg-blue-50 border-blue-200' :
-                  tipo === 'semAtendimento' ? 'bg-red-50 border-red-200' : 
-                  tipo === 'pendente' ? 'bg-amber-50 border-amber-200' :
-                  'bg-slate-50 border-slate-200';
+  const bgColor = clienteInfo.isReagendamento 
+    ? (tipo === 'concluido' ? 'bg-green-50 border-purple-300' : 
+       tipo === 'emAtendimento' ? 'bg-blue-50 border-purple-300' :
+       tipo === 'semAtendimento' ? 'bg-red-50 border-purple-300' : 
+       tipo === 'pendente' ? 'bg-purple-50 border-purple-300' :
+       'bg-purple-50 border-purple-300')
+    : (tipo === 'concluido' ? 'bg-green-50 border-green-200' : 
+       tipo === 'emAtendimento' ? 'bg-blue-50 border-blue-200' :
+       tipo === 'semAtendimento' ? 'bg-red-50 border-red-200' : 
+       tipo === 'pendente' ? 'bg-amber-50 border-amber-200' :
+       'bg-slate-50 border-slate-200');
 
   const tempoEmLoja = calcularTempoEmLoja(visitaRoteiro?.checkin_time, visitaRoteiro?.checkout_time);
 
@@ -1303,6 +1309,9 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
             {clienteInfo.roteiroAlterado && (
               <Badge className="bg-orange-500 text-white text-[10px] sm:text-xs px-1.5">Rot. Anterior</Badge>
             )}
+            {clienteInfo.isReagendamento && (
+              <Badge className="bg-purple-600 text-white text-[10px] sm:text-xs px-1.5">R</Badge>
+            )}
             {(cliente?.codigo || clienteInfo.cliente_codigo) && (
               <Badge variant="outline" className="text-[10px] sm:text-xs px-1">{cliente?.codigo || clienteInfo.cliente_codigo}</Badge>
             )}
@@ -1311,6 +1320,12 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
           <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 truncate">
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}
           </p>
+          {clienteInfo.isReagendamento && (
+            <p className="text-[10px] text-purple-600 mt-0.5">
+              Reagendado{clienteInfo.dataVisitaOriginal ? ` — visita original: ${new Date(clienteInfo.dataVisitaOriginal + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+              {clienteInfo.motivoReagendamento ? ` (${clienteInfo.motivoReagendamento})` : ''}
+            </p>
+          )}
           
           {visitaRoteiro && (
             <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs space-y-0.5 sm:space-y-1">
