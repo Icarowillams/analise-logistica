@@ -182,6 +182,11 @@ export default function RelatorioRoteiros() {
     queryFn: () => base44.entities.Funcao.list()
   });
 
+  const { data: reagendamentos = [] } = useQuery({
+    queryKey: ['reagendamentos'],
+    queryFn: () => base44.entities.VisitaReagendada.list('-data_reagendamento', 5000)
+  });
+
   const { filtrarClientes, filtrarRoteiros } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
@@ -371,6 +376,18 @@ export default function RelatorioRoteiros() {
 
   const temFiltrosAtivos = filtros.vendedores_ids.length > 0 || filtros.funcoes_ids.length > 0 || filtros.cliente_busca;
 
+  // Reagendamentos por vendedor+data para lookup rápido
+  const reagendamentosPorVendedorData = useMemo(() => {
+    const map = {};
+    reagendamentos.forEach(r => {
+      if (!r.data_reagendamento || !r.vendedor_id) return;
+      const key = `${r.vendedor_id}_${r.data_reagendamento}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return map;
+  }, [reagendamentos]);
+
   // Função para obter clientes visitados em uma data específica
   // Se há roteiro fixo atual: mostra clientes do roteiro + visitas realizadas (incluindo clientes que saíram do roteiro)
   // Se roteiro foi excluído/alterado: mostra apenas visitas realizadas nessa data
@@ -507,6 +524,55 @@ export default function RelatorioRoteiros() {
       const checkinB = b.visitaRoteiro?.checkin_time ? new Date(b.visitaRoteiro.checkin_time).getTime() : 0;
       return checkinA - checkinB;
     };
+
+    // Incluir clientes reagendados para esta data
+    const keyReag = `${vendedorId}_${dataEspecifica}`;
+    const reagendadosNaData = reagendamentosPorVendedorData[keyReag] || [];
+    
+    reagendadosNaData.forEach(reag => {
+      // Verificar se já foi processado como parte do roteiro fixo
+      if (clientesProcessados.has(reag.cliente_id)) return;
+      
+      const clienteCompleto = findCliente(reag.cliente_id, reag.cliente_codigo);
+      const visitaRot = visitasPorCliente[reag.cliente_id] 
+        || (reag.cliente_codigo ? visitasPorCodigo[reag.cliente_codigo] : null);
+      
+      const visitaReg = visitaRot ? visitasRegistroNoPeriodo.find(v =>
+        v.cliente_id === reag.cliente_id &&
+        v.vendedor_id === vendedorId &&
+        v.data_visita === dataEspecifica
+      ) : null;
+
+      const clienteInfo = {
+        cliente_id: reag.cliente_id,
+        cliente_nome: clienteCompleto?.nome_fantasia || clienteCompleto?.razao_social || reag.cliente_nome,
+        cliente_codigo: reag.cliente_codigo || clienteCompleto?.codigo,
+        ordem: 998,
+        cliente: clienteCompleto,
+        visitaRoteiro: visitaRot || null,
+        visitaRegistro: visitaReg,
+        dataVisita: dataEspecifica,
+        isReagendamento: true,
+        dataVisitaOriginal: reag.data_visita_original || null,
+        motivoReagendamento: reag.motivo_nao_atendimento || null
+      };
+
+      clientesProcessados.add(reag.cliente_id);
+
+      if (visitaRot) {
+        if (visitaRot.status === 'nao_atendido') {
+          semAtendimento.push(clienteInfo);
+        } else if (visitaRot.status === 'concluida' && visitaRot.checkout_time) {
+          concluidos.push(clienteInfo);
+        } else if (visitaRot.checkin_time && !visitaRot.checkout_time) {
+          emAtendimento.push(clienteInfo);
+        } else {
+          semCheckin.push(clienteInfo);
+        }
+      } else {
+        semCheckin.push(clienteInfo);
+      }
+    });
 
     concluidos.sort(sortByCheckin);
     emAtendimento.sort(sortByCheckin);
