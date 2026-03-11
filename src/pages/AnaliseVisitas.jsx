@@ -15,8 +15,9 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Users, MapPin, Filter, Calendar, 
-  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown
+  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown, RefreshCw
 } from 'lucide-react';
+import { createPageUrl } from '@/utils';
 import StatsCard from '@/components/ui/StatsCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -66,6 +67,11 @@ export default function AnaliseVisitas() {
   const { data: funcoes = [] } = useQuery({
     queryKey: ['funcoes'],
     queryFn: () => base44.entities.Funcao.list()
+  });
+
+  const { data: reagendamentos = [] } = useQuery({
+    queryKey: ['reagendamentos'],
+    queryFn: () => base44.entities.VisitaReagendada.list('-data_reagendamento', 5000)
   });
 
   // Permissões de visibilidade de clientes
@@ -375,6 +381,18 @@ export default function AnaliseVisitas() {
     return m;
   }, [visitasFiltradas]);
 
+  // Reagendamentos filtrados por período e vendedor
+  const reagendamentosPorVendedor = useMemo(() => {
+    const map = {};
+    reagendamentos.forEach(r => {
+      if (r.data_reagendamento < dataInicio || r.data_reagendamento > dataFim) return;
+      if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(r.vendedor_id)) return;
+      if (!map[r.vendedor_id]) map[r.vendedor_id] = 0;
+      map[r.vendedor_id]++;
+    });
+    return map;
+  }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados]);
+
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
     const map = {};
@@ -385,6 +403,7 @@ export default function AnaliseVisitas() {
       const vendedorId = r.vendedor_id;
       if (!map[vendedorId]) {
         map[vendedorId] = {
+          vendedorId,
           nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
           agendadas: 0,
           realizadas: 0,
@@ -392,7 +411,8 @@ export default function AnaliseVisitas() {
           emAndamento: 0,
           pendentes: 0,
           comPedido: 0,
-          semPedido: 0
+          semPedido: 0,
+          reagendadas: 0
         };
       }
       diasNoPeriodo.forEach(dia => {
@@ -408,6 +428,7 @@ export default function AnaliseVisitas() {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!map[vendedorId]) {
         map[vendedorId] = {
+          vendedorId,
           nome: vendedoresMap[vendedorId]?.nome || v.vendedor_nome || 'Sem Nome',
           agendadas: 0,
           realizadas: 0,
@@ -415,7 +436,8 @@ export default function AnaliseVisitas() {
           emAndamento: 0,
           pendentes: 0,
           comPedido: 0,
-          semPedido: 0
+          semPedido: 0,
+          reagendadas: 0
         };
       }
       
@@ -444,7 +466,7 @@ export default function AnaliseVisitas() {
       }
     });
 
-    // Calcular pendentes adicionais (agendadas - todas as que já tem registro)
+    // Calcular pendentes adicionais e reagendamentos
     Object.keys(map).forEach(vendedorId => {
       const item = map[vendedorId];
       const totalComRegistro = item.realizadas + item.naoRealizadas + item.emAndamento + item.pendentes;
@@ -452,12 +474,13 @@ export default function AnaliseVisitas() {
       if (pendentesDiff > 0) {
         item.pendentes += pendentesDiff;
       }
+      item.reagendadas = reagendamentosPorVendedor[vendedorId] || 0;
     });
     
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap, reagendamentosPorVendedor]);
 
   const limparFiltros = () => {
     const d = new Date();
