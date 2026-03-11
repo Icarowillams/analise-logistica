@@ -1328,6 +1328,13 @@ function ClienteCard({ clienteInfo, tipo, onOpenMap, onOpenPhotos }) {
           <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 truncate">
             {cliente?.cidade}{cliente?.bairro ? `, ${cliente.bairro}` : ''}
           </p>
+          {clienteInfo.isReagendamento && clienteInfo.dataOriginal && (
+            <p className="text-[10px] sm:text-xs text-purple-600 mt-0.5 flex items-center gap-1">
+              <RefreshCw className="w-2.5 h-2.5" />
+              Visita original: {new Date(clienteInfo.dataOriginal + 'T12:00:00').toLocaleDateString('pt-BR')}
+              {clienteInfo.motivoOriginal && <span className="text-slate-500 ml-1">({clienteInfo.motivoOriginal})</span>}
+            </p>
+          )}
           
           {visitaRoteiro && (
             <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs space-y-0.5 sm:space-y-1">
