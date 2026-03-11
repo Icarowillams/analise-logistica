@@ -970,7 +970,7 @@ export default function RelatorioRoteiros() {
 
                                   {/* Clientes da data selecionada */}
                                   {dataSelecionada && (() => {
-                                    const { concluidos, emAtendimento, semAtendimento, semCheckin } = getClientesVisitadosNaData(vendedor.id, dataSelecionada);
+                                    const { concluidos, emAtendimento, semAtendimento, semCheckin, reagendados } = getClientesVisitadosNaData(vendedor.id, dataSelecionada);
 
                                     return (
                                       <div className="space-y-4">
