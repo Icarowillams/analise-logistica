@@ -381,17 +381,42 @@ export default function AnaliseVisitas() {
     return m;
   }, [visitasFiltradas]);
 
-  // Reagendamentos filtrados por período e vendedor
+  // Reagendamentos filtrados por período e vendedor - com detalhamento por status
   const reagendamentosPorVendedor = useMemo(() => {
     const map = {};
     reagendamentos.forEach(r => {
       if (r.data_reagendamento < dataInicio || r.data_reagendamento > dataFim) return;
       if (vendedoresIdsFiltrados && !vendedoresIdsFiltrados.has(r.vendedor_id)) return;
-      if (!map[r.vendedor_id]) map[r.vendedor_id] = 0;
-      map[r.vendedor_id]++;
+      if (!map[r.vendedor_id]) map[r.vendedor_id] = { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 };
+      map[r.vendedor_id].total++;
+      
+      // Verificar se existe uma VisitaRoteiro correspondente na data reagendada
+      const visitaCorrespondente = visitasRoteiro.find(v => 
+        v.vendedor_id === r.vendedor_id && 
+        v.data_visita === r.data_reagendamento &&
+        (v.cliente_id === r.cliente_id || v.cliente_codigo === r.cliente_codigo)
+      );
+      
+      if (visitaCorrespondente) {
+        if (visitaCorrespondente.status === 'concluida') {
+          map[r.vendedor_id].realizadas++;
+        } else if (visitaCorrespondente.status === 'nao_atendido') {
+          map[r.vendedor_id].naoRealizadas++;
+        } else if (visitaCorrespondente.status === 'checkin_realizado' || visitaCorrespondente.status === 'em_andamento') {
+          map[r.vendedor_id].emAndamento++;
+        } else {
+          map[r.vendedor_id].pendentes++;
+        }
+      } else if (r.status === 'realizada') {
+        map[r.vendedor_id].realizadas++;
+      } else if (r.status === 'cancelada') {
+        map[r.vendedor_id].naoRealizadas++;
+      } else {
+        map[r.vendedor_id].pendentes++;
+      }
     });
     return map;
-  }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados]);
+  }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados, visitasRoteiro]);
 
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
@@ -474,7 +499,7 @@ export default function AnaliseVisitas() {
       if (pendentesDiff > 0) {
         item.pendentes += pendentesDiff;
       }
-      item.reagendadas = reagendamentosPorVendedor[vendedorId] || 0;
+      item.reagendamento = reagendamentosPorVendedor[vendedorId] || { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 };
     });
     
     return Object.values(map)
