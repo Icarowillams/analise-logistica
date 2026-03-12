@@ -841,8 +841,7 @@ export default function AnaliseVisitas() {
                           size="sm" 
                           className="text-orange-600 hover:text-orange-800 hover:bg-orange-50 gap-1"
                           onClick={() => {
-                            window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
-                              `&vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                            window.location.href = `/RelatorioDetalhadoVisitas?vendedor_id=${item.vendedorId}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
                           }}
                         >
                           <FileText className="w-4 h-4" />
