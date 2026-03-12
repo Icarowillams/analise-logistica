@@ -137,6 +137,7 @@ export default function Permissoes() {
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
           permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
           permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+          permissoes_visita_comercial: { acesso: false, acompanhamento: false, negociacao: false, prospeccao: false, resolucao: false, estoque: false },
           permissoes_relatorios: { 
             rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
             rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
@@ -159,6 +160,7 @@ export default function Permissoes() {
         permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
         permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
         permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+        permissoes_visita_comercial: { acesso: false, acompanhamento: false, negociacao: false, prospeccao: false, resolucao: false, estoque: false },
         permissoes_relatorios: { 
           rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
           rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
@@ -353,6 +355,7 @@ export default function Permissoes() {
       permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
       permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
       permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
+      permissoes_visita_comercial: { acesso: false, acompanhamento: false, negociacao: false, prospeccao: false, resolucao: false, estoque: false },
       permissoes_relatorios: { 
         rel_roteiros_visualizar: false, rel_roteiros_filtros: false, rel_roteiros_exportar: false,
         rel_estoque_visualizar: false, rel_estoque_filtros: false, rel_estoque_exportar: false,
