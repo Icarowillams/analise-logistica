@@ -33,7 +33,7 @@ function getLocalISOString(date = new Date()) {
   return `${y}-${mo}-${d}T${h}:${mi}:${s}${sign}${hh}:${mm}`;
 }
 
-export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, supervisor, onClose }) {
+export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, supervisor, isProspeccao = false, onClose }) {
   const queryClient = useQueryClient();
   const [checkinDone, setCheckinDone] = useState(false);
   const [checkinData, setCheckinData] = useState(null);
@@ -42,7 +42,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
-  const [tiposVisita, setTiposVisita] = useState([]);
+  const [tiposVisita, setTiposVisita] = useState(isProspeccao ? ['prospeccao'] : []);
   const [formData, setFormData] = useState({
     obs_acompanhamento: '',
     prospeccao_nome_fantasia: '',
