@@ -780,8 +780,7 @@ export default function AnaliseVisitas() {
                 className="bg-gradient-to-r from-orange-500 to-red-600 text-white gap-1.5"
                 onClick={() => {
                   const ids = performancePorFuncionario.map(p => p.vendedorId).join(',');
-                  window.location.href = createPageUrl('RelatorioDetalhadoVisitas') + 
-                    `&vendedor_ids=${ids}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                  window.location.href = `/RelatorioDetalhadoVisitas?vendedor_ids=${ids}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
                 }}
               >
                 <FileText className="w-4 h-4" />
