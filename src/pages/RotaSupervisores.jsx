@@ -261,25 +261,43 @@ export default function RotaSupervisores() {
                       cliente={visitaEmAndamento}
                       rotaSupervisorId={rotaHoje.id}
                       supervisor={supervisor}
+                      isProspeccao={isProspeccao}
                       onClose={() => {
                         setVisitaEmAndamento(null);
+                        setIsProspeccao(false);
                         queryClient.invalidateQueries({ queryKey: ['visitasSupervisor', rotaHoje.id] });
                       }}
                     />
+                  ) : showTipoEscolha ? (
+                    <EscolhaTipoVisita
+                      onProspeccao={handleProspeccaoStart}
+                      onClienteExistente={handleClienteNormalStart}
+                      onCancel={() => setShowTipoEscolha(false)}
+                    />
+                  ) : isProspeccao ? (
+                    <FormProspeccaoNome
+                      onConfirm={(nomeFantasia) => {
+                        // Cria um "cliente virtual" com dados mínimos para prospecção
+                        setVisitaEmAndamento({
+                          id: `prospeccao_${Date.now()}`,
+                          codigo: 'NOVO',
+                          nome_fantasia: nomeFantasia,
+                          razao_social: nomeFantasia,
+                          cidade: '',
+                          _isProspeccao: true
+                        });
+                      }}
+                      onCancel={() => setIsProspeccao(false)}
+                    />
+                  ) : showBusca ? (
+                    <BuscaClienteSupervisor
+                      onSelectCliente={handleSelectCliente}
+                      clientesJaAdicionados={clientesJaVisitados}
+                    />
                   ) : (
-                    <>
-                      {/* Busca de clientes */}
-                      {showBusca ? (
-                        <BuscaClienteSupervisor
-                          onSelectCliente={handleSelectCliente}
-                          clientesJaAdicionados={clientesJaVisitados}
-                        />
-                      ) : (
-                        <Button onClick={() => setShowBusca(true)} variant="outline" className="w-full border-dashed border-2">
-                          <Plus className="w-4 h-4 mr-2" /> Adicionar Visita
-                        </Button>
-                      )}
-                    </>
+                    <Button onClick={() => setShowTipoEscolha(true)} variant="outline" className="w-full border-dashed border-2">
+                      <Plus className="w-4 h-4 mr-2" /> Adicionar Visita
+                    </Button>
                   )}
 
                   {/* Finalizar Roteiro */}
