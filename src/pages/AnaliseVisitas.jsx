@@ -705,7 +705,7 @@ export default function AnaliseVisitas() {
       </Card>
 
       {/* KPIs Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatsCard
           title="Visitas Agendadas"
           value={stats.totalAgendadas}
@@ -740,6 +740,13 @@ export default function AnaliseVisitas() {
           subtitle={tempoMedioPorVisita !== 'N/D' ? `tempo médio: ${tempoMedioPorVisita}` : 'sem tempo médio'}
           icon={Clock}
           gradient="from-orange-500 to-amber-600"
+        />
+        <StatsCard
+          title="Taxa Conversão Pedido"
+          value={`${stats.comPedido + stats.semPedido > 0 ? ((stats.comPedido / (stats.comPedido + stats.semPedido)) * 100).toFixed(1) : 0}%`}
+          subtitle={`${stats.comPedido} pedidos em ${stats.comPedido + stats.semPedido} visitas`}
+          icon={Percent}
+          gradient="from-purple-500 to-violet-600"
         />
       </div>
 
