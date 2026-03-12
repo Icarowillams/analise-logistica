@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
-import { XCircle, ShoppingCart, ChevronDown, ChevronUp, X, AlertTriangle, ListOrdered, Users } from 'lucide-react';
+import { XCircle, ShoppingCart, ChevronDown, ChevronUp, X, ListOrdered, Users } from 'lucide-react';
 
 export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap }) {
   const [selectedFuncionarioNV, setSelectedFuncionarioNV] = useState(null);
