@@ -43,6 +43,7 @@ const ABAS_SISTEMA = [
   { id: 'DashboardClientes', nome: 'Dashboard Clientes', grupo: 'analises' },
   { id: 'AnaliseVisitas', nome: 'Análise de Visitas', grupo: 'analises' },
   { id: 'MeusRoteiros', nome: 'Meus Roteiros', grupo: 'visitas' },
+  { id: 'RotaSupervisores', nome: 'Rota Supervisores', grupo: 'visitas' },
   { id: 'PainelGestorVisita', nome: 'Painel de Roteiros', grupo: 'visitas' },
   { id: 'RelatorioRoteiros', nome: 'Roteiros/Visitas', grupo: 'relatorios' },
   { id: 'RelatorioEstoque', nome: 'Estoque', grupo: 'relatorios' },
