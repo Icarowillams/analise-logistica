@@ -894,6 +894,7 @@ export default function AnaliseVisitas() {
                         <TableCell></TableCell>
                         <TableCell></TableCell>
                         <TableCell></TableCell>
+                        <TableCell></TableCell>
                       </TableRow>
                     )}
                   </React.Fragment>
