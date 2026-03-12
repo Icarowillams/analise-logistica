@@ -10,12 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Play, Square, Clock, MapPin, Plus, History, Route, UserPlus, Search as SearchIcon } from 'lucide-react';
+import { Play, Square, Clock, MapPin, Plus, Route, UserPlus, Search as SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import BuscaClienteSupervisor from '@/components/RotaSupervisor/BuscaClienteSupervisor';
 import FormVisitaSupervisor from '@/components/RotaSupervisor/FormVisitaSupervisor';
 import VisitaCardResumida from '@/components/RotaSupervisor/VisitaCardResumida';
-import HistoricoRotasSupervisor from '@/components/RotaSupervisor/HistoricoRotasSupervisor';
 
 function getLocalDateStr(date = new Date()) {
   const y = date.getFullYear();
@@ -41,7 +40,6 @@ function getLocalISOString(date = new Date()) {
 export default function RotaSupervisores() {
   const [currentUser, setCurrentUser] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
-  const [tab, setTab] = useState('hoje');
   const [showBusca, setShowBusca] = useState(false);
   const [showTipoEscolha, setShowTipoEscolha] = useState(false);
   const [isProspeccao, setIsProspeccao] = useState(false);
@@ -185,17 +183,7 @@ export default function RotaSupervisores() {
     <div>
       <PageHeader title="Rota Supervisores" subtitle={`Olá, ${supervisor.nome}`} icon={Route} />
 
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="hoje">
-            <MapPin className="w-4 h-4 mr-2" /> Hoje
-          </TabsTrigger>
-          <TabsTrigger value="historico">
-            <History className="w-4 h-4 mr-2" /> Histórico
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="hoje">
+      <div>
           {loadingRota ? (
             <p className="text-sm text-center py-8 text-slate-500">Carregando...</p>
           ) : !rotaHoje ? (
@@ -338,12 +326,7 @@ export default function RotaSupervisores() {
               )}
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="historico">
-          <HistoricoRotasSupervisor />
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   );
 }
