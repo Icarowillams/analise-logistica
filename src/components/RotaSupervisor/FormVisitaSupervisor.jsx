@@ -177,19 +177,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     setSalvando(true);
     const tempo = tempoLoja();
 
-    const isVirtualClient = cliente._isProspeccao === true;
     const data = {
-      rota_supervisor_id: rotaSupervisorId,
-      supervisor_id: supervisor.id,
-      supervisor_nome: supervisor.nome,
-      cliente_id: isVirtualClient ? '' : cliente.id,
-      cliente_codigo: isVirtualClient ? 'PROSPECCAO' : cliente.codigo,
-      cliente_nome: cliente.nome_fantasia || cliente.razao_social,
-      cliente_cidade: cliente.cidade || '',
-      data_visita: getLocalDateStr(),
-      checkin_time: checkinData.time,
-      checkin_latitude: checkinData.latitude,
-      checkin_longitude: checkinData.longitude,
       checkout_time: checkoutData.time,
       checkout_latitude: checkoutData.latitude,
       checkout_longitude: checkoutData.longitude,
@@ -240,21 +228,16 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
       data.como_finalizado = formData.como_finalizado;
     }
 
-    // Criar a visita
-    const visitaCriada = await base44.entities.VisitaSupervisor.create(data);
+    // Atualizar a visita já criada no check-in
+    await base44.entities.VisitaSupervisor.update(visitaDbId, data);
 
     // Se usou estoque, atualizar os registros temporários com o ID real da visita
-    if (tiposVisita.includes('estoque') && visitaCriada?.id) {
+    if (tiposVisita.includes('estoque') && visitaDbId) {
       const [estoques, trocas] = await Promise.all([
-        base44.entities.EstoqueVisita.filter({ visita_id: visitaTempId }),
-        base44.entities.TrocaVisita.filter({ visita_id: visitaTempId })
+        base44.entities.EstoqueVisita.filter({ visita_id: visitaDbId }),
+        base44.entities.TrocaVisita.filter({ visita_id: visitaDbId })
       ]);
-      for (const e of estoques) {
-        await base44.entities.EstoqueVisita.update(e.id, { visita_id: visitaCriada.id });
-      }
-      for (const t of trocas) {
-        await base44.entities.TrocaVisita.update(t.id, { visita_id: visitaCriada.id });
-      }
+      // Nenhuma migração necessária, já usam o ID real
     }
 
     await queryClient.invalidateQueries({ queryKey: ['visitasSupervisor'] });
