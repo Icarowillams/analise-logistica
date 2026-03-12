@@ -418,6 +418,23 @@ export default function AnaliseVisitas() {
     return map;
   }, [reagendamentos, dataInicio, dataFim, vendedoresIdsFiltrados, visitasRoteiro]);
 
+  // Criar set de chaves de reagendamento para identificar quais VisitaRoteiro são de reagendamento
+  const reagendamentoKeys = useMemo(() => {
+    const keys = new Set();
+    reagendamentos.forEach(r => {
+      if (r.data_reagendamento >= dataInicio && r.data_reagendamento <= dataFim) {
+        // Chave: vendedor_id + cliente_id + data_reagendamento
+        if (r.cliente_id) {
+          keys.add(`${r.vendedor_id}_${r.cliente_id}_${r.data_reagendamento}`);
+        }
+        if (r.cliente_codigo) {
+          keys.add(`${r.vendedor_id}_cod_${r.cliente_codigo}_${r.data_reagendamento}`);
+        }
+      }
+    });
+    return keys;
+  }, [reagendamentos, dataInicio, dataFim]);
+
   // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
   const performancePorFuncionario = useMemo(() => {
     const map = {};
@@ -448,7 +465,7 @@ export default function AnaliseVisitas() {
       });
     });
     
-    // Contar visitas do VisitaRoteiro
+    // Contar visitas do VisitaRoteiro - EXCLUINDO reagendamentos da linha principal
     visitasRoteiroFiltradas.forEach(v => {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!map[vendedorId]) {
@@ -465,6 +482,13 @@ export default function AnaliseVisitas() {
           reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
         };
       }
+      
+      // Verificar se esta visita é de um reagendamento
+      const isReagendamento = reagendamentoKeys.has(`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`) ||
+                               reagendamentoKeys.has(`${v.vendedor_id}_cod_${v.cliente_codigo}_${v.data_visita}`);
+      
+      // Se for reagendamento, NÃO conta na linha principal
+      if (isReagendamento) return;
       
       if (v.status === 'concluida') {
         map[vendedorId].realizadas++;
@@ -505,7 +529,7 @@ export default function AnaliseVisitas() {
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap, reagendamentosPorVendedor]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap, reagendamentosPorVendedor, reagendamentoKeys]);
 
   const limparFiltros = () => {
     const d = new Date();
