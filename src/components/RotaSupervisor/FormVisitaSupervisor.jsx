@@ -246,6 +246,15 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     onClose();
   };
 
+  const handleCancelar = async () => {
+    // Se o check-in já foi salvo no banco, deletar o registro
+    if (visitaDbId) {
+      await base44.entities.VisitaSupervisor.delete(visitaDbId);
+      queryClient.invalidateQueries({ queryKey: ['visitasSupervisor'] });
+    }
+    onClose();
+  };
+
   const toggleTipo = (tipo) => {
     if (tipo === 'prospeccao' && isProspeccao) return;
     setTiposVisita(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]);
@@ -264,7 +273,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
             )}
             {isProspeccao && <Badge className="bg-green-100 text-green-700 text-[10px]">Prospecção</Badge>}
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">Cancelar</Button>
+          <Button variant="ghost" size="sm" onClick={handleCancelar} className="text-xs">Cancelar</Button>
         </div>
         {!isProspeccao && <p className="text-xs text-slate-500">{cliente.cidade}</p>}
       </CardHeader>
