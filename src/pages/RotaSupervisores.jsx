@@ -267,6 +267,7 @@ export default function RotaSupervisores() {
                       rotaSupervisorId={rotaHoje.id}
                       supervisor={supervisor}
                       isProspeccao={isProspeccao}
+                      visitaExistente={visitaEmAndamento._visitaExistente || null}
                       onClose={() => {
                         setVisitaEmAndamento(null);
                         setIsProspeccao(false);
