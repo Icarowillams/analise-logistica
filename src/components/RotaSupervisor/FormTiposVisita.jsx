@@ -3,6 +3,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Plus, Trash2 } from 'lucide-react';
+import FormNegociacaoVenda from './FormNegociacaoVenda';
+import FormNegociacaoExposicao from './FormNegociacaoExposicao';
 
 function RadioOption({ name, value, checked, onChange, label }) {
   return (
@@ -10,23 +14,6 @@ function RadioOption({ name, value, checked, onChange, label }) {
       <input type="radio" name={name} value={value} checked={checked} onChange={() => onChange(value)} className="accent-amber-500" />
       {label}
     </label>
-  );
-}
-
-function PrazoField({ label, prazo, permanente, onChangePrazo, onChangePermanente }) {
-  return (
-    <div className="p-3 bg-white rounded border space-y-2">
-      <Label className="text-xs font-semibold">{label}</Label>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center space-x-2">
-          <Checkbox id={`perm-${label}`} checked={permanente} onCheckedChange={onChangePermanente} />
-          <label htmlFor={`perm-${label}`} className="text-xs cursor-pointer">Permanente</label>
-        </div>
-        {!permanente && (
-          <Input type="date" value={prazo} onChange={(e) => onChangePrazo(e.target.value)} className="h-8 text-xs flex-1" />
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -70,63 +57,39 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData }) 
         </div>
       )}
 
-      {/* NEGOCIAÇÃO */}
+      {/* NEGOCIAÇÃO COMERCIAL */}
       {tiposVisita.includes('negociacao') && (
         <div className="p-3 bg-green-50 rounded-lg border border-green-200 space-y-3">
           <Label className="text-sm font-semibold text-green-800">Negociação Comercial</Label>
-          <div className="flex gap-4">
-            <RadioOption name="tipo_neg" value="venda" checked={formData.tipo_negociacao === 'venda'} onChange={(v) => update('tipo_negociacao', v)} label="Venda" />
-            <RadioOption name="tipo_neg" value="exposicao" checked={formData.tipo_negociacao === 'exposicao'} onChange={(v) => update('tipo_negociacao', v)} label="Exposição" />
+          
+          {/* Checkboxes - Venda e Exposição */}
+          <div className="flex gap-6">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="neg-venda"
+                checked={formData.negociacao_venda || false}
+                onCheckedChange={(v) => update('negociacao_venda', v)}
+              />
+              <label htmlFor="neg-venda" className="text-sm cursor-pointer font-medium">Venda</label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="neg-exposicao"
+                checked={formData.negociacao_exposicao || false}
+                onCheckedChange={(v) => update('negociacao_exposicao', v)}
+              />
+              <label htmlFor="neg-exposicao" className="text-sm cursor-pointer font-medium">Exposição</label>
+            </div>
           </div>
 
-          {formData.tipo_negociacao === 'venda' && (
-            <div className="p-3 bg-white rounded border space-y-2">
-              <Label className="text-xs font-semibold">Ação Venda</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <Label className="text-xs">Prazo da Ação</Label>
-                  <Input type="date" value={formData.acao_venda_prazo} onChange={(e) => update('acao_venda_prazo', e.target.value)} className="h-8 text-xs" />
-                </div>
-                <div>
-                  <Label className="text-xs">Produto da Ação</Label>
-                  <Input placeholder="Produto..." value={formData.acao_venda_produto} onChange={(e) => update('acao_venda_produto', e.target.value)} className="h-8 text-xs" />
-                </div>
-                <div>
-                  <Label className="text-xs">Valor da Ação</Label>
-                  <Input type="number" step="0.01" placeholder="0,00" value={formData.acao_venda_valor} onChange={(e) => update('acao_venda_valor', e.target.value)} className="h-8 text-xs" />
-                </div>
-              </div>
-            </div>
+          {/* Bloco Venda */}
+          {formData.negociacao_venda && (
+            <FormNegociacaoVenda formData={formData} setFormData={setFormData} />
           )}
 
-          {formData.tipo_negociacao === 'exposicao' && (
-            <div className="space-y-3">
-              <div className="flex gap-4 flex-wrap">
-                <RadioOption name="tipo_exp" value="ponto_extra" checked={formData.tipo_exposicao === 'ponto_extra'} onChange={(v) => update('tipo_exposicao', v)} label="Ponto Extra" />
-                <RadioOption name="tipo_exp" value="gondola" checked={formData.tipo_exposicao === 'gondola'} onChange={(v) => update('tipo_exposicao', v)} label="Gôndola" />
-                <RadioOption name="tipo_exp" value="os_dois" checked={formData.tipo_exposicao === 'os_dois'} onChange={(v) => update('tipo_exposicao', v)} label="Os Dois" />
-              </div>
-
-              {(formData.tipo_exposicao === 'ponto_extra' || formData.tipo_exposicao === 'os_dois') && (
-                <PrazoField
-                  label="Ponto Extra"
-                  prazo={formData.ponto_extra_prazo}
-                  permanente={formData.ponto_extra_permanente}
-                  onChangePrazo={(v) => update('ponto_extra_prazo', v)}
-                  onChangePermanente={(v) => update('ponto_extra_permanente', v)}
-                />
-              )}
-
-              {(formData.tipo_exposicao === 'gondola' || formData.tipo_exposicao === 'os_dois') && (
-                <PrazoField
-                  label="Gôndola"
-                  prazo={formData.gondola_prazo}
-                  permanente={formData.gondola_permanente}
-                  onChangePrazo={(v) => update('gondola_prazo', v)}
-                  onChangePermanente={(v) => update('gondola_permanente', v)}
-                />
-              )}
-            </div>
+          {/* Bloco Exposição */}
+          {formData.negociacao_exposicao && (
+            <FormNegociacaoExposicao formData={formData} setFormData={setFormData} />
           )}
         </div>
       )}
