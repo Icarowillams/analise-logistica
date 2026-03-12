@@ -310,9 +310,9 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
             />
 
             {/* INFORMAR ESTOQUE */}
-            {tiposVisita.includes('estoque') && (
+            {tiposVisita.includes('estoque') && visitaDbId && (
               <EstoqueSupervisorForm
-                visitaId={visitaTempId}
+                visitaId={visitaDbId}
                 clienteId={cliente._isProspeccao ? '' : cliente.id}
                 clienteNome={cliente.nome_fantasia || cliente.razao_social}
               />
