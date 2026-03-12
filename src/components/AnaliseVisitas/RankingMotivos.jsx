@@ -486,16 +486,7 @@ function MotivoTable({ items, type, onSort, SortIcon, colors, selected, onSelect
   );
 }
 
-// ===== TABELA DE FUNCIONÁRIOS COM TOTAIS GERAIS (sem filtro de motivo) =====
-function FuncionarioTotaisTable({ items, type, onSort, SortIcon }) {
-  // Aggregate by employee across all motivos — items have per-motivo data,
-  // but the parent passes aggregated employee data via a different prop.
-  // Here we just display a summary since items are motivo-level.
-  // We need employee totals — they come from the parent already via rankingNaoVisitas/rankingNaoPedidos.
-  // However, this sub-component only receives motivo items. So we display motivo totals.
-  // Actually the parent now needs to pass employee totals too — let's handle this differently.
-  return null;
-}
+
 
 // ===== DETALHE DO FUNCIONÁRIO =====
 function DetalheMotivos({ detalhe, onClose, colors }) {
