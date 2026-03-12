@@ -306,36 +306,51 @@ function StatusSection({ titulo, icon, cor, dias, campo, formatarData, mostrarPe
 }
 
 function VisitaItem({ item, mostrarPedido, cor }) {
+  const temMotivoPedido = mostrarPedido && item.pedido_solicitado === false && item.motivo_nao_pedido;
+  const temObservacoes = item.observacoes && item.observacoes.trim();
+
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 p-2 rounded-lg border bg-white`}>
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {item.cliente_codigo && (
-          <Badge variant="outline" className="text-[10px] shrink-0">{item.cliente_codigo}</Badge>
-        )}
-        <span className="font-medium text-slate-800 text-sm truncate">{item.cliente_nome}</span>
+    <div className={`p-2 rounded-lg border bg-white space-y-1`}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {item.cliente_codigo && (
+            <Badge variant="outline" className="text-[10px] shrink-0">{item.cliente_codigo}</Badge>
+          )}
+          <span className="font-medium text-slate-800 text-sm truncate">{item.cliente_nome}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap ml-6 sm:ml-0">
+          {item.reagendado && (
+            <Badge className="bg-purple-100 text-purple-700 text-[10px] gap-0.5">
+              <RefreshCw className="w-2.5 h-2.5" /> Reagendado
+            </Badge>
+          )}
+          {mostrarPedido && item.pedido_solicitado === true && (
+            <Badge className="bg-green-100 text-green-700 text-[10px] gap-0.5">
+              <ShoppingCart className="w-2.5 h-2.5" /> Pedido Sim
+            </Badge>
+          )}
+          {mostrarPedido && item.pedido_solicitado === false && (
+            <Badge className="bg-orange-100 text-orange-700 text-[10px] gap-0.5">
+              <ShoppingCart className="w-2.5 h-2.5" /> Pedido Não
+            </Badge>
+          )}
+          {item.motivo_nao_atendimento && (
+            <Badge className="bg-red-100 text-red-700 text-[10px]">
+              {item.motivo_nao_atendimento}
+            </Badge>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-1.5 flex-wrap ml-6 sm:ml-0">
-        {item.reagendado && (
-          <Badge className="bg-purple-100 text-purple-700 text-[10px] gap-0.5">
-            <RefreshCw className="w-2.5 h-2.5" /> Reagendado
-          </Badge>
-        )}
-        {mostrarPedido && item.pedido_solicitado === true && (
-          <Badge className="bg-green-100 text-green-700 text-[10px] gap-0.5">
-            <ShoppingCart className="w-2.5 h-2.5" /> Pedido Sim
-          </Badge>
-        )}
-        {mostrarPedido && item.pedido_solicitado === false && (
-          <Badge className="bg-orange-100 text-orange-700 text-[10px] gap-0.5">
-            <ShoppingCart className="w-2.5 h-2.5" /> Pedido Não
-          </Badge>
-        )}
-        {item.motivo_nao_atendimento && (
-          <Badge className="bg-red-100 text-red-700 text-[10px]">
-            {item.motivo_nao_atendimento}
-          </Badge>
-        )}
-      </div>
+      {temMotivoPedido && (
+        <div className="ml-6 text-xs text-orange-600 italic">
+          Motivo: {item.motivo_nao_pedido}
+        </div>
+      )}
+      {temObservacoes && (
+        <div className="ml-6 text-xs text-slate-500 italic">
+          Obs: {item.observacoes}
+        </div>
+      )}
     </div>
   );
 }
