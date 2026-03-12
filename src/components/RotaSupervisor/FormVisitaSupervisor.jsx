@@ -397,6 +397,9 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
               tiposVisita={tiposVisita}
               formData={formData}
               setFormData={setFormData}
+              savedBlocks={savedBlocks}
+              onSalvarBloco={handleSalvarBloco}
+              visitaDbId={visitaDbId}
             />
 
             {/* INFORMAR ESTOQUE */}
