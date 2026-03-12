@@ -139,7 +139,8 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Roteiros/Visitas', path: 'RelatorioRoteiros' },
           { title: 'Estoque', path: 'RelatorioEstoque' },
-          { title: 'Trocas', path: 'RelatorioTrocas' }
+          { title: 'Trocas', path: 'RelatorioTrocas' },
+          { title: 'Rotina Supervisores', path: 'RelatorioRotinaSupervisores' }
         ]
       },
       {
