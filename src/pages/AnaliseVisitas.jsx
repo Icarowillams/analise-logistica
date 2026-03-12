@@ -20,6 +20,7 @@ import {
 import { createPageUrl } from '@/utils';
 import StatsCard from '@/components/ui/StatsCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import RankingMotivos from '@/components/AnaliseVisitas/RankingMotivos';
 
 export default function AnaliseVisitas() {
   const [dataInicio, setDataInicio] = useState(() => {
