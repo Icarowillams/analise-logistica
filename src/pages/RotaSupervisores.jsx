@@ -250,10 +250,10 @@ export default function RotaSupervisores() {
               </Card>
 
               {/* Visitas já concluídas */}
-              {visitasHoje.length > 0 && (
+              {visitasConcluidasHoje.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="text-sm font-semibold text-slate-700">Visitas Realizadas</h3>
-                  {visitasHoje.map(v => <VisitaCardResumida key={v.id} visita={v} />)}
+                  {visitasConcluidasHoje.map(v => <VisitaCardResumida key={v.id} visita={v} />)}
                 </div>
               )}
 
