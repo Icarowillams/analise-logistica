@@ -347,3 +347,66 @@ export default function RotaSupervisores() {
     </div>
   );
 }
+
+// Sub-componente: Escolha do tipo de visita (prospecção ou cliente existente)
+function EscolhaTipoVisita({ onProspeccao, onClienteExistente, onCancel }) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/30">
+      <CardContent className="pt-6 space-y-3">
+        <p className="text-sm font-semibold text-slate-700 text-center">Que tipo de visita deseja iniciar?</p>
+        <Button onClick={onProspeccao} variant="outline" className="w-full justify-start gap-3 h-14 border-green-200 hover:bg-green-50">
+          <UserPlus className="w-5 h-5 text-green-600" />
+          <div className="text-left">
+            <p className="text-sm font-medium">Prospecção de Cliente</p>
+            <p className="text-xs text-slate-500">Cliente novo, não cadastrado no sistema</p>
+          </div>
+        </Button>
+        <Button onClick={onClienteExistente} variant="outline" className="w-full justify-start gap-3 h-14 border-blue-200 hover:bg-blue-50">
+          <SearchIcon className="w-5 h-5 text-blue-600" />
+          <div className="text-left">
+            <p className="text-sm font-medium">Cliente Existente</p>
+            <p className="text-xs text-slate-500">Buscar cliente já cadastrado</p>
+          </div>
+        </Button>
+        <Button onClick={onCancel} variant="ghost" size="sm" className="w-full text-xs text-slate-500">Cancelar</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Sub-componente: Formulário de nome do cliente na prospecção
+function FormProspeccaoNome({ onConfirm, onCancel }) {
+  const [nome, setNome] = useState('');
+  return (
+    <Card className="border-green-200 bg-green-50/30">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <UserPlus className="w-4 h-4 text-green-600" />
+          Prospecção — Nome do Cliente
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label className="text-sm">Nome Fantasia do Cliente</Label>
+          <Input
+            placeholder="Ex: Padaria Central"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel} className="flex-1">Cancelar</Button>
+          <Button
+            size="sm"
+            disabled={!nome.trim()}
+            onClick={() => onConfirm(nome.trim())}
+            className="flex-1 bg-green-600 hover:bg-green-700"
+          >
+            Continuar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
