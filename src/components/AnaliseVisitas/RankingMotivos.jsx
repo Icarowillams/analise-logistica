@@ -451,32 +451,36 @@ function MotivoTable({ items, type, onSort, SortIcon, colors, selected, onSelect
             </Button>
           )}
         </div>
-        {detalhe ? (
-          <div className="overflow-x-auto max-h-80 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50">
-                  <TableHead className="font-semibold w-10">#</TableHead>
-                  <TableHead className="font-semibold">Funcionário</TableHead>
-                  <TableHead className="font-semibold text-center">Qtd</TableHead>
-                  <TableHead className="font-semibold text-center">% no Motivo</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {detalhe.items.map((m, i) => (
+        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="font-semibold w-10">#</TableHead>
+                <TableHead className="font-semibold">Funcionário</TableHead>
+                <TableHead className="font-semibold text-center">Qtd</TableHead>
+                <TableHead className="font-semibold text-center">{selected ? '% no Motivo' : '% Equipe'}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(detalhe ? detalhe.items : funcionariosGerais).map((item, i) => {
+                const nome = item.nome;
+                const qtd = detalhe ? item.qtd : item.total;
+                const pct = detalhe ? item.pct : item.percentual;
+                return (
                   <TableRow key={i} className="hover:bg-slate-50">
                     <TableCell><Badge variant="outline" className="text-xs">{i + 1}</Badge></TableCell>
-                    <TableCell className="font-medium text-sm">{m.nome}</TableCell>
-                    <TableCell className="text-center"><span className="font-semibold text-red-600">{m.qtd}</span></TableCell>
-                    <TableCell className="text-center"><Badge className="bg-slate-100 text-slate-700 text-xs">{m.pct}%</Badge></TableCell>
+                    <TableCell className="font-medium text-sm">{nome}</TableCell>
+                    <TableCell className="text-center"><span className="font-semibold text-red-600">{qtd}</span></TableCell>
+                    <TableCell className="text-center"><Badge className="bg-slate-100 text-slate-700 text-xs">{pct}%</Badge></TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <FuncionarioTotaisTable items={items} type={type} onSort={onSort} SortIcon={SortIcon} />
-        )}
+                );
+              })}
+              {!detalhe && funcionariosGerais.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-center text-sm text-slate-400 py-4">Nenhum funcionário</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );
