@@ -158,6 +158,55 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
   const detalheNV = useMemo(() => buildDetalheFuncionario(selectedFuncionarioNV), [selectedFuncionarioNV, visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap]);
   const detalheNP = useMemo(() => buildDetalheFuncionario(selectedFuncionarioNP), [selectedFuncionarioNP, visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap]);
 
+  // ===== DETALHAMENTO POR MOTIVO SELECIONADO (funcionários que usaram esse motivo) =====
+  const detalheMotivoNV = useMemo(() => {
+    if (!selectedMotivoNV) return null;
+    const map = {};
+    visitasRoteiroFiltradas.forEach(v => {
+      if (v.status !== 'nao_atendido') return;
+      const motivo = v.motivo_nao_atendimento || 'Sem motivo informado';
+      if (motivo !== selectedMotivoNV) return;
+      const vid = v.vendedor_id;
+      if (!map[vid]) map[vid] = { nome: vendedoresMap[vid]?.nome || v.vendedor_nome || 'Sem Nome', qtd: 0 };
+      map[vid].qtd++;
+    });
+    const arr = Object.values(map);
+    const total = arr.reduce((s, i) => s + i.qtd, 0);
+    arr.forEach(i => { i.pct = total > 0 ? parseFloat(((i.qtd / total) * 100).toFixed(1)) : 0; });
+    arr.sort((a, b) => b.qtd - a.qtd);
+    return { motivo: selectedMotivoNV, items: arr, total };
+  }, [selectedMotivoNV, visitasRoteiroFiltradas, vendedoresMap]);
+
+  const detalheMotivoNP = useMemo(() => {
+    if (!selectedMotivoNP) return null;
+    const map = {};
+    visitasRoteiroFiltradas.forEach(v => {
+      if (v.status !== 'concluida' && v.status !== 'checkin_realizado' && v.status !== 'em_andamento') return;
+      const pedido = v.pedido_solicitado != null
+        ? v.pedido_solicitado
+        : visitaPedidoMap[`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`];
+      if (pedido !== false) return;
+      let motivo = v.motivo_nao_pedido;
+      if (!motivo) {
+        const visitaKey = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+        const visitaEntidade = visitasFiltradas.find(vi =>
+          `${vi.vendedor_id}_${vi.cliente_id}_${vi.data_visita}` === visitaKey
+        );
+        motivo = visitaEntidade?.motivo_nao_solicitacao_descricao;
+      }
+      motivo = motivo || 'Sem motivo informado';
+      if (motivo !== selectedMotivoNP) return;
+      const vid = v.vendedor_id;
+      if (!map[vid]) map[vid] = { nome: vendedoresMap[vid]?.nome || v.vendedor_nome || 'Sem Nome', qtd: 0 };
+      map[vid].qtd++;
+    });
+    const arr = Object.values(map);
+    const total = arr.reduce((s, i) => s + i.qtd, 0);
+    arr.forEach(i => { i.pct = total > 0 ? parseFloat(((i.qtd / total) * 100).toFixed(1)) : 0; });
+    arr.sort((a, b) => b.qtd - a.qtd);
+    return { motivo: selectedMotivoNP, items: arr, total };
+  }, [selectedMotivoNP, visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap]);
+
   const toggleSort = (type, field) => {
     const setters = { naoVisita: setSortNaoVisita, naoPedido: setSortNaoPedido, motivoNV: setSortMotivoNV, motivoNP: setSortMotivoNP };
     setters[type](prev => ({ field, dir: prev.field === field && prev.dir === 'desc' ? 'asc' : 'desc' }));
