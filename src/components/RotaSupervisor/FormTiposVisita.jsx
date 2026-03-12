@@ -76,7 +76,10 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData, sa
       {/* NEGOCIAÇÃO COMERCIAL */}
       {tiposVisita.includes('negociacao') && (
         <div className="p-3 bg-green-50 rounded-lg border border-green-200 space-y-3">
-          <Label className="text-sm font-semibold text-green-800">Negociação Comercial</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold text-green-800">Negociação Comercial</Label>
+            {savedBlocks.negociacao && <CheckCircle className="w-4 h-4 text-green-500" />}
+          </div>
           
           {/* Checkboxes - Venda e Exposição */}
           <div className="flex gap-6">
@@ -106,6 +109,10 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData, sa
           {/* Bloco Exposição */}
           {formData.negociacao_exposicao && (
             <FormNegociacaoExposicao formData={formData} setFormData={setFormData} />
+          )}
+
+          {onSalvarBloco && visitaDbId && (
+            <BlocoSaveButton label="Negociação" bloco="negociacao" isSaved={savedBlocks.negociacao} onSave={onSalvarBloco} />
           )}
         </div>
       )}
