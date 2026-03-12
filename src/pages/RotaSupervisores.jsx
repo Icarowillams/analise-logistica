@@ -83,7 +83,24 @@ export default function RotaSupervisores() {
     enabled: !!rotaHoje
   });
 
+  const visitasConcluidasHoje = visitasHoje.filter(v => v.status === 'concluida');
+  const visitaEmCheckin = visitasHoje.find(v => v.status === 'checkin_realizado');
   const clientesJaVisitados = visitasHoje.map(v => v.cliente_id);
+
+  // Auto-restaurar visita em andamento (checkin_realizado) ao carregar a página
+  useEffect(() => {
+    if (visitaEmCheckin && !visitaEmAndamento) {
+      // Reconstruir o objeto cliente a partir dos dados da visita
+      setVisitaEmAndamento({
+        id: visitaEmCheckin.cliente_id,
+        codigo: visitaEmCheckin.cliente_codigo,
+        nome_fantasia: visitaEmCheckin.cliente_nome,
+        razao_social: visitaEmCheckin.cliente_nome,
+        cidade: visitaEmCheckin.cliente_cidade || '',
+        _visitaExistente: visitaEmCheckin
+      });
+    }
+  }, [visitaEmCheckin]);
 
   const handleIniciarRoteiro = () => {
     setLoadingAction(true);
