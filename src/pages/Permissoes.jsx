@@ -205,6 +205,7 @@ export default function Permissoes() {
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
       permissoes_visitas: permissaoAtual.permissoes_visitas || {},
+      permissoes_visita_comercial: permissaoAtual.permissoes_visita_comercial || {},
       permissoes_relatorios: permissaoAtual.permissoes_relatorios || {},
       permissoes_pedidos: permissaoAtual.permissoes_pedidos || {}
     };
@@ -260,6 +261,7 @@ export default function Permissoes() {
       permissoes_importar: permissaoAtual.permissoes_importar || {},
       permissoes_analises: permissaoAtual.permissoes_analises || {},
       permissoes_visitas: permissaoAtual.permissoes_visitas || {},
+      permissoes_visita_comercial: permissaoAtual.permissoes_visita_comercial || {},
       permissoes_relatorios: permissaoAtual.permissoes_relatorios || {},
       permissoes_pedidos: permissaoAtual.permissoes_pedidos || {}
     };
