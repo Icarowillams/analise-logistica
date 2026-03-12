@@ -120,7 +120,10 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData, sa
       {/* RESOLUÇÃO DE PROBLEMAS */}
       {tiposVisita.includes('resolucao') && (
         <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-2">
-          <Label className="text-sm font-semibold text-red-800">Resolução de Problemas</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold text-red-800">Resolução de Problemas</Label>
+            {savedBlocks.resolucao && <CheckCircle className="w-4 h-4 text-green-500" />}
+          </div>
           <div className="flex gap-4">
             <RadioOption name="tipo_prob" value="logistica" checked={formData.tipo_problema === 'logistica'} onChange={(v) => update('tipo_problema', v)} label="Logística" />
             <RadioOption name="tipo_prob" value="atendimento" checked={formData.tipo_problema === 'atendimento'} onChange={(v) => update('tipo_problema', v)} label="Atendimento" />
@@ -137,6 +140,9 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData, sa
             <Label className="text-xs">Como Foi Finalizado *</Label>
             <Textarea placeholder="Como terminou..." value={formData.como_finalizado} onChange={(e) => update('como_finalizado', e.target.value)} rows={2} />
           </div>
+          {onSalvarBloco && visitaDbId && (
+            <BlocoSaveButton label="Resolução" bloco="resolucao" isSaved={savedBlocks.resolucao} onSave={onSalvarBloco} />
+          )}
         </div>
       )}
     </div>
