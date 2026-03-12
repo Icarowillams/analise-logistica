@@ -63,27 +63,62 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   // ID da visita no banco (criada no check-in)
   const [visitaDbId, setVisitaDbId] = useState(visitaExistente?.id || null);
 
-  const [tiposVisita, setTiposVisita] = useState(isProspeccao ? ['prospeccao'] : []);
-  const [formData, setFormData] = useState({
-    obs_acompanhamento: '',
-    prospeccao_nome_fantasia: isProspeccao ? (cliente.nome_fantasia || '') : '',
-    obs_prospeccao: '',
-    negociacao_venda: false,
-    negociacao_exposicao: false,
-    acoes_venda: [{ prazo_de: '', prazo_ate: '', produto: '', valor_acao: '', valor_investimento: '' }],
-    exposicao_prazo_de: '',
-    exposicao_prazo_ate: '',
-    tipo_exposicao: '',
-    ponto_extra_prazo: '',
-    ponto_extra_permanente: false,
-    gondola_prazo: '',
-    gondola_permanente: false,
-    tipo_problema: '',
-    descricao_problema: '',
-    atitude_tomada: '',
-    como_finalizado: '',
-    resumo_visita: '',
-    observacao_geral: ''
+  const [tiposVisita, setTiposVisita] = useState(() => {
+    if (visitaExistente?.tipos_visita?.length > 0) return visitaExistente.tipos_visita;
+    return isProspeccao ? ['prospeccao'] : [];
+  });
+  const [formData, setFormData] = useState(() => {
+    if (visitaExistente) {
+      return {
+        obs_acompanhamento: visitaExistente.obs_acompanhamento || '',
+        prospeccao_nome_fantasia: visitaExistente.prospeccao_nome_fantasia || (isProspeccao ? (cliente.nome_fantasia || '') : ''),
+        obs_prospeccao: visitaExistente.obs_prospeccao || '',
+        negociacao_venda: visitaExistente.negociacao_venda || false,
+        negociacao_exposicao: visitaExistente.negociacao_exposicao || false,
+        acoes_venda: visitaExistente.acoes_venda?.length > 0 ? visitaExistente.acoes_venda : [{ prazo_de: '', prazo_ate: '', produto: '', valor_acao: '', valor_investimento: '' }],
+        exposicao_prazo_de: visitaExistente.exposicao_prazo_de || '',
+        exposicao_prazo_ate: visitaExistente.exposicao_prazo_ate || '',
+        tipo_exposicao: visitaExistente.tipo_exposicao || '',
+        ponto_extra_prazo: visitaExistente.ponto_extra_prazo || '',
+        ponto_extra_permanente: visitaExistente.ponto_extra_permanente || false,
+        gondola_prazo: visitaExistente.gondola_prazo || '',
+        gondola_permanente: visitaExistente.gondola_permanente || false,
+        tipo_problema: visitaExistente.tipo_problema || '',
+        descricao_problema: visitaExistente.descricao_problema || '',
+        atitude_tomada: visitaExistente.atitude_tomada || '',
+        como_finalizado: visitaExistente.como_finalizado || '',
+        resumo_visita: visitaExistente.resumo_visita || '',
+        observacao_geral: visitaExistente.observacao_geral || ''
+      };
+    }
+    return {
+      obs_acompanhamento: '',
+      prospeccao_nome_fantasia: isProspeccao ? (cliente.nome_fantasia || '') : '',
+      obs_prospeccao: '',
+      negociacao_venda: false,
+      negociacao_exposicao: false,
+      acoes_venda: [{ prazo_de: '', prazo_ate: '', produto: '', valor_acao: '', valor_investimento: '' }],
+      exposicao_prazo_de: '',
+      exposicao_prazo_ate: '',
+      tipo_exposicao: '',
+      ponto_extra_prazo: '',
+      ponto_extra_permanente: false,
+      gondola_prazo: '',
+      gondola_permanente: false,
+      tipo_problema: '',
+      descricao_problema: '',
+      atitude_tomada: '',
+      como_finalizado: '',
+      resumo_visita: '',
+      observacao_geral: ''
+    };
+  });
+  // Rastreia quais blocos já foram salvos no banco
+  const [savedBlocks, setSavedBlocks] = useState(() => {
+    if (!visitaExistente?.tipos_visita) return {};
+    const blocks = {};
+    visitaExistente.tipos_visita.forEach(t => { blocks[t] = true; });
+    return blocks;
   });
 
   const handleCheckin = () => {
