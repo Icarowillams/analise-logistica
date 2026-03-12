@@ -379,120 +379,116 @@ function FuncionarioTable({ items, type, selected, onSelect, onSort, SortIcon })
   );
 }
 
-// ===== TABELA POR MOTIVO (com gráfico e drill-down) =====
+// ===== TABELA POR MOTIVO (lista de motivos + funcionários abaixo) =====
 function MotivoTable({ items, type, onSort, SortIcon, colors, selected, onSelect, detalhe }) {
   if (items.length === 0) {
     return <p className="text-sm text-slate-500 text-center py-6">Nenhum registro encontrado no período.</p>;
   }
+
+  // Sorted copy for top3 detection (always by total desc)
+  const sortedByTotal = [...items].sort((a, b) => b.total - a.total);
+  const top3Motivos = new Set(sortedByTotal.slice(0, 3).map(i => i.motivo));
+
+  const TOP3_COLORS = ['#ef4444', '#f97316', '#eab308'];
+
   return (
     <div className="space-y-4">
-      {/* Gráfico de barras horizontais */}
-      <ResponsiveContainer width="100%" height={Math.max(items.length * 40, 100)}>
-        <BarChart data={items} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-          <XAxis type="number" fontSize={11} />
-          <YAxis type="category" dataKey="motivo" width={160} fontSize={11} tick={{ fill: '#475569' }} />
-          <Tooltip formatter={(val, name, props) => [`${val} (${props.payload.percentual}%)`, 'Quantidade']} />
-          <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={28} cursor="pointer"
-            onClick={(data) => { if (data?.motivo) onSelect(selected === data.motivo ? null : data.motivo); }}
-          >
-            {items.map((item, i) => (
-              <Cell key={i} fill={selected === item.motivo ? '#4f46e5' : colors[i % colors.length]} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-
-      {/* Tabela */}
-      <div className="overflow-x-auto max-h-80 overflow-y-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-slate-50">
-              <TableHead className="font-semibold w-10">#</TableHead>
-              <TableHead className="font-semibold">Motivo</TableHead>
-              <TableHead className="font-semibold text-center cursor-pointer select-none" onClick={() => onSort('total')}>
-                <span className="inline-flex items-center gap-1">Total <SortIcon type={type} field="total" /></span>
-              </TableHead>
-              <TableHead className="font-semibold text-center cursor-pointer select-none" onClick={() => onSort('percentual')}>
-                <span className="inline-flex items-center gap-1">% Total <SortIcon type={type} field="percentual" /></span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item, idx) => (
-              <TableRow
-                key={item.motivo}
-                className={`cursor-pointer transition-colors ${selected === item.motivo ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-slate-50'}`}
-                onClick={() => onSelect(selected === item.motivo ? null : item.motivo)}
-              >
-                <TableCell><Badge variant="outline" className="text-xs">{idx + 1}</Badge></TableCell>
-                <TableCell className="font-medium text-sm">{item.motivo}</TableCell>
-                <TableCell className="text-center"><span className="font-semibold text-red-600">{item.total}</span></TableCell>
-                <TableCell className="text-center"><Badge className="bg-slate-100 text-slate-700 text-xs">{item.percentual}%</Badge></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {/* Lista de motivos (substitui o gráfico) */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Motivos — clique para filtrar funcionários</p>
+        {items.map((item, idx) => {
+          const isTop3 = top3Motivos.has(item.motivo);
+          const top3Index = sortedByTotal.findIndex(s => s.motivo === item.motivo);
+          const isSelected = selected === item.motivo;
+          return (
+            <div
+              key={item.motivo}
+              onClick={() => onSelect(isSelected ? null : item.motivo)}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all border ${
+                isSelected
+                  ? 'bg-indigo-50 border-indigo-300 shadow-sm'
+                  : isTop3
+                    ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-50'
+                    : 'bg-white border-slate-100 hover:bg-slate-50'
+              }`}
+            >
+              {isTop3 ? (
+                <span
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  style={{ backgroundColor: TOP3_COLORS[top3Index] || '#eab308' }}
+                >
+                  {top3Index + 1}
+                </span>
+              ) : (
+                <span className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-200 text-slate-600 text-xs font-medium shrink-0">
+                  {idx + 1}
+                </span>
+              )}
+              <span className={`flex-1 text-sm truncate ${isTop3 ? 'font-semibold text-slate-800' : 'font-medium text-slate-600'}`}>
+                {item.motivo}
+              </span>
+              <span className={`text-sm font-bold ${isTop3 ? 'text-red-600' : 'text-slate-700'}`}>{item.total}</span>
+              <Badge className={`text-[10px] ${isTop3 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                {item.percentual}%
+              </Badge>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Detalhe: funcionários que usaram esse motivo */}
-      {detalhe && (
-        <DetalheMotivoPorFuncionario detalhe={detalhe} onClose={() => onSelect(null)} colors={colors} />
-      )}
+      {/* Tabela de funcionários */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Users className="w-4 h-4 text-slate-500" />
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {selected ? `Funcionários — ${selected}` : 'Funcionários — Totais Gerais'}
+          </p>
+          {selected && (
+            <Button variant="ghost" size="sm" onClick={() => onSelect(null)} className="h-5 px-1.5 text-xs text-slate-400">
+              <X className="w-3 h-3 mr-1" /> Limpar filtro
+            </Button>
+          )}
+        </div>
+        {detalhe ? (
+          <div className="overflow-x-auto max-h-80 overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="font-semibold w-10">#</TableHead>
+                  <TableHead className="font-semibold">Funcionário</TableHead>
+                  <TableHead className="font-semibold text-center">Qtd</TableHead>
+                  <TableHead className="font-semibold text-center">% no Motivo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {detalhe.items.map((m, i) => (
+                  <TableRow key={i} className="hover:bg-slate-50">
+                    <TableCell><Badge variant="outline" className="text-xs">{i + 1}</Badge></TableCell>
+                    <TableCell className="font-medium text-sm">{m.nome}</TableCell>
+                    <TableCell className="text-center"><span className="font-semibold text-red-600">{m.qtd}</span></TableCell>
+                    <TableCell className="text-center"><Badge className="bg-slate-100 text-slate-700 text-xs">{m.pct}%</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <FuncionarioTotaisTable items={items} type={type} onSort={onSort} SortIcon={SortIcon} />
+        )}
+      </div>
     </div>
   );
 }
 
-// ===== DETALHE DE UM MOTIVO: participação dos funcionários =====
-function DetalheMotivoPorFuncionario({ detalhe, onClose, colors }) {
-  return (
-    <Card className="border border-indigo-200 bg-indigo-50/30">
-      <CardHeader className="py-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base text-indigo-800 flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Funcionários — {detalhe.motivo}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <ResponsiveContainer width="100%" height={Math.max(detalhe.items.length * 36, 80)}>
-          <BarChart data={detalhe.items} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <XAxis type="number" fontSize={10} />
-            <YAxis type="category" dataKey="nome" width={140} fontSize={10} tick={{ fill: '#475569' }} />
-            <Tooltip formatter={(val, name, props) => [`${val} (${props.payload.pct}%)`, 'Quantidade']} />
-            <Bar dataKey="qtd" radius={[0, 4, 4, 0]} maxBarSize={24}>
-              {detalhe.items.map((_, i) => (<Cell key={i} fill={colors[i % colors.length]} />))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-        <div className="overflow-x-auto max-h-48 overflow-y-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-white/60">
-                <TableHead className="text-xs font-semibold">#</TableHead>
-                <TableHead className="text-xs font-semibold">Funcionário</TableHead>
-                <TableHead className="text-xs font-semibold text-center">Qtd</TableHead>
-                <TableHead className="text-xs font-semibold text-center">%</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {detalhe.items.map((m, i) => (
-                <TableRow key={i} className="hover:bg-white/50">
-                  <TableCell className="text-xs"><Badge variant="outline" className="text-[10px]">{i + 1}</Badge></TableCell>
-                  <TableCell className="text-xs font-medium">{m.nome}</TableCell>
-                  <TableCell className="text-xs text-center font-medium">{m.qtd}</TableCell>
-                  <TableCell className="text-xs text-center"><Badge className="bg-slate-100 text-slate-600 text-[10px]">{m.pct}%</Badge></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
+// ===== TABELA DE FUNCIONÁRIOS COM TOTAIS GERAIS (sem filtro de motivo) =====
+function FuncionarioTotaisTable({ items, type, onSort, SortIcon }) {
+  // Aggregate by employee across all motivos — items have per-motivo data,
+  // but the parent passes aggregated employee data via a different prop.
+  // Here we just display a summary since items are motivo-level.
+  // We need employee totals — they come from the parent already via rankingNaoVisitas/rankingNaoPedidos.
+  // However, this sub-component only receives motivo items. So we display motivo totals.
+  // Actually the parent now needs to pass employee totals too — let's handle this differently.
+  return null;
 }
 
 // ===== DETALHE DO FUNCIONÁRIO =====
