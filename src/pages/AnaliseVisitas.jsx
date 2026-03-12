@@ -845,6 +845,15 @@ export default function AnaliseVisitas() {
                         <span className="text-orange-600 font-medium">{item.semPedido}</span>
                       </TableCell>
                       <TableCell className="text-center">
+                        {item.comPedido + item.semPedido > 0 ? (
+                          <Badge className="bg-purple-100 text-purple-700 text-xs">
+                            {((item.comPedido / (item.comPedido + item.semPedido)) * 100).toFixed(1)}%
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-400 text-xs">N/D</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Button 
                           variant="ghost" 
                           size="sm" 
