@@ -244,7 +244,7 @@ export default function RotaSupervisores() {
                         )}
                       </div>
                     </div>
-                    <Badge variant="outline">{visitasHoje.length} visita(s)</Badge>
+                    <Badge variant="outline">{visitasConcluidasHoje.length} visita(s)</Badge>
                   </div>
                 </CardContent>
               </Card>
