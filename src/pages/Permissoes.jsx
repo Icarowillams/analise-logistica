@@ -924,6 +924,36 @@ export default function Permissoes() {
                 </CardContent>
               </Card>
 
+              {/* Visita Comercial (Rota Supervisores) */}
+              <Card className="border-0 shadow-lg border-l-4 border-l-amber-400">
+                <CardHeader>
+                  <CardTitle className="text-base">Permissões - Visita Comercial</CardTitle>
+                  <p className="text-xs text-slate-500">Controle de acesso à tela de visita do supervisor e tipos de visita disponíveis</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { key: 'acesso', label: 'Acesso à tela de Visita Comercial' },
+                    { key: 'acompanhamento', label: 'Acompanhamento de Roteiro' },
+                    { key: 'negociacao', label: 'Negociação Comercial' },
+                    { key: 'prospeccao', label: 'Prospecção de Cliente' },
+                    { key: 'resolucao', label: 'Resolução de Problemas' },
+                    { key: 'estoque', label: 'Informar Estoque' }
+                  ].map(perm => (
+                    <div key={perm.key} className={`flex items-center space-x-2 p-2 rounded ${perm.key === 'acesso' ? (modoEdicao ? 'bg-amber-50 border border-amber-200' : 'bg-amber-100 border border-amber-200') : (modoEdicao ? 'bg-slate-50' : 'bg-slate-100')}`}>
+                      <Checkbox
+                        id={`vc-${perm.key}`}
+                        checked={permissaoAtual.permissoes_visita_comercial?.[perm.key] || false}
+                        onCheckedChange={() => togglePermissao('permissoes_visita_comercial', perm.key)}
+                        disabled={!modoEdicao}
+                      />
+                      <Label htmlFor={`vc-${perm.key}`} className={`${modoEdicao ? "cursor-pointer" : "text-slate-600"} ${perm.key === 'acesso' ? 'font-semibold' : ''}`}>
+                        {perm.label}
+                      </Label>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
               {/* Pedidos */}
               <Card className="border-0 shadow-lg">
                 <CardHeader>
