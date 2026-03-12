@@ -57,13 +57,19 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData, sa
       {/* ACOMPANHAMENTO */}
       {tiposVisita.includes('acompanhamento') && (
         <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
-          <Label className="text-sm font-semibold text-blue-800">Acompanhamento de Roteiro</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold text-blue-800">Acompanhamento de Roteiro</Label>
+            {savedBlocks.acompanhamento && <CheckCircle className="w-4 h-4 text-green-500" />}
+          </div>
           <Textarea
             placeholder="Observações do acompanhamento..."
             value={formData.obs_acompanhamento}
-            onChange={(e) => update('obs_acompanhamento', e.target.value)}
+            onChange={(e) => { update('obs_acompanhamento', e.target.value); }}
             rows={2}
           />
+          {onSalvarBloco && visitaDbId && (
+            <BlocoSaveButton label="Acompanhamento" bloco="acompanhamento" isSaved={savedBlocks.acompanhamento} onSave={onSalvarBloco} />
+          )}
         </div>
       )}
 
