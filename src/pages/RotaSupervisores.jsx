@@ -42,6 +42,8 @@ export default function RotaSupervisores() {
   const [supervisor, setSupervisor] = useState(null);
   const [tab, setTab] = useState('hoje');
   const [showBusca, setShowBusca] = useState(false);
+  const [showTipoEscolha, setShowTipoEscolha] = useState(false);
+  const [isProspeccao, setIsProspeccao] = useState(false);
   const [visitaEmAndamento, setVisitaEmAndamento] = useState(null); // cliente selecionado para visita
   const [resumoGeral, setResumoGeral] = useState('');
   const [loadingAction, setLoadingAction] = useState(false);
