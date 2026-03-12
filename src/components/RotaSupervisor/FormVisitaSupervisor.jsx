@@ -36,22 +36,32 @@ function getLocalISOString(date = new Date()) {
 
 const TIPOS_VISITA = [
   { key: 'acompanhamento', label: 'Acompanhamento de Roteiro' },
-  { key: 'prospeccao', label: 'Prospecção de Cliente' },
   { key: 'negociacao', label: 'Negociação Comercial' },
   { key: 'resolucao', label: 'Resolução de Problemas' },
   { key: 'estoque', label: 'Informar Estoque' }
 ];
 
-export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, supervisor, isProspeccao = false, onClose }) {
+export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, supervisor, isProspeccao = false, visitaExistente = null, onClose }) {
   const queryClient = useQueryClient();
-  const [checkinDone, setCheckinDone] = useState(false);
-  const [checkinData, setCheckinData] = useState(null);
+  // Se veio uma visita existente (checkin_realizado), restaurar estado
+  const [checkinDone, setCheckinDone] = useState(!!visitaExistente);
+  const [checkinData, setCheckinData] = useState(() => {
+    if (visitaExistente?.checkin_time) {
+      return {
+        time: visitaExistente.checkin_time,
+        latitude: visitaExistente.checkin_latitude,
+        longitude: visitaExistente.checkin_longitude,
+        displayTime: new Date(visitaExistente.checkin_time).toLocaleTimeString('pt-BR')
+      };
+    }
+    return null;
+  });
   const [checkoutDone, setCheckoutDone] = useState(false);
   const [checkoutData, setCheckoutData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  // ID temporário para vincular estoque/trocas antes de salvar a visita
-  const [visitaTempId] = useState(() => `temp_${Date.now()}`);
+  // ID da visita no banco (criada no check-in)
+  const [visitaDbId, setVisitaDbId] = useState(visitaExistente?.id || null);
 
   const [tiposVisita, setTiposVisita] = useState(isProspeccao ? ['prospeccao'] : []);
   const [formData, setFormData] = useState({
