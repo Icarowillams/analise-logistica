@@ -276,6 +276,7 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
                 selected={selectedMotivoNV}
                 onSelect={setSelectedMotivoNV}
                 detalhe={detalheMotivoNV}
+                funcionariosGerais={rankingNaoVisitas.items}
               />
             </TabsContent>
           </Tabs>
@@ -331,6 +332,7 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
                 selected={selectedMotivoNP}
                 onSelect={setSelectedMotivoNP}
                 detalhe={detalheMotivoNP}
+                funcionariosGerais={rankingNaoPedidos.items}
               />
             </TabsContent>
           </Tabs>
