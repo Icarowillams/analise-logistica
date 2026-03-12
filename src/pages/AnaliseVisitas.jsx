@@ -811,6 +811,7 @@ export default function AnaliseVisitas() {
                   <TableHead className="font-semibold text-center text-yellow-600">Pendentes</TableHead>
                   <TableHead className="font-semibold text-center text-blue-600">Com Pedido</TableHead>
                   <TableHead className="font-semibold text-center text-orange-600">Sem Pedido</TableHead>
+                  <TableHead className="font-semibold text-center text-purple-600">Tx Conversão</TableHead>
                   <TableHead className="font-semibold text-center">Relatório</TableHead>
                 </TableRow>
               </TableHeader>
