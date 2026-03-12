@@ -413,13 +413,33 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
 
             {/* OBSERVAÇÃO GERAL */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-              <Label className="text-sm font-semibold text-slate-700">Observação</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold text-slate-700">Observação</Label>
+                {savedBlocks.observacao && <CheckCircle className="w-4 h-4 text-green-500" />}
+              </div>
               <Textarea
                 placeholder="Observações gerais desta visita (opcional)..."
                 value={formData.observacao_geral}
                 onChange={(e) => setFormData({ ...formData, observacao_geral: e.target.value })}
                 rows={2}
               />
+              {visitaDbId && (
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={async () => {
+                      await base44.entities.VisitaSupervisor.update(visitaDbId, {
+                        observacao_geral: formData.observacao_geral
+                      });
+                      setSavedBlocks(prev => ({ ...prev, observacao: true }));
+                      toast.success('Observação salva!');
+                    }}
+                  >
+                    <Save className="w-3.5 h-3.5" /> Salvar Observação
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* CHECK-OUT */}
