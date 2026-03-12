@@ -273,6 +273,9 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
                 onSort={(f) => toggleSort('motivoNV', f)}
                 SortIcon={SortIcon}
                 colors={COLORS}
+                selected={selectedMotivoNV}
+                onSelect={setSelectedMotivoNV}
+                detalhe={detalheMotivoNV}
               />
             </TabsContent>
           </Tabs>
