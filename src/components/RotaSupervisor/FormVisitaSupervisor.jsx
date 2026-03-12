@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MapPin, CheckCircle, Clock, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import FormTiposVisita from './FormTiposVisita';
+import EstoqueSupervisorForm from './EstoqueSupervisorForm';
 
 function getLocalDateStr(date = new Date()) {
   const y = date.getFullYear();
@@ -33,6 +34,14 @@ function getLocalISOString(date = new Date()) {
   return `${y}-${mo}-${d}T${h}:${mi}:${s}${sign}${hh}:${mm}`;
 }
 
+const TIPOS_VISITA = [
+  { key: 'acompanhamento', label: 'Acompanhamento de Roteiro' },
+  { key: 'prospeccao', label: 'Prospecção de Cliente' },
+  { key: 'negociacao', label: 'Negociação Comercial' },
+  { key: 'resolucao', label: 'Resolução de Problemas' },
+  { key: 'estoque', label: 'Informar Estoque' }
+];
+
 export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, supervisor, isProspeccao = false, onClose }) {
   const queryClient = useQueryClient();
   const [checkinDone, setCheckinDone] = useState(false);
@@ -41,16 +50,19 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   const [checkoutData, setCheckoutData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // ID temporário para vincular estoque/trocas antes de salvar a visita
+  const [visitaTempId] = useState(() => `temp_${Date.now()}`);
 
   const [tiposVisita, setTiposVisita] = useState(isProspeccao ? ['prospeccao'] : []);
   const [formData, setFormData] = useState({
     obs_acompanhamento: '',
     prospeccao_nome_fantasia: isProspeccao ? (cliente.nome_fantasia || '') : '',
     obs_prospeccao: '',
-    tipo_negociacao: '',
-    acao_venda_prazo: '',
-    acao_venda_produto: '',
-    acao_venda_valor: '',
+    negociacao_venda: false,
+    negociacao_exposicao: false,
+    acoes_venda: [{ prazo_de: '', prazo_ate: '', produto: '', valor_acao: '', valor_investimento: '' }],
+    exposicao_prazo_de: '',
+    exposicao_prazo_ate: '',
     tipo_exposicao: '',
     ponto_extra_prazo: '',
     ponto_extra_permanente: false,
@@ -60,7 +72,8 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     descricao_problema: '',
     atitude_tomada: '',
     como_finalizado: '',
-    resumo_visita: ''
+    resumo_visita: '',
+    observacao_geral: ''
   });
 
   const handleCheckin = () => {
@@ -152,6 +165,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
       tempo_loja_minutos: tempo?.minutos || 0,
       tipos_visita: tiposVisita,
       resumo_visita: formData.resumo_visita,
+      observacao_geral: formData.observacao_geral,
       status: 'concluida'
     };
 
@@ -161,13 +175,22 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
       data.obs_prospeccao = formData.obs_prospeccao;
     }
     if (tiposVisita.includes('negociacao')) {
-      data.tipo_negociacao = formData.tipo_negociacao;
-      if (formData.tipo_negociacao === 'venda') {
-        data.acao_venda_prazo = formData.acao_venda_prazo;
-        data.acao_venda_produto = formData.acao_venda_produto;
-        data.acao_venda_valor = formData.acao_venda_valor ? Number(formData.acao_venda_valor) : 0;
+      data.negociacao_venda = formData.negociacao_venda || false;
+      data.negociacao_exposicao = formData.negociacao_exposicao || false;
+
+      if (formData.negociacao_venda) {
+        data.acoes_venda = (formData.acoes_venda || []).map(a => ({
+          prazo_de: a.prazo_de,
+          prazo_ate: a.prazo_ate,
+          produto: a.produto,
+          valor_acao: a.valor_acao ? Number(a.valor_acao) : 0,
+          valor_investimento: a.valor_investimento ? Number(a.valor_investimento) : 0
+        }));
       }
-      if (formData.tipo_negociacao === 'exposicao') {
+
+      if (formData.negociacao_exposicao) {
+        data.exposicao_prazo_de = formData.exposicao_prazo_de;
+        data.exposicao_prazo_ate = formData.exposicao_prazo_ate;
         data.tipo_exposicao = formData.tipo_exposicao;
         if (formData.tipo_exposicao === 'ponto_extra' || formData.tipo_exposicao === 'os_dois') {
           data.ponto_extra_prazo = formData.ponto_extra_permanente ? '' : formData.ponto_extra_prazo;
@@ -186,7 +209,23 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
       data.como_finalizado = formData.como_finalizado;
     }
 
-    await base44.entities.VisitaSupervisor.create(data);
+    // Criar a visita
+    const visitaCriada = await base44.entities.VisitaSupervisor.create(data);
+
+    // Se usou estoque, atualizar os registros temporários com o ID real da visita
+    if (tiposVisita.includes('estoque') && visitaCriada?.id) {
+      const [estoques, trocas] = await Promise.all([
+        base44.entities.EstoqueVisita.filter({ visita_id: visitaTempId }),
+        base44.entities.TrocaVisita.filter({ visita_id: visitaTempId })
+      ]);
+      for (const e of estoques) {
+        await base44.entities.EstoqueVisita.update(e.id, { visita_id: visitaCriada.id });
+      }
+      for (const t of trocas) {
+        await base44.entities.TrocaVisita.update(t.id, { visita_id: visitaCriada.id });
+      }
+    }
+
     await queryClient.invalidateQueries({ queryKey: ['visitasSupervisor'] });
     toast.success('Visita salva com sucesso!');
     setSalvando(false);
@@ -194,7 +233,6 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   };
 
   const toggleTipo = (tipo) => {
-    // Não permite desmarcar prospecção quando é visita de prospecção
     if (tipo === 'prospeccao' && isProspeccao) return;
     setTiposVisita(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]);
   };
@@ -237,12 +275,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
             <div className="space-y-2">
               <Label className="font-semibold">Tipo de Visita (múltipla seleção)</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {[
-                  { key: 'acompanhamento', label: 'Acompanhamento de Roteiro' },
-                  { key: 'prospeccao', label: 'Prospecção de Cliente' },
-                  { key: 'negociacao', label: 'Negociação Comercial' },
-                  { key: 'resolucao', label: 'Resolução de Problemas' }
-                ].map(t => (
+                {TIPOS_VISITA.map(t => (
                   <div key={t.key} className="flex items-center space-x-2 p-2 rounded border bg-white">
                     <Checkbox
                       id={`tipo-${t.key}`}
@@ -261,6 +294,26 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
               formData={formData}
               setFormData={setFormData}
             />
+
+            {/* INFORMAR ESTOQUE */}
+            {tiposVisita.includes('estoque') && (
+              <EstoqueSupervisorForm
+                visitaId={visitaTempId}
+                clienteId={cliente._isProspeccao ? '' : cliente.id}
+                clienteNome={cliente.nome_fantasia || cliente.razao_social}
+              />
+            )}
+
+            {/* OBSERVAÇÃO GERAL */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Observação</Label>
+              <Textarea
+                placeholder="Observações gerais desta visita (opcional)..."
+                value={formData.observacao_geral}
+                onChange={(e) => setFormData({ ...formData, observacao_geral: e.target.value })}
+                rows={2}
+              />
+            </div>
 
             {/* CHECK-OUT */}
             <Button onClick={handleCheckout} disabled={loading || tiposVisita.length === 0}
