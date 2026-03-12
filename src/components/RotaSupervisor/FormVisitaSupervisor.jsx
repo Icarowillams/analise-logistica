@@ -45,7 +45,7 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   const [tiposVisita, setTiposVisita] = useState(isProspeccao ? ['prospeccao'] : []);
   const [formData, setFormData] = useState({
     obs_acompanhamento: '',
-    prospeccao_nome_fantasia: '',
+    prospeccao_nome_fantasia: isProspeccao ? (cliente.nome_fantasia || '') : '',
     obs_prospeccao: '',
     tipo_negociacao: '',
     acao_venda_prazo: '',
