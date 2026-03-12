@@ -130,7 +130,7 @@ export default function RelatorioRotinaSupervisores() {
             {/* Supervisor */}
             <div>
               <Label className="text-xs font-medium">Supervisor</Label>
-              <Select value={filtroSupervisor} onValueChange={setFiltroSupervisor}>
+              <Select value={filtroSupervisor} onValueChange={(v) => setFiltroSupervisor(v === '__all__' ? '' : v)}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
@@ -156,7 +156,7 @@ export default function RelatorioRotinaSupervisores() {
             {/* Funcionário */}
             <div>
               <Label className="text-xs font-medium">Funcionário (carteira/roteiro)</Label>
-              <Select value={filtroFuncionario} onValueChange={setFiltroFuncionario}>
+              <Select value={filtroFuncionario} onValueChange={(v) => setFiltroFuncionario(v === '__all__' ? '' : v)}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
