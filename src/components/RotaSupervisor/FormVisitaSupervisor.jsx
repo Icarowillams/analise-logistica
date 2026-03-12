@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MapPin, CheckCircle, Clock, Store } from 'lucide-react';
+import { MapPin, CheckCircle, Clock, Store, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import FormTiposVisita from './FormTiposVisita';
 import EstoqueSupervisorForm from './EstoqueSupervisorForm';
