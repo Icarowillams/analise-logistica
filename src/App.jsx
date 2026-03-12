@@ -7,6 +7,7 @@ import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
+import RelatorioRotinaSupervisores from './pages/RelatorioRotinaSupervisores';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -60,6 +61,7 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
+      <Route path="/RelatorioRotinaSupervisores" element={<LayoutWrapper currentPageName="RelatorioRotinaSupervisores"><RelatorioRotinaSupervisores /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
