@@ -382,7 +382,7 @@ function FuncionarioTable({ items, type, selected, onSelect, onSort, SortIcon })
 }
 
 // ===== TABELA POR MOTIVO (lista de motivos + funcionários abaixo) =====
-function MotivoTable({ items, type, onSort, SortIcon, colors, selected, onSelect, detalhe }) {
+function MotivoTable({ items, type, onSort, SortIcon, colors, selected, onSelect, detalhe, funcionariosGerais = [] }) {
   if (items.length === 0) {
     return <p className="text-sm text-slate-500 text-center py-6">Nenhum registro encontrado no período.</p>;
   }
