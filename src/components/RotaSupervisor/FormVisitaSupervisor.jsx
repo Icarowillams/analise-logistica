@@ -194,6 +194,8 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   };
 
   const toggleTipo = (tipo) => {
+    // Não permite desmarcar prospecção quando é visita de prospecção
+    if (tipo === 'prospeccao' && isProspeccao) return;
     setTiposVisita(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]);
   };
 
