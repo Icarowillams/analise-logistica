@@ -281,6 +281,46 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     onClose();
   };
 
+  const handleSalvarBloco = async (bloco) => {
+    const dataBloco = { tipos_visita: [...new Set([...tiposVisita])] };
+
+    if (bloco === 'acompanhamento') {
+      dataBloco.obs_acompanhamento = formData.obs_acompanhamento;
+    } else if (bloco === 'negociacao') {
+      dataBloco.negociacao_venda = formData.negociacao_venda || false;
+      dataBloco.negociacao_exposicao = formData.negociacao_exposicao || false;
+      if (formData.negociacao_venda) {
+        dataBloco.acoes_venda = (formData.acoes_venda || []).map(a => ({
+          prazo_de: a.prazo_de, prazo_ate: a.prazo_ate, produto: a.produto,
+          valor_acao: a.valor_acao ? Number(a.valor_acao) : 0,
+          valor_investimento: a.valor_investimento ? Number(a.valor_investimento) : 0
+        }));
+      }
+      if (formData.negociacao_exposicao) {
+        dataBloco.exposicao_prazo_de = formData.exposicao_prazo_de;
+        dataBloco.exposicao_prazo_ate = formData.exposicao_prazo_ate;
+        dataBloco.tipo_exposicao = formData.tipo_exposicao;
+        if (formData.tipo_exposicao === 'ponto_extra' || formData.tipo_exposicao === 'os_dois') {
+          dataBloco.ponto_extra_prazo = formData.ponto_extra_permanente ? '' : formData.ponto_extra_prazo;
+          dataBloco.ponto_extra_permanente = formData.ponto_extra_permanente;
+        }
+        if (formData.tipo_exposicao === 'gondola' || formData.tipo_exposicao === 'os_dois') {
+          dataBloco.gondola_prazo = formData.gondola_permanente ? '' : formData.gondola_prazo;
+          dataBloco.gondola_permanente = formData.gondola_permanente;
+        }
+      }
+    } else if (bloco === 'resolucao') {
+      dataBloco.tipo_problema = formData.tipo_problema;
+      dataBloco.descricao_problema = formData.descricao_problema;
+      dataBloco.atitude_tomada = formData.atitude_tomada;
+      dataBloco.como_finalizado = formData.como_finalizado;
+    }
+
+    await base44.entities.VisitaSupervisor.update(visitaDbId, dataBloco);
+    setSavedBlocks(prev => ({ ...prev, [bloco]: true }));
+    toast.success(`${bloco === 'acompanhamento' ? 'Acompanhamento' : bloco === 'negociacao' ? 'Negociação' : 'Resolução'} salvo!`);
+  };
+
   const handleCancelar = async () => {
     // Se o check-in já foi salvo no banco, deletar o registro
     if (visitaDbId) {
