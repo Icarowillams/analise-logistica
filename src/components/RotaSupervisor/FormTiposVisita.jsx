@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Save, CheckCircle } from 'lucide-react';
 import FormNegociacaoVenda from './FormNegociacaoVenda';
 import FormNegociacaoExposicao from './FormNegociacaoExposicao';
 
@@ -17,7 +17,39 @@ function RadioOption({ name, value, checked, onChange, label }) {
   );
 }
 
-export default function FormTiposVisita({ tiposVisita, formData, setFormData }) {
+function BlocoSaveButton({ label, bloco, isSaved, onSave, disabled }) {
+  const [saving, setSaving] = useState(false);
+
+  const handleClick = async () => {
+    setSaving(true);
+    await onSave(bloco);
+    setSaving(false);
+  };
+
+  return (
+    <div className="flex items-center justify-between pt-2 border-t border-dashed mt-2">
+      {isSaved && (
+        <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+          <CheckCircle className="w-3.5 h-3.5" /> Salvo!
+        </span>
+      )}
+      {!isSaved && <span />}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleClick}
+        disabled={saving || disabled}
+        className="h-8 text-xs gap-1.5"
+      >
+        <Save className="w-3.5 h-3.5" />
+        {saving ? 'Salvando...' : `Salvar ${label}`}
+      </Button>
+    </div>
+  );
+}
+
+export default function FormTiposVisita({ tiposVisita, formData, setFormData, savedBlocks = {}, onSalvarBloco, visitaDbId }) {
   const update = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
 
   return (
