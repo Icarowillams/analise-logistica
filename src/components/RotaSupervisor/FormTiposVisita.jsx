@@ -35,28 +35,6 @@ export default function FormTiposVisita({ tiposVisita, formData, setFormData }) 
         </div>
       )}
 
-      {/* PROSPECÇÃO */}
-      {tiposVisita.includes('prospeccao') && (
-        <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 space-y-2">
-          <Label className="text-sm font-semibold text-purple-800">Prospecção de Cliente</Label>
-          <div>
-            <Label className="text-xs">Nome Fantasia do Cliente Prospectado</Label>
-            <Input
-              placeholder="Nome Fantasia..."
-              value={formData.prospeccao_nome_fantasia}
-              onChange={(e) => update('prospeccao_nome_fantasia', e.target.value)}
-              className="h-9"
-            />
-          </div>
-          <Textarea
-            placeholder="Observações da prospecção..."
-            value={formData.obs_prospeccao}
-            onChange={(e) => update('obs_prospeccao', e.target.value)}
-            rows={2}
-          />
-        </div>
-      )}
-
       {/* NEGOCIAÇÃO COMERCIAL */}
       {tiposVisita.includes('negociacao') && (
         <div className="p-3 bg-green-50 rounded-lg border border-green-200 space-y-3">
