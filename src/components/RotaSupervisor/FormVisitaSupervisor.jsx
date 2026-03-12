@@ -133,14 +133,15 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     setSalvando(true);
     const tempo = tempoLoja();
 
+    const isVirtualClient = cliente._isProspeccao === true;
     const data = {
       rota_supervisor_id: rotaSupervisorId,
       supervisor_id: supervisor.id,
       supervisor_nome: supervisor.nome,
-      cliente_id: cliente.id,
-      cliente_codigo: cliente.codigo,
+      cliente_id: isVirtualClient ? '' : cliente.id,
+      cliente_codigo: isVirtualClient ? 'PROSPECCAO' : cliente.codigo,
       cliente_nome: cliente.nome_fantasia || cliente.razao_social,
-      cliente_cidade: cliente.cidade,
+      cliente_cidade: cliente.cidade || '',
       data_visita: getLocalDateStr(),
       checkin_time: checkinData.time,
       checkin_latitude: checkinData.latitude,
