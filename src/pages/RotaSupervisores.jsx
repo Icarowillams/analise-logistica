@@ -143,6 +143,18 @@ export default function RotaSupervisores() {
   const handleSelectCliente = (cliente) => {
     setVisitaEmAndamento(cliente);
     setShowBusca(false);
+    setShowTipoEscolha(false);
+  };
+
+  const handleProspeccaoStart = () => {
+    setIsProspeccao(true);
+    setShowTipoEscolha(false);
+  };
+
+  const handleClienteNormalStart = () => {
+    setIsProspeccao(false);
+    setShowBusca(true);
+    setShowTipoEscolha(false);
   };
 
   const tempoDecorrido = () => {
