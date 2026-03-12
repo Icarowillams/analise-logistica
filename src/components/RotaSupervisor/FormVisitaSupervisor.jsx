@@ -332,7 +332,13 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
 
   const toggleTipo = (tipo) => {
     if (tipo === 'prospeccao' && isProspeccao) return;
-    setTiposVisita(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]);
+    const isRemoving = tiposVisita.includes(tipo);
+    if (isRemoving && savedBlocks[tipo]) {
+      const confirmMsg = `O bloco "${TIPOS_VISITA.find(t => t.key === tipo)?.label}" já foi salvo. Deseja realmente removê-lo? Os dados salvos serão perdidos.`;
+      if (!window.confirm(confirmMsg)) return;
+      setSavedBlocks(prev => { const next = { ...prev }; delete next[tipo]; return next; });
+    }
+    setTiposVisita(prev => isRemoving ? prev.filter(t => t !== tipo) : [...prev, tipo]);
   };
 
   return (
