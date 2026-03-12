@@ -201,13 +201,18 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
     <Card className="border-amber-200 bg-amber-50/30">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">
-            <Store className="w-4 h-4 inline mr-2" />
-            {cliente.codigo} - {cliente.nome_fantasia || cliente.razao_social}
+          <CardTitle className="text-base flex items-center gap-2">
+            <Store className="w-4 h-4" />
+            {isProspeccao ? (
+              <span>{cliente.nome_fantasia}</span>
+            ) : (
+              <span>{cliente.codigo} - {cliente.nome_fantasia || cliente.razao_social}</span>
+            )}
+            {isProspeccao && <Badge className="bg-green-100 text-green-700 text-[10px]">Prospecção</Badge>}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">Cancelar</Button>
         </div>
-        <p className="text-xs text-slate-500">{cliente.cidade}</p>
+        {!isProspeccao && <p className="text-xs text-slate-500">{cliente.cidade}</p>}
       </CardHeader>
       <CardContent className="space-y-4">
         {/* CHECK-IN */}
