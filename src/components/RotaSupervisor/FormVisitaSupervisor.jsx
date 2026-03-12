@@ -89,16 +89,37 @@ export default function FormVisitaSupervisor({ cliente, rotaSupervisorId, superv
   const handleCheckin = () => {
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const agora = new Date();
-        setCheckinData({
+        const checkin = {
           time: getLocalISOString(agora),
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           displayTime: agora.toLocaleTimeString('pt-BR')
+        };
+
+        const isVirtualClient = cliente._isProspeccao === true;
+        // Salvar no banco com status checkin_realizado
+        const visitaCriada = await base44.entities.VisitaSupervisor.create({
+          rota_supervisor_id: rotaSupervisorId,
+          supervisor_id: supervisor.id,
+          supervisor_nome: supervisor.nome,
+          cliente_id: isVirtualClient ? '' : cliente.id,
+          cliente_codigo: isVirtualClient ? 'PROSPECCAO' : cliente.codigo,
+          cliente_nome: cliente.nome_fantasia || cliente.razao_social,
+          cliente_cidade: cliente.cidade || '',
+          data_visita: getLocalDateStr(),
+          checkin_time: checkin.time,
+          checkin_latitude: checkin.latitude,
+          checkin_longitude: checkin.longitude,
+          status: 'checkin_realizado'
         });
+
+        setVisitaDbId(visitaCriada.id);
+        setCheckinData(checkin);
         setCheckinDone(true);
         setLoading(false);
+        queryClient.invalidateQueries({ queryKey: ['visitasSupervisor'] });
         toast.success('Check-in realizado!');
       },
       () => {
