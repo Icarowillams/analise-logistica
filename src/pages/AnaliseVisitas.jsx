@@ -886,6 +886,13 @@ export default function AnaliseVisitas() {
           </div>
         </CardContent>
       </Card>
+      {/* Ranking de Motivos - Não Visitas e Não Pedidos */}
+      <RankingMotivos
+        visitasRoteiroFiltradas={visitasRoteiroFiltradas}
+        visitasFiltradas={visitasFiltradas}
+        vendedoresMap={vendedoresMap}
+        visitaPedidoMap={visitaPedidoMap}
+      />
     </div>
   );
 }
