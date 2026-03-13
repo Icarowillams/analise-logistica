@@ -521,14 +521,15 @@ export default function Funcionarios() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable
-            data={funcionarios}
-            columns={columns}
-            searchFields={['nome', 'email', 'cpf', 'funcao']}
-            pageSize={1000}
+          <FuncionariosConsulta
+            funcionarios={funcionarios}
+            funcoes={funcoes}
+            departamentos={departamentos}
+            isLoading={isLoading}
             onEdit={handleEdit}
             onDelete={handleDelete}
-            isLoading={isLoading}
+            filters={consultaFilters}
+            setFilters={setConsultaFilters}
           />
         </TabsContent>
       </Tabs>
