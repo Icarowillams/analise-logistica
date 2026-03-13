@@ -299,10 +299,26 @@ export default function AnaliseVisitas() {
       });
     });
     
+    // Deduplicar: mapear chave vendedor+cliente+data -> ID principal
+    const dedupMap = {};
+    visitasRoteiroFiltradas.forEach(v => {
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      const p = (vis) => {
+        if (!vis) return -1;
+        if (vis.status === 'concluida') return 3;
+        if (vis.status === 'nao_atendido') return 2;
+        if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
+        return 0;
+      };
+      if (!dedupMap[key] || p(v) > p(dedupMap[key])) dedupMap[key] = v;
+    });
+    const dedupIds = new Set(Object.values(dedupMap).map(v => v.id));
+    
     // Contar visitas que existem no VisitaRoteiro mas NÃO estão no roteiro fixo atual
-    // (clientes removidos do roteiro que tiveram visitas)
+    // (clientes removidos do roteiro que tiveram visitas) - excluir duplicatas
     visitasRoteiroFiltradas.forEach(v => {
       if (visitasContabilizadas.has(v.id)) return;
+      if (!dedupIds.has(v.id)) return; // pular duplicatas
       if (v.status === 'nao_atendido') {
         totalNaoAtendidas++;
       } else if (v.status === 'concluida') {
