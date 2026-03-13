@@ -50,6 +50,8 @@ Deno.serve(async (req) => {
                     const faultMsg = (result.faultstring || '').toLowerCase();
                     const isExcluido = faultMsg.includes('não encontrad') || 
                                        faultMsg.includes('nao encontrad') ||
+                                       faultMsg.includes('não cadastrad') ||
+                                       faultMsg.includes('nao cadastrad') ||
                                        faultMsg.includes('excluíd') ||
                                        faultMsg.includes('excluid') ||
                                        faultMsg.includes('cancelad') ||
