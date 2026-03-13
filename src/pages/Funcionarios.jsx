@@ -33,6 +33,7 @@ export default function Funcionarios() {
     funcao: '', 
     departamento_id: '',
     supervisor_id: '',
+    supervisor_ids: [],
     telefone: '',
     latitude: '',
     longitude: '',
