@@ -1189,14 +1189,17 @@ export default function AnaliseVisitas() {
   );
 }
 
-// Funções auxiliares
+// Funções auxiliares - usa T12:00:00 para evitar problemas de fuso horário
 function getDaysInRange(start, end) {
   const days = [];
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+  const startDate = new Date(start + 'T12:00:00');
+  const endDate = new Date(end + 'T12:00:00');
   
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    days.push(new Date(d).toISOString().split('T')[0]);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    days.push(`${year}-${month}-${day}`);
   }
   return days;
 }
