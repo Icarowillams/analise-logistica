@@ -118,16 +118,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [selectedProdutoId, precosAll, tabelaPrecoId]);
 
-  // Auto-select product when search matches a code exactly (only if has price)
-  useEffect(() => {
-    if (produtoSearch.trim()) {
-      const match = produtosComPreco.find(p => p.codigo === produtoSearch.trim());
-      if (match) {
-        setSelectedProdutoId(match.id);
-      }
-    }
-  }, [produtoSearch, produtosComPreco]);
-
   // Só mostrar produtos que têm preço na tabela do cliente
   const produtosComPreco = useMemo(() => {
     if (!tabelaPrecoId || precosAll.length === 0) return produtos;
@@ -142,6 +132,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       p.nome?.toLowerCase().includes(s) || p.codigo?.includes(s)
     ).slice(0, 50);
   }, [produtosComPreco, produtoSearch]);
+
+  // Auto-select product when search matches a code exactly (only if has price)
+  useEffect(() => {
+    if (produtoSearch.trim()) {
+      const match = produtosComPreco.find(p => p.codigo === produtoSearch.trim());
+      if (match) {
+        setSelectedProdutoId(match.id);
+      }
+    }
+  }, [produtoSearch, produtosComPreco]);
 
   const selectedProduto = produtos.find(p => p.id === selectedProdutoId);
   const valorTotal = (parseFloat(quantidade) || 0) * valorUnitario;
