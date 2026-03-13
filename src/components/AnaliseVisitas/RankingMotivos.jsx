@@ -238,12 +238,15 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs defaultValue="porFuncionario">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="porFuncionario" className="gap-1.5">
                 Por Funcionário
               </TabsTrigger>
               <TabsTrigger value="porMotivo" className="gap-1.5">
                 <ListOrdered className="w-4 h-4" /> Por Motivo
+              </TabsTrigger>
+              <TabsTrigger value="porCliente" className="gap-1.5">
+                <Store className="w-4 h-4" /> Por Cliente
               </TabsTrigger>
             </TabsList>
 
@@ -278,6 +281,16 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
                 onSelect={setSelectedMotivoNV}
                 detalhe={detalheMotivoNV}
                 funcionariosGerais={rankingNaoVisitas.items}
+              />
+            </TabsContent>
+
+            <TabsContent value="porCliente">
+              <ClienteTab
+                visitasRoteiroFiltradas={visitasRoteiroFiltradas}
+                visitasFiltradas={visitasFiltradas}
+                vendedoresMap={vendedoresMap}
+                visitaPedidoMap={visitaPedidoMap}
+                tipo="naoVisita"
               />
             </TabsContent>
           </Tabs>
