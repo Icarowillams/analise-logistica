@@ -128,13 +128,20 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [produtoSearch, produtos]);
 
+  // Só mostrar produtos que têm preço na tabela do cliente
+  const produtosComPreco = useMemo(() => {
+    if (!tabelaPrecoId || precosAll.length === 0) return produtos;
+    const idsComPreco = new Set(precosAll.filter(p => p.valor_unitario > 0 || (p.ativacao_acao && p.valor_acao > 0)).map(p => p.produto_id));
+    return produtos.filter(p => idsComPreco.has(p.id));
+  }, [produtos, precosAll, tabelaPrecoId]);
+
   const produtosFiltrados = useMemo(() => {
     const s = produtoSearch.toLowerCase();
-    if (!s) return produtos.slice(0, 50);
-    return produtos.filter(p => 
+    if (!s) return produtosComPreco.slice(0, 50);
+    return produtosComPreco.filter(p => 
       p.nome?.toLowerCase().includes(s) || p.codigo?.includes(s)
     ).slice(0, 50);
-  }, [produtos, produtoSearch]);
+  }, [produtosComPreco, produtoSearch]);
 
   const selectedProduto = produtos.find(p => p.id === selectedProdutoId);
   const valorTotal = (parseFloat(quantidade) || 0) * valorUnitario;
