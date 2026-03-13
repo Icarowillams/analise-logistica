@@ -235,9 +235,9 @@ export default function Funcionarios() {
     { key: 'funcao', label: 'Função' },
     { key: 'departamento_id', label: 'Departamento', render: (val) => getDepartmentName(val) },
     { 
-      key: 'supervisor_id', 
-      label: 'Supervisor',
-      render: (val) => getSupervisorName(val)
+      key: 'supervisor_ids', 
+      label: 'Supervisor(es)',
+      render: (val, row) => getSupervisorNames(row)
     },
     {
       key: 'status',
