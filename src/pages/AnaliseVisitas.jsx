@@ -281,8 +281,8 @@ export default function AnaliseVisitas() {
     totalRealizadas: visitasRealizadas.length,
     totalNaoAtendidas: visitasNaoAtendidas.length,
     totalEmAndamento: visitasEmAndamento.length,
-    comPedido: visitasComPedido.length,
-    semPedido: visitasSemPedido.length,
+    comPedido: visitasComPedido,
+    semPedido: visitasSemPedido,
     clientesAtendidos
   }), [totalAgendadas, visitasRealizadas, visitasNaoAtendidas, visitasEmAndamento, visitasComPedido, visitasSemPedido, clientesAtendidos]);
 
