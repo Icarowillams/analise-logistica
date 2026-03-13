@@ -252,9 +252,13 @@ Deno.serve(async (req) => {
             
             console.error('[enviarPedidoOmie] Erro Omie:', resultado.faultstring);
             
-            // Atualizar pedido com erro
+            // Atualizar pedido com erro e reverter para pendente
             await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                omie_erro: resultado.faultstring
+                status: 'pendente',
+                numero_pedido: null,
+                data_envio: null,
+                omie_erro: resultado.faultstring,
+                omie_enviado: false
             });
 
             return Response.json({
