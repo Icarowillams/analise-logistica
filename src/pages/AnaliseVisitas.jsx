@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Users, MapPin, Filter, Calendar,
-  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown, RefreshCw
+  CheckCircle, XCircle, Clock, Target, Percent, UserCheck, FileText, ChevronDown, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 import StatsCard from '@/components/ui/StatsCard';
