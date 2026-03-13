@@ -547,101 +547,167 @@ export default function AnaliseVisitas() {
     return keys;
   }, [reagendamentos, dataInicio, dataFim]);
 
-  // Tabela de Performance por Funcionário (baseado em VisitaRoteiro)
+  // Tabela de Performance por Funcionário - ALINHADA com RelatorioRoteiros
+  // Usa a mesma lógica: para cada data, verifica clientes do roteiro fixo e cruza com VisitaRoteiro
   const performancePorFuncionario = useMemo(() => {
     const map = {};
-    
-    // Calcular visitas agendadas por vendedor no período
     const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
+    
+    // Mapa de VisitaRoteiro por vendedor+cliente+data para lookup rápido
+    const vrMap = {};
+    const vrMapCodigo = {};
+    visitasRoteiroFiltradas.forEach(v => {
+      const prioridade = (vis) => {
+        if (!vis) return -1;
+        if (vis.status === 'concluida') return 3;
+        if (vis.status === 'nao_atendido') return 2;
+        if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
+        return 0;
+      };
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      if (!vrMap[key] || prioridade(v) > prioridade(vrMap[key])) {
+        vrMap[key] = v;
+      }
+      if (v.cliente_codigo) {
+        const keyCod = `${v.vendedor_id}_cod_${v.cliente_codigo}_${v.data_visita}`;
+        if (!vrMapCodigo[keyCod] || prioridade(v) > prioridade(vrMapCodigo[keyCod])) {
+          vrMapCodigo[keyCod] = v;
+        }
+      }
+    });
+
+    // Mapa de clientes
+    const cMap = {};
+    clientesAll.forEach(c => { cMap[c.id] = c; });
+    const cMapCodigo = {};
+    clientesAll.forEach(c => { if (c.codigo) cMapCodigo[c.codigo] = c; });
+    const findC = (id, cod) => (cod ? cMapCodigo[cod] : undefined) || cMap[id];
+
+    // Set de visitas já contabilizadas por vendedor
+    const visitasContabilizadasPorVendedor = {};
+
+    // Inicializar vendedores e contar agendadas
     roteirosFiltrados.forEach(r => {
       const vendedorId = r.vendedor_id;
       if (!map[vendedorId]) {
         map[vendedorId] = {
           vendedorId,
           nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
-          agendadas: 0,
-          realizadas: 0,
-          naoRealizadas: 0,
-          emAndamento: 0,
-          pendentes: 0,
-          comPedido: 0,
-          semPedido: 0,
+          agendadas: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0,
+          comPedido: 0, semPedido: 0,
           reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
         };
+        visitasContabilizadasPorVendedor[vendedorId] = new Set();
       }
-      diasNoPeriodo.forEach(dia => {
-        const diaSemana = getDiaSemana(dia);
-        if (r.dia_semana === diaSemana) {
-          map[vendedorId].agendadas += (r.clientes_ids?.length || 0);
+    });
+
+    // Para cada dia no período, processar clientes do roteiro fixo
+    diasNoPeriodo.forEach(dia => {
+      const diaSemana = getDiaSemana(dia);
+      roteirosFiltrados.forEach(roteiro => {
+        if (roteiro.dia_semana !== diaSemana) return;
+        const vendedorId = roteiro.vendedor_id;
+        
+        if (!map[vendedorId]) {
+          map[vendedorId] = {
+            vendedorId, nome: vendedoresMap[vendedorId]?.nome || 'Sem Nome',
+            agendadas: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0,
+            comPedido: 0, semPedido: 0,
+            reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
+          };
+          visitasContabilizadasPorVendedor[vendedorId] = new Set();
         }
+        
+        (roteiro.clientes_detalhes || []).forEach(cd => {
+          map[vendedorId].agendadas++;
+          
+          const clienteCompleto = findC(cd.cliente_id, cd.cliente_codigo);
+          
+          // Buscar VisitaRoteiro correspondente (mesma lógica do RelatorioRoteiros)
+          const visita = vrMap[`${vendedorId}_${cd.cliente_id}_${dia}`]
+            || (cd.cliente_codigo ? vrMapCodigo[`${vendedorId}_cod_${cd.cliente_codigo}_${dia}`] : null)
+            || (clienteCompleto?.id ? vrMap[`${vendedorId}_${clienteCompleto.id}_${dia}`] : null);
+          
+          if (visita) {
+            visitasContabilizadasPorVendedor[vendedorId].add(visita.id);
+            
+            if (visita.status === 'nao_atendido') {
+              map[vendedorId].naoRealizadas++;
+            } else if (visita.status === 'concluida' && visita.checkout_time) {
+              map[vendedorId].realizadas++;
+            } else if (visita.checkin_time && !visita.checkout_time) {
+              map[vendedorId].emAndamento++;
+            } else if (visita.status === 'concluida') {
+              map[vendedorId].realizadas++;
+            } else {
+              map[vendedorId].pendentes++;
+            }
+            
+            // Pedido solicitado
+            const pedido = visita.pedido_solicitado != null
+              ? visita.pedido_solicitado
+              : visitaPedidoMap[`${vendedorId}_${visita.cliente_id}_${visita.data_visita}`];
+            
+            if (visita.status === 'concluida' || visita.status === 'checkin_realizado' || visita.status === 'em_andamento') {
+              if (pedido === true) map[vendedorId].comPedido++;
+              else if (pedido === false) map[vendedorId].semPedido++;
+            }
+          } else {
+            // Sem VisitaRoteiro = Pendente
+            map[vendedorId].pendentes++;
+          }
+        });
       });
     });
     
-    // Contar visitas do VisitaRoteiro - EXCLUINDO reagendamentos da linha principal
+    // Contar visitas fora do roteiro fixo (clientes removidos do roteiro que tiveram visitas)
     visitasRoteiroFiltradas.forEach(v => {
       const vendedorId = v.vendedor_id || 'sem_vendedor';
+      if (!visitasContabilizadasPorVendedor[vendedorId]) {
+        visitasContabilizadasPorVendedor[vendedorId] = new Set();
+      }
+      if (visitasContabilizadasPorVendedor[vendedorId].has(v.id)) return;
+      
       if (!map[vendedorId]) {
         map[vendedorId] = {
-          vendedorId,
-          nome: vendedoresMap[vendedorId]?.nome || v.vendedor_nome || 'Sem Nome',
-          agendadas: 0,
-          realizadas: 0,
-          naoRealizadas: 0,
-          emAndamento: 0,
-          pendentes: 0,
-          comPedido: 0,
-          semPedido: 0,
+          vendedorId, nome: vendedoresMap[vendedorId]?.nome || v.vendedor_nome || 'Sem Nome',
+          agendadas: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0,
+          comPedido: 0, semPedido: 0,
           reagendamento: { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 }
         };
       }
       
-      // Verificar se esta visita é de um reagendamento
-      const isReagendamento = reagendamentoKeys.has(`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`) ||
-                               reagendamentoKeys.has(`${v.vendedor_id}_cod_${v.cliente_codigo}_${v.data_visita}`);
-      
-      // Se for reagendamento, NÃO conta na linha principal
-      if (isReagendamento) return;
-      
-      if (v.status === 'concluida') {
-        map[vendedorId].realizadas++;
-      } else if (v.status === 'nao_atendido') {
+      if (v.status === 'nao_atendido') {
         map[vendedorId].naoRealizadas++;
+      } else if (v.status === 'concluida') {
+        map[vendedorId].realizadas++;
       } else if (v.status === 'checkin_realizado' || v.status === 'em_andamento') {
         map[vendedorId].emAndamento++;
       } else if (v.status === 'pendente') {
         map[vendedorId].pendentes++;
       }
       
-      // Buscar pedido_solicitado: primeiro tenta do VisitaRoteiro, senão cruza com Visita
-      const pedido = v.pedido_solicitado != null 
-        ? v.pedido_solicitado 
-        : visitaPedidoMap[`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`];
-      
-      // Contar apenas para visitas atendidas (concluída, checkin, em_andamento)
+      // Pedido
+      const pedido = v.pedido_solicitado != null
+        ? v.pedido_solicitado
+        : visitaPedidoMap[`${vendedorId}_${v.cliente_id}_${v.data_visita}`];
       if (v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento') {
-        if (pedido === true) {
-          map[vendedorId].comPedido++;
-        } else if (pedido === false) {
-          map[vendedorId].semPedido++;
-        }
+        if (pedido === true) map[vendedorId].comPedido++;
+        else if (pedido === false) map[vendedorId].semPedido++;
       }
+      
+      visitasContabilizadasPorVendedor[vendedorId].add(v.id);
     });
 
-    // Calcular pendentes adicionais e reagendamentos
+    // Reagendamentos
     Object.keys(map).forEach(vendedorId => {
-      const item = map[vendedorId];
-      const totalComRegistro = item.realizadas + item.naoRealizadas + item.emAndamento + item.pendentes;
-      const pendentesDiff = item.agendadas - totalComRegistro;
-      if (pendentesDiff > 0) {
-        item.pendentes += pendentesDiff;
-      }
-      item.reagendamento = reagendamentosPorVendedor[vendedorId] || { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 };
+      map[vendedorId].reagendamento = reagendamentosPorVendedor[vendedorId] || { total: 0, realizadas: 0, naoRealizadas: 0, emAndamento: 0, pendentes: 0 };
     });
     
     return Object.values(map)
       .filter(item => item.agendadas > 0 || item.realizadas > 0)
       .sort((a, b) => b.agendadas - a.agendadas);
-  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap, reagendamentosPorVendedor, reagendamentoKeys]);
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, vendedoresMap, dataInicio, dataFim, visitaPedidoMap, reagendamentosPorVendedor, clientesAll]);
 
   const limparFiltros = () => {
     const d = new Date();
