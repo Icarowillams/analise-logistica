@@ -207,7 +207,20 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('[faturarPedidoOmie] Erro:', error.message);
-        return Response.json({ error: error.message }, { status: 500 });
+        console.error('[faturarPedidoOmie] Erro geral:', error.message);
+        
+        // Reverter status do pedido se possível
+        if (base44 && pedido_id && statusAnterior) {
+            try {
+                await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                    omie_erro: `Erro interno: ${error.message}`
+                });
+                console.log('[faturarPedidoOmie] Erro registrado no pedido');
+            } catch (recoveryErr) {
+                console.error('[faturarPedidoOmie] Erro ao registrar erro no pedido:', recoveryErr.message);
+            }
+        }
+        
+        return Response.json({ error: error.message, sucesso: false, erro: error.message }, { status: 500 });
     }
 });
