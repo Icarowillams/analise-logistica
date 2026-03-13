@@ -390,16 +390,17 @@ export default function AnaliseVisitas() {
     return { visitasComPedido: comPedido, visitasSemPedido: semPedido };
   }, [visitasRoteiroFiltradas, visitaPedidoMap]);
 
-  // Stats resumidos para KPIs
+  // Stats resumidos para KPIs - usando contagem alinhada com RelatorioRoteiros
   const stats = useMemo(() => ({
     totalAgendadas,
-    totalRealizadas: visitasRealizadas.length,
-    totalNaoAtendidas: visitasNaoAtendidas.length,
-    totalEmAndamento: visitasEmAndamento.length,
+    totalRealizadas: contagemAlinhada.totalRealizadas,
+    totalNaoAtendidas: contagemAlinhada.totalNaoAtendidas,
+    totalEmAndamento: contagemAlinhada.totalEmAndamento,
+    totalPendentes: contagemAlinhada.totalPendentes,
     comPedido: visitasComPedido,
     semPedido: visitasSemPedido,
     clientesAtendidos
-  }), [totalAgendadas, visitasRealizadas, visitasNaoAtendidas, visitasEmAndamento, visitasComPedido, visitasSemPedido, clientesAtendidos]);
+  }), [totalAgendadas, contagemAlinhada, visitasComPedido, visitasSemPedido, clientesAtendidos]);
 
   // ========== Dados para Gráficos ==========
 
