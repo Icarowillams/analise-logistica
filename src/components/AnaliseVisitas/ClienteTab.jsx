@@ -151,44 +151,62 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
             const isTop10 = idx < 10;
             const vendedorNome = c.vendedorNome || vendedoresMap[c.vendedorId]?.nome || '';
             const diasStr = c.diasStr || '';
+            const isExpanded = expandedCliente === c.clienteId;
+            const motivosEntries = Object.entries(c.motivos).sort((a, b) => b[1] - a[1]);
             
             return (
-              <div
-                key={c.clienteId}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${
-                  isTop10
-                    ? 'bg-red-50/70 border-red-200/60'
-                    : 'bg-white border-slate-100'
-                }`}
-              >
-                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  isTop10 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {idx + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm truncate ${isTop10 ? 'font-semibold text-red-800' : 'font-medium text-slate-700'}`}>
-                    {c.nome}
-                  </p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[11px] text-slate-400 truncate">
-                      {[c.codigo, c.cidade].filter(Boolean).join(' • ')}
+              <div key={c.clienteId}>
+                <div
+                  onClick={() => setExpandedCliente(isExpanded ? null : c.clienteId)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all cursor-pointer select-none ${
+                    isExpanded
+                      ? 'bg-amber-50 border-amber-200'
+                      : isTop10
+                        ? 'bg-red-50/70 border-red-200/60 hover:bg-red-50'
+                        : 'bg-white border-slate-100 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isTop10 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm truncate ${isTop10 ? 'font-semibold text-red-800' : 'font-medium text-slate-700'}`}>
+                      {c.nome}
                     </p>
-                    {vendedorNome && (
-                      <>
-                        <span className="text-[11px] text-slate-300">|</span>
-                        <span className="text-[11px] text-blue-600 font-medium truncate">{vendedorNome}</span>
-                      </>
-                    )}
-                    {diasStr && (
-                      <>
-                        <span className="text-[11px] text-slate-300">|</span>
-                        <span className="text-[11px] text-amber-700 font-medium">{diasStr}</span>
-                      </>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {[c.codigo, c.cidade].filter(Boolean).join(' • ')}
+                      </p>
+                      {vendedorNome && (
+                        <>
+                          <span className="text-[11px] text-slate-300">|</span>
+                          <span className="text-[11px] text-blue-600 font-medium truncate">{vendedorNome}</span>
+                        </>
+                      )}
+                      {diasStr && (
+                        <>
+                          <span className="text-[11px] text-slate-300">|</span>
+                          <span className="text-[11px] text-amber-700 font-medium">{diasStr}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  <span className={`text-sm font-bold ${isTop10 ? 'text-red-600' : 'text-slate-700'}`}>{c.total}</span>
+                  {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
                 </div>
-                <span className={`text-sm font-bold ${isTop10 ? 'text-red-600' : 'text-slate-700'}`}>{c.total}</span>
+                {isExpanded && (
+                  <div className="ml-10 mr-3 mt-1 mb-2 p-2.5 rounded-lg bg-white border border-slate-200 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Motivos</p>
+                    {motivosEntries.map(([motivo, qtd]) => (
+                      <div key={motivo} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-700">{motivo}</span>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-bold">{qtd}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
