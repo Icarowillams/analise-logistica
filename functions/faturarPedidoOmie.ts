@@ -42,6 +42,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Este pedido ainda não foi enviado ao Omie' }, { status: 400 });
         }
 
+        // Guardar status anterior para possível rollback
+        statusAnterior = pedido.status;
+
         const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
         console.log('[faturarPedidoOmie] Pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Etapa destino:', etapaDestino);
 
