@@ -915,6 +915,8 @@ export default function AnaliseVisitas() {
         visitasFiltradas={visitasFiltradas}
         vendedoresMap={vendedoresMap}
         visitaPedidoMap={visitaPedidoMap}
+        roteiros={roteiros}
+        clientesAll={clientesAll}
       />
     </div>
   );
