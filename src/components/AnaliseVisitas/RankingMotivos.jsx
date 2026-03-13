@@ -10,7 +10,7 @@ import {
 import { XCircle, ShoppingCart, ChevronDown, ChevronUp, X, ListOrdered, Users, Store } from 'lucide-react';
 import ClienteTab from './ClienteTab';
 
-export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap }) {
+export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap, roteiros = [], clientesAll = [] }) {
   const [selectedFuncionarioNV, setSelectedFuncionarioNV] = useState(null);
   const [selectedFuncionarioNP, setSelectedFuncionarioNP] = useState(null);
   const [selectedMotivoNV, setSelectedMotivoNV] = useState(null);
