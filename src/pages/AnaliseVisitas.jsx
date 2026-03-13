@@ -732,8 +732,24 @@ export default function AnaliseVisitas() {
       });
     });
     
-    // Contar visitas fora do roteiro fixo (clientes removidos do roteiro que tiveram visitas)
+    // Deduplicar VisitaRoteiro por vendedor+cliente+data
+    const perfDedupMap = {};
     visitasRoteiroFiltradas.forEach(v => {
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      const p = (vis) => {
+        if (!vis) return -1;
+        if (vis.status === 'concluida') return 3;
+        if (vis.status === 'nao_atendido') return 2;
+        if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
+        return 0;
+      };
+      if (!perfDedupMap[key] || p(v) > p(perfDedupMap[key])) perfDedupMap[key] = v;
+    });
+    const perfDedupIds = new Set(Object.values(perfDedupMap).map(v => v.id));
+
+    // Contar visitas fora do roteiro fixo (clientes removidos do roteiro que tiveram visitas) - excluir duplicatas
+    visitasRoteiroFiltradas.forEach(v => {
+      if (!perfDedupIds.has(v.id)) return; // pular duplicatas
       const vendedorId = v.vendedor_id || 'sem_vendedor';
       if (!visitasContabilizadasPorVendedor[vendedorId]) {
         visitasContabilizadasPorVendedor[vendedorId] = new Set();
