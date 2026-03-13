@@ -361,6 +361,8 @@ export default function RankingMotivos({ visitasRoteiroFiltradas, visitasFiltrad
                 visitasFiltradas={visitasFiltradas}
                 vendedoresMap={vendedoresMap}
                 visitaPedidoMap={visitaPedidoMap}
+                roteiros={roteiros}
+                clientesAll={clientesAll}
                 tipo="naoPedido"
               />
             </TabsContent>
