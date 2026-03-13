@@ -260,6 +260,31 @@ export default function AnaliseVisitas() {
     return uniqueClientes.size;
   }, [visitasRealizadas]);
 
+  // Mapa de pedido_solicitado da entidade Visita (por chave vendedor+cliente+data)
+  const visitaPedidoMap = useMemo(() => {
+    const m = {};
+    visitasFiltradas.forEach(v => {
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      m[key] = v.pedido_solicitado;
+    });
+    return m;
+  }, [visitasFiltradas]);
+
+  // Visitas com pedido solicitado (cruza VisitaRoteiro com Visita via visitaPedidoMap)
+  const { visitasComPedido, visitasSemPedido } = useMemo(() => {
+    let comPedido = 0;
+    let semPedido = 0;
+    visitasRoteiroFiltradas.forEach(v => {
+      if (v.status !== 'concluida' && v.status !== 'checkin_realizado' && v.status !== 'em_andamento') return;
+      const pedido = v.pedido_solicitado != null
+        ? v.pedido_solicitado
+        : visitaPedidoMap[`${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`];
+      if (pedido === true) comPedido++;
+      else if (pedido === false) semPedido++;
+    });
+    return { visitasComPedido: comPedido, visitasSemPedido: semPedido };
+  }, [visitasRoteiroFiltradas, visitaPedidoMap]);
+
   // Stats resumidos para KPIs
   const stats = useMemo(() => ({
     totalAgendadas,
