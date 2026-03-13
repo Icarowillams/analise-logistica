@@ -288,7 +288,26 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('[enviarPedidoOmie] Erro:', error.message);
-        return Response.json({ error: error.message }, { status: 500 });
+        console.error('[enviarPedidoOmie] Erro geral:', error.message);
+        
+        // Tentar reverter o pedido para pendente em caso de erro geral
+        try {
+            const base44Recovery = createClientFromRequest(req);
+            const body = await req.clone().json().catch(() => ({}));
+            const pid = body.pedido_id;
+            if (pid) {
+                await base44Recovery.asServiceRole.entities.Pedido.update(pid, {
+                    status: 'pendente',
+                    numero_pedido: null,
+                    data_envio: null,
+                    omie_erro: `Erro interno: ${error.message}`,
+                    omie_enviado: false
+                });
+            }
+        } catch (recoveryErr) {
+            console.error('[enviarPedidoOmie] Erro ao reverter pedido:', recoveryErr.message);
+        }
+        
+        return Response.json({ error: error.message, sucesso: false, erro: error.message }, { status: 500 });
     }
 });
