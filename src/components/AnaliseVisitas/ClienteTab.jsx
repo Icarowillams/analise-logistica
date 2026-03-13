@@ -26,43 +26,38 @@ const DIA_ORDEM = {
 export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap, roteiros = [], clientesAll = [], tipo }) {
   const [selectedMotivo, setSelectedMotivo] = useState(null);
 
-  // Build map: cliente_id -> { vendedor_nome, dias_roteiro }
-  const clienteRoteiroMap = useMemo(() => {
-    const map = {};
-    roteiros.forEach(r => {
-      const vendedorNome = vendedoresMap[r.vendedor_id]?.nome || r.vendedor_nome || '';
-      const diaAbrev = DIA_ABREV[r.dia_semana] || r.dia_semana;
-      const diaOrdem = DIA_ORDEM[r.dia_semana] || 99;
-      (r.clientes_ids || []).forEach(cid => {
-        if (!map[cid]) map[cid] = { vendedorNome, dias: [] };
-        // Only add day if not already there
-        if (!map[cid].dias.find(d => d.abrev === diaAbrev)) {
-          map[cid].dias.push({ abrev: diaAbrev, ordem: diaOrdem });
-        }
-        // Use the vendedor from roteiro
-        if (!map[cid].vendedorNome) map[cid].vendedorNome = vendedorNome;
-      });
-    });
-    // Sort dias
-    Object.values(map).forEach(v => v.dias.sort((a, b) => a.ordem - b.ordem));
-    return map;
-  }, [roteiros, vendedoresMap]);
-
-  // Build client data with motivos
+  // Build client data with motivos + dias da rota em que ocorreu o evento
   const { motivos, clientes, totalGeral } = useMemo(() => {
     const clienteMap = {};
     const motivoMap = {};
+
+    const addVisita = (v, motivo) => {
+      const cid = v.cliente_id;
+      const nome = v.cliente_nome || v.cliente_codigo || 'Sem Nome';
+      if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, vendedorId: v.vendedor_id, vendedorNome: '', total: 0, motivos: {}, dias: new Set() };
+      clienteMap[cid].total++;
+      clienteMap[cid].motivos[motivo] = (clienteMap[cid].motivos[motivo] || 0) + 1;
+      motivoMap[motivo] = (motivoMap[motivo] || 0) + 1;
+      // Captura o dia_semana da visita (dia da rota em que ocorreu)
+      if (v.dia_semana) {
+        clienteMap[cid].dias.add(v.dia_semana);
+      } else if (v.data_visita) {
+        // Derive day from date
+        const date = new Date(v.data_visita + 'T12:00:00');
+        const dayNames = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
+        clienteMap[cid].dias.add(dayNames[date.getDay()]);
+      }
+      // Vendedor
+      if (!clienteMap[cid].vendedorNome) {
+        clienteMap[cid].vendedorNome = vendedoresMap[v.vendedor_id]?.nome || v.vendedor_nome || '';
+      }
+    };
 
     visitasRoteiroFiltradas.forEach(v => {
       if (tipo === 'naoVisita') {
         if (v.status !== 'nao_atendido') return;
         const motivo = v.motivo_nao_atendimento || 'Sem motivo informado';
-        const cid = v.cliente_id;
-        const nome = v.cliente_nome || v.cliente_codigo || 'Sem Nome';
-        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, vendedorId: v.vendedor_id, total: 0, motivos: {} };
-        clienteMap[cid].total++;
-        clienteMap[cid].motivos[motivo] = (clienteMap[cid].motivos[motivo] || 0) + 1;
-        motivoMap[motivo] = (motivoMap[motivo] || 0) + 1;
+        addVisita(v, motivo);
       } else {
         if (v.status !== 'concluida' && v.status !== 'checkin_realizado' && v.status !== 'em_andamento') return;
         const pedido = v.pedido_solicitado != null
@@ -78,12 +73,7 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
           motivo = visitaEntidade?.motivo_nao_solicitacao_descricao;
         }
         motivo = motivo || 'Sem motivo informado';
-        const cid = v.cliente_id;
-        const nome = v.cliente_nome || v.cliente_codigo || 'Sem Nome';
-        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, vendedorId: v.vendedor_id, total: 0, motivos: {} };
-        clienteMap[cid].total++;
-        clienteMap[cid].motivos[motivo] = (clienteMap[cid].motivos[motivo] || 0) + 1;
-        motivoMap[motivo] = (motivoMap[motivo] || 0) + 1;
+        addVisita(v, motivo);
       }
     });
 
@@ -91,11 +81,18 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
       .map(([motivo, total]) => ({ motivo, total }))
       .sort((a, b) => b.total - a.total);
 
-    let clientesArr = Object.values(clienteMap).sort((a, b) => b.total - a.total);
+    // Convert Set to sorted array of abbreviated days
+    const clientesArr = Object.values(clienteMap).map(c => {
+      const diasArr = [...c.dias]
+        .map(d => ({ abrev: DIA_ABREV[d] || d, ordem: DIA_ORDEM[d] || 99 }))
+        .sort((a, b) => a.ordem - b.ordem);
+      return { ...c, diasStr: diasArr.map(d => d.abrev).join(' - '), dias: undefined };
+    }).sort((a, b) => b.total - a.total);
+    
     const totalGeral = clientesArr.reduce((s, c) => s + c.total, 0);
 
     return { motivos: motivosArr, clientes: clientesArr, totalGeral };
-  }, [visitasRoteiroFiltradas, visitasFiltradas, visitaPedidoMap, tipo]);
+  }, [visitasRoteiroFiltradas, visitasFiltradas, visitaPedidoMap, vendedoresMap, tipo]);
 
   const filteredClientes = useMemo(() => {
     if (!selectedMotivo) return clientes;
