@@ -118,15 +118,15 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [selectedProdutoId, precosAll, tabelaPrecoId]);
 
-  // Auto-select product when search matches a code exactly
+  // Auto-select product when search matches a code exactly (only if has price)
   useEffect(() => {
     if (produtoSearch.trim()) {
-      const match = produtos.find(p => p.codigo === produtoSearch.trim());
+      const match = produtosComPreco.find(p => p.codigo === produtoSearch.trim());
       if (match) {
         setSelectedProdutoId(match.id);
       }
     }
-  }, [produtoSearch, produtos]);
+  }, [produtoSearch, produtosComPreco]);
 
   // Só mostrar produtos que têm preço na tabela do cliente
   const produtosComPreco = useMemo(() => {
