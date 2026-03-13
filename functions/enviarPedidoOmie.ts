@@ -55,8 +55,11 @@ function gerarParcelas(plano, valorTotal, dataBase) {
 }
 
 Deno.serve(async (req) => {
+    let base44 = null;
+    let pedido_id = null;
+    
     try {
-        const base44 = createClientFromRequest(req);
+        base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
 
         if (!user) {
@@ -68,7 +71,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Apenas administradores podem enviar pedidos ao Omie' }, { status: 403 });
         }
 
-        const { pedido_id } = await req.json();
+        const body = await req.json();
+        pedido_id = body.pedido_id;
         if (!pedido_id) {
             return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
         }
