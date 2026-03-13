@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('[cancelarPedidoOmie] Erro:', error.message);
-        return Response.json({ error: error.message }, { status: 500 });
+        console.error('[cancelarPedidoOmie] Erro geral:', error.message);
+        return Response.json({ error: error.message, sucesso: false, erro: error.message }, { status: 500 });
     }
 });
