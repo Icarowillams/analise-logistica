@@ -3,8 +3,50 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { X, Store } from 'lucide-react';
 
-export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap, tipo }) {
+const DIA_ABREV = {
+  'segunda-feira': 'Seg',
+  'terca-feira': 'Ter',
+  'quarta-feira': 'Qua',
+  'quinta-feira': 'Qui',
+  'sexta-feira': 'Sex',
+  'sabado': 'Sáb',
+  'domingo': 'Dom'
+};
+
+const DIA_ORDEM = {
+  'segunda-feira': 1,
+  'terca-feira': 2,
+  'quarta-feira': 3,
+  'quinta-feira': 4,
+  'sexta-feira': 5,
+  'sabado': 6,
+  'domingo': 7
+};
+
+export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap, roteiros = [], clientesAll = [], tipo }) {
   const [selectedMotivo, setSelectedMotivo] = useState(null);
+
+  // Build map: cliente_id -> { vendedor_nome, dias_roteiro }
+  const clienteRoteiroMap = useMemo(() => {
+    const map = {};
+    roteiros.forEach(r => {
+      const vendedorNome = vendedoresMap[r.vendedor_id]?.nome || r.vendedor_nome || '';
+      const diaAbrev = DIA_ABREV[r.dia_semana] || r.dia_semana;
+      const diaOrdem = DIA_ORDEM[r.dia_semana] || 99;
+      (r.clientes_ids || []).forEach(cid => {
+        if (!map[cid]) map[cid] = { vendedorNome, dias: [] };
+        // Only add day if not already there
+        if (!map[cid].dias.find(d => d.abrev === diaAbrev)) {
+          map[cid].dias.push({ abrev: diaAbrev, ordem: diaOrdem });
+        }
+        // Use the vendedor from roteiro
+        if (!map[cid].vendedorNome) map[cid].vendedorNome = vendedorNome;
+      });
+    });
+    // Sort dias
+    Object.values(map).forEach(v => v.dias.sort((a, b) => a.ordem - b.ordem));
+    return map;
+  }, [roteiros, vendedoresMap]);
 
   // Build client data with motivos
   const { motivos, clientes, totalGeral } = useMemo(() => {
@@ -17,7 +59,7 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
         const motivo = v.motivo_nao_atendimento || 'Sem motivo informado';
         const cid = v.cliente_id;
         const nome = v.cliente_nome || v.cliente_codigo || 'Sem Nome';
-        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, total: 0, motivos: {} };
+        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, vendedorId: v.vendedor_id, total: 0, motivos: {} };
         clienteMap[cid].total++;
         clienteMap[cid].motivos[motivo] = (clienteMap[cid].motivos[motivo] || 0) + 1;
         motivoMap[motivo] = (motivoMap[motivo] || 0) + 1;
@@ -38,7 +80,7 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
         motivo = motivo || 'Sem motivo informado';
         const cid = v.cliente_id;
         const nome = v.cliente_nome || v.cliente_codigo || 'Sem Nome';
-        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, total: 0, motivos: {} };
+        if (!clienteMap[cid]) clienteMap[cid] = { clienteId: cid, nome, codigo: v.cliente_codigo, cidade: v.cliente_cidade, vendedorId: v.vendedor_id, total: 0, motivos: {} };
         clienteMap[cid].total++;
         clienteMap[cid].motivos[motivo] = (clienteMap[cid].motivos[motivo] || 0) + 1;
         motivoMap[motivo] = (motivoMap[motivo] || 0) + 1;
@@ -109,6 +151,10 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
         <div className="space-y-1 max-h-96 overflow-y-auto">
           {filteredClientes.map((c, idx) => {
             const isTop10 = idx < 10;
+            const roteiroInfo = clienteRoteiroMap[c.clienteId];
+            const vendedorNome = roteiroInfo?.vendedorNome || vendedoresMap[c.vendedorId]?.nome || '';
+            const diasStr = roteiroInfo?.dias?.map(d => d.abrev).join(' - ') || '';
+            
             return (
               <div
                 key={c.clienteId}
@@ -127,9 +173,23 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
                   <p className={`text-sm truncate ${isTop10 ? 'font-semibold text-red-800' : 'font-medium text-slate-700'}`}>
                     {c.nome}
                   </p>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    {[c.codigo, c.cidade].filter(Boolean).join(' • ')}
-                  </p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-[11px] text-slate-400 truncate">
+                      {[c.codigo, c.cidade].filter(Boolean).join(' • ')}
+                    </p>
+                    {vendedorNome && (
+                      <>
+                        <span className="text-[11px] text-slate-300">|</span>
+                        <span className="text-[11px] text-blue-600 font-medium truncate">{vendedorNome}</span>
+                      </>
+                    )}
+                    {diasStr && (
+                      <>
+                        <span className="text-[11px] text-slate-300">|</span>
+                        <span className="text-[11px] text-amber-700 font-medium">{diasStr}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <span className={`text-sm font-bold ${isTop10 ? 'text-red-600' : 'text-slate-700'}`}>{c.total}</span>
               </div>
