@@ -25,6 +25,7 @@ const DIA_ORDEM = {
 
 export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, vendedoresMap, visitaPedidoMap, roteiros = [], clientesAll = [], tipo }) {
   const [selectedMotivo, setSelectedMotivo] = useState(null);
+  const [expandedCliente, setExpandedCliente] = useState(null);
 
   // Build client data with motivos + dias da rota em que ocorreu o evento
   const { motivos, clientes, totalGeral } = useMemo(() => {
