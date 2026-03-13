@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import PedidoPdf from './PedidoPdf';
 
 export default function EnvioPedidos({ vendedor, onEditPedido }) {
