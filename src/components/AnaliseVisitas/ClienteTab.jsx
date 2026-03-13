@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { X, Store } from 'lucide-react';
+import { X, Store, ChevronDown, ChevronUp } from 'lucide-react';
 
 const DIA_ABREV = {
   'segunda-feira': 'Seg',
