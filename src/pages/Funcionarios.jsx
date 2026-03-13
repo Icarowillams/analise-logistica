@@ -26,6 +26,9 @@ export default function Funcionarios() {
   const [exportarOmieOpen, setExportarOmieOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [consultaFilters, setConsultaFilters] = useState({
+    search: '', funcao: '', departamento_id: '', supervisor_id: '', status: ''
+  });
   const [formData, setFormData] = useState({
     nome: '', 
     cpf: '', 
