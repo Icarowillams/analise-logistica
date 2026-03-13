@@ -77,7 +77,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         omie_erro: null
       });
 
-      // Segundo: enviar para o Omie
+      // Segundo: enviar para o Omie (backend reverte status se der erro)
       let omieOk = false;
       let erroMsg = '';
       try {
@@ -90,16 +90,16 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         }
       } catch (omieErr) {
         erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
-      }
-
-      // Se o Omie falhou, reverter para pendente com erro
-      if (!omieOk) {
+        // Se houve exceção na chamada, reverter manualmente (backend pode não ter executado)
         await base44.entities.Pedido.update(pedido.id, {
           status: 'pendente',
           numero_pedido: null,
           data_envio: null,
           omie_erro: erroMsg
         });
+      }
+
+      if (!omieOk) {
         toast.error(`Erro ao enviar pedido ao Omie: ${erroMsg}`);
       } else {
         toast.success(`Pedido #${numero} enviado ao Omie com sucesso!`);
