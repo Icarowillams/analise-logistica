@@ -137,8 +137,8 @@ Deno.serve(async (req) => {
         const clienteOmie = await clienteResponse.json();
         if (!clienteOmie.faultstring) {
             limiteCredito = clienteOmie.valor_limite_credito || 0;
-            // Calcular total em aberto
-            const totalEmAberto = titulosPendentes.reduce((sum, t) => sum + (t.cabecTitulo?.nValorTitulo || 0), 0);
+            // Calcular total em aberto sem duplicidades
+            const totalEmAberto = titulosPendentesUnicos.reduce((sum, t) => sum + ((t.cabecTitulo || t).nValorTitulo || 0), 0);
             saldoDisponivel = limiteCredito - totalEmAberto;
         }
 
