@@ -68,23 +68,41 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     setEnviandoId(pedido.id);
     try {
       const numero = await getNextNumero();
+      
+      // Primeiro: atribuir número e marcar como enviado temporariamente para o Omie aceitar
       await base44.entities.Pedido.update(pedido.id, {
         status: 'enviado',
         numero_pedido: numero,
-        data_envio: new Date().toISOString()
+        data_envio: new Date().toISOString(),
+        omie_erro: null
       });
 
-      // Enviar para o Omie (etapa 10 = Pedido de Venda)
+      // Segundo: enviar para o Omie
+      let omieOk = false;
+      let erroMsg = '';
       try {
         const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
         const result = response.data;
         if (result.sucesso) {
-          toast.success(`Pedido #${numero} enviado ao Omie!`);
+          omieOk = true;
         } else {
-          toast.warning(`Pedido #${numero} salvo, mas erro no Omie: ${result.erro}`);
+          erroMsg = result.erro || 'Erro desconhecido no Omie';
         }
       } catch (omieErr) {
-        toast.warning(`Pedido #${numero} salvo localmente, mas falhou no envio ao Omie`);
+        erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+      }
+
+      // Se o Omie falhou, reverter para pendente com erro
+      if (!omieOk) {
+        await base44.entities.Pedido.update(pedido.id, {
+          status: 'pendente',
+          numero_pedido: null,
+          data_envio: null,
+          omie_erro: erroMsg
+        });
+        toast.error(`Erro ao enviar pedido ao Omie: ${erroMsg}`);
+      } else {
+        toast.success(`Pedido #${numero} enviado ao Omie com sucesso!`);
       }
 
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
