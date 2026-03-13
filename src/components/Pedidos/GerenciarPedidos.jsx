@@ -157,27 +157,35 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (!confirm('Deseja tornar este pedido pendente novamente?')) return;
     setTornandoPendenteId(pedido.id);
     try {
-      // Voltar para etapa 10 no Omie se foi enviado
+      // Se o pedido está no Omie, primeiro tentar voltar a etapa
+      let omieOk = true;
+      let omieErroMsg = '';
       if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
         try {
           const resp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id, etapa: "10" });
           const result = resp.data;
           if (!result.sucesso) {
-            toast.warning(`Pedido voltou para pendente, mas erro no Omie: ${result.erro}`);
+            omieOk = false;
+            omieErroMsg = result.erro || 'Erro desconhecido';
           }
         } catch (omieErr) {
-          toast.warning('Pedido voltou para pendente, mas falhou ao voltar etapa no Omie');
+          omieOk = false;
+          omieErroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
         }
       }
 
-      await base44.entities.Pedido.update(pedido.id, {
-        status: 'enviado',
-        liberado_por: null,
-        data_liberacao: null,
-        pendencia_financeira_ignorada: false
-      });
-      queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
-      toast.success('Pedido retornado para Enviado (etapa 10 no Omie)');
+      if (omieOk) {
+        await base44.entities.Pedido.update(pedido.id, {
+          status: 'enviado',
+          liberado_por: null,
+          data_liberacao: null,
+          pendencia_financeira_ignorada: false
+        });
+        queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+        toast.success('Pedido retornado para Enviado (etapa 10 no Omie)');
+      } else {
+        toast.error(`Falha ao voltar etapa no Omie: ${omieErroMsg}. Pedido NÃO foi alterado.`);
+      }
     } finally {
       setTornandoPendenteId(null);
     }
