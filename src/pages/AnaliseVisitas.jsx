@@ -211,19 +211,124 @@ export default function AnaliseVisitas() {
     return total;
   }, [roteirosFiltrados, dataInicio, dataFim]);
 
-  // Visitas realizadas (status concluida ou checkin_realizado)
+  // ========== CONTAGEM ALINHADA COM RELATÓRIO DE ROTEIROS ==========
+  // Usa a mesma lógica do RelatorioRoteiros: para cada data no período,
+  // verifica os clientes do roteiro fixo e cruza com VisitaRoteiro existentes.
+  // Isso garante que "Pendente" = cliente no roteiro sem VisitaRoteiro (sem check-in).
+  
+  const contagemAlinhada = useMemo(() => {
+    const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
+    
+    // Mapa de VisitaRoteiro por vendedor+cliente+data para lookup rápido
+    const visitaRoteiroMap = {};
+    // Também indexar por vendedor+codigo+data
+    const visitaRoteiroPorCodigo = {};
+    visitasRoteiroFiltradas.forEach(v => {
+      const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      // Priorizar status mais "avançado"
+      const prioridade = (vis) => {
+        if (!vis) return -1;
+        if (vis.status === 'concluida') return 3;
+        if (vis.status === 'nao_atendido') return 2;
+        if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
+        return 0;
+      };
+      if (!visitaRoteiroMap[key] || prioridade(v) > prioridade(visitaRoteiroMap[key])) {
+        visitaRoteiroMap[key] = v;
+      }
+      if (v.cliente_codigo) {
+        const keyCod = `${v.vendedor_id}_cod_${v.cliente_codigo}_${v.data_visita}`;
+        if (!visitaRoteiroPorCodigo[keyCod] || prioridade(v) > prioridade(visitaRoteiroPorCodigo[keyCod])) {
+          visitaRoteiroPorCodigo[keyCod] = v;
+        }
+      }
+    });
+
+    // Mapa de clientes para buscar código
+    const clientesMapLocal = {};
+    clientesAll.forEach(c => { clientesMapLocal[c.id] = c; });
+    const clientesMapByCodigo = {};
+    clientesAll.forEach(c => { if (c.codigo) clientesMapByCodigo[c.codigo] = c; });
+    
+    const findClienteLocal = (clienteId, clienteCodigo) => 
+      (clienteCodigo ? clientesMapByCodigo[clienteCodigo] : undefined) || clientesMapLocal[clienteId];
+
+    let totalRealizadas = 0;
+    let totalNaoAtendidas = 0;
+    let totalEmAndamento = 0;
+    let totalPendentes = 0;
+    
+    // Set para rastrear visitas já contabilizadas (evitar dupla contagem)
+    const visitasContabilizadas = new Set();
+
+    diasNoPeriodo.forEach(dia => {
+      const diaSemana = getDiaSemana(dia);
+      roteirosFiltrados.forEach(roteiro => {
+        if (roteiro.dia_semana !== diaSemana) return;
+        const vendedorId = roteiro.vendedor_id;
+        
+        // Processar cada cliente do roteiro
+        (roteiro.clientes_detalhes || []).forEach(clienteDetalhe => {
+          const clienteCompleto = findClienteLocal(clienteDetalhe.cliente_id, clienteDetalhe.cliente_codigo);
+          
+          // Buscar VisitaRoteiro correspondente (mesma lógica do RelatorioRoteiros)
+          const visita = visitaRoteiroMap[`${vendedorId}_${clienteDetalhe.cliente_id}_${dia}`]
+            || (clienteDetalhe.cliente_codigo ? visitaRoteiroPorCodigo[`${vendedorId}_cod_${clienteDetalhe.cliente_codigo}_${dia}`] : null)
+            || (clienteCompleto?.id ? visitaRoteiroMap[`${vendedorId}_${clienteCompleto.id}_${dia}`] : null);
+          
+          if (visita) {
+            visitasContabilizadas.add(visita.id);
+            if (visita.status === 'nao_atendido') {
+              totalNaoAtendidas++;
+            } else if (visita.status === 'concluida' && visita.checkout_time) {
+              totalRealizadas++;
+            } else if (visita.checkin_time && !visita.checkout_time) {
+              totalEmAndamento++;
+            } else if (visita.status === 'concluida') {
+              // concluida sem checkout_time - ainda conta como realizada
+              totalRealizadas++;
+            } else {
+              // status pendente ou outro sem checkin
+              totalPendentes++;
+            }
+          } else {
+            // Sem VisitaRoteiro = Pendente (aguardando check-in)
+            totalPendentes++;
+          }
+        });
+      });
+    });
+    
+    // Contar visitas que existem no VisitaRoteiro mas NÃO estão no roteiro fixo atual
+    // (clientes removidos do roteiro que tiveram visitas)
+    visitasRoteiroFiltradas.forEach(v => {
+      if (visitasContabilizadas.has(v.id)) return;
+      if (v.status === 'nao_atendido') {
+        totalNaoAtendidas++;
+      } else if (v.status === 'concluida') {
+        totalRealizadas++;
+      } else if (v.status === 'checkin_realizado' || v.status === 'em_andamento') {
+        totalEmAndamento++;
+      } else if (v.status === 'pendente') {
+        totalPendentes++;
+      }
+      visitasContabilizadas.add(v.id);
+    });
+
+    return { totalRealizadas, totalNaoAtendidas, totalEmAndamento, totalPendentes };
+  }, [visitasRoteiroFiltradas, roteirosFiltrados, dataInicio, dataFim, clientesAll]);
+
+  // Manter variáveis compatíveis para outros usos (gráficos, etc.)
   const visitasRealizadas = useMemo(() => {
     return visitasRoteiroFiltradas.filter(v => 
       v.status === 'concluida' || v.status === 'checkin_realizado' || v.status === 'em_andamento'
     );
   }, [visitasRoteiroFiltradas]);
 
-  // Visitas não atendidas
   const visitasNaoAtendidas = useMemo(() => {
     return visitasRoteiroFiltradas.filter(v => v.status === 'nao_atendido');
   }, [visitasRoteiroFiltradas]);
 
-  // Visitas em andamento
   const visitasEmAndamento = useMemo(() => {
     return visitasRoteiroFiltradas.filter(v => v.status === 'em_andamento' || v.status === 'checkin_realizado');
   }, [visitasRoteiroFiltradas]);
