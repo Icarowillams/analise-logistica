@@ -117,6 +117,11 @@ export default function Funcionarios() {
 
   const handleEdit = (item) => {
     setSelected(item);
+    // Migrar supervisor_id legado para supervisor_ids se necessário
+    let supervisorIds = item.supervisor_ids || [];
+    if (supervisorIds.length === 0 && item.supervisor_id) {
+      supervisorIds = [item.supervisor_id];
+    }
     setFormData({
       nome: item.nome || '',
       cpf: item.cpf || '',
@@ -124,6 +129,7 @@ export default function Funcionarios() {
       funcao: item.funcao || '',
       departamento_id: item.departamento_id || '',
       supervisor_id: item.supervisor_id || '',
+      supervisor_ids: supervisorIds,
       telefone: item.telefone || '',
       latitude: item.latitude || '',
       longitude: item.longitude || '',
