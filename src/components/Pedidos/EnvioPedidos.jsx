@@ -142,18 +142,18 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         }
       } catch (omieErr) {
         erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
-      }
-
-      if (omieOk) {
-        sucessoCount++;
-      } else {
-        // Reverter para pendente
+        // Se exceção na chamada, reverter manualmente
         await base44.entities.Pedido.update(pedido.id, {
           status: 'pendente',
           numero_pedido: null,
           data_envio: null,
           omie_erro: erroMsg
         });
+      }
+
+      if (omieOk) {
+        sucessoCount++;
+      } else {
         erroCount++;
         erroMsgs.push(`${pedido.cliente_nome}: ${erroMsg}`);
       }
