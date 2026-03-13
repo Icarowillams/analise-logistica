@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
                     }
                 }
 
-                // Delay para não sobrecarregar API do Omie
-                await new Promise(r => setTimeout(r, 500));
+                // Delay para não sobrecarregar API do Omie (rate limit ~1 req/3s)
+                await new Promise(r => setTimeout(r, 3000));
 
             } catch (pedidoErr) {
                 console.error(`[sincronizarStatusPedidos] Erro ao consultar pedido #${pedido.numero_pedido}:`, pedidoErr.message);
