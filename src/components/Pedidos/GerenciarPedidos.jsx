@@ -219,13 +219,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const result = response.data;
       
       if (result.sucesso) {
-        toast.success(`Pedido movido para Faturar no Omie!`);
-        queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+        toast.success('Pedido movido para Faturar no Omie!');
       } else {
         toast.error(`Erro Omie: ${result.erro}`);
       }
+      queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
     } catch (err) {
-      toast.error('Erro ao faturar no Omie: ' + err.message);
+      toast.error('Erro ao faturar no Omie: ' + (err?.response?.data?.erro || err.message));
     } finally {
       setEnviandoOmieId(null);
     }
