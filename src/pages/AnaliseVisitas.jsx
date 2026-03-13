@@ -427,27 +427,42 @@ export default function AnaliseVisitas() {
   }, [visitasFiltradas, vendedoresMap]);
 
   // Visitas por dia - ALINHADO com contagemAlinhada (mesma lógica dos KPIs)
+  // Deduplicação: múltiplos registros VisitaRoteiro para mesmo vendedor+cliente+data são tratados como 1 só
   const visitasPorDia = useMemo(() => {
     const diasNoPeriodo = getDaysInRange(dataInicio, dataFim);
     const map = {};
     
-    // Mapa de VisitaRoteiro por vendedor+cliente+data para lookup rápido
+    // Deduplicar VisitaRoteiro: para cada vendedor+cliente+data, manter apenas o de maior prioridade
     const vrMap = {};
     const vrMapCodigo = {};
+    const allDedupIds = new Set(); // IDs de todas as visitas que são duplicatas (não a principal)
+    const vrByKey = {}; // key -> array de IDs
+    
+    const prioridade = (vis) => {
+      if (!vis) return -1;
+      if (vis.status === 'concluida') return 3;
+      if (vis.status === 'nao_atendido') return 2;
+      if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
+      return 0;
+    };
+    
     visitasRoteiroFiltradas.forEach(v => {
-      const prioridade = (vis) => {
-        if (!vis) return -1;
-        if (vis.status === 'concluida') return 3;
-        if (vis.status === 'nao_atendido') return 2;
-        if (vis.status === 'checkin_realizado' || vis.status === 'em_andamento') return 1;
-        return 0;
-      };
       const key = `${v.vendedor_id}_${v.cliente_id}_${v.data_visita}`;
+      if (!vrByKey[key]) vrByKey[key] = [];
+      vrByKey[key].push(v.id);
+      
       if (!vrMap[key] || prioridade(v) > prioridade(vrMap[key])) vrMap[key] = v;
       if (v.cliente_codigo) {
         const keyCod = `${v.vendedor_id}_cod_${v.cliente_codigo}_${v.data_visita}`;
         if (!vrMapCodigo[keyCod] || prioridade(v) > prioridade(vrMapCodigo[keyCod])) vrMapCodigo[keyCod] = v;
       }
+    });
+    
+    // Marcar todos os IDs duplicados (todos exceto o principal de cada chave)
+    Object.keys(vrByKey).forEach(key => {
+      const ids = vrByKey[key];
+      const principalId = vrMap[key]?.id;
+      ids.forEach(id => { if (id !== principalId) allDedupIds.add(id); });
     });
 
     // Mapa de clientes
@@ -491,9 +506,10 @@ export default function AnaliseVisitas() {
       });
     });
     
-    // Visitas fora do roteiro fixo
+    // Visitas fora do roteiro fixo (excluir duplicatas)
     visitasRoteiroFiltradas.forEach(v => {
       if (visitasContabilizadas.has(v.id)) return;
+      if (allDedupIds.has(v.id)) return; // pular duplicatas
       const dia = v.data_visita;
       if (!map[dia]) map[dia] = { data: dia, realizadas: 0, naoRealizadas: 0, pendentes: 0 };
       if (v.status === 'nao_atendido') map[dia].naoRealizadas++;
