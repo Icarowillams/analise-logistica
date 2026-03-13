@@ -233,7 +233,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     const items = allItems.filter(i => i.pedido_id === pedido.id);
 
     return (
-      <Card className="mb-3">
+      <Card className={`mb-3 ${pedido.omie_erro ? 'border-red-300 bg-red-50/50' : ''}`}>
         <CardContent className="p-4 space-y-2">
           <div className="flex justify-between items-start">
             <div className="min-w-0 flex-1">
@@ -243,10 +243,36 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             {pedido.status === 'enviado' && (
               <Badge className="bg-green-500 shrink-0 ml-2">Enviado</Badge>
             )}
-            {pedido.status === 'pendente' && (
+            {pedido.status === 'pendente' && !pedido.omie_erro && (
               <Badge className="bg-amber-500 shrink-0 ml-2">Pendente</Badge>
             )}
+            {pedido.status === 'pendente' && pedido.omie_erro && (
+              <Badge className="bg-red-500 shrink-0 ml-2">Erro Omie</Badge>
+            )}
           </div>
+          
+          {/* Alerta de erro do Omie */}
+          {pedido.omie_erro && (
+            <div className="flex items-start gap-2 p-2.5 bg-red-100 border border-red-200 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-red-700">Falha no envio ao Omie:</p>
+                <p className="text-xs text-red-600 break-words">{pedido.omie_erro}</p>
+              </div>
+              <button 
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await base44.entities.Pedido.update(pedido.id, { omie_erro: null });
+                  queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+                }}
+                className="text-red-400 hover:text-red-600 shrink-0"
+                title="Limpar erro"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          
           <div className="text-xs text-slate-600 space-y-0.5">
             <p>Pgto: {pedido.plano_pagamento_nome || '-'}</p>
             <p>Itens: {items.length} | Vl. Total: R$ {(pedido.valor_total || 0).toFixed(2)}</p>
