@@ -99,6 +99,24 @@ Deno.serve(async (req) => {
             pagina++;
         }
 
+        const titulosPendentesUnicos = [];
+        const titulosJaVistos = new Set();
+
+        for (const titulo of titulosPendentes) {
+            const cab = titulo.cabecTitulo || titulo;
+            const chave = [
+                cab.cNumTitulo || cab.cNumDocFiscal || '',
+                cab.cNumParcela || '',
+                cab.dDtVenc || '',
+                String(cab.nValorTitulo || 0)
+            ].join('|');
+
+            if (!titulosJaVistos.has(chave)) {
+                titulosJaVistos.add(chave);
+                titulosPendentesUnicos.push(titulo);
+            }
+        }
+
         // 2) Consultar o cliente no Omie para pegar limite de crédito
         let limiteCredito = null;
         let saldoDisponivel = null;
