@@ -116,29 +116,57 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const enviarTodos = async () => {
     if (pendentes.length === 0) return;
     setEnviandoTodos(true);
-    let startNum = await getNextNumero();
     let sucessoCount = 0;
     let erroCount = 0;
+    const erroMsgs = [];
+    
     for (const pedido of pendentes) {
+      const numero = await getNextNumero();
+      
+      // Marcar como enviado temporariamente
       await base44.entities.Pedido.update(pedido.id, {
         status: 'enviado',
-        numero_pedido: startNum,
-        data_envio: new Date().toISOString()
+        numero_pedido: numero,
+        data_envio: new Date().toISOString(),
+        omie_erro: null
       });
+
+      let omieOk = false;
+      let erroMsg = '';
       try {
         const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
-        if (response.data.sucesso) sucessoCount++;
-        else erroCount++;
-      } catch {
-        erroCount++;
+        if (response.data.sucesso) {
+          omieOk = true;
+        } else {
+          erroMsg = response.data.erro || 'Erro desconhecido no Omie';
+        }
+      } catch (omieErr) {
+        erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
       }
-      startNum++;
+
+      if (omieOk) {
+        sucessoCount++;
+      } else {
+        // Reverter para pendente
+        await base44.entities.Pedido.update(pedido.id, {
+          status: 'pendente',
+          numero_pedido: null,
+          data_envio: null,
+          omie_erro: erroMsg
+        });
+        erroCount++;
+        erroMsgs.push(`${pedido.cliente_nome}: ${erroMsg}`);
+      }
     }
+    
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    if (erroCount > 0) {
-      toast.warning(`${sucessoCount} enviados ao Omie, ${erroCount} com erro`);
+    
+    if (erroCount > 0 && sucessoCount > 0) {
+      toast.warning(`${sucessoCount} enviados, ${erroCount} com erro no Omie`);
+    } else if (erroCount > 0 && sucessoCount === 0) {
+      toast.error(`Nenhum pedido enviado. ${erroCount} com erro no Omie`);
     } else {
-      toast.success(`${sucessoCount} pedidos enviados ao Omie!`);
+      toast.success(`${sucessoCount} pedidos enviados ao Omie com sucesso!`);
     }
     setEnviandoTodos(false);
   };
