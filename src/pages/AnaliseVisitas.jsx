@@ -541,7 +541,7 @@ export default function AnaliseVisitas() {
       .slice(-30)
       .map(item => ({
         ...item,
-        dataFormatada: new Date(item.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        dataFormatada: new Date(item.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
       }));
   }, [visitasRoteiroFiltradas, roteirosFiltrados, dataInicio, dataFim, clientesAll]);
 
