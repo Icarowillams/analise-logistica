@@ -91,6 +91,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const response = await base44.functions.invoke('consultarDebitosOmie', { cliente_id: pedido.cliente_id });
       const debitos = response.data;
 
+      let pendenciaIgnorada = false;
       if (debitos.tem_pendencia) {
         const confirmar = window.confirm(
           `⚠️ ATENÇÃO: O cliente ${pedido.cliente_nome || pedido.cliente_codigo} está com pendência financeira!\n\n` +
@@ -103,37 +104,43 @@ export default function GerenciarPedidos({ onEditPedido }) {
           setLiberandoId(null);
           return;
         }
-
-        await base44.entities.Pedido.update(pedido.id, {
-          status: 'liberado',
-          liberado_por: currentUser?.email || '',
-          data_liberacao: new Date().toISOString(),
-          pendencia_financeira_ignorada: true
-        });
-      } else {
-        await base44.entities.Pedido.update(pedido.id, {
-          status: 'liberado',
-          liberado_por: currentUser?.email || '',
-          data_liberacao: new Date().toISOString(),
-          pendencia_financeira_ignorada: false
-        });
+        pendenciaIgnorada = true;
       }
 
-      // Mover para Pedidos Liberados (etapa 20) no Omie automaticamente
+      // Se o pedido está no Omie, primeiro tentar mover a etapa
+      let omieOk = true;
+      let omieErroMsg = '';
       if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
         try {
           const faturarResp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id, etapa: "20" });
           const faturarResult = faturarResp.data;
-          if (faturarResult.sucesso) {
-            toast.success('Pedido liberado e movido para Pedidos Liberados no Omie!');
-          } else {
-            toast.warning(`Pedido liberado, mas erro no Omie: ${faturarResult.erro}`);
+          if (!faturarResult.sucesso) {
+            omieOk = false;
+            omieErroMsg = faturarResult.erro || 'Erro desconhecido';
           }
         } catch (omieErr) {
-          toast.warning('Pedido liberado, mas falhou ao mover etapa no Omie');
+          omieOk = false;
+          omieErroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+        }
+      }
+
+      // Só atualizar status para liberado APÓS sucesso no Omie (ou se não tem Omie)
+      if (omieOk) {
+        await base44.entities.Pedido.update(pedido.id, {
+          status: 'liberado',
+          liberado_por: currentUser?.email || '',
+          data_liberacao: new Date().toISOString(),
+          pendencia_financeira_ignorada: pendenciaIgnorada
+        });
+
+        if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+          toast.success('Pedido liberado e movido para Pedidos Liberados no Omie!');
+        } else {
+          toast.success('Pedido liberado!');
         }
       } else {
-        toast.success('Pedido liberado!');
+        // Omie falhou — NÃO liberar localmente
+        toast.error(`Falha ao mover etapa no Omie: ${omieErroMsg}. Pedido NÃO foi liberado.`);
       }
 
       queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
