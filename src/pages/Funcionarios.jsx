@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { Users, CheckCircle, XCircle, Upload, List, Ban, Save, Send } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import BulkImportModal from '@/components/forms/BulkImportModal';
 import ExportarVendedoresOmieModal from '@/components/funcionarios/ExportarVendedoresOmieModal';
+import FuncionariosConsulta from '@/components/funcionarios/FuncionariosConsulta';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
