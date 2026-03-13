@@ -197,10 +197,13 @@ export default function Funcionarios() {
     setBulkOpen(false);
   };
 
-  const getSupervisorName = (id) => {
-    if (!id) return '-';
-    const supervisor = funcionarios.find(f => f.id === id);
-    return supervisor ? supervisor.nome : '-';
+  const getSupervisorNames = (item) => {
+    const ids = item.supervisor_ids?.length > 0 ? item.supervisor_ids : (item.supervisor_id ? [item.supervisor_id] : []);
+    if (ids.length === 0) return '-';
+    return ids.map(id => {
+      const sup = funcionarios.find(f => f.id === id);
+      return sup?.nome || '-';
+    }).join(', ');
   };
 
   const getDepartmentName = (id) => {
