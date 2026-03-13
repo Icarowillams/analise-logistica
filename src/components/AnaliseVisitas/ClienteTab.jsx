@@ -148,9 +148,8 @@ export default function ClienteTab({ visitasRoteiroFiltradas, visitasFiltradas, 
         <div className="space-y-1 max-h-96 overflow-y-auto">
           {filteredClientes.map((c, idx) => {
             const isTop10 = idx < 10;
-            const roteiroInfo = clienteRoteiroMap[c.clienteId];
-            const vendedorNome = roteiroInfo?.vendedorNome || vendedoresMap[c.vendedorId]?.nome || '';
-            const diasStr = roteiroInfo?.dias?.map(d => d.abrev).join(' - ') || '';
+            const vendedorNome = c.vendedorNome || vendedoresMap[c.vendedorId]?.nome || '';
+            const diasStr = c.diasStr || '';
             
             return (
               <div
