@@ -202,7 +202,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
       }
       queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
     } catch (err) {
-      toast.error('Erro ao cancelar: ' + err.message);
+      toast.error('Erro ao cancelar: ' + (err?.response?.data?.erro || err.message));
+      queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
     }
   };
 
