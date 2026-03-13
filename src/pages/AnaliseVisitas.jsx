@@ -234,8 +234,6 @@ export default function AnaliseVisitas() {
     return ((visitasRealizadas.length / totalAgendadas) * 100).toFixed(1);
   }, [visitasRealizadas, totalAgendadas]);
 
-  // 2. Visitas com pedido (calculado após visitaPedidoMap, ver abaixo)
-
   // 4. Tempo Médio por Visita
   const tempoMedioPorVisita = useMemo(() => {
     const visitasComTempo = visitasRoteiroFiltradas.filter(v => v.checkin_time && v.checkout_time);
