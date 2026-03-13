@@ -333,11 +333,11 @@ export default function AnaliseVisitas() {
     return visitasRoteiroFiltradas.filter(v => v.status === 'em_andamento' || v.status === 'checkin_realizado');
   }, [visitasRoteiroFiltradas]);
 
-  // 1. Taxa de Conclusão (realizadas / agendadas)
+  // 1. Taxa de Conclusão (realizadas / agendadas) - usando contagem alinhada
   const taxaConclusao = useMemo(() => {
     if (totalAgendadas === 0) return 0;
-    return ((visitasRealizadas.length / totalAgendadas) * 100).toFixed(1);
-  }, [visitasRealizadas, totalAgendadas]);
+    return ((contagemAlinhada.totalRealizadas / totalAgendadas) * 100).toFixed(1);
+  }, [contagemAlinhada, totalAgendadas]);
 
   // 4. Tempo Médio por Visita
   const tempoMedioPorVisita = useMemo(() => {
