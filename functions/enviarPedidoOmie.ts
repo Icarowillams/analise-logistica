@@ -295,21 +295,19 @@ Deno.serve(async (req) => {
         console.error('[enviarPedidoOmie] Erro geral:', error.message);
         
         // Tentar reverter o pedido para pendente em caso de erro geral
-        try {
-            const base44Recovery = createClientFromRequest(req);
-            const body = await req.clone().json().catch(() => ({}));
-            const pid = body.pedido_id;
-            if (pid) {
-                await base44Recovery.asServiceRole.entities.Pedido.update(pid, {
+        if (base44 && pedido_id) {
+            try {
+                await base44.asServiceRole.entities.Pedido.update(pedido_id, {
                     status: 'pendente',
                     numero_pedido: null,
                     data_envio: null,
                     omie_erro: `Erro interno: ${error.message}`,
                     omie_enviado: false
                 });
+                console.log('[enviarPedidoOmie] Pedido revertido para pendente após erro');
+            } catch (recoveryErr) {
+                console.error('[enviarPedidoOmie] Erro ao reverter pedido:', recoveryErr.message);
             }
-        } catch (recoveryErr) {
-            console.error('[enviarPedidoOmie] Erro ao reverter pedido:', recoveryErr.message);
         }
         
         return Response.json({ error: error.message, sucesso: false, erro: error.message }, { status: 500 });
