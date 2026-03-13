@@ -882,7 +882,7 @@ export default function AnaliseVisitas() {
       </Card>
 
       {/* KPIs Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <StatsCard
           title="Visitas Agendadas"
           value={stats.totalAgendadas}
@@ -898,16 +898,16 @@ export default function AnaliseVisitas() {
           gradient="from-yellow-500 to-amber-600"
         />
         <StatsCard
-          title="Visitas Realizadas"
+          title="Realizadas"
           value={stats.totalRealizadas}
-          subtitle="clique para detalhes"
+          subtitle="concluídas"
           icon={CheckCircle}
           gradient="from-green-500 to-emerald-600"
         />
         <StatsCard
-          title="Não Realizadas"
+          title="Não Atendidas"
           value={stats.totalNaoAtendidas}
-          subtitle="clique para detalhes"
+          subtitle="não atendidas"
           icon={XCircle}
           gradient="from-red-500 to-rose-600"
         />
@@ -919,7 +919,14 @@ export default function AnaliseVisitas() {
           gradient="from-orange-500 to-amber-600"
         />
         <StatsCard
-          title="Taxa Conversão Pedido"
+          title="Pendentes"
+          value={stats.totalPendentes}
+          subtitle="aguardando check-in"
+          icon={AlertTriangle}
+          gradient="from-amber-500 to-yellow-600"
+        />
+        <StatsCard
+          title="Tx Conversão Pedido"
           value={`${stats.comPedido + stats.semPedido > 0 ? ((stats.comPedido / (stats.comPedido + stats.semPedido)) * 100).toFixed(1) : 0}%`}
           subtitle={`${stats.comPedido} pedidos em ${stats.comPedido + stats.semPedido} visitas`}
           icon={Percent}
