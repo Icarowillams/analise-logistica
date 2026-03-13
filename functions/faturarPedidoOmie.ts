@@ -1,12 +1,16 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 Deno.serve(async (req) => {
+    let base44 = null;
+    let pedido_id = null;
+    let statusAnterior = null;
+
     try {
-        const base44 = createClientFromRequest(req);
+        base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
 
         if (!user) {
@@ -18,7 +22,8 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { pedido_id, etapa } = body;
+        pedido_id = body.pedido_id;
+        const etapa = body.etapa;
 
         if (!pedido_id) {
             return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
