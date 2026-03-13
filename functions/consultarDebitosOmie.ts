@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
         }
 
         // Formatar títulos para retorno
-        const titulos = titulosPendentes.map(t => {
+        const titulos = titulosPendentesUnicos.map(t => {
             const cab = t.cabecTitulo || t;
             return {
                 numero: cab.cNumTitulo || '',
