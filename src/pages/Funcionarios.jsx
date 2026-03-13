@@ -382,23 +382,68 @@ export default function Funcionarios() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Supervisor</Label>
-                  <Select 
-                    value={formData.supervisor_id} 
-                    onValueChange={(v) => setFormData({ ...formData, supervisor_id: v === 'none' ? '' : v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um supervisor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Nenhum</SelectItem>
-                      {potentialSupervisors.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="md:col-span-2">
+                  <Label>Supervisores</Label>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <Select 
+                        value=""
+                        onValueChange={(v) => {
+                          if (v && !formData.supervisor_ids.includes(v)) {
+                            const newIds = [...formData.supervisor_ids, v];
+                            setFormData({ ...formData, supervisor_ids: newIds, supervisor_id: newIds[0] || '' });
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Adicionar supervisor..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {potentialSupervisors
+                            .filter(s => !formData.supervisor_ids.includes(s.id))
+                            .map(s => (
+                              <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {formData.supervisor_ids.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {formData.supervisor_ids.map(sid => {
+                            const sup = funcionarios.find(f => f.id === sid);
+                            return (
+                              <Badge key={sid} className="bg-amber-100 text-amber-800 border-amber-200 gap-1 pr-1">
+                                {sup?.nome || sid}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newIds = formData.supervisor_ids.filter(id => id !== sid);
+                                    setFormData({ ...formData, supervisor_ids: newIds, supervisor_id: newIds[0] || '' });
+                                  }}
+                                  className="ml-1 hover:bg-amber-200 rounded-full p-0.5"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-1 min-h-[36px] items-center">
+                      {(formData.supervisor_ids?.length > 0 ? formData.supervisor_ids : (formData.supervisor_id ? [formData.supervisor_id] : [])).map(sid => {
+                        const sup = funcionarios.find(f => f.id === sid);
+                        return (
+                          <Badge key={sid} variant="outline" className="bg-slate-50">
+                            {sup?.nome || sid}
+                          </Badge>
+                        );
+                      })}
+                      {(!formData.supervisor_ids || formData.supervisor_ids.length === 0) && !formData.supervisor_id && (
+                        <span className="text-sm text-slate-400">Nenhum supervisor</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label>Telefone</Label>
