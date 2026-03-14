@@ -38,7 +38,8 @@ export default function Clientes() {
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: 'nfe@paoemel.com.br',
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     latitude: '', longitude: '',
-    segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
+    segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
+    modelo_nota: '55',
     data_primeiro_contato: '', status: 'ativo'
   });
   const [supervisorNome, setSupervisorNome] = useState('');
@@ -76,6 +77,11 @@ export default function Clientes() {
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
     queryFn: () => base44.entities.PlanoPagamento.list()
+  });
+
+  const { data: modalidadesPagamento = [] } = useQuery({
+    queryKey: ['modalidadesPagamento'],
+    queryFn: () => base44.entities.ModalidadePagamento.list()
   });
 
   const { data: rotas = [] } = useQuery({
@@ -267,7 +273,8 @@ export default function Clientes() {
       codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', inscricao_estadual: '', email: 'nfe@paoemel.com.br',
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       latitude: '', longitude: '',
-      segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', tabela_id: '',
+      segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
+      modelo_nota: '55',
       data_primeiro_contato: '', status: 'ativo'
     });
     setSupervisorNome('');
@@ -304,7 +311,9 @@ export default function Clientes() {
       vendedor_id: item.vendedor_id || '',
       rota_id: item.rota_id || '',
       plano_pagamento_id: item.plano_pagamento_id || '',
+      modalidade_pagamento_id: item.modalidade_pagamento_id || '',
       tabela_id: item.tabela_id || '',
+      modelo_nota: item.modelo_nota || '55',
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
@@ -1030,6 +1039,40 @@ export default function Clientes() {
                     placeholder="nfe@paoemel.com.br"
                     disabled={!isEditing}
                   />
+                </div>
+                <div>
+                  <Label>Modelo de Nota</Label>
+                  <Select
+                    value={formData.modelo_nota || '55'}
+                    onValueChange={(v) => setFormData({ ...formData, modelo_nota: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="55">55</SelectItem>
+                      <SelectItem value="d1">D1</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Modalidade de Pagamento</Label>
+                  <Select
+                    value={formData.modalidade_pagamento_id || '_none_'}
+                    onValueChange={(v) => setFormData({ ...formData, modalidade_pagamento_id: v === '_none_' ? '' : v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none_" className="text-slate-400 italic">Nenhuma</SelectItem>
+                      {modalidadesPagamento.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Plano de Pagamento</Label>

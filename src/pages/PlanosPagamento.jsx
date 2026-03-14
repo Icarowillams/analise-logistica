@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ModalidadePagamentoTab from '@/components/planosPagamento/ModalidadePagamentoTab';
 
 export default function PlanosPagamento() {
   const [activeTab, setActiveTab] = useState("cadastro");
@@ -122,19 +123,25 @@ export default function PlanosPagamento() {
           icon={CreditCard}
         />
         <div className="flex gap-2">
-          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Plano</Button>
+          {activeTab !== 'modalidade' && (
+            <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Plano</Button>
+          )}
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+        <TabsList className="grid w-full max-w-[620px] grid-cols-3 mb-6">
           <TabsTrigger value="cadastro" className="flex items-center gap-2">
             <CreditCard className="w-4 h-4" />
-            Cadastro
+            Plano de Pagamento
           </TabsTrigger>
           <TabsTrigger value="consulta" className="flex items-center gap-2">
             <List className="w-4 h-4" />
             Consulta
+          </TabsTrigger>
+          <TabsTrigger value="modalidade" className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4" />
+            Modalidade de Pagamento
           </TabsTrigger>
         </TabsList>
         
@@ -142,7 +149,7 @@ export default function PlanosPagamento() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Plano' : 'Novo Plano'}
+                {selected ? 'Editar Plano de Pagamento' : 'Novo Plano de Pagamento'}
               </h2>
               {!isEditing && (
                 <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
@@ -238,6 +245,10 @@ export default function PlanosPagamento() {
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
           <DataTable data={planos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
+        </TabsContent>
+
+        <TabsContent value="modalidade" className="animate-in fade-in-50 duration-300">
+          <ModalidadePagamentoTab />
         </TabsContent>
       </Tabs>
 
