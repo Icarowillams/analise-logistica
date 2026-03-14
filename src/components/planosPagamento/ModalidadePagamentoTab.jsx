@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import { Ban, CheckCircle, CreditCard, Plus, Save, XCircle } from 'lucide-react';
@@ -138,15 +139,19 @@ export default function ModalidadePagamentoTab() {
             </div>
             <div>
               <Label>Status</Label>
-              <select
+              <Select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                onValueChange={(v) => setFormData({ ...formData, status: v })}
                 disabled={!isEditing}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
               >
-                <option value="ativo">Ativo</option>
-                <option value="inativo">Inativo</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="inativo">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="md:col-span-2">
               <Label>Descrição</Label>

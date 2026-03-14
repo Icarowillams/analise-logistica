@@ -124,7 +124,7 @@ export default function PlanosPagamento() {
         />
         <div className="flex gap-2">
           {activeTab !== 'modalidade' && (
-            <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Plano</Button>
+            <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Plano de Pagamento</Button>
           )}
         </div>
       </div>
