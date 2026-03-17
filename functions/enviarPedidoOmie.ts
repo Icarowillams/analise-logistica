@@ -91,6 +91,16 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Este pedido já foi enviado ao Omie', codigo_omie: pedido.omie_codigo_pedido }, { status: 400 });
         }
 
+        // Não gerar venda no Omie para Troca
+        if (pedido.tipo === 'troca') {
+            return Response.json({
+                sucesso: true,
+                codigo_pedido_omie: null,
+                numero_pedido_omie: null,
+                mensagem: 'Pedido de Troca não gera venda no Omie'
+            });
+        }
+
         // Buscar itens do pedido
         const allItems = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
         if (allItems.length === 0) {

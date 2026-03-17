@@ -133,6 +133,34 @@ export default function GerenciarPedidos({ onEditPedido }) {
           pendencia_financeira_ignorada: pendenciaIgnorada
         });
 
+        // Registrar na aba "Análise de Trocas" após o faturamento (liberação)
+        if (pedido.tipo === 'troca') {
+          try {
+            const itemsTroca = allItems.filter(i => i.pedido_id === pedido.id);
+            for (const item of itemsTroca) {
+              await base44.entities.Troca.create({
+                data: new Date().toISOString().split('T')[0],
+                cliente_id: pedido.cliente_id,
+                cliente_nome: pedido.cliente_nome,
+                produto_original_id: item.produto_id,
+                produto_original_nome: item.produto_nome,
+                produto_novo_id: item.produto_id,
+                produto_novo_nome: item.produto_nome,
+                motivo_id: item.motivo_troca_id || '',
+                motivo_descricao: item.motivo_troca_descricao || '',
+                vendedor_id: pedido.vendedor_id,
+                vendedor_nome: pedido.vendedor_nome,
+                venda_original_id: pedido.id,
+                quantidade: item.quantidade,
+                valor_unitario: item.valor_unitario || 0,
+                observacoes: pedido.observacoes || ''
+              });
+            }
+          } catch(e) {
+            console.error('Erro ao registrar troca na analise', e);
+          }
+        }
+
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
           toast.success('Pedido liberado e movido para Pedidos Liberados no Omie!');
         } else {
@@ -181,6 +209,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
           data_liberacao: null,
           pendencia_financeira_ignorada: false
         });
+
+        if (pedido.tipo === 'troca') {
+          try {
+             const trocasCriadas = await base44.entities.Troca.filter({ venda_original_id: pedido.id });
+             for (const t of trocasCriadas) {
+               await base44.entities.Troca.delete(t.id);
+             }
+          } catch(e) { console.error('Erro ao deletar troca na analise', e); }
+        }
+
         queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
         toast.success('Pedido retornado para Enviado (etapa 10 no Omie)');
       } else {
