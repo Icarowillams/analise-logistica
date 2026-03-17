@@ -39,7 +39,6 @@ export default function Clientes() {
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     latitude: '', longitude: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-    modelo_nota: '55',
     data_primeiro_contato: '', status: 'ativo'
   });
   const [supervisorNome, setSupervisorNome] = useState('');
@@ -274,7 +273,6 @@ export default function Clientes() {
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       latitude: '', longitude: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-      modelo_nota: '55',
       data_primeiro_contato: '', status: 'ativo'
     });
     setSupervisorNome('');
@@ -313,7 +311,6 @@ export default function Clientes() {
       plano_pagamento_id: item.plano_pagamento_id || '',
       modalidade_pagamento_id: item.modalidade_pagamento_id || '',
       tabela_id: item.tabela_id || '',
-      modelo_nota: item.modelo_nota || '55',
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo'
     });
@@ -1039,22 +1036,6 @@ export default function Clientes() {
                     placeholder="nfe@paoemel.com.br"
                     disabled={!isEditing}
                   />
-                </div>
-                <div>
-                  <Label>Modelo de Nota</Label>
-                  <Select
-                    value={formData.modelo_nota || '55'}
-                    onValueChange={(v) => setFormData({ ...formData, modelo_nota: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="55">55</SelectItem>
-                      <SelectItem value="d1">D1</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div>
                   <Label>Modalidade de Pagamento</Label>

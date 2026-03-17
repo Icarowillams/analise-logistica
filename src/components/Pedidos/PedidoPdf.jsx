@@ -254,11 +254,11 @@ export default function PedidoPdf({ pedidoId }) {
 
         {/* ===== AVISO DE TROCA ===== */}
         {pedido.tipo === 'troca' && (
-          <div style={{ background:'#FFF3CD', border:'2px solid #D97706', marginTop:'8px', padding:'8px 10px', textAlign:'center' }}>
-            <span style={{ fontSize:'13px', fontWeight:700, color:'#92400E', textTransform:'uppercase', letterSpacing:'1px' }}>
-              ⚠ PEDIDO DE TROCA — MODELO D1
+          <div style={{ background:'#DCFCE7', border:'2px solid #16A34A', marginTop:'8px', padding:'8px 10px', textAlign:'center' }}>
+            <span style={{ fontSize:'13px', fontWeight:700, color:'#166534', textTransform:'uppercase', letterSpacing:'1px' }}>
+              🟢 PEDIDO DE TROCA — MODELO D1
             </span>
-            <div style={{ fontSize:'9px', color:'#92400E', marginTop:'2px' }}>
+            <div style={{ fontSize:'9px', color:'#166534', marginTop:'2px' }}>
               Este documento refere-se a um pedido de troca de mercadorias. Os motivos estão descritos abaixo de cada item.
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function PedidoPdf({ pedidoId }) {
                 </tr>
                 {pedido.tipo === 'troca' && item.motivo_troca_descricao && (
                   <tr>
-                    <td colSpan="5" style={{ border:'1px solid #999', borderTop:'none', padding:'2px 5px 4px 20px', fontSize:'8px', color:'#92400E', background:'#FFFBEB' }}>
+                    <td colSpan="5" style={{ border:'1px solid #999', borderTop:'none', padding:'2px 5px 4px 20px', fontSize:'8px', color:'#166534', background:'#F0FDF4' }}>
                       <strong>Motivo da troca:</strong> {item.motivo_troca_descricao}
                     </td>
                   </tr>
