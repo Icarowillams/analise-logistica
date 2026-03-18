@@ -6,18 +6,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search, FileX, Loader2, AlertTriangle, CheckCircle2,
-  XCircle, FileText, DollarSign, Calendar, User
+  XCircle, FileText, DollarSign, Calendar, User, Clock, Undo2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import NfInfoCard from '@/components/nf/NfInfoCard';
+import CancelarNfSection from '@/components/nf/CancelarNfSection';
+import DevolverNfSection from '@/components/nf/DevolverNfSection';
 
 export default function CancelarNfOmie() {
   const [numeroNf, setNumeroNf] = useState('');
-  const [motivo, setMotivo] = useState('');
   const [nfInfo, setNfInfo] = useState(null);
   const [consultando, setConsultando] = useState(false);
-  const [cancelando, setCancelando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
   const consultarNf = async () => {
@@ -49,43 +51,19 @@ export default function CancelarNfOmie() {
     setConsultando(false);
   };
 
-  const cancelarNf = async () => {
-    if (!motivo.trim()) {
-      toast.error('Informe o motivo do cancelamento');
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja cancelar a NF ${numeroNf}? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
-
-    setCancelando(true);
-
-    const response = await base44.functions.invoke('cancelarNfOmie', {
-      numero_nf: numeroNf.trim(),
-      motivo: motivo.trim()
-    });
-
-    const data = response.data;
-
-    if (data.sucesso) {
-      setResultado({ tipo: 'sucesso', mensagem: data.mensagem });
-      toast.success(data.mensagem);
+  const handleResultado = (res) => {
+    setResultado(res);
+    if (res.tipo === 'sucesso') {
       setNfInfo(prev => prev ? { ...prev, jaCancelada: true } : prev);
-    } else {
-      setResultado({ tipo: 'erro', mensagem: data.erro });
-      toast.error(data.erro);
     }
-
-    setCancelando(false);
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Cancelar NF no Omie</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Cancelar / Devolver NF</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Consulte e cancele notas fiscais diretamente no Omie para retornos e devoluções
+          Cancele NFs dentro de 24h ou gere NF de Entrada (devolução) para NFs mais antigas
         </p>
       </div>
 
@@ -116,69 +94,54 @@ export default function CancelarNfOmie() {
         </CardContent>
       </Card>
 
-      {/* Resultado da consulta */}
+      {/* Dados da NF */}
       {nfInfo && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Dados da NF {numeroNf}
-              </CardTitle>
-              {nfInfo.jaCancelada ? (
-                <Badge className="bg-red-500">Cancelada em {nfInfo.dataCancelamento}</Badge>
-              ) : (
-                <Badge className="bg-green-500">Ativa</Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <InfoItem icon={User} label="Cliente" value={nfInfo.clienteNome || '-'} />
-              <InfoItem icon={FileText} label="CNPJ/CPF" value={nfInfo.clienteCnpj || '-'} />
-              <InfoItem icon={DollarSign} label="Valor" value={`R$ ${Number(nfInfo.valorNF || 0).toFixed(2)}`} />
-              <InfoItem icon={Calendar} label="Emissão" value={nfInfo.dataEmissao || '-'} />
-              <InfoItem icon={FileText} label="Série" value={nfInfo.serie || '-'} />
-              <InfoItem icon={FileText} label="Chave NFe" value={nfInfo.chaveNFe ? `${nfInfo.chaveNFe.substring(0, 20)}...` : '-'} />
-            </div>
+        <>
+          <NfInfoCard nfInfo={nfInfo} numeroNf={numeroNf} />
 
-            {/* Cancelamento */}
-            {!nfInfo.jaCancelada && (
-              <div className="mt-6 p-4 bg-red-50 rounded-lg border border-red-200">
-                <h3 className="font-medium text-red-800 flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-4 h-4" />
-                  Cancelar esta Nota Fiscal
-                </h3>
-                <div className="space-y-3">
+          {/* Ações */}
+          {!nfInfo.jaCancelada && (
+            <Card>
+              <CardContent className="p-4">
+                {nfInfo.dentroPrazo24h ? (
                   <div>
-                    <Label>Motivo do cancelamento *</Label>
-                    <Textarea
-                      placeholder="Ex: Retorno de mercadoria - cliente ausente"
-                      value={motivo}
-                      onChange={(e) => setMotivo(e.target.value)}
-                      className="bg-white"
-                    />
+                    <div className="flex items-center gap-2 mb-3 text-green-700">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-sm font-medium">
+                        Dentro do prazo de 24h ({nfInfo.horasDesdeEmissao}h desde emissão) — Cancelamento disponível
+                      </span>
+                    </div>
+                    <Tabs defaultValue="cancelar">
+                      <TabsList>
+                        <TabsTrigger value="cancelar">Cancelar NF</TabsTrigger>
+                        <TabsTrigger value="devolver">Devolução (NF Entrada)</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="cancelar">
+                        <CancelarNfSection numeroNf={numeroNf} onResult={handleResultado} />
+                      </TabsContent>
+                      <TabsContent value="devolver">
+                        <DevolverNfSection numeroNf={numeroNf} onResult={handleResultado} />
+                      </TabsContent>
+                    </Tabs>
                   </div>
-                  <Button
-                    onClick={cancelarNf}
-                    disabled={cancelando}
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    {cancelando ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <FileX className="w-4 h-4 mr-2" />
-                    )}
-                    Cancelar NF no Omie
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3 text-amber-700">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm font-medium">
+                        Fora do prazo de 24h ({nfInfo.horasDesdeEmissao}h desde emissão) — Apenas devolução disponível
+                      </span>
+                    </div>
+                    <DevolverNfSection numeroNf={numeroNf} onResult={handleResultado} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
-      {/* Resultado do cancelamento */}
+      {/* Resultado */}
       {resultado && (
         <Card className={resultado.tipo === 'sucesso' ? 'border-green-200' : 'border-red-200'}>
           <CardContent className="p-4">
@@ -195,18 +158,6 @@ export default function CancelarNfOmie() {
           </CardContent>
         </Card>
       )}
-    </div>
-  );
-}
-
-function InfoItem({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-start gap-2">
-      <Icon className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-      <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-sm font-medium text-slate-800">{value}</p>
-      </div>
     </div>
   );
 }
