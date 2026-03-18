@@ -157,7 +157,8 @@ export default function Layout({ children, currentPageName }) {
         icon: CreditCard,
         submenu: [
           { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
-          { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' }
+          { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
+          { title: 'Cancelar NF Omie', path: 'CancelarNfOmie' }
         ]
       }
     ];
