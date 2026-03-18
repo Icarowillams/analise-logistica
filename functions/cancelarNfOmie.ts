@@ -133,14 +133,14 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { numero_nf, motivo, apenas_consultar } = body;
+        const { numero_nf, motivo, apenas_consultar, serie } = body;
 
         if (!numero_nf) {
             return Response.json({ error: 'numero_nf é obrigatório' }, { status: 400 });
         }
 
         // PASSO 1: Consultar NF no Omie
-        const nfInfo = await consultarNfOmie(numero_nf);
+        const nfInfo = await consultarNfOmie(numero_nf, serie);
         
         if (!nfInfo.encontrada) {
             return Response.json({
