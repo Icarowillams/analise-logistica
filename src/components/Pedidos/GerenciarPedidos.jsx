@@ -5,14 +5,16 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Search, CheckCircle2, Trash2, Pencil, Eye, DollarSign,
-  Loader2, AlertTriangle, Undo2, Lock, Unlock, FileText, Filter, Send, CloudOff
+  Loader2, AlertTriangle, Undo2, Lock, Unlock, FileText, Filter, Send, CloudOff, Printer
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoPdf from './PedidoPdf';
+import PedidoAgrupado from './PedidoAgrupado.jsx';
 import CancelarPedidoModal from './CancelarPedidoModal';
 
 export default function GerenciarPedidos({ onEditPedido }) {
@@ -31,6 +33,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [cancelarPedido, setCancelarPedido] = useState(null);
   const [cancelarOpen, setCancelarOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [acaoEmLote, setAcaoEmLote] = useState(false);
+  const [mostrarAgrupado, setMostrarAgrupado] = useState(false);
 
   React.useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
