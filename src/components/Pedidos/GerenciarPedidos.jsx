@@ -447,6 +447,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       </div>
 
+      {/* Barra de ações em lote */}
+      {selectedIds.length > 0 && (
+        <div className="sticky top-0 z-10 bg-white border border-slate-200 rounded-xl p-3 shadow-lg flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-slate-700 mr-2">{selectedIds.length} selecionado(s)</span>
+          <Button size="sm" onClick={liberarSelecionados} disabled={acaoEmLote} className="bg-green-600 hover:bg-green-700 text-xs">
+            {acaoEmLote ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Unlock className="w-3 h-3 mr-1" />}
+            Liberar Pedidos
+          </Button>
+          <Button size="sm" onClick={bloquearSelecionados} disabled={acaoEmLote} className="bg-orange-500 hover:bg-orange-600 text-xs">
+            {acaoEmLote ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Lock className="w-3 h-3 mr-1" />}
+            Tornar Pendente
+          </Button>
+          <Button size="sm" onClick={imprimirAgrupado} className="bg-red-500 hover:bg-red-600 text-xs">
+            <Printer className="w-3 h-3 mr-1" /> Imprimir/Exportar
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])} className="text-xs text-slate-500">
+            Limpar seleção
+          </Button>
+        </div>
+      )}
+
       {/* Lista de pedidos */}
       {isLoading ? (
         <div className="flex justify-center py-12">
@@ -458,113 +479,108 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <p>Nenhum pedido encontrado</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
+          {/* Selecionar todos */}
+          <div className="flex items-center gap-2 px-2 py-1">
+            <Checkbox
+              checked={selectedIds.length === pedidosFiltrados.length && pedidosFiltrados.length > 0}
+              onCheckedChange={toggleSelectAll}
+            />
+            <span className="text-xs text-slate-500">Selecionar todos ({pedidosFiltrados.length})</span>
+          </div>
+
           {pedidosFiltrados.map(pedido => {
             const items = allItems.filter(i => i.pedido_id === pedido.id);
             const dataEmissao = pedido.data_envio
               ? new Date(pedido.data_envio).toLocaleString('pt-BR')
               : new Date(pedido.created_date).toLocaleString('pt-BR');
             const sc = statusConfig[pedido.status] || statusConfig.pendente;
+            const isSelected = selectedIds.includes(pedido.id);
 
             return (
-              <Card key={pedido.id} className="overflow-hidden">
+              <Card key={pedido.id} className={`overflow-hidden transition-colors ${isSelected ? 'ring-2 ring-blue-400 bg-blue-50/30' : ''}`}>
                 <CardContent className="p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm">
-                        {pedido.cliente_codigo} - {pedido.cliente_nome}
-                      </p>
-                      <p className="text-xs text-slate-500">{pedido.cliente_nome_fantasia}</p>
-                      <p className="text-xs text-slate-400">Vendedor: {pedido.vendedor_nome}</p>
+                  <div className="flex items-start gap-3">
+                    {/* Checkbox */}
+                    <div className="pt-1">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(pedido.id)}
+                      />
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <Badge className={sc.class}>{sc.label}</Badge>
-                      {pedido.pendencia_financeira_ignorada && (
-                        <Badge className="bg-orange-500 text-xs" title="Pendência financeira ignorada">
-                          <AlertTriangle className="w-3 h-3" />
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="text-xs text-slate-600 space-y-0.5 mb-3">
-                    <p>Pgto: {pedido.plano_pagamento_nome || '-'} | Itens: {items.length} | Vl: R$ {(pedido.valor_total || 0).toFixed(2)}</p>
-                    <p>Data: {dataEmissao} {pedido.numero_pedido ? `| Nº ${pedido.numero_pedido}` : ''}</p>
-                    <p>Tipo: {pedido.tipo === 'troca' ? 'Troca' : 'Venda'} | Modelo: {pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === '55' ? '55' : 'NFCe'}</p>
-                    {pedido.omie_enviado && (
-                      <p className="text-green-600 font-medium">✓ Omie: {pedido.omie_codigo_pedido || 'Enviado'}</p>
-                    )}
-                    {pedido.omie_erro && !pedido.omie_enviado && (
-                      <p className="text-red-500 text-[10px]">Omie erro: {pedido.omie_erro}</p>
-                    )}
-                    {pedido.status === 'cancelado' && (
-                      <div className="text-red-600 text-[10px] mt-1">
-                        <p className="font-semibold">✕ Cancelado por: {vendedores.find(v => v.email?.toLowerCase() === pedido.cancelado_por?.toLowerCase())?.nome || pedido.cancelado_por || '-'}</p>
-                        <p>Data: {pedido.data_cancelamento ? new Date(pedido.data_cancelamento).toLocaleString('pt-BR') : '-'}</p>
-                        <p>Motivo: {pedido.motivo_cancelamento || '-'}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm">
+                            {pedido.cliente_codigo} - {pedido.cliente_nome}
+                          </p>
+                          <p className="text-xs text-slate-500">{pedido.cliente_nome_fantasia}</p>
+                          <p className="text-xs text-slate-400">Vendedor: {pedido.vendedor_nome}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          <Badge className={sc.class}>{sc.label}</Badge>
+                          {pedido.pendencia_financeira_ignorada && (
+                            <Badge className="bg-orange-500 text-xs" title="Pendência financeira ignorada">
+                              <AlertTriangle className="w-3 h-3" />
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {/* Consultar Débitos */}
-                    <Button size="sm" variant="outline" onClick={() => verDebitos(pedido)} className="text-xs">
-                      <DollarSign className="w-3 h-3 mr-1" /> Débitos
-                    </Button>
-
-                    {/* Liberar pedido (só se enviado e não cancelado) */}
-                    {pedido.status === 'enviado' && (
-                      <Button
-                        size="sm"
-                        onClick={() => liberarPedido(pedido)}
-                        disabled={liberandoId === pedido.id}
-                        className="text-xs bg-green-600 hover:bg-green-700"
-                      >
-                        {liberandoId === pedido.id ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <Unlock className="w-3 h-3 mr-1" />
+                      <div className="text-xs text-slate-600 space-y-0.5 mb-3">
+                        <p>Pgto: {pedido.plano_pagamento_nome || '-'} | Itens: {items.length} | Vl: R$ {(pedido.valor_total || 0).toFixed(2)}</p>
+                        <p>Data: {dataEmissao} {pedido.numero_pedido ? `| Nº ${pedido.numero_pedido}` : ''}</p>
+                        <p>Tipo: {pedido.tipo === 'troca' ? 'Troca' : 'Venda'} | Modelo: {pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === '55' ? '55' : 'NFCe'}</p>
+                        {pedido.omie_enviado && (
+                          <p className="text-green-600 font-medium">✓ Omie: {pedido.omie_codigo_pedido || 'Enviado'}</p>
                         )}
-                        Liberar
-                      </Button>
-                    )}
-
-                    {pedido.status === 'liberado' && (
-                      <Badge className="bg-green-100 text-green-700 text-[10px]">
-                        ✓ Liberado
-                      </Badge>
-                    )}
-
-                    {/* Voltar para Enviado (se liberado) */}
-                    {pedido.status === 'liberado' && (
-                      <Button size="sm" variant="outline" onClick={() => tornarPendente(pedido)} disabled={tornandoPendenteId === pedido.id} className="text-xs text-amber-700 border-amber-200 hover:bg-amber-50">
-                        {tornandoPendenteId === pedido.id ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <Undo2 className="w-3 h-3 mr-1" />
+                        {pedido.omie_erro && !pedido.omie_enviado && (
+                          <p className="text-red-500 text-[10px]">Omie erro: {pedido.omie_erro}</p>
                         )}
-                        Pendente
-                      </Button>
-                    )}
+                        {pedido.status === 'cancelado' && (
+                          <div className="text-red-600 text-[10px] mt-1">
+                            <p className="font-semibold">✕ Cancelado por: {vendedores.find(v => v.email?.toLowerCase() === pedido.cancelado_por?.toLowerCase())?.nome || pedido.cancelado_por || '-'}</p>
+                            <p>Data: {pedido.data_cancelamento ? new Date(pedido.data_cancelamento).toLocaleString('pt-BR') : '-'}</p>
+                            <p>Motivo: {pedido.motivo_cancelamento || '-'}</p>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Editar (se não cancelado) */}
-                    {pedido.status !== 'cancelado' && (
-                      <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
-                        <Pencil className="w-3 h-3 mr-1" /> Editar
-                      </Button>
-                    )}
-
-                    {/* PDF */}
-                    <Button size="sm" variant="outline" onClick={() => setPdfPedidoId(pedido.id)} className="text-xs">
-                      <FileText className="w-3 h-3 mr-1" /> PDF
-                    </Button>
-
-                    {/* Cancelar (não disponível se já cancelado) */}
-                    {pedido.status !== 'cancelado' && (
-                      <Button size="sm" variant="ghost" onClick={() => { setCancelarPedido(pedido); setCancelarOpen(true); }} className="text-xs text-red-500 hover:text-red-700">
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    )}
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => verDebitos(pedido)} className="text-xs">
+                          <DollarSign className="w-3 h-3 mr-1" /> Débitos
+                        </Button>
+                        {pedido.status === 'enviado' && (
+                          <Button size="sm" onClick={() => liberarPedido(pedido)} disabled={liberandoId === pedido.id} className="text-xs bg-green-600 hover:bg-green-700">
+                            {liberandoId === pedido.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Unlock className="w-3 h-3 mr-1" />}
+                            Liberar
+                          </Button>
+                        )}
+                        {pedido.status === 'liberado' && (
+                          <Badge className="bg-green-100 text-green-700 text-[10px]">✓ Liberado</Badge>
+                        )}
+                        {pedido.status === 'liberado' && (
+                          <Button size="sm" variant="outline" onClick={() => tornarPendente(pedido)} disabled={tornandoPendenteId === pedido.id} className="text-xs text-amber-700 border-amber-200 hover:bg-amber-50">
+                            {tornandoPendenteId === pedido.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Undo2 className="w-3 h-3 mr-1" />}
+                            Pendente
+                          </Button>
+                        )}
+                        {pedido.status !== 'cancelado' && (
+                          <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
+                            <Pencil className="w-3 h-3 mr-1" /> Editar
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setPdfPedidoId(pedido.id)} className="text-xs">
+                          <FileText className="w-3 h-3 mr-1" /> PDF
+                        </Button>
+                        {pedido.status !== 'cancelado' && (
+                          <Button size="sm" variant="ghost" onClick={() => { setCancelarPedido(pedido); setCancelarOpen(true); }} className="text-xs text-red-500 hover:text-red-700">
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
