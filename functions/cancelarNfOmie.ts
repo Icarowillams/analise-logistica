@@ -23,36 +23,46 @@ async function consultarNfOmie(numeroNf) {
     
     if (data.faultstring) {
         // Tentar buscar listando por número
-        console.log(`[cancelarNfOmie] ConsultarNF falhou, tentando ListarNF...`);
-        const listResp = await fetch(NF_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "ListarNF",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{
-                    pagina: 1,
-                    registros_por_pagina: 10,
-                    nNFInicial: String(numeroNf),
-                    nNFFinal: String(numeroNf),
-                    tpNF: "1" // saída
-                }]
-            })
-        });
+        console.log(`[cancelarNfOmie] ConsultarNF falhou: ${data.faultstring}. Tentando ListarNF...`);
         
-        const listData = await listResp.json();
-        
-        if (listData.faultstring) {
-            return { encontrada: false, erro: listData.faultstring };
+        // Tentar listar sem filtro de tipo (saída e entrada)
+        let nf = null;
+        for (const tpNF of ["1", "0", null]) {
+            const params = {
+                pagina: 1,
+                registros_por_pagina: 10,
+                nNFInicial: String(numeroNf),
+                nNFFinal: String(numeroNf)
+            };
+            if (tpNF !== null) params.tpNF = tpNF;
+            
+            console.log(`[cancelarNfOmie] Tentando ListarNF com tpNF=${tpNF}...`);
+            const listResp = await fetch(NF_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    call: "ListarNF",
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [params]
+                })
+            });
+            
+            const listData = await listResp.json();
+            console.log(`[cancelarNfOmie] ListarNF resposta: ${JSON.stringify(listData).substring(0, 300)}`);
+            
+            if (!listData.faultstring) {
+                const nfs = listData.nfCadastro || [];
+                if (nfs.length > 0) {
+                    nf = nfs[0];
+                    break;
+                }
+            }
         }
         
-        const nfs = listData.nfCadastro || [];
-        if (nfs.length === 0) {
-            return { encontrada: false, erro: `NF ${numeroNf} não encontrada no Omie` };
+        if (!nf) {
+            return { encontrada: false, erro: `NF ${numeroNf} não encontrada no Omie (tentou saída, entrada e sem filtro)` };
         }
-        
-        const nf = nfs[0];
         return {
             encontrada: true,
             nCodNF: nf.compl?.nIdNF || null,
