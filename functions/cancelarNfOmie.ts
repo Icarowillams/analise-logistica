@@ -5,8 +5,8 @@ const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const NF_URL = "https://app.omie.com.br/api/v1/produtos/nfconsultar/";
 const PEDIDO_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
-async function consultarNfOmie(numeroNf) {
-    console.log(`[cancelarNfOmie] Consultando NF ${numeroNf} no Omie...`);
+async function consultarNfOmie(numeroNf, serie) {
+    console.log(`[cancelarNfOmie] Consultando NF ${numeroNf} (série: ${serie || 'auto'}) no Omie...`);
     
     const response = await fetch(NF_URL, {
         method: "POST",
