@@ -12,9 +12,9 @@ import {
   XCircle, FileText, DollarSign, Calendar, User, Clock, Undo2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import NfInfoCard from '@/components/nf/NfInfoCard';
-import CancelarNfSection from '@/components/nf/CancelarNfSection';
-import DevolverNfSection from '@/components/nf/DevolverNfSection';
+import NfInfoCard from '@/components/nf/NfInfoCard.jsx';
+import CancelarNfSection from '@/components/nf/CancelarNfSection.jsx';
+import DevolverNfSection from '@/components/nf/DevolverNfSection.jsx';
 
 export default function CancelarNfOmie() {
   const [numeroNf, setNumeroNf] = useState('');
