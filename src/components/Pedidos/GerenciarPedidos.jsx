@@ -281,6 +281,97 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setDebitosOpen(true);
   };
 
+  // Seleção
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === pedidosFiltrados.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(pedidosFiltrados.map(p => p.id));
+    }
+  };
+
+  // Ações em lote
+  const liberarSelecionados = async () => {
+    const pedidosParaLiberar = pedidosFiltrados.filter(p => selectedIds.includes(p.id) && p.status === 'enviado');
+    if (pedidosParaLiberar.length === 0) {
+      toast.error('Nenhum pedido com status "Enviado" selecionado para liberar');
+      return;
+    }
+    if (!confirm(`Liberar ${pedidosParaLiberar.length} pedido(s) selecionado(s)?`)) return;
+    setAcaoEmLote(true);
+    let ok = 0, erros = 0;
+    for (const pedido of pedidosParaLiberar) {
+      try {
+        await liberarPedido(pedido);
+        ok++;
+      } catch {
+        erros++;
+      }
+    }
+    setAcaoEmLote(false);
+    setSelectedIds([]);
+    if (ok > 0) toast.success(`${ok} pedido(s) liberado(s)!`);
+    if (erros > 0) toast.error(`${erros} pedido(s) com erro`);
+    queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+  };
+
+  const bloquearSelecionados = async () => {
+    const pedidosParaBloquear = pedidosFiltrados.filter(p => selectedIds.includes(p.id) && (p.status === 'enviado' || p.status === 'liberado'));
+    if (pedidosParaBloquear.length === 0) {
+      toast.error('Nenhum pedido Enviado/Liberado selecionado para bloquear');
+      return;
+    }
+    if (!confirm(`Bloquear (tornar pendente) ${pedidosParaBloquear.length} pedido(s)?`)) return;
+    setAcaoEmLote(true);
+    let ok = 0, erros = 0;
+    for (const pedido of pedidosParaBloquear) {
+      try {
+        // Se no Omie, voltar etapa para 10 (Pedido Venda)
+        if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+          const resp = await base44.functions.invoke('faturarPedidoOmie', { pedido_id: pedido.id, etapa: "10" });
+          if (!resp.data?.sucesso) { erros++; continue; }
+        }
+        await base44.entities.Pedido.update(pedido.id, {
+          status: 'pendente',
+          liberado_por: null,
+          data_liberacao: null,
+          pendencia_financeira_ignorada: false
+        });
+        // Se troca que foi liberada, reverter registros da análise
+        if (pedido.tipo === 'troca' && pedido.status === 'liberado') {
+          try {
+            const trocas = await base44.entities.Troca.filter({ venda_original_id: pedido.id });
+            for (const t of trocas) await base44.entities.Troca.delete(t.id);
+          } catch(e) {}
+        }
+        ok++;
+      } catch {
+        erros++;
+      }
+    }
+    setAcaoEmLote(false);
+    setSelectedIds([]);
+    queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
+    if (ok > 0) toast.success(`${ok} pedido(s) bloqueado(s) (retornados para Pendente)!`);
+    if (erros > 0) toast.error(`${erros} pedido(s) com erro`);
+  };
+
+  const imprimirAgrupado = () => {
+    if (selectedIds.length === 0) {
+      toast.error('Selecione pelo menos um pedido para imprimir');
+      return;
+    }
+    setMostrarAgrupado(true);
+  };
+
+  if (mostrarAgrupado) {
+    return <PedidoAgrupado pedidoIds={selectedIds} onVoltar={() => setMostrarAgrupado(false)} />;
+  }
+
   if (pdfPedidoId) {
     return (
       <div className="space-y-4">
