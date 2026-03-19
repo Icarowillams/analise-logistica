@@ -288,7 +288,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-x-auto bg-white">
+        <div className="border rounded-lg overflow-auto bg-white" style={{ maxHeight: '65vh' }}>
           <table className="w-full text-xs">
             <thead className="bg-slate-100 sticky top-0">
               <tr>
