@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ClipboardList } from 'lucide-react';
@@ -20,8 +20,21 @@ export default function GerenciarPedidosPage() {
     base44.auth.me().then(setCurrentUser).catch(() => {});
   }, []);
 
+  const { data: permissoes = [] } = useQuery({
+    queryKey: ['permissoes'],
+    queryFn: () => base44.entities.Permissao.list()
+  });
+
   const isAdmin = currentUser?.role === 'admin';
   const vendedorAtual = vendedores.find(v => v.email?.toLowerCase() === currentUser?.email?.toLowerCase());
+
+  const permissaoCenariosFiscais = useMemo(() => {
+    if (!currentUser) return false;
+    if (isAdmin) return true;
+    if (!vendedorAtual) return false;
+    const perm = permissoes.find(p => p.vendedor_id === vendedorAtual.id);
+    return perm?.permissoes_pedidos?.usar_cenarios_fiscais || false;
+  }, [currentUser, vendedorAtual, permissoes, isAdmin]);
 
   const handleEditPedido = async (pedidoId) => {
     setEditingPedidoId(pedidoId);
@@ -54,6 +67,7 @@ export default function GerenciarPedidosPage() {
         <DigitarPedido
           vendedor={vendedorParaEditar}
           editingPedidoId={editingPedidoId}
+          permissaoCenariosFiscais={permissaoCenariosFiscais}
           onClearEdit={() => {
             setEditingPedidoId(null);
             setVendedorParaEditar(null);
