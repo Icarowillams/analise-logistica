@@ -663,7 +663,7 @@ export default function Permissoes() {
                       rel_trocas_visualizar: true, rel_trocas_filtros: true, rel_trocas_exportar: true,
                       analise_visitas_visualizar: true, analise_visitas_filtros: true, analise_visitas_exportar: true
                     },
-                    permissoes_pedidos: { visualizar: true, digitar_pedido_venda: true, digitar_pedido_troca: true, enviar_pedido: true, editar_pedido: true, excluir_pedido: true }
+                    permissoes_pedidos: { visualizar: true, digitar_pedido_venda: true, digitar_pedido_troca: true, enviar_pedido: true, editar_pedido: true, excluir_pedido: true, usar_cenarios_fiscais: true }
                   }));
                 }}
                 className="gap-1 text-green-700 border-green-300 hover:bg-green-50"
@@ -690,7 +690,7 @@ export default function Permissoes() {
                       rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
                       analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
                     },
-                    permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
+                    permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
                   }));
                 }}
                 className="gap-1 text-red-700 border-red-300 hover:bg-red-50"
