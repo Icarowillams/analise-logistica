@@ -107,6 +107,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return ids;
   }, [produtoIds, pedidoItems]);
 
+  const activeFilterCount = useMemo(() => {
+    let c = 0;
+    if (envioInicio || envioFim) c++;
+    if (vendedorSearch.trim() || vendedorIds.length) c++;
+    if (produtoSearch.trim() || produtoIds.length) c++;
+    if (clienteSearch.trim()) c++;
+    if (cidadeSearch.trim()) c++;
+    return c;
+  }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteSearch, cidadeSearch]);
+
+  const clearAllFilters = () => {
+    setSearch(''); setStatusFilter('todos'); setTipoFilter('todos');
+    setEnvioInicio(''); setEnvioFim('');
+    setVendedorSearch(''); setVendedorIds([]);
+    setProdutoSearch(''); setProdutoIds([]);
+    setClienteSearch(''); setCidadeSearch('');
+  };
+
   // Filter and sort
   const filtered = useMemo(() => {
     let list = [...pedidos];
@@ -129,6 +147,50 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
+    // Período de envio
+    if (envioInicio) {
+      list = list.filter(p => p.data_envio && p.data_envio.split('T')[0] >= envioInicio);
+    }
+    if (envioFim) {
+      list = list.filter(p => p.data_envio && p.data_envio.split('T')[0] <= envioFim);
+    }
+    // Vendedor (texto ou seleção)
+    if (vendedorIds.length > 0) {
+      list = list.filter(p => vendedorIds.includes(p.vendedor_id));
+    } else if (vendedorSearch.trim()) {
+      const vs = vendedorSearch.toLowerCase();
+      list = list.filter(p => (p.vendedor_nome || '').toLowerCase().includes(vs));
+    }
+    // Produto (seleção por tabela)
+    if (pedidoIdsComProduto) {
+      list = list.filter(p => pedidoIdsComProduto.has(p.id));
+    } else if (produtoSearch.trim()) {
+      // Filtro texto: busca nos itens carregados ou no nome genérico
+      const ps = produtoSearch.toLowerCase();
+      const matchingPedidoIds = new Set();
+      pedidoItems.forEach(item => {
+        if ((item.produto_nome || '').toLowerCase().includes(ps) || (item.produto_codigo || '').includes(ps)) {
+          matchingPedidoIds.add(item.pedido_id);
+        }
+      });
+      if (matchingPedidoIds.size > 0) {
+        list = list.filter(p => matchingPedidoIds.has(p.id));
+      }
+    }
+    // Cliente (texto)
+    if (clienteSearch.trim()) {
+      const cs = clienteSearch.toLowerCase();
+      list = list.filter(p =>
+        (p.cliente_nome || '').toLowerCase().includes(cs) ||
+        (p.cliente_nome_fantasia || '').toLowerCase().includes(cs) ||
+        (p.cliente_codigo || '').includes(cs)
+      );
+    }
+    // Cidade (texto)
+    if (cidadeSearch.trim()) {
+      const ci = cidadeSearch.toLowerCase();
+      list = list.filter(p => (p.cliente_cidade || '').toLowerCase().includes(ci));
+    }
 
     list.sort((a, b) => {
       let va = a[sortField];
@@ -144,7 +206,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     });
 
     return list;
-  }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir]);
+  }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
