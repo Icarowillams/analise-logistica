@@ -40,6 +40,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
+  const [envioInicio, setEnvioInicio] = useState('');
+  const [envioFim, setEnvioFim] = useState('');
+  const [vendedorSearch, setVendedorSearch] = useState('');
+  const [vendedorIds, setVendedorIds] = useState([]);
+  const [vendedorModalOpen, setVendedorModalOpen] = useState(false);
+  const [produtoSearch, setProdutoSearch] = useState('');
+  const [produtoIds, setProdutoIds] = useState([]);
+  const [produtoModalOpen, setProdutoModalOpen] = useState(false);
+  const [clienteSearch, setClienteSearch] = useState('');
+  const [cidadeSearch, setCidadeSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const [sortField, setSortField] = useState('created_date');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -69,11 +80,32 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Vendedor.list(),
   });
 
+  const { data: produtos = [] } = useQuery({
+    queryKey: ['produtos-gerenciar'],
+    queryFn: () => base44.entities.Produto.list(),
+  });
+
+  const { data: pedidoItems = [] } = useQuery({
+    queryKey: ['pedidoItems-gerenciar'],
+    queryFn: () => base44.entities.PedidoItem.list(),
+    enabled: produtoIds.length > 0,
+  });
+
   const vendedoresMap = useMemo(() => {
     const m = {};
     vendedores.forEach(v => { m[v.id] = v; });
     return m;
   }, [vendedores]);
+
+  // Pedido IDs que contêm os produtos selecionados
+  const pedidoIdsComProduto = useMemo(() => {
+    if (produtoIds.length === 0) return null;
+    const ids = new Set();
+    pedidoItems.forEach(item => {
+      if (produtoIds.includes(item.produto_id)) ids.add(item.pedido_id);
+    });
+    return ids;
+  }, [produtoIds, pedidoItems]);
 
   // Filter and sort
   const filtered = useMemo(() => {
