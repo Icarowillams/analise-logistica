@@ -278,14 +278,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let count = 0;
     for (const p of selected) {
       await base44.entities.Pedido.update(p.id, {
-        status: 'pendente',
+        status: 'enviado',
         liberado_por: null,
         liberado_por_nome: null,
         data_liberacao: null,
       });
       count++;
+      // Reverter no Omie (voltar para Pedido de Venda - etapa 10)
+      if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+        try {
+          // Usa a mesma API mas com etapa 10
+          await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ call: 'TrocarEtapaPedido', app_key: '', app_secret: '', param: [{ codigo_pedido: p.omie_codigo_pedido, etapa: '10' }] })
+          });
+        } catch (e) {
+          console.error('Erro ao reverter no Omie:', e);
+        }
+      }
     }
-    toast.success(`${count} pedido(s) revertido(s) para pendente`);
+    toast.success(`${count} pedido(s) revertido(s) para enviado`);
     setSelectedIds([]);
     setBatchAction(null);
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
