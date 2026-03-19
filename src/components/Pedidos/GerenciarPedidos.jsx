@@ -547,6 +547,31 @@ export default function GerenciarPedidos({ onEditPedido }) {
         clienteId={debitosCliente.id}
         clienteNome={debitosCliente.nome}
       />
+      <SelecionarEntidadeModal
+        open={vendedorModalOpen}
+        onOpenChange={setVendedorModalOpen}
+        title="Selecionar Vendedor(es)"
+        items={vendedores.filter(v => v.status === 'ativo')}
+        selectedIds={vendedorIds}
+        onConfirm={(ids) => { setVendedorIds(ids); setVendedorSearch(''); }}
+        columns={[
+          { field: 'nome', label: 'Nome' },
+          { field: 'email', label: 'Email' },
+          { field: 'funcao', label: 'Função' },
+        ]}
+      />
+      <SelecionarEntidadeModal
+        open={produtoModalOpen}
+        onOpenChange={setProdutoModalOpen}
+        title="Selecionar Produto(s)"
+        items={produtos.filter(p => p.status === 'ativo')}
+        selectedIds={produtoIds}
+        onConfirm={(ids) => { setProdutoIds(ids); setProdutoSearch(''); }}
+        columns={[
+          { field: 'codigo', label: 'Código' },
+          { field: 'nome', label: 'Nome' },
+        ]}
+      />
     </div>
   );
 }
