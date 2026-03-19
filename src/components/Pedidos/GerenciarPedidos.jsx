@@ -453,6 +453,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 <ThSort label="Vendedor" field="vendedor_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Plano Pgto" field="plano_pagamento_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Tab. Preço" field="tabela_preco_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Cenário Fiscal" field="cenario_fiscal_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Itens" field="total_itens" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Valor" field="valor_total" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Prev. Entrega" field="data_previsao_entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -469,7 +470,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={23} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={24} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(p => {
                   const sc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
@@ -495,6 +496,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2">{p.vendedor_nome || '-'}</td>
                       <td className="p-2 max-w-[100px] truncate" title={p.plano_pagamento_nome}>{p.plano_pagamento_nome || '-'}</td>
                       <td className="p-2 max-w-[100px] truncate" title={p.tabela_preco_nome}>{p.tabela_preco_nome || '-'}</td>
+                      <td className="p-2 max-w-[100px] truncate" title={p.cenario_fiscal_nome}>{p.cenario_fiscal_nome || '-'}</td>
                       <td className="p-2 text-center">{p.total_itens || 0}</td>
                       <td className="p-2 text-right font-medium whitespace-nowrap">{formatCurrency(p.valor_total)}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_previsao_entrega)}</td>
