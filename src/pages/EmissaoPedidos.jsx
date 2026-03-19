@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ShoppingCart } from 'lucide-react';
@@ -18,6 +18,19 @@ export default function EmissaoPedidos() {
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.list()
   });
+
+  const { data: permissoes = [] } = useQuery({
+    queryKey: ['permissoes'],
+    queryFn: () => base44.entities.Permissao.list()
+  });
+
+  const permissaoCenariosFiscais = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    if (!vendedorAtual) return false;
+    const perm = permissoes.find(p => p.vendedor_id === vendedorAtual.id);
+    return perm?.permissoes_pedidos?.usar_cenarios_fiscais || false;
+  }, [currentUser, vendedorAtual, permissoes]);
 
   useEffect(() => {
     base44.auth.me().then(user => {
@@ -82,7 +95,7 @@ export default function EmissaoPedidos() {
         </TabsList>
 
         <TabsContent value="digitar">
-          <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} />
+          <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </TabsContent>
 
         <TabsContent value="envio">
