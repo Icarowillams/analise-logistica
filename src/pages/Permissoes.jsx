@@ -144,7 +144,7 @@ export default function Permissoes() {
             rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
             analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
           },
-          permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
+          permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
         });
       }
     } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length > 1) {
@@ -167,7 +167,7 @@ export default function Permissoes() {
           rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
           analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
         },
-        permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
+        permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
       });
     } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length === 0) {
       setPermissaoAtual(null);
@@ -364,7 +364,7 @@ export default function Permissoes() {
         rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
         analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
       },
-      permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false }
+      permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
     });
   };
 
