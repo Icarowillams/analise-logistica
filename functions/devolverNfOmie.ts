@@ -85,91 +85,90 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Dados do destinatário (que se torna o remetente na devolução)
+        // Dados do destinatário da NF original (é o cliente)
         const dest = nfOriginal.nfDestInt || {};
+        // Buscar código do cliente no Omie
+        const nCodCli = dest.nCodCli || nfOriginal.nfDestInt?.nCodCli;
+
+        if (!nCodCli) {
+            return Response.json({
+                sucesso: false,
+                erro: `Não foi possível identificar o código do cliente na NF ${numero_nf}.`
+            });
+        }
         
-        // Montar itens da NF de entrada
-        // Se itens_devolvidos foi fornecido, usar. Senão, devolver tudo.
+        // Montar itens da NF de entrada no formato correto do Omie
         const itensNfOriginal = nfOriginal.det || [];
-        let det = [];
+        let produtos = [];
+        const timestamp = Date.now();
 
         if (itens_devolvidos && itens_devolvidos.length > 0) {
             // Devolução parcial
-            for (const itemDev of itens_devolvidos) {
-                const itemOriginal = itensNfOriginal.find(i => 
-                    i.prod?.cProd === itemDev.codigo_produto || 
-                    i.prod?.xProd === itemDev.nome_produto
+            for (let i = 0; i < itens_devolvidos.length; i++) {
+                const itemDev = itens_devolvidos[i];
+                const itemOriginal = itensNfOriginal.find(it => 
+                    it.prod?.cProd === itemDev.codigo_produto || 
+                    it.prod?.xProd === itemDev.nome_produto
                 );
                 if (itemOriginal) {
-                    det.push({
-                        prod: {
-                            cProd: itemOriginal.prod?.cProd,
-                            xProd: itemOriginal.prod?.xProd,
-                            NCM: itemOriginal.prod?.NCM || '',
-                            CFOP: "5202", // Devolução de compra
-                            uCom: itemOriginal.prod?.uCom || 'UN',
-                            qCom: itemDev.quantidade || itemOriginal.prod?.qCom,
-                            vUnCom: itemOriginal.prod?.vUnCom,
-                            vProd: (itemDev.quantidade || itemOriginal.prod?.qCom) * itemOriginal.prod?.vUnCom
-                        }
+                    produtos.push({
+                        cCodItInt: `DEV${timestamp}_${i}`,
+                        nCodProd: itemOriginal.prod?.nCodProd || 0,
+                        nQtde: itemDev.quantidade || itemOriginal.prod?.qCom,
+                        nValUnit: itemOriginal.prod?.vUnCom || 0,
+                        cCFOP: "1.202" // Devolução de venda de mercadoria
                     });
                 }
             }
         } else {
             // Devolução total
-            for (const item of itensNfOriginal) {
-                det.push({
-                    prod: {
-                        cProd: item.prod?.cProd,
-                        xProd: item.prod?.xProd,
-                        NCM: item.prod?.NCM || '',
-                        CFOP: "5202",
-                        uCom: item.prod?.uCom || 'UN',
-                        qCom: item.prod?.qCom,
-                        vUnCom: item.prod?.vUnCom,
-                        vProd: item.prod?.vProd
-                    }
+            for (let i = 0; i < itensNfOriginal.length; i++) {
+                const item = itensNfOriginal[i];
+                produtos.push({
+                    cCodItInt: `DEV${timestamp}_${i}`,
+                    nCodProd: item.prod?.nCodProd || 0,
+                    nQtde: item.prod?.qCom || 0,
+                    nValUnit: item.prod?.vUnCom || 0,
+                    cCFOP: "1.202"
                 });
             }
         }
 
-        if (det.length === 0) {
+        if (produtos.length === 0) {
             return Response.json({
                 sucesso: false,
                 erro: 'Nenhum item encontrado para devolução'
             });
         }
 
-        console.log(`[devolverNfOmie] Gerando NF de Entrada para NF ${numero_nf} com ${det.length} itens...`);
+        // Data de hoje formatada DD/MM/YYYY
+        const hoje = new Date();
+        const dHoje = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
 
-        // Gerar NF de Entrada referenciando a NF original
+        console.log(`[devolverNfOmie] Gerando NF de Entrada para NF ${numero_nf} com ${produtos.length} itens...`);
+
+        // Payload no formato correto da API Omie (IncluirNotaEnt)
         const nfEntradaPayload = {
-            ide: {
-                dEmi: new Date().toLocaleDateString('pt-BR'),
-                natOp: "DEVOLUCAO",
-                finNFe: "4", // 4 = Devolução/Retorno
-                tpNF: "0"    // 0 = Entrada
+            cabec: {
+                cCodIntNotaEnt: `DEV_NF${numero_nf}_${timestamp}`,
+                dPrevisao: dHoje,
+                nCodCli: nCodCli
             },
-            NFref: [{
-                refNFe: chaveNFe
-            }],
-            nfEmitInt: {
-                cnpj_cpf: dest.cnpj_cpf || '',
-                cRazao: dest.cRazao || ''
-            },
-            det,
             infAdic: {
-                infCpl: `Devolução referente à NF ${numero_nf}. Motivo: ${motivo}`
-            }
+                cCodCateg: "2.01.03",
+                cDadosAdNF: `Devolução referente à NF ${numero_nf}. Motivo: ${motivo}`,
+                cNRefNFe: chaveNFe
+            },
+            produtos
         };
 
-        console.log(`[devolverNfOmie] Payload: ${JSON.stringify(nfEntradaPayload).substring(0, 1000)}`);
+        console.log(`[devolverNfOmie] Payload: ${JSON.stringify(nfEntradaPayload).substring(0, 1500)}`);
 
         const response = await fetch(NF_ENTRADA_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                call: "IncluirNFEntrada",
+                call: "IncluirNotaEnt",
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
                 param: [nfEntradaPayload]
@@ -195,7 +194,10 @@ Deno.serve(async (req) => {
         return Response.json({
             sucesso: true,
             mensagem: `NF de Entrada (devolução) gerada com sucesso referente à NF ${numero_nf}`,
-            nf_entrada: respData,
+            nf_entrada: {
+                codigo: respData.nCodNotaEnt,
+                codigo_integracao: respData.cCodIntNotaEnt
+            },
             nf_original: {
                 numero: numero_nf,
                 chaveNFe,
