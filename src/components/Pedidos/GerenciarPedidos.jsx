@@ -313,13 +313,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 <ThSort label="Prev. Entrega" field="data_previsao_entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Nº Carga" field="numero_carga" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Liberado por" field="liberado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Dt. Liberação" field="data_liberacao" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Cancelado por" field="cancelado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Dt. Cancelamento" field="data_cancelamento" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Motivo Cancel." field="motivo_cancelamento" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <ThSort label="Dt. Envio" field="data_envio" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Dt. Criação" field="created_date" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={18} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={23} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(p => {
                   const sc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
@@ -350,6 +355,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_previsao_entrega)}</td>
                       <td className="p-2">{p.numero_carga || '-'}</td>
                       <td className="p-2">{p.liberado_por_nome || '-'}</td>
+                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_liberacao)}</td>
+                      <td className="p-2">{p.cancelado_por_nome || '-'}</td>
+                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_cancelamento)}</td>
+                      <td className="p-2 max-w-[120px] truncate" title={p.motivo_cancelamento}>{p.motivo_cancelamento || '-'}</td>
+                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_envio)}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.created_date)}</td>
                       <td className="p-2">
                         <div className="flex gap-1">
