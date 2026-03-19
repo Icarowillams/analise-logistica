@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DigitarPedido from '@/components/Pedidos/DigitarPedido';
 import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
-import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos';
+import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos.jsx';
 
 export default function Pedidos() {
   const [currentUser, setCurrentUser] = useState(null);

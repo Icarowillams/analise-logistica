@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ClipboardList } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos';
+import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos.jsx';
 import DigitarPedido from '@/components/Pedidos/DigitarPedido';
 
 export default function GerenciarPedidosPage() {
