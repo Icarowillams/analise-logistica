@@ -318,21 +318,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      {/* Filters - Row 1 */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            placeholder="Buscar pedido, cliente, vendedor..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-10"
-          />
+          <Input placeholder="Buscar geral..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-8 text-xs" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
+          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos Status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
@@ -343,9 +336,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           </SelectContent>
         </Select>
         <Select value={tipoFilter} onValueChange={setTipoFilter}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
+          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos Tipos</SelectItem>
             <SelectItem value="venda">Venda</SelectItem>
@@ -353,10 +344,69 @@ export default function GerenciarPedidos({ onEditPedido }) {
             <SelectItem value="bonificacao">Bonificação</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] })}>
-          <RefreshCw className="w-4 h-4" />
+        <Button variant={showFilters ? 'default' : 'outline'} size="sm" className="h-8 text-xs" onClick={() => setShowFilters(!showFilters)}>
+          <Filter className="w-3 h-3 mr-1" /> Filtros {activeFilterCount > 0 && <Badge className="ml-1 h-4 w-4 p-0 flex items-center justify-center text-[9px] bg-amber-500">{activeFilterCount}</Badge>}
+        </Button>
+        {activeFilterCount > 0 && (
+          <Button variant="ghost" size="sm" className="h-8 text-xs text-red-500" onClick={clearAllFilters}>
+            <X className="w-3 h-3 mr-1" /> Limpar filtros
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className="h-8" onClick={() => queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] })}>
+          <RefreshCw className="w-3 h-3" />
         </Button>
       </div>
+
+      {/* Filters - Row 2 (expandable) */}
+      {showFilters && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 p-3 bg-white border rounded-lg">
+          {/* Período envio */}
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Envio de</label>
+            <Input type="date" value={envioInicio} onChange={e => setEnvioInicio(e.target.value)} className="h-8 text-xs" />
+          </div>
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Envio até</label>
+            <Input type="date" value={envioFim} onChange={e => setEnvioFim(e.target.value)} className="h-8 text-xs" />
+          </div>
+
+          {/* Vendedor */}
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Vendedor</label>
+            <div className="flex gap-1">
+              <Input placeholder="Nome..." value={vendedorSearch} onChange={e => { setVendedorSearch(e.target.value); setVendedorIds([]); }} className="h-8 text-xs flex-1" />
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" title="Selecionar na tabela" onClick={() => setVendedorModalOpen(true)}>
+                <List className="w-3 h-3" />
+              </Button>
+            </div>
+            {vendedorIds.length > 0 && <p className="text-[10px] text-amber-600 mt-0.5">{vendedorIds.length} selecionado(s)</p>}
+          </div>
+
+          {/* Produto */}
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Produto</label>
+            <div className="flex gap-1">
+              <Input placeholder="Nome/Cód..." value={produtoSearch} onChange={e => { setProdutoSearch(e.target.value); setProdutoIds([]); }} className="h-8 text-xs flex-1" />
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" title="Selecionar na tabela" onClick={() => setProdutoModalOpen(true)}>
+                <List className="w-3 h-3" />
+              </Button>
+            </div>
+            {produtoIds.length > 0 && <p className="text-[10px] text-amber-600 mt-0.5">{produtoIds.length} selecionado(s)</p>}
+          </div>
+
+          {/* Cliente */}
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Cliente</label>
+            <Input placeholder="Nome/Cód..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="h-8 text-xs" />
+          </div>
+
+          {/* Cidade */}
+          <div>
+            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Cidade</label>
+            <Input placeholder="Cidade..." value={cidadeSearch} onChange={e => setCidadeSearch(e.target.value)} className="h-8 text-xs" />
+          </div>
+        </div>
+      )}
 
       {/* Batch actions */}
       {selectedIds.length > 0 && (
