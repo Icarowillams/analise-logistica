@@ -960,14 +960,15 @@ export default function Permissoes() {
                   <CardTitle className="text-base">Permissões - Pedidos</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {['visualizar', 'digitar_pedido_venda', 'digitar_pedido_troca', 'enviar_pedido', 'editar_pedido', 'excluir_pedido'].map(perm => {
+                  {['visualizar', 'digitar_pedido_venda', 'digitar_pedido_troca', 'enviar_pedido', 'editar_pedido', 'excluir_pedido', 'usar_cenarios_fiscais'].map(perm => {
                     const labels = {
                       visualizar: 'Visualizar',
                       digitar_pedido_venda: 'Digitar Pedido de Venda',
                       digitar_pedido_troca: 'Digitar Pedido de Troca',
                       enviar_pedido: 'Enviar Pedido',
                       editar_pedido: 'Editar Pedido',
-                      excluir_pedido: 'Excluir Pedido (antes de enviar)'
+                      excluir_pedido: 'Excluir Pedido (antes de enviar)',
+                      usar_cenarios_fiscais: 'Usar Cenários Fiscais (Omie)'
                     };
                     return (
                       <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
