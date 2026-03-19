@@ -242,6 +242,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setBatchAction('liberando');
     const selected = pedidos.filter(p => selectedIds.includes(p.id) && (p.status === 'pendente' || p.status === 'enviado'));
     let count = 0;
+    let errosOmie = 0;
     for (const p of selected) {
       await base44.entities.Pedido.update(p.id, {
         status: 'liberado',
@@ -250,8 +251,22 @@ export default function GerenciarPedidos({ onEditPedido }) {
         data_liberacao: new Date().toISOString(),
       });
       count++;
+      // Liberar no Omie (mover para Pedidos Liberados)
+      if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+        try {
+          const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
+          if (!res.data?.sucesso) errosOmie++;
+        } catch (e) {
+          console.error('Erro ao liberar no Omie:', e);
+          errosOmie++;
+        }
+      }
     }
-    toast.success(`${count} pedido(s) liberado(s)`);
+    if (errosOmie > 0) {
+      toast.warning(`${count} pedido(s) liberado(s), ${errosOmie} com erro no Omie`);
+    } else {
+      toast.success(`${count} pedido(s) liberado(s)`);
+    }
     setSelectedIds([]);
     setBatchAction(null);
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
