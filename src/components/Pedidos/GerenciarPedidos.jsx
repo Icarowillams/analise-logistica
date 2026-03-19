@@ -10,13 +10,14 @@ import {
 } from '@/components/ui/select';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, Filter, RefreshCw, DollarSign, Eye
+  Loader2, Filter, RefreshCw, DollarSign, Eye, List, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import CancelarPedidoModal from './CancelarPedidoModal';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoAgrupado from './PedidoAgrupado';
 import PedidoPdf from './PedidoPdf';
+import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 
 const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
