@@ -970,15 +970,16 @@ export default function Permissoes() {
                       excluir_pedido: 'Excluir Pedido (antes de enviar)',
                       usar_cenarios_fiscais: 'Usar Cenários Fiscais (Omie)'
                     };
+                    const isCenarioFiscal = perm === 'usar_cenarios_fiscais';
                     return (
-                      <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${modoEdicao ? 'bg-slate-50' : 'bg-slate-100'}`}>
+                      <div key={perm} className={`flex items-center space-x-2 p-2 rounded ${isCenarioFiscal ? (modoEdicao ? 'bg-blue-50 border border-blue-200' : 'bg-blue-100 border border-blue-200') : (modoEdicao ? 'bg-slate-50' : 'bg-slate-100')}`}>
                         <Checkbox
                           id={`pedidos-${perm}`}
                           checked={permissaoAtual.permissoes_pedidos?.[perm] || false}
                           onCheckedChange={() => togglePermissao('permissoes_pedidos', perm)}
                           disabled={!modoEdicao}
                         />
-                        <Label htmlFor={`pedidos-${perm}`} className={modoEdicao ? "cursor-pointer" : "text-slate-600"}>
+                        <Label htmlFor={`pedidos-${perm}`} className={`${modoEdicao ? "cursor-pointer" : "text-slate-600"} ${isCenarioFiscal ? 'font-semibold' : ''}`}>
                           {labels[perm]}
                         </Label>
                       </div>
