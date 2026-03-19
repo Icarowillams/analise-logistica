@@ -8,10 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Search, Trash2, Plus, Pencil } from 'lucide-react';
+import { ArrowLeft, Save, Search, Trash2, Plus, Pencil, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar }) {
+export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar, permissaoCenariosFiscais }) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('pedido');
   const [salvando, setSalvando] = useState(false);
@@ -33,6 +33,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [itensLocal, setItensLocal] = useState([]);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [motivoTrocaId, setMotivoTrocaId] = useState('');
+  const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
+  const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
+  const [cenarios, setCenarios] = useState([]);
+  const [loadingCenarios, setLoadingCenarios] = useState(false);
 
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
@@ -61,6 +65,30 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     enabled: tipo === 'troca'
   });
 
+  // Carrega cenários fiscais do Omie (apenas para venda com permissão)
+  const mostrarCenarioFiscal = tipo !== 'troca' && permissaoCenariosFiscais;
+
+  useEffect(() => {
+    if (mostrarCenarioFiscal && cenarios.length === 0) {
+      setLoadingCenarios(true);
+      base44.functions.invoke('listarCenariosOmie', {})
+        .then(resp => {
+          const data = resp.data;
+          if (data.sucesso && data.cenarios) {
+            setCenarios(data.cenarios);
+            // Se houver cenário padrão, pré-selecionar
+            const padrao = data.cenarios.find(c => c.padrao);
+            if (padrao && !cenarioFiscalCodigo) {
+              setCenarioFiscalCodigo(String(padrao.codigo));
+              setCenarioFiscalNome(padrao.nome);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingCenarios(false));
+    }
+  }, [mostrarCenarioFiscal]);
+
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
     queryKey: ['pedido-detail', editingPedidoId],
@@ -86,6 +114,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
       setObservacoes(existingPedido.observacoes || '');
+      if (existingPedido.cenario_fiscal_codigo) {
+        setCenarioFiscalCodigo(String(existingPedido.cenario_fiscal_codigo));
+        setCenarioFiscalNome(existingPedido.cenario_fiscal_nome || '');
+      }
     }
   }, [existingPedido]);
 
@@ -230,6 +262,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       tabela_preco_id: tabelaPrecoId,
       tabela_preco_nome: tabelaObj?.nome || '',
       modelo_nota: tipo === 'troca' ? 'd1' : modeloNota,
+      cenario_fiscal_codigo: cenarioFiscalCodigo ? Number(cenarioFiscalCodigo) : null,
+      cenario_fiscal_nome: cenarioFiscalNome || null,
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
       observacoes,
@@ -350,6 +384,36 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <Input type="date" value={dataPrevisaoEntrega} onChange={(e) => setDataPrevisaoEntrega(e.target.value)} />
                 </div>
               </div>
+              {mostrarCenarioFiscal && (
+                <div>
+                  <Label className="text-xs text-slate-500">Cenário Fiscal (Omie)</Label>
+                  {loadingCenarios ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Carregando cenários...
+                    </div>
+                  ) : (
+                    <Select
+                      value={cenarioFiscalCodigo}
+                      onValueChange={(val) => {
+                        setCenarioFiscalCodigo(val);
+                        const c = cenarios.find(c => String(c.codigo) === val);
+                        setCenarioFiscalNome(c?.nome || '');
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o cenário fiscal..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cenarios.map(c => (
+                          <SelectItem key={c.codigo} value={String(c.codigo)}>
+                            {c.codigo} - {c.nome} {c.padrao ? '(Padrão)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
               <div>
                 <Label>Nº Pedido Compra</Label>
                 <Input value={numeroPedidoCompra} onChange={(e) => setNumeroPedidoCompra(e.target.value)} placeholder="Número do pedido de compra do cliente" />
