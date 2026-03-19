@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, ShoppingCart, ArrowLeftRight } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 
-export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit }) {
+export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [tipoPedido, setTipoPedido] = useState(null);
   const [searchCliente, setSearchCliente] = useState('');
@@ -79,6 +79,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit }
         tipo={tipoPedido}
         vendedor={vendedor}
         editingPedidoId={editingPedidoId}
+        permissaoCenariosFiscais={permissaoCenariosFiscais}
         onVoltar={() => {
           setSelectedCliente(null);
           setTipoPedido(null);
