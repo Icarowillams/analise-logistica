@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +58,26 @@ const ANALISE_STATUS_COLORS = {
   'Cancelado':  { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
 };
 
+const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
+const OMIE_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
+const OMIE_STATUS_AUTO_LIMIT = 12;
+const OMIE_STATUS_REFRESH_LIMIT = 25;
+
+const readOmieStatusCache = () => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    return JSON.parse(window.localStorage.getItem(OMIE_STATUS_CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const writeOmieStatusCache = (cache) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(OMIE_STATUS_CACHE_KEY, JSON.stringify(cache));
+};
+
 export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
@@ -86,11 +106,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [viewPedidoId, setViewPedidoId] = useState(null);
   const [omieStatuses, setOmieStatuses] = useState({});
   const [omieStatusLoading, setOmieStatusLoading] = useState(false);
+  const omieStatusRequestsRef = useRef(new Set());
 
   const queryClient = useQueryClient();
 
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const cache = readOmieStatusCache();
+    const now = Date.now();
+    const validEntries = Object.entries(cache).filter(([, value]) => now - value.fetchedAt < OMIE_STATUS_CACHE_TTL_MS);
+
+    setOmieStatuses(Object.fromEntries(validEntries.map(([pedidoId, value]) => [pedidoId, value.data])));
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -122,21 +151,34 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return m;
   }, [vendedores]);
 
-  // Buscar status Omie em lotes de 50
-  const fetchOmieStatuses = async (pedidosList) => {
-    const pedidosOmie = (pedidosList || pedidos)
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente');
+  const fetchOmieStatuses = async (pedidosList, { force = false, silent = false } = {}) => {
+    const cache = readOmieStatusCache();
+    const now = Date.now();
+
+    const pedidosOmie = (pedidosList || [])
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente')
+      .filter(p => {
+        if (omieStatusRequestsRef.current.has(p.id)) return false;
+        if (force) return true;
+
+        const cached = cache[p.id];
+        return !cached || (now - cached.fetchedAt) >= OMIE_STATUS_CACHE_TTL_MS;
+      });
+
     if (pedidosOmie.length === 0) return;
 
     setOmieStatusLoading(true);
     const allResults = {};
 
-    // Processar em lotes de 50
-    for (let i = 0; i < pedidosOmie.length; i += 50) {
-      const batch = pedidosOmie.slice(i, i + 50).map(p => ({
+    for (let i = 0; i < pedidosOmie.length; i += 10) {
+      const currentBatch = pedidosOmie.slice(i, i + 10);
+      const batch = currentBatch.map(p => ({
         pedido_id: p.id,
         omie_codigo_pedido: p.omie_codigo_pedido
       }));
+
+      currentBatch.forEach(p => omieStatusRequestsRef.current.add(p.id));
+
       try {
         const res = await base44.functions.invoke('consultarStatusPedidosOmie', { omie_codigos: batch });
         if (res.data?.resultados) {
@@ -144,20 +186,39 @@ export default function GerenciarPedidos({ onEditPedido }) {
         }
       } catch (e) {
         console.error('Erro ao consultar status Omie (lote):', e);
+      } finally {
+        currentBatch.forEach(p => omieStatusRequestsRef.current.delete(p.id));
       }
     }
 
-    setOmieStatuses(allResults);
-    setOmieStatusLoading(false);
-    toast.success(`Status Omie atualizado para ${Object.keys(allResults).length} pedido(s)`);
-  };
+    const updatedCache = { ...cache };
+    const updatedStatuses = {};
+    let successCount = 0;
+    let errorCount = 0;
 
-  // Auto-fetch ao carregar pedidos
-  useEffect(() => {
-    if (pedidos.length > 0 && Object.keys(omieStatuses).length === 0) {
-      fetchOmieStatuses(pedidos);
+    Object.entries(allResults).forEach(([pedidoId, result]) => {
+      if (result?.erro) {
+        errorCount += 1;
+        return;
+      }
+
+      successCount += 1;
+      updatedStatuses[pedidoId] = result;
+      updatedCache[pedidoId] = { data: result, fetchedAt: Date.now() };
+    });
+
+    writeOmieStatusCache(updatedCache);
+    setOmieStatuses(prev => ({ ...prev, ...updatedStatuses }));
+    setOmieStatusLoading(false);
+
+    if (!silent && successCount > 0) {
+      toast.success(`Status Omie atualizado para ${successCount} pedido(s)`);
     }
-  }, [pedidos]);
+
+    if (!silent && successCount === 0 && errorCount > 0) {
+      toast.warning('O Omie limitou a consulta repetida; mantive os últimos status salvos.');
+    }
+  };
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
@@ -288,6 +349,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     return list;
   }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
+
+  const pedidosVisiveisParaStatus = useMemo(() => {
+    return filtered
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente')
+      .slice(0, OMIE_STATUS_AUTO_LIMIT);
+  }, [filtered]);
+
+  useEffect(() => {
+    if (pedidosVisiveisParaStatus.length > 0) {
+      fetchOmieStatuses(pedidosVisiveisParaStatus, { silent: true });
+    }
+  }, [pedidosVisiveisParaStatus]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -476,7 +549,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
             <X className="w-3 h-3 mr-1" /> Limpar filtros
           </Button>
         )}
-        <Button variant="outline" size="sm" className="h-8" onClick={() => { queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }); setOmieStatuses({}); }}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+            fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
+          }}
+        >
           <RefreshCw className="w-3 h-3" />
         </Button>
         {omieStatusLoading && (
@@ -603,7 +684,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
               ) : (
                 filtered.map(p => {
                   const omie = omieStatuses[p.id];
-                  const omieEtapaLabel = omie ? omie.etapa_label : null;
+                  const omieEtapaLabel = omie?.erro ? null : omie?.etapa_label;
                   const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
                   const analiseColors = analiseLabel ? (ANALISE_STATUS_COLORS[analiseLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
                   const fallbackSc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
@@ -629,7 +710,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                           <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
                             {analiseLabel}
                           </Badge>
-                        ) : omieStatusLoading && p.omie_enviado ? (
+                        ) : omieStatusLoading && p.omie_enviado && !omie ? (
                           <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
                         ) : (
                           <Badge className={`${fallbackSc.bg} ${fallbackSc.text} ${fallbackSc.border} border text-[10px]`}>
