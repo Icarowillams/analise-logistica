@@ -321,17 +321,25 @@ export default function GerenciarPedidos({ onEditPedido }) {
   };
 
   const handleCancelConfirm = async (pedido, motivo) => {
-    await base44.entities.Pedido.update(pedido.id, {
-      status: 'cancelado',
-      cancelado_por: currentUser?.email,
-      cancelado_por_nome: currentUser?.full_name,
-      data_cancelamento: new Date().toISOString(),
-      motivo_cancelamento: motivo,
-    });
+    // Se o pedido foi enviado ao Omie, usa a função backend que valida a etapa
     if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-      await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id });
+      const res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+      if (!res.data?.sucesso) {
+        toast.error(res.data?.error || 'Erro ao cancelar pedido no Omie');
+        return;
+      }
+      toast.success(res.data.mensagem || 'Pedido cancelado com sucesso');
+    } else {
+      // Pedido não foi enviado ao Omie, cancelar apenas localmente
+      await base44.entities.Pedido.update(pedido.id, {
+        status: 'cancelado',
+        cancelado_por: currentUser?.email,
+        cancelado_por_nome: currentUser?.full_name,
+        data_cancelamento: new Date().toISOString(),
+        motivo_cancelamento: motivo,
+      });
+      toast.success('Pedido cancelado');
     }
-    toast.success('Pedido cancelado');
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
   };
 
