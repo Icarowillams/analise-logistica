@@ -38,15 +38,24 @@ const STATUS_LABELS = {
   cancelado: 'Cancelado',
 };
 
-// Cores para status Omie (Kanban)
-const OMIE_STATUS_COLORS = {
-  'Pedido de Venda':    { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
-  'Pedidos Liberados':  { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-  'Faturar':            { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
-  'Faturado':           { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-  'Entrega':            { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-  'Cancelado':          { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
-  'Excluído no Omie':   { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
+// Mapeamento de etapa Omie -> label da Análise Comercial
+const OMIE_TO_ANALISE = {
+  'Pedido de Venda':    'Pendente',
+  'Pedidos Liberados':  'Liberado',
+  'Faturar':            'Montagem',
+  'Faturado':           'Faturado',
+  'Entrega':            'Faturado',
+  'Cancelado':          'Cancelado',
+  'Excluído no Omie':   'Cancelado',
+};
+
+// Cores para status da Análise Comercial
+const ANALISE_STATUS_COLORS = {
+  'Pendente':   { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
+  'Liberado':   { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  'Montagem':   { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
+  'Faturado':   { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+  'Cancelado':  { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
 };
 
 export default function GerenciarPedidos({ onEditPedido }) {
