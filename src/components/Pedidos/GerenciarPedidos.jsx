@@ -672,6 +672,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
       <div className="text-xs text-slate-500">
         {filtered.length} pedido(s) • Valor total: {formatCurrency(filtered.reduce((s, p) => s + (p.valor_total || 0), 0))}
+        {Object.keys(omieStatuses).length > 0 && (
+          <span className="ml-2 text-green-600">• Status Omie: {Object.keys(omieStatuses).length} consultado(s)</span>
+        )}
       </div>
 
       {/* Modals */}
