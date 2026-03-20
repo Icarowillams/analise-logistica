@@ -18,6 +18,7 @@ import DebitosClienteModal from './DebitosClienteModal';
 import PedidoAgrupado from './PedidoAgrupado';
 import PedidoPdf from './PedidoPdf';
 import SelecionarEntidadeModal from './SelecionarEntidadeModal';
+import useDragSelect from './useDragSelect';
 
 const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
