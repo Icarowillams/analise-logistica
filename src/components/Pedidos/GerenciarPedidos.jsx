@@ -603,8 +603,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
               ) : (
                 filtered.map(p => {
                   const omie = omieStatuses[p.id];
-                  const omieLabel = omie ? omie.etapa_label : null;
-                  const omieColors = omieLabel ? (OMIE_STATUS_COLORS[omieLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
+                  const omieEtapaLabel = omie ? omie.etapa_label : null;
+                  const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
+                  const analiseColors = analiseLabel ? (ANALISE_STATUS_COLORS[analiseLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
                   const fallbackSc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
                   return (
                     <tr
