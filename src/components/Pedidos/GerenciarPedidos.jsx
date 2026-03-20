@@ -40,22 +40,23 @@ const STATUS_LABELS = {
 
 // Mapeamento de etapa Omie -> label da Análise Comercial
 const OMIE_TO_ANALISE = {
-  'Pedido de Venda':    'Pendente',
-  'Pedidos Liberados':  'Liberado',
-  'Faturar':            'Montagem',
-  'Faturado':           'Faturado',
-  'Entrega':            'Faturado',
-  'Cancelado':          'Cancelado',
-  'Excluído no Omie':   'Cancelado',
+  'Pedido de Venda': 'Pendente',
+  'Pedidos Liberados': 'Liberados',
+  'Faturar': 'Montagem',
+  'Faturado': 'Faturado',
+  'Entrega': 'Faturado',
+  'Cancelado': 'Cancelado',
+  'Excluído no Omie': 'Cancelado',
 };
 
 // Cores para status da Análise Comercial
 const ANALISE_STATUS_COLORS = {
-  'Pendente':   { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
-  'Liberado':   { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-  'Montagem':   { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
-  'Faturado':   { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-  'Cancelado':  { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
+  'Pendente': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
+  'Liberados': { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  'Montagem': { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
+  'Faturado': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+  'Cancelado': { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
+  'Omie Bloqueado': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' },
 };
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
@@ -156,8 +157,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const now = Date.now();
 
     const pedidosOmie = (pedidosList || [])
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente')
-      .filter(p => {
+    .filter(p => p.omie_enviado && p.omie_codigo_pedido)
+    .filter(p => {
         if (omieStatusRequestsRef.current.has(p.id)) return false;
         if (force) return true;
 
@@ -200,6 +201,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let errorCount = 0;
 
     Object.entries(allResults).forEach(([pedidoId, result]) => {
+      const previousStatus = omieStatuses[pedidoId] || cache[pedidoId]?.data || null;
+
+      if (result?.api_bloqueada && previousStatus && !previousStatus?.erro) {
+        errorCount += 1;
+        const blockedStatus = { ...previousStatus, api_bloqueada: true, mensagem_erro: result.mensagem_erro || null };
+        updatedCache[pedidoId] = { data: blockedStatus, fetchedAt: Date.now() };
+        updatedStatuses[pedidoId] = blockedStatus;
+        return;
+      }
+
       updatedCache[pedidoId] = { data: result, fetchedAt: Date.now() };
 
       if (result?.erro) {
@@ -260,13 +271,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let list = pedidos.filter(p => p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
-      const analiseFilterMap = {
-        'analise_pendente': 'Pendente',
-        'analise_liberado': 'Liberado',
-        'analise_montagem': 'Montagem',
-        'analise_faturado': 'Faturado',
-        'analise_cancelado': 'Cancelado',
-      };
+    const analiseFilterMap = {
+      'analise_pendente': 'Pendente',
+      'analise_liberado': 'Liberados',
+      'analise_montagem': 'Montagem',
+      'analise_faturado': 'Faturado',
+      'analise_cancelado': 'Cancelado',
+    };
       if (statusFilter === 'sem_omie') {
         list = list.filter(p => !p.omie_enviado || !p.omie_codigo_pedido);
       } else if (analiseFilterMap[statusFilter]) {
@@ -357,7 +368,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const pedidosVisiveisParaStatus = useMemo(() => {
     return filtered
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente')
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido)
       .slice(0, OMIE_STATUS_AUTO_LIMIT);
   }, [filtered]);
 
@@ -530,7 +541,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <SelectContent>
             <SelectItem value="todos">Todos Status</SelectItem>
             <SelectItem value="analise_pendente">Pendente</SelectItem>
-            <SelectItem value="analise_liberado">Liberado</SelectItem>
+            <SelectItem value="analise_liberado">Liberados</SelectItem>
             <SelectItem value="analise_montagem">Montagem</SelectItem>
             <SelectItem value="analise_faturado">Faturado</SelectItem>
             <SelectItem value="analise_cancelado">Cancelado</SelectItem>
@@ -691,8 +702,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
                   const omie = omieStatuses[p.id];
                   const omieEtapaLabel = omie?.erro ? null : omie?.etapa_label;
                   const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
-                  const analiseColors = analiseLabel ? (ANALISE_STATUS_COLORS[analiseLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
-                  const fallbackSc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+                  const displayLabel = omie?.api_bloqueada ? 'Omie Bloqueado' : analiseLabel;
+                  const analiseColors = displayLabel ? (ANALISE_STATUS_COLORS[displayLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
                   return (
                     <tr
                       key={p.id}
@@ -711,13 +722,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
                       <td className="p-2 capitalize">{p.tipo || '-'}</td>
                       <td className="p-2">
-                        {analiseLabel ? (
+                        {displayLabel ? (
                           <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
-                            {analiseLabel}
+                            {displayLabel}
                           </Badge>
                         ) : (
-                          <Badge className={`${fallbackSc.bg} ${fallbackSc.text} ${fallbackSc.border} border text-[10px]`}>
-                            {p.omie_enviado ? (STATUS_LABELS[p.status] || p.status) : 'Não enviado'}
+                          <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-[10px]">
+                            {p.omie_enviado ? 'Consultando Omie...' : 'Não enviado'}
                           </Badge>
                         )}
                       </td>

@@ -64,12 +64,15 @@ Deno.serve(async (req) => {
                     const naoEncontrado = faultMsg.includes('não encontrad') || faultMsg.includes('nao encontrad') ||
                         faultMsg.includes('excluíd') || faultMsg.includes('excluid') ||
                         faultMsg.includes('não existe') || faultMsg.includes('nao existe');
+                    const apiBloqueada = faultMsg.includes('bloqueada por consumo indevido');
                     
                     resultados[item.pedido_id] = {
                         etapa: naoEncontrado ? '80' : null,
-                        etapa_label: naoEncontrado ? 'Excluído no Omie' : `Erro: ${result.faultstring}`,
+                        etapa_label: naoEncontrado ? 'Excluído no Omie' : (apiBloqueada ? 'Omie Bloqueado' : null),
                         cancelado: naoEncontrado,
-                        erro: !naoEncontrado
+                        erro: !naoEncontrado,
+                        api_bloqueada: apiBloqueada,
+                        mensagem_erro: result.faultstring || null
                     };
                 } else if (result.pedido_venda_produto) {
                     const etapa = result.pedido_venda_produto.cabecalho?.etapa || null;
