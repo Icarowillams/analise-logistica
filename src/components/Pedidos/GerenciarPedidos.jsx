@@ -325,8 +325,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
       const res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
       if (!res.data?.sucesso) {
-        toast.error(res.data?.error || 'Erro ao cancelar pedido no Omie');
-        return;
+        // Lançar erro para o modal exibir a mensagem
+        throw new Error(res.data?.error || 'Erro ao cancelar pedido no Omie');
       }
       toast.success(res.data.mensagem || 'Pedido cancelado com sucesso');
     } else {
