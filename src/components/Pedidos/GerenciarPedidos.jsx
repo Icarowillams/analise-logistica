@@ -22,7 +22,7 @@ import useDragSelect from './useDragSelect';
 
 const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
-  enviado: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-500' },
+  enviado: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
   liberado: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', dot: 'bg-green-500' },
   montagem: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', dot: 'bg-blue-500' },
   faturado: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-500' },
@@ -31,7 +31,7 @@ const STATUS_COLORS = {
 
 const STATUS_LABELS = {
   pendente: 'Pendente',
-  enviado: 'Enviado',
+  enviado: 'Pendente',
   liberado: 'Liberado',
   montagem: 'Montagem',
   faturado: 'Faturado',
