@@ -24,6 +24,7 @@ const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
   enviado: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-500' },
   liberado: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', dot: 'bg-green-500' },
+  montagem: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', dot: 'bg-blue-500' },
   faturado: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-500' },
   cancelado: { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400', dot: 'bg-gray-700' },
 };
@@ -32,6 +33,7 @@ const STATUS_LABELS = {
   pendente: 'Pendente',
   enviado: 'Enviado',
   liberado: 'Liberado',
+  montagem: 'Montagem',
   faturado: 'Faturado',
   cancelado: 'Cancelado',
 };
@@ -128,10 +130,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Filter and sort
   const filtered = useMemo(() => {
-    let list = [...pedidos];
+    // Gerenciar Pedidos: NÃO mostra pedidos com status "pendente" (não enviados)
+    // Pedidos não enviados ficam em "Emissão de Pedidos" > "Envio de Pedidos"
+    let list = pedidos.filter(p => p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
-      list = list.filter(p => p.status === statusFilter);
+      if (statusFilter === 'pendente_envio') {
+        // "Pendente" no Gerenciar = pedidos ENVIADOS e NÃO LIBERADOS
+        list = list.filter(p => p.status === 'enviado');
+      } else {
+        list = list.filter(p => p.status === statusFilter);
+      }
     }
     if (tipoFilter !== 'todos') {
       list = list.filter(p => p.tipo === tipoFilter);
@@ -247,7 +256,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Batch actions
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
-    const selected = pedidos.filter(p => selectedIds.includes(p.id) && (p.status === 'pendente' || p.status === 'enviado'));
+    const selected = pedidos.filter(p => selectedIds.includes(p.id) && p.status === 'enviado');
     let count = 0;
     let errosOmie = 0;
     for (const p of selected) {
@@ -358,9 +367,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos Status</SelectItem>
-            <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="enviado">Enviado</SelectItem>
+            <SelectItem value="pendente_envio">Pendente</SelectItem>
             <SelectItem value="liberado">Liberado</SelectItem>
+            <SelectItem value="montagem">Montagem</SelectItem>
             <SelectItem value="faturado">Faturado</SelectItem>
             <SelectItem value="cancelado">Cancelado</SelectItem>
           </SelectContent>
