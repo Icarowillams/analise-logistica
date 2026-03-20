@@ -562,7 +562,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
                             <DollarSign className="w-3 h-3" />
                           </Button>
-                          {p.status !== 'cancelado' && p.status !== 'faturado' && (
+                          {p.status !== 'cancelado' && p.status !== 'faturado' && p.status !== 'montagem' && (
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
                               <XCircle className="w-3 h-3" />
                             </Button>
