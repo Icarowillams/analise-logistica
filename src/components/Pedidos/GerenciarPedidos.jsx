@@ -113,6 +113,43 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return m;
   }, [vendedores]);
 
+  // Buscar status Omie em lotes de 50
+  const fetchOmieStatuses = async (pedidosList) => {
+    const pedidosOmie = (pedidosList || pedidos)
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.status !== 'pendente');
+    if (pedidosOmie.length === 0) return;
+
+    setOmieStatusLoading(true);
+    const allResults = {};
+
+    // Processar em lotes de 50
+    for (let i = 0; i < pedidosOmie.length; i += 50) {
+      const batch = pedidosOmie.slice(i, i + 50).map(p => ({
+        pedido_id: p.id,
+        omie_codigo_pedido: p.omie_codigo_pedido
+      }));
+      try {
+        const res = await base44.functions.invoke('consultarStatusPedidosOmie', { omie_codigos: batch });
+        if (res.data?.resultados) {
+          Object.assign(allResults, res.data.resultados);
+        }
+      } catch (e) {
+        console.error('Erro ao consultar status Omie (lote):', e);
+      }
+    }
+
+    setOmieStatuses(allResults);
+    setOmieStatusLoading(false);
+    toast.success(`Status Omie atualizado para ${Object.keys(allResults).length} pedido(s)`);
+  };
+
+  // Auto-fetch ao carregar pedidos
+  useEffect(() => {
+    if (pedidos.length > 0 && Object.keys(omieStatuses).length === 0) {
+      fetchOmieStatuses(pedidos);
+    }
+  }, [pedidos]);
+
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
     if (produtoIds.length === 0) return null;
