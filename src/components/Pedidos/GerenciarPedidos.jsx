@@ -238,6 +238,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
   };
 
+  // Drag-select: selecionar arrastando o mouse pelas linhas
+  const { onRowMouseDown, onRowMouseEnter, onMouseUp } = useDragSelect(
+    filtered.map(p => p.id),
+    setSelectedIds
+  );
+
   // Batch actions
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
