@@ -593,7 +593,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 <tr><td colSpan={24} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(p => {
-                  const sc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+                  const omie = omieStatuses[p.id];
+                  const omieLabel = omie ? omie.etapa_label : null;
+                  const omieColors = omieLabel ? (OMIE_STATUS_COLORS[omieLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
+                  const fallbackSc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
                   return (
                     <tr
                       key={p.id}
@@ -612,9 +615,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
                       <td className="p-2 capitalize">{p.tipo || '-'}</td>
                       <td className="p-2">
-                        <Badge className={`${sc.bg} ${sc.text} ${sc.border} border text-[10px]`}>
-                          {STATUS_LABELS[p.status] || p.status}
-                        </Badge>
+                        {omieLabel ? (
+                          <Badge className={`${omieColors.bg} ${omieColors.text} ${omieColors.border} border text-[10px]`}>
+                            {omieLabel}
+                          </Badge>
+                        ) : omieStatusLoading && p.omie_enviado ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
+                        ) : (
+                          <Badge className={`${fallbackSc.bg} ${fallbackSc.text} ${fallbackSc.border} border text-[10px]`}>
+                            {p.omie_enviado ? (STATUS_LABELS[p.status] || p.status) : 'Não enviado'}
+                          </Badge>
+                        )}
                       </td>
                       <td className="p-2 max-w-[150px] truncate" title={p.cliente_nome}>{p.cliente_nome || '-'}</td>
                       <td className="p-2 max-w-[120px] truncate" title={p.cliente_nome_fantasia}>{p.cliente_nome_fantasia || '-'}</td>
