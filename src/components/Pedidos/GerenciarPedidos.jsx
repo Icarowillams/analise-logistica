@@ -447,15 +447,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Input placeholder="Buscar geral..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-8 text-xs" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Status Omie" /></SelectTrigger>
+          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos Status</SelectItem>
-            <SelectItem value="omie_pedido_venda">Pedido de Venda</SelectItem>
-            <SelectItem value="omie_liberados">Pedidos Liberados</SelectItem>
-            <SelectItem value="omie_faturar">Faturar</SelectItem>
-            <SelectItem value="omie_faturado">Faturado</SelectItem>
-            <SelectItem value="omie_entrega">Entrega</SelectItem>
-            <SelectItem value="omie_cancelado">Cancelado</SelectItem>
+            <SelectItem value="analise_pendente">Pendente</SelectItem>
+            <SelectItem value="analise_liberado">Liberado</SelectItem>
+            <SelectItem value="analise_montagem">Montagem</SelectItem>
+            <SelectItem value="analise_faturado">Faturado</SelectItem>
+            <SelectItem value="analise_cancelado">Cancelado</SelectItem>
             <SelectItem value="sem_omie">Sem Omie</SelectItem>
           </SelectContent>
         </Select>
