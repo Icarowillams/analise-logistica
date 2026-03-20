@@ -57,6 +57,7 @@ const ANALISE_STATUS_COLORS = {
   'Faturado': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
   'Cancelado': { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
   'Omie Bloqueado': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' },
+  'Falha na Consulta': { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
 };
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
@@ -702,7 +703,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
                   const omie = omieStatuses[p.id];
                   const omieEtapaLabel = omie?.erro ? null : omie?.etapa_label;
                   const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
-                  const displayLabel = omie?.api_bloqueada ? 'Omie Bloqueado' : analiseLabel;
+                  const displayLabel = omie?.api_bloqueada
+                    ? 'Omie Bloqueado'
+                    : omie?.erro
+                      ? 'Falha na Consulta'
+                      : analiseLabel;
                   const analiseColors = displayLabel ? (ANALISE_STATUS_COLORS[displayLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
                   return (
                     <tr
@@ -728,7 +733,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                           </Badge>
                         ) : (
                           <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-[10px]">
-                            {p.omie_enviado ? 'Consultando Omie...' : 'Não enviado'}
+                            {p.omie_enviado && omieStatusRequestsRef.current.has(p.id) ? 'Consultando Omie...' : 'Aguardando Omie'}
                           </Badge>
                         )}
                       </td>
