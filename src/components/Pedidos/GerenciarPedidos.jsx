@@ -75,6 +75,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [debitosCliente, setDebitosCliente] = useState({ id: null, nome: '' });
   const [showAgrupado, setShowAgrupado] = useState(false);
   const [viewPedidoId, setViewPedidoId] = useState(null);
+  const [omieStatuses, setOmieStatuses] = useState({});
+  const [omieStatusLoading, setOmieStatusLoading] = useState(false);
 
   const queryClient = useQueryClient();
 
