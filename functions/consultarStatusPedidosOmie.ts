@@ -29,8 +29,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'omie_codigos é obrigatório (array)' }, { status: 400 });
         }
 
-        // Limitar a 50 pedidos por chamada para não sobrecarregar
-        const codigos = omie_codigos.slice(0, 50);
+        // Limitar a 350 pedidos por chamada
+        const codigos = omie_codigos.slice(0, 350);
         const resultados = {};
 
         for (const item of codigos) {
