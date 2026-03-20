@@ -179,7 +179,7 @@ export default function Layout({ children, currentPageName }) {
       }
       return canViewPage(item.path) ? item : null;
     }).filter(Boolean);
-  }, [userPermissions, isAdmin]);
+  }, [userPermissions, isAdmin, currentUser]);
 
   const toggleSubmenu = (title) => {
     setExpandedMenus(prev =>
