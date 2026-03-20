@@ -65,6 +65,14 @@ const OMIE_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
 const OMIE_STATUS_AUTO_LIMIT = 12;
 const OMIE_STATUS_REFRESH_LIMIT = 25;
 
+const getTodayFilterDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const readOmieStatusCache = () => {
   if (typeof window === 'undefined') return {};
 
@@ -85,8 +93,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
-  const [envioInicio, setEnvioInicio] = useState('');
-  const [envioFim, setEnvioFim] = useState('');
+  const [envioInicio, setEnvioInicio] = useState(() => getTodayFilterDate());
+  const [envioFim, setEnvioFim] = useState(() => getTodayFilterDate());
   const [vendedorSearch, setVendedorSearch] = useState('');
   const [vendedorIds, setVendedorIds] = useState([]);
   const [vendedorModalOpen, setVendedorModalOpen] = useState(false);
