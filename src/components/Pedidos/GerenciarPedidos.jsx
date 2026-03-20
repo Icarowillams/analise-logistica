@@ -62,8 +62,8 @@ const ANALISE_STATUS_COLORS = {
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
 const OMIE_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
-const OMIE_STATUS_AUTO_LIMIT = 12;
-const OMIE_STATUS_REFRESH_LIMIT = 25;
+const OMIE_STATUS_AUTO_LIMIT = 350;
+const OMIE_STATUS_REFRESH_LIMIT = 350;
 
 const getTodayFilterDate = () => {
   const now = new Date();
