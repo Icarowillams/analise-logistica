@@ -462,7 +462,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <span className="text-sm font-medium text-amber-800">{selectedIds.length} selecionado(s)</span>
           <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction}>
             {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
-            Liberar
+            Avançar Status
           </Button>
           <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction}>
             {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
