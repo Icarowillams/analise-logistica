@@ -625,9 +625,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
                       <td className="p-2 capitalize">{p.tipo || '-'}</td>
                       <td className="p-2">
-                        {omieLabel ? (
-                          <Badge className={`${omieColors.bg} ${omieColors.text} ${omieColors.border} border text-[10px]`}>
-                            {omieLabel}
+                        {analiseLabel ? (
+                          <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
+                            {analiseLabel}
                           </Badge>
                         ) : omieStatusLoading && p.omie_enviado ? (
                           <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
