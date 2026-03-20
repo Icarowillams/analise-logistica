@@ -256,19 +256,23 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Batch actions
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
-    const selected = pedidos.filter(p => selectedIds.includes(p.id) && p.status === 'enviado');
+    const selected = pedidos.filter(p => selectedIds.includes(p.id) && (p.status === 'enviado' || p.status === 'liberado'));
     let count = 0;
     let errosOmie = 0;
     for (const p of selected) {
-      await base44.entities.Pedido.update(p.id, {
-        status: 'liberado',
-        liberado_por: currentUser?.email,
-        liberado_por_nome: currentUser?.full_name,
-        data_liberacao: new Date().toISOString(),
-      });
+      const novoStatus = p.status === 'enviado' ? 'liberado' : 'faturado';
+      const updateData = {
+        status: novoStatus,
+      };
+      if (novoStatus === 'liberado') {
+        updateData.liberado_por = currentUser?.email;
+        updateData.liberado_por_nome = currentUser?.full_name;
+        updateData.data_liberacao = new Date().toISOString();
+      }
+      await base44.entities.Pedido.update(p.id, updateData);
       count++;
-      // Liberar no Omie (mover para Pedidos Liberados)
-      if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+      // Liberar no Omie (mover para Pedidos Liberados) — apenas na primeira liberação
+      if (novoStatus === 'liberado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
         try {
           const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
           if (!res.data?.sucesso) errosOmie++;
@@ -278,10 +282,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
         }
       }
     }
+    const label = selected.some(p => p.status === 'liberado') ? 'faturado(s)' : 'liberado(s)';
     if (errosOmie > 0) {
-      toast.warning(`${count} pedido(s) liberado(s), ${errosOmie} com erro no Omie`);
+      toast.warning(`${count} pedido(s) ${label}, ${errosOmie} com erro no Omie`);
     } else {
-      toast.success(`${count} pedido(s) liberado(s)`);
+      toast.success(`${count} pedido(s) ${label}`);
     }
     setSelectedIds([]);
     setBatchAction(null);
