@@ -467,9 +467,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
             <X className="w-3 h-3 mr-1" /> Limpar filtros
           </Button>
         )}
-        <Button variant="outline" size="sm" className="h-8" onClick={() => queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] })}>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => { queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }); setOmieStatuses({}); }}>
           <RefreshCw className="w-3 h-3" />
         </Button>
+        {omieStatusLoading && (
+          <span className="text-[10px] text-amber-600 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Consultando Omie...
+          </span>
+        )}
       </div>
 
       {/* Filters - Row 2 (expandable) */}
