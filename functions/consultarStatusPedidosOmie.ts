@@ -85,8 +85,8 @@ Deno.serve(async (req) => {
                     resultados[item.pedido_id] = { etapa: null, etapa_label: 'Resposta inesperada', cancelado: false, erro: true };
                 }
 
-                // Rate limit do Omie - aguardar entre requisições
-                await new Promise(r => setTimeout(r, 350));
+                // Rate limit do Omie - aguardar entre requisições (mínimo 1s para evitar bloqueio)
+                await new Promise(r => setTimeout(r, 1000));
 
             } catch (e) {
                 console.error(`[consultarStatusPedidosOmie] Erro pedido ${item.pedido_id}:`, e.message);
