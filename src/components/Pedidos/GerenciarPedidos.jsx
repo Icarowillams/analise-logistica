@@ -140,14 +140,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
       try {
         const res = await base44.functions.invoke('consultarStatusPedidosOmie', { omie_codigos: batch });
         if (res.data?.resultados) {
-          Object.assign(allResults, res.data.resultados);
+          // Filtrar apenas resultados sem erro — ignorar bloqueios de API
+          const resultados = res.data.resultados;
+          for (const [pedidoId, status] of Object.entries(resultados)) {
+            if (!status.erro) {
+              allResults[pedidoId] = status;
+            }
+          }
         }
       } catch (e) {
         console.error('Erro ao consultar status Omie (lote):', e);
       }
     }
 
-    setOmieStatuses(allResults);
+    setOmieStatuses(prev => ({ ...prev, ...allResults }));
     setOmieStatusLoading(false);
     toast.success(`Status Omie atualizado para ${Object.keys(allResults).length} pedido(s)`);
   };
