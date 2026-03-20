@@ -254,19 +254,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
   );
 
   // Batch actions
-  // Fluxo: enviado → liberado → montagem → faturado
-  const NEXT_STATUS = { enviado: 'liberado', liberado: 'montagem', montagem: 'faturado' };
-  const STATUS_ACTION_LABEL = { liberado: 'liberado(s)', montagem: 'enviado(s) p/ montagem', faturado: 'faturado(s)' };
-
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
-    const selected = pedidos.filter(p => selectedIds.includes(p.id) && NEXT_STATUS[p.status]);
+    const selected = pedidos.filter(p => selectedIds.includes(p.id) && (p.status === 'enviado' || p.status === 'liberado'));
     let count = 0;
     let errosOmie = 0;
-    const labels = new Set();
     for (const p of selected) {
-      const novoStatus = NEXT_STATUS[p.status];
-      const updateData = { status: novoStatus };
+      const novoStatus = p.status === 'enviado' ? 'liberado' : 'faturado';
+      const updateData = {
+        status: novoStatus,
+      };
       if (novoStatus === 'liberado') {
         updateData.liberado_por = currentUser?.email;
         updateData.liberado_por_nome = currentUser?.full_name;
@@ -274,8 +271,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       }
       await base44.entities.Pedido.update(p.id, updateData);
       count++;
-      labels.add(STATUS_ACTION_LABEL[novoStatus]);
-      // Liberar no Omie — apenas na transição enviado→liberado
+      // Liberar no Omie (mover para Pedidos Liberados) — apenas na primeira liberação
       if (novoStatus === 'liberado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
         try {
           const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
@@ -286,7 +282,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         }
       }
     }
-    const label = [...labels].join(' / ');
+    const label = selected.some(p => p.status === 'liberado') ? 'faturado(s)' : 'liberado(s)';
     if (errosOmie > 0) {
       toast.warning(`${count} pedido(s) ${label}, ${errosOmie} com erro no Omie`);
     } else {
@@ -462,7 +458,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <span className="text-sm font-medium text-amber-800">{selectedIds.length} selecionado(s)</span>
           <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction}>
             {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
-            Avançar Status
+            Liberar
           </Button>
           <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction}>
             {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
