@@ -505,7 +505,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 filtered.map(p => {
                   const sc = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
                   return (
-                    <tr key={p.id} className={`border-t hover:bg-slate-50 ${selectedIds.includes(p.id) ? 'bg-amber-50' : ''}`}>
+                    <tr
+                      key={p.id}
+                      className={`border-t hover:bg-slate-50 ${selectedIds.includes(p.id) ? 'bg-amber-50' : ''}`}
+                      style={{ userSelect: 'none' }}
+                      onMouseDown={(e) => onRowMouseDown(e, p.id, selectedIds.includes(p.id))}
+                      onMouseEnter={() => onRowMouseEnter(p.id)}
+                      onMouseUp={onMouseUp}
+                    >
                       <td className="p-2">
                         <Checkbox
                           checked={selectedIds.includes(p.id)}
