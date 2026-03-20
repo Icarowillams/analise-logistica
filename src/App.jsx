@@ -65,7 +65,7 @@ const AuthenticatedApp = () => {
       ))}
       <Route path="/RelatorioRotinaSupervisores" element={<LayoutWrapper currentPageName="RelatorioRotinaSupervisores"><RelatorioRotinaSupervisores /></LayoutWrapper>} />
       <Route path="/CancelarNfOmie" element={<LayoutWrapper currentPageName="CancelarNfOmie"><CancelarNfOmie /></LayoutWrapper>} />
-      <Route path="/EnviarRotasOmie" element={<LayoutWrapper currentPageName="EnviarRotasOmie"><EnviarRotasOmie /></LayoutWrapper>} />
+      <Route path="/enviarrotasomie" element={<LayoutWrapper currentPageName="EnviarRotasOmie"><EnviarRotasOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
