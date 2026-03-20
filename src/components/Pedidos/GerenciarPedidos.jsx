@@ -167,7 +167,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     if (pedidosOmie.length === 0) return;
 
-    setOmieStatusLoading(true);
+    if (!silent) setOmieStatusLoading(true);
     const allResults = {};
 
     for (let i = 0; i < pedidosOmie.length; i += 10) {
@@ -186,6 +186,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
         }
       } catch (e) {
         console.error('Erro ao consultar status Omie (lote):', e);
+        currentBatch.forEach(p => {
+          allResults[p.id] = { erro: true, etapa_label: null };
+        });
       } finally {
         currentBatch.forEach(p => omieStatusRequestsRef.current.delete(p.id));
       }
@@ -197,19 +200,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let errorCount = 0;
 
     Object.entries(allResults).forEach(([pedidoId, result]) => {
+      updatedCache[pedidoId] = { data: result, fetchedAt: Date.now() };
+
       if (result?.erro) {
         errorCount += 1;
+        updatedStatuses[pedidoId] = result;
         return;
       }
 
       successCount += 1;
       updatedStatuses[pedidoId] = result;
-      updatedCache[pedidoId] = { data: result, fetchedAt: Date.now() };
     });
 
     writeOmieStatusCache(updatedCache);
     setOmieStatuses(prev => ({ ...prev, ...updatedStatuses }));
-    setOmieStatusLoading(false);
+    if (!silent) setOmieStatusLoading(false);
 
     if (!silent && successCount > 0) {
       toast.success(`Status Omie atualizado para ${successCount} pedido(s)`);
@@ -710,8 +715,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
                           <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
                             {analiseLabel}
                           </Badge>
-                        ) : omieStatusLoading && p.omie_enviado && !omie ? (
-                          <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
                         ) : (
                           <Badge className={`${fallbackSc.bg} ${fallbackSc.text} ${fallbackSc.border} border text-[10px]`}>
                             {p.omie_enviado ? (STATUS_LABELS[p.status] || p.status) : 'Não enviado'}
