@@ -158,7 +158,8 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
-          { title: 'Cancelar/Devolver NF', path: 'CancelarNfOmie' }
+          { title: 'Cancelar/Devolver NF', path: 'CancelarNfOmie' },
+          { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
         ]
       }
     ];
