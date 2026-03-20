@@ -185,11 +185,22 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let list = pedidos.filter(p => p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
-      if (statusFilter === 'pendente_envio') {
-        // "Pendente" no Gerenciar = pedidos ENVIADOS e NÃO LIBERADOS
-        list = list.filter(p => p.status === 'enviado');
-      } else {
-        list = list.filter(p => p.status === statusFilter);
+      const omieFilterMap = {
+        'omie_pedido_venda': 'Pedido de Venda',
+        'omie_liberados': 'Pedidos Liberados',
+        'omie_faturar': 'Faturar',
+        'omie_faturado': 'Faturado',
+        'omie_entrega': 'Entrega',
+        'omie_cancelado': 'Cancelado',
+      };
+      if (statusFilter === 'sem_omie') {
+        list = list.filter(p => !p.omie_enviado || !p.omie_codigo_pedido);
+      } else if (omieFilterMap[statusFilter]) {
+        const label = omieFilterMap[statusFilter];
+        list = list.filter(p => {
+          const omie = omieStatuses[p.id];
+          return omie && omie.etapa_label === label;
+        });
       }
     }
     if (tipoFilter !== 'todos') {
