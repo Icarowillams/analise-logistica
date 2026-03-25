@@ -141,13 +141,23 @@ export default function PreCadastros() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!formData.razao_social?.trim()) {
-      toast.error('Razão Social é obrigatória');
-      return;
-    }
-    if (!formData.cpf_cnpj?.trim()) {
-      toast.error('CPF/CNPJ é obrigatório');
-      return;
+    const requiredFields = [
+      { key: 'razao_social', label: 'Razão Social' },
+      { key: 'nome_fantasia', label: 'Nome Fantasia' },
+      { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+      { key: 'segmento_id', label: 'Segmento' },
+      { key: 'endereco', label: 'Endereço' },
+      { key: 'numero', label: 'Número' },
+      { key: 'bairro', label: 'Bairro' },
+      { key: 'cidade', label: 'Cidade' },
+      { key: 'estado', label: 'Estado' },
+      { key: 'cep', label: 'CEP' },
+    ];
+    for (const f of requiredFields) {
+      if (!formData[f.key]?.trim()) {
+        toast.error(`${f.label} é obrigatório(a)`);
+        return;
+      }
     }
 
     const docLimpo = formData.cpf_cnpj.replace(/\D/g, '');
@@ -229,8 +239,8 @@ export default function PreCadastros() {
                   <Input value={formData.razao_social} onChange={e => setFormData({ ...formData, razao_social: e.target.value })} required />
                 </div>
                 <div>
-                  <Label>Nome Fantasia</Label>
-                  <Input value={formData.nome_fantasia} onChange={e => setFormData({ ...formData, nome_fantasia: e.target.value })} />
+                  <Label>Nome Fantasia *</Label>
+                  <Input value={formData.nome_fantasia} onChange={e => setFormData({ ...formData, nome_fantasia: e.target.value })} required />
                 </div>
                 <div>
                   <Label>CPF/CNPJ *</Label>
@@ -258,7 +268,7 @@ export default function PreCadastros() {
                   <Input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Segmento</Label>
+                  <Label>Segmento *</Label>
                   <Select value={formData.segmento_id || '_none_'} onValueChange={v => setFormData({ ...formData, segmento_id: v === '_none_' ? '' : v })}>
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
@@ -282,23 +292,23 @@ export default function PreCadastros() {
                 <p className="text-sm font-medium text-slate-600 mb-3">Endereço</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <Label>Endereço</Label>
-                    <Textarea value={formData.endereco} onChange={e => setFormData({ ...formData, endereco: e.target.value })} rows={2} />
+                    <Label>Endereço *</Label>
+                    <Textarea value={formData.endereco} onChange={e => setFormData({ ...formData, endereco: e.target.value })} rows={2} required />
                   </div>
                   <div>
-                    <Label>Número</Label>
-                    <Input value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} />
+                    <Label>Número *</Label>
+                    <Input value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} required />
                   </div>
                   <div>
-                    <Label>Bairro</Label>
-                    <Input value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} />
+                    <Label>Bairro *</Label>
+                    <Input value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} required />
                   </div>
                   <div>
-                    <Label>Cidade</Label>
-                    <Input value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} />
+                    <Label>Cidade *</Label>
+                    <Input value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} required />
                   </div>
                   <div>
-                    <Label>Estado (UF)</Label>
+                    <Label>Estado (UF) *</Label>
                     <Select value={formData.estado || '_none_'} onValueChange={v => setFormData({ ...formData, estado: v === '_none_' ? '' : v })}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
@@ -310,8 +320,8 @@ export default function PreCadastros() {
                     </Select>
                   </div>
                   <div>
-                    <Label>CEP</Label>
-                    <Input value={formData.cep} onChange={e => setFormData({ ...formData, cep: formatarCEP(e.target.value) })} placeholder="00000-000" />
+                    <Label>CEP *</Label>
+                    <Input value={formData.cep} onChange={e => setFormData({ ...formData, cep: formatarCEP(e.target.value) })} placeholder="00000-000" required />
                   </div>
                 </div>
               </div>
