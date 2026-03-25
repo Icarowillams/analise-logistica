@@ -54,10 +54,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     enabled: !!tabelaPrecoId
   });
 
+  const isTroca = cenarioFiscalCodigo === 'troca';
+
   const { data: motivosTroca = [] } = useQuery({
     queryKey: ['motivosTroca'],
-    queryFn: () => base44.entities.MotivoTroca.list(),
-    enabled: tipo === 'troca'
+    queryFn: () => base44.entities.MotivoTroca.list()
   });
 
   // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
@@ -139,7 +140,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     setItensLocal(prev => {
       const idx = prev.findIndex(i => i.produto_id === produto.id);
       if (novaQtd <= 0) {
-        // Remove item
         return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
       }
       const item = {
@@ -159,6 +159,25 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
       return [...prev, item];
     });
+  };
+
+  const handleAddTrocaItem = (produto, preco, quantidade, motivoId) => {
+    const motivoObj = motivosTroca.find(m => m.id === motivoId);
+    const novoItem = {
+      produto_id: produto.id,
+      produto_codigo: produto.codigo || '',
+      produto_nome: produto.nome || '',
+      quantidade,
+      valor_unitario: preco,
+      valor_total: quantidade * preco,
+      motivo_troca_id: motivoId,
+      motivo_troca_descricao: motivoObj?.descricao || '',
+    };
+    setItensLocal(prev => [...prev, novoItem]);
+  };
+
+  const handleRemoveTrocaItem = (index) => {
+    setItensLocal(prev => prev.filter((_, i) => i !== index));
   };
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
@@ -228,7 +247,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         valor_unitario: item.valor_unitario,
         valor_total: item.valor_total
       };
-      if (tipo === 'troca' && item.motivo_troca_id) {
+      if (item.motivo_troca_id) {
         itemData.motivo_troca_id = item.motivo_troca_id;
         itemData.motivo_troca_descricao = item.motivo_troca_descricao;
       }
@@ -382,8 +401,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 tabelaPrecoId={tabelaPrecoId}
                 itensLocal={itensLocal}
                 onUpdateQuantidade={handleUpdateQuantidade}
+                onAddTrocaItem={handleAddTrocaItem}
+                onRemoveTrocaItem={handleRemoveTrocaItem}
                 motivosTroca={motivosTroca}
-                tipo={tipo}
+                isTroca={isTroca}
               />
             </CardContent>
           </Card>
