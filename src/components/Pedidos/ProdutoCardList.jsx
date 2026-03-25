@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Search, Plus, Minus, Package, Check } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, Plus, Minus, Package, Check, Trash2 } from 'lucide-react';
 
 export default function ProdutoCardList({
   produtos,
@@ -10,12 +10,13 @@ export default function ProdutoCardList({
   tabelaPrecoId,
   itensLocal,
   onUpdateQuantidade,
+  onAddTrocaItem,
+  onRemoveTrocaItem,
   motivosTroca,
-  tipo,
+  isTroca,
 }) {
   const [search, setSearch] = useState('');
 
-  // Produtos com preço na tabela do cliente
   const produtosComPreco = useMemo(() => {
     if (!tabelaPrecoId || precosAll.length === 0) return produtos;
     const idsComPreco = new Set(
@@ -32,14 +33,29 @@ export default function ProdutoCardList({
     return m;
   }, [precosAll]);
 
-  // Quantidades atuais dos itens já adicionados
   const quantidadesMap = useMemo(() => {
+    if (isTroca) return {};
     const m = {};
-    itensLocal.forEach((item, idx) => {
-      m[item.produto_id] = { quantidade: item.quantidade, index: idx };
+    itensLocal.forEach((item) => {
+      if (m[item.produto_id]) {
+        m[item.produto_id].quantidade += item.quantidade;
+      } else {
+        m[item.produto_id] = { quantidade: item.quantidade };
+      }
     });
     return m;
-  }, [itensLocal]);
+  }, [itensLocal, isTroca]);
+
+  // For troca mode: group items by produto_id
+  const itensPorProduto = useMemo(() => {
+    if (!isTroca) return {};
+    const m = {};
+    itensLocal.forEach((item, idx) => {
+      if (!m[item.produto_id]) m[item.produto_id] = [];
+      m[item.produto_id].push({ ...item, _index: idx });
+    });
+    return m;
+  }, [itensLocal, isTroca]);
 
   const filtered = useMemo(() => {
     const s = search.toLowerCase().trim();
@@ -57,7 +73,6 @@ export default function ProdutoCardList({
 
   return (
     <div className="space-y-3">
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <Input
@@ -70,12 +85,25 @@ export default function ProdutoCardList({
 
       <p className="text-xs text-slate-500">{filtered.length} produto(s) disponíveis</p>
 
-      {/* Product list */}
       <div className="space-y-2 max-h-[60vh] overflow-auto pr-1">
         {filtered.map(produto => {
           const preco = getPreco(produto.id);
-          const existing = quantidadesMap[produto.id];
-          const qty = existing?.quantidade || 0;
+
+          if (isTroca) {
+            return (
+              <TrocaProductCard
+                key={produto.id}
+                produto={produto}
+                preco={preco}
+                motivosTroca={motivosTroca}
+                itensAdicionados={itensPorProduto[produto.id] || []}
+                onAdd={(qty, motivoId) => onAddTrocaItem(produto, preco, qty, motivoId)}
+                onRemove={(idx) => onRemoveTrocaItem(idx)}
+              />
+            );
+          }
+
+          const qty = quantidadesMap[produto.id]?.quantidade || 0;
 
           return (
             <div
@@ -84,7 +112,6 @@ export default function ProdutoCardList({
                 qty > 0 ? 'bg-green-50 border-green-300' : 'bg-white border-slate-200'
               }`}
             >
-              {/* Foto */}
               <div className="w-14 h-14 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
                 {produto.imagem_url ? (
                   <img src={produto.imagem_url} alt={produto.nome} className="w-full h-full object-cover rounded-lg" />
@@ -93,7 +120,6 @@ export default function ProdutoCardList({
                 )}
               </div>
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-mono text-slate-500">{produto.codigo}</span>
@@ -101,49 +127,107 @@ export default function ProdutoCardList({
                 </div>
                 <p className="text-sm font-medium truncate leading-tight">{produto.nome}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {produto.peso > 0 && (
-                    <span className="text-[10px] text-slate-400">{produto.peso}g</span>
-                  )}
-                  <span className="text-xs font-semibold text-blue-700">
-                    R$ {preco.toFixed(2).replace('.', ',')}
-                  </span>
+                  {produto.peso > 0 && <span className="text-[10px] text-slate-400">{produto.peso}g</span>}
+                  <span className="text-xs font-semibold text-blue-700">R$ {preco.toFixed(2).replace('.', ',')}</span>
                 </div>
               </div>
 
-              {/* Quantity controls */}
               <div className="flex items-center gap-1 flex-shrink-0">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-8 w-8 rounded-full"
-                  disabled={qty <= 0}
-                  onClick={() => onUpdateQuantidade(produto, preco, Math.max(0, qty - 1))}
-                >
+                <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" disabled={qty <= 0}
+                  onClick={() => onUpdateQuantidade(produto, preco, Math.max(0, qty - 1))}>
                   <Minus className="w-3.5 h-3.5" />
                 </Button>
-                <Input
-                  type="number"
-                  min="0"
-                  value={qty || ''}
-                  placeholder="0"
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    onUpdateQuantidade(produto, preco, Math.max(0, val));
-                  }}
-                  className="w-14 h-8 text-center text-sm font-semibold px-1"
-                />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-8 w-8 rounded-full bg-amber-50 border-amber-300 hover:bg-amber-100"
-                  onClick={() => onUpdateQuantidade(produto, preco, qty + 1)}
-                >
+                <Input type="number" min="0" value={qty || ''} placeholder="0"
+                  onChange={(e) => onUpdateQuantidade(produto, preco, Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-14 h-8 text-center text-sm font-semibold px-1" />
+                <Button size="icon" variant="outline" className="h-8 w-8 rounded-full bg-amber-50 border-amber-300 hover:bg-amber-100"
+                  onClick={() => onUpdateQuantidade(produto, preco, qty + 1)}>
                   <Plus className="w-3.5 h-3.5 text-amber-700" />
                 </Button>
               </div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function TrocaProductCard({ produto, preco, motivosTroca, itensAdicionados, onAdd, onRemove }) {
+  const [motivoId, setMotivoId] = useState('');
+  const [qty, setQty] = useState(1);
+  const hasItems = itensAdicionados.length > 0;
+
+  const handleAdd = () => {
+    if (!motivoId) return;
+    onAdd(qty, motivoId);
+    setMotivoId('');
+    setQty(1);
+  };
+
+  return (
+    <div className={`rounded-lg border transition-colors ${hasItems ? 'bg-orange-50 border-orange-300' : 'bg-white border-slate-200'}`}>
+      {/* Product info row */}
+      <div className="flex items-center gap-3 p-2.5">
+        <div className="w-14 h-14 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
+          {produto.imagem_url ? (
+            <img src={produto.imagem_url} alt={produto.nome} className="w-full h-full object-cover rounded-lg" />
+          ) : (
+            <Package className="w-6 h-6 text-slate-300" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-mono text-slate-500">{produto.codigo}</span>
+            {hasItems && <Check className="w-3.5 h-3.5 text-orange-600" />}
+          </div>
+          <p className="text-sm font-medium truncate leading-tight">{produto.nome}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {produto.peso > 0 && <span className="text-[10px] text-slate-400">{produto.peso}g</span>}
+            <span className="text-xs font-semibold text-blue-700">R$ {preco.toFixed(2).replace('.', ',')}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Added troca items */}
+      {itensAdicionados.length > 0 && (
+        <div className="px-2.5 pb-1 space-y-1">
+          {itensAdicionados.map((item) => (
+            <div key={item._index} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1.5 border border-orange-200">
+              <div className="flex-1 min-w-0">
+                <span className="font-medium">Qtd: {item.quantidade}</span>
+                <span className="mx-1.5 text-slate-300">|</span>
+                <span className="text-orange-700 truncate">{item.motivo_troca_descricao || 'Sem motivo'}</span>
+              </div>
+              <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400 hover:text-red-600"
+                onClick={() => onRemove(item._index)}>
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new troca item form */}
+      <div className="px-2.5 pb-2.5 pt-1">
+        <div className="flex items-center gap-1.5">
+          <Input type="number" min="1" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-16 h-8 text-center text-xs" placeholder="Qtd" />
+          <Select value={motivoId} onValueChange={setMotivoId}>
+            <SelectTrigger className="h-8 text-xs flex-1">
+              <SelectValue placeholder="Motivo da troca..." />
+            </SelectTrigger>
+            <SelectContent>
+              {motivosTroca.map(m => (
+                <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white px-2"
+            disabled={!motivoId} onClick={handleAdd}>
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   );
