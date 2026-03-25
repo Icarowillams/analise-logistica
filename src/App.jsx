@@ -10,6 +10,7 @@ import PageNotFound from './lib/PageNotFound';
 import RelatorioRotinaSupervisores from './pages/RelatorioRotinaSupervisores';
 
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
+import PreCadastros from './pages/PreCadastros';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
       <Route path="/RelatorioRotinaSupervisores" element={<LayoutWrapper currentPageName="RelatorioRotinaSupervisores"><RelatorioRotinaSupervisores /></LayoutWrapper>} />
 
       <Route path="/enviarrotasomie" element={<LayoutWrapper currentPageName="EnviarRotasOmie"><EnviarRotasOmie /></LayoutWrapper>} />
+      <Route path="/precadastros" element={<LayoutWrapper currentPageName="PreCadastros"><PreCadastros /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
