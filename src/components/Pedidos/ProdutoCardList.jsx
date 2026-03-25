@@ -211,8 +211,18 @@ function TrocaProductCard({ produto, preco, motivosTroca, itensAdicionados, onAd
       {/* Add new troca item form */}
       <div className="px-2.5 pb-2.5 pt-1">
         <div className="flex items-center gap-1.5">
-          <Input type="number" min="1" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-16 h-8 text-center text-xs" placeholder="Qtd" />
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <Button size="icon" variant="outline" className="h-8 w-8 rounded-full"
+              disabled={qty <= 1} onClick={() => setQty(Math.max(1, qty - 1))}>
+              <Minus className="w-3 h-3" />
+            </Button>
+            <Input type="number" min="1" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-12 h-8 text-center text-xs px-0.5" />
+            <Button size="icon" variant="outline" className="h-8 w-8 rounded-full"
+              onClick={() => setQty(qty + 1)}>
+              <Plus className="w-3 h-3" />
+            </Button>
+          </div>
           <Select value={motivoId} onValueChange={setMotivoId}>
             <SelectTrigger className="h-8 text-xs flex-1">
               <SelectValue placeholder="Motivo da troca..." />
@@ -223,9 +233,9 @@ function TrocaProductCard({ produto, preco, motivosTroca, itensAdicionados, onAd
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white px-2"
+          <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white px-3"
             disabled={!motivoId} onClick={handleAdd}>
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add
           </Button>
         </div>
       </div>

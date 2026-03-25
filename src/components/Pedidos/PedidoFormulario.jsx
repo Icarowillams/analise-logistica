@@ -289,9 +289,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
-              {tipo === 'troca' ? 'Troca' : 'Venda'} - {cliente.codigo} - {cliente.nome_fantasia || cliente.razao_social}
+              {isTroca ? 'Troca' : 'Venda'} - {cliente.codigo} - {cliente.nome_fantasia || cliente.razao_social}
             </CardTitle>
-            <Badge className={tipo === 'troca' ? 'bg-orange-500' : 'bg-green-500'}>{tipo === 'troca' ? 'Troca' : 'Venda'}</Badge>
+            <Badge className={isTroca ? 'bg-orange-500' : 'bg-green-500'}>{isTroca ? 'Troca' : 'Venda'}</Badge>
           </div>
         </CardHeader>
       </Card>
