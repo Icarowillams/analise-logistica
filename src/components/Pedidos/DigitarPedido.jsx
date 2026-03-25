@@ -72,11 +72,11 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo?.includes(s);
   });
 
-  if (selectedCliente && tipoPedido) {
+  if (selectedCliente) {
     return (
       <PedidoFormulario
         cliente={selectedCliente}
-        tipo={tipoPedido}
+        tipo={tipoPedido || 'venda'}
         vendedor={vendedor}
         editingPedidoId={editingPedidoId}
         permissaoCenariosFiscais={permissaoCenariosFiscais}
@@ -86,37 +86,6 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
           onClearEdit();
         }}
       />
-    );
-  }
-
-  if (selectedCliente && !tipoPedido) {
-    return (
-      <div className="space-y-4">
-        <button onClick={() => setSelectedCliente(null)} className="text-sm text-blue-600 hover:underline">← Voltar</button>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{selectedCliente.codigo} - {selectedCliente.nome_fantasia || selectedCliente.razao_social}</CardTitle>
-            <p className="text-sm text-slate-500">{selectedCliente.cidade}{selectedCliente.bairro ? `, ${selectedCliente.bairro}` : ''}</p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm font-medium text-slate-700">Selecione o tipo de pedido:</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors" onClick={() => setTipoPedido('venda')}>
-                <CardContent className="pt-6 flex flex-col items-center gap-2">
-                  <ShoppingCart className="w-8 h-8 text-green-600" />
-                  <span className="font-semibold text-green-700">Venda</span>
-                </CardContent>
-              </Card>
-              <Card className="cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors" onClick={() => setTipoPedido('troca')}>
-                <CardContent className="pt-6 flex flex-col items-center gap-2">
-                  <ArrowLeftRight className="w-8 h-8 text-orange-600" />
-                  <span className="font-semibold text-orange-700">Troca</span>
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     );
   }
 
