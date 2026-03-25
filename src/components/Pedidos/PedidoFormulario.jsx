@@ -65,8 +65,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     enabled: tipo === 'troca'
   });
 
-  // Carrega cenários fiscais do Omie (apenas para venda com permissão)
-  const mostrarCenarioFiscal = tipo !== 'troca' && permissaoCenariosFiscais;
+  // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
+  const mostrarCenarioFiscal = !!permissaoCenariosFiscais;
 
   useEffect(() => {
     if (mostrarCenarioFiscal && cenarios.length === 0) {
@@ -404,6 +404,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                         <SelectValue placeholder="Selecione o cenário fiscal..." />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="troca">Troca (sem Omie)</SelectItem>
                         {cenarios.map(c => (
                           <SelectItem key={c.codigo} value={String(c.codigo)}>
                             {c.codigo} - {c.nome} {c.padrao ? '(Padrão)' : ''}
