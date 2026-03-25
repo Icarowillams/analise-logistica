@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProdutoCardList from './ProdutoCardList';
 
@@ -139,7 +139,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     setItensLocal(prev => {
       const idx = prev.findIndex(i => i.produto_id === produto.id);
       if (novaQtd <= 0) {
-        // Remove item
         return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
       }
       const item = {
@@ -159,6 +158,25 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
       return [...prev, item];
     });
+  };
+
+  // Para troca: adiciona sempre como novo item (permite duplicatas com motivos diferentes)
+  const handleAdicionarItemTroca = (produto, preco, quantidade, motivoId, motivoDescricao) => {
+    setItensLocal(prev => [...prev, {
+      produto_id: produto.id,
+      produto_codigo: produto.codigo || '',
+      produto_nome: produto.nome || '',
+      quantidade,
+      valor_unitario: preco,
+      valor_total: quantidade * preco,
+      motivo_troca_id: motivoId,
+      motivo_troca_descricao: motivoDescricao,
+    }]);
+    toast.success('Item adicionado!');
+  };
+
+  const removerItem = (index) => {
+    setItensLocal(prev => prev.filter((_, i) => i !== index));
   };
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
@@ -382,9 +400,33 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 tabelaPrecoId={tabelaPrecoId}
                 itensLocal={itensLocal}
                 onUpdateQuantidade={handleUpdateQuantidade}
+                onAdicionarItemTroca={handleAdicionarItemTroca}
                 motivosTroca={motivosTroca}
                 tipo={tipo}
               />
+
+              {/* Lista de itens adicionados (troca) */}
+              {tipo === 'troca' && itensLocal.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  <h4 className="text-sm font-semibold text-slate-700">Itens adicionados ({itensLocal.length})</h4>
+                  {itensLocal.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 bg-orange-50 rounded-lg border border-orange-200 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{item.produto_codigo} - {item.produto_nome}</p>
+                        <p className="text-xs text-slate-500">
+                          Qtd: {item.quantidade} | R$ {item.valor_total.toFixed(2).replace('.', ',')}
+                          {item.motivo_troca_descricao && (
+                            <span className="text-orange-600"> | {item.motivo_troca_descricao}</span>
+                          )}
+                        </p>
+                      </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 shrink-0" onClick={() => removerItem(idx)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
