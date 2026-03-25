@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Search, Trash2, Plus, Pencil, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import ProdutoCardList from './ProdutoCardList';
 
 export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar, permissaoCenariosFiscais }) {
   const queryClient = useQueryClient();
@@ -26,13 +27,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [observacoes, setObservacoes] = useState('');
 
   // Product tab fields
-  const [produtoSearch, setProdutoSearch] = useState('');
-  const [selectedProdutoId, setSelectedProdutoId] = useState('');
-  const [quantidade, setQuantidade] = useState('');
-  const [valorUnitario, setValorUnitario] = useState(0);
   const [itensLocal, setItensLocal] = useState([]);
-  const [editingItemIndex, setEditingItemIndex] = useState(null);
-  const [motivoTrocaId, setMotivoTrocaId] = useState('');
   const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
   const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
   const [cenarios, setCenarios] = useState([]);
@@ -137,97 +132,33 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [existingItems]);
 
-  // When a product is selected, find its price
-  useEffect(() => {
-    if (selectedProdutoId && tabelaPrecoId) {
-      const preco = precosAll.find(p => p.produto_id === selectedProdutoId);
-      if (preco) {
-        const val = (preco.ativacao_acao && preco.valor_acao) ? preco.valor_acao : preco.valor_unitario;
-        setValorUnitario(val || 0);
-      } else {
-        setValorUnitario(0);
-      }
-    }
-  }, [selectedProdutoId, precosAll, tabelaPrecoId]);
-
-  // Só mostrar produtos que têm preço na tabela do cliente
-  const produtosComPreco = useMemo(() => {
-    if (!tabelaPrecoId || precosAll.length === 0) return produtos;
-    const idsComPreco = new Set(precosAll.filter(p => p.valor_unitario > 0 || (p.ativacao_acao && p.valor_acao > 0)).map(p => p.produto_id));
-    return produtos.filter(p => idsComPreco.has(p.id));
-  }, [produtos, precosAll, tabelaPrecoId]);
-
-  const produtosFiltrados = useMemo(() => {
-    const s = produtoSearch.toLowerCase();
-    if (!s) return produtosComPreco.slice(0, 50);
-    return produtosComPreco.filter(p => 
-      p.nome?.toLowerCase().includes(s) || p.codigo?.includes(s)
-    ).slice(0, 50);
-  }, [produtosComPreco, produtoSearch]);
-
-  // Auto-select product when search matches a code exactly (only if has price)
-  useEffect(() => {
-    if (produtoSearch.trim()) {
-      const match = produtosComPreco.find(p => p.codigo === produtoSearch.trim());
-      if (match) {
-        setSelectedProdutoId(match.id);
-      }
-    }
-  }, [produtoSearch, produtosComPreco]);
-
-  const selectedProduto = produtos.find(p => p.id === selectedProdutoId);
-  const valorTotal = (parseFloat(quantidade) || 0) * valorUnitario;
-
   const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
 
-  const adicionarItem = () => {
-    if (!selectedProdutoId || !quantidade || parseFloat(quantidade) <= 0) {
-      toast.error('Selecione um produto e informe a quantidade');
-      return;
-    }
-
-    const produto = produtos.find(p => p.id === selectedProdutoId);
-    const motivoObj = motivosTroca.find(m => m.id === motivoTrocaId);
-    const novoItem = {
-      produto_id: selectedProdutoId,
-      produto_codigo: produto?.codigo || '',
-      produto_nome: produto?.nome || '',
-      quantidade: parseFloat(quantidade),
-      valor_unitario: valorUnitario,
-      valor_total: valorTotal,
-      motivo_troca_id: tipo === 'troca' ? motivoTrocaId : '',
-      motivo_troca_descricao: tipo === 'troca' ? (motivoObj?.descricao || '') : ''
-    };
-
-    if (editingItemIndex !== null) {
-      const updated = [...itensLocal];
-      updated[editingItemIndex] = { ...updated[editingItemIndex], ...novoItem };
-      setItensLocal(updated);
-      setEditingItemIndex(null);
-    } else {
-      setItensLocal(prev => [...prev, novoItem]);
-    }
-
-    setSelectedProdutoId('');
-    setProdutoSearch('');
-    setQuantidade('');
-    setValorUnitario(0);
-    setMotivoTrocaId('');
-    toast.success('Item adicionado!');
-  };
-
-  const removerItem = (index) => {
-    setItensLocal(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const editarItem = (index) => {
-    const item = itensLocal[index];
-    setSelectedProdutoId(item.produto_id);
-    setQuantidade(String(item.quantidade));
-    setValorUnitario(item.valor_unitario);
-    setMotivoTrocaId(item.motivo_troca_id || '');
-    setEditingItemIndex(index);
+  const handleUpdateQuantidade = (produto, preco, novaQtd) => {
+    setItensLocal(prev => {
+      const idx = prev.findIndex(i => i.produto_id === produto.id);
+      if (novaQtd <= 0) {
+        // Remove item
+        return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
+      }
+      const item = {
+        produto_id: produto.id,
+        produto_codigo: produto.codigo || '',
+        produto_nome: produto.nome || '',
+        quantidade: novaQtd,
+        valor_unitario: preco,
+        valor_total: novaQtd * preco,
+        motivo_troca_id: '',
+        motivo_troca_descricao: '',
+      };
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], ...item };
+        return updated;
+      }
+      return [...prev, item];
+    });
   };
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
@@ -431,91 +362,29 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         <TabsContent value="produto">
           <Card>
             <CardContent className="pt-4 space-y-4">
-              <div>
-                <Label>Produto *</Label>
-                <div className="flex gap-2">
-                  <div className="relative w-36 shrink-0">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      placeholder="Cód..."
-                      value={produtoSearch}
-                      onChange={(e) => setProdutoSearch(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Select value={selectedProdutoId} onValueChange={(val) => { setSelectedProdutoId(val); const p = produtos.find(pr => pr.id === val); if (p) setProdutoSearch(p.codigo || ''); }}>
-                      <SelectTrigger><SelectValue placeholder="Selecione o produto..." /></SelectTrigger>
-                      <SelectContent>
-                        {produtosFiltrados.map(p => (
-                          <SelectItem key={p.id} value={p.id}>{p.codigo} - {p.nome}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <Label>Quantidade *</Label>
-                <Input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} placeholder="0" />
-              </div>
-              {tipo === 'troca' && (
-                <div>
-                  <Label>Motivo da Troca</Label>
-                  <Select value={motivoTrocaId} onValueChange={setMotivoTrocaId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione o motivo..." /></SelectTrigger>
-                    <SelectContent>
-                      {motivosTroca.map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <Card className="bg-blue-50 border-blue-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-blue-600">Valor Unitário</p>
-                    <p className="text-lg font-bold text-blue-800">R$ {valorUnitario.toFixed(2)}</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-green-50 border-green-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-green-600">Valor Total</p>
-                    <p className="text-lg font-bold text-green-800">R$ {valorTotal.toFixed(2)}</p>
-                  </CardContent>
-                </Card>
-              </div>
-              <Button onClick={adicionarItem} className="w-full bg-gradient-to-r from-amber-500 to-amber-600" disabled={!selectedProdutoId || !quantidade}>
-                <Plus className="w-4 h-4 mr-2" />
-                {editingItemIndex !== null ? 'Atualizar Item' : 'Adicionar Item'}
-              </Button>
-
-              {/* Items added */}
+              {/* Resumo do pedido */}
               {itensLocal.length > 0 && (
-                <div className="space-y-2 mt-4">
-                  <h4 className="text-sm font-semibold text-slate-700">Itens adicionados ({itensLocal.length})</h4>
-                  {itensLocal.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border text-sm">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{item.produto_codigo} - {item.produto_nome}</p>
-                        <p className="text-xs text-slate-500">
-                          Qtd: {item.quantidade} | Unit: R$ {item.valor_unitario.toFixed(2)} | Total: R$ {item.valor_total.toFixed(2)}
-                          {item.motivo_troca_descricao ? ` | Motivo: ${item.motivo_troca_descricao}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex gap-1 ml-2">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => editarItem(idx)}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => removerItem(idx)}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="text-sm">
+                    <span className="font-semibold text-green-800">{itensLocal.length} item(ns)</span>
+                    <span className="text-green-600 mx-2">•</span>
+                    <span className="text-green-600">{itensLocal.reduce((s, i) => s + i.quantidade, 0)} unid.</span>
+                  </div>
+                  <div className="text-lg font-bold text-green-800">
+                    R$ {totalPedido.toFixed(2).replace('.', ',')}
+                  </div>
                 </div>
               )}
+
+              <ProdutoCardList
+                produtos={produtos}
+                precosAll={precosAll}
+                tabelaPrecoId={tabelaPrecoId}
+                itensLocal={itensLocal}
+                onUpdateQuantidade={handleUpdateQuantidade}
+                motivosTroca={motivosTroca}
+                tipo={tipo}
+              />
             </CardContent>
           </Card>
         </TabsContent>
