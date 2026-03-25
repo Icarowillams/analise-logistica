@@ -42,7 +42,7 @@ export default function PreCadastros() {
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes-precadastro'],
-    queryFn: () => base44.entities.Cliente.filter({ status: 'inativo' })
+    queryFn: () => base44.entities.Cliente.filter({ pre_cadastro: true })
   });
 
   // Detect current user and auto-fill vendedor
@@ -162,6 +162,7 @@ export default function PreCadastros() {
 
     let dataToSave = { ...formData };
     dataToSave.status = 'inativo'; // Always inativo
+    dataToSave.pre_cadastro = true; // Mark as pre-cadastro
 
     // Normalize
     if (dataToSave.cpf_cnpj) dataToSave.cpf_cnpj = dataToSave.cpf_cnpj.replace(/\D/g, '');
