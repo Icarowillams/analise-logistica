@@ -1,9 +1,27 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         const payload = await req.json();
+
+        // === Ação: atualizar_status_pedido_troca (chamada pelo app logístico) ===
+        if (payload.acao === 'atualizar_status_pedido_troca') {
+            const { pedido_id, novo_status } = payload;
+            if (!pedido_id || !novo_status) {
+                return Response.json({ error: 'pedido_id e novo_status são obrigatórios' }, { status: 400 });
+            }
+            const statusValidos = ['liberado', 'montagem', 'faturado'];
+            if (!statusValidos.includes(novo_status)) {
+                return Response.json({ error: `Status inválido: ${novo_status}. Valores aceitos: ${statusValidos.join(', ')}` }, { status: 400 });
+            }
+            const updateData = { status: novo_status };
+            if (payload.numero_carga) updateData.numero_carga = payload.numero_carga;
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+            return Response.json({ success: true, pedido_id, novo_status });
+        }
+
+        // === Fluxo original: importar dados do Gestor Visita ===
         const { app_origem_id, visitas = [], estoques = [], trocas = [] } = payload;
 
         if (!app_origem_id) {

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, Filter, RefreshCw, DollarSign, Eye, List, X
+  Loader2, Filter, RefreshCw, DollarSign, Eye, List, X, Truck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import CancelarPedidoModal from './CancelarPedidoModal';
@@ -117,6 +117,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [omieStatuses, setOmieStatuses] = useState({});
   const [omieStatusLoading, setOmieStatusLoading] = useState(false);
   const omieStatusRequestsRef = useRef(new Set());
+  const [logisticoLoading, setLogisticoLoading] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -242,6 +243,32 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     if (!silent && successCount === 0 && errorCount > 0) {
       toast.warning('O Omie limitou a consulta repetida; mantive os últimos status salvos.');
+    }
+  };
+
+  // Sincronizar status logístico das trocas
+  const handleSincronizarLogistico = async () => {
+    const trocasAtivas = pedidos.filter(p => p.tipo === 'troca' && !['cancelado', 'faturado'].includes(p.status));
+    if (trocasAtivas.length === 0) {
+      toast.info('Nenhum pedido de troca ativo para sincronizar');
+      return;
+    }
+    setLogisticoLoading(true);
+    try {
+      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {
+        pedido_ids: trocasAtivas.map(p => p.id)
+      });
+      const data = res.data;
+      if (data.success) {
+        toast.success(`${data.total_atualizados} troca(s) atualizada(s)`);
+        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+      } else {
+        toast.error(data.error || 'Erro ao sincronizar');
+      }
+    } catch (e) {
+      toast.error('Erro ao sincronizar com logístico');
+    } finally {
+      setLogisticoLoading(false);
     }
   };
 
@@ -585,6 +612,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
         >
           <RefreshCw className="w-3 h-3" />
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={handleSincronizarLogistico}
+          disabled={logisticoLoading}
+        >
+          {logisticoLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Truck className="w-3 h-3 mr-1" />}
+          Sinc. Logístico
+        </Button>
         {omieStatusLoading && (
           <span className="text-[10px] text-amber-600 flex items-center gap-1">
             <Loader2 className="w-3 h-3 animate-spin" /> Consultando Omie...
@@ -693,6 +730,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 <ThSort label="Valor" field="valor_total" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Prev. Entrega" field="data_previsao_entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Nº Carga" field="numero_carga" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Status Logístico</th>
                 <ThSort label="Liberado por" field="liberado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Dt. Liberação" field="data_liberacao" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Cancelado por" field="cancelado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -705,7 +743,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={24} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={25} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(p => {
                   const omie = omieStatuses[p.id];
@@ -757,6 +795,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 text-right font-medium whitespace-nowrap">{formatCurrency(p.valor_total)}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_previsao_entrega)}</td>
                       <td className="p-2">{p.numero_carga || '-'}</td>
+                      <td className="p-2">
+                        {p.tipo === 'troca' ? (
+                          p.status === 'faturado' ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-300 border text-[10px]">
+                              Faturado{p.numero_carga ? ` - Carga #${p.numero_carga}` : ''}
+                            </Badge>
+                          ) : p.status === 'montagem' ? (
+                            <Badge className="bg-blue-100 text-blue-800 border-blue-300 border text-[10px]">
+                              Em Montagem{p.numero_carga ? ` - Carga #${p.numero_carga}` : ''}
+                            </Badge>
+                          ) : p.status === 'liberado' ? (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 border text-[10px]">
+                              Aguardando Carga
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
                       <td className="p-2">{p.liberado_por_nome || '-'}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_liberacao)}</td>
                       <td className="p-2">{p.cancelado_por_nome || '-'}</td>
