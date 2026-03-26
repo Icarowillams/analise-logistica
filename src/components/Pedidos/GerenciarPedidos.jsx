@@ -248,9 +248,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Sincronizar status logístico das trocas
   const handleSincronizarLogistico = async () => {
+    const trocasAtivas = pedidos.filter(p => p.tipo === 'troca' && !['cancelado', 'faturado'].includes(p.status));
+    if (trocasAtivas.length === 0) {
+      toast.info('Nenhum pedido de troca ativo para sincronizar');
+      return;
+    }
     setLogisticoLoading(true);
     try {
-      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
+      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {
+        pedido_ids: trocasAtivas.map(p => p.id)
+      });
       const data = res.data;
       if (data.success) {
         toast.success(`${data.total_atualizados} troca(s) atualizada(s)`);

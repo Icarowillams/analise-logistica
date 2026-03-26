@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,49 +11,15 @@ import {
   Package,
   ArrowLeftRight,
   TrendingUp,
-  Award,
-  RefreshCw,
-  Loader2
+  Award
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from 'sonner';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'];
 
 export default function Dashboard() {
-  const [sincLoading, setSincLoading] = useState(false);
-
-  const handleSincronizarTudo = async () => {
-    setSincLoading(true);
-    try {
-      const [resLogistico, resOmie] = await Promise.allSettled([
-        base44.functions.invoke('sincronizarStatusTrocaLogistico', {}),
-        base44.functions.invoke('sincronizarStatusPedidosOmie', {}),
-      ]);
-
-      const msgs = [];
-      if (resLogistico.status === 'fulfilled' && resLogistico.value.data?.success) {
-        msgs.push(`Logístico: ${resLogistico.value.data.total_atualizados} troca(s)`);
-      }
-      if (resOmie.status === 'fulfilled' && (resOmie.value.data?.success || resOmie.value.data?.sucesso)) {
-        msgs.push('Omie: sincronizado');
-      }
-
-      if (msgs.length > 0) {
-        toast.success(msgs.join(' • '));
-      } else {
-        toast.warning('Nenhuma atualização encontrada');
-      }
-    } catch (e) {
-      toast.error('Erro ao sincronizar');
-    } finally {
-      setSincLoading(false);
-    }
-  };
-
   const { data: vendas = [], isLoading: loadingVendas } = useQuery({
     queryKey: ['vendas'],
     queryFn: () => base44.entities.Venda.list('-data', 1000)
@@ -153,18 +119,6 @@ export default function Dashboard() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
           <p className="text-xs sm:text-sm text-slate-500">Visão geral do desempenho comercial</p>
-        </div>
-        <div className="ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={handleSincronizarTudo}
-            disabled={sincLoading}
-          >
-            {sincLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
-            Atualizar Pedidos
-          </Button>
         </div>
       </div>
 
