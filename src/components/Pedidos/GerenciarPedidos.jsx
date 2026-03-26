@@ -167,7 +167,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const now = Date.now();
 
     const pedidosOmie = (pedidosList || [])
-    .filter(p => p.omie_enviado && p.omie_codigo_pedido)
+    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
     .filter(p => {
         if (omieStatusRequestsRef.current.has(p.id)) return false;
         if (force) return true;
@@ -397,7 +397,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const pedidosVisiveisParaStatus = useMemo(() => {
     return filtered
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido)
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
       .slice(0, OMIE_STATUS_AUTO_LIMIT);
   }, [filtered]);
 
@@ -766,7 +766,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
                       <td className="p-2 capitalize">{p.tipo || '-'}</td>
                       <td className="p-2">
-                        {displayLabel ? (
+                        {p.tipo === 'troca' ? (
+                          (() => {
+                            const trocaLabel = STATUS_LABELS[p.status] || p.status;
+                            const trocaColors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+                            return (
+                              <Badge className={`${trocaColors.bg} ${trocaColors.text} ${trocaColors.border} border text-[10px]`}>
+                                {trocaLabel}
+                              </Badge>
+                            );
+                          })()
+                        ) : displayLabel ? (
                           <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
                             {displayLabel}
                           </Badge>
