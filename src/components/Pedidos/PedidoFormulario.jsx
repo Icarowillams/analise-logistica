@@ -192,8 +192,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     const planoObj = planosPagamento.find(p => p.id === planoPagamentoId);
     const tabelaObj = tabelasPreco.find(t => t.id === tabelaPrecoId);
 
+    const tipoFinal = isTroca ? 'troca' : tipo;
+
     const pedidoData = {
-      tipo,
+      tipo: tipoFinal,
       cliente_id: cliente.id,
       cliente_codigo: cliente.codigo || '',
       cliente_nome: cliente.razao_social || '',
@@ -211,7 +213,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       plano_pagamento_nome: planoObj?.nome || '',
       tabela_preco_id: tabelaPrecoId,
       tabela_preco_nome: tabelaObj?.nome || '',
-      modelo_nota: tipo === 'troca' ? 'd1' : modeloNota,
+      modelo_nota: tipoFinal === 'troca' ? 'd1' : modeloNota,
       cenario_fiscal_codigo: cenarioFiscalCodigo ? Number(cenarioFiscalCodigo) : null,
       cenario_fiscal_nome: cenarioFiscalNome || null,
       data_previsao_entrega: dataPrevisaoEntrega,
