@@ -13,52 +13,17 @@ import {
   Loader2, Filter, RefreshCw, DollarSign, Eye, List, X, Truck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import CancelarPedidoModal from './CancelarPedidoModal';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoAgrupado from './PedidoAgrupado';
 import PedidoPdf from './PedidoPdf';
 import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
+import useColumnOrder from './useColumnOrder';
+import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
 
-const STATUS_COLORS = {
-  pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
-  enviado: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', dot: 'bg-red-500' },
-  liberado: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', dot: 'bg-green-500' },
-  montagem: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', dot: 'bg-blue-500' },
-  faturado: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-500' },
-  cancelado: { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400', dot: 'bg-gray-700' },
-};
 
-const STATUS_LABELS = {
-  pendente: 'Pendente',
-  enviado: 'Pendente',
-  liberado: 'Liberado',
-  montagem: 'Montagem',
-  faturado: 'Faturado',
-  cancelado: 'Cancelado',
-};
-
-// Mapeamento de etapa Omie -> label da Análise Comercial
-const OMIE_TO_ANALISE = {
-  'Pedido de Venda': 'Pendente',
-  'Pedidos Liberados': 'Liberados',
-  'Faturar': 'Montagem',
-  'Faturado': 'Faturado',
-  'Entrega': 'Faturado',
-  'Cancelado': 'Cancelado',
-  'Excluído no Omie': 'Cancelado',
-};
-
-// Cores para status da Análise Comercial
-const ANALISE_STATUS_COLORS = {
-  'Pendente': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
-  'Liberados': { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-  'Montagem': { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
-  'Faturado': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-  'Cancelado': { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
-  'Omie Bloqueado': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' },
-  'Falha na Consulta': { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
-};
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
 const OMIE_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -119,6 +84,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const omieStatusRequestsRef = useRef(new Set());
   const [logisticoLoading, setLogisticoLoading] = useState(false);
 
+  const { columns, reorder, resetOrder } = useColumnOrder();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -532,15 +498,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
   };
 
-  const formatDate = (d) => {
-    if (!d) return '-';
-    return new Date(d).toLocaleDateString('pt-BR');
-  };
 
-  const formatCurrency = (v) => {
-    if (v == null) return '-';
-    return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
-  };
 
   // Show agrupado view
   if (showAgrupado) {
@@ -700,130 +658,89 @@ export default function GerenciarPedidos({ onEditPedido }) {
       ) : (
         <div className="border rounded-lg overflow-auto bg-white" style={{ maxHeight: '75vh' }}>
           <table className="w-full text-xs">
-            <thead className="bg-slate-100 sticky top-0">
-              <tr>
-                <th className="p-2 w-8">
-                  <Checkbox
-                    checked={filtered.length > 0 && selectedIds.length === filtered.length}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </th>
-                <ThSort label="Nº" field="numero_pedido" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Tipo" field="tipo" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Status" field="status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Cliente" field="cliente_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Fantasia" field="cliente_nome_fantasia" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="CPF/CNPJ" field="cliente_cpf_cnpj" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Cidade" field="cliente_cidade" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Vendedor" field="vendedor_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Plano Pgto" field="plano_pagamento_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Tab. Preço" field="tabela_preco_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Cenário Fiscal" field="cenario_fiscal_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Itens" field="total_itens" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Valor" field="valor_total" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Prev. Entrega" field="data_previsao_entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Nº Carga" field="numero_carga" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-
-                <ThSort label="Liberado por" field="liberado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Dt. Liberação" field="data_liberacao" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Cancelado por" field="cancelado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Dt. Cancelamento" field="data_cancelamento" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Motivo Cancel." field="motivo_cancelamento" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Dt. Envio" field="data_envio" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <ThSort label="Dt. Criação" field="created_date" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
-              </tr>
-            </thead>
+            <DragDropContext onDragEnd={(result) => {
+              if (!result.destination) return;
+              reorder(result.source.index, result.destination.index);
+            }}>
+              <Droppable droppableId="columns" direction="horizontal">
+                {(droppableProvided) => (
+                  <thead className="bg-slate-100 sticky top-0">
+                    <tr ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                      <th className="p-2 w-8">
+                        <Checkbox
+                          checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
+                      {columns.map((col, index) => (
+                        <Draggable key={col.id} draggableId={col.id} index={index}>
+                          {(provided, snapshot) => (
+                            <th
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={`p-2 text-left font-medium text-slate-600 whitespace-nowrap cursor-grab select-none hover:text-slate-900 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
+                              onClick={() => { if (!snapshot.isDragging) toggleSort(col.field); }}
+                              style={provided.draggableProps.style}
+                            >
+                              {col.label}
+                              {sortField === col.field && (
+                                sortDir === 'asc'
+                                  ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
+                                  : <ChevronDown className="w-3 h-3 inline ml-0.5" />
+                              )}
+                            </th>
+                          )}
+                        </Draggable>
+                      ))}
+                      {droppableProvided.placeholder}
+                      <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
+                    </tr>
+                  </thead>
+                )}
+              </Droppable>
+            </DragDropContext>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={25} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={columns.length + 2} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
-                filtered.map(p => {
-                  const omie = omieStatuses[p.id];
-                  const omieEtapaLabel = omie?.erro ? null : omie?.etapa_label;
-                  const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
-                  const displayLabel = omie?.api_bloqueada
-                    ? 'Omie Bloqueado'
-                    : omie?.erro
-                      ? 'Falha na Consulta'
-                      : analiseLabel;
-                  const analiseColors = displayLabel ? (ANALISE_STATUS_COLORS[displayLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
-                  return (
-                    <tr
-                      key={p.id}
-                      className={`border-t hover:bg-slate-50 ${selectedIds.includes(p.id) ? 'bg-amber-50' : ''}`}
-                      style={{ userSelect: 'none' }}
-                      onMouseDown={(e) => onRowMouseDown(e, p.id, selectedIds.includes(p.id))}
-                      onMouseEnter={() => onRowMouseEnter(p.id)}
-                      onMouseUp={onMouseUp}
-                    >
-                      <td className="p-2">
-                        <Checkbox
-                          checked={selectedIds.includes(p.id)}
-                          onCheckedChange={() => toggleSelect(p.id)}
-                        />
+                filtered.map(p => (
+                  <tr
+                    key={p.id}
+                    className={`border-t hover:bg-slate-50 ${selectedIds.includes(p.id) ? 'bg-amber-50' : ''}`}
+                    style={{ userSelect: 'none' }}
+                    onMouseDown={(e) => onRowMouseDown(e, p.id, selectedIds.includes(p.id))}
+                    onMouseEnter={() => onRowMouseEnter(p.id)}
+                    onMouseUp={onMouseUp}
+                  >
+                    <td className="p-2">
+                      <Checkbox
+                        checked={selectedIds.includes(p.id)}
+                        onCheckedChange={() => toggleSelect(p.id)}
+                      />
+                    </td>
+                    {columns.map(col => (
+                      <td key={col.id} className="p-2">
+                        <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
                       </td>
-                      <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
-                      <td className="p-2 capitalize">{p.tipo || '-'}</td>
-                      <td className="p-2">
-                        {p.tipo === 'troca' ? (
-                          (() => {
-                            const trocaLabel = STATUS_LABELS[p.status] || p.status;
-                            const trocaColors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
-                            return (
-                              <Badge className={`${trocaColors.bg} ${trocaColors.text} ${trocaColors.border} border text-[10px]`}>
-                                {trocaLabel}
-                              </Badge>
-                            );
-                          })()
-                        ) : displayLabel ? (
-                          <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
-                            {displayLabel}
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-[10px]">
-                            {p.omie_enviado && omieStatusRequestsRef.current.has(p.id) ? 'Consultando Omie...' : 'Aguardando Omie'}
-                          </Badge>
+                    ))}
+                    <td className="p-2">
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
+                          <Eye className="w-3 h-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
+                          <DollarSign className="w-3 h-3" />
+                        </Button>
+                        {p.status !== 'cancelado' && p.status !== 'faturado' && p.status !== 'montagem' && (
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
+                            <XCircle className="w-3 h-3" />
+                          </Button>
                         )}
-                      </td>
-                      <td className="p-2 max-w-[150px] truncate" title={p.cliente_nome}>{p.cliente_nome || '-'}</td>
-                      <td className="p-2 max-w-[120px] truncate" title={p.cliente_nome_fantasia}>{p.cliente_nome_fantasia || '-'}</td>
-                      <td className="p-2 whitespace-nowrap">{p.cliente_cpf_cnpj || '-'}</td>
-                      <td className="p-2">{p.cliente_cidade || '-'}</td>
-                      <td className="p-2">{p.vendedor_nome || '-'}</td>
-                      <td className="p-2 max-w-[100px] truncate" title={p.plano_pagamento_nome}>{p.plano_pagamento_nome || '-'}</td>
-                      <td className="p-2 max-w-[100px] truncate" title={p.tabela_preco_nome}>{p.tabela_preco_nome || '-'}</td>
-                      <td className="p-2 max-w-[100px] truncate" title={p.cenario_fiscal_nome}>{p.cenario_fiscal_nome || '-'}</td>
-                      <td className="p-2 text-center">{p.total_itens || 0}</td>
-                      <td className="p-2 text-right font-medium whitespace-nowrap">{formatCurrency(p.valor_total)}</td>
-                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_previsao_entrega)}</td>
-                      <td className="p-2">{p.numero_carga || '-'}</td>
-
-                      <td className="p-2">{p.liberado_por_nome || '-'}</td>
-                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_liberacao)}</td>
-                      <td className="p-2">{p.cancelado_por_nome || '-'}</td>
-                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_cancelamento)}</td>
-                      <td className="p-2 max-w-[120px] truncate" title={p.motivo_cancelamento}>{p.motivo_cancelamento || '-'}</td>
-                      <td className="p-2 whitespace-nowrap">{formatDate(p.data_envio)}</td>
-                      <td className="p-2 whitespace-nowrap">{formatDate(p.created_date)}</td>
-                      <td className="p-2">
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
-                            <Eye className="w-3 h-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
-                            <DollarSign className="w-3 h-3" />
-                          </Button>
-                          {p.status !== 'cancelado' && p.status !== 'faturado' && p.status !== 'montagem' && (
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
-                              <XCircle className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -876,21 +793,5 @@ export default function GerenciarPedidos({ onEditPedido }) {
         ]}
       />
     </div>
-  );
-}
-
-function ThSort({ label, field, sortField, sortDir, onSort }) {
-  return (
-    <th
-      className="p-2 text-left font-medium text-slate-600 whitespace-nowrap cursor-pointer hover:text-slate-900 select-none"
-      onClick={() => onSort(field)}
-    >
-      {label}
-      {sortField === field && (
-        sortDir === 'asc'
-          ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
-          : <ChevronDown className="w-3 h-3 inline ml-0.5" />
-      )}
-    </th>
   );
 }
