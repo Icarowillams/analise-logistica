@@ -1,5 +1,5 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,15 +11,58 @@ import {
   Package,
   ArrowLeftRight,
   TrendingUp,
-  Award
+  Award,
+  Truck,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'];
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
+  const [logisticoLoading, setLogisticoLoading] = useState(false);
+  const [omieLoading, setOmieLoading] = useState(false);
+
+  const handleSincronizarLogistico = async () => {
+    setLogisticoLoading(true);
+    try {
+      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
+      const data = res.data;
+      if (data.success) {
+        toast.success(`${data.total_atualizados} troca(s) atualizada(s)`);
+      } else {
+        toast.error(data.error || 'Erro ao sincronizar');
+      }
+    } catch (e) {
+      toast.error('Erro ao sincronizar com logístico');
+    } finally {
+      setLogisticoLoading(false);
+    }
+  };
+
+  const handleSincronizarOmie = async () => {
+    setOmieLoading(true);
+    try {
+      const res = await base44.functions.invoke('sincronizarStatusPedidosOmie', {});
+      const data = res.data;
+      if (data.success || data.sucesso) {
+        toast.success(data.mensagem || `Pedidos Omie sincronizados!`);
+      } else {
+        toast.error(data.error || data.erro || 'Erro ao sincronizar com Omie');
+      }
+    } catch (e) {
+      toast.error('Erro ao sincronizar com Omie');
+    } finally {
+      setOmieLoading(false);
+    }
+  };
+
   const { data: vendas = [], isLoading: loadingVendas } = useQuery({
     queryKey: ['vendas'],
     queryFn: () => base44.entities.Venda.list('-data', 1000)
@@ -119,6 +162,28 @@ export default function Dashboard() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
           <p className="text-xs sm:text-sm text-slate-500">Visão geral do desempenho comercial</p>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleSincronizarLogistico}
+            disabled={logisticoLoading}
+          >
+            {logisticoLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Truck className="w-3 h-3 mr-1" />}
+            Sinc. Logístico
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleSincronizarOmie}
+            disabled={omieLoading}
+          >
+            {omieLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+            Sinc. Omie
+          </Button>
         </div>
       </div>
 
