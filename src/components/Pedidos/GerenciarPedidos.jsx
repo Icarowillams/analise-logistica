@@ -723,7 +723,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 <ThSort label="Valor" field="valor_total" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Prev. Entrega" field="data_previsao_entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Nº Carga" field="numero_carga" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Status Logístico</th>
+
                 <ThSort label="Liberado por" field="liberado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Dt. Liberação" field="data_liberacao" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <ThSort label="Cancelado por" field="cancelado_por_nome" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -798,27 +798,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                       <td className="p-2 text-right font-medium whitespace-nowrap">{formatCurrency(p.valor_total)}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_previsao_entrega)}</td>
                       <td className="p-2">{p.numero_carga || '-'}</td>
-                      <td className="p-2">
-                        {p.tipo === 'troca' ? (
-                          p.status === 'faturado' ? (
-                            <Badge className="bg-green-100 text-green-800 border-green-300 border text-[10px]">
-                              Faturado{p.numero_carga ? ` - Carga #${p.numero_carga}` : ''}
-                            </Badge>
-                          ) : p.status === 'montagem' ? (
-                            <Badge className="bg-blue-100 text-blue-800 border-blue-300 border text-[10px]">
-                              Em Montagem{p.numero_carga ? ` - Carga #${p.numero_carga}` : ''}
-                            </Badge>
-                          ) : p.status === 'liberado' ? (
-                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 border text-[10px]">
-                              Aguardando Carga
-                            </Badge>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
+
                       <td className="p-2">{p.liberado_por_nome || '-'}</td>
                       <td className="p-2 whitespace-nowrap">{formatDate(p.data_liberacao)}</td>
                       <td className="p-2">{p.cancelado_por_nome || '-'}</td>
