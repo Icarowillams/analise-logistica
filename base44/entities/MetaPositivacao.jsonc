@@ -1,0 +1,35 @@
+{
+  "name": "MetaPositivacao",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "periodo": {
+      "type": "string",
+      "description": "Per\u00edodo no formato YYYY-MM"
+    },
+    "meta_novos_clientes": {
+      "type": "number",
+      "description": "Meta de novos clientes"
+    },
+    "clientes_conquistados": {
+      "type": "number",
+      "default": 0
+    },
+    "taxa_conversao": {
+      "type": "number",
+      "default": 0,
+      "description": "Taxa de convers\u00e3o em %"
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "periodo",
+    "meta_novos_clientes"
+  ]
+}

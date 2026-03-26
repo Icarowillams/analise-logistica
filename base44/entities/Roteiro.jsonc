@@ -1,0 +1,82 @@
+{
+  "name": "Roteiro",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do funcion\u00e1rio respons\u00e1vel pelo roteiro"
+    },
+    "vendedor_nome": {
+      "type": "string",
+      "description": "Nome do funcion\u00e1rio"
+    },
+    "dia_semana": {
+      "type": "string",
+      "enum": [
+        "segunda-feira",
+        "terca-feira",
+        "quarta-feira",
+        "quinta-feira",
+        "sexta-feira",
+        "sabado",
+        "domingo"
+      ],
+      "description": "Dia da semana do roteiro"
+    },
+    "clientes_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lista de IDs dos clientes na ordem de visita"
+    },
+    "clientes_detalhes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cliente_id": {
+            "type": "string"
+          },
+          "cliente_nome": {
+            "type": "string"
+          },
+          "nome_fantasia": {
+            "type": "string"
+          },
+          "cliente_codigo": {
+            "type": "string"
+          },
+          "cliente_cidade": {
+            "type": "string"
+          },
+          "ordem": {
+            "type": "number"
+          }
+        }
+      },
+      "default": [],
+      "description": "Detalhes dos clientes no roteiro"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planejado",
+        "ativo",
+        "pausado",
+        "concluido"
+      ],
+      "default": "planejado",
+      "description": "Status do roteiro"
+    },
+    "observacoes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es sobre o roteiro"
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "dia_semana"
+  ]
+}

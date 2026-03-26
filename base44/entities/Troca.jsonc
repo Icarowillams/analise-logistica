@@ -1,0 +1,71 @@
+{
+  "name": "Troca",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "string",
+      "format": "date",
+      "description": "Data da troca"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do cliente"
+    },
+    "cliente_nome": {
+      "type": "string",
+      "description": "Nome do cliente"
+    },
+    "produto_original_id": {
+      "type": "string",
+      "description": "ID do produto original"
+    },
+    "produto_original_nome": {
+      "type": "string",
+      "description": "Nome do produto original"
+    },
+    "produto_novo_id": {
+      "type": "string",
+      "description": "ID do produto novo"
+    },
+    "produto_novo_nome": {
+      "type": "string",
+      "description": "Nome do produto novo"
+    },
+    "motivo_id": {
+      "type": "string",
+      "description": "ID do motivo da troca"
+    },
+    "motivo_descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do motivo"
+    },
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "vendedor_nome": {
+      "type": "string",
+      "description": "Nome do vendedor"
+    },
+    "venda_original_id": {
+      "type": "string",
+      "description": "ID da venda original (se vinculada)"
+    },
+    "quantidade": {
+      "type": "number",
+      "default": 1
+    },
+    "valor_unitario": {
+      "type": "number",
+      "default": 0,
+      "description": "Valor unit\u00e1rio do produto no momento da troca"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "produto_original_id"
+  ]
+}

@@ -1,0 +1,202 @@
+{
+  "name": "Pedido",
+  "type": "object",
+  "properties": {
+    "numero_pedido": {
+      "type": "number",
+      "description": "N\u00famero sequencial do pedido"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "venda",
+        "troca",
+        "bonificacao"
+      ],
+      "description": "Tipo do pedido"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "enviado",
+        "liberado",
+        "montagem",
+        "faturado",
+        "cancelado"
+      ],
+      "default": "pendente",
+      "description": "Status do pedido"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do cliente"
+    },
+    "cliente_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo do cliente"
+    },
+    "cliente_nome": {
+      "type": "string",
+      "description": "Nome/Raz\u00e3o social do cliente"
+    },
+    "cliente_nome_fantasia": {
+      "type": "string",
+      "description": "Nome fantasia do cliente"
+    },
+    "cliente_endereco": {
+      "type": "string",
+      "description": "Endere\u00e7o completo do cliente"
+    },
+    "cliente_numero": {
+      "type": "string",
+      "description": "N\u00famero do endere\u00e7o"
+    },
+    "cliente_bairro": {
+      "type": "string",
+      "description": "Bairro do cliente"
+    },
+    "cliente_cidade": {
+      "type": "string",
+      "description": "Cidade do cliente"
+    },
+    "cliente_estado": {
+      "type": "string",
+      "description": "Estado do cliente"
+    },
+    "cliente_cep": {
+      "type": "string",
+      "description": "CEP do cliente"
+    },
+    "cliente_cpf_cnpj": {
+      "type": "string",
+      "description": "CPF/CNPJ do cliente"
+    },
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "vendedor_nome": {
+      "type": "string",
+      "description": "Nome do vendedor"
+    },
+    "plano_pagamento_id": {
+      "type": "string",
+      "description": "ID do plano de pagamento"
+    },
+    "plano_pagamento_nome": {
+      "type": "string",
+      "description": "Nome do plano de pagamento"
+    },
+    "tabela_preco_id": {
+      "type": "string",
+      "description": "ID da tabela de pre\u00e7o"
+    },
+    "tabela_preco_nome": {
+      "type": "string",
+      "description": "Nome da tabela de pre\u00e7o"
+    },
+    "modelo_nota": {
+      "type": "string",
+      "enum": [
+        "55",
+        "nfce",
+        "d1"
+      ],
+      "description": "Modelo da nota fiscal (troca sempre D1)"
+    },
+    "cenario_fiscal_codigo": {
+      "type": "number",
+      "description": "C\u00f3digo do cen\u00e1rio fiscal no Omie (nCodigo)"
+    },
+    "cenario_fiscal_nome": {
+      "type": "string",
+      "description": "Nome do cen\u00e1rio fiscal selecionado"
+    },
+    "data_previsao_entrega": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de previs\u00e3o de entrega"
+    },
+    "numero_pedido_compra": {
+      "type": "string",
+      "description": "N\u00ba do pedido de compra do cliente"
+    },
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero da carga vinculada"
+    },
+    "observacoes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es do pedido"
+    },
+    "total_itens": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade total de itens"
+    },
+    "valor_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Valor total do pedido"
+    },
+    "data_envio": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora do envio"
+    },
+    "liberado_por": {
+      "type": "string",
+      "description": "Email de quem liberou o pedido"
+    },
+    "liberado_por_nome": {
+      "type": "string",
+      "description": "Nome de quem liberou o pedido"
+    },
+    "data_liberacao": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora da libera\u00e7\u00e3o"
+    },
+    "pendencia_financeira_ignorada": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se a pend\u00eancia financeira foi ignorada na libera\u00e7\u00e3o"
+    },
+    "omie_codigo_pedido": {
+      "type": "number",
+      "description": "C\u00f3digo do pedido retornado pelo Omie"
+    },
+    "omie_enviado": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o pedido j\u00e1 foi enviado para o Omie"
+    },
+    "omie_erro": {
+      "type": "string",
+      "description": "Mensagem de erro do Omie (se houver)"
+    },
+    "cancelado_por": {
+      "type": "string",
+      "description": "Email de quem cancelou o pedido"
+    },
+    "cancelado_por_nome": {
+      "type": "string",
+      "description": "Nome de quem cancelou o pedido"
+    },
+    "data_cancelamento": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora do cancelamento"
+    },
+    "motivo_cancelamento": {
+      "type": "string",
+      "description": "Motivo do cancelamento do pedido"
+    }
+  },
+  "required": [
+    "tipo",
+    "cliente_id",
+    "vendedor_id"
+  ]
+}

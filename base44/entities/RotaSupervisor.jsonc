@@ -1,0 +1,63 @@
+{
+  "name": "RotaSupervisor",
+  "type": "object",
+  "properties": {
+    "supervisor_id": {
+      "type": "string",
+      "description": "ID do supervisor (vendedor)"
+    },
+    "supervisor_nome": {
+      "type": "string",
+      "description": "Nome do supervisor"
+    },
+    "data": {
+      "type": "string",
+      "format": "date",
+      "description": "Data do roteiro"
+    },
+    "hora_inicio": {
+      "type": "string",
+      "description": "Hora de in\u00edcio do roteiro (ISO)"
+    },
+    "latitude_inicio": {
+      "type": "number",
+      "description": "Latitude no in\u00edcio do roteiro"
+    },
+    "longitude_inicio": {
+      "type": "number",
+      "description": "Longitude no in\u00edcio do roteiro"
+    },
+    "hora_fim": {
+      "type": "string",
+      "description": "Hora de fim do roteiro (ISO)"
+    },
+    "latitude_fim": {
+      "type": "number",
+      "description": "Latitude no fim do roteiro"
+    },
+    "longitude_fim": {
+      "type": "number",
+      "description": "Longitude no fim do roteiro"
+    },
+    "tempo_total_minutos": {
+      "type": "number",
+      "description": "Tempo total do roteiro em minutos"
+    },
+    "resumo_geral": {
+      "type": "string",
+      "description": "Resumo geral do roteiro"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "em_andamento",
+        "finalizado"
+      ],
+      "default": "em_andamento"
+    }
+  },
+  "required": [
+    "supervisor_id",
+    "data"
+  ]
+}

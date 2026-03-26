@@ -1,0 +1,41 @@
+{
+  "name": "PrecoProduto",
+  "type": "object",
+  "properties": {
+    "produto_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "tabela_id": {
+      "type": "string",
+      "description": "ID da tabela de pre\u00e7os"
+    },
+    "valor_unitario": {
+      "type": "number",
+      "description": "Pre\u00e7o base na tabela"
+    },
+    "valor_acao": {
+      "type": "number",
+      "description": "Pre\u00e7o promocional (a\u00e7\u00e3o)"
+    },
+    "periodo_acao_fim": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de t\u00e9rmino da a\u00e7\u00e3o"
+    },
+    "ativacao_acao": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se a a\u00e7\u00e3o est\u00e1 ativa"
+    },
+    "omie_sincronizado": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o pre\u00e7o foi sincronizado com o Omie"
+    }
+  },
+  "required": [
+    "produto_id",
+    "tabela_id"
+  ]
+}

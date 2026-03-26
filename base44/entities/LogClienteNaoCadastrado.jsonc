@@ -1,0 +1,42 @@
+{
+  "name": "LogClienteNaoCadastrado",
+  "type": "object",
+  "properties": {
+    "codigo_cliente": {
+      "type": "string",
+      "description": "C\u00f3digo do cliente n\u00e3o encontrado"
+    },
+    "funcionario_nome": {
+      "type": "string",
+      "description": "Nome do funcion\u00e1rio do roteiro"
+    },
+    "funcionario_id": {
+      "type": "string",
+      "description": "ID do funcion\u00e1rio"
+    },
+    "dias_semana": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Dias da semana que o cliente deveria ser visitado"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "resolvido"
+      ],
+      "default": "pendente",
+      "description": "Status do log"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do cliente ap\u00f3s cadastrado (preenchido automaticamente)"
+    }
+  },
+  "required": [
+    "codigo_cliente"
+  ]
+}

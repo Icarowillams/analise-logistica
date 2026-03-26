@@ -1,0 +1,91 @@
+{
+  "name": "RelatorioVisita",
+  "type": "object",
+  "properties": {
+    "origem_app_id": {
+      "type": "string",
+      "description": "ID do app de origem"
+    },
+    "origem_visita_id": {
+      "type": "string",
+      "description": "ID original da visita"
+    },
+    "cliente_nome": {
+      "type": "string",
+      "description": "Nome do cliente"
+    },
+    "cliente_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo do cliente"
+    },
+    "cliente_cidade": {
+      "type": "string",
+      "description": "Cidade do cliente"
+    },
+    "cliente_uf": {
+      "type": "string",
+      "description": "UF do cliente"
+    },
+    "cliente_segmento": {
+      "type": "string",
+      "description": "Segmento do cliente"
+    },
+    "promotor_nome": {
+      "type": "string",
+      "description": "Nome do promotor"
+    },
+    "promotor_funcao": {
+      "type": "string",
+      "description": "Fun\u00e7\u00e3o do promotor"
+    },
+    "data_visita": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data e hora da visita"
+    },
+    "checkin_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hor\u00e1rio do check-in"
+    },
+    "checkout_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hor\u00e1rio do check-out"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "em_andamento",
+        "realizada",
+        "nao_realizada"
+      ],
+      "default": "pendente",
+      "description": "Status da visita"
+    },
+    "justificativa_nao_atendimento": {
+      "type": "string",
+      "description": "Justificativa se n\u00e3o realizada"
+    },
+    "pedido_solicitado": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se houve pedido na visita"
+    },
+    "motivo_nao_solicitacao": {
+      "type": "string",
+      "description": "Motivo se n\u00e3o houve pedido"
+    },
+    "dia_semana": {
+      "type": "string",
+      "description": "Dia da semana da visita"
+    }
+  },
+  "required": [
+    "origem_app_id",
+    "origem_visita_id",
+    "cliente_nome",
+    "data_visita"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "MetaPrecoMedio",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "periodo": {
+      "type": "string",
+      "description": "Per\u00edodo no formato YYYY-MM"
+    },
+    "preco_medio_minimo": {
+      "type": "number",
+      "description": "Pre\u00e7o m\u00e9dio m\u00ednimo esperado"
+    },
+    "ticket_medio_realizado": {
+      "type": "number",
+      "default": 0
+    },
+    "variacao_percentual": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "periodo",
+    "preco_medio_minimo"
+  ]
+}

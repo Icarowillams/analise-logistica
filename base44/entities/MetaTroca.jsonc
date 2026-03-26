@@ -1,0 +1,35 @@
+{
+  "name": "MetaTroca",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "periodo": {
+      "type": "string",
+      "description": "Per\u00edodo no formato YYYY-MM"
+    },
+    "meta_trocas": {
+      "type": "number",
+      "description": "Meta m\u00e1xima de trocas (quanto menor, melhor)"
+    },
+    "trocas_processadas": {
+      "type": "number",
+      "default": 0
+    },
+    "taxa_sucesso": {
+      "type": "number",
+      "default": 100,
+      "description": "Taxa de sucesso em %"
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "periodo",
+    "meta_trocas"
+  ]
+}

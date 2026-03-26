@@ -1,0 +1,293 @@
+{
+  "name": "Permissao",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do funcion\u00e1rio"
+    },
+    "vendedor_email": {
+      "type": "string",
+      "description": "Email do funcion\u00e1rio"
+    },
+    "abas_visiveis": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lista de IDs das abas vis\u00edveis"
+    },
+    "visibilidade_clientes": {
+      "type": "string",
+      "enum": [
+        "todos",
+        "base"
+      ],
+      "default": "todos",
+      "description": "Define se o funcion\u00e1rio pode ver todos os clientes ou apenas os da sua base"
+    },
+    "permissoes_metas": {
+      "type": "object",
+      "properties": {
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "criar": {
+          "type": "boolean",
+          "default": false
+        },
+        "alterar": {
+          "type": "boolean",
+          "default": false
+        },
+        "excluir": {
+          "type": "boolean",
+          "default": false
+        },
+        "exportar": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_cadastros": {
+      "type": "object",
+      "properties": {
+        "criar": {
+          "type": "boolean",
+          "default": false
+        },
+        "editar": {
+          "type": "boolean",
+          "default": false
+        },
+        "excluir": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar_massa": {
+          "type": "boolean",
+          "default": false
+        },
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "exportar": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar_atualizar_omie": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_importar": {
+      "type": "object",
+      "properties": {
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar_massa": {
+          "type": "boolean",
+          "default": false
+        },
+        "excluir_lancamento": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_analises": {
+      "type": "object",
+      "properties": {
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "utilizar_filtros": {
+          "type": "boolean",
+          "default": false
+        },
+        "exportar": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_visitas": {
+      "type": "object",
+      "properties": {
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "iniciar_roteiro": {
+          "type": "boolean",
+          "default": false
+        },
+        "finalizar_roteiro": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar_fotos": {
+          "type": "boolean",
+          "default": false
+        },
+        "marcar_solicitou_pedido": {
+          "type": "boolean",
+          "default": false
+        },
+        "importar_ultimo_estoque": {
+          "type": "boolean",
+          "default": false
+        },
+        "informar_estoque": {
+          "type": "boolean",
+          "default": false
+        },
+        "informar_trocas": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_visita_comercial": {
+      "type": "object",
+      "properties": {
+        "acesso": {
+          "type": "boolean",
+          "default": false,
+          "description": "Acesso \u00e0 tela de Visita Comercial"
+        },
+        "acompanhamento": {
+          "type": "boolean",
+          "default": false
+        },
+        "negociacao": {
+          "type": "boolean",
+          "default": false
+        },
+        "prospeccao": {
+          "type": "boolean",
+          "default": false
+        },
+        "resolucao": {
+          "type": "boolean",
+          "default": false
+        },
+        "estoque": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_relatorios": {
+      "type": "object",
+      "properties": {
+        "rel_roteiros_visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_roteiros_filtros": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_roteiros_exportar": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_estoque_visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_estoque_filtros": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_estoque_exportar": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_trocas_visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_trocas_filtros": {
+          "type": "boolean",
+          "default": false
+        },
+        "rel_trocas_exportar": {
+          "type": "boolean",
+          "default": false
+        },
+        "analise_visitas_visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "analise_visitas_filtros": {
+          "type": "boolean",
+          "default": false
+        },
+        "analise_visitas_exportar": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {}
+    },
+    "permissoes_pedidos": {
+      "type": "object",
+      "properties": {
+        "visualizar": {
+          "type": "boolean",
+          "default": false
+        },
+        "digitar_pedido_venda": {
+          "type": "boolean",
+          "default": false
+        },
+        "digitar_pedido_troca": {
+          "type": "boolean",
+          "default": false
+        },
+        "enviar_pedido": {
+          "type": "boolean",
+          "default": false
+        },
+        "editar_pedido": {
+          "type": "boolean",
+          "default": false
+        },
+        "excluir_pedido": {
+          "type": "boolean",
+          "default": false
+        },
+        "usar_cenarios_fiscais": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permite usar cen\u00e1rios fiscais do Omie ao digitar pedido de venda"
+        }
+      },
+      "default": {}
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "vendedor_email"
+  ]
+}

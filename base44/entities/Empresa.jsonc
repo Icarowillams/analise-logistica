@@ -1,0 +1,97 @@
+{
+  "name": "Empresa",
+  "type": "object",
+  "properties": {
+    "codigo": {
+      "type": "string",
+      "description": "C\u00f3digo da empresa"
+    },
+    "razao_social": {
+      "type": "string",
+      "description": "Raz\u00e3o social"
+    },
+    "nome_fantasia": {
+      "type": "string",
+      "description": "Nome fantasia"
+    },
+    "cnpj": {
+      "type": "string",
+      "description": "CNPJ"
+    },
+    "inscricao_estadual": {
+      "type": "string",
+      "description": "Inscri\u00e7\u00e3o Estadual"
+    },
+    "uf": {
+      "type": "string",
+      "description": "UF"
+    },
+    "endereco": {
+      "type": "string",
+      "description": "Endere\u00e7o"
+    },
+    "numero": {
+      "type": "string",
+      "description": "N\u00famero"
+    },
+    "complemento": {
+      "type": "string",
+      "description": "Complemento"
+    },
+    "bairro": {
+      "type": "string",
+      "description": "Bairro"
+    },
+    "cep": {
+      "type": "string",
+      "description": "CEP"
+    },
+    "cidade": {
+      "type": "string",
+      "description": "Cidade"
+    },
+    "telefone": {
+      "type": "string",
+      "description": "Telefone"
+    },
+    "celular": {
+      "type": "string",
+      "description": "Celular"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email"
+    },
+    "responsavel": {
+      "type": "string",
+      "description": "Nome do respons\u00e1vel"
+    },
+    "cnae": {
+      "type": "string",
+      "description": "CNAE"
+    },
+    "regime_tributario": {
+      "type": "string",
+      "enum": [
+        "simples_nacional",
+        "simples_excesso",
+        "regime_normal",
+        "simples_mei"
+      ],
+      "description": "C\u00f3digo de regime tribut\u00e1rio"
+    },
+    "apuracao_lucro": {
+      "type": "string",
+      "enum": [
+        "lucro_simples",
+        "lucro_real",
+        "lucro_presumido"
+      ],
+      "description": "Apura\u00e7\u00e3o de lucro"
+    }
+  },
+  "required": [
+    "razao_social",
+    "cnpj"
+  ]
+}

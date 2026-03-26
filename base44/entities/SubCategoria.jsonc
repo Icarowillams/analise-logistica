@@ -1,0 +1,30 @@
+{
+  "name": "SubCategoria",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome da subcategoria"
+    },
+    "categoria_id": {
+      "type": "string",
+      "description": "ID da categoria pai"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o da subcategoria"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    }
+  },
+  "required": [
+    "nome",
+    "categoria_id"
+  ]
+}

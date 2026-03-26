@@ -1,0 +1,68 @@
+{
+  "name": "Produto",
+  "type": "object",
+  "properties": {
+    "codigo": {
+      "type": "string",
+      "description": "C\u00f3digo interno do produto"
+    },
+    "nome": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "cod_barras": {
+      "type": "string",
+      "description": "C\u00f3digo de Barras (EAN/GTIN)"
+    },
+    "ncm": {
+      "type": "string",
+      "description": "NCM - Nomenclatura Comum do Mercosul (8 d\u00edgitos)"
+    },
+    "cest": {
+      "type": "string",
+      "description": "CEST - C\u00f3digo Especificador da Substitui\u00e7\u00e3o Tribut\u00e1ria (7 d\u00edgitos)"
+    },
+    "categoria_id": {
+      "type": "string",
+      "description": "ID da Categoria"
+    },
+    "sub_categoria_id": {
+      "type": "string",
+      "description": "ID da Subcategoria"
+    },
+    "imagem_url": {
+      "type": "string",
+      "description": "URL da imagem do produto"
+    },
+    "estoque_atual": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade em estoque"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    },
+    "unidade_medida_id": {
+      "type": "string",
+      "description": "ID da Unidade de Medida"
+    },
+    "unidade_produto_id": {
+      "type": "string",
+      "description": "ID da Unidade de Produto (Tipo de Produto)"
+    },
+    "peso": {
+      "type": "number",
+      "description": "Peso do produto",
+      "default": 0
+    }
+  },
+  "required": [
+    "nome",
+    "codigo"
+  ]
+}

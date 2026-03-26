@@ -1,0 +1,52 @@
+{
+  "name": "MetaProduto",
+  "type": "object",
+  "properties": {
+    "produto_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "produto_nome": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor (null para equipe)"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "periodo": {
+      "type": "string",
+      "description": "Per\u00edodo no formato YYYY-MM"
+    },
+    "tipo_periodo": {
+      "type": "string",
+      "enum": [
+        "mensal",
+        "trimestral"
+      ],
+      "default": "mensal"
+    },
+    "meta_quantidade": {
+      "type": "number",
+      "description": "Meta de quantidade"
+    },
+    "meta_valor": {
+      "type": "number",
+      "description": "Meta de valor"
+    },
+    "realizado_quantidade": {
+      "type": "number",
+      "default": 0
+    },
+    "realizado_valor": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "produto_id",
+    "periodo"
+  ]
+}

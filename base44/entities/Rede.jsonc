@@ -1,0 +1,26 @@
+{
+  "name": "Rede",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome da rede/franquia"
+    },
+    "cod": {
+      "type": "string",
+      "description": "C\u00f3digo da rede"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    }
+  },
+  "required": [
+    "nome",
+    "cod"
+  ]
+}

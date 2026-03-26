@@ -1,0 +1,47 @@
+{
+  "name": "ConfiguracaoImportacao",
+  "type": "object",
+  "properties": {
+    "app_origem_id": {
+      "type": "string",
+      "description": "ID do app de origem"
+    },
+    "app_origem_nome": {
+      "type": "string",
+      "description": "Nome do app de origem"
+    },
+    "ultima_importacao": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data da \u00faltima importa\u00e7\u00e3o"
+    },
+    "total_visitas_importadas": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de visitas importadas"
+    },
+    "total_estoques_importados": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de estoques importados"
+    },
+    "total_trocas_importadas": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de trocas importadas"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "pausado"
+      ],
+      "default": "ativo",
+      "description": "Status da configura\u00e7\u00e3o"
+    }
+  },
+  "required": [
+    "app_origem_id",
+    "app_origem_nome"
+  ]
+}

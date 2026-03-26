@@ -1,13 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const LOGISTICO_URL = 'https://app.base44.com/api/functions/consultarStatusTrocaCarga';
-
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
-        if (!user) {
-            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+        if (user?.role !== 'admin') {
+            return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+        }
+
+        const LOGISTICO_URL = Deno.env.get('LOGISTICO_FUNCTION_URL');
+        if (!LOGISTICO_URL) {
+            return Response.json({ error: 'LOGISTICO_FUNCTION_URL não configurada' }, { status: 500 });
         }
 
         const apiKey = Deno.env.get('BASE_REMOTE_API_KEY');
@@ -15,12 +19,21 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'BASE_REMOTE_API_KEY não configurada' }, { status: 500 });
         }
 
-        const payload = await req.json();
-        const { pedido_ids } = payload;
+        // Buscar automaticamente pedidos de troca ativos
+        const [trocasLiberadas, trocasMontagem, trocasEnviadas] = await Promise.all([
+            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'liberado' }),
+            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'montagem' }),
+            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'enviado' }),
+        ]);
+        const trocasAtivas = [...trocasLiberadas, ...trocasMontagem, ...trocasEnviadas];
 
-        if (!pedido_ids || pedido_ids.length === 0) {
-            return Response.json({ error: 'pedido_ids é obrigatório' }, { status: 400 });
+        if (trocasAtivas.length === 0) {
+            return Response.json({ success: true, message: 'Nenhuma troca ativa para sincronizar', total_atualizados: 0 });
         }
+
+        const pedido_ids = trocasAtivas.map(p => p.id);
+
+        console.log(`[sincronizarLogistico] Consultando ${pedido_ids.length} trocas ativas`);
 
         // Consultar o app logístico
         const response = await fetch(LOGISTICO_URL, {
