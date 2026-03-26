@@ -12,7 +12,6 @@ import {
   ArrowLeftRight,
   TrendingUp,
   Award,
-  Truck,
   RefreshCw,
   Loader2
 } from 'lucide-react';
@@ -25,41 +24,33 @@ import { toast } from 'sonner';
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'];
 
 export default function Dashboard() {
-  const queryClient = useQueryClient();
-  const [logisticoLoading, setLogisticoLoading] = useState(false);
-  const [omieLoading, setOmieLoading] = useState(false);
+  const [sincLoading, setSincLoading] = useState(false);
 
-  const handleSincronizarLogistico = async () => {
-    setLogisticoLoading(true);
+  const handleSincronizarTudo = async () => {
+    setSincLoading(true);
     try {
-      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
-      const data = res.data;
-      if (data.success) {
-        toast.success(`${data.total_atualizados} troca(s) atualizada(s)`);
+      const [resLogistico, resOmie] = await Promise.allSettled([
+        base44.functions.invoke('sincronizarStatusTrocaLogistico', {}),
+        base44.functions.invoke('sincronizarStatusPedidosOmie', {}),
+      ]);
+
+      const msgs = [];
+      if (resLogistico.status === 'fulfilled' && resLogistico.value.data?.success) {
+        msgs.push(`Logístico: ${resLogistico.value.data.total_atualizados} troca(s)`);
+      }
+      if (resOmie.status === 'fulfilled' && (resOmie.value.data?.success || resOmie.value.data?.sucesso)) {
+        msgs.push('Omie: sincronizado');
+      }
+
+      if (msgs.length > 0) {
+        toast.success(msgs.join(' • '));
       } else {
-        toast.error(data.error || 'Erro ao sincronizar');
+        toast.warning('Nenhuma atualização encontrada');
       }
     } catch (e) {
-      toast.error('Erro ao sincronizar com logístico');
+      toast.error('Erro ao sincronizar');
     } finally {
-      setLogisticoLoading(false);
-    }
-  };
-
-  const handleSincronizarOmie = async () => {
-    setOmieLoading(true);
-    try {
-      const res = await base44.functions.invoke('sincronizarStatusPedidosOmie', {});
-      const data = res.data;
-      if (data.success || data.sucesso) {
-        toast.success(data.mensagem || `Pedidos Omie sincronizados!`);
-      } else {
-        toast.error(data.error || data.erro || 'Erro ao sincronizar com Omie');
-      }
-    } catch (e) {
-      toast.error('Erro ao sincronizar com Omie');
-    } finally {
-      setOmieLoading(false);
+      setSincLoading(false);
     }
   };
 
@@ -163,26 +154,16 @@ export default function Dashboard() {
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Dashboard Principal</h1>
           <p className="text-xs sm:text-sm text-slate-500">Visão geral do desempenho comercial</p>
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto">
           <Button
             variant="outline"
             size="sm"
             className="h-8 text-xs"
-            onClick={handleSincronizarLogistico}
-            disabled={logisticoLoading}
+            onClick={handleSincronizarTudo}
+            disabled={sincLoading}
           >
-            {logisticoLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Truck className="w-3 h-3 mr-1" />}
-            Sinc. Logístico
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={handleSincronizarOmie}
-            disabled={omieLoading}
-          >
-            {omieLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
-            Sinc. Omie
+            {sincLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+            Atualizar Pedidos
           </Button>
         </div>
       </div>
