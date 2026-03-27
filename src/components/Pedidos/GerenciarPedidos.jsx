@@ -21,6 +21,7 @@ import PedidoPdf from './PedidoPdf';
 import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
 import useColumnOrder from './useColumnOrder';
+import useColumnResize from './useColumnResize';
 import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
 
 
@@ -85,6 +86,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [logisticoLoading, setLogisticoLoading] = useState(false);
 
   const { columns, reorder, resetOrder } = useColumnOrder();
+  const { colWidths, onResizeStart } = useColumnResize();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -657,7 +659,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       ) : (
         <div className="border rounded-lg overflow-auto bg-white" style={{ maxHeight: '75vh' }}>
-          <table className="w-full text-xs">
+          <table className="text-xs border-collapse" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
               reorder(result.source.index, result.destination.index);
@@ -666,7 +668,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 {(droppableProvided) => (
                   <thead className="bg-slate-100 sticky top-0">
                     <tr ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-                      <th className="p-2 w-8">
+                      <th className="p-2 w-8 border-r border-slate-200">
                         <Checkbox
                           checked={filtered.length > 0 && selectedIds.length === filtered.length}
                           onCheckedChange={toggleSelectAll}
@@ -679,16 +681,26 @@ export default function GerenciarPedidos({ onEditPedido }) {
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className={`p-2 text-left font-medium text-slate-600 whitespace-nowrap cursor-grab select-none hover:text-slate-900 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
+                              className={`relative text-left font-medium text-slate-600 whitespace-nowrap cursor-grab select-none hover:text-slate-900 border-r border-slate-200 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
                               onClick={() => { if (!snapshot.isDragging) toggleSort(col.field); }}
-                              style={provided.draggableProps.style}
+                              style={{ ...provided.draggableProps.style, width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 50 }}
                             >
-                              {col.label}
+                              <span className="block p-2">{col.label}
                               {sortField === col.field && (
                                 sortDir === 'asc'
                                   ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
                                   : <ChevronDown className="w-3 h-3 inline ml-0.5" />
-                              )}
+                              )}</span>
+                              {/* Resize handle */}
+                              <div
+                                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-amber-400 active:bg-amber-500 z-10"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  const thEl = e.currentTarget.parentElement;
+                                  onResizeStart(e, col.id, thEl?.offsetWidth || 120);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
                             </th>
                           )}
                         </Draggable>
@@ -713,14 +725,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     onMouseEnter={() => onRowMouseEnter(p.id)}
                     onMouseUp={onMouseUp}
                   >
-                    <td className="p-2">
+                    <td className="p-2 border-r border-slate-100">
                       <Checkbox
                         checked={selectedIds.includes(p.id)}
                         onCheckedChange={() => toggleSelect(p.id)}
                       />
                     </td>
                     {columns.map(col => (
-                      <td key={col.id} className="p-2">
+                      <td key={col.id} className="p-2 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 50 }}>
                         <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
                       </td>
                     ))}
