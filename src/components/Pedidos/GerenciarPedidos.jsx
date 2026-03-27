@@ -729,18 +729,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     onMouseEnter={() => onRowMouseEnter(p.id)}
                     onMouseUp={onMouseUp}
                   >
-                    <td className="px-1.5 py-0.5 border-r border-slate-100">
+                    <td className="px-1 py-0 border-r border-slate-100">
                       <Checkbox
                         checked={selectedIds.includes(p.id)}
                         onCheckedChange={() => toggleSelect(p.id)}
                       />
                     </td>
                     {columns.map(col => (
-                      <td key={col.id} className="px-1.5 py-0.5 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}>
+                      <td key={col.id} className="px-1 py-0 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}>
                         <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
                       </td>
                     ))}
-                    <td className="px-1.5 py-0.5">
+                    <td className="px-1 py-0">
                       <div className="flex gap-0.5">
                         <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
                           <Eye className="w-2.5 h-2.5" />
