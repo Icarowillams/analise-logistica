@@ -28,7 +28,7 @@ import BatchResultToast from './BatchResultToast';
 
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
-const OMIE_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
+const OMIE_STATUS_CACHE_TTL_MS = 10 * 60 * 1000;
 const OMIE_STATUS_AUTO_LIMIT = 350;
 const OMIE_STATUS_REFRESH_LIMIT = 350;
 
@@ -136,13 +136,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const cache = readOmieStatusCache();
     const now = Date.now();
 
+    // Status finais não mudam — nunca re-consultar
+    const STATUS_FINAIS = ['Faturado', 'Cancelado', 'Excluído no Omie', 'Entrega'];
     const pedidosOmie = (pedidosList || [])
     .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
     .filter(p => {
         if (omieStatusRequestsRef.current.has(p.id)) return false;
-        if (force) return true;
-
         const cached = cache[p.id];
+        // Pedidos em status final nunca precisam ser re-consultados
+        if (cached?.data?.etapa_label && STATUS_FINAIS.includes(cached.data.etapa_label)) return false;
+        if (force) return true;
         return !cached || (now - cached.fetchedAt) >= OMIE_STATUS_CACHE_TTL_MS;
       });
 
