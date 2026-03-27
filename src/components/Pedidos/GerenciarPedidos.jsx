@@ -29,8 +29,8 @@ import BatchResultToast from './BatchResultToast';
 
 const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
 const OMIE_STATUS_CACHE_TTL_MS = 10 * 60 * 1000;
-const OMIE_STATUS_AUTO_LIMIT = 350;
-const OMIE_STATUS_REFRESH_LIMIT = 350;
+const OMIE_STATUS_AUTO_LIMIT = 100;
+const OMIE_STATUS_REFRESH_LIMIT = 100;
 
 const getTodayFilterDate = () => {
   const now = new Date();
@@ -351,8 +351,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const pedidosVisiveisParaStatus = useMemo(() => {
     return filtered
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
-      .slice(0, OMIE_STATUS_AUTO_LIMIT);
+      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
   }, [filtered]);
 
   useEffect(() => {
@@ -459,10 +458,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds([]);
     setBatchAction(null);
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    // Re-consultar status Omie após liberação
-    setTimeout(() => {
-      fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
-    }, 1500);
+    // Re-consultar apenas os pedidos que foram alterados
+    const alterados = pedidos.filter(p => allSelected.some(s => s.id === p.id) && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
+    if (alterados.length > 0) {
+      setTimeout(() => fetchOmieStatuses(alterados, { force: true }), 1500);
+    }
   };
 
   const handleBatchBloquear = async () => {
@@ -510,10 +510,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds([]);
     setBatchAction(null);
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    // Re-consultar status Omie após bloqueio
-    setTimeout(() => {
-      fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
-    }, 1500);
+    // Re-consultar apenas os pedidos que foram alterados
+    const alterados = pedidos.filter(p => allSelected.some(s => s.id === p.id) && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
+    if (alterados.length > 0) {
+      setTimeout(() => fetchOmieStatuses(alterados, { force: true }), 1500);
+    }
   };
 
   const handleCancelConfirm = async (pedido, motivo) => {
@@ -638,7 +639,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
           className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-            fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
+            const visiveisOmie = filtered.filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
+            fetchOmieStatuses(visiveisOmie, { force: true });
           }}
         >
           <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Atualizar
