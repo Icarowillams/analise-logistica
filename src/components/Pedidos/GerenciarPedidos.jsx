@@ -633,32 +633,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       )}
 
-      {/* Batch actions */}
-      {selectedIds.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <span className="text-sm font-medium text-amber-800">{selectedIds.length} selecionado(s)</span>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction}>
-            {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
-            Liberar
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction}>
-            {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-            Bloquear
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
-            <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Limpar</Button>
-        </div>
-      )}
-
       {/* Table */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-auto bg-white" style={{ maxHeight: '75vh' }}>
+        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 320px)', minHeight: '300px' }}>
           <table className="text-xs border-collapse" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
@@ -765,6 +746,25 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <span className="ml-2 text-green-600">• Status Omie: {Object.keys(omieStatuses).length} consultado(s)</span>
         )}
       </div>
+
+      {/* Batch actions - fixed bottom */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-30 flex flex-wrap items-center gap-2 px-4 py-3 bg-amber-50 border-t border-amber-300 shadow-lg">
+          <span className="text-sm font-medium text-amber-800">{selectedIds.length} selecionado(s)</span>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction}>
+            {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
+            Liberar
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction}>
+            {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
+            Bloquear
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
+            <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Limpar</Button>
+        </div>
+      )}
 
       {/* Modals */}
       <CancelarPedidoModal
