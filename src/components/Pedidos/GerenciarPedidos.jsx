@@ -659,7 +659,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       ) : (
         <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 280px)', minHeight: '250px' }}>
-          <table className="text-[11px] border-collapse" style={{ minWidth: '100%' }}>
+          <table className="text-[11px] border-collapse table-fixed" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
               reorder(result.source.index, result.destination.index);
@@ -668,7 +668,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 {(droppableProvided) => (
                   <thead className="bg-slate-100 sticky top-0 z-20">
                     <tr ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-                      <th className="px-1.5 py-1 w-7 border-r border-slate-200">
+                      <th className="px-1.5 py-1 border-r border-slate-200" style={{ width: 32, minWidth: 32, maxWidth: 32 }}>
                         <Checkbox
                           checked={filtered.length > 0 && selectedIds.length === filtered.length}
                           onCheckedChange={toggleSelectAll}
@@ -680,8 +680,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
                             <th
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`relative text-left font-medium text-slate-600 whitespace-nowrap select-none border-r border-slate-200 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
-                              style={{ ...provided.draggableProps.style, width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}
+                              className={`relative text-left font-medium text-slate-600 whitespace-nowrap select-none border-r border-slate-200 overflow-hidden ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
+                              style={{ ...provided.draggableProps.style, width: colWidths[col.id] ? colWidths[col.id] : 100, minWidth: 40 }}
                             >
                               <span
                                 {...provided.dragHandleProps}
@@ -710,7 +710,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         </Draggable>
                       ))}
                       {droppableProvided.placeholder}
-                      <th className="px-1.5 py-1 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-600 whitespace-nowrap" style={{ width: 70, minWidth: 70 }}>Ações</th>
                     </tr>
                   </thead>
                 )}
@@ -729,18 +729,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     onMouseEnter={() => onRowMouseEnter(p.id)}
                     onMouseUp={onMouseUp}
                   >
-                    <td className="px-1 py-0 border-r border-slate-100">
+                    <td className="px-1 py-0 border-r border-slate-100" style={{ width: 32, minWidth: 32, maxWidth: 32 }}>
                       <Checkbox
                         checked={selectedIds.includes(p.id)}
                         onCheckedChange={() => toggleSelect(p.id)}
                       />
                     </td>
                     {columns.map(col => (
-                      <td key={col.id} className="px-1 py-0 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}>
+                      <td key={col.id} className="px-1 py-0 border-r border-slate-100 overflow-hidden whitespace-nowrap text-ellipsis" style={{ width: colWidths[col.id] || 100, minWidth: 40, maxWidth: colWidths[col.id] || 100 }}>
                         <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
                       </td>
                     ))}
-                    <td className="px-1 py-0">
+                    <td className="px-1 py-0" style={{ width: 70, minWidth: 70 }}>
                       <div className="flex gap-0.5">
                         <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
                           <Eye className="w-2.5 h-2.5" />

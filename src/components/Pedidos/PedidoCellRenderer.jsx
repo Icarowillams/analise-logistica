@@ -83,51 +83,45 @@ export default function PedidoCellRenderer({ col, p, omie, omieRequestPending })
     );
   }
 
+  // All cells: single line, truncated with ellipsis
+  const truncClass = "block truncate whitespace-nowrap overflow-hidden";
+
   // Date columns
   if (['data_previsao_entrega', 'data_liberacao', 'data_cancelamento', 'data_envio', 'created_date'].includes(col.id)) {
-    return <span className="whitespace-nowrap">{formatDate(p[col.field])}</span>;
+    return <span className={truncClass}>{formatDate(p[col.field])}</span>;
   }
 
   // Currency
   if (col.id === 'valor_total') {
-    return <span className="text-right font-medium whitespace-nowrap">{formatCurrency(p[col.field])}</span>;
+    return <span className={`${truncClass} text-right font-medium`}>{formatCurrency(p[col.field])}</span>;
   }
 
   // Tipo
   if (col.id === 'tipo') {
-    return <span className="capitalize">{p[col.field] || '-'}</span>;
+    return <span className={`${truncClass} capitalize`}>{p[col.field] || '-'}</span>;
   }
 
   // Numero pedido
   if (col.id === 'numero_pedido') {
-    return <span className="font-medium">{p[col.field] || '-'}</span>;
+    return <span className={`${truncClass} font-medium`}>{p[col.field] || '-'}</span>;
   }
 
   // Itens
   if (col.id === 'total_itens') {
-    return <span className="text-center">{p[col.field] || 0}</span>;
+    return <span className={`${truncClass} text-center`}>{p[col.field] || 0}</span>;
   }
 
-  // Preço Médio (computed: valor_total / total_itens)
+  // Preço Médio
   if (col.id === 'preco_medio') {
     const totalItens = p.total_itens || 0;
     const valorTotal = p.valor_total || 0;
     const precoMedio = totalItens > 0 ? valorTotal / totalItens : 0;
-    return <span className="text-right whitespace-nowrap">{formatCurrency(precoMedio)}</span>;
+    return <span className={`${truncClass} text-right`}>{formatCurrency(precoMedio)}</span>;
   }
 
-  // Usuário Envio
-  if (col.id === 'usuario_envio') {
-    return <span className="max-w-[120px] truncate block" title={p.created_by}>{p.created_by || '-'}</span>;
-  }
-
-  // Truncated columns
-  if (['cliente_nome', 'cliente_nome_fantasia', 'plano_pagamento_nome', 'tabela_preco_nome', 'motivo_cancelamento'].includes(col.id)) {
-    return <span className="max-w-[120px] truncate block" title={p[col.field]}>{p[col.field] || '-'}</span>;
-  }
-
-  // Default
-  return <span>{p[col.field] || '-'}</span>;
+  // Default: all other columns
+  const value = p[col.field];
+  return <span className={truncClass} title={value || ''}>{value || '-'}</span>;
 }
 
 export { STATUS_COLORS, STATUS_LABELS, OMIE_TO_ANALISE, ANALISE_STATUS_COLORS, formatDate, formatCurrency };
