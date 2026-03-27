@@ -8,7 +8,7 @@ export default function BatchResultToast({ results, onClose }) {
     const timer = setTimeout(() => {
       setVisible(false);
       onClose?.();
-    }, 4000);
+    }, 7000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
