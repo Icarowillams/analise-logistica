@@ -7,7 +7,7 @@ const STATUS_COLORS = {
   liberado: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
   montagem: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
   faturado: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
-  cancelado: { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
+  cancelado: { bg: 'bg-gray-700', text: 'text-white', border: 'border-gray-700' },
 };
 
 const STATUS_LABELS = {
@@ -30,11 +30,11 @@ const OMIE_TO_ANALISE = {
 };
 
 const ANALISE_STATUS_COLORS = {
-  'Pendente': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
-  'Liberados': { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-  'Montagem': { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
-  'Faturado': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-  'Cancelado': { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' },
+  'Pendente': { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
+  'Liberados': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+  'Montagem': { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  'Faturado': { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
+  'Cancelado': { bg: 'bg-gray-700', text: 'text-white', border: 'border-gray-700' },
   'Omie Bloqueado': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' },
   'Falha na Consulta': { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
 };
