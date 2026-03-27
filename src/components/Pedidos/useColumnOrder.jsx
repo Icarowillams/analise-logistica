@@ -1,23 +1,24 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'gerenciar-pedidos-column-order-v1';
+const STORAGE_KEY = 'gerenciar-pedidos-column-order-v2';
 
 export const DEFAULT_COLUMNS = [
-  { id: 'numero_pedido', label: 'Nº', field: 'numero_pedido' },
-  { id: 'tipo', label: 'Tipo', field: 'tipo' },
-  { id: 'status', label: 'Status', field: 'status', custom: true },
+  { id: 'numero_pedido', label: 'Nº Pedido', field: 'numero_pedido' },
   { id: 'cliente_nome', label: 'Cliente', field: 'cliente_nome' },
   { id: 'cliente_nome_fantasia', label: 'Fantasia', field: 'cliente_nome_fantasia' },
   { id: 'cliente_cpf_cnpj', label: 'CPF/CNPJ', field: 'cliente_cpf_cnpj' },
-  { id: 'cliente_cidade', label: 'Cidade', field: 'cliente_cidade' },
+  { id: 'valor_total', label: 'Valor', field: 'valor_total' },
+  { id: 'total_itens', label: 'Total Itens', field: 'total_itens' },
+  { id: 'preco_medio', label: 'Preço Médio', field: 'preco_medio', computed: true },
+  { id: 'tipo', label: 'Tipo', field: 'tipo' },
+  { id: 'status', label: 'Status', field: 'status', custom: true },
   { id: 'vendedor_nome', label: 'Vendedor', field: 'vendedor_nome' },
+  { id: 'cliente_cidade', label: 'Cidade', field: 'cliente_cidade' },
   { id: 'plano_pagamento_nome', label: 'Plano Pgto', field: 'plano_pagamento_nome' },
   { id: 'tabela_preco_nome', label: 'Tab. Preço', field: 'tabela_preco_nome' },
-  { id: 'cenario_fiscal_nome', label: 'Cenário Fiscal', field: 'cenario_fiscal_nome' },
-  { id: 'total_itens', label: 'Itens', field: 'total_itens' },
-  { id: 'valor_total', label: 'Valor', field: 'valor_total' },
   { id: 'data_previsao_entrega', label: 'Prev. Entrega', field: 'data_previsao_entrega' },
   { id: 'numero_carga', label: 'Nº Carga', field: 'numero_carga' },
+  { id: 'usuario_envio', label: 'Usuário Envio', field: 'created_by' },
   { id: 'liberado_por_nome', label: 'Liberado por', field: 'liberado_por_nome' },
   { id: 'data_liberacao', label: 'Dt. Liberação', field: 'data_liberacao' },
   { id: 'cancelado_por_nome', label: 'Cancelado por', field: 'cancelado_por_nome' },
