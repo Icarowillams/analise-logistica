@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, Filter, RefreshCw, DollarSign, Eye, List, X, Truck
+  Loader2, RefreshCw, DollarSign, Eye, List, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -69,7 +69,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [produtoModalOpen, setProdutoModalOpen] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
   const [cidadeSearch, setCidadeSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [sortField, setSortField] = useState('created_date');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -83,7 +83,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [omieStatuses, setOmieStatuses] = useState({});
   const [omieStatusLoading, setOmieStatusLoading] = useState(false);
   const omieStatusRequestsRef = useRef(new Set());
-  const [logisticoLoading, setLogisticoLoading] = useState(false);
+
 
   const { columns, reorder, resetOrder } = useColumnOrder();
   const { colWidths, onResizeStart } = useColumnResize();
@@ -211,25 +211,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     if (!silent && successCount === 0 && errorCount > 0) {
       toast.warning('O Omie limitou a consulta repetida; mantive os últimos status salvos.');
-    }
-  };
-
-  // Sincronizar status logístico das trocas
-  const handleSincronizarLogistico = async () => {
-    setLogisticoLoading(true);
-    try {
-      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
-      const data = res.data;
-      if (data.success) {
-        toast.success(`${data.total_atualizados} troca(s) atualizada(s)`);
-        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-      } else {
-        toast.error(data.error || 'Erro ao sincronizar');
-      }
-    } catch (e) {
-      toast.error('Erro ao sincronizar com logístico');
-    } finally {
-      setLogisticoLoading(false);
     }
   };
 
@@ -518,120 +499,100 @@ export default function GerenciarPedidos({ onEditPedido }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filters - Row 1 */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="Buscar geral..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-8 text-xs" />
+    <div className="space-y-1.5">
+      {/* Filters - compact */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-1.5 p-2 bg-white border rounded-lg">
+        {/* Buscar geral */}
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+            <Input placeholder="Buscar pedido..." value={search} onChange={e => setSearch(e.target.value)} className="pl-7 h-6 text-[10px]" />
+          </div>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos Status</SelectItem>
-            <SelectItem value="analise_pendente">Pendente</SelectItem>
-            <SelectItem value="analise_liberado">Liberados</SelectItem>
-            <SelectItem value="analise_montagem">Montagem</SelectItem>
-            <SelectItem value="analise_faturado">Faturado</SelectItem>
-            <SelectItem value="analise_cancelado">Cancelado</SelectItem>
-            <SelectItem value="sem_omie">Sem Omie</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={tipoFilter} onValueChange={setTipoFilter}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos Tipos</SelectItem>
-            <SelectItem value="venda">Venda</SelectItem>
-            <SelectItem value="troca">Troca</SelectItem>
-            <SelectItem value="bonificacao">Bonificação</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant={showFilters ? 'default' : 'outline'} size="sm" className="h-8 text-xs" onClick={() => setShowFilters(!showFilters)}>
-          <Filter className="w-3 h-3 mr-1" /> Filtros {activeFilterCount > 0 && <Badge className="ml-1 h-4 w-4 p-0 flex items-center justify-center text-[9px] bg-amber-500">{activeFilterCount}</Badge>}
-        </Button>
-        {activeFilterCount > 0 && (
-          <Button variant="ghost" size="sm" className="h-8 text-xs text-red-500" onClick={clearAllFilters}>
-            <X className="w-3 h-3 mr-1" /> Limpar filtros
+        {/* Status */}
+        <div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos Status</SelectItem>
+              <SelectItem value="analise_pendente">Pendente</SelectItem>
+              <SelectItem value="analise_liberado">Liberados</SelectItem>
+              <SelectItem value="analise_montagem">Montagem</SelectItem>
+              <SelectItem value="analise_faturado">Faturado</SelectItem>
+              <SelectItem value="analise_cancelado">Cancelado</SelectItem>
+              <SelectItem value="sem_omie">Sem Omie</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Tipo */}
+        <div>
+          <Select value={tipoFilter} onValueChange={setTipoFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos Tipos</SelectItem>
+              <SelectItem value="venda">Venda</SelectItem>
+              <SelectItem value="troca">Troca</SelectItem>
+              <SelectItem value="bonificacao">Bonificação</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Envio de */}
+        <div>
+          <Input type="date" value={envioInicio} onChange={e => setEnvioInicio(e.target.value)} className="h-6 text-[10px]" title="Envio de" />
+        </div>
+        {/* Envio até */}
+        <div>
+          <Input type="date" value={envioFim} onChange={e => setEnvioFim(e.target.value)} className="h-6 text-[10px]" title="Envio até" />
+        </div>
+        {/* Vendedor */}
+        <div>
+          <div className="flex gap-0.5">
+            <Input placeholder="Vendedor..." value={vendedorSearch} onChange={e => { setVendedorSearch(e.target.value); setVendedorIds([]); }} className="h-6 text-[10px] flex-1" />
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0 shrink-0" title="Selecionar" onClick={() => setVendedorModalOpen(true)}>
+              <List className="w-2.5 h-2.5" />
+            </Button>
+          </div>
+        </div>
+        {/* Cliente */}
+        <div>
+          <Input placeholder="Cliente..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="h-6 text-[10px]" />
+        </div>
+        {/* Cidade */}
+        <div>
+          <Input placeholder="Cidade..." value={cidadeSearch} onChange={e => setCidadeSearch(e.target.value)} className="h-6 text-[10px]" />
+        </div>
+      </div>
+      {/* Row 2: Produto + actions */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <div className="flex gap-0.5">
+          <Input placeholder="Produto..." value={produtoSearch} onChange={e => { setProdutoSearch(e.target.value); setProdutoIds([]); }} className="h-6 text-[10px] w-32" />
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0 shrink-0" title="Selecionar" onClick={() => setProdutoModalOpen(true)}>
+            <List className="w-2.5 h-2.5" />
+          </Button>
+        </div>
+        {(vendedorIds.length > 0 || produtoIds.length > 0 || activeFilterCount > 0) && (
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-red-500 px-2" onClick={clearAllFilters}>
+            <X className="w-2.5 h-2.5 mr-0.5" /> Limpar
           </Button>
         )}
         <Button
           variant="outline"
           size="sm"
-          className="h-8"
+          className="h-6 w-6 p-0"
+          title="Atualizar"
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
             fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
           }}
         >
-          <RefreshCw className="w-3 h-3" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={handleSincronizarLogistico}
-          disabled={logisticoLoading}
-        >
-          {logisticoLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Truck className="w-3 h-3 mr-1" />}
-          Sinc. Logístico
+          <RefreshCw className="w-2.5 h-2.5" />
         </Button>
         {omieStatusLoading && (
-          <span className="text-[10px] text-amber-600 flex items-center gap-1">
-            <Loader2 className="w-3 h-3 animate-spin" /> Consultando Omie...
+          <span className="text-[9px] text-amber-600 flex items-center gap-0.5">
+            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Omie...
           </span>
         )}
       </div>
-
-      {/* Filters - Row 2 (expandable) */}
-      {showFilters && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 p-3 bg-white border rounded-lg">
-          {/* Período envio */}
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Envio de</label>
-            <Input type="date" value={envioInicio} onChange={e => setEnvioInicio(e.target.value)} className="h-8 text-xs" />
-          </div>
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Envio até</label>
-            <Input type="date" value={envioFim} onChange={e => setEnvioFim(e.target.value)} className="h-8 text-xs" />
-          </div>
-
-          {/* Vendedor */}
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Vendedor</label>
-            <div className="flex gap-1">
-              <Input placeholder="Nome..." value={vendedorSearch} onChange={e => { setVendedorSearch(e.target.value); setVendedorIds([]); }} className="h-8 text-xs flex-1" />
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" title="Selecionar na tabela" onClick={() => setVendedorModalOpen(true)}>
-                <List className="w-3 h-3" />
-              </Button>
-            </div>
-            {vendedorIds.length > 0 && <p className="text-[10px] text-amber-600 mt-0.5">{vendedorIds.length} selecionado(s)</p>}
-          </div>
-
-          {/* Produto */}
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Produto</label>
-            <div className="flex gap-1">
-              <Input placeholder="Nome/Cód..." value={produtoSearch} onChange={e => { setProdutoSearch(e.target.value); setProdutoIds([]); }} className="h-8 text-xs flex-1" />
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" title="Selecionar na tabela" onClick={() => setProdutoModalOpen(true)}>
-                <List className="w-3 h-3" />
-              </Button>
-            </div>
-            {produtoIds.length > 0 && <p className="text-[10px] text-amber-600 mt-0.5">{produtoIds.length} selecionado(s)</p>}
-          </div>
-
-          {/* Cliente */}
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Cliente</label>
-            <Input placeholder="Nome/Cód..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="h-8 text-xs" />
-          </div>
-
-          {/* Cidade */}
-          <div>
-            <label className="text-[10px] font-medium text-slate-500 mb-1 block">Cidade</label>
-            <Input placeholder="Cidade..." value={cidadeSearch} onChange={e => setCidadeSearch(e.target.value)} className="h-8 text-xs" />
-          </div>
-        </div>
-      )}
 
       {/* Table */}
       {isLoading ? (
@@ -639,17 +600,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 320px)', minHeight: '300px' }}>
-          <table className="text-xs border-collapse" style={{ minWidth: '100%' }}>
+        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 280px)', minHeight: '250px' }}>
+          <table className="text-[11px] border-collapse" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
               reorder(result.source.index, result.destination.index);
             }}>
               <Droppable droppableId="columns" direction="horizontal">
                 {(droppableProvided) => (
-                  <thead className="bg-slate-100 sticky top-0">
+                  <thead className="bg-slate-100 sticky top-0 z-20">
                     <tr ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-                      <th className="p-2 w-8 border-r border-slate-200">
+                      <th className="px-1.5 py-1 w-7 border-r border-slate-200">
                         <Checkbox
                           checked={filtered.length > 0 && selectedIds.length === filtered.length}
                           onCheckedChange={toggleSelectAll}
@@ -661,24 +622,28 @@ export default function GerenciarPedidos({ onEditPedido }) {
                             <th
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className={`relative text-left font-medium text-slate-600 whitespace-nowrap cursor-grab select-none hover:text-slate-900 border-r border-slate-200 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
-                              onClick={() => { if (!snapshot.isDragging) toggleSort(col.field); }}
-                              style={{ ...provided.draggableProps.style, width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 50 }}
+                              className={`relative text-left font-medium text-slate-600 whitespace-nowrap select-none border-r border-slate-200 ${snapshot.isDragging ? 'bg-amber-100 shadow-lg z-50' : ''}`}
+                              style={{ ...provided.draggableProps.style, width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}
                             >
-                              <span className="block p-2">{col.label}
-                              {sortField === col.field && (
-                                sortDir === 'asc'
-                                  ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
-                                  : <ChevronDown className="w-3 h-3 inline ml-0.5" />
-                              )}</span>
+                              <span
+                                {...provided.dragHandleProps}
+                                className="block px-1.5 py-1 cursor-grab hover:text-slate-900"
+                                onClick={() => { if (!snapshot.isDragging) toggleSort(col.field); }}
+                              >
+                                {col.label}
+                                {sortField === col.field && (
+                                  sortDir === 'asc'
+                                    ? <ChevronUp className="w-2.5 h-2.5 inline ml-0.5" />
+                                    : <ChevronDown className="w-2.5 h-2.5 inline ml-0.5" />
+                                )}
+                              </span>
                               {/* Resize handle */}
                               <div
-                                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-amber-400 active:bg-amber-500 z-10"
+                                className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-amber-400 active:bg-amber-500 z-10"
                                 onMouseDown={(e) => {
                                   e.stopPropagation();
                                   const thEl = e.currentTarget.parentElement;
-                                  onResizeStart(e, col.id, thEl?.offsetWidth || 120);
+                                  onResizeStart(e, col.id, thEl?.offsetWidth || 100);
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               />
@@ -687,7 +652,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         </Draggable>
                       ))}
                       {droppableProvided.placeholder}
-                      <th className="p-2 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-600 whitespace-nowrap">Ações</th>
                     </tr>
                   </thead>
                 )}
@@ -695,7 +660,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </DragDropContext>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={columns.length + 2} className="p-8 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={columns.length + 2} className="p-6 text-center text-slate-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(p => (
                   <tr
@@ -706,28 +671,28 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     onMouseEnter={() => onRowMouseEnter(p.id)}
                     onMouseUp={onMouseUp}
                   >
-                    <td className="p-2 border-r border-slate-100">
+                    <td className="px-1.5 py-0.5 border-r border-slate-100">
                       <Checkbox
                         checked={selectedIds.includes(p.id)}
                         onCheckedChange={() => toggleSelect(p.id)}
                       />
                     </td>
                     {columns.map(col => (
-                      <td key={col.id} className="p-2 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 50 }}>
+                      <td key={col.id} className="px-1.5 py-0.5 border-r border-slate-100" style={{ width: colWidths[col.id] ? `${colWidths[col.id]}px` : undefined, minWidth: 40 }}>
                         <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
                       </td>
                     ))}
-                    <td className="p-2">
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
-                          <Eye className="w-3 h-3" />
+                    <td className="px-1.5 py-0.5">
+                      <div className="flex gap-0.5">
+                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
+                          <Eye className="w-2.5 h-2.5" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
-                          <DollarSign className="w-3 h-3" />
+                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
+                          <DollarSign className="w-2.5 h-2.5" />
                         </Button>
                         {p.status !== 'cancelado' && p.status !== 'faturado' && p.status !== 'montagem' && (
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
-                            <XCircle className="w-3 h-3" />
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
+                            <XCircle className="w-2.5 h-2.5" />
                           </Button>
                         )}
                       </div>
