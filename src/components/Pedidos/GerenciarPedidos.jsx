@@ -22,7 +22,8 @@ import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
 import useColumnOrder from './useColumnOrder';
 import useColumnResize from './useColumnResize';
-import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
+import PedidoCellRenderer, { formatDate, formatCurrency, OMIE_TO_ANALISE } from './PedidoCellRenderer';
+import BatchResultToast from './BatchResultToast';
 
 
 
@@ -83,6 +84,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [omieStatuses, setOmieStatuses] = useState({});
   const [omieStatusLoading, setOmieStatusLoading] = useState(false);
   const omieStatusRequestsRef = useRef(new Set());
+  const [batchResult, setBatchResult] = useState(null);
 
 
   const { columns, reorder, resetOrder } = useColumnOrder();
@@ -391,41 +393,66 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds
   );
 
+  // Helper: resolve o status de análise real do pedido
+  const getAnaliseStatus = (p) => {
+    const omie = omieStatuses[p.id];
+    if (p.tipo === 'troca') {
+      // Trocas usam status local
+      const map = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
+      return map[p.status] || p.status;
+    }
+    if (omie && !omie.erro && !omie.api_bloqueada && omie.etapa_label) {
+      return OMIE_TO_ANALISE[omie.etapa_label] || omie.etapa_label;
+    }
+    // Fallback ao status local
+    const map = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
+    return map[p.status] || p.status;
+  };
+
   // Batch actions
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
-    const selected = pedidos.filter(p => selectedIds.includes(p.id) && (p.status === 'enviado' || p.status === 'liberado'));
-    let count = 0;
-    let errosOmie = 0;
-    for (const p of selected) {
-      const novoStatus = p.status === 'enviado' ? 'liberado' : 'faturado';
-      const updateData = {
-        status: novoStatus,
-      };
-      if (novoStatus === 'liberado') {
-        updateData.liberado_por = currentUser?.email;
-        updateData.liberado_por_nome = currentUser?.full_name;
-        updateData.data_liberacao = new Date().toISOString();
-      }
-      await base44.entities.Pedido.update(p.id, updateData);
-      count++;
-      // Liberar no Omie (mover para Pedidos Liberados) — apenas na primeira liberação
-      if (novoStatus === 'liberado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
-        try {
-          const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
-          if (!res.data?.sucesso) errosOmie++;
-        } catch (e) {
-          console.error('Erro ao liberar no Omie:', e);
-          errosOmie++;
+    const allSelected = pedidos.filter(p => selectedIds.includes(p.id));
+
+    let liberados = 0;
+    let jaLiberados = 0;
+    let naoAlteraveis = 0;
+    const naoAlteravelLabels = [];
+
+    for (const p of allSelected) {
+      const analise = getAnaliseStatus(p);
+      if (analise === 'Pendente') {
+        // Pode liberar
+        const updateData = {
+          status: 'liberado',
+          liberado_por: currentUser?.email,
+          liberado_por_nome: currentUser?.full_name,
+          data_liberacao: new Date().toISOString(),
+        };
+        await base44.entities.Pedido.update(p.id, updateData);
+        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+          try {
+            await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
+          } catch (e) {
+            console.error('Erro ao liberar no Omie:', e);
+          }
         }
+        liberados++;
+      } else if (analise === 'Liberados') {
+        jaLiberados++;
+      } else {
+        // Montagem, Faturado, Cancelado — não pode alterar
+        naoAlteraveis++;
+        if (!naoAlteravelLabels.includes(analise)) naoAlteravelLabels.push(analise);
       }
     }
-    const label = selected.some(p => p.status === 'liberado') ? 'faturado(s)' : 'liberado(s)';
-    if (errosOmie > 0) {
-      toast.warning(`${count} pedido(s) ${label}, ${errosOmie} com erro no Omie`);
-    } else {
-      toast.success(`${count} pedido(s) ${label}`);
-    }
+
+    const items = [];
+    if (liberados > 0) items.push({ color: 'green', text: `${liberados} pedido(s) liberado(s) com sucesso` });
+    if (jaLiberados > 0) items.push({ color: 'yellow', text: `${jaLiberados} pedido(s) já liberado(s), sem alteração` });
+    if (naoAlteraveis > 0) items.push({ color: 'red', text: `${naoAlteraveis} pedido(s) em ${naoAlteravelLabels.join('/')} não puderam ser alterados` });
+
+    setBatchResult({ title: 'Resultado da Liberação', items });
     setSelectedIds([]);
     setBatchAction(null);
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
@@ -433,26 +460,46 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const handleBatchBloquear = async () => {
     setBatchAction('bloqueando');
-    const selected = pedidos.filter(p => selectedIds.includes(p.id) && p.status === 'liberado');
-    let count = 0;
-    for (const p of selected) {
-      await base44.entities.Pedido.update(p.id, {
-        status: 'enviado',
-        liberado_por: null,
-        liberado_por_nome: null,
-        data_liberacao: null,
-      });
-      count++;
-      // Reverter no Omie (voltar para Pedido de Venda - etapa 10)
-      if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
-        try {
-          await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id, etapa: '10' });
-        } catch (e) {
-          console.error('Erro ao reverter no Omie:', e);
+    const allSelected = pedidos.filter(p => selectedIds.includes(p.id));
+
+    let bloqueados = 0;
+    let jaPendentes = 0;
+    let naoAlteraveis = 0;
+    const naoAlteravelLabels = [];
+
+    for (const p of allSelected) {
+      const analise = getAnaliseStatus(p);
+      if (analise === 'Liberados') {
+        // Pode bloquear (reverter para pendente/enviado)
+        await base44.entities.Pedido.update(p.id, {
+          status: 'enviado',
+          liberado_por: null,
+          liberado_por_nome: null,
+          data_liberacao: null,
+        });
+        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+          try {
+            await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id, etapa: '10' });
+          } catch (e) {
+            console.error('Erro ao reverter no Omie:', e);
+          }
         }
+        bloqueados++;
+      } else if (analise === 'Pendente') {
+        jaPendentes++;
+      } else {
+        // Montagem, Faturado, Cancelado — não pode alterar
+        naoAlteraveis++;
+        if (!naoAlteravelLabels.includes(analise)) naoAlteravelLabels.push(analise);
       }
     }
-    toast.success(`${count} pedido(s) revertido(s) para enviado`);
+
+    const items = [];
+    if (bloqueados > 0) items.push({ color: 'green', text: `${bloqueados} pedido(s) bloqueado(s) com sucesso` });
+    if (jaPendentes > 0) items.push({ color: 'yellow', text: `${jaPendentes} pedido(s) já pendente(s), sem alteração` });
+    if (naoAlteraveis > 0) items.push({ color: 'red', text: `${naoAlteraveis} pedido(s) em ${naoAlteravelLabels.join('/')} não puderam ser alterados` });
+
+    setBatchResult({ title: 'Resultado do Bloqueio', items });
     setSelectedIds([]);
     setBatchAction(null);
     queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
@@ -729,6 +776,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Limpar</Button>
         </div>
+      )}
+
+      {/* Batch result toast */}
+      {batchResult && (
+        <BatchResultToast results={batchResult} onClose={() => setBatchResult(null)} />
       )}
 
       {/* Modals */}
