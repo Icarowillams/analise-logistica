@@ -623,16 +623,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
           </Button>
         )}
         <Button
-          variant="outline"
           size="sm"
-          className="h-6 w-6 p-0"
-          title="Atualizar"
+          className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
             fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
           }}
         >
-          <RefreshCw className="w-2.5 h-2.5" />
+          <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Atualizar
         </Button>
         {omieStatusLoading && (
           <span className="text-[9px] text-amber-600 flex items-center gap-0.5">
