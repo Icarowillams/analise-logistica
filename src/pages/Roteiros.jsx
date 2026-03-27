@@ -18,6 +18,7 @@ import VisualizarRoteiroModal from '@/components/Roteiros/VisualizarRoteiroModal
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import LogClientesNaoCadastrados from '@/components/Roteiros/LogClientesNaoCadastrados';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 
 export default function Roteiros() {
   const [activeTab, setActiveTab] = useState("busca");
@@ -61,6 +62,11 @@ export default function Roteiros() {
       setDeleteOpen(false);
       setSelected(null);
     }
+  });
+
+  const toggleAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }) => base44.entities.Roteiro.update(id, { ativo }),
+    onSuccess: () => queryClient.invalidateQueries(['roteiros'])
   });
 
   const duplicateMutation = useMutation({
@@ -368,17 +374,18 @@ export default function Roteiros() {
                     <TableHead>IDs de Depuração</TableHead>
                     <TableHead>Clientes</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Ativo</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell>
+                      <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
                     </TableRow>
                   ) : filteredRoteiros.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                      <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                         Nenhum roteiro encontrado
                       </TableCell>
                     </TableRow>
@@ -395,6 +402,12 @@ export default function Roteiros() {
                           <Badge variant="outline">{roteiro.clientes_ids?.length || 0} clientes</Badge>
                         </TableCell>
                         <TableCell>{getStatusBadge(roteiro.status)}</TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={roteiro.ativo !== false}
+                            onCheckedChange={(checked) => toggleAtivoMutation.mutate({ id: roteiro.id, ativo: checked })}
+                          />
+                        </TableCell>
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>

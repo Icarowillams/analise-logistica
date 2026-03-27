@@ -142,7 +142,7 @@ export default function MeusRoteiros() {
     );
   }
 
-  const roteirosVendedor = roteiros.filter(r => r.vendedor_id === vendedorAtual.id);
+  const roteirosVendedor = roteiros.filter(r => r.vendedor_id === vendedorAtual.id && r.ativo !== false);
 
   return (
     <div>

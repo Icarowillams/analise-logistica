@@ -70,6 +70,11 @@
       "default": "planejado",
       "description": "Status do roteiro"
     },
+    "ativo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Indica se o roteiro est\u00e1 ativo (vis\u00edvel para funcion\u00e1rios e relat\u00f3rios)"
+    },
     "observacoes": {
       "type": "string",
       "description": "Observa\u00e7\u00f5es sobre o roteiro"

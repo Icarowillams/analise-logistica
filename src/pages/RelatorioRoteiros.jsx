@@ -202,7 +202,7 @@ export default function RelatorioRoteiros() {
 
   const { filtrarClientes, filtrarRoteiros } = useClientesPermissao();
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
-  const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros), [roteiros, filtrarRoteiros]);
+  const roteirosPermitidos = useMemo(() => filtrarRoteiros(roteiros).filter(r => r.ativo !== false), [roteiros, filtrarRoteiros]);
 
   const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
   const clientesMapByCodigo = useMemo(() => clientes.reduce((acc, c) => { if (c.codigo) acc[c.codigo] = c; return acc; }, {}), [clientes]);
