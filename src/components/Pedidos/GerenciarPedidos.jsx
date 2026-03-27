@@ -458,7 +458,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setBatchResult({ title: 'Resultado da Liberação', items });
     setSelectedIds([]);
     setBatchAction(null);
-    queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    // Re-consultar status Omie após liberação
+    setTimeout(() => {
+      fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
+    }, 1500);
   };
 
   const handleBatchBloquear = async () => {
@@ -505,7 +509,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setBatchResult({ title: 'Resultado do Bloqueio', items });
     setSelectedIds([]);
     setBatchAction(null);
-    queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    // Re-consultar status Omie após bloqueio
+    setTimeout(() => {
+      fetchOmieStatuses(filtered.slice(0, OMIE_STATUS_REFRESH_LIMIT), { force: true });
+    }, 1500);
   };
 
   const handleCancelConfirm = async (pedido, motivo) => {
