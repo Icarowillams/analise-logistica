@@ -198,16 +198,18 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Adicionar observações se existir
-        if (pedido.observacoes) {
-            pedidoOmie.observacoes = {
-                obs_venda: pedido.observacoes
-            };
-        }
-
-        // Adicionar número do pedido de compra se existir
+        // Adicionar observações (incluindo nº pedido de compra do cliente, se existir)
+        const obsPartes = [];
         if (pedido.numero_pedido_compra) {
-            pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
+            obsPartes.push(`Pedido de compra: ${pedido.numero_pedido_compra}`);
+        }
+        if (pedido.observacoes) {
+            obsPartes.push(pedido.observacoes);
+        }
+        if (obsPartes.length > 0) {
+            pedidoOmie.observacoes = {
+                obs_venda: obsPartes.join(' | ')
+            };
         }
 
         // Buscar conta corrente no Omie
