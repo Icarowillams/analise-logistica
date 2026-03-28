@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DigitarPedido from '@/components/Pedidos/DigitarPedido';
+import PedidoAvulso from '@/components/Pedidos/PedidoAvulso';
 import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
 
 export default function EmissaoPedidos() {
@@ -89,23 +90,33 @@ export default function EmissaoPedidos() {
       <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorAtual.nome}`} icon={ShoppingCart} />
       
       <div>
-        <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full grid-cols-2 mb-6">
+        <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full grid-cols-3 mb-6">
           <button
             onClick={() => { setActiveTab('digitar'); }}
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'digitar' ? 'bg-background text-foreground shadow' : ''}`}
           >
-            Digitar Pedidos
+            Roteiro
+          </button>
+          <button
+            onClick={() => { setActiveTab('avulso'); }}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'avulso' ? 'bg-background text-foreground shadow' : ''}`}
+          >
+            Pedido Avulso
           </button>
           <button
             onClick={() => { setActiveTab('envio'); }}
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'envio' ? 'bg-background text-foreground shadow' : ''}`}
           >
-            Envio de Pedidos
+            Envio
           </button>
         </div>
 
         <div style={{ display: activeTab === 'digitar' ? 'block' : 'none' }}>
           <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
+        </div>
+
+        <div style={{ display: activeTab === 'avulso' ? 'block' : 'none' }}>
+          <PedidoAvulso vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </div>
 
         <div style={{ display: activeTab === 'envio' ? 'block' : 'none' }}>
