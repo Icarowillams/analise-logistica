@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
                 codigo_parcela: "999", // 999 = conforme parcelas informadas
                 quantidade_itens: allItems.length,
                 ...(pedido.cenario_fiscal_codigo ? { codigo_cenario_impostos: String(pedido.cenario_fiscal_codigo) } : {}),
-                ...(pedido.numero_pedido_compra ? { numero_pedido_compra: pedido.numero_pedido_compra } : {})
+
             },
             det,
             frete: {
