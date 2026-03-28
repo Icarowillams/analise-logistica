@@ -72,73 +72,78 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo?.includes(s);
   });
 
-  if (selectedCliente) {
-    return (
-      <PedidoFormulario
-        cliente={selectedCliente}
-        tipo={tipoPedido || 'venda'}
-        vendedor={vendedor}
-        editingPedidoId={editingPedidoId}
-        permissaoCenariosFiscais={permissaoCenariosFiscais}
-        onVoltar={() => {
-          setSelectedCliente(null);
-          setTipoPedido(null);
-          onClearEdit();
-        }}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      {/* Day tabs */}
-      <Tabs value={selectedDia} onValueChange={setSelectedDia}>
-        <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1">
-          {diasSemana.map(dia => {
-            const roteiroDia = roteiros.find(r => r.dia_semana === dia.valor);
-            const count = roteiroDia?.clientes_ids?.length || 0;
-            return (
-              <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs flex-1 min-w-[40px] px-1 py-1.5">
-                {dia.label}
-                {count > 0 && <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1">{count}</Badge>}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <Input
-          placeholder="Buscar cliente por código ou nome..."
-          value={searchCliente}
-          onChange={(e) => setSearchCliente(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {/* Client list */}
-      {clientesFiltrados.length === 0 ? (
-        <div className="text-center text-slate-500 py-12">
-          <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-          <p>Nenhum cliente encontrado para este dia</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {clientesFiltrados.map((cli) => (
-            <Card key={cli.id} className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors" onClick={() => setSelectedCliente(cli)}>
-              <CardContent className="p-3 flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm truncate">{cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>
-                  <p className="text-xs text-slate-500 truncate">{cli.cidade}{cli.bairro ? `, ${cli.bairro}` : ''}</p>
-                </div>
-                <ShoppingCart className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
-              </CardContent>
-            </Card>
-          ))}
+    <div>
+      {/* Formulário do pedido - mantém montado enquanto cliente selecionado */}
+      {selectedCliente && (
+        <div style={{ display: selectedCliente ? 'block' : 'none' }}>
+          <PedidoFormulario
+            key={selectedCliente.id + (editingPedidoId || '')}
+            cliente={selectedCliente}
+            tipo={tipoPedido || 'venda'}
+            vendedor={vendedor}
+            editingPedidoId={editingPedidoId}
+            permissaoCenariosFiscais={permissaoCenariosFiscais}
+            onVoltar={() => {
+              setSelectedCliente(null);
+              setTipoPedido(null);
+              onClearEdit();
+            }}
+          />
         </div>
       )}
+
+      {/* Lista de clientes - esconde quando formulário aberto */}
+      <div style={{ display: selectedCliente ? 'none' : 'block' }} className="space-y-4">
+        {/* Day tabs */}
+        <Tabs value={selectedDia} onValueChange={setSelectedDia}>
+          <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1">
+            {diasSemana.map(dia => {
+              const roteiroDia = roteiros.find(r => r.dia_semana === dia.valor);
+              const count = roteiroDia?.clientes_ids?.length || 0;
+              return (
+                <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs flex-1 min-w-[40px] px-1 py-1.5">
+                  {dia.label}
+                  {count > 0 && <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1">{count}</Badge>}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            placeholder="Buscar cliente por código ou nome..."
+            value={searchCliente}
+            onChange={(e) => setSearchCliente(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        {/* Client list */}
+        {clientesFiltrados.length === 0 ? (
+          <div className="text-center text-slate-500 py-12">
+            <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+            <p>Nenhum cliente encontrado para este dia</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {clientesFiltrados.map((cli) => (
+              <Card key={cli.id} className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors" onClick={() => setSelectedCliente(cli)}>
+                <CardContent className="p-3 flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">{cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>
+                    <p className="text-xs text-slate-500 truncate">{cli.cidade}{cli.bairro ? `, ${cli.bairro}` : ''}</p>
+                  </div>
+                  <ShoppingCart className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
