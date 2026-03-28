@@ -51,7 +51,11 @@ const ABAS_SISTEMA = [
   { id: 'EmissaoPedidos', nome: 'Emissão de Pedidos', grupo: 'pedidos' },
   { id: 'GerenciarPedidosPage', nome: 'Gerenciar Pedidos', grupo: 'pedidos' },
   { id: 'MapaVendas', nome: 'Mapa de Vendas', grupo: 'analises' },
-  { id: 'Empresa', nome: 'Empresa', grupo: 'cadastros' }
+  { id: 'Empresa', nome: 'Empresa', grupo: 'cadastros' },
+  { id: 'PreCadastros', nome: 'Pré-Cadastros', grupo: 'cadastros' },
+  { id: 'SincronizarClientesOmie', nome: 'Sincronizar Clientes Omie', grupo: 'cadastros' },
+  { id: 'EnviarRotasOmie', nome: 'Enviar Rotas Omie', grupo: 'pedidos' },
+  { id: 'RelatorioRotinaSupervisores', nome: 'Rotina Supervisores', grupo: 'relatorios' }
 ];
 
 const RELATORIOS_PERMISSOES = [
