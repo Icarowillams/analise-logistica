@@ -51,7 +51,32 @@ export default function BulkImportModal({
     return v.trim();
   };
 
-  const parseCSVLine = (line) => {
+  const detectDelimiter = (headerLine) => {
+    // Contar ocorrências de cada delimitador FORA de aspas
+    const counts = { ';': 0, ',': 0, '\t': 0 };
+    let inQuotes = false;
+    for (let i = 0; i < headerLine.length; i++) {
+      const ch = headerLine[i];
+      if (ch === '"') {
+        if (inQuotes && i + 1 < headerLine.length && headerLine[i + 1] === '"') {
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (!inQuotes) {
+        if (ch === ';') counts[';']++;
+        else if (ch === ',') counts[',']++;
+        else if (ch === '\t') counts['\t']++;
+      }
+    }
+    // Prioridade: tab > ponto-e-vírgula > vírgula (tab e ; são mais seguros)
+    if (counts['\t'] > 0) return '\t';
+    if (counts[';'] > 0) return ';';
+    if (counts[','] > 0) return ',';
+    return ';'; // fallback
+  };
+
+  const parseCSVLine = (line, delimiter) => {
     const result = [];
     let current = '';
     let inQuotes = false;
@@ -64,7 +89,7 @@ export default function BulkImportModal({
         } else {
           inQuotes = !inQuotes;
         }
-      } else if ((ch === ';' || ch === ',' || ch === '\t') && !inQuotes) {
+      } else if (ch === delimiter && !inQuotes) {
         result.push(current.trim());
         current = '';
       } else {
@@ -79,7 +104,9 @@ export default function BulkImportModal({
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
     
-    const headerValues = parseCSVLine(lines[0]);
+    const delimiter = detectDelimiter(lines[0]);
+    console.log('BulkImportModal - Delimitador detectado:', JSON.stringify(delimiter));
+    const headerValues = parseCSVLine(lines[0], delimiter);
     // Normalizar headers: remover acentos, lowercase, underscores
     const headerAliases = {
       'inscricao_estadual': 'inscricao_estadual',
@@ -143,7 +170,7 @@ export default function BulkImportModal({
     console.log('BulkImportModal - Headers brutos:', JSON.stringify(headerValues.map(h => removeQuotes(h))));
     console.log('BulkImportModal - Headers normalizados:', JSON.stringify(headers));
     return lines.slice(1).map((line, idx) => {
-      const values = parseCSVLine(line);
+      const values = parseCSVLine(line, delimiter);
       const row = { _rowNum: idx + 2 };
       headers.forEach((h, i) => { row[h] = removeQuotes(values[i] || ''); });
       return row;
