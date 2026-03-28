@@ -150,7 +150,6 @@ Deno.serve(async (req) => {
                 },
                 produto: {
                     codigo_produto_integracao: item.produto_id,
-                    codigo: prod.codigo || '',
                     descricao: item.produto_nome || prod.nome || '',
                     ncm: prod.ncm || '',
                     quantidade: item.quantidade,
