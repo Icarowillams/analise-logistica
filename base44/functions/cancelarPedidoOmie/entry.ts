@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -36,23 +36,19 @@ async function consultarPedidoOmie(codigoPedido) {
     return result;
 }
 
-async function cancelarPedidoNoOmie(codigoPedido) {
+async function excluirPedidoOmie(codigoPedido) {
     const response = await fetch(OMIE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            call: "StatusPedido",
+            call: "ExcluirPedido",
             app_key: OMIE_APP_KEY,
             app_secret: OMIE_APP_SECRET,
-            param: [{
-                codigo_pedido: Number(codigoPedido),
-                etapa: "50",
-                cancelar: "S"
-            }]
+            param: [{ codigo_pedido: Number(codigoPedido) }]
         })
     });
     const text = await response.text();
-    console.log('[cancelarPedidoOmie] StatusPedido (cancelar) resposta:', text.substring(0, 1000));
+    console.log('[cancelarPedidoOmie] ExcluirPedido resposta:', text.substring(0, 1000));
     let result;
     try { result = JSON.parse(text); } catch (e) { return { faultstring: 'Resposta inválida do Omie' }; }
     return result;
@@ -146,16 +142,16 @@ Deno.serve(async (req) => {
                     }, { status: 400 });
                 }
                 else {
-                    // Etapa é cancelável — executar cancelamento no Omie
-                    console.log(`[cancelarPedidoOmie] Etapa ${etapaAtual} permite cancelamento. Cancelando...`);
-                    const cancelResult = await cancelarPedidoNoOmie(codigoPedido);
+                    // Etapa é cancelável — executar exclusão no Omie (API só suporta exclusão)
+                    console.log(`[cancelarPedidoOmie] Etapa ${etapaAtual} permite cancelamento. Excluindo no Omie...`);
+                    const excluirResult = await excluirPedidoOmie(codigoPedido);
 
-                    if (cancelResult && !cancelResult.faultstring && !cancelResult.faultcode) {
+                    if (excluirResult && !excluirResult.faultstring && !excluirResult.faultcode) {
                         omieCancelado = true;
-                        console.log('[cancelarPedidoOmie] Pedido cancelado com sucesso no Omie!');
+                        console.log('[cancelarPedidoOmie] Pedido excluído com sucesso no Omie!');
                     } else {
-                        omieErro = cancelResult?.faultstring || 'Falha ao cancelar no Omie';
-                        console.error('[cancelarPedidoOmie] Erro ao cancelar:', omieErro);
+                        omieErro = excluirResult?.faultstring || 'Falha ao excluir no Omie';
+                        console.error('[cancelarPedidoOmie] Erro ao excluir:', omieErro);
                         // Retornar erro sem cancelar localmente
                         return Response.json({
                             sucesso: false,
