@@ -189,40 +189,80 @@ function mapearClienteParaOmie(clienteOriginal) {
     const cpfCnpj = (corrigido.cpf_cnpj || "").replace(/[^\d]/g, "");
     const isPessoaFisica = cpfCnpj.length <= 11;
 
-    // Validar CPF/CNPJ — se não tem dígitos suficientes, pular
+    // ===== VALIDAÇÕES PRÉ-ENVIO =====
+    const errosValidacao = [];
+
+    // CPF deve ter 11 dígitos, CNPJ deve ter 14
+    if (isPessoaFisica && cpfCnpj.length !== 11) {
+        errosValidacao.push(`CPF inválido (${cpfCnpj.length} dígitos): "${cliente.cpf_cnpj}"`);
+    }
+    if (!isPessoaFisica && cpfCnpj.length !== 14) {
+        errosValidacao.push(`CNPJ inválido (${cpfCnpj.length} dígitos): "${cliente.cpf_cnpj}"`);
+    }
     if (cpfCnpj.length < 11) {
-        return { erro: `CPF/CNPJ inválido: "${cliente.cpf_cnpj}"` };
+        errosValidacao.push(`CPF/CNPJ muito curto: "${cliente.cpf_cnpj}"`);
+    }
+
+    // Razão social é obrigatória
+    const razaoSocial = (corrigido.razao_social || corrigido.nome_fantasia || "").trim();
+    if (!razaoSocial) {
+        errosValidacao.push('Razão social vazia');
+    }
+
+    // Estado deve ser UF válida de 2 letras
+    const estadoFinal = (corrigido.estado || "").trim().toUpperCase();
+    if (!estadoFinal || !UF_VALIDAS.has(estadoFinal)) {
+        errosValidacao.push(`Estado inválido: "${corrigido.estado}"`);
+    }
+
+    if (errosValidacao.length > 0) {
+        return { erro: errosValidacao.join('; ') };
+    }
+
+    // ===== PREPARAR CAMPOS OBRIGATÓRIOS =====
+    const nomeFantasia = (corrigido.nome_fantasia || corrigido.razao_social || razaoSocial).trim();
+    const endereco = (corrigido.endereco || "").trim();
+    const enderecoNumero = (corrigido.numero || "").trim();
+    const bairro = (corrigido.bairro || "").trim();
+    const cidade = (corrigido.cidade || "").trim();
+    const cepLimpo = (corrigido.cep || "").replace(/[^\d]/g, "");
+    const email = (corrigido.email || "").trim();
+
+    // Inscricao estadual: PF sempre ISENTO, PJ pode ter valor ou vazio
+    let inscricaoEstadual = "";
+    if (isPessoaFisica) {
+        inscricaoEstadual = "ISENTO";
+    } else {
+        inscricaoEstadual = (corrigido.inscricao_estadual || "").trim();
     }
 
     const clienteOmie = {
+        // Identificação (obrigatórios sempre)
         codigo_cliente_integracao: corrigido.id,
-        razao_social: (corrigido.razao_social || corrigido.nome_fantasia || "Cliente sem nome").substring(0, 60),
-        nome_fantasia: (corrigido.nome_fantasia || corrigido.razao_social || "").substring(0, 100),
+        razao_social: razaoSocial.substring(0, 60),
+        nome_fantasia: (nomeFantasia || razaoSocial).substring(0, 100),
         cnpj_cpf: cpfCnpj,
         pessoa_fisica: isPessoaFisica ? "S" : "N",
-        endereco: (corrigido.endereco || ".").substring(0, 60),
-        endereco_numero: (corrigido.numero || "S/N").substring(0, 10),
-        bairro: (corrigido.bairro || ".").substring(0, 60),
-        complemento: "",
-        cidade: (corrigido.cidade || ".").substring(0, 60),
-        estado: corrigido.estado || "PE",
-        cep: (corrigido.cep || "").replace(/[^\d]/g, "").substring(0, 8),
-        contato: "",
-        email: (corrigido.email || "nfe@paoemel.com.br").substring(0, 500),
         contribuinte: isPessoaFisica ? "N" : "S",
-        inscricao_estadual: corrigido.inscricao_estadual || "",
-        observacao: "",
-        inativo: (corrigido.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+        inativo: (corrigido.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
+
+        // Endereço (obrigatórios para NF-e)
+        endereco: (endereco || "NAO INFORMADO").substring(0, 60),
+        endereco_numero: (enderecoNumero || "S/N").substring(0, 10),
+        bairro: (bairro || "NAO INFORMADO").substring(0, 60),
+        cidade: (cidade || "NAO INFORMADO").substring(0, 60),
+        estado: estadoFinal,
+        cep: cepLimpo.length === 8 ? cepLimpo : "00000000",
+
+        // Contato
+        email: (email || "nfe@paoemel.com.br").substring(0, 500),
     };
 
-    // Remover campos vazios (exceto obrigatórios)
-    const camposObrigatorios = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo'];
-    for (const [key, value] of Object.entries(clienteOmie)) {
-        if (camposObrigatorios.includes(key)) continue;
-        if (value === '' || value === null || value === undefined) {
-            delete clienteOmie[key];
-        }
+    // Campos opcionais — só incluir se tiverem valor
+    if (inscricaoEstadual) {
+        clienteOmie.inscricao_estadual = inscricaoEstadual;
     }
+
     return clienteOmie;
 }
 
