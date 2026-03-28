@@ -199,9 +199,16 @@ Deno.serve(async (req) => {
         }
 
         // Adicionar observações nas Informações Complementares do DANFE
+        const obsPartes = [];
+        if (pedido.numero_pedido_compra) {
+            obsPartes.push(`Nº Pedido Compra: ${pedido.numero_pedido_compra}`);
+        }
         if (pedido.observacoes) {
+            obsPartes.push(pedido.observacoes);
+        }
+        if (obsPartes.length > 0) {
             pedidoOmie.observacoes = {
-                obs_venda: pedido.observacoes
+                obs_venda: obsPartes.join(' | ')
             };
         }
 
