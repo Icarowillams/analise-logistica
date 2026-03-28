@@ -180,19 +180,21 @@ function corrigirCamposTrocados(cliente) {
         const campos = [cep, numero, bairro, cidade, estado, endereco];
         for (const c of campos) {
             const nums = (c || '').replace(/[^\d]/g, '');
-            if (nums.length === 8 && /^\d{5}-?\d{3}$/.test((c || '').trim().replace(/[^\d-]/g, ''))) {
+            if (nums.length === 8 && parseInt(nums) >= 1000000) {
                 cepFinal = nums;
                 break;
             }
         }
-        // Se latitude/longitude parecem CEP (8 dígitos entre 01000000 e 99999999)
+        // Se latitude/longitude parecem CEP (8 dígitos válidos — coordenadas reais nunca têm 8 dígitos inteiros)
         if (cepFinal.length !== 8) {
-            const latStr = String(Math.abs(Math.round(latitude || 0)));
-            const lonStr = String(Math.abs(Math.round(longitude || 0)));
-            if (latStr.length === 8 && parseInt(latStr) >= 1000000) {
-                cepFinal = latStr;
-            } else if (lonStr.length === 8 && parseInt(lonStr) >= 1000000) {
+            const latVal = Math.abs(Math.round(latitude || 0));
+            const lonVal = Math.abs(Math.round(longitude || 0));
+            const latStr = String(latVal);
+            const lonStr = String(lonVal);
+            if (lonStr.length === 8 && lonVal >= 1000000) {
                 cepFinal = lonStr;
+            } else if (latStr.length === 8 && latVal >= 1000000) {
+                cepFinal = latStr;
             }
         }
     }
@@ -288,9 +290,27 @@ async function mapearClienteParaOmie(clienteOriginal) {
         estadoFinal = 'PE';
     }
 
-    // Se cidade ainda parece inválida após tudo, usar fallback
+    // Se cidade ainda parece inválida, tentar buscar nome de cidade nos campos originais
     if (pareceCidadeInvalida(cidadeFinal)) {
-        cidadeFinal = 'NAO INFORMADO';
+        const termosInvalidos = /km|rod|lot|trav|bloco|apto|apt|loja|sala|conj|quadra|qd|terreo|andar|galpao|box|pav|casa|etapa|ao\s/i;
+        const camposOriginais = [
+            clienteOriginal.cep, clienteOriginal.estado, clienteOriginal.bairro,
+            clienteOriginal.cidade, clienteOriginal.numero
+        ];
+        for (const campo of camposOriginais) {
+            const val = (campo || '').trim();
+            if (val && val.length > 3 && !pareceEndereco(val) && !pareceCEP(val) 
+                && !/^\d/.test(val) && !textoParaUF(val) && !termosInvalidos.test(val)) {
+                cidadeFinal = val;
+                console.log(`[fallback cidade] Usando "${val}" como cidade`);
+                break;
+            }
+        }
+    }
+
+    // Se AINDA não tem cidade válida, o Omie vai rejeitar — registrar erro claro
+    if (pareceCidadeInvalida(cidadeFinal)) {
+        return { erro: `Cidade não identificada. CEP: "${clienteOriginal.cep}", Estado: "${clienteOriginal.estado}". Corrija o cadastro manualmente.` };
     }
 
     // ===== MONTAR OBJETO =====
