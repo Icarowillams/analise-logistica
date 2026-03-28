@@ -20,6 +20,7 @@ import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
 import SincronizarOmieModal from '@/components/tabelasPreco/SincronizarOmieModal';
 import AjustarPrecosOriginaisModal from '@/components/tabelasPreco/AjustarPrecosOriginaisModal';
 import TratarTabelasModal from '@/components/tabelasPreco/TratarTabelasModal';
+import AcoesPromocionais from '@/components/tabelasPreco/AcoesPromocionais';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function TabelasPreco() {
@@ -45,9 +46,10 @@ export default function TabelasPreco() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[500px] grid-cols-3 mb-6">
+        <TabsList className="grid w-full max-w-[600px] grid-cols-4 mb-6">
           <TabsTrigger value="tabelas">Tabelas</TabsTrigger>
           <TabsTrigger value="precos">Preços</TabsTrigger>
+          <TabsTrigger value="acoes">Ações</TabsTrigger>
           <TabsTrigger value="erros">Log de Erros</TabsTrigger>
         </TabsList>
         
@@ -57,6 +59,10 @@ export default function TabelasPreco() {
         
         <TabsContent value="precos" className="animate-in fade-in-50 duration-300">
           <GerenciarPrecos />
+        </TabsContent>
+
+        <TabsContent value="acoes" className="animate-in fade-in-50 duration-300">
+          <AcoesPromocionais />
         </TabsContent>
 
         <TabsContent value="erros" className="animate-in fade-in-50 duration-300">

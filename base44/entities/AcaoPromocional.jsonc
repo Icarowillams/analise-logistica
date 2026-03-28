@@ -1,0 +1,88 @@
+{
+  "name": "AcaoPromocional",
+  "type": "object",
+  "properties": {
+    "tabela_id": {
+      "type": "string",
+      "description": "ID da tabela de pre\u00e7o vinculada"
+    },
+    "tabela_nome": {
+      "type": "string",
+      "description": "Nome da tabela de pre\u00e7o"
+    },
+    "produto_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "produto_nome": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "produto_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo do produto"
+    },
+    "valor_acao": {
+      "type": "number",
+      "description": "Pre\u00e7o promocional da a\u00e7\u00e3o"
+    },
+    "data_inicio": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de in\u00edcio da a\u00e7\u00e3o"
+    },
+    "data_fim": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de t\u00e9rmino da a\u00e7\u00e3o"
+    },
+    "clientes_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "IDs dos clientes vinculados \u00e0 a\u00e7\u00e3o"
+    },
+    "clientes_detalhes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cliente_id": {
+            "type": "string"
+          },
+          "cliente_nome": {
+            "type": "string"
+          },
+          "cliente_codigo": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "Detalhes dos clientes vinculados"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativa",
+        "encerrada",
+        "cancelada"
+      ],
+      "default": "ativa",
+      "description": "Status da a\u00e7\u00e3o"
+    },
+    "observacoes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es sobre a a\u00e7\u00e3o"
+    }
+  },
+  "required": [
+    "tabela_id",
+    "produto_id",
+    "valor_acao",
+    "data_inicio",
+    "data_fim"
+  ]
+}

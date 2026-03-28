@@ -1,0 +1,40 @@
+{
+  "name": "LogAcaoPromocional",
+  "type": "object",
+  "properties": {
+    "acao_id": {
+      "type": "string",
+      "description": "ID da a\u00e7\u00e3o promocional"
+    },
+    "tipo_operacao": {
+      "type": "string",
+      "enum": [
+        "criacao",
+        "edicao",
+        "exclusao"
+      ],
+      "description": "Tipo da opera\u00e7\u00e3o realizada"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o resumida da opera\u00e7\u00e3o"
+    },
+    "usuario_email": {
+      "type": "string",
+      "description": "Email do usu\u00e1rio que realizou a opera\u00e7\u00e3o"
+    },
+    "usuario_nome": {
+      "type": "string",
+      "description": "Nome do usu\u00e1rio"
+    },
+    "detalhes": {
+      "type": "string",
+      "description": "Detalhes adicionais (JSON stringified das altera\u00e7\u00f5es)"
+    }
+  },
+  "required": [
+    "acao_id",
+    "tipo_operacao",
+    "descricao"
+  ]
+}
