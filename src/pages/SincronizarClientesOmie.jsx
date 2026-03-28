@@ -120,6 +120,12 @@ export default function SincronizarClientesOmie() {
         setProcessado(accResultados.length);
         setProgresso(Math.round((accResultados.length / ids.length) * 100));
 
+        if (data.bloqueado) {
+          setErroMsg(`API do Omie bloqueada temporariamente. ${data.mensagem_bloqueio || 'Aguarde ~30 minutos e tente novamente.'}`);
+          setEtapa('concluido');
+          break;
+        }
+        
         if (data.concluido) {
           setEtapa('concluido');
           break;

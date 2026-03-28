@@ -4,6 +4,12 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
+const UF_VALIDAS = new Set([
+    'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
+    'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC',
+    'SP','SE','TO'
+]);
+
 const estadoParaUF = {
     'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
     'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
@@ -14,15 +20,24 @@ const estadoParaUF = {
     'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
 };
 
-function normalizarEstado(estado) {
-    let normalizado = (estado || '').trim();
-    if (normalizado.length > 2) {
-        const chave = normalizado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        normalizado = estadoParaUF[chave] || normalizado.substring(0, 2).toUpperCase();
-    } else {
-        normalizado = normalizado.toUpperCase();
-    }
-    return normalizado;
+function textoParaUF(texto) {
+    if (!texto) return '';
+    const t = texto.trim();
+    if (t.length === 2 && UF_VALIDAS.has(t.toUpperCase())) return t.toUpperCase();
+    const chave = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return estadoParaUF[chave] || '';
+}
+
+function pareceEndereco(val) {
+    if (!val) return false;
+    const t = val.toLowerCase();
+    return /^(rua |av\.|av |avenida |trav |rod |estrada |alameda |praca |largo |vila )/.test(t);
+}
+
+function pareceCEP(val) {
+    if (!val) return false;
+    const nums = val.replace(/[^\d]/g, '');
+    return nums.length === 8;
 }
 
 function removerAspas(val) {
@@ -34,37 +49,173 @@ function removerAspas(val) {
     return v;
 }
 
-function mapearClienteParaOmie(cliente) {
+// Tenta corrigir campos trocados (endereço no campo cidade, cidade no campo estado, estado no campo cep, etc.)
+function corrigirCamposTrocados(cliente) {
+    let { endereco, numero, bairro, cidade, estado, cep, latitude, longitude } = cliente;
+    
+    // Tentar extrair UF de todos os campos
+    const ufDoEstado = textoParaUF(estado);
+    const ufDaCidade = textoParaUF(cidade);
+    const ufDoCep = textoParaUF(cep);
+    const ufDoBairro = textoParaUF(bairro);
+    
+    let ufFinal = '';
+    let cidadeFinal = cidade || '';
+    let cepFinal = (cep || '').replace(/[^\d]/g, '');
+    let enderecoFinal = endereco || '';
+    let numeroFinal = numero || '';
+    let bairroFinal = bairro || '';
+
+    // 1. Encontrar a UF válida em qualquer campo
+    if (ufDoEstado) {
+        ufFinal = ufDoEstado;
+    } else if (ufDoCep) {
+        // Estado está no campo CEP (ex: cep="PERNAMBUCO")
+        ufFinal = ufDoCep;
+        cepFinal = '';
+    } else if (ufDaCidade) {
+        ufFinal = ufDaCidade;
+        cidadeFinal = '';
+    } else if (ufDoBairro) {
+        ufFinal = ufDoBairro;
+        bairroFinal = '';
+    }
+    
+    // 2. Se estado tinha um nome de cidade (não é UF), mover para cidade se cidade está vazia ou é endereço
+    if (!ufDoEstado && estado && estado.length > 2) {
+        const estadoLimpo = estado.trim();
+        if (!pareceEndereco(estadoLimpo) && !pareceCEP(estadoLimpo)) {
+            // Parece um nome de cidade no campo estado
+            if (!cidadeFinal || pareceEndereco(cidadeFinal)) {
+                cidadeFinal = estadoLimpo;
+            }
+        }
+    }
+    
+    // 3. Se cidade parece endereço, limpar
+    if (pareceEndereco(cidadeFinal)) {
+        cidadeFinal = '';
+    }
+    
+    // 3b. Se cidade é vazia ou parece inválida (complemento, bairro conhecido, etc.)
+    // e o campo cep original tem nome de cidade, usar como cidade
+    const cidadeInvalida = !cidadeFinal || cidadeFinal.length <= 2 || 
+        /^(bloco|apto|sala|lote|qd|quadra|casa|andar|conj)\b/i.test(cidadeFinal);
+    if (cidadeInvalida) {
+        // Procurar cidade válida em outros campos (cep original pode ter nome de cidade)
+        const cepOriginal = (cep || '').trim();
+        if (cepOriginal && !pareceCEP(cepOriginal) && !pareceEndereco(cepOriginal) && cepOriginal.length > 2 && !textoParaUF(cepOriginal)) {
+            cidadeFinal = cepOriginal;
+        }
+    }
+    
+    // 3c. Se cidade é bairro (RIO DOCE, etc.), e estado original tinha cidade, usar
+    // Cidades conhecidas de PE para validação básica
+    const cidadesConhecidasPE = ['RECIFE','OLINDA','JABOATAO DOS GUARARAPES','CABO DE SANTO AGOSTINHO',
+        'CAMARAGIBE','PAULISTA','IGARASSU','ABREU E LIMA','SAO LOURENCO DA MATA','MORENO',
+        'ITAMARACA','ILHA DE ITAMARACA','ARARIPINA','ARCOVERDE','BEZERROS','BELO JARDIM',
+        'CARUARU','GARANHUNS','GOIANA','GRAVATA','LIMOEIRO','PALMARES','PESQUEIRA',
+        'PETROLINA','SALGUEIRO','SANTA CRUZ DO CAPIBARIBE','SERRA TALHADA','SURUBIM',
+        'TIMBAUBA','VITORIA DE SANTO ANTAO','CARPINA','ESCADA','IPOJUCA','SIRINHAEM',
+        'NAZARE DA MATA','RIBEIRAO','CATENDE','CABO','JABOATAO'];
+    
+    if (cidadeFinal && !cidadesConhecidasPE.includes(cidadeFinal.toUpperCase())) {
+        // Cidade pode ser bairro, verificar se estado original é uma cidade conhecida
+        const estadoOriginal = (estado || '').trim().toUpperCase();
+        if (cidadesConhecidasPE.includes(estadoOriginal)) {
+            bairroFinal = bairroFinal || cidadeFinal;
+            cidadeFinal = estadoOriginal;
+        }
+    }
+    
+    // 4. Tentar encontrar CEP numérico em algum campo
+    if (cepFinal.length !== 8) {
+        // CEP não é numérico, procurar em outros campos
+        const campos = [cep, numero, bairro, cidade, estado, endereco];
+        for (const c of campos) {
+            const nums = (c || '').replace(/[^\d]/g, '');
+            if (nums.length === 8 && /^\d{5}-?\d{3}$/.test((c || '').trim().replace(/[^\d-]/g, ''))) {
+                cepFinal = nums;
+                break;
+            }
+        }
+        // Se latitude/longitude parecem CEP (8 dígitos entre 01000000 e 99999999)
+        if (cepFinal.length !== 8) {
+            const latStr = String(Math.abs(Math.round(latitude || 0)));
+            const lonStr = String(Math.abs(Math.round(longitude || 0)));
+            if (latStr.length === 8 && parseInt(latStr) >= 1000000) {
+                cepFinal = latStr;
+            } else if (lonStr.length === 8 && parseInt(lonStr) >= 1000000) {
+                cepFinal = lonStr;
+            }
+        }
+    }
+    
+    // 5. Se ainda não tem UF, tentar PE como padrão (empresa em Pernambuco)
+    if (!ufFinal) {
+        ufFinal = 'PE';
+    }
+    
+    // 6. Limpar campos que parecem ter dados errados
+    if (pareceCEP(bairroFinal) || /^\d+$/.test(bairroFinal.trim())) {
+        // Bairro é um número puro, pode ser o número do endereço
+        if (!numeroFinal || numeroFinal === 'S/N') {
+            numeroFinal = bairroFinal;
+        }
+        bairroFinal = '';
+    }
+
+    return {
+        ...cliente,
+        endereco: enderecoFinal,
+        numero: numeroFinal,
+        bairro: bairroFinal,
+        cidade: cidadeFinal,
+        estado: ufFinal,
+        cep: cepFinal.substring(0, 8)
+    };
+}
+
+function mapearClienteParaOmie(clienteOriginal) {
+    // Primeiro limpar aspas
+    const cliente = { ...clienteOriginal };
     for (const key of Object.keys(cliente)) {
         if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
     }
 
-    const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
-    const estadoNorm = normalizarEstado(cliente.estado);
-    const cepNorm = (cliente.cep || "").replace(/[^\d]/g, "").substring(0, 8);
+    // Corrigir campos trocados
+    const corrigido = corrigirCamposTrocados(cliente);
+
+    const cpfCnpj = (corrigido.cpf_cnpj || "").replace(/[^\d]/g, "");
     const isPessoaFisica = cpfCnpj.length <= 11;
 
+    // Validar CPF/CNPJ — se não tem dígitos suficientes, pular
+    if (cpfCnpj.length < 11) {
+        return { erro: `CPF/CNPJ inválido: "${cliente.cpf_cnpj}"` };
+    }
+
     const clienteOmie = {
-        codigo_cliente_integracao: cliente.id,
-        razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
-        nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
+        codigo_cliente_integracao: corrigido.id,
+        razao_social: (corrigido.razao_social || corrigido.nome_fantasia || "Cliente sem nome").substring(0, 60),
+        nome_fantasia: (corrigido.nome_fantasia || corrigido.razao_social || "").substring(0, 100),
         cnpj_cpf: cpfCnpj,
         pessoa_fisica: isPessoaFisica ? "S" : "N",
-        endereco: (cliente.endereco || "").substring(0, 60),
-        endereco_numero: (cliente.numero || "S/N").substring(0, 10),
-        bairro: (cliente.bairro || "").substring(0, 60),
+        endereco: (corrigido.endereco || ".").substring(0, 60),
+        endereco_numero: (corrigido.numero || "S/N").substring(0, 10),
+        bairro: (corrigido.bairro || ".").substring(0, 60),
         complemento: "",
-        cidade: (cliente.cidade || "").substring(0, 60),
-        estado: estadoNorm,
-        cep: cepNorm,
+        cidade: (corrigido.cidade || ".").substring(0, 60),
+        estado: corrigido.estado || "PE",
+        cep: (corrigido.cep || "").replace(/[^\d]/g, "").substring(0, 8),
         contato: "",
-        email: (cliente.email || "nfe@paoemel.com.br").substring(0, 500),
+        email: (corrigido.email || "nfe@paoemel.com.br").substring(0, 500),
         contribuinte: isPessoaFisica ? "N" : "S",
-        inscricao_estadual: cliente.inscricao_estadual || "",
+        inscricao_estadual: corrigido.inscricao_estadual || "",
         observacao: "",
-        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+        inativo: (corrigido.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
     };
 
+    // Remover campos vazios (exceto obrigatórios)
     const camposObrigatorios = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo'];
     for (const [key, value] of Object.entries(clienteOmie)) {
         if (camposObrigatorios.includes(key)) continue;
@@ -224,7 +375,7 @@ Deno.serve(async (req) => {
                 return Response.json({ error: 'Informe ids_para_enviar' }, { status: 400 });
             }
 
-            const LOTE_MAX = 20;
+            const LOTE_MAX = 10;
             const loteIds = ids_para_enviar.slice(lote_inicio, lote_inicio + LOTE_MAX);
 
             if (loteIds.length === 0) {
@@ -247,7 +398,21 @@ Deno.serve(async (req) => {
 
             for (const cliente of clientesParaEnviar) {
                 const clienteOmie = mapearClienteParaOmie({ ...cliente });
+                
+                // Se mapeamento retornou erro de validação, registrar sem enviar
+                if (clienteOmie.erro) {
+                    resultados.push({
+                        cliente_id: cliente.id,
+                        razao_social: cliente.razao_social,
+                        sucesso: false,
+                        codigo_omie: null,
+                        mensagem: `Dados inválidos: ${clienteOmie.erro}`
+                    });
+                    continue;
+                }
+                
                 try {
+                    console.log(`[sync] Enviando ${cliente.razao_social}: estado=${clienteOmie.estado}, cidade=${clienteOmie.cidade}, cep=${clienteOmie.cep}, bairro=${clienteOmie.bairro}`);
                     const response = await fetch(OMIE_URL, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -259,6 +424,31 @@ Deno.serve(async (req) => {
                         })
                     });
                     const resultado = await response.json();
+                    
+                    // Detectar bloqueio de API e parar imediatamente
+                    if (resultado.faultstring && resultado.faultstring.includes('API bloqueada por consumo indevido')) {
+                        resultados.push({
+                            cliente_id: cliente.id,
+                            razao_social: cliente.razao_social,
+                            sucesso: false,
+                            codigo_omie: null,
+                            mensagem: resultado.faultstring
+                        });
+                        // Retornar imediatamente com flag de bloqueio
+                        return Response.json({
+                            concluido: false,
+                            bloqueado: true,
+                            proximo_lote: lote_inicio,
+                            resumo: { 
+                                total: resultados.length, 
+                                sucessos: resultados.filter(r => r.sucesso).length, 
+                                erros: resultados.filter(r => !r.sucesso).length 
+                            },
+                            resultados,
+                            mensagem_bloqueio: resultado.faultstring
+                        });
+                    }
+                    
                     resultados.push({
                         cliente_id: cliente.id,
                         razao_social: cliente.razao_social,
@@ -275,7 +465,7 @@ Deno.serve(async (req) => {
                         mensagem: err.message
                     });
                 }
-                await delay(600);
+                await delay(1200);
             }
 
             const sucessos = resultados.filter(r => r.sucesso).length;
