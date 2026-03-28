@@ -88,20 +88,30 @@ export default function EmissaoPedidos() {
     <div>
       <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorAtual.nome}`} icon={ShoppingCart} />
       
-      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>
-          <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>
-        </TabsList>
+      <div>
+        <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full grid-cols-2 mb-6">
+          <button
+            onClick={() => { setActiveTab('digitar'); }}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'digitar' ? 'bg-background text-foreground shadow' : ''}`}
+          >
+            Digitar Pedidos
+          </button>
+          <button
+            onClick={() => { setActiveTab('envio'); }}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'envio' ? 'bg-background text-foreground shadow' : ''}`}
+          >
+            Envio de Pedidos
+          </button>
+        </div>
 
-        <TabsContent value="digitar">
+        <div style={{ display: activeTab === 'digitar' ? 'block' : 'none' }}>
           <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
-        </TabsContent>
+        </div>
 
-        <TabsContent value="envio">
+        <div style={{ display: activeTab === 'envio' ? 'block' : 'none' }}>
           <EnvioPedidos vendedor={vendedorAtual} onEditPedido={handleEditPedido} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
