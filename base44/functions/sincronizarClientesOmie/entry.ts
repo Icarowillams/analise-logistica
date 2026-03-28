@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -112,34 +112,21 @@ Deno.serve(async (req) => {
         // ====================================================================
         if (modo === "listar_base44") {
             const { pagina_base44 = 0 } = body;
-            const PAGE_SIZE = 2000;
+            const PAGE_SIZE = 200;
             const skip = pagina_base44 * PAGE_SIZE;
             
-            console.log(`[sync] Listando clientes Base44 offset=${skip}...`);
-            let clientesBase44;
-            try {
-                clientesBase44 = await base44.entities.Cliente.filter(
-                    { status: 'ativo' },
-                    '-created_date',
-                    PAGE_SIZE,
-                    skip
-                );
-            } catch(e) {
-                console.error('[sync] Erro no filter, tentando list:', e.message);
-                clientesBase44 = await base44.entities.Cliente.list('-created_date', PAGE_SIZE, skip);
-            }
-            if (!Array.isArray(clientesBase44)) {
-                console.error('[sync] Resultado não é array:', typeof clientesBase44);
-                clientesBase44 = [];
-            }
-            console.log(`[sync] Retornados: ${clientesBase44.length}`);
+            const clientesBase44 = await base44.asServiceRole.entities.Cliente.list(
+                '-created_date', PAGE_SIZE, skip, ['razao_social', 'nome_fantasia', 'cpf_cnpj', 'status']
+            );
 
-            const resumo = clientesBase44.map(c => ({
-                id: c.id,
-                razao_social: c.razao_social || '',
-                nome_fantasia: c.nome_fantasia || '',
-                cpf_cnpj: c.cpf_cnpj || ''
-            }));
+            const resumo = clientesBase44
+                .filter(c => (c.status || 'ativo') === 'ativo')
+                .map(c => ({
+                    id: c.id,
+                    razao_social: c.razao_social || '',
+                    nome_fantasia: c.nome_fantasia || '',
+                    cpf_cnpj: c.cpf_cnpj || ''
+                }));
 
             return Response.json({
                 clientes: resumo,
@@ -240,7 +227,7 @@ Deno.serve(async (req) => {
             const clientesParaEnviar = [];
             for (const id of loteIds) {
                 try {
-                    const cli = await base44.entities.Cliente.get(id);
+                    const cli = await base44.asServiceRole.entities.Cliente.get(id);
                     if (cli) clientesParaEnviar.push(cli);
                 } catch (e) {
                     console.error(`[sync] Erro ao buscar cliente ${id}:`, e.message);
