@@ -49,6 +49,52 @@ function removerAspas(val) {
     return v;
 }
 
+// Cache de CEPs já consultados para não repetir chamadas
+const cepCache = {};
+
+async function buscarEnderecoPorCEP(cep) {
+    const cepLimpo = (cep || '').replace(/[^\d]/g, '');
+    if (cepLimpo.length !== 8) return null;
+    
+    if (cepCache[cepLimpo]) return cepCache[cepLimpo];
+    
+    try {
+        const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`, {
+            signal: AbortSignal.timeout(3000)
+        });
+        const data = await res.json();
+        if (data.erro) {
+            cepCache[cepLimpo] = null;
+            return null;
+        }
+        const resultado = {
+            cidade: data.localidade || '',
+            estado: data.uf || '',
+            bairro: data.bairro || '',
+            endereco: data.logradouro || ''
+        };
+        cepCache[cepLimpo] = resultado;
+        return resultado;
+    } catch {
+        return null;
+    }
+}
+
+// Detecta se um valor parece ser dado de endereço inválido como cidade
+function pareceCidadeInvalida(val) {
+    if (!val) return true;
+    const t = val.trim();
+    if (t.length <= 2) return true;
+    if (t === '.' || t === 'NAO INFORMADO') return true;
+    // Padrões comuns de dados errados no campo cidade
+    if (/^(bloco|apto|apt|sala|lote|lt|qd|quadra|casa|andar|conj|lot|rod|r |rua |av |trav|estr)/i.test(t)) return true;
+    if (/^\d/.test(t)) return true; // Começa com número
+    if (/^(s\/n|sn)$/i.test(t)) return true;
+    if (/\d{5}/.test(t)) return true; // Contém 5+ dígitos seguidos (CEP, número)
+    if (/^[A-Z\s]{1,3}\s?\d/i.test(t)) return true; // "N 75", "8 A", "LT01"
+    return false;
+}
+
 // Tenta corrigir campos trocados (endereço no campo cidade, cidade no campo estado, estado no campo cep, etc.)
 function corrigirCamposTrocados(cliente) {
     let { endereco, numero, bairro, cidade, estado, cep, latitude, longitude } = cliente;
@@ -176,14 +222,14 @@ function corrigirCamposTrocados(cliente) {
     };
 }
 
-function mapearClienteParaOmie(clienteOriginal) {
+async function mapearClienteParaOmie(clienteOriginal) {
     // Primeiro limpar aspas
     const cliente = { ...clienteOriginal };
     for (const key of Object.keys(cliente)) {
         if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
     }
 
-    // Corrigir campos trocados
+    // Corrigir campos trocados (heurística local)
     const corrigido = corrigirCamposTrocados(cliente);
 
     const cpfCnpj = (corrigido.cpf_cnpj || "").replace(/[^\d]/g, "");
@@ -192,7 +238,6 @@ function mapearClienteParaOmie(clienteOriginal) {
     // ===== VALIDAÇÕES PRÉ-ENVIO =====
     const errosValidacao = [];
 
-    // CPF deve ter 11 dígitos, CNPJ deve ter 14
     if (isPessoaFisica && cpfCnpj.length !== 11) {
         errosValidacao.push(`CPF inválido (${cpfCnpj.length} dígitos): "${cliente.cpf_cnpj}"`);
     }
@@ -203,32 +248,56 @@ function mapearClienteParaOmie(clienteOriginal) {
         errosValidacao.push(`CPF/CNPJ muito curto: "${cliente.cpf_cnpj}"`);
     }
 
-    // Razão social é obrigatória
     const razaoSocial = (corrigido.razao_social || corrigido.nome_fantasia || "").trim();
     if (!razaoSocial) {
         errosValidacao.push('Razão social vazia');
-    }
-
-    // Estado deve ser UF válida de 2 letras
-    const estadoFinal = (corrigido.estado || "").trim().toUpperCase();
-    if (!estadoFinal || !UF_VALIDAS.has(estadoFinal)) {
-        errosValidacao.push(`Estado inválido: "${corrigido.estado}"`);
     }
 
     if (errosValidacao.length > 0) {
         return { erro: errosValidacao.join('; ') };
     }
 
-    // ===== PREPARAR CAMPOS OBRIGATÓRIOS =====
-    const nomeFantasia = (corrigido.nome_fantasia || corrigido.razao_social || razaoSocial).trim();
-    const endereco = (corrigido.endereco || "").trim();
-    const enderecoNumero = (corrigido.numero || "").trim();
-    const bairro = (corrigido.bairro || "").trim();
-    const cidade = (corrigido.cidade || "").trim();
+    // ===== CONSULTAR VIACEP PARA CORRIGIR CIDADE/ESTADO/BAIRRO =====
     const cepLimpo = (corrigido.cep || "").replace(/[^\d]/g, "");
+    let cidadeFinal = (corrigido.cidade || "").trim();
+    let estadoFinal = (corrigido.estado || "").trim().toUpperCase();
+    let bairroFinal = (corrigido.bairro || "").trim();
+    let enderecoFinal = (corrigido.endereco || "").trim();
+
+    // Se tem CEP válido, consultar ViaCEP para obter dados corretos
+    if (cepLimpo.length === 8) {
+        const dadosCep = await buscarEnderecoPorCEP(cepLimpo);
+        if (dadosCep) {
+            // Cidade e Estado do CEP são sempre confiáveis
+            if (dadosCep.cidade) cidadeFinal = dadosCep.cidade;
+            if (dadosCep.estado && UF_VALIDAS.has(dadosCep.estado)) estadoFinal = dadosCep.estado;
+            // Bairro: usar do CEP se o atual parece inválido
+            if (dadosCep.bairro && (!bairroFinal || bairroFinal === '.' || bairroFinal === 'NAO INFORMADO')) {
+                bairroFinal = dadosCep.bairro;
+            }
+            // Endereço: usar do CEP se o atual está vazio
+            if (dadosCep.endereco && (!enderecoFinal || enderecoFinal === '.' || enderecoFinal === 'NAO INFORMADO')) {
+                enderecoFinal = dadosCep.endereco;
+            }
+            console.log(`[viaCEP] ${cepLimpo} → ${dadosCep.cidade}/${dadosCep.estado}`);
+        }
+    }
+
+    // Se ainda não tem estado válido, usar PE como padrão
+    if (!estadoFinal || !UF_VALIDAS.has(estadoFinal)) {
+        estadoFinal = 'PE';
+    }
+
+    // Se cidade ainda parece inválida após tudo, usar fallback
+    if (pareceCidadeInvalida(cidadeFinal)) {
+        cidadeFinal = 'NAO INFORMADO';
+    }
+
+    // ===== MONTAR OBJETO =====
+    const nomeFantasia = (corrigido.nome_fantasia || corrigido.razao_social || razaoSocial).trim();
+    const enderecoNumero = (corrigido.numero || "").trim();
     const email = (corrigido.email || "").trim();
 
-    // Inscricao estadual: PF sempre ISENTO, PJ pode ter valor ou vazio
     let inscricaoEstadual = "";
     if (isPessoaFisica) {
         inscricaoEstadual = "ISENTO";
@@ -237,7 +306,6 @@ function mapearClienteParaOmie(clienteOriginal) {
     }
 
     const clienteOmie = {
-        // Identificação (obrigatórios sempre)
         codigo_cliente_integracao: corrigido.id,
         razao_social: razaoSocial.substring(0, 60),
         nome_fantasia: (nomeFantasia || razaoSocial).substring(0, 100),
@@ -246,19 +314,16 @@ function mapearClienteParaOmie(clienteOriginal) {
         contribuinte: isPessoaFisica ? "N" : "S",
         inativo: (corrigido.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
 
-        // Endereço (obrigatórios para NF-e)
-        endereco: (endereco || "NAO INFORMADO").substring(0, 60),
+        endereco: (enderecoFinal || "NAO INFORMADO").substring(0, 60),
         endereco_numero: (enderecoNumero || "S/N").substring(0, 10),
-        bairro: (bairro || "NAO INFORMADO").substring(0, 60),
-        cidade: (cidade || "NAO INFORMADO").substring(0, 60),
+        bairro: (bairroFinal || "NAO INFORMADO").substring(0, 60),
+        cidade: cidadeFinal.substring(0, 60),
         estado: estadoFinal,
         cep: cepLimpo.length === 8 ? cepLimpo : "00000000",
 
-        // Contato
         email: (email || "nfe@paoemel.com.br").substring(0, 500),
     };
 
-    // Campos opcionais — só incluir se tiverem valor
     if (inscricaoEstadual) {
         clienteOmie.inscricao_estadual = inscricaoEstadual;
     }
@@ -437,7 +502,7 @@ Deno.serve(async (req) => {
             const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
             for (const cliente of clientesParaEnviar) {
-                const clienteOmie = mapearClienteParaOmie({ ...cliente });
+                const clienteOmie = await mapearClienteParaOmie({ ...cliente });
                 
                 // Se mapeamento retornou erro de validação, registrar sem enviar
                 if (clienteOmie.erro) {
