@@ -87,8 +87,7 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 500) {
             param: [{
                 pagina,
                 registros_por_pagina: registrosPorPagina,
-                apenas_importado_api: "N",
-                filtrar_apenas_ativo: "N"
+                apenas_importado_api: "N"
             }]
         })
     });
@@ -111,15 +110,11 @@ Deno.serve(async (req) => {
         // MODO: listar_base44 — retorna lista resumida de clientes ativos
         // ====================================================================
         if (modo === "listar_base44") {
-            const { pagina_base44 = 0 } = body;
-            const PAGE_SIZE = 200;
-            const skip = pagina_base44 * PAGE_SIZE;
-            
-            const clientesBase44 = await base44.asServiceRole.entities.Cliente.list(
-                '-created_date', PAGE_SIZE, skip, ['razao_social', 'nome_fantasia', 'cpf_cnpj', 'status']
-            );
-
-            const resumo = clientesBase44
+            // This mode is no longer the primary path - frontend fetches directly.
+            // Kept as fallback.
+            const clientesBase44 = await base44.asServiceRole.entities.Cliente.list('-created_date', 50);
+            const arr = Array.isArray(clientesBase44) ? clientesBase44 : [];
+            const resumo = arr
                 .filter(c => (c.status || 'ativo') === 'ativo')
                 .map(c => ({
                     id: c.id,
@@ -127,12 +122,7 @@ Deno.serve(async (req) => {
                     nome_fantasia: c.nome_fantasia || '',
                     cpf_cnpj: c.cpf_cnpj || ''
                 }));
-
-            return Response.json({
-                clientes: resumo,
-                count: resumo.length,
-                concluido: clientesBase44.length < PAGE_SIZE
-            });
+            return Response.json({ clientes: resumo, count: resumo.length, concluido: true });
         }
 
         // ====================================================================

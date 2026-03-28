@@ -26,21 +26,22 @@ export default function SincronizarClientesOmie() {
     setErroMsg('');
 
     try {
-      // PASSO 1: Buscar clientes Base44 (paginado)
-      setProgressoMsg('Buscando clientes no Base44...');
-      const clientesBase44 = [];
-      let paginaBase44 = 0;
-      while (true) {
-        setProgressoMsg(`Buscando Base44: página ${paginaBase44 + 1} (${clientesBase44.length} encontrados)...`);
-        const resBase44 = await base44.functions.invoke('sincronizarClientesOmie', { 
-          modo: 'listar_base44', 
-          pagina_base44: paginaBase44 
-        });
-        clientesBase44.push(...resBase44.data.clientes);
-        if (resBase44.data.concluido) break;
-        paginaBase44++;
-        await new Promise(r => setTimeout(r, 200));
+      // PASSO 1: Buscar clientes Base44 diretamente via SDK (filtrando ativos)
+      setProgressoMsg('Buscando clientes ativos no Base44...');
+      let allClientes;
+      try {
+        allClientes = await base44.entities.Cliente.filter({ status: 'ativo' });
+      } catch (_) {
+        // Fallback: list all and filter locally
+        const raw = await base44.entities.Cliente.list();
+        allClientes = (raw || []).filter(c => (c.status || 'ativo') === 'ativo');
       }
+      const clientesBase44 = (allClientes || []).map(c => ({
+        id: c.id,
+        razao_social: c.razao_social || '',
+        nome_fantasia: c.nome_fantasia || '',
+        cpf_cnpj: c.cpf_cnpj || ''
+      }));
       const totalAtivos = clientesBase44.length;
 
       // PASSO 2: Buscar clientes do Omie (paginado)
