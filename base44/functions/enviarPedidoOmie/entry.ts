@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -284,14 +284,18 @@ Deno.serve(async (req) => {
         }
 
         const codigoOmie = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
-        const numeroPedidoOmie = resultado.numero_pedido || null;
+        const numeroPedidoOmie = resultado.numero_pedido || resultado.numero_pedido_omie || null;
 
-        // Atualizar pedido no Base44 com dados do Omie
-        await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+        // Atualizar pedido no Base44 com dados do Omie (incluindo número do pedido Omie)
+        const updateData = {
             omie_codigo_pedido: codigoOmie,
             omie_enviado: true,
             omie_erro: null
-        });
+        };
+        if (numeroPedidoOmie) {
+            updateData.numero_pedido = String(numeroPedidoOmie);
+        }
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
 
         console.log('[enviarPedidoOmie] Pedido enviado com sucesso! Código Omie:', codigoOmie);
 

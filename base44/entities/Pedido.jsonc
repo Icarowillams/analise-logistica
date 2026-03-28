@@ -3,8 +3,8 @@
   "type": "object",
   "properties": {
     "numero_pedido": {
-      "type": "number",
-      "description": "N\u00famero sequencial do pedido"
+      "type": "string",
+      "description": "N\u00famero do pedido (vendas=n\u00famero Omie, trocas=sequencial com T)"
     },
     "tipo": {
       "type": "string",
