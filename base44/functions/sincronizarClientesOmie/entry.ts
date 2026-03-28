@@ -75,47 +75,24 @@ function mapearClienteParaOmie(cliente) {
     return clienteOmie;
 }
 
-// Busca todos os clientes cadastrados no Omie usando código de integração
-async function buscarClientesOmie() {
-    const todosClientes = [];
-    let pagina = 1;
-    const registrosPorPagina = 500;
-
-    while (true) {
-        const response = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "ListarClientes",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{
-                    pagina,
-                    registros_por_pagina: registrosPorPagina,
-                    apenas_importado_api: "N",
-                    filtrar_apenas_ativo: "N"
-                }]
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.faultstring) {
-            console.error('Erro ao listar clientes Omie:', data.faultstring);
-            break;
-        }
-
-        const clientes = data.clientes_cadastro || [];
-        todosClientes.push(...clientes);
-
-        const totalPaginas = data.total_de_paginas || 1;
-        if (pagina >= totalPaginas) break;
-        pagina++;
-
-        await new Promise(r => setTimeout(r, 500));
-    }
-
-    return todosClientes;
+// Busca UMA página de clientes do Omie
+async function buscarPaginaOmie(pagina, registrosPorPagina = 500) {
+    const response = await fetch(OMIE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            call: "ListarClientes",
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [{
+                pagina,
+                registros_por_pagina: registrosPorPagina,
+                apenas_importado_api: "N",
+                filtrar_apenas_ativo: "N"
+            }]
+        })
+    });
+    return await response.json();
 }
 
 Deno.serve(async (req) => {
@@ -128,86 +105,153 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { modo = "verificar", lote_inicio = 0, ids_para_enviar = null } = body;
+        const { modo, lote_inicio = 0, ids_para_enviar = null, pagina_omie = 1, clientes_omie_acumulados = null } = body;
 
-        // MODO: verificar — compara Base44 x Omie e retorna quem está faltando
-        if (modo === "verificar") {
-            console.log('[sincronizarClientesOmie] Buscando clientes no Base44...');
-            const clientesBase44 = await base44.entities.Cliente.list();
-            console.log(`[sincronizarClientesOmie] Total Base44: ${clientesBase44.length}`);
+        // ====================================================================
+        // MODO: listar_base44 — retorna lista resumida de clientes ativos
+        // ====================================================================
+        if (modo === "listar_base44") {
+            const { pagina_base44 = 0 } = body;
+            const PAGE_SIZE = 2000;
+            const skip = pagina_base44 * PAGE_SIZE;
+            
+            console.log(`[sync] Listando clientes Base44 offset=${skip}...`);
+            let clientesBase44;
+            try {
+                clientesBase44 = await base44.entities.Cliente.filter(
+                    { status: 'ativo' },
+                    '-created_date',
+                    PAGE_SIZE,
+                    skip
+                );
+            } catch(e) {
+                console.error('[sync] Erro no filter, tentando list:', e.message);
+                clientesBase44 = await base44.entities.Cliente.list('-created_date', PAGE_SIZE, skip);
+            }
+            if (!Array.isArray(clientesBase44)) {
+                console.error('[sync] Resultado não é array:', typeof clientesBase44);
+                clientesBase44 = [];
+            }
+            console.log(`[sync] Retornados: ${clientesBase44.length}`);
 
-            console.log('[sincronizarClientesOmie] Buscando clientes no Omie...');
-            const clientesOmie = await buscarClientesOmie();
-            console.log(`[sincronizarClientesOmie] Total Omie: ${clientesOmie.length}`);
+            const resumo = clientesBase44.map(c => ({
+                id: c.id,
+                razao_social: c.razao_social || '',
+                nome_fantasia: c.nome_fantasia || '',
+                cpf_cnpj: c.cpf_cnpj || ''
+            }));
 
-            // Indexar Omie por codigo_cliente_integracao (que é o id do Base44)
+            return Response.json({
+                clientes: resumo,
+                count: resumo.length,
+                concluido: clientesBase44.length < PAGE_SIZE
+            });
+        }
+
+        // ====================================================================
+        // MODO: listar_omie — busca clientes paginados do Omie  
+        // Retorna: códigos de integração e CPF/CNPJ de cada página
+        // ====================================================================
+        if (modo === "listar_omie") {
+            console.log(`[sync] Buscando página ${pagina_omie} do Omie...`);
+            const data = await buscarPaginaOmie(pagina_omie, 500);
+
+            if (data.faultstring) {
+                console.error('[sync] Erro Omie:', data.faultstring);
+                return Response.json({ error: data.faultstring }, { status: 500 });
+            }
+
+            const clientes = (data.clientes_cadastro || []).map(c => ({
+                codigo_integracao: c.codigo_cliente_integracao || '',
+                cpf_cnpj: (c.cnpj_cpf || '').replace(/[^\d]/g, '')
+            }));
+
+            const totalPaginas = data.total_de_paginas || 1;
+            const totalRegistros = data.total_de_registros || 0;
+
+            console.log(`[sync] Página ${pagina_omie}/${totalPaginas}: ${clientes.length} registros (total: ${totalRegistros})`);
+
+            return Response.json({
+                pagina: pagina_omie,
+                total_paginas: totalPaginas,
+                total_registros: totalRegistros,
+                clientes,
+                concluido: pagina_omie >= totalPaginas
+            });
+        }
+
+        // ====================================================================
+        // MODO: comparar — recebe ambas as listas e retorna os faltantes
+        // ====================================================================
+        if (modo === "comparar") {
+            const { clientes_base44, clientes_omie } = body;
+
+            if (!clientes_base44 || !clientes_omie) {
+                return Response.json({ error: 'Informe clientes_base44 e clientes_omie' }, { status: 400 });
+            }
+
             const omieIntegracaoSet = new Set(
-                clientesOmie
-                    .map(c => c.codigo_cliente_integracao)
-                    .filter(Boolean)
+                clientes_omie.map(c => c.codigo_integracao).filter(Boolean)
             );
-
-            // Indexar Omie por CPF/CNPJ normalizado
             const omieCpfCnpjSet = new Set(
-                clientesOmie
-                    .map(c => (c.cnpj_cpf || "").replace(/[^\d]/g, ""))
-                    .filter(Boolean)
+                clientes_omie.map(c => c.cpf_cnpj).filter(v => v && v.length >= 11)
             );
 
-            const faltandoNoOmie = [];
+            const faltando = [];
             const jaExistem = [];
 
-            for (const c of clientesBase44) {
-                if ((c.status || 'ativo').toLowerCase() !== 'ativo') continue;
+            for (const c of clientes_base44) {
+                const cpfNorm = (c.cpf_cnpj || '').replace(/[^\d]/g, '');
+                const existePorId = omieIntegracaoSet.has(c.id);
+                const existePorCpf = cpfNorm.length >= 11 && omieCpfCnpjSet.has(cpfNorm);
 
-                const cpfCnpjNorm = (c.cpf_cnpj || "").replace(/[^\d]/g, "");
-                const existePorIntegracao = omieIntegracaoSet.has(c.id);
-                const existePorCpfCnpj = cpfCnpjNorm.length >= 11 && omieCpfCnpjSet.has(cpfCnpjNorm);
-
-                if (!existePorIntegracao && !existePorCpfCnpj) {
-                    faltandoNoOmie.push({
-                        id: c.id,
-                        razao_social: c.razao_social,
-                        nome_fantasia: c.nome_fantasia,
-                        cpf_cnpj: c.cpf_cnpj,
-                        status: c.status
-                    });
+                if (!existePorId && !existePorCpf) {
+                    faltando.push(c);
                 } else {
                     jaExistem.push(c.id);
                 }
             }
 
             return Response.json({
-                modo: "verificar",
-                total_base44: clientesBase44.length,
-                total_omie: clientesOmie.length,
-                faltando_no_omie: faltandoNoOmie.length,
+                total_base44: clientes_base44.length,
+                total_omie: clientes_omie.length,
+                faltando_no_omie: faltando.length,
                 ja_existem_no_omie: jaExistem.length,
-                clientes_faltando: faltandoNoOmie
+                clientes_faltando: faltando
             });
         }
 
+        // ====================================================================
         // MODO: sincronizar — envia em lotes os clientes que faltam
+        // ====================================================================
         if (modo === "sincronizar") {
             if (!ids_para_enviar || !Array.isArray(ids_para_enviar)) {
                 return Response.json({ error: 'Informe ids_para_enviar' }, { status: 400 });
             }
 
-            const LOTE_MAX = 50;
+            const LOTE_MAX = 20;
             const loteIds = ids_para_enviar.slice(lote_inicio, lote_inicio + LOTE_MAX);
 
             if (loteIds.length === 0) {
                 return Response.json({ concluido: true, resumo: { total: 0, sucessos: 0, erros: 0 }, resultados: [] });
             }
 
-            const todosClientes = await base44.entities.Cliente.list();
-            const clientesParaEnviar = todosClientes.filter(c => loteIds.includes(c.id));
+            // Buscar dados completos dos clientes deste lote
+            const clientesParaEnviar = [];
+            for (const id of loteIds) {
+                try {
+                    const cli = await base44.entities.Cliente.get(id);
+                    if (cli) clientesParaEnviar.push(cli);
+                } catch (e) {
+                    console.error(`[sync] Erro ao buscar cliente ${id}:`, e.message);
+                }
+            }
 
             const resultados = [];
             const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
             for (const cliente of clientesParaEnviar) {
-                const clienteOmie = mapearClienteParaOmie(cliente);
+                const clienteOmie = mapearClienteParaOmie({ ...cliente });
                 try {
                     const response = await fetch(OMIE_URL, {
                         method: "POST",
@@ -236,7 +280,7 @@ Deno.serve(async (req) => {
                         mensagem: err.message
                     });
                 }
-                await delay(800);
+                await delay(600);
             }
 
             const sucessos = resultados.filter(r => r.sucesso).length;
@@ -252,7 +296,7 @@ Deno.serve(async (req) => {
             });
         }
 
-        return Response.json({ error: 'Modo inválido. Use "verificar" ou "sincronizar"' }, { status: 400 });
+        return Response.json({ error: 'Modo inválido. Use "listar_base44", "listar_omie", "comparar" ou "sincronizar"' }, { status: 400 });
 
     } catch (error) {
         console.error('Erro:', error.message);

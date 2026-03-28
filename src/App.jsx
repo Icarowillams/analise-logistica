@@ -11,6 +11,7 @@ import RelatorioRotinaSupervisores from './pages/RelatorioRotinaSupervisores';
 
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import PreCadastros from './pages/PreCadastros';
+import SincronizarClientesOmie from './pages/SincronizarClientesOmie';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -68,6 +69,7 @@ const AuthenticatedApp = () => {
 
       <Route path="/enviarrotasomie" element={<LayoutWrapper currentPageName="EnviarRotasOmie"><EnviarRotasOmie /></LayoutWrapper>} />
       <Route path="/precadastros" element={<LayoutWrapper currentPageName="PreCadastros"><PreCadastros /></LayoutWrapper>} />
+      <Route path="/sincronizarclientesomie" element={<LayoutWrapper currentPageName="SincronizarClientesOmie"><SincronizarClientesOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

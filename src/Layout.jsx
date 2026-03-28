@@ -108,7 +108,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Rotas', path: 'Rotas' },
           { title: 'Roteiros', path: 'Roteiros' },
           { title: 'Empresa', path: 'Empresa' },
-          { title: 'Pré-Cadastros', path: 'PreCadastros' }
+          { title: 'Pré-Cadastros', path: 'PreCadastros' },
+          { title: 'Sincronizar Clientes Omie', path: 'SincronizarClientesOmie' }
         ]
       },
       {
