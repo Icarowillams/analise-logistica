@@ -177,7 +177,8 @@ Deno.serve(async (req) => {
                 etapa: etapa,
                 codigo_parcela: "999", // 999 = conforme parcelas informadas
                 quantidade_itens: allItems.length,
-                ...(pedido.cenario_fiscal_codigo ? { codigo_cenario_impostos: String(pedido.cenario_fiscal_codigo) } : {})
+                ...(pedido.cenario_fiscal_codigo ? { codigo_cenario_impostos: String(pedido.cenario_fiscal_codigo) } : {}),
+                ...(pedido.numero_pedido_compra ? { numero_pedido_compra: pedido.numero_pedido_compra } : {})
             },
             det,
             frete: {
@@ -197,17 +198,10 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Adicionar observações (incluindo nº pedido de compra do cliente, se existir)
-        const obsPartes = [];
-        if (pedido.numero_pedido_compra) {
-            obsPartes.push(`Pedido de compra: ${pedido.numero_pedido_compra}`);
-        }
+        // Adicionar observações nas Informações Complementares do DANFE
         if (pedido.observacoes) {
-            obsPartes.push(pedido.observacoes);
-        }
-        if (obsPartes.length > 0) {
             pedidoOmie.observacoes = {
-                obs_venda: obsPartes.join(' | ')
+                obs_venda: pedido.observacoes
             };
         }
 
