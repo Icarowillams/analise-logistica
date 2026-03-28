@@ -26,22 +26,24 @@ export default function SincronizarClientesOmie() {
     setErroMsg('');
 
     try {
-      // PASSO 1: Buscar clientes Base44 diretamente via SDK (filtrando ativos)
+      // PASSO 1: Buscar clientes Base44 paginados via backend
       setProgressoMsg('Buscando clientes ativos no Base44...');
-      let allClientes;
-      try {
-        allClientes = await base44.entities.Cliente.filter({ status: 'ativo' });
-      } catch (_) {
-        // Fallback: list all and filter locally
-        const raw = await base44.entities.Cliente.list();
-        allClientes = (raw || []).filter(c => (c.status || 'ativo') === 'ativo');
+      const clientesBase44 = [];
+      let paginaBase = 1;
+      let concluido = false;
+
+      while (!concluido) {
+        setProgressoMsg(`Buscando Base44: página ${paginaBase} (${clientesBase44.length} até agora)...`);
+        const res = await base44.functions.invoke('sincronizarClientesOmie', {
+          modo: 'listar_base44',
+          pagina_base44: paginaBase
+        });
+        const data = res.data;
+        clientesBase44.push(...data.clientes);
+        concluido = data.concluido;
+        paginaBase++;
+        await new Promise(r => setTimeout(r, 200));
       }
-      const clientesBase44 = (allClientes || []).map(c => ({
-        id: c.id,
-        razao_social: c.razao_social || '',
-        nome_fantasia: c.nome_fantasia || '',
-        cpf_cnpj: c.cpf_cnpj || ''
-      }));
       const totalAtivos = clientesBase44.length;
 
       // PASSO 2: Buscar clientes do Omie (paginado)
@@ -51,21 +53,16 @@ export default function SincronizarClientesOmie() {
       let totalPaginas = 1;
 
       while (paginaAtual <= totalPaginas) {
-        setProgressoMsg(`Buscando Omie: página ${paginaAtual}${totalPaginas > 1 ? ` de ${totalPaginas}` : ''}...`);
-
+        setProgressoMsg(`Buscando Omie: página ${paginaAtual}${totalPaginas > 1 ? ` de ${totalPaginas}` : ''} (${clientesOmie.length} até agora)...`);
         const resOmie = await base44.functions.invoke('sincronizarClientesOmie', {
           modo: 'listar_omie',
           pagina_omie: paginaAtual
         });
         const dataOmie = resOmie.data;
-
         clientesOmie.push(...dataOmie.clientes);
         totalPaginas = dataOmie.total_paginas;
-
         if (dataOmie.concluido) break;
         paginaAtual++;
-
-        // small delay between pages
         await new Promise(r => setTimeout(r, 300));
       }
 
