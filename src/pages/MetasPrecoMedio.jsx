@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { DollarSign } from 'lucide-react';
@@ -21,8 +21,19 @@ export default function MetasPrecoMedio() {
   const queryClient = useQueryClient();
 
   const { data: metas = [], isLoading } = useQuery({ queryKey: ['metasPrecoMedio'], queryFn: () => base44.entities.MetaPrecoMedio.list() });
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: vendedoresAll = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: funcoes = [] } = useQuery({ queryKey: ['funcoes'], queryFn: () => base44.entities.Funcao.list() });
   const { data: vendas = [] } = useQuery({ queryKey: ['vendas'], queryFn: () => base44.entities.Venda.list('-data', 2000) });
+
+  const vendedores = useMemo(() => {
+    const funcaoVendedor = funcoes.find(f => f.nome?.toLowerCase() === 'vendedor');
+    return vendedoresAll.filter(v => {
+      if (v.status !== 'ativo') return false;
+      if (funcaoVendedor && v.funcao_id === funcaoVendedor.id) return true;
+      if (v.funcao?.toLowerCase() === 'vendedor') return true;
+      return false;
+    });
+  }, [vendedoresAll, funcoes]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.MetaPrecoMedio.create(data),
@@ -102,7 +113,7 @@ export default function MetasPrecoMedio() {
               <Label>Vendedor *</Label>
               <Select value={formData.vendedor_id} onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>{vendedores.filter(v => v.status === 'ativo').map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent>
+                <SelectContent>{vendedores.map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>

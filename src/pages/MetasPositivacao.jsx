@@ -28,11 +28,15 @@ export default function MetasPositivacao() {
   const { data: funcoes = [] } = useQuery({ queryKey: ['funcoes'], queryFn: () => base44.entities.Funcao.list() });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
 
-  // Filtrar apenas vendedores (função "Vendedor")
+  // Filtrar apenas vendedores (função "Vendedor") - compatível com funcao_id e campo legado funcao
   const vendedores = useMemo(() => {
     const funcaoVendedor = funcoes.find(f => f.nome?.toLowerCase() === 'vendedor');
-    if (!funcaoVendedor) return vendedoresAll.filter(v => v.status === 'ativo');
-    return vendedoresAll.filter(v => v.status === 'ativo' && v.funcao_id === funcaoVendedor.id);
+    return vendedoresAll.filter(v => {
+      if (v.status !== 'ativo') return false;
+      if (funcaoVendedor && v.funcao_id === funcaoVendedor.id) return true;
+      if (v.funcao?.toLowerCase() === 'vendedor') return true;
+      return false;
+    });
   }, [vendedoresAll, funcoes]);
 
   const createMutation = useMutation({
