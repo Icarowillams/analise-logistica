@@ -111,7 +111,7 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Análises',
+        title: 'Análises Comercial',
         icon: BarChart3,
         submenu: [
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
@@ -122,7 +122,7 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Relatórios',
+        title: 'Relatórios Visitas',
         icon: FileSpreadsheet,
         submenu: [
           { title: 'Roteiros/Visitas', path: 'RelatorioRoteiros' },
@@ -132,7 +132,7 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Visitas',
+        title: 'Roteiros',
         icon: TrendingUp,
         submenu: [
           { title: 'Meus Roteiros', path: 'MeusRoteiros' },
