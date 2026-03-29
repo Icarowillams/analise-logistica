@@ -140,14 +140,30 @@ Deno.serve(async (req) => {
             const unidade = prod.unidade_medida_id ? unidadesMap[prod.unidade_medida_id] : null;
             const unidadeStr = unidade?.nome || 'UN';
 
+            const infAdic = {
+                peso_bruto: (prod.peso || 0) * item.quantidade,
+                peso_liquido: (prod.peso || 0) * item.quantidade
+            };
+            if (pedido.numero_pedido_compra) {
+                infAdic.numero_pedido_compra = pedido.numero_pedido_compra;
+            }
+            // Dados adicionais do item (aparece nas Informações Complementares da DANFE)
+            const dadosAdicionaisItem = [];
+            if (pedido.numero_pedido_compra) {
+                dadosAdicionaisItem.push(`Pedido de Compra: ${pedido.numero_pedido_compra}`);
+            }
+            if (pedido.observacoes) {
+                dadosAdicionaisItem.push(pedido.observacoes);
+            }
+            if (dadosAdicionaisItem.length > 0) {
+                infAdic.dados_adicionais_item = dadosAdicionaisItem.join(' | ');
+            }
+
             return {
                 ide: {
                     codigo_item_integracao: item.id
                 },
-                inf_adic: {
-                    peso_bruto: (prod.peso || 0) * item.quantidade,
-                    peso_liquido: (prod.peso || 0) * item.quantidade
-                },
+                inf_adic: infAdic,
                 produto: {
                     codigo_produto_integracao: item.produto_id,
                     descricao: item.produto_nome || prod.nome || '',
@@ -198,19 +214,7 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Montar dados adicionais da NF (aparece nos Dados Adicionais da DANFE)
-        const dadosAdicionais = [];
-        if (pedido.numero_pedido_compra) {
-            dadosAdicionais.push(`Pedido de Compra: ${pedido.numero_pedido_compra}`);
-        }
-        if (pedido.observacoes) {
-            dadosAdicionais.push(pedido.observacoes);
-        }
-        if (dadosAdicionais.length > 0) {
-            pedidoOmie.informacoes_adicionais.dados_adicionais_nf = dadosAdicionais.join(' | ');
-        }
-
-        // Observações internas do pedido
+        // Observações internas do pedido (visíveis apenas dentro do Omie, não na DANFE)
         if (pedido.observacoes) {
             pedidoOmie.observacoes = {
                 obs_venda: pedido.observacoes
