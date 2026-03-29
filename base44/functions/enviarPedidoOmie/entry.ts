@@ -198,17 +198,27 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Adicionar observações nas Informações Complementares do DANFE
-        const obsPartes = [];
+        // Número do pedido de compra do cliente (campo próprio do Omie no cabeçalho)
         if (pedido.numero_pedido_compra) {
-            obsPartes.push(`Nº Pedido Compra: ${pedido.numero_pedido_compra}`);
+            pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
+        }
+
+        // Montar dados adicionais da NF (aparece nos Dados Adicionais da DANFE)
+        const dadosAdicionais = [];
+        if (pedido.numero_pedido_compra) {
+            dadosAdicionais.push(`Pedido de Compra: ${pedido.numero_pedido_compra}`);
         }
         if (pedido.observacoes) {
-            obsPartes.push(pedido.observacoes);
+            dadosAdicionais.push(pedido.observacoes);
         }
-        if (obsPartes.length > 0) {
+        if (dadosAdicionais.length > 0) {
+            pedidoOmie.informacoes_adicionais.dados_adicionais_nf = dadosAdicionais.join(' | ');
+        }
+
+        // Observações internas do pedido
+        if (pedido.observacoes) {
             pedidoOmie.observacoes = {
-                obs_venda: obsPartes.join(' | ')
+                obs_venda: pedido.observacoes
             };
         }
 
