@@ -34,6 +34,11 @@ Deno.serve(async (req) => {
         const resultados = {};
 
         for (const item of codigos) {
+            // Pedidos de troca não existem no Omie — pular
+            if (item.tipo === 'troca') {
+                resultados[item.pedido_id] = { etapa: null, etapa_label: 'Troca (local)', cancelado: false, erro: false };
+                continue;
+            }
             const codigoPedido = Number(item.omie_codigo_pedido);
             if (!codigoPedido) {
                 resultados[item.pedido_id] = { etapa: null, etapa_label: 'Sem código Omie', cancelado: false, erro: true };
