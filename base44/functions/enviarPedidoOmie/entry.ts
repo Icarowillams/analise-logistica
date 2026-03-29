@@ -198,11 +198,6 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Número do pedido de compra do cliente (campo próprio do Omie no cabeçalho)
-        if (pedido.numero_pedido_compra) {
-            pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
-        }
-
         // Montar dados adicionais da NF (aparece nos Dados Adicionais da DANFE)
         const dadosAdicionais = [];
         if (pedido.numero_pedido_compra) {
