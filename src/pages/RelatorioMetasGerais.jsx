@@ -7,9 +7,10 @@ import MetasPositivacao from './MetasPositivacao';
 import MetasPrecoMedio from './MetasPrecoMedio';
 import MetasCadastro from './MetasCadastro';
 import MetasTroca from './MetasTroca';
+import CompiladoMetas from '@/components/metas/CompiladoMetas';
 
 export default function RelatorioMetasGerais() {
-  const [activeTab, setActiveTab] = useState('produto');
+  const [activeTab, setActiveTab] = useState('compilado');
 
   return (
     <div className="space-y-4">
@@ -17,6 +18,7 @@ export default function RelatorioMetasGerais() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="compilado">Compilado</TabsTrigger>
           <TabsTrigger value="produto">Produto</TabsTrigger>
           <TabsTrigger value="positivacao">Positivação</TabsTrigger>
           <TabsTrigger value="preco_medio">Preço Médio</TabsTrigger>
@@ -24,6 +26,7 @@ export default function RelatorioMetasGerais() {
           <TabsTrigger value="troca">Troca</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="compilado"><CompiladoMetas /></TabsContent>
         <TabsContent value="produto"><MetasProduto embedded /></TabsContent>
         <TabsContent value="positivacao"><MetasPositivacao embedded /></TabsContent>
         <TabsContent value="preco_medio"><MetasPrecoMedio embedded /></TabsContent>
