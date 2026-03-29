@@ -25,13 +25,22 @@ export default function EmissaoPedidos() {
     queryFn: () => base44.entities.Permissao.list()
   });
 
+  const permissaoUsuario = useMemo(() => {
+    if (!vendedorAtual) return null;
+    return permissoes.find(p => p.vendedor_id === vendedorAtual.id);
+  }, [vendedorAtual, permissoes]);
+
   const permissaoCenariosFiscais = useMemo(() => {
     if (!currentUser) return false;
     if (currentUser.role === 'admin') return true;
-    if (!vendedorAtual) return false;
-    const perm = permissoes.find(p => p.vendedor_id === vendedorAtual.id);
-    return perm?.permissoes_pedidos?.usar_cenarios_fiscais || false;
-  }, [currentUser, vendedorAtual, permissoes]);
+    return permissaoUsuario?.permissoes_pedidos?.usar_cenarios_fiscais || false;
+  }, [currentUser, permissaoUsuario]);
+
+  const podePedidoAvulso = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    return permissaoUsuario?.permissoes_pedidos?.pedido_avulso !== false;
+  }, [currentUser, permissaoUsuario]);
 
   useEffect(() => {
     base44.auth.me().then(user => {
@@ -90,19 +99,21 @@ export default function EmissaoPedidos() {
       <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorAtual.nome}`} icon={ShoppingCart} />
       
       <div>
-        <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full grid-cols-3 mb-6">
+        <div className={`inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full ${podePedidoAvulso ? 'grid-cols-3' : 'grid-cols-2'} mb-6`}>
           <button
             onClick={() => { setActiveTab('digitar'); }}
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'digitar' ? 'bg-background text-foreground shadow' : ''}`}
           >
             Roteiro
           </button>
-          <button
-            onClick={() => { setActiveTab('avulso'); }}
-            className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'avulso' ? 'bg-background text-foreground shadow' : ''}`}
-          >
-            Pedido Avulso
-          </button>
+          {podePedidoAvulso && (
+            <button
+              onClick={() => { setActiveTab('avulso'); }}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'avulso' ? 'bg-background text-foreground shadow' : ''}`}
+            >
+              Pedido Avulso
+            </button>
+          )}
           <button
             onClick={() => { setActiveTab('envio'); }}
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === 'envio' ? 'bg-background text-foreground shadow' : ''}`}
