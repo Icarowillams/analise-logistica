@@ -60,7 +60,8 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
   const linhas = Object.values(agrupado).sort((a, b) => b.quantidade - a.quantidade);
   const totalQtd = linhas.reduce((s, l) => s + l.quantidade, 0);
   const totalPeso = linhas.reduce((s, l) => s + l.pesoBruto, 0);
-  const dataRelatorio = new Date().toLocaleDateString('pt-BR');
+  const agora = new Date();
+  const dataRelatorio = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const handlePrint = () => {
     const content = printRef.current;
