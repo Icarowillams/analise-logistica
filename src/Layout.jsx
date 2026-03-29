@@ -116,6 +116,7 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
+          { title: 'Dashboard Vendas', path: 'DashboardPedidosVenda' },
           { title: 'Dashboard Clientes', path: 'DashboardClientes' },
           { title: 'Análise de Visitas', path: 'AnaliseVisitas' },
           { title: 'Mapa de Visitas', path: 'MapaVendas' }

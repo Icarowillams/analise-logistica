@@ -10,6 +10,7 @@ import PageNotFound from './lib/PageNotFound';
 import RelatorioRotinaSupervisores from './pages/RelatorioRotinaSupervisores';
 import CadastroMetas from './pages/CadastroMetas';
 import RelatorioMetasGerais from './pages/RelatorioMetasGerais';
+import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
 
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import PreCadastros from './pages/PreCadastros';
@@ -74,6 +75,7 @@ const AuthenticatedApp = () => {
       <Route path="/sincronizarclientesomie" element={<LayoutWrapper currentPageName="SincronizarClientesOmie"><SincronizarClientesOmie /></LayoutWrapper>} />
       <Route path="/CadastroMetas" element={<LayoutWrapper currentPageName="CadastroMetas"><CadastroMetas /></LayoutWrapper>} />
       <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
+      <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
