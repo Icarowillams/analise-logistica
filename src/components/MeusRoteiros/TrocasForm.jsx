@@ -48,12 +48,38 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     queryFn: () => base44.entities.MotivoTroca.list()
   });
 
+  // Buscar cliente para pegar tabela_id
+  const { data: clienteData } = useQuery({
+    queryKey: ['cliente-tabela', clienteId],
+    queryFn: () => base44.entities.Cliente.filter({ id: clienteId }),
+    enabled: !!clienteId
+  });
+  const tabelaIdCliente = clienteData?.[0]?.tabela_id || '';
+
+  // Buscar preços da tabela do cliente
+  const { data: precosTabela = [] } = useQuery({
+    queryKey: ['precosProduto-troca', tabelaIdCliente],
+    queryFn: () => tabelaIdCliente ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaIdCliente }) : [],
+    enabled: !!tabelaIdCliente
+  });
+
+  // Filtrar produtos que têm preço na tabela do cliente
+  const produtosFiltrados = useMemo(() => {
+    if (!tabelaIdCliente || precosTabela.length === 0) return produtos;
+    const idsComPreco = new Set(
+      precosTabela
+        .filter(p => p.valor_unitario > 0 || (p.ativacao_acao && p.valor_acao > 0))
+        .map(p => p.produto_id)
+    );
+    return produtos.filter(p => idsComPreco.has(p.id));
+  }, [produtos, precosTabela, tabelaIdCliente]);
+
   // Organizar produtos por subcategoria
   const produtosPorSubcategoria = useMemo(() => {
     const grupos = {};
     const semCategoria = [];
     
-    produtos.forEach(p => {
+    produtosFiltrados.forEach(p => {
       if (p.sub_categoria_id) {
         if (!grupos[p.sub_categoria_id]) {
           grupos[p.sub_categoria_id] = [];
@@ -71,7 +97,7 @@ export default function TrocasForm({ visitaId, clienteId, clienteNome }) {
     semCategoria.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     return { grupos, semCategoria };
-  }, [produtos]);
+  }, [produtosFiltrados]);
 
   const { data: trocas = [] } = useQuery({
     queryKey: ['trocasVisita', visitaId],
