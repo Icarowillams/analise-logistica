@@ -125,6 +125,28 @@ export default function DashboardTrocas() {
   });
   const [buscaCliente, setBuscaCliente] = useState('');
 
+  const { data: pedidosTrocaFaturados = [], isLoading: lPT } = useQuery({
+    queryKey: ['pedidos-troca-faturados'],
+    queryFn: async () => {
+      const pedidos = await base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' });
+      return pedidos;
+    }
+  });
+  const { data: pedidoItensTroca = [], isLoading: lPI } = useQuery({
+    queryKey: ['pedido-itens-troca', pedidosTrocaFaturados.map(p => p.id).join(',')],
+    queryFn: async () => {
+      if (pedidosTrocaFaturados.length === 0) return [];
+      const allItems = [];
+      for (const pedido of pedidosTrocaFaturados) {
+        const itens = await base44.entities.PedidoItem.filter({ pedido_id: pedido.id });
+        itens.forEach(item => {
+          allItems.push({ ...item, _pedido: pedido });
+        });
+      }
+      return allItems;
+    },
+    enabled: pedidosTrocaFaturados.length > 0
+  });
   const { data: trocasAll = [], isLoading: lT } = useQuery({ 
     queryKey: ['trocas'], 
     queryFn: () => base44.entities.Troca.list('-data', 5000) 
@@ -147,8 +169,34 @@ export default function DashboardTrocas() {
 
   // Dados filtrados por permissão
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
-  const trocas = useMemo(() => filtrarPorCliente(trocasAll), [trocasAll, filtrarPorCliente]);
   const vendas = useMemo(() => filtrarPorCliente(vendasAll), [vendasAll, filtrarPorCliente]);
+
+  // Trocas derivadas de pedidos faturados (entidade Pedido com tipo=troca e status=faturado)
+  const trocasDerivadas = useMemo(() => {
+    return pedidoItensTroca.map(item => {
+      const pedido = item._pedido;
+      return {
+        id: item.id,
+        cliente_id: pedido.cliente_id,
+        cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia,
+        vendedor_id: pedido.vendedor_id,
+        vendedor_nome: pedido.vendedor_nome,
+        produto_original_id: item.produto_id,
+        produto_original_nome: item.produto_nome,
+        quantidade: item.quantidade || 0,
+        valor_unitario: item.valor_unitario || 0,
+        data: pedido.created_date ? pedido.created_date.split('T')[0] : (pedido.data_previsao_entrega || ''),
+        motivo_id: item.motivo_troca_id || '',
+        motivo_descricao: item.motivo_troca_descricao || '',
+        observacoes: pedido.observacoes || '',
+        venda_original_id: pedido.numero_pedido || '',
+        _pedido_numero: pedido.numero_pedido || 'S/N',
+        _pedido_data: pedido.created_date ? pedido.created_date.split('T')[0] : ''
+      };
+    });
+  }, [pedidoItensTroca]);
+
+  const trocas = useMemo(() => filtrarPorCliente(trocasDerivadas), [trocasDerivadas, filtrarPorCliente]);
   const vendedores = useMemo(() => {
     if (vendedoresPermitidosIds === null) return vendedoresAll;
     return vendedoresAll.filter(v => vendedoresPermitidosIds.has(v.id));
@@ -174,7 +222,7 @@ export default function DashboardTrocas() {
     queryFn: () => base44.entities.MotivoTroca.list() 
   });
 
-  const isLoading = lT || lV;
+  const isLoading = lT || lV || lPT || lPI;
 
   // Supervisores únicos
   const supervisores = useMemo(() => {
