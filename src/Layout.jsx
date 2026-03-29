@@ -80,13 +80,6 @@ export default function Layout({ children, currentPageName }) {
     const allMenuItems = [
 
       {
-        title: 'Importações',
-        icon: Upload,
-        submenu: [
-          { title: 'Importar Vendas', path: 'ImportarVendas' }
-        ]
-      },
-      {
         title: 'Cadastros',
         icon: Settings,
         submenu: [
