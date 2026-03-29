@@ -24,7 +24,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [modeloNota, setModeloNota] = useState(tipo === 'troca' ? 'd1' : '55');
   const [dataPrevisaoEntrega, setDataPrevisaoEntrega] = useState('');
   const [numeroPedidoCompra, setNumeroPedidoCompra] = useState('');
-  const [observacoes, setObservacoes] = useState('');
   const [dadosAdicionaisNf, setDadosAdicionaisNf] = useState('');
 
   // Product tab fields
@@ -110,7 +109,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : '55'));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
-      setObservacoes(existingPedido.observacoes || '');
       setDadosAdicionaisNf(existingPedido.dados_adicionais_nf || '');
       if (existingPedido.cenario_fiscal_codigo) {
         setCenarioFiscalCodigo(String(existingPedido.cenario_fiscal_codigo));
@@ -220,7 +218,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       cenario_fiscal_nome: cenarioFiscalNome || null,
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
-      observacoes,
       dados_adicionais_nf: dadosAdicionaisNf,
       total_itens: itensLocal.length,
       valor_total: totalPedido
@@ -377,10 +374,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               <div>
                 <Label>Dados Adicionais para a Nota Fiscal</Label>
                 <Input value={dadosAdicionaisNf} onChange={(e) => setDadosAdicionaisNf(e.target.value)} placeholder="Texto que aparecerá na DANFE (Informações Complementares)..." />
-              </div>
-              <div>
-                <Label>Observações</Label>
-                <Input value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Observações internas do pedido..." />
               </div>
             </CardContent>
           </Card>

@@ -126,13 +126,9 @@
       "type": "string",
       "description": "N\u00famero da carga vinculada"
     },
-    "observacoes": {
-      "type": "string",
-      "description": "Observa\u00e7\u00f5es do pedido"
-    },
     "dados_adicionais_nf": {
       "type": "string",
-      "description": "Dados adicionais para a Nota Fiscal (aparece na DANFE)"
+      "description": "Dados adicionais para a Nota Fiscal (aparece na DANFE em Informa\u00e7\u00f5es Complementares)"
     },
     "total_itens": {
       "type": "number",

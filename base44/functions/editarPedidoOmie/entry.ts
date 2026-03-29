@@ -169,12 +169,6 @@ Deno.serve(async (req) => {
             };
         }
 
-        if (pedido.observacoes) {
-            pedidoOmie.observacoes = {
-                obs_venda: pedido.observacoes
-            };
-        }
-
         if (pedido.numero_pedido_compra) {
             pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
         }

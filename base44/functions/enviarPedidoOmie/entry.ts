@@ -147,16 +147,8 @@ Deno.serve(async (req) => {
             if (pedido.numero_pedido_compra) {
                 infAdic.numero_pedido_compra = pedido.numero_pedido_compra;
             }
-            // Dados adicionais do item (aparece nas Informações Complementares da DANFE)
-            const dadosAdicionaisItem = [];
             if (pedido.numero_pedido_compra) {
-                dadosAdicionaisItem.push(`Pedido de Compra: ${pedido.numero_pedido_compra}`);
-            }
-            if (pedido.observacoes) {
-                dadosAdicionaisItem.push(pedido.observacoes);
-            }
-            if (dadosAdicionaisItem.length > 0) {
-                infAdic.dados_adicionais_item = dadosAdicionaisItem.join(' | ');
+                infAdic.dados_adicionais_item = `Pedido de Compra: ${pedido.numero_pedido_compra}`;
             }
 
             return {
@@ -216,12 +208,7 @@ Deno.serve(async (req) => {
             };
         }
 
-        // Observações internas do pedido (visíveis apenas dentro do Omie, não na DANFE)
-        if (pedido.observacoes) {
-            pedidoOmie.observacoes = {
-                obs_venda: pedido.observacoes
-            };
-        }
+
 
         // Buscar conta corrente no Omie
         let codigoContaCorrente = null;
