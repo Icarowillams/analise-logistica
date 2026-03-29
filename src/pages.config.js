@@ -53,7 +53,6 @@ import Categorias from './pages/Categorias';
 import Clientes from './pages/Clientes';
 import ConfigurarIntegracao from './pages/ConfigurarIntegracao';
 import ConfigurarWebhook from './pages/ConfigurarWebhook';
-import Dashboard from './pages/Dashboard';
 import DashboardClientes from './pages/DashboardClientes';
 import DashboardTrocas from './pages/DashboardTrocas';
 import DashboardVendedor from './pages/DashboardVendedor';
@@ -102,7 +101,6 @@ export const PAGES = {
     "Clientes": Clientes,
     "ConfigurarIntegracao": ConfigurarIntegracao,
     "ConfigurarWebhook": ConfigurarWebhook,
-    "Dashboard": Dashboard,
     "DashboardClientes": DashboardClientes,
     "DashboardTrocas": DashboardTrocas,
     "DashboardVendedor": DashboardVendedor,

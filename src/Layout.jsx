@@ -78,11 +78,7 @@ export default function Layout({ children, currentPageName }) {
 
   const menuItems = useMemo(() => {
     const allMenuItems = [
-      {
-        title: 'Dashboard',
-        icon: LayoutDashboard,
-        path: 'Dashboard'
-      },
+
       {
         title: 'Importações',
         icon: Upload,
