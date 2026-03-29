@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
                 consumidor_final: "S",
                 enviar_email: "N",
                 ...(pedido.numero_pedido_compra ? { numero_pedido_cliente: pedido.numero_pedido_compra } : {}),
-                ...(pedido.observacoes ? { dados_adicionais_nf: pedido.observacoes } : {})
+                ...(pedido.dados_adicionais_nf ? { dados_adicionais_nf: pedido.dados_adicionais_nf } : {})
             }
         };
 

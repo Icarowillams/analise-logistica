@@ -157,7 +157,9 @@ Deno.serve(async (req) => {
             informacoes_adicionais: {
                 codigo_categoria: "1.01.03",
                 consumidor_final: "S",
-                enviar_email: "N"
+                enviar_email: "N",
+                ...(pedido.numero_pedido_compra ? { numero_pedido_cliente: pedido.numero_pedido_compra } : {}),
+                ...(pedido.dados_adicionais_nf ? { dados_adicionais_nf: pedido.dados_adicionais_nf } : {})
             }
         };
 

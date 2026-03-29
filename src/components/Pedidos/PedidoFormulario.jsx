@@ -25,6 +25,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [dataPrevisaoEntrega, setDataPrevisaoEntrega] = useState('');
   const [numeroPedidoCompra, setNumeroPedidoCompra] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [dadosAdicionaisNf, setDadosAdicionaisNf] = useState('');
 
   // Product tab fields
   const [itensLocal, setItensLocal] = useState([]);
@@ -110,6 +111,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
       setObservacoes(existingPedido.observacoes || '');
+      setDadosAdicionaisNf(existingPedido.dados_adicionais_nf || '');
       if (existingPedido.cenario_fiscal_codigo) {
         setCenarioFiscalCodigo(String(existingPedido.cenario_fiscal_codigo));
         setCenarioFiscalNome(existingPedido.cenario_fiscal_nome || '');
@@ -219,6 +221,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
       observacoes,
+      dados_adicionais_nf: dadosAdicionaisNf,
       total_itens: itensLocal.length,
       valor_total: totalPedido
     };
@@ -372,8 +375,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 <Input value={numeroPedidoCompra} onChange={(e) => setNumeroPedidoCompra(e.target.value)} placeholder="Número do pedido de compra do cliente" />
               </div>
               <div>
+                <Label>Dados Adicionais para a Nota Fiscal</Label>
+                <Input value={dadosAdicionaisNf} onChange={(e) => setDadosAdicionaisNf(e.target.value)} placeholder="Texto que aparecerá na DANFE (Informações Complementares)..." />
+              </div>
+              <div>
                 <Label>Observações</Label>
-                <Input value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Observações do pedido..." />
+                <Input value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Observações internas do pedido..." />
               </div>
             </CardContent>
           </Card>

@@ -130,6 +130,10 @@
       "type": "string",
       "description": "Observa\u00e7\u00f5es do pedido"
     },
+    "dados_adicionais_nf": {
+      "type": "string",
+      "description": "Dados adicionais para a Nota Fiscal (aparece na DANFE)"
+    },
     "total_itens": {
       "type": "number",
       "default": 0,
