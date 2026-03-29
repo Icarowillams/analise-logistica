@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Route, MapPin, Clock, CheckCircle, Package, ArrowLeftRight, XCircle, CalendarPlus, Navigation } from 'lucide-react';
+import { Route, MapPin, Clock, CheckCircle, Package, ArrowLeftRight, XCircle, CalendarPlus, Navigation, Search } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -189,6 +189,8 @@ export default function MeusRoteiros() {
 }
 
 function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, permissaoUsuario, clientes }) {
+  const [searchCliente, setSearchCliente] = useState('');
+
   // Calcular data correspondente ao dia selecionado usando data LOCAL
   const hoje = new Date();
   const hojeStr = getLocalDateStr(hoje);
@@ -244,16 +246,56 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
     );
   }
 
+  // Filtrar clientes do roteiro pela busca
+  const clientesFiltrados = useMemo(() => {
+    const s = searchCliente.toLowerCase().trim();
+    if (!s) return clientesDoRoteiro;
+    return clientesDoRoteiro.filter(c => {
+      const clienteCompleto = (c.cliente_codigo ? clientes.find(cl => cl.codigo === c.cliente_codigo) : undefined)
+        || clientes.find(cl => cl.id === c.cliente_id);
+      const razaoSocial = clienteCompleto?.razao_social?.toLowerCase() || '';
+      const nomeFantasia = (clienteCompleto?.nome_fantasia || c.nome_fantasia || c.cliente_nome || '').toLowerCase();
+      const codigo = (clienteCompleto?.codigo || c.cliente_codigo || '').toLowerCase();
+      return razaoSocial.includes(s) || nomeFantasia.includes(s) || codigo.includes(s);
+    });
+  }, [clientesDoRoteiro, searchCliente, clientes]);
+
+  // Filtrar reagendadas pela busca
+  const reagendadasFiltradas = useMemo(() => {
+    const s = searchCliente.toLowerCase().trim();
+    if (!s) return reagendadasParaHoje;
+    return reagendadasParaHoje.filter(r => {
+      const clienteCompleto = clientes.find(c => c.id === r.cliente_id);
+      const razaoSocial = clienteCompleto?.razao_social?.toLowerCase() || '';
+      const nomeFantasia = (clienteCompleto?.nome_fantasia || r.cliente_nome || '').toLowerCase();
+      const codigo = (clienteCompleto?.codigo || r.cliente_codigo || '').toLowerCase();
+      return razaoSocial.includes(s) || nomeFantasia.includes(s) || codigo.includes(s);
+    });
+  }, [reagendadasParaHoje, searchCliente, clientes]);
+
   return (
     <div className="space-y-4">
+      {/* Filtro de busca */}
+      {(clientesDoRoteiro.length > 0 || reagendadasParaHoje.length > 0) && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            placeholder="Buscar por razão social, nome fantasia ou código..."
+            value={searchCliente}
+            onChange={(e) => setSearchCliente(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      )}
+
       {/* Visitas Reagendadas (Exceções) */}
-      {reagendadasParaHoje.length > 0 && (
+      {reagendadasFiltradas.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-orange-600 flex items-center gap-2">
             <CalendarPlus className="w-4 h-4" />
             Reagendamentos ({reagendadasParaHoje.length})
           </h3>
-          {reagendadasParaHoje.map((reagendada) => {
+          {reagendadasFiltradas.map((reagendada) => {
             const visitaExistente = visitas.find(v => 
               v.cliente_id === reagendada.cliente_id && 
               v.data_visita === dataSelecionadaStr
@@ -286,7 +328,7 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
       )}
 
       {/* Clientes do Roteiro Fixo */}
-      {clientesDoRoteiro.map((cliente, idx) => {
+      {clientesFiltrados.map((cliente, idx) => {
         // Buscar visita mais recente da semana para este cliente/roteiro
         // Ordenar por created_date desc para pegar a mais recente em caso de duplicatas
         const visitasCliente = visitasDaSemana
