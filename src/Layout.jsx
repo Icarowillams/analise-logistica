@@ -96,6 +96,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
           { title: 'Rotas', path: 'Rotas' },
           { title: 'Roteiros', path: 'Roteiros' },
+          { title: 'Cadastro de Metas', path: 'CadastroMetas' },
           { title: 'Empresa', path: 'Empresa' },
           { title: 'Pré-Cadastros', path: 'PreCadastros' },
           { title: 'Sincronizar Clientes Omie', path: 'SincronizarClientesOmie' }
@@ -105,12 +106,8 @@ export default function Layout({ children, currentPageName }) {
         title: 'Metas',
         icon: Target,
         submenu: [
-          { title: 'Meta por Produto', path: 'MetasProduto' },
-          { title: 'Meta por Positivação', path: 'MetasPositivacao' },
-          { title: 'Meta por Preço Médio', path: 'MetasPrecoMedio' },
-          { title: 'Meta por Cadastro', path: 'MetasCadastro' },
-          { title: 'Meta por Troca', path: 'MetasTroca' },
-          { title: 'Painel Rodrigos', path: 'PainelRodrigosM' }
+          { title: 'Relatório Metas Gerais', path: 'RelatorioMetasGerais' },
+          { title: 'Relatório Metas Rodrigo', path: 'PainelRodrigosM' }
         ]
       },
       {
