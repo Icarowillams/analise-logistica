@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -29,8 +29,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'omie_codigos é obrigatório (array)' }, { status: 400 });
         }
 
-        // Limitar a 350 pedidos por chamada
-        const codigos = omie_codigos.slice(0, 350);
+        // Limitar a 80 pedidos por chamada (para não estourar rate limit do Omie)
+        const codigos = omie_codigos.slice(0, 80);
         const resultados = {};
 
         for (const item of codigos) {
@@ -71,12 +71,24 @@ Deno.serve(async (req) => {
                         faultMsg.includes('não existe') || faultMsg.includes('nao existe');
                     const apiBloqueada = faultMsg.includes('bloqueada por consumo indevido');
                     
+                    if (apiBloqueada) {
+                        // API bloqueada — parar de consultar para não piorar
+                        console.warn('[consultarStatusPedidosOmie] API Omie BLOQUEADA. Parando consulta.');
+                        // Marcar todos os pendentes restantes como api_bloqueada
+                        for (const remaining of codigos) {
+                            if (!resultados[remaining.pedido_id]) {
+                                resultados[remaining.pedido_id] = { etapa: null, etapa_label: null, cancelado: false, erro: false, api_bloqueada: true };
+                            }
+                        }
+                        break;
+                    }
+                    
                     resultados[item.pedido_id] = {
                         etapa: naoEncontrado ? '80' : null,
-                        etapa_label: naoEncontrado ? 'Excluído no Omie' : (apiBloqueada ? 'Omie Bloqueado' : null),
+                        etapa_label: naoEncontrado ? 'Excluído no Omie' : null,
                         cancelado: naoEncontrado,
                         erro: !naoEncontrado,
-                        api_bloqueada: apiBloqueada,
+                        api_bloqueada: false,
                         mensagem_erro: result.faultstring || null
                     };
                 } else if (result.pedido_venda_produto) {

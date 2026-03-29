@@ -62,7 +62,9 @@ Deno.serve(async (req) => {
             try {
                 const updateData = {};
                 if (info.status) updateData.status = info.status;
-                if (info.numero_carga) updateData.numero_carga = info.numero_carga;
+                if (info.numero_carga) updateData.numero_carga = String(info.numero_carga);
+                // Garantir que numero_pedido seja sempre string
+                if (info.numero_pedido) updateData.numero_pedido = String(info.numero_pedido);
 
                 if (Object.keys(updateData).length > 0) {
                     await base44.asServiceRole.entities.Pedido.update(pedidoId, updateData);

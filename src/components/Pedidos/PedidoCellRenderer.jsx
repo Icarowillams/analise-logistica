@@ -51,15 +51,7 @@ const formatCurrency = (v) => {
 
 export default function PedidoCellRenderer({ col, p, omie, omieRequestPending }) {
   if (col.id === 'status') {
-    const omieEtapaLabel = omie?.erro ? null : omie?.etapa_label;
-    const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
-    const displayLabel = omie?.api_bloqueada
-      ? 'Omie Bloqueado'
-      : omie?.erro
-        ? 'Falha na Consulta'
-        : analiseLabel;
-    const analiseColors = displayLabel ? (ANALISE_STATUS_COLORS[displayLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' }) : null;
-
+    // Trocas sempre usam status local
     if (p.tipo === 'troca') {
       const trocaLabel = STATUS_LABELS[p.status] || p.status;
       const trocaColors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
@@ -69,16 +61,37 @@ export default function PedidoCellRenderer({ col, p, omie, omieRequestPending })
         </Badge>
       );
     }
-    if (displayLabel) {
+
+    // Para vendas/bonificações: priorizar Omie, fallback ao status local
+    const omieEtapaLabel = (omie && !omie.erro && !omie.api_bloqueada) ? omie.etapa_label : null;
+    const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
+    
+    // Se Omie retornou um status válido, usar ele
+    if (analiseLabel) {
+      const analiseColors = ANALISE_STATUS_COLORS[analiseLabel] || { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-400' };
       return (
         <Badge className={`${analiseColors.bg} ${analiseColors.text} ${analiseColors.border} border text-[10px]`}>
-          {displayLabel}
+          {analiseLabel}
         </Badge>
       );
     }
+    
+    // Fallback: usar status local (sempre disponível)
+    const localLabel = STATUS_LABELS[p.status] || p.status;
+    const localColors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+    
+    // Se está consultando, mostrar indicador sutil
+    if (omieRequestPending) {
+      return (
+        <Badge className={`${localColors.bg} ${localColors.text} ${localColors.border} border text-[10px] animate-pulse`}>
+          {localLabel}
+        </Badge>
+      );
+    }
+    
     return (
-      <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-[10px]">
-        {p.omie_enviado && omieRequestPending ? 'Consultando Omie...' : 'Aguardando Omie'}
+      <Badge className={`${localColors.bg} ${localColors.text} ${localColors.border} border text-[10px]`}>
+        {localLabel}
       </Badge>
     );
   }
