@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ArrowLeftRight } from 'lucide-react';
@@ -12,18 +12,27 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export default function MetasTroca() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({ vendedor_id: '', periodo: '', meta_trocas: 0 });
+  const [tipoMeta, setTipoMeta] = useState('individual');
 
   const queryClient = useQueryClient();
 
   const { data: metas = [], isLoading } = useQuery({ queryKey: ['metasTroca'], queryFn: () => base44.entities.MetaTroca.list() });
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: vendedoresAll = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: funcoes = [] } = useQuery({ queryKey: ['funcoes'], queryFn: () => base44.entities.Funcao.list() });
   const { data: trocas = [] } = useQuery({ queryKey: ['trocas'], queryFn: () => base44.entities.Troca.list('-data', 2000) });
+
+  const vendedores = useMemo(() => {
+    const funcaoVendedor = funcoes.find(f => f.nome?.toLowerCase() === 'vendedor');
+    if (!funcaoVendedor) return vendedoresAll.filter(v => v.status === 'ativo');
+    return vendedoresAll.filter(v => v.status === 'ativo' && v.funcao_id === funcaoVendedor.id);
+  }, [vendedoresAll, funcoes]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.MetaTroca.create(data),
@@ -40,21 +49,44 @@ export default function MetasTroca() {
     onSuccess: () => { queryClient.invalidateQueries(['metasTroca']); setDeleteOpen(false); setSelected(null); }
   });
 
-  const resetForm = () => { setFormData({ vendedor_id: '', periodo: '', meta_trocas: 0 }); setSelected(null); };
+  const resetForm = () => { setFormData({ vendedor_id: '', periodo: '', meta_trocas: 0 }); setSelected(null); setTipoMeta('individual'); };
   const handleNew = () => { resetForm(); setFormOpen(true); };
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({ vendedor_id: item.vendedor_id || '', periodo: item.periodo || '', meta_trocas: item.meta_trocas || 0 });
+    setTipoMeta(item.vendedor_id ? 'individual' : 'equipe');
     setFormOpen(true);
   };
   const handleDelete = (item) => { setSelected(item); setDeleteOpen(true); };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
-    const data = { ...formData, vendedor_nome: vendedor?.nome || '', meta_trocas: parseInt(formData.meta_trocas) || 0 };
-    if (selected) { updateMutation.mutate({ id: selected.id, data }); }
-    else { createMutation.mutate(data); }
+    if (tipoMeta === 'equipe') {
+      const metaVal = parseInt(formData.meta_trocas) || 0;
+      if (selected) {
+        const data = { ...formData, vendedor_id: formData.vendedor_id || '', vendedor_nome: formData.vendedor_id ? vendedores.find(v => v.id === formData.vendedor_id)?.nome || '' : 'Equipe', meta_trocas: metaVal };
+        updateMutation.mutate({ id: selected.id, data });
+      } else {
+        const promises = vendedores.map(v => {
+          return base44.entities.MetaTroca.create({
+            vendedor_id: v.id,
+            vendedor_nome: v.nome,
+            periodo: formData.periodo,
+            meta_trocas: metaVal
+          });
+        });
+        Promise.all(promises).then(() => {
+          queryClient.invalidateQueries(['metasTroca']);
+          setFormOpen(false);
+          resetForm();
+        });
+      }
+    } else {
+      const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
+      const data = { ...formData, vendedor_nome: vendedor?.nome || '', meta_trocas: parseInt(formData.meta_trocas) || 0 };
+      if (selected) { updateMutation.mutate({ id: selected.id, data }); }
+      else { createMutation.mutate(data); }
+    }
   };
 
   const calcularRealizado = (meta) => {
@@ -63,8 +95,8 @@ export default function MetasTroca() {
 
   const columns = [
     { key: 'periodo', label: 'Período', sortable: true },
-    { key: 'vendedor_nome', label: 'Vendedor', sortable: true },
-    { key: 'meta_trocas', label: 'Meta Máx. Trocas' },
+    { key: 'vendedor_nome', label: 'Vendedor', sortable: true, render: (v) => v || 'Equipe' },
+    { key: 'meta_trocas', label: 'Meta Máx. Trocas (%)', render: (v) => `${v}%` },
     { 
       key: 'realizado', 
       label: 'Trocas Realizadas',
@@ -102,21 +134,43 @@ export default function MetasTroca() {
       
       <FormModal open={formOpen} onOpenChange={setFormOpen} title={selected ? 'Editar Meta' : 'Nova Meta'}>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>Vendedor *</Label>
-              <Select value={formData.vendedor_id} onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>{vendedores.filter(v => v.status === 'ativo').map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Período *</Label>
-              <Input type="month" value={formData.periodo} onChange={(e) => setFormData({ ...formData, periodo: e.target.value })} required />
-            </div>
-            <div>
-              <Label>Meta Máx. Trocas *</Label>
-              <Input type="number" value={formData.meta_trocas} onChange={(e) => setFormData({ ...formData, meta_trocas: e.target.value })} required />
+          <div className="space-y-4">
+            {!selected && (
+              <div>
+                <Label className="mb-2 block">Tipo de Meta</Label>
+                <RadioGroup value={tipoMeta} onValueChange={(v) => { setTipoMeta(v); if (v === 'equipe') setFormData(prev => ({ ...prev, vendedor_id: '' })); }} className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="individual" id="troca-individual" />
+                    <Label htmlFor="troca-individual" className="cursor-pointer">Vendedor Individual</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="equipe" id="troca-equipe" />
+                    <Label htmlFor="troca-equipe" className="cursor-pointer">Equipe Inteira</Label>
+                  </div>
+                </RadioGroup>
+                {tipoMeta === 'equipe' && (
+                  <p className="text-xs text-amber-600 mt-1">A meta será criada para todos os vendedores com o mesmo valor.</p>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {tipoMeta === 'individual' && (
+                <div>
+                  <Label>Vendedor *</Label>
+                  <Select value={formData.vendedor_id} onValueChange={(v) => setFormData({ ...formData, vendedor_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>{vendedores.map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label>Período *</Label>
+                <Input type="month" value={formData.periodo} onChange={(e) => setFormData({ ...formData, periodo: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Meta Máx. Trocas (%) *</Label>
+                <Input type="number" step="0.1" value={formData.meta_trocas} onChange={(e) => setFormData({ ...formData, meta_trocas: e.target.value })} required placeholder="Ex: 5" />
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4">
