@@ -84,6 +84,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [omieStatuses, setOmieStatuses] = useState({});
   const [omieStatusLoading, setOmieStatusLoading] = useState(false);
   const omieStatusRequestsRef = useRef(new Set());
+  const initialFetchDoneRef = useRef(false);
   const [batchResult, setBatchResult] = useState(null);
 
 
@@ -349,16 +350,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
 
-  const pedidosVisiveisParaStatus = useMemo(() => {
-    return filtered
+  // Pedidos que precisam de consulta Omie (baseado nos pedidos carregados, NÃO no filtered que depende de omieStatuses)
+  const pedidosParaConsultaOmie = useMemo(() => {
+    return pedidos
+      .filter(p => p.status !== 'pendente')
       .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-  }, [filtered]);
+  }, [pedidos]);
 
+  // Consulta automática apenas UMA vez quando os pedidos carregam
   useEffect(() => {
-    if (pedidosVisiveisParaStatus.length > 0) {
-      fetchOmieStatuses(pedidosVisiveisParaStatus, { silent: true });
+    if (initialFetchDoneRef.current) return;
+    if (pedidosParaConsultaOmie.length > 0) {
+      initialFetchDoneRef.current = true;
+      fetchOmieStatuses(pedidosParaConsultaOmie, { silent: true });
     }
-  }, [pedidosVisiveisParaStatus]);
+  }, [pedidosParaConsultaOmie]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -639,8 +645,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
           className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+            // Consultar apenas os pedidos visíveis na tela filtrada
             const visiveisOmie = filtered.filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-            fetchOmieStatuses(visiveisOmie, { force: true });
+            if (visiveisOmie.length > 0) {
+              fetchOmieStatuses(visiveisOmie, { force: true });
+            }
           }}
         >
           <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Atualizar
@@ -766,7 +775,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       <div className="text-xs text-slate-500">
         {filtered.length} pedido(s) • Valor total: {formatCurrency(filtered.reduce((s, p) => s + (p.valor_total || 0), 0))}
         {Object.keys(omieStatuses).length > 0 && (
-          <span className="ml-2 text-green-600">• Status Omie: {Object.keys(omieStatuses).length} consultado(s)</span>
+          <span className="ml-2 text-green-600">• Status Omie: {Object.keys(omieStatuses).length} com status</span>
         )}
       </div>
 
