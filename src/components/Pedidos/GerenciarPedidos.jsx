@@ -88,6 +88,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [batchResult, setBatchResult] = useState(null);
   const [carregamentos, setCarregamentos] = useState({});
   const carregamentoFetchedRef = useRef(new Set());
+  const trocaSyncDoneRef = useRef(false);
 
 
   const { columns, reorder, resetOrder } = useColumnOrder();
@@ -433,14 +434,37 @@ export default function GerenciarPedidos({ onEditPedido }) {
       .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
   }, [pedidos]);
 
+  // Sincronizar trocas via Logístico Control
+  const syncTrocasLogistico = async ({ silent = false } = {}) => {
+    const trocasAtivas = pedidos.filter(p => p.tipo === 'troca' && !['cancelado', 'faturado'].includes(p.status));
+    if (trocasAtivas.length === 0) return;
+    try {
+      if (!silent) setOmieStatusLoading(true);
+      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
+      if (res.data?.total_atualizados > 0) {
+        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+        if (!silent) toast.success(`${res.data.total_atualizados} troca(s) atualizada(s) via Logístico`);
+      }
+    } catch (e) {
+      console.error('Erro ao sincronizar trocas:', e);
+    } finally {
+      if (!silent) setOmieStatusLoading(false);
+    }
+  };
+
   // Consulta automática apenas UMA vez quando os pedidos carregam
   useEffect(() => {
     if (initialFetchDoneRef.current) return;
-    if (pedidosParaConsultaOmie.length > 0) {
+    if (pedidosParaConsultaOmie.length > 0 || pedidos.length > 0) {
       initialFetchDoneRef.current = true;
       fetchOmieStatuses(pedidosParaConsultaOmie, { silent: true });
+      // Também sincronizar trocas na carga inicial
+      if (!trocaSyncDoneRef.current) {
+        trocaSyncDoneRef.current = true;
+        syncTrocasLogistico({ silent: true });
+      }
     }
-  }, [pedidosParaConsultaOmie]);
+  }, [pedidosParaConsultaOmie, pedidos]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -722,11 +746,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
           className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-            // Consultar apenas os pedidos visíveis na tela filtrada
+            // Consultar vendas visíveis no Omie
             const visiveisOmie = filtered.filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
             if (visiveisOmie.length > 0) {
               fetchOmieStatuses(visiveisOmie, { force: true });
             }
+            // Sincronizar trocas via Logístico Control
+            syncTrocasLogistico();
           }}
         >
           <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Atualizar
