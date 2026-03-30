@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -22,15 +22,8 @@ import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
 import useColumnOrder from './useColumnOrder';
 import useColumnResize from './useColumnResize';
-import PedidoCellRenderer, { formatDate, formatCurrency, OMIE_TO_ANALISE } from './PedidoCellRenderer';
+import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
 import BatchResultToast from './BatchResultToast';
-
-
-
-const OMIE_STATUS_CACHE_KEY = 'gerenciar-pedidos-omie-status-cache-v1';
-const OMIE_STATUS_CACHE_TTL_MS = 10 * 60 * 1000;
-const OMIE_STATUS_AUTO_LIMIT = 60;
-const OMIE_STATUS_REFRESH_LIMIT = 60;
 
 const getTodayFilterDate = () => {
   const now = new Date();
@@ -38,21 +31,6 @@ const getTodayFilterDate = () => {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
-
-const readOmieStatusCache = () => {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    return JSON.parse(window.localStorage.getItem(OMIE_STATUS_CACHE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-
-const writeOmieStatusCache = (cache) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(OMIE_STATUS_CACHE_KEY, JSON.stringify(cache));
 };
 
 export default function GerenciarPedidos({ onEditPedido }) {
@@ -81,14 +59,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [debitosCliente, setDebitosCliente] = useState({ id: null, nome: '' });
   const [showAgrupado, setShowAgrupado] = useState(false);
   const [viewPedidoId, setViewPedidoId] = useState(null);
-  const [omieStatuses, setOmieStatuses] = useState({});
-  const [omieStatusLoading, setOmieStatusLoading] = useState(false);
-  const omieStatusRequestsRef = useRef(new Set());
-  const initialFetchDoneRef = useRef(false);
   const [batchResult, setBatchResult] = useState(null);
-  const [carregamentos, setCarregamentos] = useState({});
-  const carregamentoFetchedRef = useRef(new Set());
-  const trocaSyncDoneRef = useRef(false);
+  const [syncLoading, setSyncLoading] = useState(false);
 
 
   const { columns, reorder, resetOrder } = useColumnOrder();
@@ -97,14 +69,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const cache = readOmieStatusCache();
-    const now = Date.now();
-    const validEntries = Object.entries(cache).filter(([, value]) => now - value.fetchedAt < OMIE_STATUS_CACHE_TTL_MS);
-
-    setOmieStatuses(Object.fromEntries(validEntries.map(([pedidoId, value]) => [pedidoId, value.data])));
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -135,132 +99,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
     vendedores.forEach(v => { m[v.id] = v; });
     return m;
   }, [vendedores]);
-
-  const fetchOmieStatuses = async (pedidosList, { force = false, silent = false } = {}) => {
-    const cache = readOmieStatusCache();
-    const now = Date.now();
-
-    // Status finais não mudam — nunca re-consultar
-    const pedidosOmie = (pedidosList || [])
-    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && !['cancelado', 'faturado'].includes(p.status))
-    .filter(p => {
-        if (omieStatusRequestsRef.current.has(p.id)) return false;
-        const cached = cache[p.id];
-        if (force) return true;
-        return !cached || (now - cached.fetchedAt) >= OMIE_STATUS_CACHE_TTL_MS;
-      });
-
-    if (pedidosOmie.length === 0) return;
-
-    if (!silent) setOmieStatusLoading(true);
-    const allResults = {};
-
-    for (let i = 0; i < pedidosOmie.length; i += 10) {
-      const currentBatch = pedidosOmie.slice(i, i + 10);
-      const batch = currentBatch.map(p => ({
-        pedido_id: p.id,
-        omie_codigo_pedido: p.omie_codigo_pedido
-      }));
-
-      currentBatch.forEach(p => omieStatusRequestsRef.current.add(p.id));
-
-      try {
-        const res = await base44.functions.invoke('consultarStatusPedidosOmie', { omie_codigos: batch });
-        if (res.data?.resultados) {
-          Object.assign(allResults, res.data.resultados);
-        }
-      } catch (e) {
-        console.error('Erro ao consultar status Omie (lote):', e);
-        currentBatch.forEach(p => {
-          allResults[p.id] = { erro: true, etapa_label: null };
-        });
-      } finally {
-        currentBatch.forEach(p => omieStatusRequestsRef.current.delete(p.id));
-      }
-    }
-
-    const updatedCache = { ...cache };
-    const updatedStatuses = {};
-    let successCount = 0;
-    let errorCount = 0;
-
-    // Mapeamento Omie etapa_label → status local do banco
-    const OMIE_LABEL_TO_LOCAL_STATUS = {
-      'Pedido de Venda': 'enviado',
-      'Pedidos Liberados': 'liberado',
-      'Faturar': 'montagem',
-      'Faturado': 'faturado',
-      'Entrega': 'faturado',
-      'Cancelado': 'cancelado',
-      'Excluído no Omie': 'cancelado',
-    };
-
-    // Atualizar banco local quando Omie diverge
-    const syncPromises = [];
-
-    Object.entries(allResults).forEach(([pedidoId, result]) => {
-      const previousStatus = omieStatuses[pedidoId] || cache[pedidoId]?.data || null;
-
-      if (result?.api_bloqueada && previousStatus && !previousStatus?.erro) {
-        errorCount += 1;
-        const blockedStatus = { ...previousStatus, api_bloqueada: true, mensagem_erro: result.mensagem_erro || null };
-        updatedCache[pedidoId] = { data: blockedStatus, fetchedAt: Date.now() };
-        updatedStatuses[pedidoId] = blockedStatus;
-        return;
-      }
-
-      updatedCache[pedidoId] = { data: result, fetchedAt: Date.now() };
-
-      if (result?.erro) {
-        errorCount += 1;
-        updatedStatuses[pedidoId] = result;
-        return;
-      }
-
-      successCount += 1;
-      updatedStatuses[pedidoId] = result;
-
-      // Sincronizar status local se divergente
-      if (result.etapa_label) {
-        const newLocalStatus = OMIE_LABEL_TO_LOCAL_STATUS[result.etapa_label];
-        const pedido = pedidos.find(p => p.id === pedidoId);
-        if (pedido && newLocalStatus && pedido.status !== newLocalStatus) {
-          const updateData = { status: newLocalStatus };
-          if (newLocalStatus === 'cancelado') {
-            updateData.motivo_cancelamento = 'Cancelado no Omie (sincronização automática)';
-            updateData.data_cancelamento = new Date().toISOString();
-            updateData.cancelado_por = 'sistema';
-            updateData.cancelado_por_nome = 'Sincronização Automática';
-          }
-          console.log(`[syncOmie] Pedido ${pedido.numero_pedido} (${pedidoId}): ${pedido.status} → ${newLocalStatus}`);
-          syncPromises.push(
-            base44.entities.Pedido.update(pedidoId, updateData).catch(e => {
-              console.error(`[syncOmie] Erro ao atualizar pedido ${pedidoId}:`, e);
-            })
-          );
-        }
-      }
-    });
-
-    // Executar atualizações do banco em paralelo
-    if (syncPromises.length > 0) {
-      await Promise.all(syncPromises);
-      // Invalidar cache do React Query para refletir as mudanças
-      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    }
-
-    writeOmieStatusCache(updatedCache);
-    setOmieStatuses(prev => ({ ...prev, ...updatedStatuses }));
-    if (!silent) setOmieStatusLoading(false);
-
-    if (!silent && successCount > 0) {
-      toast.success(`Status Omie atualizado para ${successCount} pedido(s)`);
-    }
-
-    if (!silent && successCount === 0 && errorCount > 0) {
-      toast.warning('O Omie limitou a consulta repetida; mantive os últimos status salvos.');
-    }
-  };
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
@@ -297,27 +135,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let list = pedidos.filter(p => p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
-    const analiseFilterMap = {
-      'analise_pendente': 'Pendente',
-      'analise_liberado': 'Liberados',
-      'analise_montagem': 'Montagem',
-      'analise_faturado': 'Faturado',
-      'analise_cancelado': 'Cancelado',
-    };
+      const statusFilterMap = {
+        'analise_pendente': ['enviado'],
+        'analise_liberado': ['liberado'],
+        'analise_montagem': ['montagem'],
+        'analise_faturado': ['faturado'],
+        'analise_cancelado': ['cancelado'],
+      };
       if (statusFilter === 'sem_omie') {
         list = list.filter(p => !p.omie_enviado || !p.omie_codigo_pedido);
-      } else if (analiseFilterMap[statusFilter]) {
-        const targetLabel = analiseFilterMap[statusFilter];
-        list = list.filter(p => {
-          // Apenas cancelado local é definitivo
-          if (p.status === 'cancelado') {
-            return 'Cancelado' === targetLabel;
-          }
-          const omie = omieStatuses[p.id];
-          if (!omie) return false;
-          const analiseLabel = OMIE_TO_ANALISE[omie.etapa_label] || omie.etapa_label;
-          return analiseLabel === targetLabel;
-        });
+      } else if (statusFilterMap[statusFilter]) {
+        const targetStatuses = statusFilterMap[statusFilter];
+        list = list.filter(p => targetStatuses.includes(p.status));
       }
     }
     if (tipoFilter !== 'todos') {
@@ -396,75 +225,41 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
 
-  // Fetch carregamentos do Logística Control para pedidos em Faturado/Montagem
-  const fetchCarregamentos = async (pedidoIds) => {
-    const idsNovos = pedidoIds.filter(id => !carregamentoFetchedRef.current.has(id));
-    if (idsNovos.length === 0) return;
-    idsNovos.forEach(id => carregamentoFetchedRef.current.add(id));
-    try {
-      const res = await base44.functions.invoke('consultarCarregamentoLogistico', { pedido_ids: idsNovos });
-      if (res.data?.carregamentos) {
-        setCarregamentos(prev => ({ ...prev, ...res.data.carregamentos }));
-      }
-    } catch (e) {
-      console.error('Erro ao consultar carregamentos:', e);
-    }
-  };
-
-  // Quando omieStatuses mudam, identificar pedidos Faturado/Montagem e buscar carregamentos
-  useEffect(() => {
-    const pedidosFatMont = pedidos.filter(p => {
-      if (p.status === 'pendente') return false;
-      const omie = omieStatuses[p.id];
-      const omieLabel = (omie && !omie.erro && !omie.api_bloqueada) ? omie.etapa_label : null;
-      const analise = omieLabel ? (OMIE_TO_ANALISE[omieLabel] || omieLabel) : null;
-      const localMap = { montagem: 'Montagem', faturado: 'Faturado' };
-      const statusFinal = analise || localMap[p.status] || null;
-      return ['Faturado', 'Montagem'].includes(statusFinal);
-    });
-    if (pedidosFatMont.length > 0) {
-      fetchCarregamentos(pedidosFatMont.map(p => p.id));
-    }
-  }, [omieStatuses, pedidos]);
-
-  // Pedidos que precisam de consulta Omie (baseado nos pedidos carregados, NÃO no filtered que depende de omieStatuses)
-  const pedidosParaConsultaOmie = useMemo(() => {
-    return pedidos
-      .filter(p => p.status !== 'pendente')
-      .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-  }, [pedidos]);
-
-  // Sincronizar trocas via Logístico Control
-  const syncTrocasLogistico = async ({ silent = false } = {}) => {
+  // Sincronizar trocas via Logístico Control (mantido para compatibilidade)
+  const syncTrocasLogistico = async () => {
     const trocasAtivas = pedidos.filter(p => p.tipo === 'troca' && !['cancelado', 'faturado'].includes(p.status));
     if (trocasAtivas.length === 0) return;
     try {
-      if (!silent) setOmieStatusLoading(true);
+      setSyncLoading(true);
       const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
       if (res.data?.total_atualizados > 0) {
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-        if (!silent) toast.success(`${res.data.total_atualizados} troca(s) atualizada(s) via Logístico`);
+        toast.success(`${res.data.total_atualizados} troca(s) atualizada(s) via Logístico`);
       }
     } catch (e) {
       console.error('Erro ao sincronizar trocas:', e);
     } finally {
-      if (!silent) setOmieStatusLoading(false);
+      setSyncLoading(false);
     }
   };
 
-  // Consulta automática apenas UMA vez quando os pedidos carregam
-  useEffect(() => {
-    if (initialFetchDoneRef.current) return;
-    if (pedidosParaConsultaOmie.length > 0 || pedidos.length > 0) {
-      initialFetchDoneRef.current = true;
-      fetchOmieStatuses(pedidosParaConsultaOmie, { silent: true });
-      // Também sincronizar trocas na carga inicial
-      if (!trocaSyncDoneRef.current) {
-        trocaSyncDoneRef.current = true;
-        syncTrocasLogistico({ silent: true });
+  // Verificar cancelamentos de pedidos faturados no Omie
+  const syncFaturadosOmie = async () => {
+    const faturados = pedidos.filter(p => p.status === 'faturado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
+    if (faturados.length === 0) return;
+    try {
+      setSyncLoading(true);
+      const res = await base44.functions.invoke('sincronizarStatusPedidosOmie', {});
+      if (res.data?.atualizados > 0) {
+        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+        toast.success(`${res.data.atualizados} pedido(s) faturado(s) atualizado(s) via Omie`);
       }
+    } catch (e) {
+      console.error('Erro ao sincronizar faturados:', e);
+    } finally {
+      setSyncLoading(false);
     }
-  }, [pedidosParaConsultaOmie, pedidos]);
+  };
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -501,20 +296,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds
   );
 
-  // Helper: resolve o status de análise real do pedido
+  // Helper: resolve o status de análise do pedido (agora 100% local)
   const getAnaliseStatus = (p) => {
     const localMap = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
-    // Apenas 'cancelado' local é definitivo — 'faturado' pode mudar no Omie
-    if (p.status === 'cancelado') {
-      return 'Cancelado';
-    }
-    if (p.tipo === 'troca') {
-      return localMap[p.status] || p.status;
-    }
-    const omie = omieStatuses[p.id];
-    if (omie && !omie.erro && !omie.api_bloqueada && omie.etapa_label) {
-      return OMIE_TO_ANALISE[omie.etapa_label] || omie.etapa_label;
-    }
     return localMap[p.status] || p.status;
   };
 
@@ -565,11 +349,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds([]);
     setBatchAction(null);
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    // Re-consultar apenas os pedidos que foram alterados
-    const alterados = pedidos.filter(p => allSelected.some(s => s.id === p.id) && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-    if (alterados.length > 0) {
-      setTimeout(() => fetchOmieStatuses(alterados, { force: true }), 1500);
-    }
   };
 
   const handleBatchBloquear = async () => {
@@ -617,11 +396,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds([]);
     setBatchAction(null);
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    // Re-consultar apenas os pedidos que foram alterados
-    const alterados = pedidos.filter(p => allSelected.some(s => s.id === p.id) && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-    if (alterados.length > 0) {
-      setTimeout(() => fetchOmieStatuses(alterados, { force: true }), 1500);
-    }
   };
 
   const handleCancelConfirm = async (pedido, motivo) => {
@@ -744,24 +518,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
         <Button
           size="sm"
           className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
+          disabled={syncLoading}
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-            // Consultar vendas visíveis no Omie
-            const visiveisOmie = filtered.filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-            if (visiveisOmie.length > 0) {
-              fetchOmieStatuses(visiveisOmie, { force: true });
-            }
-            // Sincronizar trocas via Logístico Control
             syncTrocasLogistico();
+            syncFaturadosOmie();
           }}
         >
-          <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Atualizar
+          {syncLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5 mr-0.5" />} Atualizar
         </Button>
-        {omieStatusLoading && (
-          <span className="text-[9px] text-amber-600 flex items-center gap-0.5">
-            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Omie...
-          </span>
-        )}
       </div>
 
       {/* Table */}
@@ -849,7 +614,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     </td>
                     {columns.map(col => (
                       <td key={col.id} className="px-1 py-0 border-r border-slate-100 overflow-hidden whitespace-nowrap text-ellipsis" style={{ width: colWidths[col.id] || 100, minWidth: 40, maxWidth: colWidths[col.id] || 100 }}>
-                        <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} carregamentos={carregamentos} />
+                        <PedidoCellRenderer col={col} p={p} />
                       </td>
                     ))}
                     <td className="px-1 py-0" style={{ width: 70, minWidth: 70 }}>
@@ -872,9 +637,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
       <div className="text-xs text-slate-500">
         {filtered.length} pedido(s) • Valor total: {formatCurrency(filtered.reduce((s, p) => s + (p.valor_total || 0), 0))}
-        {Object.keys(omieStatuses).length > 0 && (
-          <span className="ml-2 text-green-600">• Status Omie: {Object.keys(omieStatuses).length} com status</span>
-        )}
       </div>
 
       {/* Batch actions - fixed bottom */}

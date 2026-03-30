@@ -4,6 +4,9 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
+// NOVA VERSÃO: Consulta APENAS pedidos com status 'faturado' para detectar cancelamentos no Omie.
+// Todos os outros status (pendente, liberado, montagem) são controlados pelo Logístico Control via webhook.
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -13,15 +16,15 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
 
-        // Buscar pedidos ativos (não cancelados/faturados) que foram enviados ao Omie (sem trocas)
-        const [pedidosMontagem, pedidosLiberados, pedidosEnviados] = await Promise.all([
-            base44.asServiceRole.entities.Pedido.filter({ status: 'montagem', omie_enviado: true }),
-            base44.asServiceRole.entities.Pedido.filter({ status: 'liberado', omie_enviado: true }),
-            base44.asServiceRole.entities.Pedido.filter({ status: 'enviado', omie_enviado: true }),
-        ]);
-        const pedidos = [...pedidosMontagem, ...pedidosLiberados, ...pedidosEnviados].filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
+        // Buscar APENAS pedidos faturados que foram enviados ao Omie (sem trocas)
+        const pedidosFaturados = await base44.asServiceRole.entities.Pedido.filter({ status: 'faturado', omie_enviado: true });
+        const pedidos = pedidosFaturados.filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
 
-        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos (${pedidosMontagem.length} montagem, ${pedidosLiberados.length} liberados, ${pedidosEnviados.length} enviados)`);
+        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos FATURADOS para detectar cancelamentos`);
+
+        if (pedidos.length === 0) {
+            return Response.json({ sucesso: true, total_verificados: 0, atualizados: 0, erros: 0, message: 'Nenhum pedido faturado para verificar' });
+        }
 
         let atualizados = 0;
         let erros = 0;
@@ -46,7 +49,7 @@ Deno.serve(async (req) => {
                 if (result && (result.faultstring || result.faultcode)) {
                     const faultMsg = (result.faultstring || '').toLowerCase();
                     
-                    // API bloqueada — parar imediatamente para não piorar
+                    // API bloqueada — parar imediatamente
                     if (faultMsg.includes('bloqueada por consumo indevido')) {
                         console.warn(`[sincronizarStatusPedidos] API Omie BLOQUEADA. Parando sincronização.`);
                         break;
@@ -59,7 +62,7 @@ Deno.serve(async (req) => {
                                        faultMsg.includes('não existe') || faultMsg.includes('nao existe');
 
                     if (isExcluido) {
-                        console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} (Omie: ${pedido.omie_codigo_pedido}) excluído/cancelado no Omie.`);
+                        console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} (Omie: ${pedido.omie_codigo_pedido}) cancelado/excluído no Omie.`);
                         await base44.asServiceRole.entities.Pedido.update(pedido.id, {
                             status: 'cancelado',
                             motivo_cancelamento: `Cancelado/excluído no Omie (sincronização automática). Omie: ${result.faultstring}`,
@@ -72,46 +75,22 @@ Deno.serve(async (req) => {
                 } else if (result && result.pedido_venda_produto) {
                     const etapa = result.pedido_venda_produto.cabecalho?.etapa;
                     const cancelado = result.pedido_venda_produto.infoCadastro?.cancelado;
-                    const numeroPedidoOmie = result.pedido_venda_produto.cabecalho?.numero_pedido;
-                    
-                    const updateData = {};
                     
                     if (cancelado === 'S' || etapa === '80') {
                         console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} cancelado no Omie (etapa: ${etapa}, cancelado: ${cancelado})`);
-                        updateData.status = 'cancelado';
-                        updateData.motivo_cancelamento = 'Cancelado no Omie (sincronização automática)';
-                        updateData.data_cancelamento = new Date().toISOString();
-                        updateData.cancelado_por = 'sistema';
-                        updateData.cancelado_por_nome = 'Sincronização Automática';
-                    } else if (etapa === '70' || etapa === '60') {
-                        // Faturado ou Entrega
-                        if (pedido.status !== 'faturado') {
-                            updateData.status = 'faturado';
-                        }
-                    } else if (etapa === '50') {
-                        // Faturar = Montagem
-                        if (pedido.status !== 'montagem') {
-                            updateData.status = 'montagem';
-                        }
-                    } else if (etapa === '20') {
-                        // Pedidos Liberados
-                        if (pedido.status !== 'liberado') {
-                            updateData.status = 'liberado';
-                        }
-                    }
-                    
-                    // Sincronizar numero_pedido do Omie (sempre como String)
-                    if (numeroPedidoOmie && String(numeroPedidoOmie) !== String(pedido.numero_pedido || '')) {
-                        updateData.numero_pedido = String(numeroPedidoOmie);
-                    }
-                    
-                    if (Object.keys(updateData).length > 0) {
-                        await base44.asServiceRole.entities.Pedido.update(pedido.id, updateData);
+                        await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+                            status: 'cancelado',
+                            motivo_cancelamento: 'Cancelado no Omie (sincronização automática)',
+                            data_cancelamento: new Date().toISOString(),
+                            cancelado_por: 'sistema',
+                            cancelado_por_nome: 'Sincronização Automática'
+                        });
                         atualizados++;
                     }
+                    // Não precisa verificar outros status — se está faturado no banco e no Omie, tudo certo
                 }
 
-                // Rate limit do Omie — delay entre chamadas
+                // Rate limit do Omie
                 await new Promise(r => setTimeout(r, 800));
 
             } catch (pedidoErr) {
@@ -120,7 +99,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        console.log(`[sincronizarStatusPedidos] Finalizado. Total: ${pedidos.length}, Atualizados: ${atualizados}, Erros: ${erros}`);
+        console.log(`[sincronizarStatusPedidos] Finalizado. Faturados verificados: ${pedidos.length}, Cancelados detectados: ${atualizados}, Erros: ${erros}`);
 
         return Response.json({
             sucesso: true,
