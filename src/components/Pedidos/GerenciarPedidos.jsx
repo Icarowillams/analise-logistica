@@ -140,9 +140,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const now = Date.now();
 
     // Status finais não mudam — nunca re-consultar
-    const STATUS_FINAIS = ['Faturado', 'Cancelado', 'Excluído no Omie', 'Entrega'];
-    // Status locais finais — também não re-consultar
-    const STATUS_LOCAIS_FINAIS = ['faturado', 'cancelado'];
+    const STATUS_FINAIS = ['Cancelado', 'Excluído no Omie'];
+    // Apenas 'cancelado' local é definitivo — 'faturado' pode mudar para cancelado no Omie
+    const STATUS_LOCAIS_FINAIS = ['cancelado'];
     const pedidosOmie = (pedidosList || [])
     .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
     .filter(p => {
@@ -273,10 +273,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
       } else if (analiseFilterMap[statusFilter]) {
         const targetLabel = analiseFilterMap[statusFilter];
         list = list.filter(p => {
-          // Status locais finais prevalecem sobre cache Omie
-          const localFinalMap = { cancelado: 'Cancelado', faturado: 'Faturado' };
-          if (localFinalMap[p.status]) {
-            return localFinalMap[p.status] === targetLabel;
+          // Apenas cancelado local é definitivo
+          if (p.status === 'cancelado') {
+            return 'Cancelado' === targetLabel;
           }
           const omie = omieStatuses[p.id];
           if (!omie) return false;
@@ -446,9 +445,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Helper: resolve o status de análise real do pedido
   const getAnaliseStatus = (p) => {
     const localMap = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
-    // Status locais finais (cancelado/faturado) SEMPRE prevalecem sobre cache Omie
-    if (p.status === 'cancelado' || p.status === 'faturado') {
-      return localMap[p.status] || p.status;
+    // Apenas 'cancelado' local é definitivo — 'faturado' pode mudar no Omie
+    if (p.status === 'cancelado') {
+      return 'Cancelado';
     }
     if (p.tipo === 'troca') {
       return localMap[p.status] || p.status;
