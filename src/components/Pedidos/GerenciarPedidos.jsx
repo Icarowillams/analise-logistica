@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, RefreshCw, DollarSign, Eye, List, X
+  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -860,11 +860,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
                           <DollarSign className="w-2.5 h-2.5" />
                         </Button>
-                        {p.status !== 'cancelado' && p.status !== 'faturado' && p.status !== 'montagem' && (
-                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-500" title="Cancelar" onClick={() => { setCancelPedido(p); setCancelModalOpen(true); }}>
-                            <XCircle className="w-2.5 h-2.5" />
-                          </Button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -896,6 +891,31 @@ export default function GerenciarPedidos({ onEditPedido }) {
           </Button>
           <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
             <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
+          </Button>
+          {(() => {
+            const canEdit = selectedIds.length === 1;
+            const selectedPedido = canEdit ? pedidos.find(p => p.id === selectedIds[0]) : null;
+            const analise = selectedPedido ? getAnaliseStatus(selectedPedido) : null;
+            const editavel = canEdit && selectedPedido && ['Pendente', 'Liberados'].includes(analise);
+            return (
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!editavel || !!batchAction} onClick={() => { if (editavel) onEditPedido(selectedIds[0]); }}>
+                <Pencil className="w-3 h-3 mr-1" /> Editar
+              </Button>
+            );
+          })()}
+          <Button size="sm" variant="destructive" disabled={!!batchAction} onClick={() => {
+            const selectedPedidos = pedidos.filter(p => selectedIds.includes(p.id));
+            const cancelavel = selectedPedidos.find(p => !['cancelado', 'faturado', 'montagem'].includes(p.status));
+            if (selectedIds.length === 1 && cancelavel) {
+              setCancelPedido(cancelavel);
+              setCancelModalOpen(true);
+            } else if (selectedIds.length > 1) {
+              // Para múltiplos, cancelar o primeiro cancelável como referência
+              if (cancelavel) { setCancelPedido(cancelavel); setCancelModalOpen(true); }
+              else toast.warning('Nenhum dos pedidos selecionados pode ser cancelado');
+            }
+          }}>
+            <XCircle className="w-3 h-3 mr-1" /> Cancelar
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Limpar</Button>
         </div>
