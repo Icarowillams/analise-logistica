@@ -50,7 +50,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: `Erro ao consultar logístico: ${response.status} - ${errText}` }, { status: 502 });
         }
 
-        const data = await response.json();
+        const rawText = await response.text();
+        console.log(`[sincronizarLogistico] Resposta RAW do Logístico:`, rawText.substring(0, 3000));
+        const data = JSON.parse(rawText);
         const resultados = data.resultados || {};
 
         // Atualizar status local de cada pedido
