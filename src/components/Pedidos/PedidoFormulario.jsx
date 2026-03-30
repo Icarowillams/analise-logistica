@@ -25,6 +25,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [dataPrevisaoEntrega, setDataPrevisaoEntrega] = useState('');
   const [numeroPedidoCompra, setNumeroPedidoCompra] = useState('');
   const [dadosAdicionaisNf, setDadosAdicionaisNf] = useState('');
+  const [observacoesAdicionaisNf, setObservacoesAdicionaisNf] = useState('');
 
   // Product tab fields
   const [itensLocal, setItensLocal] = useState([]);
@@ -109,7 +110,17 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : '55'));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
-      setDadosAdicionaisNf(existingPedido.dados_adicionais_nf || '');
+      // Separar observações livres do texto automático
+      const rawDados = existingPedido.dados_adicionais_nf || '';
+      setDadosAdicionaisNf(rawDados);
+      // Extrair parte livre (depois do prefixo automático)
+      const prefixRegex = /^Nº Pedido Compra: .+?(\s*\|\s*|$)/;
+      const match = rawDados.match(prefixRegex);
+      if (match) {
+        setObservacoesAdicionaisNf(rawDados.slice(match[0].length).trim());
+      } else {
+        setObservacoesAdicionaisNf(rawDados);
+      }
       if (existingPedido.cenario_fiscal_codigo) {
         setCenarioFiscalCodigo(String(existingPedido.cenario_fiscal_codigo));
         setCenarioFiscalNome(existingPedido.cenario_fiscal_nome || '');
@@ -182,6 +193,21 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
 
+  // Monta o texto final do campo "Dados Adicionais NF" combinando o nº pedido compra + observações livres
+  const buildDadosAdicionaisNf = () => {
+    const partes = [];
+    if (numeroPedidoCompra.trim()) {
+      partes.push(`Nº Pedido Compra: ${numeroPedidoCompra.trim()}`);
+    }
+    if (observacoesAdicionaisNf.trim()) {
+      partes.push(observacoesAdicionaisNf.trim());
+    }
+    return partes.join(' | ');
+  };
+
+  // Preview do texto que será salvo
+  const previewDadosNf = buildDadosAdicionaisNf();
+
   const salvarPedido = async () => {
     if (itensLocal.length === 0) {
       toast.error('Adicione pelo menos um item ao pedido');
@@ -218,7 +244,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       cenario_fiscal_nome: cenarioFiscalNome || null,
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
-      dados_adicionais_nf: dadosAdicionaisNf,
+      dados_adicionais_nf: buildDadosAdicionaisNf(),
       total_itens: itensLocal.length,
       valor_total: totalPedido
     };
@@ -373,7 +399,23 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               </div>
               <div>
                 <Label>Dados Adicionais para a Nota Fiscal</Label>
-                <Input value={dadosAdicionaisNf} onChange={(e) => setDadosAdicionaisNf(e.target.value)} placeholder="Texto que aparecerá na DANFE (Informações Complementares)..." />
+                <div className="space-y-2">
+                  {numeroPedidoCompra.trim() && (
+                    <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
+                      <span className="font-medium">Automático:</span> Nº Pedido Compra: {numeroPedidoCompra.trim()}
+                    </div>
+                  )}
+                  <Input 
+                    value={observacoesAdicionaisNf} 
+                    onChange={(e) => setObservacoesAdicionaisNf(e.target.value)} 
+                    placeholder="Observações adicionais para a DANFE..." 
+                  />
+                  {previewDadosNf && (
+                    <p className="text-[10px] text-slate-400 italic">
+                      Texto final na NF: {previewDadosNf}
+                    </p>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
