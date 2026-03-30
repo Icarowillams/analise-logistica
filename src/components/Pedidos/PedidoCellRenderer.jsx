@@ -62,6 +62,18 @@ export default function PedidoCellRenderer({ col, p, omie, omieRequestPending, c
       );
     }
 
+    // Status locais finais (cancelado/faturado) SEMPRE prevalecem sobre o cache do Omie
+    // Isso evita que cache antigo mostre status desatualizado
+    if (p.status === 'cancelado' || p.status === 'faturado') {
+      const finalLabel = STATUS_LABELS[p.status] || p.status;
+      const finalColors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+      return (
+        <Badge className={`${finalColors.bg} ${finalColors.text} ${finalColors.border} border text-[10px]`}>
+          {finalLabel}
+        </Badge>
+      );
+    }
+
     // Para vendas/bonificações: priorizar Omie, fallback ao status local
     const omieEtapaLabel = (omie && !omie.erro && !omie.api_bloqueada) ? omie.etapa_label : null;
     const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;

@@ -273,6 +273,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
       } else if (analiseFilterMap[statusFilter]) {
         const targetLabel = analiseFilterMap[statusFilter];
         list = list.filter(p => {
+          // Status locais finais prevalecem sobre cache Omie
+          const localFinalMap = { cancelado: 'Cancelado', faturado: 'Faturado' };
+          if (localFinalMap[p.status]) {
+            return localFinalMap[p.status] === targetLabel;
+          }
           const omie = omieStatuses[p.id];
           if (!omie) return false;
           const analiseLabel = OMIE_TO_ANALISE[omie.etapa_label] || omie.etapa_label;
@@ -440,18 +445,19 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Helper: resolve o status de análise real do pedido
   const getAnaliseStatus = (p) => {
-    const omie = omieStatuses[p.id];
-    if (p.tipo === 'troca') {
-      // Trocas usam status local
-      const map = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
-      return map[p.status] || p.status;
+    const localMap = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
+    // Status locais finais (cancelado/faturado) SEMPRE prevalecem sobre cache Omie
+    if (p.status === 'cancelado' || p.status === 'faturado') {
+      return localMap[p.status] || p.status;
     }
+    if (p.tipo === 'troca') {
+      return localMap[p.status] || p.status;
+    }
+    const omie = omieStatuses[p.id];
     if (omie && !omie.erro && !omie.api_bloqueada && omie.etapa_label) {
       return OMIE_TO_ANALISE[omie.etapa_label] || omie.etapa_label;
     }
-    // Fallback ao status local
-    const map = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
-    return map[p.status] || p.status;
+    return localMap[p.status] || p.status;
   };
 
   // Batch actions
