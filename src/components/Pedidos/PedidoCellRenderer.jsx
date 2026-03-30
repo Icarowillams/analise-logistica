@@ -49,7 +49,7 @@ const formatCurrency = (v) => {
   return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 };
 
-export default function PedidoCellRenderer({ col, p, omie, omieRequestPending }) {
+export default function PedidoCellRenderer({ col, p, omie, omieRequestPending, carregamentos }) {
   if (col.id === 'status') {
     // Trocas sempre usam status local
     if (p.tipo === 'troca') {
@@ -94,6 +94,19 @@ export default function PedidoCellRenderer({ col, p, omie, omieRequestPending })
         {localLabel}
       </Badge>
     );
+  }
+
+  // Nº Carregamento (Logística Control) - só para Faturado/Montagem
+  if (col.id === 'numero_carregamento') {
+    const omieEtapaLabel = (omie && !omie.erro && !omie.api_bloqueada) ? omie.etapa_label : null;
+    const analiseLabel = omieEtapaLabel ? (OMIE_TO_ANALISE[omieEtapaLabel] || omieEtapaLabel) : null;
+    const localLabel = STATUS_LABELS[p.status] || p.status;
+    const statusFinal = analiseLabel || localLabel;
+    const mostra = ['Faturado', 'Montagem'].includes(statusFinal);
+    if (!mostra) return <span className="block truncate whitespace-nowrap overflow-hidden text-slate-300">-</span>;
+    const valor = carregamentos?.[p.id];
+    if (valor === undefined) return <span className="block truncate whitespace-nowrap overflow-hidden text-slate-400 animate-pulse text-[10px]">...</span>;
+    return <span className="block truncate whitespace-nowrap overflow-hidden font-medium text-blue-700">{valor || '-'}</span>;
   }
 
   // All cells: single line, truncated with ellipsis

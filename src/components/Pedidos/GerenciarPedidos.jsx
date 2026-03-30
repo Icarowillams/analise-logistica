@@ -86,6 +86,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const omieStatusRequestsRef = useRef(new Set());
   const initialFetchDoneRef = useRef(false);
   const [batchResult, setBatchResult] = useState(null);
+  const [carregamentos, setCarregamentos] = useState({});
+  const carregamentoFetchedRef = useRef(new Set());
 
 
   const { columns, reorder, resetOrder } = useColumnOrder();
@@ -353,6 +355,37 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     return list;
   }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
+
+  // Fetch carregamentos do Logística Control para pedidos em Faturado/Montagem
+  const fetchCarregamentos = async (pedidoIds) => {
+    const idsNovos = pedidoIds.filter(id => !carregamentoFetchedRef.current.has(id));
+    if (idsNovos.length === 0) return;
+    idsNovos.forEach(id => carregamentoFetchedRef.current.add(id));
+    try {
+      const res = await base44.functions.invoke('consultarCarregamentoLogistico', { pedido_ids: idsNovos });
+      if (res.data?.carregamentos) {
+        setCarregamentos(prev => ({ ...prev, ...res.data.carregamentos }));
+      }
+    } catch (e) {
+      console.error('Erro ao consultar carregamentos:', e);
+    }
+  };
+
+  // Quando omieStatuses mudam, identificar pedidos Faturado/Montagem e buscar carregamentos
+  useEffect(() => {
+    const pedidosFatMont = pedidos.filter(p => {
+      if (p.status === 'pendente') return false;
+      const omie = omieStatuses[p.id];
+      const omieLabel = (omie && !omie.erro && !omie.api_bloqueada) ? omie.etapa_label : null;
+      const analise = omieLabel ? (OMIE_TO_ANALISE[omieLabel] || omieLabel) : null;
+      const localMap = { montagem: 'Montagem', faturado: 'Faturado' };
+      const statusFinal = analise || localMap[p.status] || null;
+      return ['Faturado', 'Montagem'].includes(statusFinal);
+    });
+    if (pedidosFatMont.length > 0) {
+      fetchCarregamentos(pedidosFatMont.map(p => p.id));
+    }
+  }, [omieStatuses, pedidos]);
 
   // Pedidos que precisam de consulta Omie (baseado nos pedidos carregados, NÃO no filtered que depende de omieStatuses)
   const pedidosParaConsultaOmie = useMemo(() => {
@@ -750,7 +783,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     </td>
                     {columns.map(col => (
                       <td key={col.id} className="px-1 py-0 border-r border-slate-100 overflow-hidden whitespace-nowrap text-ellipsis" style={{ width: colWidths[col.id] || 100, minWidth: 40, maxWidth: colWidths[col.id] || 100 }}>
-                        <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} />
+                        <PedidoCellRenderer col={col} p={p} omie={omieStatuses[p.id]} omieRequestPending={omieStatusRequestsRef.current.has(p.id)} carregamentos={carregamentos} />
                       </td>
                     ))}
                     <td className="px-1 py-0" style={{ width: 70, minWidth: 70 }}>

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'gerenciar-pedidos-column-order-v2';
+const STORAGE_KEY = 'gerenciar-pedidos-column-order-v3';
 
 export const DEFAULT_COLUMNS = [
   { id: 'numero_pedido', label: 'Nº Pedido', field: 'numero_pedido' },
@@ -18,6 +18,7 @@ export const DEFAULT_COLUMNS = [
   { id: 'tabela_preco_nome', label: 'Tab. Preço', field: 'tabela_preco_nome' },
   { id: 'data_previsao_entrega', label: 'Prev. Entrega', field: 'data_previsao_entrega' },
   { id: 'numero_carga', label: 'Nº Carga', field: 'numero_carga' },
+  { id: 'numero_carregamento', label: 'Nº Carreg.', field: 'numero_carregamento', custom: true },
   { id: 'usuario_envio', label: 'Usuário Envio', field: 'created_by' },
   { id: 'liberado_por_nome', label: 'Liberado por', field: 'liberado_por_nome' },
   { id: 'data_liberacao', label: 'Dt. Liberação', field: 'data_liberacao' },
