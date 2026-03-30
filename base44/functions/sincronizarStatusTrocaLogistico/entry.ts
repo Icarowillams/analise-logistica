@@ -19,21 +19,21 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'BASE_REMOTE_API_KEY não configurada' }, { status: 500 });
         }
 
-        // Buscar automaticamente pedidos de troca ativos
-        const [trocasLiberadas, trocasMontagem, trocasEnviadas] = await Promise.all([
-            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'liberado' }),
-            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'montagem' }),
-            base44.asServiceRole.entities.Pedido.filter({ tipo: 'troca', status: 'enviado' }),
+        // Buscar TODOS os pedidos ativos (vendas + trocas + bonificações)
+        const [liberados, montagem, enviados] = await Promise.all([
+            base44.asServiceRole.entities.Pedido.filter({ status: 'liberado' }),
+            base44.asServiceRole.entities.Pedido.filter({ status: 'montagem' }),
+            base44.asServiceRole.entities.Pedido.filter({ status: 'enviado' }),
         ]);
-        const trocasAtivas = [...trocasLiberadas, ...trocasMontagem, ...trocasEnviadas];
+        const pedidosAtivos = [...liberados, ...montagem, ...enviados];
 
-        if (trocasAtivas.length === 0) {
-            return Response.json({ success: true, message: 'Nenhuma troca ativa para sincronizar', total_atualizados: 0 });
+        if (pedidosAtivos.length === 0) {
+            return Response.json({ success: true, message: 'Nenhum pedido ativo para sincronizar', total_atualizados: 0 });
         }
 
-        const pedido_ids = trocasAtivas.map(p => p.id);
+        const pedido_ids = pedidosAtivos.map(p => p.id);
 
-        console.log(`[sincronizarLogistico] Consultando ${pedido_ids.length} trocas ativas`);
+        console.log(`[sincronizarLogistico] Consultando ${pedido_ids.length} pedidos ativos (vendas+trocas)`);
 
         // Consultar o app logístico
         const response = await fetch(LOGISTICO_URL, {
