@@ -13,14 +13,15 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
 
-        // Buscar pedidos em "montagem" ou "liberado" que foram enviados ao Omie (sem trocas, sem cancelados)
-        const [pedidosMontagem, pedidosLiberados] = await Promise.all([
+        // Buscar pedidos ativos (não cancelados/faturados) que foram enviados ao Omie (sem trocas)
+        const [pedidosMontagem, pedidosLiberados, pedidosEnviados] = await Promise.all([
             base44.asServiceRole.entities.Pedido.filter({ status: 'montagem', omie_enviado: true }),
             base44.asServiceRole.entities.Pedido.filter({ status: 'liberado', omie_enviado: true }),
+            base44.asServiceRole.entities.Pedido.filter({ status: 'enviado', omie_enviado: true }),
         ]);
-        const pedidos = [...pedidosMontagem, ...pedidosLiberados].filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
+        const pedidos = [...pedidosMontagem, ...pedidosLiberados, ...pedidosEnviados].filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
 
-        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos (${pedidosMontagem.length} montagem, ${pedidosLiberados.length} liberados)`);
+        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos (${pedidosMontagem.length} montagem, ${pedidosLiberados.length} liberados, ${pedidosEnviados.length} enviados)`);
 
         let atualizados = 0;
         let erros = 0;
@@ -82,8 +83,8 @@ Deno.serve(async (req) => {
                         updateData.data_cancelamento = new Date().toISOString();
                         updateData.cancelado_por = 'sistema';
                         updateData.cancelado_por_nome = 'Sincronização Automática';
-                    } else if (etapa === '60') {
-                        // Faturado
+                    } else if (etapa === '70' || etapa === '60') {
+                        // Faturado ou Entrega
                         if (pedido.status !== 'faturado') {
                             updateData.status = 'faturado';
                         }
@@ -91,6 +92,11 @@ Deno.serve(async (req) => {
                         // Faturar = Montagem
                         if (pedido.status !== 'montagem') {
                             updateData.status = 'montagem';
+                        }
+                    } else if (etapa === '20') {
+                        // Pedidos Liberados
+                        if (pedido.status !== 'liberado') {
+                            updateData.status = 'liberado';
                         }
                     }
                     

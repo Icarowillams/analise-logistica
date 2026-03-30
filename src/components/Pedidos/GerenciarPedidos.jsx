@@ -141,7 +141,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     // Status finais não mudam — nunca re-consultar
     const pedidosOmie = (pedidosList || [])
-    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && (p.status === 'montagem' || p.status === 'liberado'))
+    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && !['cancelado', 'faturado'].includes(p.status))
     .filter(p => {
         if (omieStatusRequestsRef.current.has(p.id)) return false;
         const cached = cache[p.id];
@@ -183,6 +183,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let successCount = 0;
     let errorCount = 0;
 
+    // Mapeamento Omie etapa_label → status local do banco
+    const OMIE_LABEL_TO_LOCAL_STATUS = {
+      'Pedido de Venda': 'enviado',
+      'Pedidos Liberados': 'liberado',
+      'Faturar': 'montagem',
+      'Faturado': 'faturado',
+      'Entrega': 'faturado',
+      'Cancelado': 'cancelado',
+      'Excluído no Omie': 'cancelado',
+    };
+
+    // Atualizar banco local quando Omie diverge
+    const syncPromises = [];
+
     Object.entries(allResults).forEach(([pedidoId, result]) => {
       const previousStatus = omieStatuses[pedidoId] || cache[pedidoId]?.data || null;
 
@@ -204,7 +218,35 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
       successCount += 1;
       updatedStatuses[pedidoId] = result;
+
+      // Sincronizar status local se divergente
+      if (result.etapa_label) {
+        const newLocalStatus = OMIE_LABEL_TO_LOCAL_STATUS[result.etapa_label];
+        const pedido = pedidos.find(p => p.id === pedidoId);
+        if (pedido && newLocalStatus && pedido.status !== newLocalStatus) {
+          const updateData = { status: newLocalStatus };
+          if (newLocalStatus === 'cancelado') {
+            updateData.motivo_cancelamento = 'Cancelado no Omie (sincronização automática)';
+            updateData.data_cancelamento = new Date().toISOString();
+            updateData.cancelado_por = 'sistema';
+            updateData.cancelado_por_nome = 'Sincronização Automática';
+          }
+          console.log(`[syncOmie] Pedido ${pedido.numero_pedido} (${pedidoId}): ${pedido.status} → ${newLocalStatus}`);
+          syncPromises.push(
+            base44.entities.Pedido.update(pedidoId, updateData).catch(e => {
+              console.error(`[syncOmie] Erro ao atualizar pedido ${pedidoId}:`, e);
+            })
+          );
+        }
+      }
     });
+
+    // Executar atualizações do banco em paralelo
+    if (syncPromises.length > 0) {
+      await Promise.all(syncPromises);
+      // Invalidar cache do React Query para refletir as mudanças
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    }
 
     writeOmieStatusCache(updatedCache);
     setOmieStatuses(prev => ({ ...prev, ...updatedStatuses }));
