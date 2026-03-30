@@ -13,13 +13,11 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
 
-        // Buscar pedidos que estão "enviado" ou "liberado" E foram enviados ao Omie
-        const pedidosEnviados = await base44.asServiceRole.entities.Pedido.filter({ status: 'enviado', omie_enviado: true });
-        const pedidosLiberados = await base44.asServiceRole.entities.Pedido.filter({ status: 'liberado', omie_enviado: true });
-        const pedidos = [...pedidosEnviados, ...pedidosLiberados]
-            .filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
+        // Buscar apenas pedidos em "montagem" que foram enviados ao Omie (sem trocas, sem cancelados)
+        const pedidosMontagem = await base44.asServiceRole.entities.Pedido.filter({ status: 'montagem', omie_enviado: true });
+        const pedidos = pedidosMontagem.filter(p => p.omie_codigo_pedido && p.tipo !== 'troca');
 
-        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos (${pedidosEnviados.length} enviados, ${pedidosLiberados.length} liberados)`);
+        console.log(`[sincronizarStatusPedidos] Verificando ${pedidos.length} pedidos em montagem`);
 
         let atualizados = 0;
         let erros = 0;

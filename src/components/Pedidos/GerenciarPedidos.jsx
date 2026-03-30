@@ -140,18 +140,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const now = Date.now();
 
     // Status finais não mudam — nunca re-consultar
-    const STATUS_FINAIS = ['Cancelado', 'Excluído no Omie'];
-    // Apenas 'cancelado' local é definitivo — 'faturado' pode mudar para cancelado no Omie
-    const STATUS_LOCAIS_FINAIS = ['cancelado'];
     const pedidosOmie = (pedidosList || [])
-    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca')
+    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && p.status === 'montagem')
     .filter(p => {
-        // Pedidos com status local final nunca precisam de consulta Omie
-        if (STATUS_LOCAIS_FINAIS.includes(p.status)) return false;
         if (omieStatusRequestsRef.current.has(p.id)) return false;
         const cached = cache[p.id];
-        // Pedidos em status final no Omie nunca precisam ser re-consultados
-        if (cached?.data?.etapa_label && STATUS_FINAIS.includes(cached.data.etapa_label)) return false;
         if (force) return true;
         return !cached || (now - cached.fetchedAt) >= OMIE_STATUS_CACHE_TTL_MS;
       });
