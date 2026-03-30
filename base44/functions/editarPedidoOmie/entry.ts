@@ -169,9 +169,8 @@ Deno.serve(async (req) => {
             };
         }
 
-        if (pedido.numero_pedido_compra) {
-            pedidoOmie.cabecalho.numero_pedido_compra = pedido.numero_pedido_compra;
-        }
+        // numero_pedido_compra não faz parte do cabecalho no Omie
+        // já está em informacoes_adicionais como numero_pedido_cliente
 
         // Buscar conta corrente
         let codigoContaCorrente = null;
