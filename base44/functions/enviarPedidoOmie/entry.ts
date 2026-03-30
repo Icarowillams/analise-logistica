@@ -284,7 +284,9 @@ Deno.serve(async (req) => {
         }
 
         const codigoOmie = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
-        const numeroPedidoOmie = resultado.numero_pedido || resultado.numero_pedido_omie || null;
+        const numeroPedidoOmieRaw = resultado.numero_pedido || resultado.numero_pedido_omie || null;
+        // Limpar zeros à esquerda do número do pedido retornado pelo Omie
+        const numeroPedidoOmie = numeroPedidoOmieRaw ? String(numeroPedidoOmieRaw).replace(/^0+/, '') || '0' : null;
 
         // Atualizar pedido no Base44 com dados do Omie (incluindo número do pedido Omie)
         const updateData = {
@@ -293,7 +295,7 @@ Deno.serve(async (req) => {
             omie_erro: null
         };
         if (numeroPedidoOmie) {
-            updateData.numero_pedido = String(numeroPedidoOmie);
+            updateData.numero_pedido = numeroPedidoOmie;
             // Atualizar dados_adicionais_nf com o número do pedido automaticamente
             const dadosAtuais = pedido.dados_adicionais_nf || '';
             // Remover prefixo antigo se existir
