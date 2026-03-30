@@ -236,16 +236,6 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
   const roteiro = roteiros[0];
   const clientesDoRoteiro = roteiro?.clientes_detalhes || [];
 
-  if (roteiros.length === 0 && reagendadasParaHoje.length === 0) {
-    return (
-      <Card>
-        <CardContent className="pt-6 text-center text-slate-500">
-          Nenhum roteiro programado para este dia
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Filtrar clientes do roteiro pela busca
   const clientesFiltrados = useMemo(() => {
     const s = searchCliente.toLowerCase().trim();
@@ -272,6 +262,16 @@ function RoteirosDia({ dia, roteiros, visitas, vendedor, visitasReagendadas, per
       return razaoSocial.includes(s) || nomeFantasia.includes(s) || codigo.includes(s);
     });
   }, [reagendadasParaHoje, searchCliente, clientes]);
+
+  if (roteiros.length === 0 && reagendadasParaHoje.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6 text-center text-slate-500">
+          Nenhum roteiro programado para este dia
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">
