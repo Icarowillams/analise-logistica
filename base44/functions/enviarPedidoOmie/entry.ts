@@ -301,6 +301,32 @@ Deno.serve(async (req) => {
             const partes = [`Pedido Nº: ${numeroPedidoOmie}`];
             if (semPrefixo) partes.push(semPrefixo);
             updateData.dados_adicionais_nf = partes.join(' | ');
+
+            // Atualizar dados_adicionais_nf também no Omie para que apareça na DANFE
+            try {
+                await fetch(OMIE_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        call: "AlterarPedidoVenda",
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [{
+                            cabecalho: {
+                                codigo_pedido: codigoOmie,
+                                codigo_pedido_integracao: pedido.id,
+                                etapa: etapa
+                            },
+                            informacoes_adicionais: {
+                                dados_adicionais_nf: updateData.dados_adicionais_nf
+                            }
+                        }]
+                    })
+                });
+                console.log('[enviarPedidoOmie] dados_adicionais_nf atualizado no Omie com Pedido Nº');
+            } catch (altErr) {
+                console.error('[enviarPedidoOmie] Erro ao atualizar dados_adicionais_nf no Omie:', altErr.message);
+            }
         }
         await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
 
