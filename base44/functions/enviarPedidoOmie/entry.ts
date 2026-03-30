@@ -294,6 +294,13 @@ Deno.serve(async (req) => {
         };
         if (numeroPedidoOmie) {
             updateData.numero_pedido = String(numeroPedidoOmie);
+            // Atualizar dados_adicionais_nf com o número do pedido automaticamente
+            const dadosAtuais = pedido.dados_adicionais_nf || '';
+            // Remover prefixo antigo se existir
+            const semPrefixo = dadosAtuais.replace(/^Pedido Nº: .+?(\s*\|\s*|$)/, '').trim();
+            const partes = [`Pedido Nº: ${numeroPedidoOmie}`];
+            if (semPrefixo) partes.push(semPrefixo);
+            updateData.dados_adicionais_nf = partes.join(' | ');
         }
         await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
 

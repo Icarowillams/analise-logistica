@@ -110,11 +110,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : '55'));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
-      // Separar observações livres do texto automático
+      // Separar observações livres do texto automático (prefixo "Pedido Nº: ...")
       const rawDados = existingPedido.dados_adicionais_nf || '';
       setDadosAdicionaisNf(rawDados);
-      // Extrair parte livre (depois do prefixo automático)
-      const prefixRegex = /^Nº Pedido Compra: .+?(\s*\|\s*|$)/;
+      const prefixRegex = /^Pedido Nº: .+?(\s*\|\s*|$)/;
       const match = rawDados.match(prefixRegex);
       if (match) {
         setObservacoesAdicionaisNf(rawDados.slice(match[0].length).trim());
@@ -193,11 +192,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const totalPedido = itensLocal.reduce((sum, item) => sum + (item.valor_total || 0), 0);
 
-  // Monta o texto final do campo "Dados Adicionais NF" combinando o nº pedido compra + observações livres
+  // Número do pedido (o que aparece em Gerenciar Pedidos)
+  const numeroPedidoAtual = existingPedido?.numero_pedido || '';
+
+  // Monta o texto final do campo "Dados Adicionais NF" combinando o ID do pedido + observações livres
   const buildDadosAdicionaisNf = () => {
     const partes = [];
-    if (numeroPedidoCompra.trim()) {
-      partes.push(`Nº Pedido Compra: ${numeroPedidoCompra.trim()}`);
+    if (numeroPedidoAtual) {
+      partes.push(`Pedido Nº: ${numeroPedidoAtual}`);
     }
     if (observacoesAdicionaisNf.trim()) {
       partes.push(observacoesAdicionaisNf.trim());
@@ -400,9 +402,13 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               <div>
                 <Label>Dados Adicionais para a Nota Fiscal</Label>
                 <div className="space-y-2">
-                  {numeroPedidoCompra.trim() && (
-                    <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
-                      <span className="font-medium">Automático:</span> Nº Pedido Compra: {numeroPedidoCompra.trim()}
+                  {numeroPedidoAtual ? (
+                    <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                      <span className="font-medium">Automático:</span> Pedido Nº: {numeroPedidoAtual}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+                      O Nº do Pedido será incluído automaticamente após o envio ao Omie.
                     </div>
                   )}
                   <Input 
