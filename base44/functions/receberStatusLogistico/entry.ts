@@ -16,9 +16,15 @@ Deno.serve(async (req) => {
         const body = await req.json();
         const { api_key, atualizacoes } = body;
 
+        console.log(`[receberStatusLogistico] Chamada recebida. Tem api_key: ${!!api_key}, Tem atualizacoes: ${!!atualizacoes}, Total: ${atualizacoes?.length || 0}`);
+        if (atualizacoes && atualizacoes.length > 0) {
+            console.log(`[receberStatusLogistico] Primeira atualização:`, JSON.stringify(atualizacoes[0]));
+        }
+
         // Validar api_key
         const expectedKey = Deno.env.get('BASE_REMOTE_API_KEY');
         if (!expectedKey || api_key !== expectedKey) {
+            console.error(`[receberStatusLogistico] API KEY INVÁLIDA. Recebida: "${api_key?.substring(0, 8)}...", Esperada começa com: "${expectedKey?.substring(0, 8)}..."`);
             return Response.json({ error: 'Unauthorized: invalid api_key' }, { status: 401 });
         }
 
