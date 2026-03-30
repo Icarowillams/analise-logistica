@@ -141,7 +141,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     // Status finais não mudam — nunca re-consultar
     const pedidosOmie = (pedidosList || [])
-    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && p.status === 'montagem')
+    .filter(p => p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca' && (p.status === 'montagem' || p.status === 'liberado'))
     .filter(p => {
         if (omieStatusRequestsRef.current.has(p.id)) return false;
         const cached = cache[p.id];
