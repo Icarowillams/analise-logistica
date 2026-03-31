@@ -225,24 +225,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
 
-  // Sincronizar trocas via Logístico Control (mantido para compatibilidade)
-  const syncTrocasLogistico = async () => {
-    const trocasAtivas = pedidos.filter(p => p.tipo === 'troca' && !['cancelado', 'faturado'].includes(p.status));
-    if (trocasAtivas.length === 0) return;
-    try {
-      setSyncLoading(true);
-      const res = await base44.functions.invoke('sincronizarStatusTrocaLogistico', {});
-      if (res.data?.total_atualizados > 0) {
-        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-        toast.success(`${res.data.total_atualizados} troca(s) atualizada(s) via Logístico`);
-      }
-    } catch (e) {
-      console.error('Erro ao sincronizar trocas:', e);
-    } finally {
-      setSyncLoading(false);
-    }
-  };
-
   // Verificar cancelamentos de pedidos faturados no Omie
   const syncFaturadosOmie = async () => {
     const faturados = pedidos.filter(p => p.status === 'faturado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
@@ -521,7 +503,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
           disabled={syncLoading}
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-            syncTrocasLogistico();
             syncFaturadosOmie();
           }}
         >
