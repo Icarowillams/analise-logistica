@@ -4,15 +4,44 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
+// Mapeamento de cabeçalhos do CSV para nomes internos
+const HEADER_MAP = {
+    'CODIGO': 'codigo',
+    'RAZAO_SOCIAL': 'razao_social',
+    'FANTASIA': 'nome_fantasia',
+    'CPF_CNPJ': 'cpf_cnpj',
+    'IE': 'inscricao_estadual',
+    'ENDERECO': 'endereco',
+    'BAIRRO': 'bairro',
+    'NUMERO': 'numero',
+    'CEP': 'cep',
+    'CIDADE': 'cidade',
+    'UF': 'estado',
+    'LATITUDE': 'latitude',
+    'LONGITUDE': 'longitude',
+    'COBRANCA': 'cobranca',
+    'PLANO PAGAMENTO': 'plano_pagamento',
+    'VENDEDOR': 'vendedor',
+    'NOME_TABELA': 'tabela_preco',
+    'NOME_ROTA': 'rota',
+    'STATUS': 'status',
+    'SEGUIMENTO': 'segmento',
+    'REDE': 'rede',
+};
+
 function parseCSV(text) {
     const lines = text.split('\n').filter(l => l.trim());
-    const header = lines[0].split(';').map(h => h.trim());
+    const rawHeader = lines[0].split(';').map(h => h.trim());
+    const header = rawHeader.map(h => {
+        const upper = h.toUpperCase().trim();
+        return HEADER_MAP[upper] || h.toLowerCase().replace(/\s+/g, '_');
+    });
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
         const vals = lines[i].split(';');
         const obj = {};
         header.forEach((h, idx) => { obj[h] = (vals[idx] || '').trim(); });
-        rows.push(obj);
+        if (obj.codigo) rows.push(obj);
     }
     return rows;
 }
@@ -183,6 +212,15 @@ function findVendedorId(csvVal, vendedorList) {
     return '';
 }
 
+function findOrCreateRedeId(redeVal, redeMap) {
+    const norm = normalizeStr(redeVal);
+    if (!norm) {
+        // Regra: clientes sem rede recebem "(SEM REDE)"
+        return redeMap[normalizeStr('SEM REDE')] || redeMap['(SEM REDE)'] || '';
+    }
+    return redeMap[norm] || '';
+}
+
 function buildClienteData(row, lookups) {
     const { planoMap, tabelaMap, segmentoMap, redeMap, rotaMap, vendedorList, modalidadeMap } = lookups;
     const vendedor_id = findVendedorId(row.vendedor, vendedorList);
@@ -207,11 +245,11 @@ function buildClienteData(row, lookups) {
         plano_pagamento_id: findPlanoId(row.plano_pagamento, planoMap),
         tabela_id: findTabelaId(row.tabela_preco, tabelaMap),
         segmento_id: segmentoMap[normalizeStr(row.segmento)] || '',
-        rede_id: redeMap[normalizeStr(row.rede)] || '',
+        rede_id: findOrCreateRedeId(row.rede, redeMap),
         rota_id: findRotaId(row.rota, rotaMap),
         vendedor_id,
         supervisor_id: v?.supervisor_id || '',
-        modalidade_pagamento_id: modalidadeMap[normalizeStr(normalizeCobranca(row.COBRANA))] || modalidadeMap['PIX'] || '',
+        modalidade_pagamento_id: modalidadeMap[normalizeStr(normalizeCobranca(row.cobranca))] || modalidadeMap['PIX'] || '',
     };
 }
 

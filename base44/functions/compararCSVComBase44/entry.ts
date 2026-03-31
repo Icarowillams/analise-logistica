@@ -1,8 +1,38 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
+// Mapeamento de cabeçalhos do CSV para nomes internos
+const HEADER_MAP = {
+    'CODIGO': 'codigo',
+    'RAZAO_SOCIAL': 'razao_social',
+    'FANTASIA': 'nome_fantasia',
+    'CPF_CNPJ': 'cpf_cnpj',
+    'IE': 'inscricao_estadual',
+    'ENDERECO': 'endereco',
+    'BAIRRO': 'bairro',
+    'NUMERO': 'numero',
+    'CEP': 'cep',
+    'CIDADE': 'cidade',
+    'UF': 'estado',
+    'LATITUDE': 'latitude',
+    'LONGITUDE': 'longitude',
+    'COBRANCA': 'cobranca',
+    'PLANO PAGAMENTO': 'plano_pagamento',
+    'VENDEDOR': 'vendedor',
+    'NOME_TABELA': 'tabela_preco',
+    'NOME_ROTA': 'rota',
+    'STATUS': 'status',
+    'SEGUIMENTO': 'segmento',
+    'REDE': 'rede',
+};
+
 function parseCSV(text) {
     const lines = text.split('\n').filter(l => l.trim());
-    const header = lines[0].split(';').map(h => h.trim());
+    const rawHeader = lines[0].split(';').map(h => h.trim());
+    // Map headers to internal names
+    const header = rawHeader.map(h => {
+        const upper = h.toUpperCase().trim();
+        return HEADER_MAP[upper] || h.toLowerCase().replace(/\s+/g, '_');
+    });
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
         const vals = lines[i].split(';');
@@ -57,7 +87,7 @@ Deno.serve(async (req) => {
                     continue;
                 }
 
-                // Comparar campos principais
+                // Comparar campos principais (headers já mapeados pelo parseCSV)
                 const camposComparar = [
                     ['razao_social', row.razao_social, existente.razao_social],
                     ['nome_fantasia', row.nome_fantasia, existente.nome_fantasia],
@@ -70,6 +100,7 @@ Deno.serve(async (req) => {
                     ['cep', (row.cep || '').replace(/\D/g, ''), (existente.cep || '').replace(/\D/g, '')],
                     ['status', (row.status || '').toLowerCase() === 'ativo' ? 'ativo' : 'inativo', existente.status || 'ativo'],
                 ];
+
 
                 const diffs = [];
                 for (const [campo, valCSV, valBase44] of camposComparar) {
