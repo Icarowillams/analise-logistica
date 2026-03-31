@@ -147,8 +147,8 @@ export default function SincronizarClientesCSVPage() {
         totalErros += d.erros || 0;
         if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
         setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
-        const inativMsg = d.inativados ? ` (${d.inativados} inativados no Omie)` : '';
-        addLog(`Lote ${loteNum}/${totalLotes}: ${d.processados || 0} ok, ${d.erros || 0} erros${inativMsg}`);
+        const fornecMsg = d.transformados_fornecedor ? ` (${d.transformados_fornecedor} virou Fornecedor no Omie)` : '';
+        addLog(`Lote ${loteNum}/${totalLotes}: ${d.processados || 0} ok, ${d.erros || 0} erros${fornecMsg}`);
       } catch (err) {
         addLog(`Erro lote ${loteNum}: ${err.message}. Aguardando 5s...`);
         totalErros += lote.length;

@@ -44,8 +44,8 @@ function classificar(res) {
     return { sucesso: false, msg: res.msg };
 }
 
-// Inativar cliente no Omie quando não é possível excluir (tem NFs vinculadas etc.)
-async function inativarClienteOmie(clienteId) {
+// Transformar cliente em fornecedor no Omie quando não é possível excluir (tem NFs vinculadas etc.)
+async function transformarEmFornecedorOmie(clienteId) {
     try {
         const response = await fetch(OMIE_URL, {
             method: "POST",
@@ -56,7 +56,7 @@ async function inativarClienteOmie(clienteId) {
                 app_secret: OMIE_APP_SECRET,
                 param: [{
                     codigo_cliente_integracao: clienteId,
-                    inativo: "S"
+                    tags: [{ tag: "Fornecedor" }]
                 }]
             })
         });
@@ -108,17 +108,17 @@ Deno.serve(async (req) => {
             if (resultado.sucesso) {
                 idsParaExcluirBase44.push(item.id);
             } else if (resultado.temDependencia) {
-                // Não pode excluir no Omie (tem NFs etc.) — inativar em vez de excluir
-                console.log(`[excluirClientesLote] ${label}: tem dependências, inativando no Omie...`);
+                // Não pode excluir no Omie (tem NFs etc.) — transformar em Fornecedor
+                console.log(`[excluirClientesLote] ${label}: tem dependências, transformando em Fornecedor...`);
                 await delay(300);
-                const inativarRes = await inativarClienteOmie(item.id);
-                if (inativarRes.sucesso) {
-                    console.log(`[excluirClientesLote] ${label}: inativado no Omie com sucesso`);
+                const fornecedorRes = await transformarEmFornecedorOmie(item.id);
+                if (fornecedorRes.sucesso) {
+                    console.log(`[excluirClientesLote] ${label}: transformado em Fornecedor no Omie`);
                     idsParaExcluirBase44.push(item.id);
                     inativados++;
                 } else {
                     erros++;
-                    errosList.push(`${label}: Não excluiu (dependências) e falhou ao inativar: ${inativarRes.msg}`);
+                    errosList.push(`${label}: Não excluiu (dependências) e falhou ao transformar em Fornecedor: ${fornecedorRes.msg}`);
                 }
             } else {
                 erros++;
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        return Response.json({ sucesso: true, processados: ok, inativados, erros, erros_detalhes: errosList });
+        return Response.json({ sucesso: true, processados: ok, transformados_fornecedor: inativados, erros, erros_detalhes: errosList });
     } catch (error) {
         console.error('[excluirClientesLote] Erro:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
