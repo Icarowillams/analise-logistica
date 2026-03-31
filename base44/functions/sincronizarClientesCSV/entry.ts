@@ -389,7 +389,50 @@ Deno.serve(async (req) => {
             });
         }
 
-        return Response.json({ error: 'etapa inválida (analise/atualizar/excluir)' }, { status: 400 });
+        // === CRIAR (novos clientes que estão no CSV mas não no sistema) ===
+        if (etapa === 'criar') {
+            const paraCriar = csvRows
+                .filter(r => !sistemaMap[String(r.codigo).trim()])
+                .map(r => buildClienteData(r, lookups));
+
+            const bulkSize = Math.min(batch_size, 500);
+            const lote = paraCriar.slice(offset, offset + bulkSize);
+            let ok = 0, erros = 0;
+            const errosList = [];
+
+            if (lote.length > 0) {
+                let success = false;
+                for (let attempt = 0; attempt < 4 && !success; attempt++) {
+                    try {
+                        await base44.asServiceRole.entities.Cliente.bulkCreate(lote);
+                        ok = lote.length;
+                        success = true;
+                    } catch (e) {
+                        if (e.message?.includes('Rate limit') && attempt < 3) {
+                            console.log(`[sincronizarCSV] Rate limit no bulkCreate, tentativa ${attempt + 1}, aguardando ${5000 * (attempt + 1)}ms`);
+                            await delay(5000 * (attempt + 1));
+                        } else {
+                            console.error(`[sincronizarCSV] Erro bulkCreate: ${e.message}`);
+                            erros = lote.length;
+                            errosList.push(`Lote ${offset}-${offset + lote.length}: ${e.message}`);
+                        }
+                    }
+                }
+            }
+
+            const nextOffset = offset + bulkSize;
+            const temMais = nextOffset < paraCriar.length;
+
+            return Response.json({
+                sucesso: true, etapa: 'criar',
+                total: paraCriar.length, processados: ok, erros,
+                offset, nextOffset: temMais ? nextOffset : null,
+                concluido: !temMais,
+                erros_detalhes: errosList,
+            });
+        }
+
+        return Response.json({ error: 'etapa inválida (analise/atualizar/criar/excluir)' }, { status: 400 });
 
     } catch (error) {
         console.error('[sincronizarClientesCSV] Erro:', error.message);

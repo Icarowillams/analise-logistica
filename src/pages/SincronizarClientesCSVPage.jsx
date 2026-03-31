@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Play, CheckCircle, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Play, CheckCircle, AlertTriangle, Trash2, RefreshCw, Plus } from 'lucide-react';
 
 const CSV_URL = "https://media.base44.com/files/public/6926e3c1dcadc4e314506362/8de60fb07_Book13OFICIAL1.csv";
 const BATCH_SIZE = 500;
 const DELAY_ENTRE_LOTES = 3000;
 
 export default function SincronizarClientesCSVPage() {
-  const [status, setStatus] = useState('idle'); // idle, analisando, atualizando, excluindo, concluido
+  const [status, setStatus] = useState('idle'); // idle, analisando, atualizando, criando, excluindo, concluido
   const [analise, setAnalise] = useState(null);
   const [progresso, setProgresso] = useState({ etapa: '', atual: 0, total: 0, erros: 0 });
   const [logs, setLogs] = useState([]);
@@ -71,6 +71,42 @@ export default function SincronizarClientesCSVPage() {
     setStatus('idle');
   };
 
+  const rodarCriacao = async () => {
+    cancelRef.current = false;
+    setStatus('criando');
+    setErrosDetalhes([]);
+    let offset = 0;
+    let totalProcessados = 0;
+    let totalErros = 0;
+    const total = analise?.criar || 0;
+    setProgresso({ etapa: 'Criando clientes', atual: 0, total, erros: 0 });
+    addLog(`Iniciando criação de ${total} clientes...`);
+
+    while (offset < total && !cancelRef.current) {
+      try {
+        const res = await base44.functions.invoke('sincronizarClientesCSV', {
+          csv_url: CSV_URL, etapa: 'criar', offset, batch_size: BATCH_SIZE
+        });
+        const d = res.data;
+        totalProcessados += d.processados;
+        totalErros += d.erros;
+        if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
+        setProgresso({ etapa: 'Criando clientes', atual: totalProcessados, total, erros: totalErros });
+        addLog(`Lote criar ${offset}-${offset + BATCH_SIZE}: ${d.processados} ok, ${d.erros} erros`);
+
+        if (d.concluido) break;
+        offset = d.nextOffset;
+      } catch (err) {
+        addLog(`Erro no lote ${offset}: ${err.message}. Aguardando 10s...`);
+        await new Promise(r => setTimeout(r, 10000));
+        continue;
+      }
+      await new Promise(r => setTimeout(r, DELAY_ENTRE_LOTES));
+    }
+    addLog(cancelRef.current ? `Criação pausada em offset ${offset}.` : `Criação concluída: ${totalProcessados} ok, ${totalErros} erros`);
+    setStatus('idle');
+  };
+
   const rodarExclusao = async () => {
     cancelRef.current = false;
     setStatus('excluindo');
@@ -108,7 +144,7 @@ export default function SincronizarClientesCSVPage() {
 
   const cancelar = () => { cancelRef.current = true; addLog('Cancelamento solicitado...'); };
 
-  const running = status === 'atualizando' || status === 'excluindo' || status === 'analisando';
+  const running = status === 'atualizando' || status === 'criando' || status === 'excluindo' || status === 'analisando';
   const pct = progresso.total > 0 ? Math.round((progresso.atual / progresso.total) * 100) : 0;
 
   return (
@@ -121,9 +157,13 @@ export default function SincronizarClientesCSVPage() {
           {status === 'analisando' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
           Analisar
         </Button>
-        <Button onClick={() => rodarAtualizacao(0)} disabled={running || !analise} className="bg-green-600 hover:bg-green-700 text-white">
+        <Button onClick={() => rodarAtualizacao(0)} disabled={running || !analise} className="bg-blue-600 hover:bg-blue-700 text-white">
           {status === 'atualizando' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
           Atualizar ({analise?.atualizar || 0})
+        </Button>
+        <Button onClick={rodarCriacao} disabled={running || !analise || !(analise?.criar > 0)} className="bg-green-600 hover:bg-green-700 text-white">
+          {status === 'criando' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+          Criar ({analise?.criar || 0})
         </Button>
         {lastOffsetRef.current > 0 && status === 'idle' && (
           <Button onClick={() => rodarAtualizacao(lastOffsetRef.current)} className="bg-amber-500 hover:bg-amber-600 text-white">
@@ -153,7 +193,7 @@ export default function SincronizarClientesCSVPage() {
       )}
 
       {/* Progresso */}
-      {(status === 'atualizando' || status === 'excluindo') && (
+      {(status === 'atualizando' || status === 'criando' || status === 'excluindo') && (
         <Card>
           <CardContent className="pt-4 space-y-2">
             <div className="flex justify-between text-sm">
