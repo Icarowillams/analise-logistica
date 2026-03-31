@@ -11,6 +11,20 @@ const TRANSICOES_PERMITIDAS = {
     faturado:  ['cancelado'],
 };
 
+// Mapeamento de status do Logístico para status interno
+// O Logístico pode enviar nomes diferentes, aqui normalizamos
+const MAPEAMENTO_STATUS = {
+    'cancelado': 'cancelado',
+    'nao_entregue': 'cancelado',
+    'não entregue': 'cancelado',
+    'nao entregue': 'cancelado',
+    'montagem': 'montagem',
+    'em montagem': 'montagem',
+    'faturado': 'faturado',
+    'liberado': 'liberado',
+    'enviado': 'enviado',
+};
+
 Deno.serve(async (req) => {
     try {
         const body = await req.json();
@@ -38,7 +52,13 @@ Deno.serve(async (req) => {
         const detalhes = [];
 
         for (const item of atualizacoes) {
-            const { numero_pedido, novo_status, numero_carga, observacao } = item;
+            const { numero_pedido, numero_carga, observacao } = item;
+            // Normaliza o novo_status para lowercase e remove espaços
+            const statusRecebido = String(item.novo_status || '').toLowerCase().trim();
+            // Mapeia para o status interno (aceita variações como "nao_entregue", "não entregue", etc)
+            const novo_status = MAPEAMENTO_STATUS[statusRecebido] || statusRecebido;
+
+            console.log(`[receberStatus] Item recebido: numero_pedido=${numero_pedido}, status_recebido="${statusRecebido}", novo_status="${novo_status}"`);
 
             if (!numero_pedido || !novo_status) {
                 erros++;
