@@ -132,9 +132,9 @@ export default function SincronizarClientesCSVPage() {
 
     const total = listaExcluir.length;
     setProgresso({ etapa: 'Mudando tag p/ Fornecedor', atual: 0, total, erros: 0 });
-    addLog(`Iniciando mudança de tag de ${total} clientes (lotes de 50)...`);
+    addLog(`Iniciando mudança de tag de ${total} clientes (lotes de 20)...`);
 
-    const LOTE_SIZE = 50;
+    const LOTE_SIZE = 20;
     for (let i = 0; i < total && !cancelRef.current; i += LOTE_SIZE) {
       const lote = listaExcluir.slice(i, i + LOTE_SIZE);
       const loteNum = Math.floor(i / LOTE_SIZE) + 1;
