@@ -6,33 +6,28 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Usa UpsertClientesPorLote para mudar tag de até 50 clientes de uma vez
-async function mudarTagLoteOmie(clientesOmie) {
+// Usa AlterarClientesPorLote — só atualiza os campos enviados, sem exigir todos os obrigatórios
+async function mudarTagLoteOmie(clientesPayload) {
     const payload = {
-        call: "UpsertClientesPorLote",
+        call: "AlterarClientesPorLote",
         app_key: OMIE_APP_KEY,
         app_secret: OMIE_APP_SECRET,
         param: [{
             lote: Date.now(),
-            clientes_cadastro: clientesOmie
+            clientes_cadastro: clientesPayload
         }]
     };
 
-    try {
-        const response = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        const resultado = await response.json();
-        return resultado;
-    } catch (e) {
-        return { faultstring: e.message };
-    }
+    const response = await fetch(OMIE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+    return await response.json();
 }
 
-// Função dedicada: muda tag para "Fornecedor" no Omie em lote e remove do Base44
-// Recebe: { clientes: [{ id, codigo, nome, cpf_cnpj, razao_social }] }
+// Recebe: { clientes: [{ id, codigo }] }
+// Muda tag para "Fornecedor" no Omie (AlterarClientesPorLote) e remove do Base44
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -50,28 +45,28 @@ Deno.serve(async (req) => {
         const errosList = [];
         const idsParaExcluirBase44 = [];
 
-        // Montar payloads Omie com campos obrigatórios
-        const clientesOmieMap = clientes.map(c => ({
+        // Montar payload mínimo: só codigo_cliente_integracao + tags
+        const clientesOmie = clientes.map(c => ({
             codigo_cliente_integracao: c.id,
-            razao_social: c.razao_social || c.nome || 'Cliente',
-            cnpj_cpf: c.cpf_cnpj || '',
             tags: [{ tag: "Fornecedor" }]
         }));
 
-        // Enviar em lotes de até 50 para o Omie (limite da API)
-        const LOTE_OMIE = 50;
-        for (let i = 0; i < clientes.length; i += LOTE_OMIE) {
-            const loteClientes = clientes.slice(i, i + LOTE_OMIE);
-            const loteOmie = clientesOmieMap.slice(i, i + LOTE_OMIE);
+        // Enviar em lotes de até 50 (limite da API Omie)
+        const LOTE = 50;
+        for (let i = 0; i < clientes.length; i += LOTE) {
+            const loteClientes = clientes.slice(i, i + LOTE);
+            const loteOmie = clientesOmie.slice(i, i + LOTE);
 
             let resultado = null;
             for (let attempt = 0; attempt < 3; attempt++) {
-                resultado = await mudarTagLoteOmie(loteOmie);
+                try {
+                    resultado = await mudarTagLoteOmie(loteOmie);
+                } catch (e) {
+                    resultado = { faultstring: e.message };
+                }
                 const fault = (resultado.faultstring || '').toLowerCase();
-                if (fault && (fault.includes('too many requests') || fault.includes('já existe uma requisição') || fault.includes('try again later'))) {
-                    const waitMs = 3000 * Math.pow(2, attempt);
-                    console.log(`[mudarTag] Rate limit lote ${i}, retry ${attempt + 1}, aguardando ${waitMs}ms`);
-                    await delay(waitMs);
+                if (fault && (fault.includes('too many requests') || fault.includes('já existe uma requisição') || fault.includes('try again'))) {
+                    await delay(3000 * Math.pow(2, attempt));
                     continue;
                 }
                 break;
@@ -81,12 +76,11 @@ Deno.serve(async (req) => {
             if (resultado.faultstring) {
                 const fault = (resultado.faultstring || '').toLowerCase();
                 if (fault.includes('não encontrado') || fault.includes('não cadastrado')) {
+                    // Não existe no Omie — pode remover do Base44
                     loteClientes.forEach(c => idsParaExcluirBase44.push(c.id));
                 } else {
                     erros += loteClientes.length;
-                    loteClientes.forEach(c => {
-                        errosList.push(`${c.codigo || c.id}: ${resultado.faultstring}`);
-                    });
+                    loteClientes.forEach(c => errosList.push(`${c.codigo || c.id}: ${resultado.faultstring}`));
                 }
             } else if (resultado.resultado) {
                 const resultados = Array.isArray(resultado.resultado) ? resultado.resultado : [resultado.resultado];
@@ -98,8 +92,7 @@ Deno.serve(async (req) => {
                         transformados++;
                     } else {
                         const desc = res.descricao_status || 'Erro';
-                        const descL = desc.toLowerCase();
-                        if (descL.includes('não encontrado') || descL.includes('não cadastrado')) {
+                        if (desc.toLowerCase().includes('não encontrado') || desc.toLowerCase().includes('não cadastrado')) {
                             idsParaExcluirBase44.push(item.id);
                         } else {
                             erros++;
@@ -108,14 +101,11 @@ Deno.serve(async (req) => {
                     }
                 }
             } else {
-                // Sem faultstring e sem resultado — assumir sucesso
-                loteClientes.forEach(c => {
-                    idsParaExcluirBase44.push(c.id);
-                    transformados++;
-                });
+                // Sem erro e sem resultado explícito — assumir sucesso
+                loteClientes.forEach(c => { idsParaExcluirBase44.push(c.id); transformados++; });
             }
 
-            if (i + LOTE_OMIE < clientes.length) await delay(500);
+            if (i + LOTE < clientes.length) await delay(500);
         }
 
         // Excluir do Base44 em paralelo (lotes de 10)
@@ -129,8 +119,8 @@ Deno.serve(async (req) => {
                 if (results[j].status === 'fulfilled') {
                     ok++;
                 } else {
+                    await delay(500);
                     try {
-                        await delay(500);
                         await base44.asServiceRole.entities.Cliente.delete(chunk[j]);
                         ok++;
                     } catch (e) {
