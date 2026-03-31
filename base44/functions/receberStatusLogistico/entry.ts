@@ -1,14 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 // Webhook receptor — recebe mudanças de status do app Logístico Control
-// Aceita tanto vendas quanto trocas
-// Autenticação via api_key (sem user auth, pois é chamada máquina-a-máquina)
+// Autenticação via api_key (chamada máquina-a-máquina, sem user auth)
+// Busca SEMPRE por numero_pedido na entidade Pedido (vendas + trocas + bonificações)
 
 const TRANSICOES_PERMITIDAS = {
-    enviado:  ['montagem', 'faturado', 'liberado', 'cancelado'],
-    liberado: ['montagem', 'faturado', 'enviado', 'cancelado'],
-    montagem: ['faturado', 'liberado', 'cancelado'],
-    faturado: ['cancelado'],
+    enviado:   ['montagem', 'faturado', 'liberado', 'cancelado'],
+    liberado:  ['montagem', 'faturado', 'enviado', 'cancelado'],
+    montagem:  ['faturado', 'liberado', 'cancelado'],
+    faturado:  ['cancelado'],
 };
 
 Deno.serve(async (req) => {
@@ -16,15 +16,12 @@ Deno.serve(async (req) => {
         const body = await req.json();
         const { api_key, atualizacoes } = body;
 
-        console.log(`[receberStatusLogistico] Chamada recebida. Tem api_key: ${!!api_key}, Tem atualizacoes: ${!!atualizacoes}, Total: ${atualizacoes?.length || 0}`);
-        if (atualizacoes && atualizacoes.length > 0) {
-            console.log(`[receberStatusLogistico] Primeira atualização:`, JSON.stringify(atualizacoes[0]));
-        }
+        console.log(`[receberStatus] Recebido. Total: ${atualizacoes?.length || 0}`);
 
         // Validar api_key
         const expectedKey = Deno.env.get('BASE_REMOTE_API_KEY');
         if (!expectedKey || api_key !== expectedKey) {
-            console.error(`[receberStatusLogistico] API KEY INVÁLIDA. Recebida: "${api_key?.substring(0, 8)}...", Esperada começa com: "${expectedKey?.substring(0, 8)}..."`);
+            console.error(`[receberStatus] API KEY INVÁLIDA`);
             return Response.json({ error: 'Unauthorized: invalid api_key' }, { status: 401 });
         }
 
@@ -32,7 +29,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'atualizacoes é obrigatório (array não vazio)' }, { status: 400 });
         }
 
-        // Inicializar SDK com service role (sem user auth pois é webhook)
+        // SDK com service role (webhook não tem user auth)
         const base44 = createClientFromRequest(req);
 
         let atualizados = 0;
@@ -50,31 +47,33 @@ Deno.serve(async (req) => {
             }
 
             try {
-                // Buscar pelo numero_pedido (vendas, trocas e bonificações estão na mesma entidade)
+                // Buscar pelo numero_pedido (vendas, trocas e bonificações na mesma entidade)
                 const encontrados = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: String(numero_pedido) });
+                
                 if (encontrados.length === 0) {
                     erros++;
-                    detalhes.push({ numero_pedido, sucesso: false, erro: `Pedido com numero_pedido "${numero_pedido}" não encontrado` });
+                    detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: `Pedido "${numero_pedido}" não encontrado` });
                     continue;
                 }
-                const pedido = encontrados[0];
-                const resolvedPedidoId = pedido.id;
 
-                // Verificar se a transição é permitida
+                const pedido = encontrados[0];
+
+                // Verificar transição permitida
                 const transicoesValidas = TRANSICOES_PERMITIDAS[pedido.status];
                 if (!transicoesValidas || !transicoesValidas.includes(novo_status)) {
                     ignorados++;
-                    detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido.numero_pedido, sucesso: false, ignorado: true, erro: `Transição ${pedido.status} → ${novo_status} não permitida` });
+                    detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, ignorado: true, erro: `Transição ${pedido.status} → ${novo_status} não permitida` });
                     continue;
                 }
 
                 const updateData = { status: novo_status };
 
+                // numero_carga (opcional)
                 if (numero_carga !== undefined) {
                     updateData.numero_carga = numero_carga ? String(numero_carga) : null;
                 }
 
-                // Dados extras para cancelamento
+                // Cancelamento: salvar dados extras
                 if (novo_status === 'cancelado') {
                     updateData.motivo_cancelamento = observacao || 'Cancelado via Logístico Control';
                     updateData.data_cancelamento = new Date().toISOString();
@@ -82,25 +81,25 @@ Deno.serve(async (req) => {
                     updateData.cancelado_por_nome = 'Logístico Control';
                 }
 
-                // Carga desfeita: limpar numero_carga ao voltar para liberado
-                if (novo_status === 'liberado' && pedido.status === 'montagem') {
+                // Carga desfeita: limpar numero_carga
+                if (novo_status === 'liberado') {
                     updateData.numero_carga = null;
                 }
 
-                await base44.asServiceRole.entities.Pedido.update(resolvedPedidoId, updateData);
+                await base44.asServiceRole.entities.Pedido.update(pedido.id, updateData);
                 atualizados++;
-                detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido.numero_pedido, sucesso: true, de: pedido.status, para: novo_status });
+                detalhes.push({ numero_pedido: String(numero_pedido), sucesso: true, de: pedido.status, para: novo_status });
 
-                console.log(`[receberStatusLogistico] Pedido ${pedido.numero_pedido || resolvedPedidoId}: ${pedido.status} → ${novo_status}`);
+                console.log(`[receberStatus] ${numero_pedido}: ${pedido.status} → ${novo_status}`);
 
             } catch (e) {
                 erros++;
-                detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido, sucesso: false, erro: e.message });
-                console.error(`[receberStatusLogistico] Erro pedido ${resolvedPedidoId || numero_pedido}:`, e.message);
+                detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: e.message });
+                console.error(`[receberStatus] Erro ${numero_pedido}:`, e.message);
             }
         }
 
-        console.log(`[receberStatusLogistico] Processados: ${atualizacoes.length}, Atualizados: ${atualizados}, Erros: ${erros}, Ignorados: ${ignorados}`);
+        console.log(`[receberStatus] Resultado: ${atualizados} atualizados, ${erros} erros, ${ignorados} ignorados`);
 
         return Response.json({
             sucesso: true,
@@ -112,7 +111,7 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('[receberStatusLogistico] Erro geral:', error.message);
+        console.error('[receberStatus] Erro geral:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
