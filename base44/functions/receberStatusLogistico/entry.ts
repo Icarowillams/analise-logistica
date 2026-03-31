@@ -41,19 +41,34 @@ Deno.serve(async (req) => {
         const detalhes = [];
 
         for (const item of atualizacoes) {
-            const { pedido_id, novo_status, numero_carga, observacao } = item;
+            const { pedido_id, numero_pedido, novo_status, numero_carga, observacao } = item;
 
-            if (!pedido_id || !novo_status) {
+            if ((!pedido_id && !numero_pedido) || !novo_status) {
                 erros++;
-                detalhes.push({ pedido_id, sucesso: false, erro: 'pedido_id e novo_status são obrigatórios' });
+                detalhes.push({ pedido_id, numero_pedido, sucesso: false, erro: 'pedido_id ou numero_pedido + novo_status são obrigatórios' });
                 continue;
             }
 
             try {
-                const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+                let pedido;
+                let resolvedPedidoId = pedido_id;
+
+                if (pedido_id) {
+                    pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+                } else {
+                    // Buscar pelo numero_pedido
+                    const encontrados = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: String(numero_pedido) });
+                    if (encontrados.length === 0) {
+                        erros++;
+                        detalhes.push({ numero_pedido, sucesso: false, erro: `Pedido com numero_pedido "${numero_pedido}" não encontrado` });
+                        continue;
+                    }
+                    pedido = encontrados[0];
+                    resolvedPedidoId = pedido.id;
+                }
                 if (!pedido) {
                     erros++;
-                    detalhes.push({ pedido_id, sucesso: false, erro: 'Pedido não encontrado' });
+                    detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido?.numero_pedido, sucesso: false, erro: 'Pedido não encontrado' });
                     continue;
                 }
 
@@ -61,7 +76,7 @@ Deno.serve(async (req) => {
                 const transicoesValidas = TRANSICOES_PERMITIDAS[pedido.status];
                 if (!transicoesValidas || !transicoesValidas.includes(novo_status)) {
                     ignorados++;
-                    detalhes.push({ pedido_id, sucesso: false, ignorado: true, erro: `Transição ${pedido.status} → ${novo_status} não permitida` });
+                    detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido.numero_pedido, sucesso: false, ignorado: true, erro: `Transição ${pedido.status} → ${novo_status} não permitida` });
                     continue;
                 }
 
@@ -84,16 +99,16 @@ Deno.serve(async (req) => {
                     updateData.numero_carga = null;
                 }
 
-                await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+                await base44.asServiceRole.entities.Pedido.update(resolvedPedidoId, updateData);
                 atualizados++;
-                detalhes.push({ pedido_id, sucesso: true, de: pedido.status, para: novo_status });
+                detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido.numero_pedido, sucesso: true, de: pedido.status, para: novo_status });
 
-                console.log(`[receberStatusLogistico] Pedido ${pedido.numero_pedido || pedido_id}: ${pedido.status} → ${novo_status}`);
+                console.log(`[receberStatusLogistico] Pedido ${pedido.numero_pedido || resolvedPedidoId}: ${pedido.status} → ${novo_status}`);
 
             } catch (e) {
                 erros++;
-                detalhes.push({ pedido_id, sucesso: false, erro: e.message });
-                console.error(`[receberStatusLogistico] Erro pedido ${pedido_id}:`, e.message);
+                detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido, sucesso: false, erro: e.message });
+                console.error(`[receberStatusLogistico] Erro pedido ${resolvedPedidoId || numero_pedido}:`, e.message);
             }
         }
 
