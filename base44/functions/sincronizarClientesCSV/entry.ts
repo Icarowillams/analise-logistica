@@ -328,51 +328,61 @@ Deno.serve(async (req) => {
             });
         }
 
-        // === EXCLUIR (em lotes — exclui do Omie individualmente mas do Base44 em bulk) ===
+        // === EXCLUIR (em lotes — Omie em paralelo, Base44 em paralelo) ===
         if (etapa === 'excluir') {
             const paraExcluir = clientesSistema.filter(c => !csvCodigos.has(c.codigo));
-            const bulkSize = Math.min(batch_size, 50);
+            const bulkSize = Math.min(batch_size, 200);
             const lote = paraExcluir.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];
 
-            // Excluir do Omie individualmente (tem rate limit próprio)
+            // Excluir do Omie em paralelo (5 simultâneos para respeitar rate limit)
+            const CONCURRENCY = 5;
             const idsParaExcluirBase44 = [];
-            for (const item of lote) {
-                try {
-                    const res = await excluirClienteOmie(item.id);
-                    if (res.sucesso) {
-                        idsParaExcluirBase44.push(item.id);
+
+            for (let i = 0; i < lote.length; i += CONCURRENCY) {
+                const chunk = lote.slice(i, i + CONCURRENCY);
+                const results = await Promise.allSettled(
+                    chunk.map(item => excluirClienteOmie(item.id).then(res => ({ item, res })))
+                );
+                for (const r of results) {
+                    if (r.status === 'fulfilled') {
+                        if (r.value.res.sucesso) {
+                            idsParaExcluirBase44.push(r.value.item.id);
+                        } else {
+                            erros++;
+                            errosList.push(`${r.value.item.codigo} - ${r.value.item.razao_social || r.value.item.nome_fantasia || 'S/N'}: ${r.value.res.msg}`);
+                        }
                     } else {
+                        const item = chunk[results.indexOf(r)];
                         erros++;
-                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
-                        // Continua para o próximo, não para o processo
+                        errosList.push(`${item?.codigo || '?'} - ${item?.razao_social || 'S/N'}: ${r.reason?.message || 'Erro desconhecido'}`);
                     }
-                } catch (e) {
-                    erros++;
-                    errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${e.message}`);
                 }
-                await delay(400);
+                // Pequeno delay entre chunks para não estourar Omie
+                if (i + CONCURRENCY < lote.length) await delay(300);
             }
 
-            // Excluir do Base44 em lote
-            for (const id of idsParaExcluirBase44) {
-                try {
-                    await base44.asServiceRole.entities.Cliente.delete(id);
-                    ok++;
-                } catch (e) {
-                    if (e.message?.includes('Rate limit')) {
-                        await delay(3000);
+            // Excluir do Base44 em paralelo (10 simultâneos)
+            const BASE44_CONCURRENCY = 10;
+            for (let i = 0; i < idsParaExcluirBase44.length; i += BASE44_CONCURRENCY) {
+                const chunk = idsParaExcluirBase44.slice(i, i + BASE44_CONCURRENCY);
+                const results = await Promise.allSettled(
+                    chunk.map(id => base44.asServiceRole.entities.Cliente.delete(id))
+                );
+                for (let j = 0; j < results.length; j++) {
+                    if (results[j].status === 'fulfilled') {
+                        ok++;
+                    } else {
+                        // Retry uma vez com delay
+                        await delay(2000);
                         try {
-                            await base44.asServiceRole.entities.Cliente.delete(id);
+                            await base44.asServiceRole.entities.Cliente.delete(chunk[j]);
                             ok++;
                         } catch (e2) {
                             erros++;
-                            errosList.push(`Delete Base44 ${id}: ${e2.message}`);
+                            errosList.push(`Delete Base44 ${chunk[j]}: ${e2.message}`);
                         }
-                    } else {
-                        erros++;
-                        errosList.push(`Delete Base44 ${id}: ${e.message}`);
                     }
                 }
             }
