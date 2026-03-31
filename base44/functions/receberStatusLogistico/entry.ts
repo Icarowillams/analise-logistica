@@ -47,8 +47,16 @@ Deno.serve(async (req) => {
             }
 
             try {
-                // Buscar pelo numero_pedido (vendas, trocas e bonificações na mesma entidade)
-                const encontrados = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: String(numero_pedido) });
+                // Buscar pelo numero_pedido - normaliza removendo zeros à esquerda para comparação
+                // Omie retorna "000000000000062", Logístico pode enviar "62" ou "000000000000062"
+                const numeroPedidoLimpo = String(numero_pedido).replace(/^0+/, '') || '0';
+
+                // Buscar todos os pedidos e filtrar localmente (para cobrir ambos os formatos)
+                const todosPedidos = await base44.asServiceRole.entities.Pedido.list();
+                const encontrados = todosPedidos.filter(p => {
+                    const numPedido = String(p.numero_pedido || '').replace(/^0+/, '') || '0';
+                    return numPedido === numeroPedidoLimpo;
+                });
                 
                 if (encontrados.length === 0) {
                     erros++;
