@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
                         }
                     }
                 }
-                await delay(300);
+                await delay(600);
             }
 
             const nextOffset = offset + batch_size;

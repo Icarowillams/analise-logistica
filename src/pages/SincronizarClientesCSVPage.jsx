@@ -7,7 +7,8 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, Play, CheckCircle, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 
 const CSV_URL = "https://media.base44.com/files/public/6926e3c1dcadc4e314506362/8de60fb07_Book13OFICIAL1.csv";
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 30;
+const DELAY_ENTRE_LOTES = 5000;
 
 export default function SincronizarClientesCSVPage() {
   const [status, setStatus] = useState('idle'); // idle, analisando, atualizando, excluindo, concluido
@@ -16,6 +17,7 @@ export default function SincronizarClientesCSVPage() {
   const [logs, setLogs] = useState([]);
   const [errosDetalhes, setErrosDetalhes] = useState([]);
   const cancelRef = useRef(false);
+  const lastOffsetRef = useRef(0);
 
   const addLog = (msg) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -30,32 +32,42 @@ export default function SincronizarClientesCSVPage() {
     setStatus('idle');
   };
 
-  const rodarAtualizacao = async () => {
+  const rodarAtualizacao = async (startOffset = 0) => {
     cancelRef.current = false;
     setStatus('atualizando');
-    setErrosDetalhes([]);
-    let offset = 0;
-    let totalProcessados = 0;
+    if (startOffset === 0) setErrosDetalhes([]);
+    let offset = startOffset;
+    let totalProcessados = startOffset;
     let totalErros = 0;
     const total = analise?.atualizar || 0;
-    setProgresso({ etapa: 'Atualizando clientes', atual: 0, total, erros: 0 });
-    addLog(`Iniciando atualização de ${total} clientes...`);
+    setProgresso({ etapa: 'Atualizando clientes', atual: totalProcessados, total, erros: 0 });
+    addLog(`Iniciando atualização de ${total} clientes (offset: ${startOffset})...`);
 
     while (offset < total && !cancelRef.current) {
-      const res = await base44.functions.invoke('sincronizarClientesCSV', {
-        csv_url: CSV_URL, etapa: 'atualizar', offset, batch_size: BATCH_SIZE
-      });
-      const d = res.data;
-      totalProcessados += d.processados;
-      totalErros += d.erros;
-      if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
-      setProgresso({ etapa: 'Atualizando clientes', atual: totalProcessados, total, erros: totalErros });
-      addLog(`Lote ${offset}-${offset + BATCH_SIZE}: ${d.processados} ok, ${d.erros} erros`);
+      try {
+        const res = await base44.functions.invoke('sincronizarClientesCSV', {
+          csv_url: CSV_URL, etapa: 'atualizar', offset, batch_size: BATCH_SIZE
+        });
+        const d = res.data;
+        totalProcessados += d.processados;
+        totalErros += d.erros;
+        if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
+        setProgresso({ etapa: 'Atualizando clientes', atual: totalProcessados, total, erros: totalErros });
+        addLog(`Lote ${offset}-${offset + BATCH_SIZE}: ${d.processados} ok, ${d.erros} erros`);
+        lastOffsetRef.current = d.nextOffset || offset + BATCH_SIZE;
 
-      if (d.concluido) break;
-      offset = d.nextOffset;
+        if (d.concluido) break;
+        offset = d.nextOffset;
+      } catch (err) {
+        addLog(`Erro no lote ${offset}: ${err.message}. Aguardando 10s e tentando novamente...`);
+        await new Promise(r => setTimeout(r, 10000));
+        continue;
+      }
+
+      // Delay entre lotes para evitar rate limit
+      await new Promise(r => setTimeout(r, DELAY_ENTRE_LOTES));
     }
-    addLog(`Atualização concluída: ${totalProcessados} ok, ${totalErros} erros`);
+    addLog(cancelRef.current ? `Pausado em offset ${offset}. Clique "Continuar" para retomar.` : `Atualização concluída: ${totalProcessados} ok, ${totalErros} erros`);
     setStatus('idle');
   };
 
@@ -102,10 +114,16 @@ export default function SincronizarClientesCSVPage() {
           {status === 'analisando' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
           Analisar
         </Button>
-        <Button onClick={rodarAtualizacao} disabled={running || !analise} className="bg-green-600 hover:bg-green-700 text-white">
+        <Button onClick={() => rodarAtualizacao(0)} disabled={running || !analise} className="bg-green-600 hover:bg-green-700 text-white">
           {status === 'atualizando' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
           Atualizar ({analise?.atualizar || 0})
         </Button>
+        {lastOffsetRef.current > 0 && status === 'idle' && (
+          <Button onClick={() => rodarAtualizacao(lastOffsetRef.current)} className="bg-amber-500 hover:bg-amber-600 text-white">
+            <Play className="w-4 h-4 mr-2" />
+            Continuar ({lastOffsetRef.current})
+          </Button>
+        )}
         <Button onClick={rodarExclusao} disabled={running || !analise} variant="destructive">
           {status === 'excluindo' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
           Excluir ({analise?.excluir || 0})
