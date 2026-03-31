@@ -21,13 +21,20 @@ export default function SincronizarClientesCSVPage() {
 
   const addLog = (msg) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
+  const [clientesParaExcluir, setClientesParaExcluir] = useState([]);
+
   const rodarAnalise = async () => {
     setStatus('analisando');
     setLogs([]);
     setErrosDetalhes([]);
+    setClientesParaExcluir([]);
     addLog('Iniciando análise...');
     const res = await base44.functions.invoke('sincronizarClientesCSV', { csv_url: CSV_URL, etapa: 'analise' });
     setAnalise(res.data);
+    // Se houver exclusões, buscar lista completa de clientes para excluir
+    if (res.data.excluir > 0 && res.data.excluir_ids) {
+      setClientesParaExcluir(res.data.excluir_ids);
+    }
     addLog(`Análise concluída: ${res.data.atualizar} atualizar, ${res.data.criar} criar, ${res.data.excluir} excluir`);
     setStatus('idle');
   };
@@ -110,33 +117,59 @@ export default function SincronizarClientesCSVPage() {
   const rodarExclusao = async () => {
     cancelRef.current = false;
     setStatus('excluindo');
-    let offset = 0;
+    setErrosDetalhes([]);
     let totalProcessados = 0;
     let totalErros = 0;
-    const total = analise?.excluir || 0;
-    setProgresso({ etapa: 'Excluindo clientes', atual: 0, total, erros: 0 });
-    addLog(`Iniciando exclusão de ${total} clientes...`);
 
-    while (offset < total && !cancelRef.current) {
+    // Se não temos a lista de IDs, buscar via análise primeiro
+    let listaExcluir = clientesParaExcluir;
+    if (listaExcluir.length === 0) {
+      addLog('Buscando lista de clientes para excluir...');
+      const res = await base44.functions.invoke('sincronizarClientesCSV', { csv_url: CSV_URL, etapa: 'analise' });
+      listaExcluir = res.data.excluir_ids || [];
+      setClientesParaExcluir(listaExcluir);
+    }
+
+    const total = listaExcluir.length;
+    setProgresso({ etapa: 'Excluindo clientes', atual: 0, total, erros: 0 });
+    addLog(`Iniciando exclusão de ${total} clientes (lotes de 8)...`);
+
+    const LOTE_SIZE = 8;
+    for (let i = 0; i < total && !cancelRef.current; i += LOTE_SIZE) {
+      const lote = listaExcluir.slice(i, i + LOTE_SIZE);
+      const loteNum = Math.floor(i / LOTE_SIZE) + 1;
+      const totalLotes = Math.ceil(total / LOTE_SIZE);
+
       try {
-        const res = await base44.functions.invoke('sincronizarClientesCSV', {
-          csv_url: CSV_URL, etapa: 'excluir', offset, batch_size: 20
-        });
+        const res = await base44.functions.invoke('excluirClientesLote', { clientes: lote });
         const d = res.data;
-        totalProcessados += d.processados;
-        totalErros += d.erros;
+        totalProcessados += d.processados || 0;
+        totalErros += d.erros || 0;
         if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
         setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
-        addLog(`Lote excluir ${offset}-${offset + 20}: ${d.processados} ok, ${d.erros} erros`);
-
-        if (d.concluido) break;
-        offset = d.nextOffset;
+        addLog(`Lote ${loteNum}/${totalLotes}: ${d.processados || 0} ok, ${d.erros || 0} erros`);
       } catch (err) {
-        addLog(`Erro no lote ${offset}: ${err.message}. Aguardando 10s...`);
-        await new Promise(r => setTimeout(r, 10000));
-        continue;
+        addLog(`Erro lote ${loteNum}: ${err.message}. Aguardando 5s...`);
+        totalErros += lote.length;
+        setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
+        await new Promise(r => setTimeout(r, 5000));
+        // Retry once
+        try {
+          const res = await base44.functions.invoke('excluirClientesLote', { clientes: lote });
+          const d = res.data;
+          totalErros -= lote.length; // undo
+          totalProcessados += d.processados || 0;
+          totalErros += d.erros || 0;
+          if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
+          setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
+          addLog(`Lote ${loteNum} retry: ${d.processados || 0} ok, ${d.erros || 0} erros`);
+        } catch (err2) {
+          addLog(`Lote ${loteNum} falhou novamente: ${err2.message}`);
+        }
       }
-      await new Promise(r => setTimeout(r, DELAY_ENTRE_LOTES));
+
+      // Delay entre lotes para respeitar rate limit
+      await new Promise(r => setTimeout(r, 1000));
     }
     addLog(`Exclusão concluída: ${totalProcessados} ok, ${totalErros} erros`);
     setStatus('idle');

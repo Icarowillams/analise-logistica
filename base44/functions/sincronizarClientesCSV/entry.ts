@@ -287,6 +287,7 @@ Deno.serve(async (req) => {
                 csv_total: csvRows.length, sistema_total: clientesSistema.length,
                 atualizar: atualizar.length, criar: criar.length, excluir: excluir.length,
                 excluir_preview: excluir.slice(0, 20).map(e => `${e.codigo} - ${e.razao_social}`),
+                excluir_ids: excluir.map(e => ({ id: e.id, codigo: e.codigo, nome: e.razao_social || e.nome_fantasia || '' })),
             });
         }
 
