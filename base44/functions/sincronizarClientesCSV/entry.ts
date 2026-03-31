@@ -87,17 +87,32 @@ async function excluirClienteOmie(clienteId) {
     }
 }
 
-// Wrapper que classifica erros do Omie (rate limit vs erro real)
-async function tentarExcluirOmie(item) {
-    const res = await excluirClienteOmie(item.id);
+// Classifica resultado do Omie
+function classificarResultadoOmie(res) {
     if (res.sucesso) return { sucesso: true };
     const msg = (res.msg || '').toLowerCase();
     const isRateLimit = msg.includes('too many requests') || 
                         msg.includes('já existe uma requisição') ||
                         msg.includes('try again later') ||
                         msg.includes('tente novamente');
+    const naoExiste = msg.includes('não encontrado') || msg.includes('não cadastrado');
+    if (naoExiste) return { sucesso: true, naoExiste: true };
     if (isRateLimit) return { sucesso: false, rateLimited: true, msg: res.msg };
-    return { sucesso: false, rateLimited: false, msg: res.msg };
+    return { sucesso: false, rateLimited: false, naoExiste: false, msg: res.msg };
+}
+
+// Tenta excluir com retry e backoff exponencial
+async function tentarExcluirOmieComRetry(item, maxRetries) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const res = classificarResultadoOmie(await excluirClienteOmie(item.id));
+        if (res.sucesso) return res;
+        if (!res.rateLimited) return res; // erro real, não adianta retry
+        // Rate limited — esperar com backoff: 2s, 4s, 8s...
+        const waitMs = 2000 * Math.pow(2, attempt);
+        console.log(`[excluir] Rate limit ${item.codigo}, retry ${attempt + 1}/${maxRetries}, aguardando ${waitMs}ms`);
+        await delay(waitMs);
+    }
+    return { sucesso: false, rateLimited: true, msg: 'Rate limit após todas tentativas' };
 }
 
 function buildLookups(planos, tabelas, segmentos, redes, rotas, vendedores, modalidades) {
@@ -341,57 +356,51 @@ Deno.serve(async (req) => {
             });
         }
 
-        // === EXCLUIR (sequencial no Omie com retry, paralelo no Base44) ===
+        // === EXCLUIR ===
+        // Omie rate limit: ExcluirCliente é limitado a 1 req simultânea por IP+AppKey+Método
+        // Max 240 req/min por método = 1 a cada 250ms. Usamos 350ms com margem.
+        // Retry com backoff exponencial para rate limits.
         if (etapa === 'excluir') {
             const paraExcluir = clientesSistema.filter(c => !csvCodigos.has(c.codigo));
-            const bulkSize = Math.min(batch_size, 100);
+            const bulkSize = Math.min(batch_size, 50);
             const lote = paraExcluir.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];
             const idsParaExcluirBase44 = [];
-            const falharam = []; // guardar para retry
+            const falharamRateLimit = [];
 
-            // Fase 1: Excluir do Omie — 1 por vez com delay de 600ms
+            // Fase 1: Excluir do Omie — sequencial, 350ms entre cada (respeitando 1 req por vez)
             for (const item of lote) {
-                const res = await tentarExcluirOmie(item);
+                const res = await tentarExcluirOmieComRetry(item, 3);
                 if (res.sucesso) {
                     idsParaExcluirBase44.push(item.id);
                 } else if (res.rateLimited) {
-                    falharam.push(item); // vai pra retry
+                    falharamRateLimit.push(item);
                 } else {
-                    // Erro real (dependências, etc) — não faz retry
                     erros++;
-                    errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
-                    // Se for erro de dependências, exclui só do Base44 mesmo
-                    if (res.msg?.includes('dependem') || res.msg?.includes('informações que dependem')) {
-                        // Não excluir do Base44 se tem dependências no Omie
-                    } else if (res.msg?.includes('não encontrado') || res.msg?.includes('não cadastrado')) {
-                        idsParaExcluirBase44.push(item.id); // já não existe no Omie, pode deletar do Base44
-                    }
+                    const label = `${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}`;
+                    errosList.push(`${label}: ${res.msg}`);
+                    // Cliente não existe no Omie — pode deletar do Base44
+                    if (res.naoExiste) idsParaExcluirBase44.push(item.id);
                 }
-                await delay(600);
+                await delay(350);
             }
 
-            // Fase 2: Retry dos que falharam por rate limit (espera 8s e tenta de novo)
-            if (falharam.length > 0) {
-                console.log(`[sincronizarCSV] Retry de ${falharam.length} exclusões que deram rate limit...`);
-                await delay(8000);
-                for (const item of falharam) {
-                    const res = await tentarExcluirOmie(item);
+            // Fase 2: Retry final dos que persistiram com rate limit (espera 10s, tenta 1 por 1 com 1s)
+            if (falharamRateLimit.length > 0) {
+                console.log(`[excluir] Retry final de ${falharamRateLimit.length} rate-limited...`);
+                await delay(10000);
+                for (const item of falharamRateLimit) {
+                    const res = await tentarExcluirOmieComRetry(item, 2);
                     if (res.sucesso) {
                         idsParaExcluirBase44.push(item.id);
-                    } else if (res.rateLimited) {
-                        // Segundo rate limit — ainda falhou, reportar erro
-                        erros++;
-                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: Rate limit persistente (tente novamente)`);
                     } else {
                         erros++;
-                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
-                        if (res.msg?.includes('não encontrado') || res.msg?.includes('não cadastrado')) {
-                            idsParaExcluirBase44.push(item.id);
-                        }
+                        const label = `${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}`;
+                        errosList.push(`${label}: ${res.rateLimited ? 'Rate limit persistente' : res.msg}`);
+                        if (res.naoExiste) idsParaExcluirBase44.push(item.id);
                     }
-                    await delay(800);
+                    await delay(1000);
                 }
             }
 
