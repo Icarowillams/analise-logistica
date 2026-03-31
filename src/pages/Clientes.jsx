@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { validarDocumento, formatarDocumento, formatarCEP } from '@/components/clientes/validarCpfCnpj';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -918,6 +919,15 @@ export default function Clientes() {
               </Button>
             </>
           )}
+          <Link to="/sincronizarclientescsv">
+            <Button
+              variant="outline"
+              className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Sincronizar CSV
+            </Button>
+          </Link>
           <Button
             onClick={() => setBulkOpen(true)}
             variant="outline"
