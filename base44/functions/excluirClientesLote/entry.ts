@@ -37,7 +37,37 @@ function classificar(res) {
     if (msg.includes('too many requests') || msg.includes('já existe uma requisição') || msg.includes('try again later') || msg.includes('tente novamente')) {
         return { sucesso: false, rateLimited: true, msg: res.msg };
     }
+    // Cliente com dependências no Omie (NFs, fornecedores, etc.) — não pode excluir
+    if (msg.includes('não é possível fazer esta exclusão') || msg.includes('dependem deste registro')) {
+        return { sucesso: false, temDependencia: true, msg: res.msg };
+    }
     return { sucesso: false, msg: res.msg };
+}
+
+// Inativar cliente no Omie quando não é possível excluir (tem NFs vinculadas etc.)
+async function inativarClienteOmie(clienteId) {
+    try {
+        const response = await fetch(OMIE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                call: "UpsertCliente",
+                app_key: OMIE_APP_KEY,
+                app_secret: OMIE_APP_SECRET,
+                param: [{
+                    codigo_cliente_integracao: clienteId,
+                    inativo: "S"
+                }]
+            })
+        });
+        const resultado = await response.json();
+        if (resultado.faultstring) {
+            return { sucesso: false, msg: resultado.faultstring };
+        }
+        return { sucesso: true };
+    } catch (e) {
+        return { sucesso: false, msg: e.message };
+    }
 }
 
 // Função dedicada e leve para excluir clientes em lote pequeno
@@ -60,23 +90,39 @@ Deno.serve(async (req) => {
         const errosList = [];
         const idsParaExcluirBase44 = [];
 
+        let inativados = 0;
+
         // Excluir do Omie sequencialmente com 300ms entre cada
         for (const item of clientes) {
-            // Tentar até 2 vezes com backoff
+            const label = `${item.codigo || item.id} - ${item.nome || 'S/N'}`;
+
+            // Tentar excluir com retry para rate limit
             let resultado = null;
             for (let attempt = 0; attempt < 3; attempt++) {
                 resultado = classificar(await excluirClienteOmie(item.id));
                 if (resultado.sucesso) break;
                 if (!resultado.rateLimited) break;
-                // Rate limited — esperar 2s, 4s
                 await delay(2000 * Math.pow(2, attempt));
             }
 
             if (resultado.sucesso) {
                 idsParaExcluirBase44.push(item.id);
+            } else if (resultado.temDependencia) {
+                // Não pode excluir no Omie (tem NFs etc.) — inativar em vez de excluir
+                console.log(`[excluirClientesLote] ${label}: tem dependências, inativando no Omie...`);
+                await delay(300);
+                const inativarRes = await inativarClienteOmie(item.id);
+                if (inativarRes.sucesso) {
+                    console.log(`[excluirClientesLote] ${label}: inativado no Omie com sucesso`);
+                    idsParaExcluirBase44.push(item.id);
+                    inativados++;
+                } else {
+                    erros++;
+                    errosList.push(`${label}: Não excluiu (dependências) e falhou ao inativar: ${inativarRes.msg}`);
+                }
             } else {
                 erros++;
-                errosList.push(`${item.codigo || item.id} - ${item.nome || 'S/N'}: ${resultado.msg}`);
+                errosList.push(`${label}: ${resultado.msg}`);
             }
             await delay(300);
         }
@@ -101,7 +147,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        return Response.json({ sucesso: true, processados: ok, erros, erros_detalhes: errosList });
+        return Response.json({ sucesso: true, processados: ok, inativados, erros, erros_detalhes: errosList });
     } catch (error) {
         console.error('[excluirClientesLote] Erro:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
