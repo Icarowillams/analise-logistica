@@ -8,16 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
   RefreshCw, Search, Loader2, CheckCircle, AlertTriangle,
-  ArrowUpDown, Upload, Trash2, Plus, Play, XCircle
+  ArrowUpDown, Upload, Trash2, Plus, Play, XCircle, FileSpreadsheet, Cloud
 } from 'lucide-react';
 import ResumoComparacao from '@/components/sincronizarCSV/ResumoComparacao';
 import ProgressoSincronizacao from '@/components/sincronizarCSV/ProgressoSincronizacao';
 import ComparacaoLadoALado from '@/components/sincronizarCSV/ComparacaoLadoALado';
 import ListaClientesFaltantes from '@/components/sincronizarCSV/ListaClientesFaltantes';
+import CompararCSVBase44 from '@/components/sincronizarCSV/CompararCSVBase44';
 
 const BATCH_SIZE = 20;
 
 export default function SincronizarClientesCSVPage() {
+  const [abaAtiva, setAbaAtiva] = useState('csv'); // 'csv' | 'omie'
   const [etapa, setEtapa] = useState('idle'); // idle, verificando, resultado, executando, concluido
   const [comparacao, setComparacao] = useState(null);
   const [erroMsg, setErroMsg] = useState('');
@@ -140,12 +142,43 @@ export default function SincronizarClientesCSVPage() {
   return (
     <div>
       <PageHeader
-        title="Sincronizar Base44 → Omie (Completa)"
-        subtitle="Compare e sincronize clientes entre Base44 e Omie"
+        title="Sincronização de Clientes"
+        subtitle="Compare e sincronize clientes via CSV ou com Omie"
         icon={ArrowUpDown}
       />
 
       <div className="max-w-5xl mx-auto space-y-4">
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-slate-200 pb-0">
+          <button
+            onClick={() => setAbaAtiva('csv')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              abaAtiva === 'csv'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            CSV × Base44
+          </button>
+          <button
+            onClick={() => setAbaAtiva('omie')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              abaAtiva === 'omie'
+                ? 'border-amber-500 text-amber-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Cloud className="w-4 h-4" />
+            Base44 × Omie
+          </button>
+        </div>
+
+        {/* Aba CSV × Base44 */}
+        {abaAtiva === 'csv' && <CompararCSVBase44 />}
+
+        {/* Aba Base44 × Omie */}
+        {abaAtiva === 'omie' && <div className="space-y-4">
         {/* IDLE */}
         {etapa === 'idle' && (
           <Card>
@@ -279,6 +312,7 @@ export default function SincronizarClientesCSVPage() {
             </div>
           </>
         )}
+      </div>}
       </div>
     </div>
   );
