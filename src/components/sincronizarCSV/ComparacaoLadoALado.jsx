@@ -18,6 +18,7 @@ const CAMPOS_LABEL = {
 
 export default function ComparacaoLadoALado({ items, busca }) {
   const [expandidos, setExpandidos] = useState({});
+  const [mostrarQtd, setMostrarQtd] = useState(100);
 
   const toggle = (id) => {
     setExpandidos(prev => ({ ...prev, [id]: !prev[id] }));
@@ -40,7 +41,7 @@ export default function ComparacaoLadoALado({ items, busca }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-1 max-h-[600px] overflow-y-auto">
-        {filtrados.map((item) => {
+        {filtrados.slice(0, mostrarQtd).map((item) => {
           const isOpen = expandidos[item.id];
           return (
             <div key={item.id} className="border rounded-lg overflow-hidden">
@@ -96,6 +97,14 @@ export default function ComparacaoLadoALado({ items, busca }) {
 
         {filtrados.length === 0 && (
           <p className="text-sm text-slate-400 text-center py-4">Nenhum resultado para o filtro.</p>
+        )}
+        {filtrados.length > mostrarQtd && (
+          <button
+            onClick={() => setMostrarQtd(prev => prev + 100)}
+            className="w-full py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Mostrar mais ({filtrados.length - mostrarQtd} restantes)
+          </button>
         )}
       </CardContent>
     </Card>

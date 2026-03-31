@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Search, ArrowLeftRight, AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, RefreshCw, Database, Cloud } from 'lucide-react';
+import { Loader2, Search, ArrowLeftRight, AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, RefreshCw, Database, Cloud, Download, Upload, Copy } from 'lucide-react';
 import ComparacaoLadoALado from '@/components/sincronizarCSV/ComparacaoLadoALado';
 import ListaClientesFaltantes from '@/components/sincronizarCSV/ListaClientesFaltantes';
 
@@ -26,6 +26,12 @@ export default function SincronizarClientesCSVPage() {
   const [comparacao, setComparacao] = useState(null);
   const [buscaComparacao, setBuscaComparacao] = useState('');
   const [activeTab, setActiveTab] = useState('consulta');
+
+  // Espelhar
+  const [espelhando, setEspelhando] = useState(false);
+  const [espelharProgresso, setEspelharProgresso] = useState({ atual: 0, total: 0, ok: 0, erros: 0 });
+  const [espelharErros, setEspelharErros] = useState([]);
+  const cancelRef = useRef(false);
 
   const consultarOmie = async (pag = 1) => {
     setLoading(true);
@@ -65,6 +71,84 @@ export default function SincronizarClientesCSVPage() {
     }
   };
 
+  const exportarCSV = () => {
+    if (!comparacao) return;
+    const linhas = [['Tipo', 'ID', 'Código', 'Razão Social', 'Nome Fantasia', 'CNPJ/CPF', 'Campo', 'Valor Base44', 'Valor Omie'].join(';')];
+    
+    for (const item of (comparacao.lista_diferentes || [])) {
+      for (const diff of item.diffs) {
+        linhas.push([
+          'DIFERENTE', item.id, item.codigo || '', item.razao_social || '', item.nome_fantasia || '', '',
+          diff.campo, diff.base44 || '', diff.omie || ''
+        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+      }
+    }
+    for (const item of (comparacao.lista_so_base44 || [])) {
+      linhas.push([
+        'SÓ NO BASE44', item.id, item.codigo || '', item.razao_social || '', item.nome_fantasia || '', item.cpf_cnpj || '',
+        '', '', ''
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+    }
+    for (const item of (comparacao.lista_so_omie || [])) {
+      linhas.push([
+        'SÓ NO OMIE', item.codigo_integracao || '', item.codigo_omie || '', item.razao_social || '', item.nome_fantasia || '', item.cnpj_cpf || '',
+        '', '', ''
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+    }
+
+    const csvContent = linhas.join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `comparacao_omie_base44_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const espelharParaOmie = async () => {
+    if (!comparacao) return;
+    const idsParaEnviar = [
+      ...(comparacao.lista_diferentes || []).map(d => d.id),
+      ...(comparacao.lista_so_base44 || []).map(d => d.id),
+    ];
+    if (idsParaEnviar.length === 0) {
+      setError('Nenhum cliente para enviar. Rode a comparação primeiro.');
+      return;
+    }
+    const confirmar = window.confirm(
+      `Isso vai enviar ${idsParaEnviar.length} clientes do Base44 para o Omie (UpsertCliente), sobrescrevendo os dados no Omie.\n\nDeseja continuar?`
+    );
+    if (!confirmar) return;
+
+    setEspelhando(true);
+    cancelRef.current = false;
+    setEspelharErros([]);
+    const LOTE = 20;
+    const total = idsParaEnviar.length;
+    let totalOk = 0, totalErros = 0;
+    setEspelharProgresso({ atual: 0, total, ok: 0, erros: 0 });
+
+    for (let i = 0; i < total && !cancelRef.current; i += LOTE) {
+      const loteIds = idsParaEnviar.slice(i, i + LOTE);
+      try {
+        const res = await base44.functions.invoke('espelharBase44ParaOmie', { ids: loteIds });
+        const d = res.data;
+        totalOk += d.enviados || 0;
+        totalErros += d.erros || 0;
+        if (d.erros_detalhes?.length) {
+          setEspelharErros(prev => [...prev, ...d.erros_detalhes]);
+        }
+      } catch (e) {
+        totalErros += loteIds.length;
+        setEspelharErros(prev => [...prev, `Lote ${i}: ${e.message}`]);
+      }
+      setEspelharProgresso({ atual: Math.min(i + LOTE, total), total, ok: totalOk, erros: totalErros });
+      if (i + LOTE < total && !cancelRef.current) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+    setEspelhando(false);
+  };
+
   const clientesOmieFiltrados = clientesOmie.filter(c => {
     if (!buscaOmie) return true;
     const q = buscaOmie.toLowerCase();
@@ -102,15 +186,66 @@ export default function SincronizarClientesCSVPage() {
       )}
 
       <div className="flex gap-3 flex-wrap">
-        <Button onClick={() => consultarOmie(1)} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
+        <Button onClick={() => consultarOmie(1)} disabled={loading || espelhando} className="bg-blue-600 hover:bg-blue-700 text-white">
           <Cloud className="w-4 h-4 mr-2" />
           Consultar Omie
         </Button>
-        <Button onClick={compararTudo} disabled={loading} className="bg-purple-600 hover:bg-purple-700 text-white">
+        <Button onClick={compararTudo} disabled={loading || espelhando} className="bg-purple-600 hover:bg-purple-700 text-white">
           <ArrowLeftRight className="w-4 h-4 mr-2" />
           Comparar Omie × Base44
         </Button>
+        {comparacao && (comparacao.diferentes > 0 || comparacao.so_no_base44 > 0 || comparacao.so_no_omie > 0) && (
+          <Button onClick={exportarCSV} variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
+            <Download className="w-4 h-4 mr-2" />
+            Exportar CSV
+          </Button>
+        )}
+        {comparacao && (comparacao.diferentes > 0 || comparacao.so_no_base44 > 0) && !espelhando && (
+          <Button onClick={espelharParaOmie} disabled={loading} className="bg-red-600 hover:bg-red-700 text-white">
+            <Copy className="w-4 h-4 mr-2" />
+            Espelhar Base44 → Omie ({(comparacao.diferentes || 0) + (comparacao.so_no_base44 || 0)})
+          </Button>
+        )}
+        {espelhando && (
+          <Button variant="outline" onClick={() => { cancelRef.current = true; }}>
+            Cancelar
+          </Button>
+        )}
       </div>
+
+      {/* Progresso Espelhar */}
+      {(espelhando || espelharProgresso.total > 0) && (
+        <Card className="border-red-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Copy className="w-4 h-4" />
+              Espelhando Base44 → Omie
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>{espelharProgresso.atual}/{espelharProgresso.total}</span>
+              <span className="flex gap-3">
+                <span className="text-green-600">{espelharProgresso.ok} ok</span>
+                <span className="text-red-600">{espelharProgresso.erros} erros</span>
+              </span>
+            </div>
+            <Progress value={espelharProgresso.total > 0 ? (espelharProgresso.atual / espelharProgresso.total) * 100 : 0} />
+            {!espelhando && espelharProgresso.atual >= espelharProgresso.total && espelharProgresso.total > 0 && (
+              <p className="text-sm text-green-700 font-medium flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" /> Concluído!
+              </p>
+            )}
+            {espelharErros.length > 0 && (
+              <div className="max-h-40 overflow-y-auto bg-red-50 border border-red-200 rounded p-2 mt-2 space-y-1">
+                {espelharErros.map((e, i) => (
+                  <p key={i} className="text-xs text-red-700">{e}</p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full max-w-md grid-cols-2">

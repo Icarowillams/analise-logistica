@@ -182,9 +182,9 @@ Deno.serve(async (req) => {
                 diferentes: diferentes.length,
                 so_no_base44: soNoBase44.length,
                 so_no_omie: soNoOmie.length,
-                lista_diferentes: diferentes.slice(0, 200),
-                lista_so_base44: soNoBase44.slice(0, 200),
-                lista_so_omie: soNoOmie.slice(0, 200),
+                lista_diferentes: diferentes,
+                lista_so_base44: soNoBase44,
+                lista_so_omie: soNoOmie,
             });
         }
 
