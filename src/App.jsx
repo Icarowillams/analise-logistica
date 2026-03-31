@@ -15,6 +15,7 @@ import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import PreCadastros from './pages/PreCadastros';
 import SincronizarClientesOmie from './pages/SincronizarClientesOmie';
+import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -76,6 +77,7 @@ const AuthenticatedApp = () => {
       <Route path="/CadastroMetas" element={<LayoutWrapper currentPageName="CadastroMetas"><CadastroMetas /></LayoutWrapper>} />
       <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
       <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
+      <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
