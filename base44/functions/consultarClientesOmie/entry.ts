@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
             clientesBase44.forEach(c => { base44Map[c.id] = c; });
 
             // Comparar
+            let iguais = 0;
             const diferentes = [];
             const soNoBase44 = [];
             const soNoOmie = [];
@@ -156,6 +157,8 @@ Deno.serve(async (req) => {
                         nome_fantasia: cb.nome_fantasia,
                         diffs
                     });
+                } else {
+                    iguais++;
                 }
             }
 
@@ -179,6 +182,7 @@ Deno.serve(async (req) => {
                 sucesso: true,
                 total_omie: todosOmie.length,
                 total_base44: clientesBase44.length,
+                iguais,
                 diferentes: diferentes.length,
                 so_no_base44: soNoBase44.length,
                 so_no_omie: soNoOmie.length,

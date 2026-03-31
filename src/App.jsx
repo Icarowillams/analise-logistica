@@ -15,7 +15,7 @@ import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import PreCadastros from './pages/PreCadastros';
 import SincronizarClientesOmie from './pages/SincronizarClientesOmie';
-import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage';
+import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
