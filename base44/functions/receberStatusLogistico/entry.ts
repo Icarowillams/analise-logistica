@@ -56,7 +56,12 @@ Deno.serve(async (req) => {
                     continue;
                 }
 
-                const pedido = encontrados[0];
+                // Se houver múltiplos pedidos com mesmo numero, pegar o ativo (não cancelado), mais recente
+                const pedido = encontrados.length > 1
+                    ? encontrados.filter(p => p.status !== 'cancelado').sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || encontrados[0]
+                    : encontrados[0];
+                
+                console.log(`[receberStatus] Pedido ${numero_pedido}: encontrados ${encontrados.length}, usando id=${pedido.id} status=${pedido.status}`);
 
                 // Verificar transição permitida
                 const transicoesValidas = TRANSICOES_PERMITIDAS[pedido.status];
