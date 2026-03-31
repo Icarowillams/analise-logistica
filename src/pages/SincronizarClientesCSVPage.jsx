@@ -82,18 +82,25 @@ export default function SincronizarClientesCSVPage() {
     addLog(`Iniciando exclusão de ${total} clientes...`);
 
     while (offset < total && !cancelRef.current) {
-      const res = await base44.functions.invoke('sincronizarClientesCSV', {
-        csv_url: CSV_URL, etapa: 'excluir', offset, batch_size: 30
-      });
-      const d = res.data;
-      totalProcessados += d.processados;
-      totalErros += d.erros;
-      if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
-      setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados, total, erros: totalErros });
-      addLog(`Lote excluir ${offset}-${offset + 30}: ${d.processados} ok, ${d.erros} erros`);
+      try {
+        const res = await base44.functions.invoke('sincronizarClientesCSV', {
+          csv_url: CSV_URL, etapa: 'excluir', offset, batch_size: 50
+        });
+        const d = res.data;
+        totalProcessados += d.processados;
+        totalErros += d.erros;
+        if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
+        setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
+        addLog(`Lote excluir ${offset}-${offset + 50}: ${d.processados} ok, ${d.erros} erros`);
 
-      if (d.concluido) break;
-      offset = d.nextOffset;
+        if (d.concluido) break;
+        offset = d.nextOffset;
+      } catch (err) {
+        addLog(`Erro no lote ${offset}: ${err.message}. Aguardando 10s...`);
+        await new Promise(r => setTimeout(r, 10000));
+        continue;
+      }
+      await new Promise(r => setTimeout(r, DELAY_ENTRE_LOTES));
     }
     addLog(`Exclusão concluída: ${totalProcessados} ok, ${totalErros} erros`);
     setStatus('idle');
@@ -172,15 +179,19 @@ export default function SincronizarClientesCSVPage() {
 
       {/* Erros */}
       {errosDetalhes.length > 0 && (
-        <Card>
+        <Card className="border-red-200">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-1">
               <AlertTriangle className="w-4 h-4 text-red-500" /> Erros ({errosDetalhes.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-40 overflow-y-auto text-xs text-red-600 space-y-0.5">
-              {errosDetalhes.map((e, i) => <div key={i}>{e}</div>)}
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {errosDetalhes.map((e, i) => (
+                <div key={i} className="text-xs bg-red-50 border border-red-200 rounded px-3 py-2 text-red-700">
+                  {e}
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

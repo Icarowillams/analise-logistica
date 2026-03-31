@@ -302,11 +302,12 @@ Deno.serve(async (req) => {
                         idsParaExcluirBase44.push(item.id);
                     } else {
                         erros++;
-                        errosList.push(`${item.codigo}: Omie - ${res.msg}`);
+                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
+                        // Continua para o próximo, não para o processo
                     }
                 } catch (e) {
                     erros++;
-                    errosList.push(`${item.codigo}: ${e.message}`);
+                    errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${e.message}`);
                 }
                 await delay(400);
             }
