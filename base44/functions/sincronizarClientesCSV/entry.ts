@@ -226,9 +226,33 @@ Deno.serve(async (req) => {
 
         // === ANÁLISE ===
         if (etapa === 'analise' || !etapa) {
-            const atualizar = csvRows.filter(r => sistemaMap[String(r.codigo).trim()]);
             const criar = csvRows.filter(r => !sistemaMap[String(r.codigo).trim()]);
             const excluir = clientesSistema.filter(c => !csvCodigos.has(c.codigo));
+
+            // Comparar campo a campo para encontrar apenas os que realmente mudaram
+            const camposComparar = [
+                'razao_social', 'nome_fantasia', 'cpf_cnpj', 'inscricao_estadual',
+                'endereco', 'numero', 'bairro', 'cidade', 'estado', 'cep',
+                'status', 'plano_pagamento_id', 'tabela_id', 'segmento_id',
+                'rede_id', 'rota_id', 'vendedor_id', 'supervisor_id', 'modalidade_pagamento_id',
+            ];
+            const atualizar = [];
+            for (const row of csvRows) {
+                const cod = String(row.codigo).trim();
+                const existente = sistemaMap[cod];
+                if (!existente) continue;
+                const novo = buildClienteData(row, lookups);
+                let diferente = false;
+                for (const campo of camposComparar) {
+                    const valNovo = (novo[campo] || '').toString().trim();
+                    const valExistente = (existente[campo] || '').toString().trim();
+                    if (valNovo !== valExistente) {
+                        diferente = true;
+                        break;
+                    }
+                }
+                if (diferente) atualizar.push(row);
+            }
 
             return Response.json({
                 sucesso: true, etapa: 'analise',
@@ -240,12 +264,31 @@ Deno.serve(async (req) => {
 
         // === ATUALIZAR (em lotes com bulkUpdate — até 500 por chamada) ===
         if (etapa === 'atualizar') {
-            const paraAtualizar = csvRows
-                .filter(r => sistemaMap[String(r.codigo).trim()])
-                .map(r => {
-                    const data = buildClienteData(r, lookups);
-                    return { id: sistemaMap[String(r.codigo).trim()].id, ...data };
-                });
+            const camposComparar = [
+                'razao_social', 'nome_fantasia', 'cpf_cnpj', 'inscricao_estadual',
+                'endereco', 'numero', 'bairro', 'cidade', 'estado', 'cep',
+                'status', 'plano_pagamento_id', 'tabela_id', 'segmento_id',
+                'rede_id', 'rota_id', 'vendedor_id', 'supervisor_id', 'modalidade_pagamento_id',
+            ];
+            const paraAtualizar = [];
+            for (const r of csvRows) {
+                const cod = String(r.codigo).trim();
+                const existente = sistemaMap[cod];
+                if (!existente) continue;
+                const novo = buildClienteData(r, lookups);
+                let diferente = false;
+                for (const campo of camposComparar) {
+                    const valNovo = (novo[campo] || '').toString().trim();
+                    const valExistente = (existente[campo] || '').toString().trim();
+                    if (valNovo !== valExistente) {
+                        diferente = true;
+                        break;
+                    }
+                }
+                if (diferente) {
+                    paraAtualizar.push({ id: existente.id, ...novo });
+                }
+            }
 
             // bulkUpdate aceita até 500 por chamada, usamos batch_size do request
             const bulkSize = Math.min(batch_size, 500);
