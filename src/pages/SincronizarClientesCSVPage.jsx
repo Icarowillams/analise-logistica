@@ -120,14 +120,14 @@ export default function SincronizarClientesCSVPage() {
     while (offset < total && !cancelRef.current) {
       try {
         const res = await base44.functions.invoke('sincronizarClientesCSV', {
-          csv_url: CSV_URL, etapa: 'excluir', offset, batch_size: 200
+          csv_url: CSV_URL, etapa: 'excluir', offset, batch_size: 30
         });
         const d = res.data;
         totalProcessados += d.processados;
         totalErros += d.erros;
         if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
         setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
-        addLog(`Lote excluir ${offset}-${offset + 200}: ${d.processados} ok, ${d.erros} erros`);
+        addLog(`Lote excluir ${offset}-${offset + 30}: ${d.processados} ok, ${d.erros} erros`);
 
         if (d.concluido) break;
         offset = d.nextOffset;

@@ -87,6 +87,19 @@ async function excluirClienteOmie(clienteId) {
     }
 }
 
+// Wrapper que classifica erros do Omie (rate limit vs erro real)
+async function tentarExcluirOmie(item) {
+    const res = await excluirClienteOmie(item.id);
+    if (res.sucesso) return { sucesso: true };
+    const msg = (res.msg || '').toLowerCase();
+    const isRateLimit = msg.includes('too many requests') || 
+                        msg.includes('já existe uma requisição') ||
+                        msg.includes('try again later') ||
+                        msg.includes('tente novamente');
+    if (isRateLimit) return { sucesso: false, rateLimited: true, msg: res.msg };
+    return { sucesso: false, rateLimited: false, msg: res.msg };
+}
+
 function buildLookups(planos, tabelas, segmentos, redes, rotas, vendedores, modalidades) {
     const planoMap = {};
     planos.forEach(p => { planoMap[normalizeStr(p.nome)] = p.id; });
@@ -328,45 +341,63 @@ Deno.serve(async (req) => {
             });
         }
 
-        // === EXCLUIR (em lotes — Omie em paralelo, Base44 em paralelo) ===
+        // === EXCLUIR (sequencial no Omie com retry, paralelo no Base44) ===
         if (etapa === 'excluir') {
             const paraExcluir = clientesSistema.filter(c => !csvCodigos.has(c.codigo));
-            const bulkSize = Math.min(batch_size, 200);
+            const bulkSize = Math.min(batch_size, 100);
             const lote = paraExcluir.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];
-
-            // Excluir do Omie em paralelo (5 simultâneos para respeitar rate limit)
-            const CONCURRENCY = 5;
             const idsParaExcluirBase44 = [];
+            const falharam = []; // guardar para retry
 
-            for (let i = 0; i < lote.length; i += CONCURRENCY) {
-                const chunk = lote.slice(i, i + CONCURRENCY);
-                const results = await Promise.allSettled(
-                    chunk.map(item => excluirClienteOmie(item.id).then(res => ({ item, res })))
-                );
-                for (const r of results) {
-                    if (r.status === 'fulfilled') {
-                        if (r.value.res.sucesso) {
-                            idsParaExcluirBase44.push(r.value.item.id);
-                        } else {
-                            erros++;
-                            errosList.push(`${r.value.item.codigo} - ${r.value.item.razao_social || r.value.item.nome_fantasia || 'S/N'}: ${r.value.res.msg}`);
-                        }
-                    } else {
-                        const item = chunk[results.indexOf(r)];
-                        erros++;
-                        errosList.push(`${item?.codigo || '?'} - ${item?.razao_social || 'S/N'}: ${r.reason?.message || 'Erro desconhecido'}`);
+            // Fase 1: Excluir do Omie — 1 por vez com delay de 600ms
+            for (const item of lote) {
+                const res = await tentarExcluirOmie(item);
+                if (res.sucesso) {
+                    idsParaExcluirBase44.push(item.id);
+                } else if (res.rateLimited) {
+                    falharam.push(item); // vai pra retry
+                } else {
+                    // Erro real (dependências, etc) — não faz retry
+                    erros++;
+                    errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
+                    // Se for erro de dependências, exclui só do Base44 mesmo
+                    if (res.msg?.includes('dependem') || res.msg?.includes('informações que dependem')) {
+                        // Não excluir do Base44 se tem dependências no Omie
+                    } else if (res.msg?.includes('não encontrado') || res.msg?.includes('não cadastrado')) {
+                        idsParaExcluirBase44.push(item.id); // já não existe no Omie, pode deletar do Base44
                     }
                 }
-                // Pequeno delay entre chunks para não estourar Omie
-                if (i + CONCURRENCY < lote.length) await delay(300);
+                await delay(600);
             }
 
-            // Excluir do Base44 em paralelo (10 simultâneos)
-            const BASE44_CONCURRENCY = 10;
-            for (let i = 0; i < idsParaExcluirBase44.length; i += BASE44_CONCURRENCY) {
-                const chunk = idsParaExcluirBase44.slice(i, i + BASE44_CONCURRENCY);
+            // Fase 2: Retry dos que falharam por rate limit (espera 8s e tenta de novo)
+            if (falharam.length > 0) {
+                console.log(`[sincronizarCSV] Retry de ${falharam.length} exclusões que deram rate limit...`);
+                await delay(8000);
+                for (const item of falharam) {
+                    const res = await tentarExcluirOmie(item);
+                    if (res.sucesso) {
+                        idsParaExcluirBase44.push(item.id);
+                    } else if (res.rateLimited) {
+                        // Segundo rate limit — ainda falhou, reportar erro
+                        erros++;
+                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: Rate limit persistente (tente novamente)`);
+                    } else {
+                        erros++;
+                        errosList.push(`${item.codigo} - ${item.razao_social || item.nome_fantasia || 'S/N'}: ${res.msg}`);
+                        if (res.msg?.includes('não encontrado') || res.msg?.includes('não cadastrado')) {
+                            idsParaExcluirBase44.push(item.id);
+                        }
+                    }
+                    await delay(800);
+                }
+            }
+
+            // Fase 3: Excluir do Base44 em paralelo (10 simultâneos)
+            for (let i = 0; i < idsParaExcluirBase44.length; i += 10) {
+                const chunk = idsParaExcluirBase44.slice(i, i + 10);
                 const results = await Promise.allSettled(
                     chunk.map(id => base44.asServiceRole.entities.Cliente.delete(id))
                 );
@@ -374,7 +405,6 @@ Deno.serve(async (req) => {
                     if (results[j].status === 'fulfilled') {
                         ok++;
                     } else {
-                        // Retry uma vez com delay
                         await delay(2000);
                         try {
                             await base44.asServiceRole.entities.Cliente.delete(chunk[j]);
