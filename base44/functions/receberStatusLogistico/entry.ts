@@ -41,36 +41,24 @@ Deno.serve(async (req) => {
         const detalhes = [];
 
         for (const item of atualizacoes) {
-            const { pedido_id, numero_pedido, novo_status, numero_carga, observacao } = item;
+            const { numero_pedido, novo_status, numero_carga, observacao } = item;
 
-            if ((!pedido_id && !numero_pedido) || !novo_status) {
+            if (!numero_pedido || !novo_status) {
                 erros++;
-                detalhes.push({ pedido_id, numero_pedido, sucesso: false, erro: 'pedido_id ou numero_pedido + novo_status são obrigatórios' });
+                detalhes.push({ numero_pedido, sucesso: false, erro: 'numero_pedido e novo_status são obrigatórios' });
                 continue;
             }
 
             try {
-                let pedido;
-                let resolvedPedidoId = pedido_id;
-
-                if (pedido_id) {
-                    pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
-                } else {
-                    // Buscar pelo numero_pedido
-                    const encontrados = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: String(numero_pedido) });
-                    if (encontrados.length === 0) {
-                        erros++;
-                        detalhes.push({ numero_pedido, sucesso: false, erro: `Pedido com numero_pedido "${numero_pedido}" não encontrado` });
-                        continue;
-                    }
-                    pedido = encontrados[0];
-                    resolvedPedidoId = pedido.id;
-                }
-                if (!pedido) {
+                // Buscar pelo numero_pedido (vendas, trocas e bonificações estão na mesma entidade)
+                const encontrados = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: String(numero_pedido) });
+                if (encontrados.length === 0) {
                     erros++;
-                    detalhes.push({ pedido_id: resolvedPedidoId, numero_pedido: pedido?.numero_pedido, sucesso: false, erro: 'Pedido não encontrado' });
+                    detalhes.push({ numero_pedido, sucesso: false, erro: `Pedido com numero_pedido "${numero_pedido}" não encontrado` });
                     continue;
                 }
+                const pedido = encontrados[0];
+                const resolvedPedidoId = pedido.id;
 
                 // Verificar se a transição é permitida
                 const transicoesValidas = TRANSICOES_PERMITIDAS[pedido.status];
