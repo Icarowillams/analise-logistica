@@ -7,8 +7,8 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, Play, CheckCircle, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 
 const CSV_URL = "https://media.base44.com/files/public/6926e3c1dcadc4e314506362/8de60fb07_Book13OFICIAL1.csv";
-const BATCH_SIZE = 30;
-const DELAY_ENTRE_LOTES = 5000;
+const BATCH_SIZE = 500;
+const DELAY_ENTRE_LOTES = 3000;
 
 export default function SincronizarClientesCSVPage() {
   const [status, setStatus] = useState('idle'); // idle, analisando, atualizando, excluindo, concluido

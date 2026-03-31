@@ -238,36 +238,42 @@ Deno.serve(async (req) => {
             });
         }
 
-        // === ATUALIZAR (em lotes) ===
+        // === ATUALIZAR (em lotes com bulkUpdate — até 500 por chamada) ===
         if (etapa === 'atualizar') {
             const paraAtualizar = csvRows
                 .filter(r => sistemaMap[String(r.codigo).trim()])
-                .map(r => ({ id: sistemaMap[String(r.codigo).trim()].id, data: buildClienteData(r, lookups) }));
+                .map(r => {
+                    const data = buildClienteData(r, lookups);
+                    return { id: sistemaMap[String(r.codigo).trim()].id, ...data };
+                });
 
-            const lote = paraAtualizar.slice(offset, offset + batch_size);
+            // bulkUpdate aceita até 500 por chamada, usamos batch_size do request
+            const bulkSize = Math.min(batch_size, 500);
+            const lote = paraAtualizar.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];
 
-            for (const item of lote) {
+            if (lote.length > 0) {
                 let success = false;
-                for (let attempt = 0; attempt < 3 && !success; attempt++) {
+                for (let attempt = 0; attempt < 4 && !success; attempt++) {
                     try {
-                        await base44.asServiceRole.entities.Cliente.update(item.id, item.data);
-                        ok++;
+                        await base44.asServiceRole.entities.Cliente.bulkUpdate(lote);
+                        ok = lote.length;
                         success = true;
                     } catch (e) {
-                        if (e.message?.includes('Rate limit') && attempt < 2) {
-                            await delay(3000 * (attempt + 1));
+                        if (e.message?.includes('Rate limit') && attempt < 3) {
+                            console.log(`[sincronizarCSV] Rate limit no bulkUpdate, tentativa ${attempt + 1}, aguardando ${5000 * (attempt + 1)}ms`);
+                            await delay(5000 * (attempt + 1));
                         } else {
-                            erros++;
-                            errosList.push(`${item.data.codigo}: ${e.message}`);
+                            console.error(`[sincronizarCSV] Erro bulkUpdate: ${e.message}`);
+                            erros = lote.length;
+                            errosList.push(`Lote ${offset}-${offset + lote.length}: ${e.message}`);
                         }
                     }
                 }
-                await delay(600);
             }
 
-            const nextOffset = offset + batch_size;
+            const nextOffset = offset + bulkSize;
             const temMais = nextOffset < paraAtualizar.length;
 
             return Response.json({
@@ -279,35 +285,55 @@ Deno.serve(async (req) => {
             });
         }
 
-        // === EXCLUIR (em lotes) ===
+        // === EXCLUIR (em lotes — exclui do Omie individualmente mas do Base44 em bulk) ===
         if (etapa === 'excluir') {
             const paraExcluir = clientesSistema.filter(c => !csvCodigos.has(c.codigo));
-            const lote = paraExcluir.slice(offset, offset + batch_size);
+            const bulkSize = Math.min(batch_size, 50);
+            const lote = paraExcluir.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];
 
+            // Excluir do Omie individualmente (tem rate limit próprio)
+            const idsParaExcluirBase44 = [];
             for (const item of lote) {
-                let success = false;
-                for (let attempt = 0; attempt < 3 && !success; attempt++) {
-                    try {
-                        await excluirClienteOmie(item.id);
-                        await delay(500);
-                        await base44.asServiceRole.entities.Cliente.delete(item.id);
-                        ok++;
-                        success = true;
-                    } catch (e) {
-                        if (e.message?.includes('Rate limit') && attempt < 2) {
-                            await delay(3000 * (attempt + 1));
-                        } else {
-                            erros++;
-                            errosList.push(`${item.codigo}: ${e.message}`);
-                        }
+                try {
+                    const res = await excluirClienteOmie(item.id);
+                    if (res.sucesso) {
+                        idsParaExcluirBase44.push(item.id);
+                    } else {
+                        erros++;
+                        errosList.push(`${item.codigo}: Omie - ${res.msg}`);
                     }
+                } catch (e) {
+                    erros++;
+                    errosList.push(`${item.codigo}: ${e.message}`);
                 }
-                await delay(300);
+                await delay(400);
             }
 
-            const nextOffset = offset + batch_size;
+            // Excluir do Base44 em lote
+            for (const id of idsParaExcluirBase44) {
+                try {
+                    await base44.asServiceRole.entities.Cliente.delete(id);
+                    ok++;
+                } catch (e) {
+                    if (e.message?.includes('Rate limit')) {
+                        await delay(3000);
+                        try {
+                            await base44.asServiceRole.entities.Cliente.delete(id);
+                            ok++;
+                        } catch (e2) {
+                            erros++;
+                            errosList.push(`Delete Base44 ${id}: ${e2.message}`);
+                        }
+                    } else {
+                        erros++;
+                        errosList.push(`Delete Base44 ${id}: ${e.message}`);
+                    }
+                }
+            }
+
+            const nextOffset = offset + bulkSize;
             const temMais = nextOffset < paraExcluir.length;
 
             return Response.json({
