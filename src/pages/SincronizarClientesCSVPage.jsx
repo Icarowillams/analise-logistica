@@ -131,8 +131,8 @@ export default function SincronizarClientesCSVPage() {
     }
 
     const total = listaExcluir.length;
-    setProgresso({ etapa: 'Excluindo clientes', atual: 0, total, erros: 0 });
-    addLog(`Iniciando exclusão de ${total} clientes (lotes de 8)...`);
+    setProgresso({ etapa: 'Mudando tag p/ Fornecedor', atual: 0, total, erros: 0 });
+    addLog(`Iniciando mudança de tag de ${total} clientes (lotes de 8)...`);
 
     const LOTE_SIZE = 8;
     for (let i = 0; i < total && !cancelRef.current; i += LOTE_SIZE) {
@@ -146,13 +146,12 @@ export default function SincronizarClientesCSVPage() {
         totalProcessados += d.processados || 0;
         totalErros += d.erros || 0;
         if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
-        setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
-        const fornecMsg = d.transformados_fornecedor ? ` (${d.transformados_fornecedor} virou Fornecedor no Omie)` : '';
-        addLog(`Lote ${loteNum}/${totalLotes}: ${d.processados || 0} ok, ${d.erros || 0} erros${fornecMsg}`);
+        setProgresso({ etapa: 'Mudando tag p/ Fornecedor', atual: totalProcessados + totalErros, total, erros: totalErros });
+        addLog(`Lote ${loteNum}/${totalLotes}: ${d.processados || 0} ok, ${d.transformados_fornecedor || 0} tag alterada, ${d.erros || 0} erros`);
       } catch (err) {
         addLog(`Erro lote ${loteNum}: ${err.message}. Aguardando 5s...`);
         totalErros += lote.length;
-        setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
+        setProgresso({ etapa: 'Mudando tag p/ Fornecedor', atual: totalProcessados + totalErros, total, erros: totalErros });
         await new Promise(r => setTimeout(r, 5000));
         // Retry once
         try {
@@ -162,7 +161,7 @@ export default function SincronizarClientesCSVPage() {
           totalProcessados += d.processados || 0;
           totalErros += d.erros || 0;
           if (d.erros_detalhes?.length) setErrosDetalhes(prev => [...prev, ...d.erros_detalhes]);
-          setProgresso({ etapa: 'Excluindo clientes', atual: totalProcessados + totalErros, total, erros: totalErros });
+          setProgresso({ etapa: 'Mudando tag p/ Fornecedor', atual: totalProcessados + totalErros, total, erros: totalErros });
           addLog(`Lote ${loteNum} retry: ${d.processados || 0} ok, ${d.erros || 0} erros`);
         } catch (err2) {
           addLog(`Lote ${loteNum} falhou novamente: ${err2.message}`);
@@ -172,7 +171,7 @@ export default function SincronizarClientesCSVPage() {
       // Delay entre lotes para respeitar rate limit
       await new Promise(r => setTimeout(r, 1000));
     }
-    addLog(`Exclusão concluída: ${totalProcessados} ok, ${totalErros} erros`);
+    addLog(`Mudança de tag concluída: ${totalProcessados} ok, ${totalErros} erros`);
     setStatus('idle');
   };
 
@@ -205,9 +204,9 @@ export default function SincronizarClientesCSVPage() {
             Continuar ({lastOffsetRef.current})
           </Button>
         )}
-        <Button onClick={rodarExclusao} disabled={running || !analise} variant="destructive">
-          {status === 'excluindo' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-          Excluir ({analise?.excluir || 0})
+        <Button onClick={rodarExclusao} disabled={running || !analise} className="bg-orange-600 hover:bg-orange-700 text-white">
+          {status === 'excluindo' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+          Mudar Tag ({analise?.excluir || 0})
         </Button>
         {running && <Button variant="outline" onClick={cancelar}>Cancelar</Button>}
       </div>
@@ -221,7 +220,7 @@ export default function SincronizarClientesCSVPage() {
             <div><span className="text-slate-500">Sistema:</span> <Badge variant="outline">{analise.sistema_total}</Badge></div>
             <div><span className="text-slate-500">Atualizar:</span> <Badge className="bg-blue-500">{analise.atualizar}</Badge></div>
             <div><span className="text-slate-500">Criar:</span> <Badge className="bg-green-500">{analise.criar}</Badge></div>
-            <div><span className="text-slate-500">Excluir:</span> <Badge className="bg-red-500 text-white">{analise.excluir}</Badge></div>
+            <div><span className="text-slate-500">Mudar Tag:</span> <Badge className="bg-orange-500 text-white">{analise.excluir}</Badge></div>
           </CardContent>
         </Card>
       )}
