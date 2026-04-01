@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -35,8 +35,10 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
   const [todosResultados, setTodosResultados] = useState([]);
   const [modalErrosAberto, setModalErrosAberto] = useState(false);
   const [errosParaCorrigir, setErrosParaCorrigir] = useState([]);
+  const canceladoRef = useRef(false);
 
   const exportarEmLotes = async (cliente_ids) => {
+    canceladoRef.current = false;
     setExportando(true);
     setTotalProcessado(0);
     setTotalSucessos(0);
@@ -50,6 +52,15 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     let errosTotal = 0;
 
     while (true) {
+      if (canceladoRef.current) {
+        toast.info(`Exportação cancelada. ${todosRes.length} de ${cliente_ids.length} processados.`);
+        setResultados({
+          resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
+          resultados: todosRes
+        });
+        break;
+      }
+
       try {
         const response = await base44.functions.invoke('exportarClientesOmie', { 
           cliente_ids, 
@@ -84,11 +95,24 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
         loteAtual = data.proximo_lote;
       } catch (error) {
         toast.error('❌ Erro ao exportar: ' + error.message);
+        setResultados({
+          resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
+          resultados: todosRes
+        });
         break;
       }
     }
 
     setExportando(false);
+  };
+
+  const handleCancelar = () => {
+    if (exportando) {
+      canceladoRef.current = true;
+      toast.info('Cancelando... aguarde o lote atual terminar.');
+    } else {
+      handleClose();
+    }
   };
 
   const baseClientes = comparacaoOmie?.clientes_faltando || clientes;
@@ -379,8 +403,11 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 </div>
               )}
               <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={handleClose}>
-                  Cancelar
+                <Button
+                  variant={exportando ? "destructive" : "outline"}
+                  onClick={handleCancelar}
+                >
+                  {exportando ? '⛔ Parar Exportação' : 'Cancelar'}
                 </Button>
                 <Button
                   onClick={handleExportar}
