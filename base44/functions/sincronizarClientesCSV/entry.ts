@@ -466,8 +466,7 @@ Deno.serve(async (req) => {
         // Envia TODOS os clientes que existem no CSV (= estão no Base44 após sync)
         // =====================================================================
         if (etapa === 'enviar_omie') {
-            // Recarregar clientes do Base44 (pós-sync) com delay para evitar rate limit
-            await delay(1000);
+            // Recarregar clientes do Base44 (pós-sync)
             const clientesAtuais = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
             // Filtrar apenas os que estão no CSV
             const clientesParaEnviar = clientesAtuais.filter(c => c.codigo && csvCodigos.has(c.codigo));
@@ -536,6 +535,11 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'etapa inválida (analise/atualizar/criar/excluir/enviar_omie)' }, { status: 400 });
 
     } catch (error) {
+        const isRateLimit = error.message?.includes('Rate limit') || error.message?.includes('429');
+        if (isRateLimit) {
+            console.warn('[sincronizarClientesCSV] Rate limit global, retornando 429 para retry');
+            return Response.json({ error: 'Rate limit - tente novamente em alguns segundos' }, { status: 429 });
+        }
         console.error('[sincronizarClientesCSV] Erro:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
