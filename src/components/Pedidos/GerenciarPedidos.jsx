@@ -130,12 +130,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return m;
   }, [vendedores]);
 
-  const clientesMap = useMemo(() => {
-    const m = {};
-    clientes.forEach(c => { m[c.id] = c; });
-    return m;
-  }, [clientes]);
-
   const clientesByCodigoMap = useMemo(() => {
     const m = {};
     clientes.forEach(c => { if (c.codigo) m[c.codigo] = c; });
@@ -144,8 +138,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const pedidosComVendedorCliente = useMemo(() => {
     return pedidos.map((pedido) => {
-      // Buscar cliente por ID primeiro, depois por código como fallback
-      const cliente = clientesMap[pedido.cliente_id] || (pedido.cliente_codigo ? clientesByCodigoMap[pedido.cliente_codigo] : null);
+      const cliente = pedido.cliente_codigo ? clientesByCodigoMap[pedido.cliente_codigo] : null;
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
       const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
       return {
