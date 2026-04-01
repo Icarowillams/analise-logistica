@@ -4,6 +4,7 @@ const STORAGE_KEY = 'gerenciar-pedidos-column-order-v3';
 
 export const DEFAULT_COLUMNS = [
   { id: 'numero_pedido', label: 'Nº Pedido', field: 'numero_pedido' },
+  { id: 'cliente_codigo', label: 'Cód. Cliente', field: 'cliente_codigo' },
   { id: 'cliente_nome', label: 'Cliente', field: 'cliente_nome' },
   { id: 'cliente_nome_fantasia', label: 'Fantasia', field: 'cliente_nome_fantasia' },
   { id: 'cliente_cpf_cnpj', label: 'CPF/CNPJ', field: 'cliente_cpf_cnpj' },

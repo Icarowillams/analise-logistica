@@ -143,11 +143,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
       return {
         ...pedido,
+        cliente_codigo: cliente?.codigo || pedido.cliente_codigo,
         cliente_codigo_base: cliente?.codigo || pedido.cliente_codigo,
         cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
-        vendedor_id: vendedorCliente?.id || pedido.vendedor_id,
-        vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
+        vendedor_id: cliente?.vendedor_id || '',
+        vendedor_nome: vendedorCliente?.nome || '-',
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
       };
     });

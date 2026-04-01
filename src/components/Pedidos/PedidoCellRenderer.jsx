@@ -76,6 +76,10 @@ export default function PedidoCellRenderer({ col, p }) {
     return <span className={`${truncClass} text-right`}>{formatCurrency(precoMedio)}</span>;
   }
 
+  if (col.id === 'cliente_codigo') {
+    return <span className={truncClass} title={p.cliente_codigo || ''}>{p.cliente_codigo || '-'}</span>;
+  }
+
   if (col.id === 'cliente_nome') {
     return <span className={truncClass} title={p.cliente_nome_base || ''}>{p.cliente_nome_base || '-'}</span>;
   }
