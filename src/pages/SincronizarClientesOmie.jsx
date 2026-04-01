@@ -29,19 +29,21 @@ export default function SincronizarClientesOmie() {
       // PASSO 1: Buscar clientes Base44 paginados via backend
       setProgressoMsg('Buscando clientes ativos no Base44...');
       const clientesBase44 = [];
-      let paginaBase = 1;
+      let cursorBase44 = null;
       let concluido = false;
+      let loteBase44 = 1;
 
       while (!concluido) {
-        setProgressoMsg(`Buscando Base44: página ${paginaBase} (${clientesBase44.length} até agora)...`);
+        setProgressoMsg(`Buscando Base44: lote ${loteBase44} (${clientesBase44.length} até agora)...`);
         const res = await base44.functions.invoke('sincronizarClientesOmie', {
           modo: 'listar_base44',
-          pagina_base44: paginaBase
+          cursor: cursorBase44
         });
         const data = res.data;
         clientesBase44.push(...data.clientes);
         concluido = data.concluido;
-        paginaBase++;
+        cursorBase44 = data.proximo_cursor;
+        loteBase44++;
         await new Promise(r => setTimeout(r, 200));
       }
       const totalAtivos = clientesBase44.length;
