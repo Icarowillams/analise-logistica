@@ -63,17 +63,18 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
   const mostrarCenarioFiscal = !!permissaoCenariosFiscais;
 
-  const { data: cenariosData, isLoading: loadingCenarios } = useQuery({
+  const { data: cenariosData, isLoading: loadingCenarios, isError: erroCenarios } = useQuery({
     queryKey: ['cenariosFiscaisOmie'],
     queryFn: async () => {
       const resp = await base44.functions.invoke('listarCenariosOmie', {});
       if (resp.data?.sucesso && resp.data?.cenarios) {
         return resp.data.cenarios;
       }
-      return [];
+      throw new Error(resp.data?.erro || 'Erro ao carregar cenários');
     },
     enabled: mostrarCenarioFiscal,
-    staleTime: 5 * 60 * 1000, // cache 5 min
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
 
   const cenarios = cenariosData || [];
@@ -375,7 +376,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                     <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Carregando cenários...
                     </div>
-                  ) : cenarios.length === 0 ? (
+                  ) : erroCenarios ? (
                     <div className="text-sm text-red-500 py-2">
                       Erro ao carregar cenários fiscais. Verifique a conexão com o Omie.
                     </div>
