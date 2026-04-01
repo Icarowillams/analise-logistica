@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import PageHeader from '@/components/ui/PageHeader';
 import { validarDocumento, formatarDocumento, formatarCEP } from '@/components/clientes/validarCpfCnpj';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -891,51 +892,42 @@ export default function Clientes() {
           </div>
         </div>
         <div className="flex gap-2">
-          {podeOmie && (
-            <>
-              <Button
-                onClick={() => setCorrigirErrosOpen(true)}
-                variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50"
-              >
-                <Ban className="w-4 h-4 mr-2" />
-                Corrigir Erros Omie
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                Ações <ChevronDown className="w-4 h-4" />
               </Button>
-              <Button
-                onClick={() => setSincronizarOmieOpen(true)}
-                variant="outline"
-                className="border-green-200 text-green-700 hover:bg-green-50"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Sincronizar Omie
-              </Button>
-              <Button
-                onClick={() => setOmieModalOpen(true)}
-                variant="outline"
-                className="border-blue-200 text-blue-700 hover:bg-blue-50"
-              >
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => setBulkOpen(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Exportar Omie
-              </Button>
-            </>
-          )}
-          <Link to="/sincronizarclientescsv">
-            <Button
-              variant="outline"
-              className="border-purple-200 text-purple-700 hover:bg-purple-50"
-            >
-              <FileSpreadsheet className="w-4 h-4 mr-2" />
-              Sincronizar CSV
-            </Button>
-          </Link>
-          <Button
-            onClick={() => setBulkOpen(true)}
-            variant="outline"
-            className="border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Importar em Massa
-          </Button>
+                Importar em Massa
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/sincronizarclientescsv" className="flex items-center">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Sincronizar CSV
+                </Link>
+              </DropdownMenuItem>
+              {podeOmie && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setOmieModalOpen(true)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Exportar Omie
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSincronizarOmieOpen(true)}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Sincronizar Omie
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCorrigirErrosOpen(true)} className="text-red-600">
+                    <Ban className="w-4 h-4 mr-2" />
+                    Corrigir Erros Omie
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             onClick={handleNew}
             className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
