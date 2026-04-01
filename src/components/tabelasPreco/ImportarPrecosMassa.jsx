@@ -97,11 +97,11 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         produto_id: produto?.id || null,
         produto_nome: produto?.nome || null,
         valor_unitario: valor,
-        erro: null
+        erro: null,
+        criar_tabela: !tabela
       };
 
-      if (!tabela) row.erro = `Tabela "${tabelaNome}" não encontrada`;
-      else if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
+      if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
       else if (isNaN(valor) || valor < 0) row.erro = `Valor inválido: ${valorStr}`;
 
       data.push(row);
@@ -153,24 +153,36 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
     try {
       const existingPrices = await base44.entities.PrecoProduto.list();
+      const existingTables = [...tabelas];
       setProgress(10);
 
       const toCreate = [];
       const toUpdate = [];
 
       for (const row of validRows) {
+        let tabelaId = row.tabela_id;
+
+        if (!tabelaId) {
+          const novaTabela = await base44.entities.TabelaPreco.create({
+            nome: row.tabela_nome,
+            status: 'ativo'
+          });
+          existingTables.push(novaTabela);
+          tabelaId = novaTabela.id;
+          row.tabela_id = novaTabela.id;
+          row.criar_tabela = false;
+        }
+
         const existing = existingPrices.find(
-          p => p.produto_id === row.produto_id && p.tabela_id === row.tabela_id
+          p => p.produto_id === row.produto_id && p.tabela_id === tabelaId
         );
 
         if (existing) {
-          if (importMode === 'atualizar') {
-            toUpdate.push({ id: existing.id, data: { valor_unitario: row.valor_unitario }, row });
-          }
+          toUpdate.push({ id: existing.id, data: { valor_unitario: row.valor_unitario }, row });
         } else {
           toCreate.push({
             produto_id: row.produto_id,
-            tabela_id: row.tabela_id,
+            tabela_id: tabelaId,
             valor_unitario: row.valor_unitario,
             valor_acao: 0,
             ativacao_acao: false
@@ -255,6 +267,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
       onSuccess?.();
     } else {
       toast.warning(`⚠️ Importação com erros: ${allFailed.length} falhas`);
+      onSuccess?.();
     }
   };
 
