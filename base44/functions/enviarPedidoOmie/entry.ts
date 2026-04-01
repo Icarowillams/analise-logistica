@@ -66,9 +66,19 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Apenas admins podem enviar pedidos ao Omie
+        // Verificar permissão de enviar pedido (admin sempre pode, ou quem tem permissão)
         if (user.role !== 'admin') {
-            return Response.json({ error: 'Apenas administradores podem enviar pedidos ao Omie' }, { status: 403 });
+            const vendedores = await base44.asServiceRole.entities.Vendedor.filter({ email: user.email });
+            const vendedor = vendedores[0];
+            if (vendedor) {
+                const permissoes = await base44.asServiceRole.entities.Permissao.filter({ vendedor_id: vendedor.id });
+                const perm = permissoes[0];
+                if (!perm?.permissoes_pedidos?.enviar_pedido) {
+                    return Response.json({ error: 'Você não tem permissão para enviar pedidos' }, { status: 403 });
+                }
+            } else {
+                return Response.json({ error: 'Funcionário não encontrado para este usuário' }, { status: 403 });
+            }
         }
 
         const body = await req.json();
