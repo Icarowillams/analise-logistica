@@ -344,6 +344,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return localMap[p.status] || p.status;
   };
 
+  // Consultar bloqueio financeiro de um cliente pelo código
+  const consultarBloqueio = async (codigoCliente) => {
+    if (!codigoCliente) return null;
+    try {
+      const res = await base44.functions.invoke('consultarBloqueioFinanceiro', {
+        acao: 'consultar',
+        codigo: codigoCliente
+      });
+      return res.data;
+    } catch (e) {
+      console.error('Erro ao consultar bloqueio financeiro:', e);
+      return null; // Em caso de erro na consulta, não bloquear o fluxo
+    }
+  };
+
   // Batch actions
   const handleBatchLiberar = async () => {
     setBatchAction('liberando');
@@ -352,11 +367,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let liberados = 0;
     let jaLiberados = 0;
     let naoAlteraveis = 0;
+    let bloqueadosFinanceiro = 0;
     const naoAlteravelLabels = [];
+    const clientesBloqueados = [];
 
     for (const p of allSelected) {
       const analise = getAnaliseStatus(p);
       if (analise === 'Pendente') {
+        // Verificar bloqueio financeiro antes de liberar
+        const codigoCliente = p.cliente_codigo || clientesByCodigoMap[p.cliente_codigo]?.codigo;
+        if (codigoCliente) {
+          const bloqueio = await consultarBloqueio(codigoCliente);
+          if (bloqueio && bloqueio.bloqueado === true) {
+            bloqueadosFinanceiro++;
+            const nomeCliente = p.cliente_nome_base || p.cliente_nome || codigoCliente;
+            const motivo = bloqueio.cliente?.motivo || bloqueio.mensagem || 'Bloqueio financeiro';
+            const tipoBloqueio = bloqueio.cliente?.tipo_bloqueio || 'financeiro';
+            clientesBloqueados.push(`${nomeCliente} (${codigoCliente}) - ${tipoBloqueio}: ${motivo}`);
+            continue;
+          }
+        }
+
         // Pode liberar
         const updateData = {
           status: 'liberado',
@@ -376,7 +407,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
       } else if (analise === 'Liberados') {
         jaLiberados++;
       } else {
-        // Montagem, Faturado, Cancelado — não pode alterar
         naoAlteraveis++;
         if (!naoAlteravelLabels.includes(analise)) naoAlteravelLabels.push(analise);
       }
@@ -384,6 +414,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
     const items = [];
     if (liberados > 0) items.push({ color: 'green', text: `${liberados} pedido(s) liberado(s) com sucesso` });
+    if (bloqueadosFinanceiro > 0) items.push({ color: 'red', text: `${bloqueadosFinanceiro} pedido(s) BLOQUEADO(S) financeiramente:\n${clientesBloqueados.join('\n')}` });
     if (jaLiberados > 0) items.push({ color: 'yellow', text: `${jaLiberados} pedido(s) já liberado(s), sem alteração` });
     if (naoAlteraveis > 0) items.push({ color: 'red', text: `${naoAlteraveis} pedido(s) em ${naoAlteravelLabels.join('/')} não puderam ser alterados` });
 

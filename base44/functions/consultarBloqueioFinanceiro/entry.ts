@@ -11,13 +11,18 @@ Deno.serve(async (req) => {
     const { acao, codigo } = await req.json();
     
     const token = Deno.env.get('WEBHOOK_ANALISE_COMERCIAL_TOKEN');
-    if (!token) {
-      return Response.json({ error: 'Token do webhook não configurado' }, { status: 500 });
+    const webhookUrl = Deno.env.get('WEBHOOK_ANALISE_COMERCIAL_URL');
+    
+    if (!token || !webhookUrl) {
+      return Response.json({ error: 'Configuração do webhook financeiro incompleta. Configure WEBHOOK_ANALISE_COMERCIAL_URL com a URL completa do webhook e WEBHOOK_ANALISE_COMERCIAL_TOKEN.' }, { status: 500 });
     }
 
-    // Obter a URL do próprio webhook neste app
-    const appId = Deno.env.get('BASE44_APP_ID');
-    const webhookUrl = `https://app.base44.com/api/apps/${appId}/functions/webhookAnaliseComercial`;
+    // webhookUrl deve ser a URL completa (ex: https://app-name.base44.app/functions/webhookAnaliseComercial)
+    if (!webhookUrl.startsWith('http')) {
+      return Response.json({ 
+        error: 'WEBHOOK_ANALISE_COMERCIAL_URL deve ser a URL completa do webhook (começando com https://). Exemplo: https://meu-app.base44.app/functions/webhookAnaliseComercial' 
+      }, { status: 500 });
+    }
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -28,9 +33,17 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ acao: acao || 'consultar', codigo })
     });
 
+    if (!response.ok) {
+      const text = await response.text();
+      return Response.json({ 
+        erro: true, 
+        mensagem: `Erro ao consultar sistema financeiro (HTTP ${response.status})`
+      }, { status: response.status });
+    }
+
     const data = await response.json();
     return Response.json(data);
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ erro: true, mensagem: error.message }, { status: 500 });
   }
 });
