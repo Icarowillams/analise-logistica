@@ -18,6 +18,11 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
+function extrairCodigoOmieDoErro(mensagem) {
+    const match = (mensagem || '').match(/Id \[(\d+)\]/i);
+    return match ? Number(match[1]) : null;
+}
+
 async function chamarOmieComRetry(callName, param, maxRetries = 3) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
@@ -96,7 +101,18 @@ Deno.serve(async (req) => {
                     tags: c.codigo ? [{ tag: `COD:${c.codigo}` }] : [],
                 };
 
-                const resultado = await chamarOmieComRetry("UpsertCliente", clienteOmie, 3);
+                let resultado = await chamarOmieComRetry("UpsertCliente", clienteOmie, 3);
+
+                if (resultado.faultstring && resultado.faultstring.toLowerCase().includes('cliente já cadastrado para o cpf/cnpj')) {
+                    const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
+                    if (codigoOmieExistente) {
+                        resultado = await chamarOmieComRetry("UpsertCliente", {
+                            ...clienteOmie,
+                            codigo_cliente_omie: codigoOmieExistente
+                        }, 3);
+                    }
+                }
+
                 if (resultado.faultstring) {
                     erros++;
                     errosList.push(`${c.codigo || c.id} - ${c.razao_social}: ${resultado.faultstring}`);
