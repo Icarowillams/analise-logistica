@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function DataTable({
   data = [],
@@ -17,6 +17,7 @@ export default function DataTable({
   searchable = true,
   searchFields = [],
   pageSize = 10,
+  onView,
   onEdit,
   onDelete,
   emptyMessage = 'Nenhum registro encontrado'
@@ -100,8 +101,8 @@ export default function DataTable({
                   )}
                 </TableHead>
               ))}
-              {(onEdit || onDelete) && (
-                <TableHead className="w-24 text-right font-semibold text-neutral-700">Ações</TableHead>
+              {(onView || onEdit || onDelete) && (
+                <TableHead className="w-32 text-right font-semibold text-neutral-700">Ações</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -109,7 +110,7 @@ export default function DataTable({
             {paginatedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length + (onEdit || onDelete ? 1 : 0)}
+                  colSpan={columns.length + (onView || onEdit || onDelete ? 1 : 0)}
                   className="text-center py-12 text-slate-500"
                 >
                   {emptyMessage}
@@ -123,9 +124,19 @@ export default function DataTable({
                       {col.render ? col.render(item[col.key], item) : item[col.key]}
                     </TableCell>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {(onView || onEdit || onDelete) && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        {onView && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onView(item)}
+                            className="h-8 w-8 text-neutral-500 hover:text-blue-600 hover:bg-blue-50"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        )}
                         {onEdit && (
                           <Button
                             variant="ghost"

@@ -76,6 +76,10 @@
           "type": "boolean",
           "default": false
         },
+        "visualizar_informacoes": {
+          "type": "boolean",
+          "default": false
+        },
         "exportar": {
           "type": "boolean",
           "default": false
