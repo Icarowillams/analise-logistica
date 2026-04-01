@@ -397,14 +397,13 @@ Deno.serve(async (req) => {
             );
 
             const arr = Array.isArray(lote) ? lote : [];
-            const resumo = arr
-                .filter(c => (c.status || 'ativo') === 'ativo')
-                .map(c => ({
-                    id: c.id,
-                    razao_social: c.razao_social || '',
-                    nome_fantasia: c.nome_fantasia || '',
-                    cpf_cnpj: c.cpf_cnpj || ''
-                }));
+            const resumo = arr.map(c => ({
+                id: c.id,
+                razao_social: c.razao_social || '',
+                nome_fantasia: c.nome_fantasia || '',
+                cpf_cnpj: c.cpf_cnpj || '',
+                status: c.status || 'ativo'
+            }));
 
             const concluido = arr.length < PAGE_SIZE;
 

@@ -69,7 +69,7 @@ export default function EtapaResultado({ verificacao, onSincronizar, onReverific
               style={{ width: `${pctSincronizado}%` }}
             />
           </div>
-          <p className="text-xs text-neutral-400 mt-1.5">{jaExistem} de {total} clientes ativos sincronizados</p>
+          <p className="text-xs text-neutral-400 mt-1.5">{jaExistem} de {total} clientes sincronizados</p>
         </CardContent>
       </Card>
 

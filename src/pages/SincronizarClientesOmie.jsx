@@ -27,7 +27,7 @@ export default function SincronizarClientesOmie() {
 
     try {
       // PASSO 1: Buscar clientes Base44 paginados via backend
-      setProgressoMsg('Buscando clientes ativos no Base44...');
+      setProgressoMsg('Buscando clientes ativos e inativos no Base44...');
       const clientesBase44 = [];
       let paginaBase = 1;
       let concluido = false;
@@ -47,7 +47,7 @@ export default function SincronizarClientesOmie() {
       const totalAtivos = clientesBase44.length;
 
       // PASSO 2: Buscar clientes do Omie (paginado)
-      setProgressoMsg(`Base44: ${totalAtivos} ativos. Buscando clientes no Omie...`);
+      setProgressoMsg(`Base44: ${totalAtivos} clientes (ativos e inativos). Buscando clientes no Omie...`);
       const clientesOmie = [];
       let paginaAtual = 1;
       let totalPaginas = 1;
