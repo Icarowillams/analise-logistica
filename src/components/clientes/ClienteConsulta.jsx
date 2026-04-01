@@ -97,6 +97,9 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     return getName(vendedores, supId);
   };
 
+  // Set de IDs de tabelas existentes para detectar tabelas órfãs
+  const tabelaIdsExistentes = useMemo(() => new Set(tabelasPreco.map(t => t.id)), [tabelasPreco]);
+
   const filteredClientes = useMemo(() => {
     return clientes.filter((cliente) => {
       if (filters.vendedor_ids.length > 0) {
@@ -139,7 +142,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       if (filters.tabela_preco_ids.length > 0) {
         const hasEmpty = filters.tabela_preco_ids.includes('__empty__');
         const selectedIds = filters.tabela_preco_ids.filter((id) => id !== '__empty__');
-        if (!(hasEmpty && !cliente.tabela_id) && !selectedIds.includes(cliente.tabela_id)) return false;
+        const clienteSemTabela = !cliente.tabela_id || !tabelaIdsExistentes.has(cliente.tabela_id);
+        if (!(hasEmpty && clienteSemTabela) && !selectedIds.includes(cliente.tabela_id)) return false;
       }
 
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
@@ -192,7 +196,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Rede', value: selectedCliente ? getName(redes, selectedCliente.rede_id) : '-' },
     { label: 'Segmento', value: selectedCliente ? getName(segmentos, selectedCliente.segmento_id) : '-' },
     { label: 'Plano de pagamento', value: selectedCliente ? getName(planosPagamento, selectedCliente.plano_pagamento_id) : '-' },
-    { label: 'Tabela de preço', value: selectedCliente ? getName(tabelasPreco, selectedCliente.tabela_id) : '-' },
+    { label: 'Tabela de preço', value: selectedCliente ? (selectedCliente.tabela_id && !tabelaIdsExistentes.has(selectedCliente.tabela_id) ? '⚠️ Tabela excluída (vincular nova)' : getName(tabelasPreco, selectedCliente.tabela_id)) : '-' },
     { label: 'Status', value: selectedCliente?.status || '-' },
   ];
 
