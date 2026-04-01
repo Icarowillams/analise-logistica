@@ -58,7 +58,8 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'tipo') {
-    return <span className={`${truncClass} capitalize`}>{p[col.field] || '-'}</span>;
+    const tipoLabel = p.cenario_fiscal_nome || (p[col.field] === 'troca' ? 'Troca' : p[col.field] === 'venda' ? 'Venda' : p[col.field] || '-');
+    return <span className={`${truncClass} capitalize`}>{tipoLabel}</span>;
   }
 
   if (col.id === 'numero_pedido') {
