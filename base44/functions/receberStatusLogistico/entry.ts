@@ -52,26 +52,17 @@ Deno.serve(async (req) => {
         const detalhes = [];
 
         for (const item of atualizacoes) {
-            const { numero_pedido, numero_carga, observacao } = item;
-            // Normaliza o novo_status para lowercase e remove espaços
-            const statusRecebido = String(item.novo_status || '').toLowerCase().trim();
-            // Mapeia para o status interno (aceita variações como "nao_entregue", "não entregue", etc)
-            const novo_status = MAPEAMENTO_STATUS[statusRecebido] || statusRecebido;
+            const { numero_pedido, numero_carga, observacao, tipo, produto } = item;
 
-            console.log(`[receberStatus] Item recebido: numero_pedido=${numero_pedido}, status_recebido="${statusRecebido}", novo_status="${novo_status}"`);
-
-            if (!numero_pedido || !novo_status) {
+            if (!numero_pedido) {
                 erros++;
-                detalhes.push({ numero_pedido, sucesso: false, erro: 'numero_pedido e novo_status são obrigatórios' });
+                detalhes.push({ numero_pedido, sucesso: false, erro: 'numero_pedido é obrigatório' });
                 continue;
             }
 
             try {
-                // Buscar pelo numero_pedido - normaliza removendo zeros à esquerda para comparação
-                // Omie retorna "000000000000062", Logístico pode enviar "62" ou "000000000000062"
+                // Buscar pelo numero_pedido - normaliza removendo zeros à esquerda
                 const numeroPedidoLimpo = String(numero_pedido).replace(/^0+/, '') || '0';
-
-                // Buscar todos os pedidos e filtrar localmente (para cobrir ambos os formatos)
                 const todosPedidos = await base44.asServiceRole.entities.Pedido.list();
                 const encontrados = todosPedidos.filter(p => {
                     const numPedido = String(p.numero_pedido || '').replace(/^0+/, '') || '0';
@@ -84,14 +75,82 @@ Deno.serve(async (req) => {
                     continue;
                 }
 
-                // Se houver múltiplos pedidos com mesmo numero, pegar o ativo (não cancelado), mais recente
                 const pedido = encontrados.length > 1
                     ? encontrados.filter(p => p.status !== 'cancelado').sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0] || encontrados[0]
                     : encontrados[0];
-                
-                console.log(`[receberStatus] Pedido ${numero_pedido}: encontrados ${encontrados.length}, usando id=${pedido.id} status=${pedido.status}`);
 
-                // Verificar transição permitida
+                console.log(`[receberStatus] Pedido ${numero_pedido}: id=${pedido.id}, tipo_acao="${tipo || 'status'}"`);
+
+                // === EDITAR PRODUTO ===
+                if (tipo === 'editar_produto') {
+                    if (!produto || !produto.codigo_produto) {
+                        erros++;
+                        detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: 'produto.codigo_produto é obrigatório para editar_produto' });
+                        continue;
+                    }
+
+                    // Buscar itens do pedido
+                    const itensPedido = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: pedido.id });
+                    const itemEncontrado = itensPedido.find(it => String(it.produto_codigo || '').trim() === String(produto.codigo_produto).trim());
+
+                    if (!itemEncontrado) {
+                        erros++;
+                        detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: `Produto "${produto.codigo_produto}" não encontrado no pedido` });
+                        continue;
+                    }
+
+                    if (produto.removido === true) {
+                        // Remover item
+                        await base44.asServiceRole.entities.PedidoItem.delete(itemEncontrado.id);
+                        console.log(`[receberStatus] ${numero_pedido}: Produto ${produto.codigo_produto} REMOVIDO`);
+                    } else {
+                        // Atualizar quantidade e valor
+                        const updateItem = {};
+                        if (produto.quantidade_nova !== undefined) updateItem.quantidade = produto.quantidade_nova;
+                        if (produto.valor_unitario !== undefined) updateItem.valor_unitario = produto.valor_unitario;
+                        if (produto.valor_total !== undefined) {
+                            updateItem.valor_total = produto.valor_total;
+                        } else if (produto.quantidade_nova !== undefined) {
+                            updateItem.valor_total = produto.quantidade_nova * (produto.valor_unitario ?? itemEncontrado.valor_unitario ?? 0);
+                        }
+                        await base44.asServiceRole.entities.PedidoItem.update(itemEncontrado.id, updateItem);
+                        console.log(`[receberStatus] ${numero_pedido}: Produto ${produto.codigo_produto} atualizado qtd=${produto.quantidade_nova}`);
+                    }
+
+                    // Recalcular total do pedido
+                    const itensAtualizados = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: pedido.id });
+                    const novoTotal = itensAtualizados.reduce((s, it) => s + (it.valor_total || 0), 0);
+                    const totalItens = itensAtualizados.reduce((s, it) => s + (it.quantidade || 0), 0);
+                    await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+                        valor_total: novoTotal,
+                        total_itens: totalItens,
+                    });
+
+                    atualizados++;
+                    detalhes.push({
+                        numero_pedido: String(numero_pedido),
+                        sucesso: true,
+                        tipo: 'editar_produto',
+                        produto_codigo: produto.codigo_produto,
+                        removido: produto.removido || false,
+                        novo_total_pedido: novoTotal,
+                        observacao: observacao || '',
+                    });
+                    continue;
+                }
+
+                // === MUDANÇA DE STATUS (comportamento original) ===
+                const statusRecebido = String(item.novo_status || '').toLowerCase().trim();
+                const novo_status = MAPEAMENTO_STATUS[statusRecebido] || statusRecebido;
+
+                console.log(`[receberStatus] ${numero_pedido}: status_recebido="${statusRecebido}", novo_status="${novo_status}"`);
+
+                if (!novo_status) {
+                    erros++;
+                    detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: 'novo_status é obrigatório para mudança de status' });
+                    continue;
+                }
+
                 const transicoesValidas = TRANSICOES_PERMITIDAS[pedido.status];
                 if (!transicoesValidas || !transicoesValidas.includes(novo_status)) {
                     ignorados++;
@@ -101,12 +160,10 @@ Deno.serve(async (req) => {
 
                 const updateData = { status: novo_status };
 
-                // numero_carga (opcional)
                 if (numero_carga !== undefined) {
                     updateData.numero_carga = numero_carga ? String(numero_carga) : null;
                 }
 
-                // Cancelamento: salvar dados extras
                 if (novo_status === 'cancelado') {
                     updateData.motivo_cancelamento = observacao || 'Cancelado via Logístico Control';
                     updateData.data_cancelamento = new Date().toISOString();
@@ -114,7 +171,6 @@ Deno.serve(async (req) => {
                     updateData.cancelado_por_nome = 'Logístico Control';
                 }
 
-                // Carga desfeita: limpar numero_carga
                 if (novo_status === 'liberado') {
                     updateData.numero_carga = null;
                 }
