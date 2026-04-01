@@ -99,6 +99,38 @@ Deno.serve(async (req) => {
         const unidadesMap = {};
         unidades.forEach(u => { unidadesMap[u.id] = u; });
 
+        // Resolver codigo_cliente_integracao correto no Omie
+        const OMIE_CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+        let codigoClienteIntegracao = pedido.cliente_codigo || pedido.cliente_id;
+
+        const tentarConsultarCliente = async (codIntegracao) => {
+            const res = await fetch(OMIE_CLIENTES_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    call: "ConsultarCliente",
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [{ codigo_cliente_integracao: codIntegracao }]
+                })
+            });
+            return await res.json();
+        };
+
+        const consultaCodigo = await tentarConsultarCliente(codigoClienteIntegracao);
+        if (consultaCodigo.faultstring) {
+            const idBase44 = pedido.cliente_id;
+            if (idBase44 && idBase44 !== codigoClienteIntegracao) {
+                const consultaId = await tentarConsultarCliente(idBase44);
+                if (!consultaId.faultstring) {
+                    codigoClienteIntegracao = idBase44;
+                    console.log(`[editarPedidoOmie] Cliente encontrado no Omie com ID Base44: ${idBase44}`);
+                }
+            }
+        } else {
+            console.log(`[editarPedidoOmie] Cliente encontrado no Omie com codigo_integracao: ${codigoClienteIntegracao}`);
+        }
+
         const dataBase = new Date();
         const dataPrevisao = pedido.data_previsao_entrega
             ? formatDateOmie(pedido.data_previsao_entrega)
@@ -144,7 +176,7 @@ Deno.serve(async (req) => {
             cabecalho: {
                 codigo_pedido: pedido.omie_codigo_pedido,
                 codigo_pedido_integracao: pedido.id,
-                codigo_cliente_integracao: pedido.cliente_codigo || pedido.cliente_id,
+                codigo_cliente_integracao: codigoClienteIntegracao,
                 data_previsao: dataPrevisao,
                 etapa: etapa,
                 codigo_parcela: "999",

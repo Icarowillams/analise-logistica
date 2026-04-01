@@ -126,6 +126,76 @@ Deno.serve(async (req) => {
         const unidadesMap = {};
         unidades.forEach(u => { unidadesMap[u.id] = u; });
 
+        // Resolver codigo_cliente_integracao correto no Omie
+        // Alguns clientes foram cadastrados com o ID do Base44, outros com o campo 'codigo'
+        let codigoClienteIntegracao = pedido.cliente_codigo || pedido.cliente_id;
+        
+        // Buscar o cliente no Base44 para ter o ID e codigo
+        let clienteBase44 = null;
+        if (pedido.cliente_id) {
+            try {
+                clienteBase44 = await base44.asServiceRole.entities.Cliente.get(pedido.cliente_id);
+            } catch (e) {
+                console.log('[enviarPedidoOmie] Não conseguiu buscar cliente:', e.message);
+            }
+        }
+
+        // Tentar consultar o cliente no Omie pelo codigo_cliente_integracao atual
+        // Se não encontrar, tentar com o ID do Base44
+        const OMIE_CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+        let clienteEncontradoOmie = false;
+        
+        const tentarConsultarCliente = async (codIntegracao) => {
+            const res = await fetch(OMIE_CLIENTES_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    call: "ConsultarCliente",
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [{ codigo_cliente_integracao: codIntegracao }]
+                })
+            });
+            return await res.json();
+        };
+
+        // Tentar com o codigo do cliente primeiro
+        const consultaCodigo = await tentarConsultarCliente(codigoClienteIntegracao);
+        if (!consultaCodigo.faultstring) {
+            clienteEncontradoOmie = true;
+            console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo_integracao: ${codigoClienteIntegracao}`);
+        } else {
+            // Tentar com o ID do Base44
+            const idBase44 = pedido.cliente_id;
+            if (idBase44 && idBase44 !== codigoClienteIntegracao) {
+                const consultaId = await tentarConsultarCliente(idBase44);
+                if (!consultaId.faultstring) {
+                    codigoClienteIntegracao = idBase44;
+                    clienteEncontradoOmie = true;
+                    console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com ID Base44: ${idBase44}`);
+                }
+            }
+            // Tentar também com o campo codigo do cliente (se diferente)
+            if (!clienteEncontradoOmie && clienteBase44?.codigo && clienteBase44.codigo !== codigoClienteIntegracao) {
+                const consultaCod2 = await tentarConsultarCliente(clienteBase44.codigo);
+                if (!consultaCod2.faultstring) {
+                    codigoClienteIntegracao = clienteBase44.codigo;
+                    clienteEncontradoOmie = true;
+                    console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo: ${clienteBase44.codigo}`);
+                }
+            }
+        }
+
+        if (!clienteEncontradoOmie) {
+            console.error(`[enviarPedidoOmie] Cliente não encontrado no Omie com nenhum código de integração`);
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                omie_erro: `Cliente não cadastrado no Omie. Exporte o cliente primeiro.`
+            });
+            return Response.json({ sucesso: false, erro: 'Cliente não cadastrado no Omie. Exporte o cliente primeiro.' });
+        }
+
+        console.log(`[enviarPedidoOmie] Usando codigo_cliente_integracao: ${codigoClienteIntegracao}`);
+
         // Data base para cálculo das parcelas
         const dataBase = new Date();
 
@@ -180,7 +250,7 @@ Deno.serve(async (req) => {
         const pedidoOmie = {
             cabecalho: {
                 codigo_pedido_integracao: pedido.id,
-                codigo_cliente_integracao: pedido.cliente_codigo || pedido.cliente_id,
+                codigo_cliente_integracao: codigoClienteIntegracao,
                 data_previsao: dataPrevisao,
                 etapa: etapa,
                 codigo_parcela: "999", // 999 = conforme parcelas informadas
