@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Upload, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Loader2, AlertTriangle, Search, Download } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
   const [resultados, setResultados] = useState(null);
   const [apenasAtivos, setApenasAtivos] = useState(true);
   const [progressoExportacao, setProgressoExportacao] = useState(0);
+  const [verificando, setVerificando] = useState(false);
+  const [comparacaoOmie, setComparacaoOmie] = useState(null);
 
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes'],
@@ -86,7 +88,9 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     setExportando(false);
   };
 
-  const clientesFiltrados = clientes.filter(c => {
+  const baseClientes = comparacaoOmie?.clientes_faltando || clientes;
+
+  const clientesFiltrados = baseClientes.filter(c => {
     const termo = searchTerm.toLowerCase();
     const matchSearch = (
       c.razao_social?.toLowerCase().includes(termo) ||
@@ -121,11 +125,97 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     exportarEmLotes(selectedIds);
   };
 
+  const handleVerificarFaltantes = async () => {
+    setVerificando(true);
+    setComparacaoOmie(null);
+    setSelectedIds([]);
+
+    try {
+      let paginaBase44 = 1;
+      let clientesBase44 = [];
+
+      while (true) {
+        const resBase44 = await base44.functions.invoke('sincronizarClientesOmie', {
+          modo: 'listar_base44',
+          pagina_base44: paginaBase44
+        });
+
+        const lote = resBase44.data?.clientes || [];
+        clientesBase44 = [...clientesBase44, ...lote];
+
+        if (resBase44.data?.concluido) break;
+        paginaBase44 += 1;
+      }
+
+      let paginaOmie = 1;
+      let clientesOmie = [];
+
+      while (true) {
+        const resOmie = await base44.functions.invoke('sincronizarClientesOmie', {
+          modo: 'listar_omie',
+          pagina_omie: paginaOmie
+        });
+
+        const lote = resOmie.data?.clientes || [];
+        clientesOmie = [...clientesOmie, ...lote];
+
+        if (resOmie.data?.concluido) break;
+        paginaOmie += 1;
+      }
+
+      const resComparacao = await base44.functions.invoke('sincronizarClientesOmie', {
+        modo: 'comparar',
+        clientes_base44: clientesBase44,
+        clientes_omie: clientesOmie
+      });
+
+      setComparacaoOmie(resComparacao.data);
+      toast.success(`Verificação concluída: ${resComparacao.data.faltando_no_omie} cliente(s) faltando no Omie.`);
+    } catch (error) {
+      toast.error('Erro ao verificar faltantes: ' + error.message);
+    }
+
+    setVerificando(false);
+  };
+
+  const baixarCsvErros = () => {
+    if (!resultados?.resultados?.length) return;
+
+    const erros = resultados.resultados.filter(item => !item.sucesso);
+    if (erros.length === 0) {
+      toast.success('Não há erros para exportar em CSV.');
+      return;
+    }
+
+    const headers = ['codigo', 'razao_social', 'cpf_cnpj', 'motivo'];
+    const rows = erros.map(item => {
+      const cliente = baseClientes.find(c => c.id === item.cliente_id) || {};
+      return [
+        cliente.codigo || '',
+        item.razao_social || '',
+        cliente.cpf_cnpj || '',
+        item.mensagem || ''
+      ];
+    });
+
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `clientes-com-erro-omie-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   const handleClose = () => {
     setSelectedIds([]);
     setSearchTerm('');
     setResultados(null);
     setApenasAtivos(true);
+    setComparacaoOmie(null);
     onOpenChange(false);
   };
 
@@ -144,13 +234,42 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
             Exportar Clientes para Omie
           </DialogTitle>
           <DialogDescription>
-            Selecione os clientes que deseja enviar para o sistema Omie
+            Verifique quais clientes ainda não existem no Omie e envie apenas os faltantes.
           </DialogDescription>
         </DialogHeader>
 
         {!resultados ? (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             <div className="space-y-4 shrink-0">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleVerificarFaltantes}
+                  disabled={verificando}
+                  className="w-full sm:w-auto"
+                >
+                  {verificando ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verificando Base44 x Omie...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Verificar faltantes no Omie
+                    </>
+                  )}
+                </Button>
+
+                {comparacaoOmie && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Badge variant="outline">Base44: {comparacaoOmie.total_base44}</Badge>
+                    <Badge variant="outline">Omie: {comparacaoOmie.total_omie}</Badge>
+                    <Badge className="bg-red-100 text-red-700">Faltando: {comparacaoOmie.faltando_no_omie}</Badge>
+                  </div>
+                )}
+              </div>
+
               <Input
                 placeholder="Buscar por nome, código ou CPF/CNPJ..."
                 value={searchTerm}
@@ -258,7 +377,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                   ) : (
                     <>
                       <Upload className="w-4 h-4 mr-2" />
-                      Exportar {selectedIds.length} cliente(s)
+                      Enviar {selectedIds.length} cliente(s)
                     </>
                   )}
                 </Button>
@@ -319,23 +438,29 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 Fechar
               </Button>
               {resultados.resumo.erros > 0 && (
-                <Button
-                  onClick={() => {
-                    const erros = resultados.resultados.filter(r => !r.sucesso);
-                    setErrosParaCorrigir(erros);
-                    setModalErrosAberto(true);
-                  }}
-                  className="bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
-                >
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                  Corrigir {resultados.resumo.erros} Erros
-                </Button>
+                <>
+                  <Button variant="outline" onClick={baixarCsvErros}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Baixar CSV dos erros
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const erros = resultados.resultados.filter(r => !r.sucesso);
+                      setErrosParaCorrigir(erros);
+                      setModalErrosAberto(true);
+                    }}
+                    className="bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
+                  >
+                    <AlertTriangle className="w-4 h-4 mr-2" />
+                    Corrigir {resultados.resumo.erros} Erros
+                  </Button>
+                </>
               )}
               <Button
                 onClick={() => setResultados(null)}
                 className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-neutral-900"
               >
-                Exportar Mais
+                Nova verificação
               </Button>
             </div>
           </div>
