@@ -131,7 +131,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <img 
@@ -148,7 +148,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
 
         {!resultados ? (
           <>
-            <div className="space-y-4 flex-1 overflow-hidden">
+            <div className="space-y-4">
               <Input
                 placeholder="Buscar por nome, código ou CPF/CNPJ..."
                 value={searchTerm}
@@ -225,7 +225,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               </ScrollArea>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t mt-4 shrink-0 bg-background">
+            <div className="flex justify-end gap-3 pt-4 border-t">
               <Button variant="outline" onClick={handleClose}>
                 Cancelar
               </Button>
