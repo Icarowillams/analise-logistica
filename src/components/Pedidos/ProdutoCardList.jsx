@@ -72,6 +72,22 @@ export default function ProdutoCardList({
     return (preco.ativacao_acao && preco.valor_acao) ? preco.valor_acao : preco.valor_unitario || 0;
   };
 
+  // Totais para venda
+  const totaisVenda = useMemo(() => {
+    if (isTroca) return { totalItens: 0, totalUnidades: 0, totalValor: 0 };
+    let totalItens = 0;
+    let totalUnidades = 0;
+    let totalValor = 0;
+    itensLocal.forEach(item => {
+      if (item.quantidade > 0) {
+        totalItens++;
+        totalUnidades += item.quantidade;
+        totalValor += (item.quantidade * (item.valor_unitario || 0));
+      }
+    });
+    return { totalItens, totalUnidades, totalValor };
+  }, [itensLocal, isTroca]);
+
   return (
     <div className="space-y-3">
       {bloquearSemTabela ? (
@@ -84,6 +100,18 @@ export default function ProdutoCardList({
         </div>
       ) : (
         <>
+          {/* Resumo de totais - sempre visível */}
+          {!isTroca && (
+            <div className="flex items-center justify-between p-3 rounded-lg border border-green-200 bg-green-50">
+              <span className="text-sm font-semibold text-green-800">
+                {totaisVenda.totalItens} item(ns) • {totaisVenda.totalUnidades} unid.
+              </span>
+              <span className="text-sm font-bold text-green-900">
+                R$ {totaisVenda.totalValor.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
@@ -96,7 +124,7 @@ export default function ProdutoCardList({
 
           <p className="text-xs text-slate-500">{filtered.length} produto(s) disponíveis</p>
 
-          <div className="space-y-2 max-h-[60vh] overflow-auto pr-1">
+          <div className="space-y-2 max-h-[55vh] overflow-auto pr-1">
         {filtered.map(produto => {
           const preco = getPreco(produto.id);
 
@@ -141,6 +169,11 @@ export default function ProdutoCardList({
                   {produto.peso > 0 && <span className="text-[10px] text-slate-400">{produto.peso}g</span>}
                   <span className="text-xs font-semibold text-blue-700">R$ {preco.toFixed(2).replace('.', ',')}</span>
                 </div>
+                {qty > 0 && (
+                  <p className="text-[11px] font-semibold text-green-700 mt-0.5">
+                    Total: R$ {(qty * preco).toFixed(2).replace('.', ',')}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
