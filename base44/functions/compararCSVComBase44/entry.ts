@@ -25,6 +25,23 @@ const HEADER_MAP = {
     'REDE': 'rede',
 };
 
+const UF_MAP = {
+    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPA': 'AP', 'AMAZONAS': 'AM',
+    'BAHIA': 'BA', 'CEARA': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPIRITO SANTO': 'ES',
+    'GOIAS': 'GO', 'MARANHAO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG', 'PARA': 'PA', 'PARAIBA': 'PB', 'PARANA': 'PR',
+    'PERNAMBUCO': 'PE', 'PIAUI': 'PI', 'RIO DE JANEIRO': 'RJ', 'RIO GRANDE DO NORTE': 'RN',
+    'RIO GRANDE DO SUL': 'RS', 'RONDONIA': 'RO', 'RORAIMA': 'RR', 'SANTA CATARINA': 'SC',
+    'SAO PAULO': 'SP', 'SERGIPE': 'SE', 'TOCANTINS': 'TO',
+};
+
+function estadoParaSigla(val) {
+    if (!val) return '';
+    const upper = val.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (upper.length === 2) return upper;
+    return UF_MAP[upper] || val.trim();
+}
+
 function parseCSV(text) {
     const lines = text.split('\n').filter(l => l.trim());
     const rawHeader = lines[0].split(';').map(h => h.trim());
@@ -96,7 +113,7 @@ Deno.serve(async (req) => {
                     ['numero', row.numero, existente.numero],
                     ['bairro', row.bairro, existente.bairro],
                     ['cidade', row.cidade, existente.cidade],
-                    ['estado', row.estado, existente.estado],
+                    ['estado', estadoParaSigla(row.estado), existente.estado],
                     ['cep', (row.cep || '').replace(/\D/g, ''), (existente.cep || '').replace(/\D/g, '')],
                     ['status', (row.status || '').toLowerCase() === 'ativo' ? 'ativo' : 'inativo', existente.status || 'ativo'],
                 ];

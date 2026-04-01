@@ -62,6 +62,24 @@ function parseLng(raw) {
     return num / 100000000;
 }
 
+const UF_MAP = {
+    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPA': 'AP', 'AMAZONAS': 'AM',
+    'BAHIA': 'BA', 'CEARA': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPIRITO SANTO': 'ES',
+    'GOIAS': 'GO', 'MARANHAO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG', 'PARA': 'PA', 'PARAIBA': 'PB', 'PARANA': 'PR',
+    'PERNAMBUCO': 'PE', 'PIAUI': 'PI', 'RIO DE JANEIRO': 'RJ', 'RIO GRANDE DO NORTE': 'RN',
+    'RIO GRANDE DO SUL': 'RS', 'RONDONIA': 'RO', 'RORAIMA': 'RR', 'SANTA CATARINA': 'SC',
+    'SAO PAULO': 'SP', 'SERGIPE': 'SE', 'TOCANTINS': 'TO',
+};
+
+function estadoParaSigla(val) {
+    if (!val) return '';
+    const upper = val.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Se já é sigla (2 chars), retorna direto
+    if (upper.length === 2) return upper;
+    return UF_MAP[upper] || val.trim();
+}
+
 function normalizeStr(s) {
     return (s || '').toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -238,7 +256,7 @@ function buildClienteData(row, lookups) {
         numero: row.numero || '',
         bairro: row.bairro || '',
         cidade: row.cidade || '',
-        estado: row.estado || '',
+        estado: estadoParaSigla(row.estado),
         cep: (row.cep || '').replace(/\D/g, ''),
         latitude: parseLat(row.latitude),
         longitude: parseLng(row.longitude),
