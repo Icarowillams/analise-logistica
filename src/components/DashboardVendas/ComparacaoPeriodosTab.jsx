@@ -1,10 +1,19 @@
-import React, { useMemo } from 'react';
-import { CalendarRange, Scale, TrendingDown, TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CalendarRange, Scale, TrendingDown, TrendingUp, Search } from 'lucide-react';
 import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import FiltrosDashboardVendas from '@/components/DashboardVendas/FiltrosDashboardVendas';
-import { calcularResumoVendas, calcularVariacao, filtrarVendasDashboard } from '@/components/DashboardVendas/dashboardVendasUtils';
+import ClienteVendaAccordion from '@/components/DashboardVendas/ClienteVendaAccordion';
+import {
+  agruparVendasPorCliente,
+  agruparVendasPorProduto,
+  agruparVendasPorVendedor,
+  calcularResumoVendas,
+  calcularVariacao,
+  filtrarVendasDashboard
+} from '@/components/DashboardVendas/dashboardVendasUtils';
 
 function LinhaComparacao({ label, valorX, valorY, formatador }) {
   const diff = valorY - valorX;
@@ -37,6 +46,68 @@ function LinhaComparacao({ label, valorX, valorY, formatador }) {
   );
 }
 
+function ListaVendedores({ titulo, dados, corBadge }) {
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader><CardTitle className="text-base">{titulo}</CardTitle></CardHeader>
+      <CardContent>
+        <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
+          {dados.map((v, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs items-center">
+              <div className="col-span-5 font-medium text-slate-800 truncate">{v.nome}</div>
+              <div className="col-span-2 text-center"><Badge className={corBadge}>{v.qtd}</Badge></div>
+              <div className="col-span-3 text-right font-semibold">{v.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div className="col-span-2 text-right">{v.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ListaProdutos({ titulo, dados, cardClass, badgeClass, codigoClass, nomeClass }) {
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader><CardTitle className="text-base">{titulo}</CardTitle></CardHeader>
+      <CardContent>
+        <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
+          {dados.map((p, idx) => (
+            <div key={idx} className={`grid grid-cols-12 gap-2 p-3 rounded-lg border text-xs items-center ${cardClass}`}>
+              <div className={`col-span-2 font-mono truncate ${codigoClass}`}>{p.codigo}</div>
+              <div className={`col-span-4 font-medium truncate ${nomeClass}`}>{p.nome}</div>
+              <div className="col-span-2 text-center"><Badge className={badgeClass}>{p.qtd}</Badge></div>
+              <div className="col-span-2 text-right font-semibold">{p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div className="col-span-2 text-right">{p.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ListaClientes({ titulo, busca, setBusca, clientes }) {
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base">{titulo}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-slate-400" />
+            <Input placeholder="Buscar cliente..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-56 h-9" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2 max-h-[520px] overflow-y-auto pr-2">
+          {clientes.map((cliente, idx) => <ClienteVendaAccordion key={idx} cliente={cliente} />)}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ComparacaoPeriodosTab({
   filtrosX,
   setFiltrosX,
@@ -52,11 +123,32 @@ export default function ComparacaoPeriodosTab({
   produtos,
   clientes
 }) {
+  const [buscaClienteX, setBuscaClienteX] = useState('');
+  const [buscaClienteY, setBuscaClienteY] = useState('');
+
   const vendasPeriodoX = useMemo(() => filtrarVendasDashboard(vendasPermitidas, filtrosX, vendedoresAll, clientes), [vendasPermitidas, filtrosX, vendedoresAll, clientes]);
   const vendasPeriodoY = useMemo(() => filtrarVendasDashboard(vendasPermitidas, filtrosY, vendedoresAll, clientes), [vendasPermitidas, filtrosY, vendedoresAll, clientes]);
 
   const resumoX = useMemo(() => calcularResumoVendas(vendasPeriodoX), [vendasPeriodoX]);
   const resumoY = useMemo(() => calcularResumoVendas(vendasPeriodoY), [vendasPeriodoY]);
+  const vendasPorVendedorX = useMemo(() => agruparVendasPorVendedor(vendasPeriodoX), [vendasPeriodoX]);
+  const vendasPorVendedorY = useMemo(() => agruparVendasPorVendedor(vendasPeriodoY), [vendasPeriodoY]);
+  const vendasPorProdutoX = useMemo(() => agruparVendasPorProduto(vendasPeriodoX, produtos), [vendasPeriodoX, produtos]);
+  const vendasPorProdutoY = useMemo(() => agruparVendasPorProduto(vendasPeriodoY, produtos), [vendasPeriodoY, produtos]);
+  const vendasPorClienteX = useMemo(() => agruparVendasPorCliente(vendasPeriodoX, clientes, produtos), [vendasPeriodoX, clientes, produtos]);
+  const vendasPorClienteY = useMemo(() => agruparVendasPorCliente(vendasPeriodoY, clientes, produtos), [vendasPeriodoY, clientes, produtos]);
+
+  const clientesFiltradosX = useMemo(() => {
+    if (!buscaClienteX.trim()) return vendasPorClienteX;
+    const termo = buscaClienteX.toLowerCase();
+    return vendasPorClienteX.filter(c => c.codigo.toLowerCase().includes(termo) || c.nome.toLowerCase().includes(termo));
+  }, [vendasPorClienteX, buscaClienteX]);
+
+  const clientesFiltradosY = useMemo(() => {
+    if (!buscaClienteY.trim()) return vendasPorClienteY;
+    const termo = buscaClienteY.toLowerCase();
+    return vendasPorClienteY.filter(c => c.codigo.toLowerCase().includes(termo) || c.nome.toLowerCase().includes(termo));
+  }, [vendasPorClienteY, buscaClienteY]);
 
   const moeda = (valor) => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const numero = (valor) => valor.toLocaleString('pt-BR');
@@ -102,6 +194,21 @@ export default function ComparacaoPeriodosTab({
           <LinhaComparacao label="Clientes Atendidos" valorX={resumoX.clientesUnicos} valorY={resumoY.clientesUnicos} formatador={numero} />
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <ListaVendedores titulo="Período X • Total por Vendedor" dados={vendasPorVendedorX} corBadge="bg-blue-100 text-blue-700" />
+        <ListaVendedores titulo="Período Y • Total por Vendedor" dados={vendasPorVendedorY} corBadge="bg-violet-100 text-violet-700" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <ListaProdutos titulo="Período X • Produtos no geral" dados={vendasPorProdutoX} cardClass="bg-blue-50 border-blue-200" badgeClass="bg-blue-200 text-blue-800" codigoClass="text-blue-800" nomeClass="text-blue-900" />
+        <ListaProdutos titulo="Período Y • Produtos no geral" dados={vendasPorProdutoY} cardClass="bg-violet-50 border-violet-200" badgeClass="bg-violet-200 text-violet-800" codigoClass="text-violet-800" nomeClass="text-violet-900" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <ListaClientes titulo="Período X • Clientes no geral" busca={buscaClienteX} setBusca={setBuscaClienteX} clientes={clientesFiltradosX} />
+        <ListaClientes titulo="Período Y • Clientes no geral" busca={buscaClienteY} setBusca={setBuscaClienteY} clientes={clientesFiltradosY} />
+      </div>
     </div>
   );
 }
