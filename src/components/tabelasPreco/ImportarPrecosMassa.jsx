@@ -24,7 +24,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   const [failedImports, setFailedImports] = useState([]);
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [editingError, setEditingError] = useState(null);
-  const [selectedTabelaId, setSelectedTabelaId] = useState('');
 
   const resetState = () => {
     setFile(null);
@@ -101,7 +100,8 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         erro: null
       };
 
-      if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
+      if (!tabela) row.erro = `Tabela "${tabelaNome}" não encontrada`;
+      else if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
       else if (isNaN(valor) || valor < 0) row.erro = `Valor inválido: ${valorStr}`;
 
       data.push(row);
@@ -137,10 +137,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
   const handleImport = async () => {
     const validRows = preview.filter(r => !r.erro);
-    if (!selectedTabelaId) {
-      toast.error('Selecione a tabela de destino');
-      return;
-    }
     if (validRows.length === 0) {
       toast.error('Nenhum registro válido para importar');
       return;
@@ -164,7 +160,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
       for (const row of validRows) {
         const existing = existingPrices.find(
-          p => p.produto_id === row.produto_id && p.tabela_id === selectedTabelaId
+          p => p.produto_id === row.produto_id && p.tabela_id === row.tabela_id
         );
 
         if (existing) {
@@ -172,7 +168,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         } else {
           toCreate.push({
             produto_id: row.produto_id,
-            tabela_id: selectedTabelaId,
+            tabela_id: row.tabela_id,
             valor_unitario: row.valor_unitario,
             valor_acao: 0,
             ativacao_acao: false
@@ -389,20 +385,13 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
         <div className="space-y-4">
           <div className="grid gap-3 p-3 bg-slate-50 rounded-lg md:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="font-medium">Tabela de destino</Label>
-              <Select value={selectedTabelaId} onValueChange={setSelectedTabelaId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma tabela" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tabelas.map((tabela) => (
-                    <SelectItem key={tabela.id} value={tabela.id}>{tabela.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="font-medium">Mapeamento automático do CSV</Label>
+              <div className="rounded-md border bg-white px-3 py-2 text-sm text-slate-600">
+                1ª coluna = tabela, 2ª coluna = produto, 3ª coluna = valor. A importação identifica a tabela automaticamente pelo nome do CSV.
+              </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label className="font-medium">Modo</Label>
               <div className="flex gap-2 flex-wrap">
                 <Button
