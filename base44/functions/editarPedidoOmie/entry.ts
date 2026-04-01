@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -64,7 +64,6 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
         }
 
-        // Buscar pedido atualizado
         const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
         if (!pedido) {
             return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
@@ -74,32 +73,76 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Pedido não está no Omie, não é possível alterar' }, { status: 400 });
         }
 
-        // Buscar itens do pedido
-        const allItems = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
-        if (allItems.length === 0) {
+        // Buscar itens ATUAIS do pedido no Base44
+        const newItems = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
+        if (newItems.length === 0) {
             return Response.json({ error: 'Pedido sem itens' }, { status: 400 });
         }
 
-        // Buscar plano de pagamento
+        // ====================================================================
+        // PASSO 1: Consultar pedido no Omie para obter os itens ATUAIS do Omie
+        // Isso é necessário para reusar os codigo_item_integracao existentes
+        // e evitar que o Omie DUPLIQUE itens ao receber IDs novos
+        // ====================================================================
+        console.log(`[editarPedidoOmie] Consultando pedido ${pedido.omie_codigo_pedido} no Omie...`);
+        
+        const consultaResponse = await fetch(OMIE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                call: "ConsultarPedido",
+                app_key: OMIE_APP_KEY,
+                app_secret: OMIE_APP_SECRET,
+                param: [{ codigo_pedido: Number(pedido.omie_codigo_pedido) }]
+            })
+        });
+        const consultaResult = await consultaResponse.json();
+        
+        if (consultaResult.faultstring) {
+            console.error('[editarPedidoOmie] Erro ao consultar pedido no Omie:', consultaResult.faultstring);
+            return Response.json({ sucesso: false, erro: `Erro ao consultar pedido no Omie: ${consultaResult.faultstring}` });
+        }
+
+        const pedidoOmieAtual = consultaResult.pedido_venda_produto || consultaResult;
+        const itensOmieAtuais = pedidoOmieAtual.det || [];
+        
+        // Criar um mapa de itens do Omie por codigo_produto_integracao (= produto_id no Base44)
+        // para podermos reusar o codigo_item_integracao existente
+        const omieItemsByProduto = {};
+        for (const itemOmie of itensOmieAtuais) {
+            const prodInteg = (itemOmie.produto || {}).codigo_produto_integracao;
+            if (prodInteg) {
+                if (!omieItemsByProduto[prodInteg]) {
+                    omieItemsByProduto[prodInteg] = [];
+                }
+                omieItemsByProduto[prodInteg].push((itemOmie.ide || {}).codigo_item_integracao);
+            }
+        }
+        
+        console.log(`[editarPedidoOmie] Pedido tem ${itensOmieAtuais.length} itens no Omie, ${newItems.length} itens novos no Base44`);
+
+        // ====================================================================
+        // PASSO 2: Buscar dados auxiliares
+        // ====================================================================
         let plano = null;
         if (pedido.plano_pagamento_id) {
             plano = await base44.asServiceRole.entities.PlanoPagamento.get(pedido.plano_pagamento_id);
         }
 
-        // Buscar produtos
-        const produtoIds = [...new Set(allItems.map(i => i.produto_id))];
+        const produtoIds = [...new Set(newItems.map(i => i.produto_id))];
         const produtosMap = {};
         for (const pid of produtoIds) {
             const prod = await base44.asServiceRole.entities.Produto.get(pid);
             if (prod) produtosMap[pid] = prod;
         }
 
-        // Buscar unidades de medida
         const unidades = await base44.asServiceRole.entities.UnidadeMedida.list();
         const unidadesMap = {};
         unidades.forEach(u => { unidadesMap[u.id] = u; });
 
-        // Resolver codigo_cliente_integracao correto no Omie
+        // ====================================================================
+        // PASSO 3: Resolver cliente no Omie
+        // ====================================================================
         const OMIE_CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
         let codigoClienteIntegracao = pedido.cliente_codigo || pedido.cliente_id;
 
@@ -128,9 +171,8 @@ Deno.serve(async (req) => {
         const consultaCodigo = await tentarConsultarCliente(codigoClienteIntegracao);
         if (!consultaCodigo.faultstring) {
             clienteEncontradoOmie = true;
-            console.log(`[editarPedidoOmie] Cliente encontrado no Omie com codigo_integracao: ${codigoClienteIntegracao}`);
         } else if (isErroBloqueio(consultaCodigo.faultstring)) {
-            return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
+            return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada.' });
         } else {
             const idBase44 = pedido.cliente_id;
             if (idBase44 && idBase44 !== codigoClienteIntegracao) {
@@ -138,18 +180,15 @@ Deno.serve(async (req) => {
                 if (!consultaId.faultstring) {
                     codigoClienteIntegracao = idBase44;
                     clienteEncontradoOmie = true;
-                    console.log(`[editarPedidoOmie] Cliente encontrado no Omie com ID Base44: ${idBase44}`);
                 } else if (isErroBloqueio(consultaId.faultstring)) {
-                    return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
+                    return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada.' });
                 }
             }
         }
 
-        // Fallback final: buscar pelo CPF/CNPJ no Omie
         if (!clienteEncontradoOmie && pedido.cliente_cpf_cnpj) {
             const cpfCnpj = (pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
             if (cpfCnpj) {
-                console.log(`[editarPedidoOmie] Tentando buscar cliente no Omie pelo CPF/CNPJ: ${cpfCnpj}`);
                 try {
                     const resCpf = await fetch(OMIE_CLIENTES_URL, {
                         method: "POST",
@@ -162,68 +201,47 @@ Deno.serve(async (req) => {
                         })
                     });
                     const dataCpf = await resCpf.json();
-                    if (!dataCpf.faultstring && dataCpf.clientes_cadastro && dataCpf.clientes_cadastro.length > 0) {
-                        const clienteOmie = dataCpf.clientes_cadastro[0];
-                        codigoClienteIntegracao = clienteOmie.codigo_cliente_integracao;
+                    if (!dataCpf.faultstring && dataCpf.clientes_cadastro?.length > 0) {
+                        codigoClienteIntegracao = dataCpf.clientes_cadastro[0].codigo_cliente_integracao;
                         clienteEncontradoOmie = true;
-                        console.log(`[editarPedidoOmie] Cliente encontrado no Omie pelo CPF/CNPJ! codigo_integracao: ${codigoClienteIntegracao}`);
-                        
-                        // Atualizar o codigo_cliente_integracao no Omie para o novo codigo
-                        const novoCodigoIntegracao = pedido.cliente_codigo || pedido.cliente_id;
-                        if (novoCodigoIntegracao && novoCodigoIntegracao !== codigoClienteIntegracao) {
-                            try {
-                                const resAlt = await fetch(OMIE_CLIENTES_URL, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                        call: "AlterarCliente",
-                                        app_key: OMIE_APP_KEY,
-                                        app_secret: OMIE_APP_SECRET,
-                                        param: [{
-                                            codigo_cliente_omie: clienteOmie.codigo_cliente_omie,
-                                            codigo_cliente_integracao: novoCodigoIntegracao,
-                                            razao_social: clienteOmie.razao_social,
-                                            cnpj_cpf: cpfCnpj
-                                        }]
-                                    })
-                                });
-                                const resAltData = await resAlt.json();
-                                if (!resAltData.faultstring) {
-                                    console.log(`[editarPedidoOmie] codigo_cliente_integracao atualizado no Omie de "${codigoClienteIntegracao}" para "${novoCodigoIntegracao}"`);
-                                    codigoClienteIntegracao = novoCodigoIntegracao;
-                                } else {
-                                    console.log(`[editarPedidoOmie] Não atualizou codigo_integracao: ${resAltData.faultstring}. Usando o antigo.`);
-                                }
-                            } catch (altErr) {
-                                console.log(`[editarPedidoOmie] Erro ao atualizar codigo_integracao: ${altErr.message}. Usando o antigo.`);
-                            }
-                        }
                     }
                 } catch (cpfErr) {
-                    console.log(`[editarPedidoOmie] Erro ao buscar por CPF/CNPJ: ${cpfErr.message}`);
+                    console.log(`[editarPedidoOmie] Erro busca CPF/CNPJ: ${cpfErr.message}`);
                 }
             }
         }
 
         if (!clienteEncontradoOmie) {
-            console.error(`[editarPedidoOmie] Cliente não encontrado no Omie`);
             return Response.json({ sucesso: false, erro: 'Cliente não encontrado no Omie.' });
         }
 
-        const dataBase = new Date();
-        const dataPrevisao = pedido.data_previsao_entrega
-            ? formatDateOmie(pedido.data_previsao_entrega)
-            : formatDateOmie(null);
+        // ====================================================================
+        // PASSO 4: Montar itens reusando os codigo_item_integracao do Omie
+        // Isso EVITA duplicação de itens
+        // ====================================================================
+        const det = [];
+        const usedOmieIds = new Set();
 
-        // Montar itens no formato Omie
-        const det = allItems.map((item) => {
+        for (const item of newItems) {
             const prod = produtosMap[item.produto_id] || {};
             const unidade = prod.unidade_medida_id ? unidadesMap[prod.unidade_medida_id] : null;
             const unidadeStr = unidade?.nome || 'UN';
 
-            return {
+            // Tentar reusar um codigo_item_integracao existente no Omie para este produto
+            let codigoItemIntegracao = item.id; // fallback: usar o ID do Base44 (item novo)
+            
+            const omieIdsForProduct = omieItemsByProduto[item.produto_id] || [];
+            for (const omieId of omieIdsForProduct) {
+                if (!usedOmieIds.has(omieId)) {
+                    codigoItemIntegracao = omieId;
+                    usedOmieIds.add(omieId);
+                    break;
+                }
+            }
+
+            det.push({
                 ide: {
-                    codigo_item_integracao: item.id
+                    codigo_item_integracao: codigoItemIntegracao
                 },
                 inf_adic: {
                     peso_bruto: (prod.peso || 0) * item.quantidade,
@@ -240,17 +258,26 @@ Deno.serve(async (req) => {
                     valor_desconto: 0,
                     unidade: unidadeStr
                 }
-            };
-        });
+            });
+        }
 
-        // Montar parcelas
+        const reusedCount = usedOmieIds.size;
+        const newCount = newItems.length - reusedCount;
+        console.log(`[editarPedidoOmie] Reusando ${reusedCount} IDs do Omie, ${newCount} itens novos`);
+
+        // ====================================================================
+        // PASSO 5: Montar e enviar payload
+        // ====================================================================
+        const dataBase = new Date();
+        const dataPrevisao = pedido.data_previsao_entrega
+            ? formatDateOmie(pedido.data_previsao_entrega)
+            : formatDateOmie(null);
+
         const parcelas = gerarParcelas(plano, pedido.valor_total || 0, dataBase);
 
-        // Determinar etapa atual
         let etapa = "10";
         if (pedido.status === 'liberado') etapa = "50";
 
-        // Montar payload para AlterarPedidoVenda
         const pedidoOmie = {
             cabecalho: {
                 codigo_pedido: pedido.omie_codigo_pedido,
@@ -259,7 +286,7 @@ Deno.serve(async (req) => {
                 data_previsao: dataPrevisao,
                 etapa: etapa,
                 codigo_parcela: "999",
-                quantidade_itens: allItems.length
+                quantidade_itens: newItems.length
             },
             det,
             frete: {
@@ -275,13 +302,8 @@ Deno.serve(async (req) => {
         };
 
         if (parcelas.length > 0) {
-            pedidoOmie.lista_parcelas = {
-                parcela: parcelas
-            };
+            pedidoOmie.lista_parcelas = { parcela: parcelas };
         }
-
-        // numero_pedido_compra não faz parte do cabecalho no Omie
-        // já está em informacoes_adicionais como numero_pedido_cliente
 
         // Buscar conta corrente
         let codigoContaCorrente = null;
@@ -297,7 +319,7 @@ Deno.serve(async (req) => {
                 })
             });
             const ccData = await ccResponse.json();
-            if (ccData.ListarContasCorrentes && ccData.ListarContasCorrentes.length > 0) {
+            if (ccData.ListarContasCorrentes?.length > 0) {
                 const contaPadrao = ccData.ListarContasCorrentes.find(c => c.cPadrao === "S") || ccData.ListarContasCorrentes[0];
                 codigoContaCorrente = contaPadrao.nCodCC;
             }
@@ -314,9 +336,7 @@ Deno.serve(async (req) => {
         }
 
         console.log('[editarPedidoOmie] Alterando pedido Omie:', pedido.omie_codigo_pedido, '- Cliente:', pedido.cliente_nome);
-        console.log('[editarPedidoOmie] Payload:', JSON.stringify(pedidoOmie).substring(0, 2000));
 
-        // Chamar AlterarPedidoVenda
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -341,19 +361,12 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, {
                 omie_erro: resultado.faultstring
             });
-            return Response.json({
-                sucesso: false,
-                erro: resultado.faultstring
-            });
+            return Response.json({ sucesso: false, erro: resultado.faultstring });
         }
 
-        // Sucesso - limpar erro
-        await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-            omie_erro: null
-        });
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: null });
 
         console.log('[editarPedidoOmie] Pedido alterado com sucesso no Omie!');
-
         return Response.json({
             sucesso: true,
             mensagem: resultado.descricao_status || 'Pedido alterado no Omie com sucesso'
