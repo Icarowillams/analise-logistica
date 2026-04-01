@@ -81,22 +81,16 @@ export default function EmissaoPedidos() {
     );
   }
 
-  if (!vendedorAtual && isAdmin) {
-    return (
-      <div>
-        <PageHeader title="Emissão de Pedidos" subtitle="Gestão de Pedidos" icon={ShoppingCart} />
-        <Alert>
-          <AlertDescription>
-            Você é administrador mas não possui um vendedor vinculado. A emissão de pedidos requer um vendedor associado.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+  // Para admins sem vendedor vinculado, criar um objeto vendedor temporário
+  const vendedorEfetivo = vendedorAtual || (isAdmin ? {
+    id: null,
+    nome: currentUser.full_name || currentUser.email,
+    email: currentUser.email
+  } : null);
 
   return (
     <div>
-      <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorAtual.nome}`} icon={ShoppingCart} />
+      <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorEfetivo?.nome || '-'}`} icon={ShoppingCart} />
       
       <div>
         <div className={`inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full ${podePedidoAvulso ? 'grid-cols-3' : 'grid-cols-2'} mb-6`}>
@@ -123,15 +117,15 @@ export default function EmissaoPedidos() {
         </div>
 
         <div style={{ display: activeTab === 'digitar' ? 'block' : 'none' }}>
-          <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
+          <DigitarPedido vendedor={vendedorEfetivo} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </div>
 
         <div style={{ display: activeTab === 'avulso' ? 'block' : 'none' }}>
-          <PedidoAvulso vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
+          <PedidoAvulso vendedor={vendedorEfetivo} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </div>
 
         <div style={{ display: activeTab === 'envio' ? 'block' : 'none' }}>
-          <EnvioPedidos vendedor={vendedorAtual} onEditPedido={handleEditPedido} />
+          <EnvioPedidos vendedor={vendedorEfetivo} onEditPedido={handleEditPedido} />
         </div>
       </div>
     </div>
