@@ -112,8 +112,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        // Processar apenas 10 clientes por chamada para evitar timeout
-        const LOTE_MAX = 10;
+        // Processar mais clientes por chamada, com paralelismo controlado
+        const LOTE_MAX = 30;
+        const CONCORRENCIA = 5;
         const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
         if (clientesDoLote.length === 0) {
@@ -139,9 +140,8 @@ Deno.serve(async (req) => {
         console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes de ${clientesDoLote.length} IDs`);
 
         const resultados = [];
-        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        for (const cliente of clientesParaExportar) {
+        const exportarCliente = async (cliente) => {
             const clienteOmie = mapearClienteParaOmie({ ...cliente });
             const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
 
@@ -159,26 +159,30 @@ Deno.serve(async (req) => {
 
                 const resultado = await response.json();
 
-                resultados.push({
+                return {
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     nome_fantasia: cliente.nome_fantasia,
                     sucesso: !resultado.faultstring,
                     codigo_omie: resultado.codigo_cliente_omie || null,
                     mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
-                });
+                };
             } catch (err) {
-                resultados.push({
+                return {
                     cliente_id: cliente.id,
                     razao_social: cliente.razao_social,
                     nome_fantasia: cliente.nome_fantasia,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
-                });
+                };
             }
+        };
 
-            await delay(350);
+        for (let i = 0; i < clientesParaExportar.length; i += CONCORRENCIA) {
+            const bloco = clientesParaExportar.slice(i, i + CONCORRENCIA);
+            const blocoResultados = await Promise.all(bloco.map(exportarCliente));
+            resultados.push(...blocoResultados);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
