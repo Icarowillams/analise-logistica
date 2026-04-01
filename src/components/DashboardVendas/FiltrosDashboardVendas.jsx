@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 
-export default function FiltrosDashboardVendas({ filtros, setFiltros, vendedores, supervisores, segmentos, rotas, redes, produtos }) {
+export default function FiltrosDashboardVendas({ filtros, setFiltros, vendedores, supervisores, segmentos, rotas, redes, produtos, compact = false }) {
   const limparFiltros = () => {
     setFiltros({
       vendedor: 'todos',
@@ -22,7 +22,7 @@ export default function FiltrosDashboardVendas({ filtros, setFiltros, vendedores
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
+    <div className={`${compact ? 'bg-transparent rounded-none shadow-none p-0' : 'bg-white rounded-xl shadow-lg p-6'} space-y-4`}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-900">Filtros</h3>
         <Button variant="outline" size="sm" onClick={limparFiltros} className="text-slate-600">

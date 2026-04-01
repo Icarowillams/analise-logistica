@@ -18,19 +18,25 @@ import ClienteVendaAccordion from '@/components/DashboardVendas/ClienteVendaAcco
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ComparacaoPeriodosTab from '@/components/DashboardVendas/ComparacaoPeriodosTab';
+import { filtrosIniciaisDashboardVendas, filtrarVendasDashboard } from '@/components/DashboardVendas/dashboardVendasUtils';
 
 export default function DashboardPedidosVenda() {
   const [filtros, setFiltros] = useState({
-    vendedor: 'todos',
-    supervisor: 'todos',
+    ...filtrosIniciaisDashboardVendas,
     dataInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    dataFim: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
-    segmento: 'todos',
-    rota: 'todos',
-    numPedido: '',
-    busca: '',
-    rede: 'todos',
-    produto: 'todos'
+    dataFim: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  });
+  const [filtrosComparacaoX, setFiltrosComparacaoX] = useState({
+    ...filtrosIniciaisDashboardVendas,
+    dataInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    dataFim: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  });
+  const [filtrosComparacaoY, setFiltrosComparacaoY] = useState({
+    ...filtrosIniciaisDashboardVendas,
+    dataInicio: format(startOfMonth(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)), 'yyyy-MM-dd'),
+    dataFim: format(endOfMonth(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)), 'yyyy-MM-dd')
   });
   const [buscaCliente, setBuscaCliente] = useState('');
 
@@ -111,33 +117,7 @@ export default function DashboardPedidosVenda() {
 
   // Vendas Filtradas
   const vendasFiltradas = useMemo(() => {
-    return vendasPermitidas.filter(v => {
-      if (filtros.dataInicio && v.data < filtros.dataInicio) return false;
-      if (filtros.dataFim && v.data > filtros.dataFim) return false;
-      if (filtros.vendedor !== 'todos' && v.vendedor_id !== filtros.vendedor) return false;
-      if (filtros.supervisor !== 'todos') {
-        const vendedor = vendedoresAll.find(vd => vd.id === v.vendedor_id);
-        if (!vendedor || vendedor.supervisor_id !== filtros.supervisor) return false;
-      }
-      if (filtros.produto !== 'todos' && v.produto_id !== filtros.produto) return false;
-      if (filtros.numPedido && !v._pedido_numero?.includes(filtros.numPedido)) return false;
-      if (filtros.segmento !== 'todos' || filtros.rede !== 'todos' || filtros.rota !== 'todos') {
-        const cliente = clientes.find(c => c.id === v.cliente_id);
-        if (!cliente) return false;
-        if (filtros.segmento !== 'todos' && cliente.segmento_id !== filtros.segmento) return false;
-        if (filtros.rede !== 'todos' && cliente.rede_id !== filtros.rede) return false;
-        if (filtros.rota !== 'todos' && cliente.rota_id !== filtros.rota) return false;
-      }
-      if (filtros.busca) {
-        const termo = filtros.busca.toLowerCase();
-        const match = v.cliente_nome?.toLowerCase().includes(termo) ||
-          v.produto_nome?.toLowerCase().includes(termo) ||
-          v.vendedor_nome?.toLowerCase().includes(termo) ||
-          v._pedido_numero?.toLowerCase().includes(termo);
-        if (!match) return false;
-      }
-      return true;
-    });
+    return filtrarVendasDashboard(vendasPermitidas, filtros, vendedoresAll, clientes);
   }, [vendasPermitidas, filtros, vendedoresAll, clientes]);
 
   // KPIs
@@ -286,28 +266,34 @@ export default function DashboardPedidosVenda() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <FiltrosDashboardVendas
-        filtros={filtros}
-        setFiltros={setFiltros}
-        vendedores={vendedores}
-        supervisores={supervisores}
-        segmentos={segmentos}
-        rotas={rotas}
-        redes={redes}
-        produtos={produtos}
-      />
+      <Tabs defaultValue="atual" className="space-y-6">
+        <TabsList className="h-auto w-full justify-start rounded-2xl bg-white p-1 shadow-sm border border-slate-200">
+          <TabsTrigger value="atual" className="rounded-xl px-4 py-2">Dashboard atual</TabsTrigger>
+          <TabsTrigger value="comparacao" className="rounded-xl px-4 py-2">Comparar períodos</TabsTrigger>
+        </TabsList>
 
-      <div className="flex justify-end">
-        <Button onClick={exportarDashboard} variant="outline" className="gap-2">
-          <Download className="w-4 h-4" />
-          Exportar Dashboard
-        </Button>
-      </div>
+        <TabsContent value="atual" className="space-y-6">
+          <FiltrosDashboardVendas
+            filtros={filtros}
+            setFiltros={setFiltros}
+            vendedores={vendedores}
+            supervisores={supervisores}
+            segmentos={segmentos}
+            rotas={rotas}
+            redes={redes}
+            produtos={produtos}
+          />
 
-      <div id="dashboard-vendas-content" className="space-y-6">
+          <div className="flex justify-end">
+            <Button onClick={exportarDashboard} variant="outline" className="gap-2">
+              <Download className="w-4 h-4" />
+              Exportar Dashboard
+            </Button>
+          </div>
+
+          <div id="dashboard-vendas-content" className="space-y-6">
         {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
           <StatsCard title="Quantidade Total" value={quantidadeTotal.toLocaleString('pt-BR')} subtitle="itens vendidos" icon={Package} gradient="from-blue-500 to-indigo-600" />
           <StatsCard title="Valor Total" value={valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} subtitle="em vendas" icon={DollarSign} gradient="from-emerald-500 to-teal-600" />
           <StatsCard title="Preço Médio" value={precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} subtitle="por item" icon={DollarSign} gradient="from-violet-500 to-purple-600" />
@@ -416,7 +402,27 @@ export default function DashboardPedidosVenda() {
             </CardContent>
           </Card>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="comparacao">
+          <ComparacaoPeriodosTab
+            filtrosX={filtrosComparacaoX}
+            setFiltrosX={setFiltrosComparacaoX}
+            filtrosY={filtrosComparacaoY}
+            setFiltrosY={setFiltrosComparacaoY}
+            vendasPermitidas={vendasPermitidas}
+            vendedores={vendedores}
+            vendedoresAll={vendedoresAll}
+            supervisores={supervisores}
+            segmentos={segmentos}
+            rotas={rotas}
+            redes={redes}
+            produtos={produtos}
+            clientes={clientes}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
