@@ -68,17 +68,10 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     }).filter(Boolean);
   }, [roteiros, selectedDia, clientes]);
 
-  const clientesFiltrados = useMemo(() => {
-    const s = searchCliente.toLowerCase().trim();
-    if (!s) return clientesDoDia;
-    return clientesDoDia.filter(c =>
-      c.codigo?.includes(s) || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s)
-    ).sort((a, b) => {
-      const aCode = a.codigo?.startsWith(s) ? 0 : 1;
-      const bCode = b.codigo?.startsWith(s) ? 0 : 1;
-      return aCode - bCode;
-    });
-  }, [clientesDoDia, searchCliente]);
+  const clientesFiltrados = clientesDoDia.filter(c => {
+    const s = searchCliente.toLowerCase();
+    return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo?.includes(s);
+  });
 
   return (
     <div>
@@ -142,7 +135,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
               <Card key={cli.id} className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors" onClick={() => setSelectedCliente(cli)}>
                 <CardContent className="p-3 flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm truncate">{cli.codigo} - {cli.razao_social}</p>
+                    <p className="font-medium text-sm truncate">{cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>
                     <p className="text-xs text-slate-500 truncate">{cli.cidade}{cli.bairro ? `, ${cli.bairro}` : ''}</p>
                   </div>
                   <ShoppingCart className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
