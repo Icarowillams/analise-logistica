@@ -9,36 +9,37 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Buscar o maior código existente entre todos os clientes
+    const clientes = await base44.asServiceRole.entities.Cliente.list();
+    const maiorCodigoClientes = Math.max(
+      0,
+      ...clientes.map(c => parseInt(String(c.codigo || '0').trim(), 10)).filter(Number.isFinite)
+    );
+
+    // Buscar o valor do sequencial armazenado
     const reservas = await base44.asServiceRole.entities.ConfiguracaoImportacao.filter({ chave: 'sequencial_codigo_cliente' });
     const reservaAtual = reservas[0];
+    const valorArmazenado = reservaAtual ? parseInt(String(reservaAtual.valor || '0').trim(), 10) : 0;
 
-    if (!reservaAtual) {
-      const clientes = await base44.asServiceRole.entities.Cliente.list();
-      const maiorCodigo = Math.max(
-        0,
-        ...clientes.map((cliente) => Number.parseInt(String(cliente.codigo || '').trim(), 10)).filter(Number.isFinite),
-      );
-      const proximoCodigo = String(maiorCodigo + 1);
+    // Usar o MAIOR entre o sequencial armazenado e o maior código real dos clientes
+    const maiorCodigo = Math.max(maiorCodigoClientes, Number.isFinite(valorArmazenado) ? valorArmazenado : 0);
+    const proximoCodigo = String(maiorCodigo + 1);
 
-      const novaReserva = await base44.asServiceRole.entities.ConfiguracaoImportacao.create({
-        chave: 'sequencial_codigo_cliente',
-        valor: String(maiorCodigo + 1),
+    // Atualizar ou criar o sequencial
+    if (reservaAtual) {
+      await base44.asServiceRole.entities.ConfiguracaoImportacao.update(reservaAtual.id, {
+        valor: proximoCodigo,
         descricao: 'Último código reservado automaticamente para cliente/pré-cadastro'
       });
-
-      return Response.json({ codigo: proximoCodigo, reserva_id: novaReserva.id });
+    } else {
+      await base44.asServiceRole.entities.ConfiguracaoImportacao.create({
+        chave: 'sequencial_codigo_cliente',
+        valor: proximoCodigo,
+        descricao: 'Último código reservado automaticamente para cliente/pré-cadastro'
+      });
     }
 
-    const ultimoReservado = Number.parseInt(String(reservaAtual.valor || '0').trim(), 10);
-    const proximoNumero = Number.isFinite(ultimoReservado) ? ultimoReservado + 1 : 1;
-    const proximoCodigo = String(proximoNumero);
-
-    await base44.asServiceRole.entities.ConfiguracaoImportacao.update(reservaAtual.id, {
-      valor: proximoCodigo,
-      descricao: 'Último código reservado automaticamente para cliente/pré-cadastro'
-    });
-
-    return Response.json({ codigo: proximoCodigo, reserva_id: reservaAtual.id });
+    return Response.json({ codigo: proximoCodigo });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
