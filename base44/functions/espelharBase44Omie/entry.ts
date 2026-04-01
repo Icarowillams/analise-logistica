@@ -23,8 +23,8 @@ function extrairCodigoOmieDoErro(mensagem) {
     return match ? Number(match[1]) : null;
 }
 
-async function chamarOmieComRetry(callName, param, maxRetries = 3) {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+async function chamarOmieComRetry(callName, param, maxRetries = 2) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
         // =====================================================================
         if (etapa === 'enviar_omie') {
             const clientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-            const bulkSize = Math.min(batch_size, 20);
+            const bulkSize = Math.min(batch_size, 5);
             const lote = clientes.slice(offset, offset + bulkSize);
             let ok = 0, erros = 0;
             const errosList = [];

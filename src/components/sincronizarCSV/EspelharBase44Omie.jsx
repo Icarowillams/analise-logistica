@@ -58,7 +58,7 @@ export default function EspelharBase44Omie() {
     while (!concluido && !cancelRef.current) {
       try {
         const res = await base44.functions.invoke('espelharBase44Omie', {
-          etapa: 'enviar_omie', offset, batch_size: 20
+          etapa: 'enviar_omie', offset, batch_size: 5
         });
         const d = res.data;
         ok += d.processados || 0;
