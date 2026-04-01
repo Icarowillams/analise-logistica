@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
 
         // Para cada CSV row, resolver as referências
         const atualizacoes = [];
-        const preview = [];
+        const nomesNaoEncontrados = { tabelas: new Set(), planos: new Set(), modalidades: new Set() };
 
         for (const row of csvRows) {
             const cod = String(row.codigo).trim();
@@ -130,6 +130,11 @@ Deno.serve(async (req) => {
             const mudouTabela = (novoTabelaId || '') !== (existente.tabela_id || '');
             const mudouPlano = (novoPlanoId || '') !== (existente.plano_pagamento_id || '');
             const mudouModalidade = (novoModalidadeId || '') !== (existente.modalidade_pagamento_id || '');
+
+            // Rastrear nomes não resolvidos
+            if (tabelaNorm && !novoTabelaId) nomesNaoEncontrados.tabelas.add(row.tabela_preco);
+            if (planoNorm && !novoPlanoId) nomesNaoEncontrados.planos.add(row.plano_pagamento);
+            if (cobrancaNorm && !novoModalidadeId) nomesNaoEncontrados.modalidades.add(row.cobranca);
 
             if (mudouTabela || mudouPlano || mudouModalidade) {
                 const tabelaNome = tabelas.find(t => t.id === novoTabelaId)?.nome || '';
@@ -173,10 +178,13 @@ Deno.serve(async (req) => {
                 sem_plano: semPlano,
                 sem_modalidade: semModalidade,
                 preview: atualizacoes.slice(0, 50),
-                // Contagem de não resolvidos
-                tabela_nao_resolvida: atualizacoes.filter(a => a.csv_tabela !== '(vazio)' && a.resolvido_tabela.includes('NÃO')).length,
-                plano_nao_resolvido: atualizacoes.filter(a => a.csv_plano !== '(vazio)' && a.resolvido_plano.includes('NÃO')).length,
-                modalidade_nao_resolvida: atualizacoes.filter(a => a.csv_cobranca !== '(vazio)' && a.resolvido_modalidade.includes('NÃO')).length,
+                // Nomes não resolvidos (detalhados)
+                tabela_nao_resolvida: nomesNaoEncontrados.tabelas.size,
+                plano_nao_resolvido: nomesNaoEncontrados.planos.size,
+                modalidade_nao_resolvida: nomesNaoEncontrados.modalidades.size,
+                nomes_tabela_nao_resolvida: [...nomesNaoEncontrados.tabelas],
+                nomes_plano_nao_resolvido: [...nomesNaoEncontrados.planos],
+                nomes_modalidade_nao_resolvida: [...nomesNaoEncontrados.modalidades],
             });
         }
 

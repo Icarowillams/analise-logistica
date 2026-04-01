@@ -228,10 +228,31 @@ export default function RevincularReferencias() {
                     <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                     <div className="text-sm text-amber-800">
                       <p className="font-medium">Nomes do CSV não encontrados no Base44:</p>
-                      <ul className="list-disc ml-4 mt-1 text-xs">
-                        {analise.tabela_nao_resolvida > 0 && <li>{analise.tabela_nao_resolvida} tabela(s) de preço</li>}
-                        {analise.plano_nao_resolvido > 0 && <li>{analise.plano_nao_resolvido} plano(s) de pagamento</li>}
-                        {analise.modalidade_nao_resolvida > 0 && <li>{analise.modalidade_nao_resolvida} modalidade(s) de cobrança</li>}
+                      <ul className="list-disc ml-4 mt-1 text-xs space-y-1">
+                        {analise.nomes_tabela_nao_resolvida?.length > 0 && (
+                          <li>
+                            <strong>Tabela(s) de preço:</strong>{' '}
+                            {analise.nomes_tabela_nao_resolvida.map((n, i) => (
+                              <span key={i} className="bg-amber-100 rounded px-1 py-0.5 mx-0.5 font-mono">{n}</span>
+                            ))}
+                          </li>
+                        )}
+                        {analise.nomes_plano_nao_resolvido?.length > 0 && (
+                          <li>
+                            <strong>Plano(s) de pagamento:</strong>{' '}
+                            {analise.nomes_plano_nao_resolvido.map((n, i) => (
+                              <span key={i} className="bg-amber-100 rounded px-1 py-0.5 mx-0.5 font-mono">{n}</span>
+                            ))}
+                          </li>
+                        )}
+                        {analise.nomes_modalidade_nao_resolvida?.length > 0 && (
+                          <li>
+                            <strong>Modalidade(s) de cobrança:</strong>{' '}
+                            {analise.nomes_modalidade_nao_resolvida.map((n, i) => (
+                              <span key={i} className="bg-amber-100 rounded px-1 py-0.5 mx-0.5 font-mono">{n}</span>
+                            ))}
+                          </li>
+                        )}
                       </ul>
                       <p className="mt-1 text-xs">Verifique se os cadastros existem antes de executar.</p>
                     </div>
