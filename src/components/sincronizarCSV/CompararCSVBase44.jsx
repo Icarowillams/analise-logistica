@@ -14,7 +14,7 @@ import ListaClientesFaltantes from './ListaClientesFaltantes';
 import ResumoCSVBase44 from './ResumoCSVBase44';
 import ProgressoCriacaoCSV from './ProgressoCriacaoCSV';
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 30;
 
 export default function CompararCSVBase44() {
   const [etapa, setEtapa] = useState('idle');
@@ -81,7 +81,26 @@ export default function CompararCSVBase44() {
 
     const allErros = [];
 
-    // 1. Atualizar diferentes (usar contagem real do sincronizarCSV)
+    // Helper: invocar com retry automático para rate limit
+    const invocarComRetry = async (params, maxRetries = 3) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await base44.functions.invoke('sincronizarClientesCSV', params);
+          return res;
+        } catch (e) {
+          const is429 = e.message?.includes('429') || e.message?.includes('Rate limit') || e.response?.status === 429 || e.response?.status === 500;
+          if (is429 && attempt < maxRetries) {
+            const waitMs = 5000 * Math.pow(2, attempt);
+            console.log(`Retry ${attempt + 1}/${maxRetries}, aguardando ${waitMs}ms...`);
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+          throw e;
+        }
+      }
+    };
+
+    // 1. Atualizar diferentes
     const totalAtualizar = comparacao.atualizar_real || comparacao.diferentes || 0;
     if (totalAtualizar > 0) {
       setProgressoAtualizar({ total: totalAtualizar, atual: 0, ok: 0, erros: 0 });
@@ -90,7 +109,7 @@ export default function CompararCSVBase44() {
       let concluido = false;
       while (!concluido && !cancelRef.current) {
         try {
-          const res = await base44.functions.invoke('sincronizarClientesCSV', {
+          const res = await invocarComRetry({
             csv_url: csvUrl, etapa: 'atualizar', offset, batch_size: BATCH_SIZE
           });
           const d = res.data;
@@ -100,23 +119,27 @@ export default function CompararCSVBase44() {
           offset = d.nextOffset || 0;
           concluido = d.concluido;
           setProgressoAtualizar({ total: d.total, atual: Math.min(offset, d.total), ok, erros });
+          // Delay entre lotes
+          await new Promise(r => setTimeout(r, 1000));
         } catch (e) {
-          allErros.push(e.message);
+          allErros.push(`Atualizar: ${e.message}`);
           concluido = true;
         }
       }
     }
 
-    // 2. Criar novos (usar contagem real do sincronizarCSV)
+    // 2. Criar novos
     const totalCriar = comparacao.criar_real || comparacao.nao_encontrados || 0;
     if (totalCriar > 0 && !cancelRef.current) {
       setProgressoCriar({ total: totalCriar, atual: 0, ok: 0, erros: 0 });
       let ok = 0, erros = 0;
       let offset = 0;
       let concluido = false;
+      // Delay antes de iniciar criação (dar tempo após atualizações)
+      await new Promise(r => setTimeout(r, 3000));
       while (!concluido && !cancelRef.current) {
         try {
-          const res = await base44.functions.invoke('sincronizarClientesCSV', {
+          const res = await invocarComRetry({
             csv_url: csvUrl, etapa: 'criar', offset, batch_size: BATCH_SIZE
           });
           const d = res.data;
@@ -126,8 +149,9 @@ export default function CompararCSVBase44() {
           offset = d.nextOffset || 0;
           concluido = d.concluido;
           setProgressoCriar({ total: d.total, atual: Math.min(offset, d.total), ok, erros });
+          await new Promise(r => setTimeout(r, 1000));
         } catch (e) {
-          allErros.push(e.message);
+          allErros.push(`Criar: ${e.message}`);
           concluido = true;
         }
       }
@@ -145,15 +169,16 @@ export default function CompararCSVBase44() {
 
     // 4. Enviar tudo para o Omie via UpsertCliente
     if (!cancelRef.current) {
-      // Primeiro: descobrir quantos clientes serão enviados
       setProgressoOmie({ total: comparacao.csv_total || 0, atual: 0, ok: 0, erros: 0 });
       let ok = 0, erros = 0;
       let offset = 0;
       let concluido = false;
+      // Delay antes de iniciar envio Omie
+      await new Promise(r => setTimeout(r, 3000));
       while (!concluido && !cancelRef.current) {
         try {
-          const res = await base44.functions.invoke('sincronizarClientesCSV', {
-            csv_url: csvUrl, etapa: 'enviar_omie', offset, batch_size: 20
+          const res = await invocarComRetry({
+            csv_url: csvUrl, etapa: 'enviar_omie', offset, batch_size: 15
           });
           const d = res.data;
           ok += d.processados || 0;
@@ -162,8 +187,9 @@ export default function CompararCSVBase44() {
           offset = d.nextOffset || 0;
           concluido = d.concluido;
           setProgressoOmie({ total: d.total, atual: Math.min(offset, d.total), ok, erros });
+          await new Promise(r => setTimeout(r, 500));
         } catch (e) {
-          allErros.push(e.message);
+          allErros.push(`Omie: ${e.message}`);
           concluido = true;
         }
       }
