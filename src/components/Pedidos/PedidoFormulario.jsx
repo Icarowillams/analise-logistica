@@ -12,6 +12,17 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProdutoCardList from './ProdutoCardList';
 
+function getAcoesAtivasParaCliente(acoes, clienteId) {
+  const hoje = new Date().toISOString().split('T')[0];
+  return acoes.filter(a => {
+    if (a.status !== 'ativa') return false;
+    if (a.data_inicio > hoje || a.data_fim < hoje) return false;
+    // Se não tem clientes vinculados, vale para todos
+    if (!a.clientes_ids || a.clientes_ids.length === 0) return true;
+    return a.clientes_ids.includes(clienteId);
+  });
+}
+
 export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedidoId, onVoltar, permissaoCenariosFiscais }) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('pedido');
@@ -52,6 +63,15 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => tabelaPrecoId ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoId }) : [],
     enabled: !!tabelaPrecoId
   });
+
+  const { data: acoesPromocionais = [] } = useQuery({
+    queryKey: ['acoesPromocionais'],
+    queryFn: () => base44.entities.AcaoPromocional.list()
+  });
+
+  const acoesCliente = useMemo(() => {
+    return getAcoesAtivasParaCliente(acoesPromocionais, cliente.id);
+  }, [acoesPromocionais, cliente.id]);
 
   const isTroca = cenarioFiscalCodigo === 'troca';
 
@@ -134,9 +154,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   useEffect(() => {
     if (existingItems.length > 0 && itensLocal.length === 0) {
       setItensLocal(existingItems.map(item => {
-        // Atualizar preço com valor atual da tabela (inclui ações promocionais)
+        // Prioridade: ação promocional do cliente > ação na tabela > preço base
         let precoAtual = item.valor_unitario;
-        if (precosAll.length > 0) {
+        const acaoCliente = acoesCliente.find(a => a.produto_id === item.produto_id);
+        if (acaoCliente && acaoCliente.valor_acao > 0) {
+          precoAtual = acaoCliente.valor_acao;
+        } else if (precosAll.length > 0) {
           const precoTabela = precosAll.find(p => p.produto_id === item.produto_id);
           if (precoTabela) {
             const precoNovo = (precoTabela.ativacao_acao && precoTabela.valor_acao) ? precoTabela.valor_acao : precoTabela.valor_unitario;
@@ -156,7 +179,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         };
       }));
     }
-  }, [existingItems, precosAll]);
+  }, [existingItems, precosAll, acoesCliente]);
 
   const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
@@ -485,6 +508,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 motivosTroca={motivosTroca}
                 isTroca={isTroca}
                 bloquearSemTabela={clienteSemTabela}
+                acoesCliente={acoesCliente}
               />
             </CardContent>
           </Card>

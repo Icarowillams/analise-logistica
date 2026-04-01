@@ -15,6 +15,7 @@ export default function ProdutoCardList({
   motivosTroca,
   isTroca,
   bloquearSemTabela = false,
+  acoesCliente = [],
 }) {
   const [search, setSearch] = useState('');
 
@@ -67,10 +68,24 @@ export default function ProdutoCardList({
     );
   }, [produtosComPreco, search]);
 
+  // Mapa de ações promocionais por produto_id
+  const acoesMap = useMemo(() => {
+    const m = {};
+    acoesCliente.forEach(a => { m[a.produto_id] = a; });
+    return m;
+  }, [acoesCliente]);
+
   const getPreco = (produtoId) => {
+    // Prioridade: ação promocional do cliente > ação na tabela > preço base
+    const acao = acoesMap[produtoId];
+    if (acao && acao.valor_acao > 0) return acao.valor_acao;
     const preco = precosMap[produtoId];
     if (!preco) return 0;
     return (preco.ativacao_acao && preco.valor_acao) ? preco.valor_acao : preco.valor_unitario || 0;
+  };
+
+  const isPrecoAcao = (produtoId) => {
+    return !!acoesMap[produtoId];
   };
 
   // Totais para venda
@@ -168,7 +183,10 @@ export default function ProdutoCardList({
                 <p className="text-sm font-medium truncate leading-tight">{produto.nome}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {produto.peso > 0 && <span className="text-[10px] text-slate-400">{produto.peso}g</span>}
-                  <span className="text-xs font-semibold text-blue-700">R$ {preco.toFixed(2).replace('.', ',')}</span>
+                  <span className={`text-xs font-semibold ${isPrecoAcao(produto.id) ? 'text-orange-600' : 'text-blue-700'}`}>
+                    R$ {preco.toFixed(2).replace('.', ',')}
+                  </span>
+                  {isPrecoAcao(produto.id) && <span className="text-[9px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded font-medium">AÇÃO</span>}
                 </div>
                 {qty > 0 && (
                   <p className="text-[11px] font-semibold text-green-700 mt-0.5">
