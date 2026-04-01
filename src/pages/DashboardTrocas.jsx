@@ -171,16 +171,24 @@ export default function DashboardTrocas() {
   const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
   const vendas = useMemo(() => filtrarPorCliente(vendasAll), [vendasAll, filtrarPorCliente]);
 
+  // Mapa de clientes por código (mesmo critério do Gerenciar Pedidos)
+  const clientesByCodigoMap = useMemo(() => {
+    const m = {};
+    clientes.forEach(c => { if (c.codigo) m[c.codigo] = c; });
+    return m;
+  }, [clientes]);
+
   // Trocas derivadas de pedidos faturados (entidade Pedido com tipo=troca e status=faturado)
   const trocasDerivadas = useMemo(() => {
     return pedidoItensTroca.map(item => {
       const pedido = item._pedido;
-      const cliente = clientes.find(c => c.id === pedido.cliente_id);
-      const vendedorCliente = vendedoresAll.find(v => v.id === cliente?.vendedor_id);
+      // Buscar cliente pelo código (consistente com Gerenciar Pedidos)
+      const cliente = pedido.cliente_codigo ? clientesByCodigoMap[pedido.cliente_codigo] : null;
+      const vendedorCliente = cliente?.vendedor_id ? vendedoresAll.find(v => v.id === cliente.vendedor_id) : null;
       return {
         id: item.id,
-        cliente_id: pedido.cliente_id,
-        cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia,
+        cliente_id: cliente?.id || pedido.cliente_id,
+        cliente_nome: cliente?.razao_social || pedido.cliente_nome || pedido.cliente_nome_fantasia,
         vendedor_id: cliente?.vendedor_id || pedido.vendedor_id,
         vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
         produto_original_id: item.produto_id,
@@ -196,7 +204,7 @@ export default function DashboardTrocas() {
         _pedido_data: pedido.created_date ? pedido.created_date.split('T')[0] : ''
       };
     });
-  }, [pedidoItensTroca, clientes, vendedoresAll]);
+  }, [pedidoItensTroca, clientesByCodigoMap, vendedoresAll]);
 
   const trocas = useMemo(() => filtrarPorCliente(trocasDerivadas), [trocasDerivadas, filtrarPorCliente]);
   const vendedores = useMemo(() => {
