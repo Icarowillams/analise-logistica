@@ -98,10 +98,7 @@ function mapearClienteParaOmie(cliente) {
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function fetchComRetry(cliente, modo, tentativa = 0) {
-    const clienteOmie = mapearClienteParaOmie({ ...cliente });
-    const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
-
+async function chamarOmie(clienteOmie, metodo) {
     const response = await fetch(OMIE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,14 +109,35 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
             param: [clienteOmie]
         })
     });
+    return await response.json();
+}
 
-    const resultado = await response.json();
+async function fetchComRetry(cliente, modo, tentativa = 0) {
+    const clienteOmie = mapearClienteParaOmie({ ...cliente });
+    const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
+
+    let resultado = await chamarOmie(clienteOmie, metodo);
 
     // Retry em caso de rate limit do Omie
     const fault = (resultado.faultstring || '').toLowerCase();
     if (fault && (fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again')) && tentativa < 3) {
         await delay(2000 * Math.pow(2, tentativa));
         return fetchComRetry(cliente, modo, tentativa + 1);
+    }
+
+    // Se deu erro de "já cadastrado" com código de integração diferente,
+    // tentar novamente usando o ID do Base44 como codigo_cliente_integracao (fallback para clientes antigos)
+    if (fault && fault.includes('já cadastrado') && metodo === 'UpsertCliente') {
+        // Extrair o codigo_integracao antigo da mensagem de erro: "código de integração [XXXXX]"
+        const matchCodigo = (resultado.faultstring || '').match(/código de integração \[([^\]]+)\]/i);
+        const codigoAntigoOmie = matchCodigo ? matchCodigo[1] : null;
+        
+        if (codigoAntigoOmie && codigoAntigoOmie !== clienteOmie.codigo_cliente_integracao) {
+            console.log(`[exportarClientesOmie] Fallback: usando codigo_integracao antigo "${codigoAntigoOmie}" para ${cliente.razao_social}`);
+            const clienteOmieFallback = { ...clienteOmie, codigo_cliente_integracao: codigoAntigoOmie };
+            await delay(600);
+            resultado = await chamarOmie(clienteOmieFallback, metodo);
+        }
     }
 
     return {
@@ -142,73 +160,41 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { cliente_ids, modo = "upsert", lote_inicio = 0 } = body;
+        const { clientes_data, modo = "upsert" } = body;
 
-        if (!cliente_ids || !Array.isArray(cliente_ids) || cliente_ids.length === 0) {
-            return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
+        // clientes_data = array de objetos cliente já completos (enviados pelo frontend)
+        if (!clientes_data || !Array.isArray(clientes_data) || clientes_data.length === 0) {
+            return Response.json({ error: 'Informe os dados dos clientes para exportar' }, { status: 400 });
         }
 
-        const LOTE_MAX = 15;
-        const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
-        
-        if (clientesDoLote.length === 0) {
-            return Response.json({ 
-                concluido: true,
-                resumo: { total: 0, sucessos: 0, erros: 0 },
-                resultados: []
-            });
-        }
-
-        // Buscar rotas uma vez
-        const rotas = await base44.asServiceRole.entities.Rota.list().catch(() => []);
-        const rotaMap = {};
-        rotas.forEach(rota => { rotaMap[rota.id] = rota.nome; });
-
-        // Buscar clientes sequencialmente em mini-lotes de 5 com delay
-        const clientesParaExportar = [];
-        for (let i = 0; i < clientesDoLote.length; i += 5) {
-            const miniLote = clientesDoLote.slice(i, i + 5);
-            const results = await Promise.all(
-                miniLote.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))
-            );
-            clientesParaExportar.push(...results.filter(Boolean).map(c => ({
-                ...c,
-                rota_nome: c.rota_id ? rotaMap[c.rota_id] : undefined
-            })));
-            if (i + 5 < clientesDoLote.length) await delay(200);
-        }
-
-        console.log(`[exportarClientesOmie] Lote ${lote_inicio}: ${clientesParaExportar.length} clientes`);
+        console.log(`[exportarClientesOmie] Recebido ${clientes_data.length} clientes para exportar via ${modo}`);
 
         // Enviar ao Omie SEQUENCIALMENTE com delay entre cada chamada
         const resultados = [];
-        for (let i = 0; i < clientesParaExportar.length; i++) {
+        for (let i = 0; i < clientes_data.length; i++) {
+            const cliente = clientes_data[i];
             try {
-                const res = await fetchComRetry(clientesParaExportar[i], modo);
+                const res = await fetchComRetry(cliente, modo);
                 resultados.push(res);
+                console.log(`[exportarClientesOmie] ${i+1}/${clientes_data.length} ${res.sucesso ? 'OK' : 'ERRO'}: ${cliente.razao_social} - ${res.mensagem}`);
             } catch (err) {
                 resultados.push({
-                    cliente_id: clientesParaExportar[i].id,
-                    razao_social: clientesParaExportar[i].razao_social,
-                    nome_fantasia: clientesParaExportar[i].nome_fantasia,
+                    cliente_id: cliente.id,
+                    razao_social: cliente.razao_social,
+                    nome_fantasia: cliente.nome_fantasia,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
                 });
             }
             // 600ms entre chamadas (~100 req/min, dentro do limite do Omie)
-            if (i < clientesParaExportar.length - 1) await delay(600);
+            if (i < clientes_data.length - 1) await delay(600);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
         const erros = resultados.filter(r => !r.sucesso).length;
-        const proximoLote = lote_inicio + LOTE_MAX;
-        const concluido = proximoLote >= cliente_ids.length;
 
         return Response.json({
-            concluido,
-            proximo_lote: concluido ? null : proximoLote,
-            total_geral: cliente_ids.length,
             resumo: {
                 total: resultados.length,
                 sucessos,

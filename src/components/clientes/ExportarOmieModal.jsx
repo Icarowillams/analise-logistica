@@ -46,14 +46,16 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     setTodosResultados([]);
     setProgressoExportacao(0);
 
-    let loteAtual = 0;
+    // Montar dados completos dos clientes a partir da lista já carregada no frontend
+    const clientesSelecionados = baseClientes.filter(c => cliente_ids.includes(c.id));
+    const LOTE_SIZE = 10; // 10 por chamada (backend envia sequencialmente com 600ms cada = ~6s por lote)
     let todosRes = [];
     let sucessosTotal = 0;
     let errosTotal = 0;
 
-    while (true) {
+    for (let i = 0; i < clientesSelecionados.length; i += LOTE_SIZE) {
       if (canceladoRef.current) {
-        toast.info(`Exportação cancelada. ${todosRes.length} de ${cliente_ids.length} processados.`);
+        toast.info(`Exportação cancelada. ${todosRes.length} de ${clientesSelecionados.length} processados.`);
         setResultados({
           resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
           resultados: todosRes
@@ -61,11 +63,12 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
         break;
       }
 
+      const lote = clientesSelecionados.slice(i, i + LOTE_SIZE);
+
       try {
         const response = await base44.functions.invoke('exportarClientesOmie', { 
-          cliente_ids, 
-          modo: modoExportacao,
-          lote_inicio: loteAtual 
+          clientes_data: lote,
+          modo: modoExportacao
         });
         const data = response.data;
 
@@ -77,29 +80,33 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
         setTotalSucessos(sucessosTotal);
         setTotalErros(errosTotal);
         setTotalProcessado(todosRes.length);
-        setProgressoExportacao((todosRes.length / cliente_ids.length) * 100);
-
-        if (data.concluido) {
-          setResultados({
-            resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
-            resultados: todosRes
-          });
-          if (errosTotal === 0) {
-            toast.success(`✅ ${sucessosTotal} cliente(s) exportado(s) para o Omie!`);
-          } else {
-            toast.warning(`⚠️ ${sucessosTotal} exportado(s), ${errosTotal} erro(s)`);
-          }
-          break;
-        }
-
-        loteAtual = data.proximo_lote;
+        setProgressoExportacao((todosRes.length / clientesSelecionados.length) * 100);
       } catch (error) {
-        toast.error('❌ Erro ao exportar: ' + error.message);
+        toast.error('❌ Erro no lote: ' + error.message);
+        // Marcar clientes do lote como erro
+        const errosLote = lote.map(c => ({
+          cliente_id: c.id, razao_social: c.razao_social, nome_fantasia: c.nome_fantasia,
+          sucesso: false, codigo_omie: null, mensagem: error.message
+        }));
+        todosRes = [...todosRes, ...errosLote];
+        errosTotal += lote.length;
+        setTodosResultados(todosRes);
+        setTotalErros(errosTotal);
+        setTotalProcessado(todosRes.length);
+        setProgressoExportacao((todosRes.length / clientesSelecionados.length) * 100);
+      }
+
+      // Verificar se terminou
+      if (i + LOTE_SIZE >= clientesSelecionados.length && !canceladoRef.current) {
         setResultados({
           resumo: { total: todosRes.length, sucessos: sucessosTotal, erros: errosTotal },
           resultados: todosRes
         });
-        break;
+        if (errosTotal === 0) {
+          toast.success(`✅ ${sucessosTotal} cliente(s) exportado(s) para o Omie!`);
+        } else {
+          toast.warning(`⚠️ ${sucessosTotal} exportado(s), ${errosTotal} erro(s)`);
+        }
       }
     }
 
