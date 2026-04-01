@@ -107,7 +107,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             erroMsg = result.erro || 'Erro desconhecido no Omie';
           }
         } catch (omieErr) {
-          erroMsg = omieErr?.response?.data?.erro || omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+          // Axios lança exceção em status 4xx — extrair mensagem do corpo
+          const errData = omieErr?.response?.data;
+          erroMsg = errData?.erro || errData?.error || errData?.sucesso === false && errData?.erro || omieErr.message || 'Falha na comunicação com o Omie';
         }
 
         if (omieOk) {
@@ -167,21 +169,16 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             erroMsg = response.data.erro || 'Erro desconhecido no Omie';
           }
         } catch (omieErr) {
-          erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+          // Axios lança exceção em status 4xx — extrair mensagem do corpo
+          const errData = omieErr?.response?.data;
+          erroMsg = errData?.erro || errData?.error || omieErr.message || 'Falha na comunicação com o Omie';
         }
 
         if (omieOk) {
-          await base44.entities.Pedido.update(pedido.id, {
-            status: 'enviado',
-            data_envio: new Date().toISOString(),
-            omie_erro: null
-          });
+          // Backend já atualiza o pedido, apenas contar
           sucessoCount++;
         } else {
           await base44.entities.Pedido.update(pedido.id, {
-            status: 'pendente',
-            numero_pedido: null,
-            data_envio: null,
             omie_erro: erroMsg
           });
           erroCount++;
