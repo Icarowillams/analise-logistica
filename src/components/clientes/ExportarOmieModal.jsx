@@ -149,8 +149,8 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
         </DialogHeader>
 
         {!resultados ? (
-          <>
-            <div className="space-y-4 flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="space-y-4 shrink-0">
               <Input
                 placeholder="Buscar por nome, código ou CPF/CNPJ..."
                 value={searchTerm}
@@ -168,28 +168,30 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 </label>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
                   <Checkbox
                     checked={selectedIds.length === clientesFiltrados.length && clientesFiltrados.length > 0}
                     onCheckedChange={toggleSelectAll}
                   />
-                  <span className="text-sm text-slate-600">
+                  <span className="text-sm text-slate-600 truncate">
                     Selecionar todos ({clientesFiltrados.length})
                   </span>
                 </div>
-                <Badge variant="outline">
+                <Badge variant="outline" className="shrink-0">
                   {selectedIds.length} selecionado(s)
                 </Badge>
               </div>
+            </div>
 
-              <ScrollArea className="flex-1 min-h-0 border rounded-lg">
+            <div className="flex-1 min-h-0 py-4 overflow-hidden">
+              <ScrollArea className="h-full border rounded-lg">
                 {isLoading ? (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center justify-center h-full min-h-[220px]">
                     <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
                   </div>
                 ) : clientesFiltrados.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-500">
+                  <div className="flex items-center justify-center h-full min-h-[220px] text-slate-500">
                     Nenhum cliente encontrado
                   </div>
                 ) : (
@@ -227,22 +229,22 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               </ScrollArea>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t bg-white shrink-0">
-              <Button variant="outline" onClick={handleClose}>
-                Cancelar
-              </Button>
-              <div className="flex flex-col gap-2">
-                {exportando && (
-                  <div className="flex flex-col gap-2 w-full min-w-[300px]">
-                    <div className="flex items-center gap-3">
-                      <Progress value={progressoExportacao} className="h-3 flex-1" />
-                      <span className="text-sm font-medium text-slate-700 whitespace-nowrap">{Math.round(progressoExportacao)}%</span>
-                    </div>
-                    <div className="text-xs text-slate-500 text-center">
-                      {totalProcessado} de {selectedIds.length} | ✅ {totalSucessos} | ❌ {totalErros}
-                    </div>
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-end gap-3 pt-4 border-t bg-white shrink-0">
+              {exportando && (
+                <div className="flex flex-col gap-2 w-full sm:min-w-[300px] sm:max-w-[360px]">
+                  <div className="flex items-center gap-3">
+                    <Progress value={progressoExportacao} className="h-3 flex-1" />
+                    <span className="text-sm font-medium text-slate-700 whitespace-nowrap">{Math.round(progressoExportacao)}%</span>
                   </div>
-                )}
+                  <div className="text-xs text-slate-500 text-center sm:text-left">
+                    {totalProcessado} de {selectedIds.length} | ✅ {totalSucessos} | ❌ {totalErros}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={handleClose}>
+                  Cancelar
+                </Button>
                 <Button
                   onClick={handleExportar}
                   disabled={selectedIds.length === 0 || exportando}
@@ -262,7 +264,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 </Button>
               </div>
             </div>
-          </>
+          </div>
         ) : (
           <div className="space-y-4 flex-1 min-h-0 overflow-hidden">
             <div className="grid grid-cols-3 gap-4">
