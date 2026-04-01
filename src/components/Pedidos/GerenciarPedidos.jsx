@@ -18,6 +18,7 @@ import CancelarPedidoModal from './CancelarPedidoModal';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoAgrupado from './PedidoAgrupado';
 import PedidoPdf from './PedidoPdf';
+import PedidoPreviewSelecionado from './PedidoPreviewSelecionado';
 import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
 import useColumnOrder from './useColumnOrder';
@@ -59,6 +60,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [debitosCliente, setDebitosCliente] = useState({ id: null, nome: '' });
   const [showAgrupado, setShowAgrupado] = useState(false);
   const [viewPedidoId, setViewPedidoId] = useState(null);
+  const [viewPedidoAnaliticoId, setViewPedidoAnaliticoId] = useState(null);
   const [batchResult, setBatchResult] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
 
@@ -415,7 +417,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return (
       <div className="space-y-4">
         <Button variant="outline" onClick={() => setViewPedidoId(null)}>Voltar</Button>
-        <PedidoPdf pedidoId={viewPedidoId} />
+        <PedidoAgrupado pedidoIds={[viewPedidoId]} onVoltar={() => setViewPedidoId(null)} />
+      </div>
+    );
+  }
+
+  if (viewPedidoAnaliticoId) {
+    return (
+      <div className="space-y-4">
+        <Button variant="outline" onClick={() => setViewPedidoAnaliticoId(null)}>Voltar</Button>
+        <PedidoPdf pedidoId={viewPedidoAnaliticoId} />
       </div>
     );
   }
@@ -600,7 +611,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     ))}
                     <td className="px-1 py-0" style={{ width: 70, minWidth: 70 }}>
                       <div className="flex gap-0.5">
-                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Ver pedido" onClick={() => setViewPedidoId(p.id)}>
+                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Ver pedido analítico" onClick={() => setViewPedidoAnaliticoId(p.id)}>
                           <Eye className="w-2.5 h-2.5" />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
@@ -614,6 +625,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {selectedIds.length === 1 && (
+        <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
       )}
 
       <div className="text-xs text-slate-500">
@@ -634,6 +649,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
           </Button>
           <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
             <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
+          </Button>
+          <Button size="sm" variant="outline" disabled={selectedIds.length !== 1} onClick={() => setViewPedidoAnaliticoId(selectedIds[0])}>
+            <Printer className="w-3 h-3 mr-1" /> Imprimir Analítico
           </Button>
           {(() => {
             const canEdit = selectedIds.length === 1;
