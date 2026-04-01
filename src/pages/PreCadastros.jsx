@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { validarDocumento, formatarDocumento, formatarCEP } from '@/components/c
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 const INITIAL_FORM = {
+  codigo: '',
   razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: '',
   endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
   segmento_id: '', vendedor_id: '', supervisor_id: '',
@@ -45,6 +46,19 @@ export default function PreCadastros() {
     queryFn: () => base44.entities.Cliente.filter({ pre_cadastro: true })
   });
 
+  const { data: clientesNumericos = [] } = useQuery({
+    queryKey: ['clientes-codigos'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
+  const proximoCodigoCliente = useMemo(() => {
+    const maiorCodigo = Math.max(
+      0,
+      ...clientesNumericos.map(cliente => Number.parseInt(String(cliente.codigo || '').trim(), 10)).filter(Number.isFinite)
+    );
+    return String(maiorCodigo + 1);
+  }, [clientesNumericos]);
+
   // Detect current user and auto-fill vendedor
   useEffect(() => {
     base44.auth.me().then(user => {
@@ -56,14 +70,18 @@ export default function PreCadastros() {
 
   // Auto-fill vendedor when starting new form
   useEffect(() => {
-    if (isEditing && !selected && funcionarioAtual) {
-      setFormData(prev => ({ ...prev, vendedor_id: funcionarioAtual.id }));
-      if (funcionarioAtual.supervisor_id) {
+    if (isEditing && !selected) {
+      setFormData(prev => ({
+        ...prev,
+        codigo: proximoCodigoCliente,
+        vendedor_id: funcionarioAtual?.id || prev.vendedor_id
+      }));
+      if (funcionarioAtual?.supervisor_id) {
         const sup = vendedores.find(v => v.id === funcionarioAtual.supervisor_id);
         setSupervisorNome(sup?.nome || '');
       }
     }
-  }, [isEditing, selected, funcionarioAtual, vendedores]);
+  }, [isEditing, selected, funcionarioAtual, vendedores, proximoCodigoCliente]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -112,6 +130,7 @@ export default function PreCadastros() {
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({
+      codigo: item.codigo || '',
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
       cpf_cnpj: item.cpf_cnpj || '',
@@ -170,9 +189,9 @@ export default function PreCadastros() {
       }
     }
 
-    let dataToSave = { ...formData };
-    dataToSave.status = 'inativo'; // Always inativo
-    dataToSave.pre_cadastro = true; // Mark as pre-cadastro
+    let dataToSave = { ...formData, codigo: selected ? formData.codigo : proximoCodigoCliente };
+    dataToSave.status = 'inativo';
+    dataToSave.pre_cadastro = true;
 
     // Normalize
     if (dataToSave.cpf_cnpj) dataToSave.cpf_cnpj = dataToSave.cpf_cnpj.replace(/\D/g, '');

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -48,17 +48,11 @@ export default function Clientes() {
 
   const queryClient = useQueryClient();
 
-  // Capturar código da URL se vier do redirecionamento
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const codigoParam = params.get('codigo');
-    
-    if (codigoParam) {
-      setFormData(prev => ({ ...prev, codigo: codigoParam }));
-      setIsEditing(true);
-      setActiveTab('cadastro');
+  useEffect(() => {
+    if (isEditing && !selected) {
+      setFormData(prev => ({ ...prev, codigo: proximoCodigoCliente }));
     }
-  }, []);
+  }, [isEditing, selected, proximoCodigoCliente]);
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
@@ -94,6 +88,19 @@ export default function Clientes() {
     queryKey: ['tabelasPreco'],
     queryFn: () => base44.entities.TabelaPreco.list()
   });
+
+  const { data: clientesNumericos = [] } = useQuery({
+    queryKey: ['clientes-codigos'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
+  const proximoCodigoCliente = useMemo(() => {
+    const maiorCodigo = Math.max(
+      0,
+      ...clientesNumericos.map(cliente => Number.parseInt(String(cliente.codigo || '').trim(), 10)).filter(Number.isFinite)
+    );
+    return String(maiorCodigo + 1);
+  }, [clientesNumericos]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -363,7 +370,7 @@ export default function Clientes() {
     }
 
     // Normalizar dados para formato Omie
-    let dataToSave = { ...formData };
+    let dataToSave = { ...formData, codigo: selected ? formData.codigo : proximoCodigoCliente };
 
     // Remover aspas de todos os campos texto
     const removeQuotes = (val) => {
@@ -972,9 +979,9 @@ export default function Clientes() {
                    <Label>Código</Label>
                    <Input
                      value={formData.codigo}
-                     onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                     disabled={!isEditing}
-                     placeholder="Código interno"
+                     disabled
+                     placeholder="Gerado automaticamente"
+                     className="bg-slate-50"
                    />
                 </div>
                 <div>
