@@ -17,6 +17,7 @@ import CriarRoteiroModal from '@/components/Roteiros/CriarRoteiroModal';
 import VisualizarRoteiroModal from '@/components/Roteiros/VisualizarRoteiroModal';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import LogClientesNaoCadastrados from '@/components/Roteiros/LogClientesNaoCadastrados';
+import AtualizacaoMassaRoteiros from '@/components/Roteiros/AtualizacaoMassaRoteiros';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 
@@ -286,9 +287,10 @@ export default function Roteiros() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[800px] grid-cols-4 mb-6">
+        <TabsList className="grid w-full max-w-[900px] grid-cols-5 mb-6">
           <TabsTrigger value="busca">Busca de Roteiros</TabsTrigger>
           <TabsTrigger value="importar">Criação em Massa</TabsTrigger>
+          <TabsTrigger value="atualizacao">Atualização em Massa</TabsTrigger>
           <TabsTrigger value="pendentes">Clientes Pendentes</TabsTrigger>
           <TabsTrigger value="visualizar">Visualizar Roteiro</TabsTrigger>
         </TabsList>
@@ -448,6 +450,10 @@ export default function Roteiros() {
 
         <TabsContent value="importar" className="space-y-6">
           <ImportarTab />
+        </TabsContent>
+
+        <TabsContent value="atualizacao" className="space-y-6">
+          <AtualizacaoMassaRoteiros />
         </TabsContent>
 
         <TabsContent value="pendentes" className="space-y-6">
