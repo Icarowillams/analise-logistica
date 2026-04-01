@@ -880,21 +880,21 @@ export default function Clientes() {
   };
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
-            <Building2 className="h-6 w-6 text-neutral-900" />
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-8">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0">
+            <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-neutral-900" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Clientes</h1>
-            <p className="text-neutral-500 mt-0.5">Gestão de base de clientes</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight">Clientes</h1>
+            <p className="text-xs sm:text-sm text-neutral-500 mt-0.5">Gestão de base de clientes</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2 w-full sm:w-auto justify-center">
                 Ações <ChevronDown className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -930,7 +930,7 @@ export default function Clientes() {
           </DropdownMenu>
           <Button
             onClick={handleNew}
-            className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
+            className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
           >
             Novo Cliente
           </Button>
@@ -938,25 +938,25 @@ export default function Clientes() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[500px] grid-cols-3 mb-6">
-          <TabsTrigger value="cadastro" className="flex items-center gap-2">
-            <Building2 className="w-4 h-4" />
+        <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6 h-auto">
+          <TabsTrigger value="cadastro" className="flex items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm px-2 py-2">
+            <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Cadastro
           </TabsTrigger>
-          <TabsTrigger value="consulta" className="flex items-center gap-2">
-            <List className="w-4 h-4" />
+          <TabsTrigger value="consulta" className="flex items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm px-2 py-2">
+            <List className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Consulta
           </TabsTrigger>
-          <TabsTrigger value="mapa" className="flex items-center gap-2">
-            <Map className="w-4 h-4" />
+          <TabsTrigger value="mapa" className="flex items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm px-2 py-2">
+            <Map className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Mapa
           </TabsTrigger>
         </TabsList>
         
-        <TabsContent value="cadastro" className="space-y-6 animate-in fade-in-50 duration-300">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">
+        <TabsContent value="cadastro" className="space-y-4 sm:space-y-6 animate-in fade-in-50 duration-300">
+          <div className="bg-white rounded-xl p-3 sm:p-6 shadow-sm border border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-100">
+              <h2 className="text-base sm:text-lg font-semibold text-slate-800">
                 {selected ? 'Editar Cliente' : 'Novo Cliente'}
               </h2>
               {!isEditing && (
@@ -966,8 +966,8 @@ export default function Clientes() {
               )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <div>
                    <Label>Código</Label>
                    <Input
@@ -1301,7 +1301,7 @@ export default function Clientes() {
               </div>
               
               {isEditing && (
-                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-100">
                   <Button type="button" variant="outline" onClick={handleCancel}>
                     <Ban className="w-4 h-4 mr-2" />
                     Cancelar

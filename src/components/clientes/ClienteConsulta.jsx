@@ -215,17 +215,17 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Filters */}
-      <Card className="bg-white shadow-sm border-slate-200">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-medium flex items-center gap-2">
+      <Card className="bg-white shadow-sm border-slate-200 overflow-hidden">
+        <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
+          <CardTitle className="text-base sm:text-lg font-medium flex items-center gap-2">
             <Filter className="w-5 h-5 text-amber-500" />
             Filtros Avançados
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
             
             {/* Vendedor */}
             <div className="space-y-1">
@@ -375,7 +375,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
 
           </div>
           
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-stretch sm:justify-end">
             <Button 
               variant="outline" 
               onClick={() => setFilters({
@@ -389,7 +389,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 search: '',
                 semLocalizacao: false
               })}
-              className="text-slate-600 hover:text-slate-900"
+              className="w-full sm:w-auto text-slate-600 hover:text-slate-900"
             >
               Limpar Filtros
             </Button>
@@ -399,8 +399,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
 
       {/* Results Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+        <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+          <h3 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg">
             <List className="w-4 h-4" />
             Resultados ({filteredClientes.length})
           </h3>
@@ -409,7 +409,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               onClick={() => onExport(filteredClientes)}
               variant="outline"
               size="sm"
-              className="border-green-200 text-green-700 hover:bg-green-50"
+              className="w-full sm:w-auto border-green-200 text-green-700 hover:bg-green-50"
             >
               <Download className="w-4 h-4 mr-2" />
               Exportar ({filteredClientes.length})
