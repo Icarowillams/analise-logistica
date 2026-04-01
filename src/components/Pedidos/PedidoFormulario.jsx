@@ -31,8 +31,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [itensLocal, setItensLocal] = useState([]);
   const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
   const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
-  const [cenarios, setCenarios] = useState([]);
-  const [loadingCenarios, setLoadingCenarios] = useState(false);
+  const [cenariosPadraoAplicado, setCenariosPadraoAplicado] = useState(false);
 
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
@@ -65,26 +64,32 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
   const mostrarCenarioFiscal = !!permissaoCenariosFiscais;
 
+  const { data: cenariosData, isLoading: loadingCenarios } = useQuery({
+    queryKey: ['cenariosFiscaisOmie'],
+    queryFn: async () => {
+      const resp = await base44.functions.invoke('listarCenariosOmie', {});
+      if (resp.data?.sucesso && resp.data?.cenarios) {
+        return resp.data.cenarios;
+      }
+      return [];
+    },
+    enabled: mostrarCenarioFiscal,
+    staleTime: 5 * 60 * 1000, // cache 5 min
+  });
+
+  const cenarios = cenariosData || [];
+
+  // Pré-selecionar cenário padrão quando os dados carregam
   useEffect(() => {
-    if (mostrarCenarioFiscal && cenarios.length === 0) {
-      setLoadingCenarios(true);
-      base44.functions.invoke('listarCenariosOmie', {})
-        .then(resp => {
-          const data = resp.data;
-          if (data.sucesso && data.cenarios) {
-            setCenarios(data.cenarios);
-            // Se houver cenário padrão, pré-selecionar
-            const padrao = data.cenarios.find(c => c.padrao);
-            if (padrao && !cenarioFiscalCodigo) {
-              setCenarioFiscalCodigo(String(padrao.codigo));
-              setCenarioFiscalNome(padrao.nome);
-            }
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingCenarios(false));
+    if (cenarios.length > 0 && !cenarioFiscalCodigo && !cenariosPadraoAplicado && !editingPedidoId) {
+      const padrao = cenarios.find(c => c.padrao);
+      if (padrao) {
+        setCenarioFiscalCodigo(String(padrao.codigo));
+        setCenarioFiscalNome(padrao.nome);
+      }
+      setCenariosPadraoAplicado(true);
     }
-  }, [mostrarCenarioFiscal]);
+  }, [cenarios, cenarioFiscalCodigo, cenariosPadraoAplicado, editingPedidoId]);
 
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
@@ -372,13 +377,21 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                     <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Carregando cenários...
                     </div>
+                  ) : cenarios.length === 0 ? (
+                    <div className="text-sm text-red-500 py-2">
+                      Erro ao carregar cenários fiscais. Verifique a conexão com o Omie.
+                    </div>
                   ) : (
                     <Select
                       value={cenarioFiscalCodigo}
                       onValueChange={(val) => {
                         setCenarioFiscalCodigo(val);
-                        const c = cenarios.find(c => String(c.codigo) === val);
-                        setCenarioFiscalNome(c?.nome || '');
+                        if (val === 'troca') {
+                          setCenarioFiscalNome('Troca (sem Omie)');
+                        } else {
+                          const found = cenarios.find(c => String(c.codigo) === val);
+                          setCenarioFiscalNome(found?.nome || '');
+                        }
                       }}
                     >
                       <SelectTrigger>
@@ -388,7 +401,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                         <SelectItem value="troca">Troca (sem Omie)</SelectItem>
                         {cenarios.map(c => (
                           <SelectItem key={c.codigo} value={String(c.codigo)}>
-                            {c.codigo} - {c.nome} {c.padrao ? '(Padrão)' : ''}
+                            {c.nome} {c.padrao ? '(Padrão)' : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
