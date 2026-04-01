@@ -91,29 +91,42 @@ Deno.serve(async (req) => {
                 if (pagina <= totalPaginas) await delay(500);
             }
 
-            // Buscar clientes do Base44
-            const clientesBase44 = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
+            // Buscar todos os clientes do Base44 com paginação
+            const clientesBase44 = [];
+            const PAGE_SIZE = 500;
+            let skip = 0;
 
-            // Indexar por codigo_cliente_integracao (= id do Base44)
-            const omieMap = {};
+            while (true) {
+                const lote = await base44.asServiceRole.entities.Cliente.list('-created_date', PAGE_SIZE, skip);
+                const registros = Array.isArray(lote) ? lote : [];
+                clientesBase44.push(...registros);
+
+                if (registros.length < PAGE_SIZE) break;
+                skip += PAGE_SIZE;
+            }
+
+            // Indexar Omie por id de integração e por CPF/CNPJ normalizado
+            const omieMapPorId = {};
+            const omieMapPorCpfCnpj = {};
             todosOmie.forEach(c => {
-                if (c.codigo_cliente_integracao) {
-                    omieMap[c.codigo_cliente_integracao] = c;
-                }
+                const codigoIntegracao = (c.codigo_cliente_integracao || '').trim();
+                const cpfCnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+                if (codigoIntegracao) omieMapPorId[codigoIntegracao] = c;
+                if (cpfCnpj) omieMapPorCpfCnpj[cpfCnpj] = c;
             });
 
-            const base44Map = {};
-            clientesBase44.forEach(c => { base44Map[c.id] = c; });
+            const base44Ids = new Set(clientesBase44.map(c => c.id));
 
-            // Comparar
             let iguais = 0;
             const diferentes = [];
             const soNoBase44 = [];
             const soNoOmie = [];
 
-            // Clientes no Base44 — checar se existem no Omie e se diferem
+            // Clientes no Base44 — considerar existente se bater por ID de integração OU CPF/CNPJ
             for (const cb of clientesBase44) {
-                const co = omieMap[cb.id];
+                const cpfCnpjBase44 = (cb.cpf_cnpj || '').replace(/\D/g, '');
+                const co = omieMapPorId[cb.id] || omieMapPorCpfCnpj[cpfCnpjBase44];
+
                 if (!co) {
                     soNoBase44.push({
                         id: cb.id,
@@ -126,12 +139,11 @@ Deno.serve(async (req) => {
                     continue;
                 }
 
-                // Comparar campos principais
                 const diffs = [];
                 const comparar = [
                     ['razao_social', cb.razao_social || '', (co.razao_social || '').substring(0, 60)],
                     ['nome_fantasia', cb.nome_fantasia || '', co.nome_fantasia || ''],
-                    ['cnpj_cpf', (cb.cpf_cnpj || '').replace(/\D/g, ''), (co.cnpj_cpf || '').replace(/\D/g, '')],
+                    ['cnpj_cpf', cpfCnpjBase44, (co.cnpj_cpf || '').replace(/\D/g, '')],
                     ['endereco', cb.endereco || '', co.endereco || ''],
                     ['numero', cb.numero || '', co.endereco_numero || ''],
                     ['bairro', cb.bairro || '', co.bairro || ''],
@@ -140,7 +152,7 @@ Deno.serve(async (req) => {
                     ['cep', (cb.cep || '').replace(/\D/g, ''), (co.cep || '').replace(/\D/g, '')],
                     ['inativo', cb.status === 'inativo' ? 'S' : 'N', co.inativo || 'N'],
                 ];
-                
+
                 for (const [campo, valBase44, valOmie] of comparar) {
                     const a = (valBase44 || '').toString().trim().toUpperCase();
                     const b = (valOmie || '').toString().trim().toUpperCase();
@@ -162,10 +174,17 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Clientes no Omie que NÃO estão no Base44
-            const base44Ids = new Set(clientesBase44.map(c => c.id));
+            // Clientes no Omie que NÃO estão no Base44 por ID e nem por CPF/CNPJ
+            const base44CpfCnpjSet = new Set(
+                clientesBase44.map(c => (c.cpf_cnpj || '').replace(/\D/g, '')).filter(Boolean)
+            );
+
             for (const co of todosOmie) {
-                if (co.codigo_cliente_integracao && !base44Ids.has(co.codigo_cliente_integracao)) {
+                const codigoIntegracao = (co.codigo_cliente_integracao || '').trim();
+                const cpfCnpj = (co.cnpj_cpf || '').replace(/\D/g, '');
+                const existeNoBase44 = (codigoIntegracao && base44Ids.has(codigoIntegracao)) || (cpfCnpj && base44CpfCnpjSet.has(cpfCnpj));
+
+                if (!existeNoBase44) {
                     soNoOmie.push({
                         codigo_omie: co.codigo_cliente_omie,
                         codigo_integracao: co.codigo_cliente_integracao,
