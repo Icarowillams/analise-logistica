@@ -89,13 +89,19 @@ Deno.serve(async (req) => {
                         continue;
                     }
 
-                    // Buscar itens do pedido
+                    // Buscar itens do pedido e localizar pelo código curto do Produto na base comercial
                     const itensPedido = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: pedido.id });
-                    const itemEncontrado = itensPedido.find(it => String(it.produto_codigo || '').trim() === String(produto.codigo_produto).trim());
+                    const produtosBase = await base44.asServiceRole.entities.Produto.list();
+                    const codigoProdutoRecebido = String(produto.codigo_produto || '').trim();
+
+                    const itemEncontrado = itensPedido.find((it) => {
+                        const produtoBase = produtosBase.find((p) => p.id === it.produto_id);
+                        return String(produtoBase?.codigo || '').trim() === codigoProdutoRecebido;
+                    });
 
                     if (!itemEncontrado) {
                         erros++;
-                        detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: `Produto "${produto.codigo_produto}" não encontrado no pedido` });
+                        detalhes.push({ numero_pedido: String(numero_pedido), sucesso: false, erro: `Produto com código base "${produto.codigo_produto}" não encontrado no pedido` });
                         continue;
                     }
 
@@ -132,6 +138,7 @@ Deno.serve(async (req) => {
                         sucesso: true,
                         tipo: 'editar_produto',
                         produto_codigo: produto.codigo_produto,
+                        produto_item_id: itemEncontrado.id,
                         removido: produto.removido || false,
                         novo_total_pedido: novoTotal,
                         observacao: observacao || '',
