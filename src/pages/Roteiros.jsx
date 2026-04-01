@@ -761,7 +761,7 @@ function ImportarTab() {
       }
 
       if (erros.length > 0 && roteirosMap.size === 0) {
-        alert('Erros encontrados:\n' + erros.slice(0, 10).join('\n') + (erros.length > 10 ? `\n... e mais ${erros.length - 10} erros` : '') + '\n\nOs clientes não cadastrados foram salvos no log.');
+        alert('❌ Nenhum roteiro válido para importar.\n\nErros encontrados:\n\n' + erros.join('\n') + '\n\nOs clientes não cadastrados foram salvos no log.');
         setIsImporting(false);
         return;
       }
@@ -802,8 +802,12 @@ function ImportarTab() {
         if (resultado.erros > 0) {
           msg += `\n\n❌ ${resultado.erros} roteiros com erros.`;
         }
-        if (erros.length > clientesNaoEncontrados.size) {
-          msg += `\n\n⚠️ ${erros.length - clientesNaoEncontrados.size} outras linhas com erros foram ignoradas.`;
+        // Separar erros de clientes não encontrados dos outros erros
+        const errosClientes = erros.filter(e => e.includes('não encontrado'));
+        const errosOutros = erros.filter(e => !e.includes('não encontrado'));
+        if (errosOutros.length > 0) {
+          msg += `\n\n⚠️ ${errosOutros.length} linha(s) com erros:\n`;
+          msg += errosOutros.join('\n');
         }
         alert(msg);
       } else {
@@ -811,6 +815,10 @@ function ImportarTab() {
         let msg = 'Nenhum roteiro válido para importar.';
         if (clientesNaoEncontrados.size > 0) {
           msg += `\n\n⚠️ ${clientesNaoEncontrados.size} cliente(s) não cadastrado(s) foram salvos no log.`;
+        }
+        if (erros.length > 0) {
+          msg += `\n\nDetalhes dos erros:\n`;
+          msg += erros.join('\n');
         }
         alert(msg);
       }
