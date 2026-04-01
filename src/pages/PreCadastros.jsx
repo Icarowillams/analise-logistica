@@ -46,11 +46,6 @@ export default function PreCadastros() {
     queryFn: () => base44.entities.Cliente.filter({ pre_cadastro: true })
   });
 
-  const reservarCodigoCliente = async () => {
-    const response = await base44.functions.invoke('reservarCodigoCliente', {});
-    return response.data?.codigo || '';
-  };
-
   // Detect current user and auto-fill vendedor
   useEffect(() => {
     base44.auth.me().then(user => {
@@ -69,22 +64,19 @@ export default function PreCadastros() {
   const userPermission = funcionarioAtual ? permissoes.find(p => p.vendedor_id === funcionarioAtual.id) : null;
   const podeCriarPreCadastro = isAdmin || userPermission?.permissoes_cadastros?.criar_precadastro || userPermission?.permissoes_cadastros?.criar;
 
-  // Auto-fill vendedor when starting new form
+  // Auto-fill vendedor when starting new form (sem gerar código - será gerado ao ativar)
   useEffect(() => {
-    if (isEditing && !selected && !formData.codigo) {
-      reservarCodigoCliente().then((codigoReservado) => {
-        setFormData(prev => ({
-          ...prev,
-          codigo: codigoReservado,
-          vendedor_id: funcionarioAtual?.id || prev.vendedor_id
-        }));
-      });
+    if (isEditing && !selected) {
+      setFormData(prev => ({
+        ...prev,
+        vendedor_id: funcionarioAtual?.id || prev.vendedor_id
+      }));
       if (funcionarioAtual?.supervisor_id) {
         const sup = vendedores.find(v => v.id === funcionarioAtual.supervisor_id);
         setSupervisorNome(sup?.nome || '');
       }
     }
-  }, [isEditing, selected, funcionarioAtual, vendedores, formData.codigo]);
+  }, [isEditing, selected, funcionarioAtual, vendedores]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -192,7 +184,9 @@ export default function PreCadastros() {
       }
     }
 
-    let dataToSave = { ...formData, codigo: formData.codigo };
+    let dataToSave = { ...formData };
+    // Pré-cadastro NÃO gera código - será gerado ao ativar o cliente
+    delete dataToSave.codigo;
     dataToSave.status = 'inativo';
     dataToSave.pre_cadastro = true;
 
@@ -260,7 +254,7 @@ export default function PreCadastros() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Código</Label>
-                  <Input value={formData.codigo} disabled placeholder="Gerado automaticamente" className="bg-slate-50" />
+                  <Input value={formData.codigo || '(gerado ao ativar)'} disabled placeholder="Gerado ao ativar o cliente" className="bg-slate-50 text-slate-400 italic" />
                 </div>
                 <div>
                   <Label>Razão Social *</Label>
