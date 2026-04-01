@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, Save } from 'lucide-react';
 
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png";
 
@@ -86,14 +86,33 @@ export default function PedidoPdf({ pedidoId }) {
     win.print();
   };
 
+  const handleDownload = () => {
+    const content = printRef.current;
+    const html = `<html><head><title>Pedido_${pedido.numero_pedido || 'N-A'}</title><style>${printStyles}</style></head><body>${content.innerHTML}</body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Pedido_${pedido.numero_pedido || pedido.id}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const fmtMoney = (v) => (v || 0).toFixed(2);
   const fmtMoney3 = (v) => (v || 0).toFixed(3);
 
   return (
     <div className="space-y-4">
-      <Button onClick={handlePrint} className="bg-gradient-to-r from-blue-500 to-blue-600">
-        <Download className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
-      </Button>
+      <div className="flex gap-2">
+        <Button onClick={handlePrint} className="bg-gradient-to-r from-blue-500 to-blue-600">
+          <Download className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
+        </Button>
+        <Button onClick={handleDownload} className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+          <Save className="w-4 h-4 mr-2" /> Salvar
+        </Button>
+      </div>
 
       <div ref={printRef} className="bg-white border rounded-xl shadow-sm max-w-4xl mx-auto" style={{ padding: '20px', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#000', position: 'relative' }}>
         
