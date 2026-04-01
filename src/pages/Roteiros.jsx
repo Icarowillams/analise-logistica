@@ -305,12 +305,12 @@ export default function Roteiros() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <Label>Filtrar por dia</Label>
-                  <Select value={filters.dia} onValueChange={(v) => setFilters({...filters, dia: v})}>
+                  <Select value={filters.dia || "all"} onValueChange={(v) => setFilters({...filters, dia: v === "all" ? "" : v})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todos os dias" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={null}>Todos os dias</SelectItem>
+                      <SelectItem value="all">Todos os dias</SelectItem>
                       <SelectItem value="segunda-feira">Segunda-feira</SelectItem>
                       <SelectItem value="terca-feira">Terça-feira</SelectItem>
                       <SelectItem value="quarta-feira">Quarta-feira</SelectItem>
@@ -323,26 +323,28 @@ export default function Roteiros() {
                 </div>
                 <div>
                   <Label>Filtrar por funcionário</Label>
-                  <Select value={filters.vendedor} onValueChange={(v) => setFilters({...filters, vendedor: v})}>
+                  <Select value={filters.vendedor || "all"} onValueChange={(v) => setFilters({...filters, vendedor: v === "all" ? "" : v})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todos os funcionários" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={null}>Todos os funcionários</SelectItem>
-                      {vendedores.map(v => (
-                        <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
-                      ))}
+                      <SelectItem value="all">Todos os funcionários</SelectItem>
+                      {vendedores
+                        .filter(v => !filters.funcao || v.funcao_id === filters.funcao)
+                        .map(v => (
+                          <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label>Filtrar por função</Label>
-                  <Select value={filters.funcao} onValueChange={(v) => setFilters({...filters, funcao: v})}>
+                  <Select value={filters.funcao || "all"} onValueChange={(v) => setFilters({...filters, funcao: v === "all" ? "" : v, vendedor: ""})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todas as funções" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={null}>Todas as funções</SelectItem>
+                      <SelectItem value="all">Todas as funções</SelectItem>
                       {funcoes.map(f => (
                         <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
                       ))}
