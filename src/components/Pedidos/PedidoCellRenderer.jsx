@@ -21,7 +21,7 @@ const STATUS_LABELS = {
 
 const formatDate = (d) => {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('pt-BR');
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
 };
 
 const formatCurrency = (v) => {
