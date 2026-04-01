@@ -386,13 +386,14 @@ Deno.serve(async (req) => {
         // MODO: listar_base44 — retorna lista resumida de clientes ativos
         // ====================================================================
         if (modo === "listar_base44") {
-            const { cursor = null } = body;
+            const { pagina_base44 = 1 } = body;
             const PAGE_SIZE = 500;
+            const skip = Math.max(0, (Number(pagina_base44) - 1) * PAGE_SIZE);
 
             const lote = await base44.asServiceRole.entities.Cliente.list(
                 '-created_date',
                 PAGE_SIZE,
-                cursor
+                skip
             );
 
             const arr = Array.isArray(lote) ? lote : [];
@@ -405,7 +406,6 @@ Deno.serve(async (req) => {
                     cpf_cnpj: c.cpf_cnpj || ''
                 }));
 
-            const proximoCursor = arr.length > 0 ? arr[arr.length - 1].id : null;
             const concluido = arr.length < PAGE_SIZE;
 
             return Response.json({
@@ -413,7 +413,7 @@ Deno.serve(async (req) => {
                 count: resumo.length,
                 total_bruto: arr.length,
                 concluido,
-                proximo_cursor: concluido ? null : proximoCursor
+                pagina: pagina_base44
             });
         }
 
