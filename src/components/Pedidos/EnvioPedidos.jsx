@@ -89,13 +89,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
         toast.success(`Troca #${numero} enviada com sucesso!`);
       } else {
-        // Vendas: marcar como enviado SEM número, enviar ao Omie, receber número do Omie
-        await base44.entities.Pedido.update(pedido.id, {
-          status: 'enviado',
-          data_envio: new Date().toISOString(),
-          omie_erro: null
-        });
-
+        // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
         let omieOk = false;
         let erroMsg = '';
         let numeroPedidoOmie = null;
@@ -110,18 +104,23 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           }
         } catch (omieErr) {
           erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+        }
+
+        if (omieOk) {
+          await base44.entities.Pedido.update(pedido.id, {
+            status: 'enviado',
+            data_envio: new Date().toISOString(),
+            omie_erro: null
+          });
+          toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
+        } else {
           await base44.entities.Pedido.update(pedido.id, {
             status: 'pendente',
             numero_pedido: null,
             data_envio: null,
             omie_erro: erroMsg
           });
-        }
-
-        if (!omieOk) {
           toast.error(`Erro ao enviar pedido ao Omie: ${erroMsg}`);
-        } else {
-          toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
         }
       }
 
@@ -155,13 +154,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         } catch (_) { /* trocas não precisam do Omie */ }
         sucessoCount++;
       } else {
-        // Vendas: enviar ao Omie sem número local
-        await base44.entities.Pedido.update(pedido.id, {
-          status: 'enviado',
-          data_envio: new Date().toISOString(),
-          omie_erro: null
-        });
-
+        // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
         let omieOk = false;
         let erroMsg = '';
         try {
@@ -173,17 +166,22 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           }
         } catch (omieErr) {
           erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+        }
+
+        if (omieOk) {
+          await base44.entities.Pedido.update(pedido.id, {
+            status: 'enviado',
+            data_envio: new Date().toISOString(),
+            omie_erro: null
+          });
+          sucessoCount++;
+        } else {
           await base44.entities.Pedido.update(pedido.id, {
             status: 'pendente',
             numero_pedido: null,
             data_envio: null,
             omie_erro: erroMsg
           });
-        }
-
-        if (omieOk) {
-          sucessoCount++;
-        } else {
           erroCount++;
           erroMsgs.push(`${pedido.cliente_nome}: ${erroMsg}`);
         }

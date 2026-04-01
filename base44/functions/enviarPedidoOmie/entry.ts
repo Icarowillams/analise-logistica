@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
         }
 
-        if (pedido.status !== 'enviado' && pedido.status !== 'liberado') {
-            return Response.json({ error: 'Apenas pedidos enviados ou liberados podem ser enviados ao Omie' }, { status: 400 });
+        if (!['pendente', 'enviado', 'liberado'].includes(pedido.status)) {
+            return Response.json({ error: 'Pedido com status inválido para envio ao Omie' }, { status: 400 });
         }
 
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
@@ -174,9 +174,6 @@ Deno.serve(async (req) => {
         } else if (isErroBloqueio(consultaCodigo.faultstring)) {
             // API bloqueada — não podemos saber se o cliente existe, abortar com erro claro
             console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaCodigo.faultstring}`);
-            await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
-            });
             return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
         } else {
             // Tentar com o ID do Base44
@@ -189,9 +186,6 @@ Deno.serve(async (req) => {
                     console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com ID Base44: ${idBase44}`);
                 } else if (isErroBloqueio(consultaId.faultstring)) {
                     console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaId.faultstring}`);
-                    await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                        omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
-                    });
                     return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
                 }
             }
@@ -204,9 +198,6 @@ Deno.serve(async (req) => {
                     console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo: ${clienteBase44.codigo}`);
                 } else if (isErroBloqueio(consultaCod2.faultstring)) {
                     console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaCod2.faultstring}`);
-                    await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                        omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
-                    });
                     return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
                 }
             }
@@ -214,9 +205,6 @@ Deno.serve(async (req) => {
 
         if (!clienteEncontradoOmie) {
             console.error(`[enviarPedidoOmie] Cliente não encontrado no Omie com nenhum código de integração`);
-            await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                omie_erro: `Cliente não cadastrado no Omie. Exporte o cliente primeiro.`
-            });
             return Response.json({ sucesso: false, erro: 'Cliente não cadastrado no Omie. Exporte o cliente primeiro.' });
         }
 
@@ -363,11 +351,8 @@ Deno.serve(async (req) => {
             
             console.error('[enviarPedidoOmie] Erro Omie:', resultado.faultstring);
             
-            // Atualizar pedido com erro e reverter para pendente
+            // Registrar erro no pedido
             await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                status: 'pendente',
-                numero_pedido: null,
-                data_envio: null,
                 omie_erro: resultado.faultstring,
                 omie_enviado: false
             });
@@ -438,19 +423,15 @@ Deno.serve(async (req) => {
     } catch (error) {
         console.error('[enviarPedidoOmie] Erro geral:', error.message);
         
-        // Tentar reverter o pedido para pendente em caso de erro geral
+        // Registrar erro no pedido
         if (base44 && pedido_id) {
             try {
                 await base44.asServiceRole.entities.Pedido.update(pedido_id, {
-                    status: 'pendente',
-                    numero_pedido: null,
-                    data_envio: null,
                     omie_erro: `Erro interno: ${error.message}`,
                     omie_enviado: false
                 });
-                console.log('[enviarPedidoOmie] Pedido revertido para pendente após erro');
             } catch (recoveryErr) {
-                console.error('[enviarPedidoOmie] Erro ao reverter pedido:', recoveryErr.message);
+                console.error('[enviarPedidoOmie] Erro ao registrar erro:', recoveryErr.message);
             }
         }
         
