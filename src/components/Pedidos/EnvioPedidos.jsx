@@ -32,8 +32,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     queryFn: () => base44.entities.PedidoItem.list()
   });
 
-  const pendentes = pedidos.filter(p => p.status === 'pendente');
-  const enviados = pedidos.filter(p => p.status === 'enviado');
+  const pendentes = pedidos.filter(p => p.status === 'pendente' && !p.data_envio);
+  const enviados = pedidos.filter(p => !!p.data_envio);
 
   const filtrarPedidos = (lista) => {
     return lista.filter(p => {
