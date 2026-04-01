@@ -7,8 +7,8 @@ import FiltrosDashboardVendas from '@/components/DashboardVendas/FiltrosDashboar
 import { calcularResumoVendas, calcularVariacao, filtrarVendasDashboard } from '@/components/DashboardVendas/dashboardVendasUtils';
 
 function LinhaComparacao({ label, valorX, valorY, formatador }) {
-  const diff = valorX - valorY;
-  const variacao = calcularVariacao(valorX, valorY);
+  const diff = valorY - valorX;
+  const variacao = calcularVariacao(valorY, valorX);
   const positiva = diff >= 0;
 
   return (
