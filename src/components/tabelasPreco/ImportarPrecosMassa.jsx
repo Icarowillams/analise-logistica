@@ -12,8 +12,8 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produtos, onSuccess }) {
-  const [mode, setMode] = useState('upload'); // 'upload' ou 'paste'
-  const [importMode, setImportMode] = useState('cadastrar'); // 'cadastrar' ou 'atualizar'
+  const [mode, setMode] = useState('upload');
+  const [importMode, setImportMode] = useState('cadastrar');
   const [file, setFile] = useState(null);
   const [pastedData, setPastedData] = useState('');
   const [preview, setPreview] = useState([]);
@@ -21,7 +21,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
-  const [failedImports, setFailedImports] = useState([]); // Log de erros de importação
+  const [failedImports, setFailedImports] = useState([]);
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [editingError, setEditingError] = useState(null);
 
@@ -46,34 +46,24 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     const lines = text.trim().split('\n');
     if (lines.length < 2) return { data: [], errors: ['Arquivo vazio ou sem dados'] };
 
-    // Detectar separador: se a primeira linha tem ; usa ;, se tem \t usa \t, senão usa ,
     const firstLine = lines[0];
     let separator;
-    if (firstLine.includes('\t')) {
-      separator = '\t';
-    } else if (firstLine.includes(';')) {
-      separator = ';';
-    } else {
-      separator = ',';
-    }
+    if (firstLine.includes('\t')) separator = '\t';
+    else if (firstLine.includes(';')) separator = ';';
+    else separator = ',';
 
     const headers = firstLine.split(separator).map(h => h.trim().toUpperCase());
-    
-    // Verificar colunas obrigatórias
     const colMap = {
-      'TABELA': headers.findIndex(h => h.includes('TABELA')),
-      'COD_PRODUTO': headers.findIndex(h => h.includes('COD') && h.includes('PRODUTO')),
-      'VALOR_UNITARIO': headers.findIndex(h => h.includes('VALOR') && h.includes('UNITARIO'))
+      TABELA: headers.findIndex(h => h.includes('TABELA')),
+      COD_PRODUTO: headers.findIndex(h => h.includes('COD') && h.includes('PRODUTO')),
+      VALOR_UNITARIO: headers.findIndex(h => h.includes('VALOR') && h.includes('UNITARIO'))
     };
 
     const parseErrors = [];
     if (colMap.TABELA === -1) parseErrors.push('Coluna TABELA não encontrada');
     if (colMap.COD_PRODUTO === -1) parseErrors.push('Coluna COD PRODUTO não encontrada');
     if (colMap.VALOR_UNITARIO === -1) parseErrors.push('Coluna VALOR UNITARIO não encontrada');
-
-    if (parseErrors.length > 0) {
-      return { data: [], errors: parseErrors };
-    }
+    if (parseErrors.length > 0) return { data: [], errors: parseErrors };
 
     const data = [];
     for (let i = 1; i < lines.length; i++) {
@@ -81,22 +71,23 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
       if (values.length < 3 || !values[colMap.TABELA]) continue;
 
       const tabelaNome = values[colMap.TABELA]?.toUpperCase();
-      const codProduto = values[colMap.COD_PRODUTO];
-      // Tratar valor: substituir vírgula por ponto e remover espaços/caracteres extras
+      const codProduto = values[colMap.COD_PRODUTO]?.trim();
       let valorStr = (values[colMap.VALOR_UNITARIO] || '0').replace(/\s/g, '').replace(',', '.');
-      // Se o separador for vírgula e o valor ficou partido (ex: "5" na coluna valor e "81" na próxima)
-      // reunir com ponto decimal
+
       if (separator === ',' && colMap.VALOR_UNITARIO < values.length - 1) {
         const nextVal = values[colMap.VALOR_UNITARIO + 1]?.trim();
         if (nextVal && /^\d+$/.test(nextVal) && /^\d+$/.test(valorStr.replace('.', ''))) {
           valorStr = valorStr + '.' + nextVal;
         }
       }
-      const valor = parseFloat(valorStr);
 
-      // Encontrar tabela e produto
-      const tabela = tabelas.find(t => t.nome?.toUpperCase() === tabelaNome);
-      const produto = produtos.find(p => p.codigo === codProduto);
+      const valor = parseFloat(valorStr);
+      const tabela = tabelas.find(t => t.nome?.trim().toUpperCase() === tabelaNome);
+      const produto = produtos.find(p => {
+        const codigoMatch = p.codigo?.trim() === codProduto;
+        const nomeMatch = p.nome?.trim().toUpperCase() === codProduto?.toUpperCase();
+        return codigoMatch || nomeMatch;
+      });
 
       const row = {
         linha: i + 1,
@@ -110,7 +101,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
       };
 
       if (!tabela) row.erro = `Tabela "${tabelaNome}" não encontrada`;
-      else if (!produto) row.erro = `Produto código "${codProduto}" não encontrado`;
+      else if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
       else if (isNaN(valor) || valor < 0) row.erro = `Valor inválido: ${valorStr}`;
 
       data.push(row);
@@ -161,11 +152,9 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     const failedList = [];
 
     try {
-      // Buscar todos os preços existentes
       const existingPrices = await base44.entities.PrecoProduto.list();
       setProgress(10);
 
-      // Separar registros novos dos existentes
       const toCreate = [];
       const toUpdate = [];
 
@@ -191,7 +180,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
       setProgress(20);
 
-      // Criar novos em lote (batch de 50)
       const batchSize = 50;
       for (let i = 0; i < toCreate.length; i += batchSize) {
         const batch = toCreate.slice(i, i + batchSize);
@@ -199,7 +187,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
           await base44.entities.PrecoProduto.bulkCreate(batch);
           created += batch.length;
         } catch (err) {
-          // Se falhar em lote, tentar individualmente
           for (const item of batch) {
             try {
               await base44.entities.PrecoProduto.create(item);
@@ -215,12 +202,11 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             }
           }
         }
-        setProgress(20 + Math.round((i / toCreate.length) * 40));
+        setProgress(20 + Math.round((i / Math.max(toCreate.length, 1)) * 40));
       }
 
       setProgress(60);
 
-      // Atualizar existentes (batch de 20 para updates)
       const updateBatchSize = 20;
       for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
         const batch = toUpdate.slice(i, i + updateBatchSize);
@@ -237,7 +223,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             });
           }
         }));
-        setProgress(60 + Math.round((i / toUpdate.length) * 35));
+        setProgress(60 + Math.round((i / Math.max(toUpdate.length, 1)) * 35));
       }
 
       setProgress(95);
@@ -245,7 +231,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
       toast.error('Erro geral na importação: ' + err.message);
     }
 
-    // Adicionar também os registros com erro de validação ao log
     const validationErrors = preview.filter(r => r.erro).map((row, idx) => ({
       ...row,
       erro_importacao: row.erro,
@@ -254,21 +239,17 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
     const allFailed = [...failedList, ...validationErrors];
     setFailedImports(allFailed);
-    
-    // Salvar erros no localStorage para a aba de Log de Erros
+
     if (allFailed.length > 0) {
       const existingErrors = JSON.parse(localStorage.getItem('importacao_precos_erros') || '[]');
-      const newErrors = allFailed.map((err, idx) => ({
-        ...err,
-        id: `error_${Date.now()}_${idx}`
-      }));
+      const newErrors = allFailed.map((err, idx) => ({ ...err, id: `error_${Date.now()}_${idx}` }));
       localStorage.setItem('importacao_precos_erros', JSON.stringify([...existingErrors, ...newErrors]));
       setShowErrorLog(true);
     }
 
     setResults({ created, updated, errors: errorsCount + validationErrors.length, total: preview.length });
     setIsProcessing(false);
-    
+
     if (errorsCount === 0 && validationErrors.length === 0) {
       toast.success(`✅ Importação concluída! ${created} criados, ${updated} atualizados`);
       onSuccess?.();
@@ -277,29 +258,25 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     }
   };
 
-  // Função para editar item com erro
   const handleEditErrorItem = (item) => {
     setEditingError({
       ...item,
       new_tabela_id: item.tabela_id || '',
       new_produto_id: item.produto_id || '',
-      new_valor: item.valor_unitario || 0
+      new_valor: item.valor_unitario ?? 0
     });
   };
 
-  // Função para salvar item editado
   const handleSaveEditedItem = async () => {
     if (!editingError) return;
 
     const { new_tabela_id, new_produto_id, new_valor } = editingError;
-
-    if (!new_tabela_id || !new_produto_id || new_valor <= 0) {
+    if (!new_tabela_id || !new_produto_id || Number(new_valor) < 0) {
       toast.error('Preencha todos os campos corretamente');
       return;
     }
 
     try {
-      // Verificar se já existe
       const existingPrices = await base44.entities.PrecoProduto.list();
       const existing = existingPrices.find(
         p => p.produto_id === new_produto_id && p.tabela_id === new_tabela_id
@@ -321,7 +298,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         toast.success('Preço criado com sucesso!');
       }
 
-      // Remover do log de erros
       setFailedImports(prev => prev.filter(f => f.id !== editingError.id));
       setEditingError(null);
       onSuccess?.();
@@ -330,15 +306,12 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     }
   };
 
-  // Função para remover item do log de erros
   const handleRemoveErrorItem = (itemId) => {
     setFailedImports(prev => prev.filter(f => f.id !== itemId));
   };
 
-  // Função para tentar importar todos os erros corrigidos
   const handleRetryAllErrors = async () => {
-    const itemsToRetry = failedImports.filter(item => item.tabela_id && item.produto_id && item.valor_unitario > 0);
-    
+    const itemsToRetry = failedImports.filter(item => item.tabela_id && item.produto_id && item.valor_unitario >= 0);
     if (itemsToRetry.length === 0) {
       toast.error('Nenhum item válido para reimportar');
       return;
@@ -347,7 +320,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
     setIsProcessing(true);
     let successCount = 0;
     const stillFailed = [];
-
     const existingPrices = await base44.entities.PrecoProduto.list();
 
     for (const item of itemsToRetry) {
@@ -375,8 +347,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
       }
     }
 
-    // Manter os que não tinham dados válidos + os que ainda falharam
-    const invalidItems = failedImports.filter(item => !item.tabela_id || !item.produto_id || item.valor_unitario <= 0);
+    const invalidItems = failedImports.filter(item => !item.tabela_id || !item.produto_id || item.valor_unitario < 0);
     setFailedImports([...invalidItems, ...stillFailed]);
     setIsProcessing(false);
 
@@ -390,7 +361,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   };
 
   const downloadTemplate = () => {
-    const template = "TABELA;COD PRODUTO;VALOR UNITARIO\nNOME_TABELA;001;10,50\nNOME_TABELA;002;15,99";
+    const template = "TABELA;COD PRODUTO;VALOR UNITARIO\nNOME_TABELA;001;10,50\nNOME_TABELA;PAO HOT-DOG 500G - PAO E MEL;15,99";
     const blob = new Blob([template], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -414,20 +385,19 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Modo de Importação */}
           <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
             <Label className="font-medium">Modo:</Label>
             <div className="flex gap-2">
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant={importMode === 'cadastrar' ? 'default' : 'outline'}
                 onClick={() => setImportMode('cadastrar')}
                 className={importMode === 'cadastrar' ? 'bg-emerald-600' : ''}
               >
                 Cadastrar Novos
               </Button>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant={importMode === 'atualizar' ? 'default' : 'outline'}
                 onClick={() => setImportMode('atualizar')}
                 className={importMode === 'atualizar' ? 'bg-blue-600' : ''}
@@ -445,12 +415,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
             <TabsContent value="upload" className="space-y-3">
               <div className="flex items-center gap-2">
-                <Input
-                  type="file"
-                  accept=".csv,.txt"
-                  onChange={handleFileUpload}
-                  className="flex-1"
-                />
+                <Input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="flex-1" />
                 <Button variant="outline" size="sm" onClick={downloadTemplate}>
                   <Download className="w-4 h-4 mr-1" /> Modelo
                 </Button>
@@ -460,7 +425,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
             <TabsContent value="paste" className="space-y-3">
               <Textarea
-                placeholder="Cole os dados aqui (TABELA;COD PRODUTO;VALOR UNITARIO)..."
+                placeholder="Cole os dados aqui (TABELA;COD PRODUTO;VALOR UNITARIO). O campo COD PRODUTO pode ser código ou nome exato do produto..."
                 value={pastedData}
                 onChange={(e) => setPastedData(e.target.value)}
                 rows={6}
@@ -471,7 +436,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </TabsContent>
           </Tabs>
 
-          {/* Erros de Parsing */}
           {errors.length > 0 && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center gap-2 text-red-700 font-medium mb-2">
@@ -483,7 +447,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
-          {/* Preview */}
           {preview.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
               <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
@@ -533,7 +496,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
-          {/* Progress */}
           {isProcessing && (
             <div className="space-y-2">
               <Progress value={progress} />
@@ -541,7 +503,6 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
-          {/* Results */}
           {results && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <h4 className="font-medium text-emerald-800 mb-2">Importação Concluída!</h4>
@@ -550,13 +511,8 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
                 <li>🔄 {results.updated} preços atualizados</li>
                 {results.errors > 0 && (
                   <li className="text-red-600">
-                    ❌ {results.errors} erros 
-                    <Button 
-                      variant="link" 
-                      size="sm" 
-                      className="text-red-600 p-0 ml-2 h-auto"
-                      onClick={() => setShowErrorLog(true)}
-                    >
+                    ❌ {results.errors} erros
+                    <Button variant="link" size="sm" className="text-red-600 p-0 ml-2 h-auto" onClick={() => setShowErrorLog(true)}>
                       (Ver detalhes)
                     </Button>
                   </li>
@@ -565,33 +521,18 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
-          {/* Log de Erros */}
           {showErrorLog && failedImports.length > 0 && (
             <div className="border border-red-200 rounded-lg overflow-hidden">
               <div className="p-3 bg-red-50 border-b border-red-200 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <XCircle className="w-5 h-5 text-red-500" />
-                  <span className="font-medium text-red-800">
-                    Log de Erros ({failedImports.length} registros)
-                  </span>
+                  <span className="font-medium text-red-800">Log de Erros ({failedImports.length} registros)</span>
                 </div>
                 <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={handleRetryAllErrors}
-                    disabled={isProcessing}
-                    className="text-xs"
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Reimportar Válidos
+                  <Button size="sm" variant="outline" onClick={handleRetryAllErrors} disabled={isProcessing} className="text-xs">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Reimportar Válidos
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="ghost"
-                    onClick={() => setShowErrorLog(false)}
-                    className="text-xs"
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setShowErrorLog(false)} className="text-xs">
                     Ocultar
                   </Button>
                 </div>
@@ -612,30 +553,16 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
                       <tr key={item.id} className="border-b border-red-100 hover:bg-red-50">
                         <td className="p-2 font-medium">{item.tabela_nome || '-'}</td>
                         <td className="p-2 font-mono">{item.cod_produto || '-'}</td>
-                        <td className="p-2 text-right">
-                          R$ {item.valor_unitario?.toFixed(2) || '0.00'}
-                        </td>
+                        <td className="p-2 text-right">R$ {item.valor_unitario?.toFixed(2) || '0.00'}</td>
                         <td className="p-2">
-                          <span className="text-red-600 text-xs bg-red-100 px-2 py-1 rounded">
-                            {item.erro_importacao || item.erro}
-                          </span>
+                          <span className="text-red-600 text-xs bg-red-100 px-2 py-1 rounded">{item.erro_importacao || item.erro}</span>
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex justify-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEditErrorItem(item)}
-                              className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            >
+                            <Button size="sm" variant="ghost" onClick={() => handleEditErrorItem(item)} className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                               <Edit2 className="w-3.5 h-3.5" />
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleRemoveErrorItem(item.id)}
-                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
+                            <Button size="sm" variant="ghost" onClick={() => handleRemoveErrorItem(item.id)} className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -648,85 +575,54 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
-          {/* Modal de Edição de Erro */}
           {editingError && (
             <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg space-y-3">
               <h4 className="font-medium text-blue-800 flex items-center gap-2">
                 <Edit2 className="w-4 h-4" />
                 Corrigir Item com Erro
               </h4>
-              <p className="text-xs text-blue-600">
-                Erro original: {editingError.erro_importacao || editingError.erro}
-              </p>
+              <p className="text-xs text-blue-600">Erro original: {editingError.erro_importacao || editingError.erro}</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <Label className="text-xs">Tabela</Label>
-                  <Select
-                    value={editingError.new_tabela_id}
-                    onValueChange={(val) => setEditingError(prev => ({ ...prev, new_tabela_id: val }))}
-                  >
+                  <Select value={editingError.new_tabela_id} onValueChange={(val) => setEditingError(prev => ({ ...prev, new_tabela_id: val }))}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Selecionar tabela" />
                     </SelectTrigger>
                     <SelectContent>
-                      {tabelas.map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
-                      ))}
+                      {tabelas.map(t => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Produto</Label>
-                  <Select
-                    value={editingError.new_produto_id}
-                    onValueChange={(val) => setEditingError(prev => ({ ...prev, new_produto_id: val }))}
-                  >
+                  <Select value={editingError.new_produto_id} onValueChange={(val) => setEditingError(prev => ({ ...prev, new_produto_id: val }))}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Selecionar produto" />
                     </SelectTrigger>
                     <SelectContent>
                       {produtos.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.codigo} - {p.nome}
-                        </SelectItem>
+                        <SelectItem key={p.id} value={p.id}>{p.codigo} - {p.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Valor Unitário (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editingError.new_valor}
-                    onChange={(e) => setEditingError(prev => ({ ...prev, new_valor: e.target.value }))}
-                    className="h-9"
-                  />
+                  <Input type="number" step="0.01" min="0" value={editingError.new_valor} onChange={(e) => setEditingError(prev => ({ ...prev, new_valor: e.target.value }))} className="h-9" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={() => setEditingError(null)}>
-                  Cancelar
-                </Button>
-                <Button size="sm" onClick={handleSaveEditedItem} className="bg-blue-600 hover:bg-blue-700">
-                  Salvar e Importar
-                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditingError(null)}>Cancelar</Button>
+                <Button size="sm" onClick={handleSaveEditedItem} className="bg-blue-600 hover:bg-blue-700">Salvar e Importar</Button>
               </div>
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="outline" onClick={handleClose}>
-              {results ? 'Fechar' : 'Cancelar'}
-            </Button>
+            <Button variant="outline" onClick={handleClose}>{results ? 'Fechar' : 'Cancelar'}</Button>
             {!results && (
-              <Button 
-                onClick={handleImport}
-                disabled={isProcessing || validCount === 0}
-                className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold"
-              >
+              <Button onClick={handleImport} disabled={isProcessing || validCount === 0} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold">
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Importar {validCount} Registros
               </Button>
