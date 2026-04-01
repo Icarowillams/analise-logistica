@@ -108,6 +108,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Vendedor.list(),
   });
 
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes-gerenciar'],
+    queryFn: () => base44.entities.Cliente.list(),
+  });
+
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos-gerenciar'],
     queryFn: () => base44.entities.Produto.list(),
@@ -124,6 +129,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
     vendedores.forEach(v => { m[v.id] = v; });
     return m;
   }, [vendedores]);
+
+  const clientesMap = useMemo(() => {
+    const m = {};
+    clientes.forEach(c => { m[c.id] = c; });
+    return m;
+  }, [clientes]);
+
+  const pedidosComVendedorCliente = useMemo(() => {
+    return pedidos.map((pedido) => {
+      const cliente = clientesMap[pedido.cliente_id];
+      const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
+      return {
+        ...pedido,
+        vendedor_id: vendedorCliente?.id || pedido.vendedor_id,
+        vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
+      };
+    });
+  }, [pedidos, clientesMap, vendedoresMap]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
@@ -157,7 +180,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const filtered = useMemo(() => {
     // Gerenciar Pedidos: mostra todos os pedidos já enviados, independente do status atual.
     // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
-    let list = pedidos.filter(p => p.data_envio || p.status !== 'pendente');
+    let list = pedidosComVendedorCliente.filter(p => p.data_envio || p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
       const statusFilterMap = {
@@ -254,7 +277,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     });
 
     return list;
-  }, [pedidos, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
+  }, [pedidosComVendedorCliente, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
 
   // Verificar cancelamentos de pedidos faturados no Omie
   const syncFaturadosOmie = async () => {

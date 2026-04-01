@@ -16,6 +16,11 @@ export default function GerenciarPedidosPage() {
     queryFn: () => base44.entities.Vendedor.list()
   });
 
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes-gerenciar-page'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
+
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
   }, []);
@@ -42,7 +47,8 @@ export default function GerenciarPedidosPage() {
     const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
     const pedido = allPedidos.find(p => p.id === pedidoId);
     if (pedido) {
-      const vend = vendedores.find(v => v.id === pedido.vendedor_id);
+      const cliente = clientes.find(c => c.id === pedido.cliente_id);
+      const vend = vendedores.find(v => v.id === cliente?.vendedor_id) || vendedores.find(v => v.id === pedido.vendedor_id);
       if (vend) setVendedorParaEditar(vend);
       else if (vendedorAtual) setVendedorParaEditar(vendedorAtual);
     }
