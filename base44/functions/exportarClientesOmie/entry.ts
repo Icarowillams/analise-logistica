@@ -96,6 +96,42 @@ function mapearClienteParaOmie(cliente) {
     return clienteOmie;
 }
 
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function fetchComRetry(cliente, modo, tentativa = 0) {
+    const clienteOmie = mapearClienteParaOmie({ ...cliente });
+    const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
+
+    const response = await fetch(OMIE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            call: metodo,
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [clienteOmie]
+        })
+    });
+
+    const resultado = await response.json();
+
+    // Retry em caso de rate limit do Omie
+    const fault = (resultado.faultstring || '').toLowerCase();
+    if (fault && (fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again')) && tentativa < 3) {
+        await delay(2000 * Math.pow(2, tentativa));
+        return fetchComRetry(cliente, modo, tentativa + 1);
+    }
+
+    return {
+        cliente_id: cliente.id,
+        razao_social: cliente.razao_social,
+        nome_fantasia: cliente.nome_fantasia,
+        sucesso: !resultado.faultstring,
+        codigo_omie: resultado.codigo_cliente_omie || null,
+        mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
+    };
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -112,9 +148,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Informe os IDs dos clientes para exportar' }, { status: 400 });
         }
 
-        // Processar mais clientes por chamada, com paralelismo controlado
-        const LOTE_MAX = 30;
-        const CONCORRENCIA = 5;
+        const LOTE_MAX = 15;
         const clientesDoLote = cliente_ids.slice(lote_inicio, lote_inicio + LOTE_MAX);
         
         if (clientesDoLote.length === 0) {
@@ -125,64 +159,45 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Buscar clientes + rotas em paralelo
-        const [clienteResults, rotas] = await Promise.all([
-            Promise.all(clientesDoLote.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))),
-            base44.asServiceRole.entities.Rota.list().catch(() => [])
-        ]);
+        // Buscar rotas uma vez
+        const rotas = await base44.asServiceRole.entities.Rota.list().catch(() => []);
         const rotaMap = {};
         rotas.forEach(rota => { rotaMap[rota.id] = rota.nome; });
-        const clientesParaExportar = clienteResults.filter(Boolean).map(cliente => ({
-            ...cliente,
-            rota_nome: cliente.rota_id ? rotaMap[cliente.rota_id] : undefined
-        }));
 
-        console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes de ${clientesDoLote.length} IDs`);
+        // Buscar clientes sequencialmente em mini-lotes de 5 com delay
+        const clientesParaExportar = [];
+        for (let i = 0; i < clientesDoLote.length; i += 5) {
+            const miniLote = clientesDoLote.slice(i, i + 5);
+            const results = await Promise.all(
+                miniLote.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))
+            );
+            clientesParaExportar.push(...results.filter(Boolean).map(c => ({
+                ...c,
+                rota_nome: c.rota_id ? rotaMap[c.rota_id] : undefined
+            })));
+            if (i + 5 < clientesDoLote.length) await delay(200);
+        }
 
+        console.log(`[exportarClientesOmie] Lote ${lote_inicio}: ${clientesParaExportar.length} clientes`);
+
+        // Enviar ao Omie SEQUENCIALMENTE com delay entre cada chamada
         const resultados = [];
-
-        const exportarCliente = async (cliente) => {
-            const clienteOmie = mapearClienteParaOmie({ ...cliente });
-            const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
-
+        for (let i = 0; i < clientesParaExportar.length; i++) {
             try {
-                const response = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: metodo,
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [clienteOmie]
-                    })
-                });
-
-                const resultado = await response.json();
-
-                return {
-                    cliente_id: cliente.id,
-                    razao_social: cliente.razao_social,
-                    nome_fantasia: cliente.nome_fantasia,
-                    sucesso: !resultado.faultstring,
-                    codigo_omie: resultado.codigo_cliente_omie || null,
-                    mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
-                };
+                const res = await fetchComRetry(clientesParaExportar[i], modo);
+                resultados.push(res);
             } catch (err) {
-                return {
-                    cliente_id: cliente.id,
-                    razao_social: cliente.razao_social,
-                    nome_fantasia: cliente.nome_fantasia,
+                resultados.push({
+                    cliente_id: clientesParaExportar[i].id,
+                    razao_social: clientesParaExportar[i].razao_social,
+                    nome_fantasia: clientesParaExportar[i].nome_fantasia,
                     sucesso: false,
                     codigo_omie: null,
                     mensagem: err.message
-                };
+                });
             }
-        };
-
-        for (let i = 0; i < clientesParaExportar.length; i += CONCORRENCIA) {
-            const bloco = clientesParaExportar.slice(i, i + CONCORRENCIA);
-            const blocoResultados = await Promise.all(bloco.map(exportarCliente));
-            resultados.push(...blocoResultados);
+            // 600ms entre chamadas (~100 req/min, dentro do limite do Omie)
+            if (i < clientesParaExportar.length - 1) await delay(600);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
@@ -203,7 +218,7 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('Erro geral:', error.message);
+        console.error('[exportarClientesOmie] Erro geral:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
