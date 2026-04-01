@@ -34,6 +34,15 @@ const getTodayFilterDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getLocalDateFromIso = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
@@ -168,10 +177,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
     // Período de envio
     if (envioInicio) {
-      list = list.filter(p => p.data_envio && p.data_envio.split('T')[0] >= envioInicio);
+      list = list.filter(p => {
+        const dataEnvioLocal = getLocalDateFromIso(p.data_envio);
+        return dataEnvioLocal && dataEnvioLocal >= envioInicio;
+      });
     }
     if (envioFim) {
-      list = list.filter(p => p.data_envio && p.data_envio.split('T')[0] <= envioFim);
+      list = list.filter(p => {
+        const dataEnvioLocal = getLocalDateFromIso(p.data_envio);
+        return dataEnvioLocal && dataEnvioLocal <= envioFim;
+      });
     }
     // Vendedor (texto ou seleção)
     if (vendedorIds.length > 0) {
