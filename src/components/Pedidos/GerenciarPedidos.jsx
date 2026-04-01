@@ -724,9 +724,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
 
         {selectedIds.length === 1 && (
-          <div className="max-w-md">
-            <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
-          </div>
+          <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
         )}
       </div>
 
