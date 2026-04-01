@@ -43,6 +43,12 @@ function mapearClienteParaOmie(cliente) {
     const estadoNorm = normalizarEstado(cliente.estado);
     const cepNorm = (cliente.cep || "").replace(/[^\d]/g, "").substring(0, 8);
     const isPessoaFisica = cpfCnpj.length <= 11;
+    const emailNorm = (cliente.email || "nfe@paoemel.com.br").substring(0, 500);
+    const nomeContato = (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100);
+    const rotaTag = cliente.rota_id ? `ROTA_ID:${cliente.rota_id}` : '';
+    const codigoTag = cliente.codigo ? `COD:${cliente.codigo}` : '';
+    const rotaNomeTag = cliente.rota_nome ? `ROTA:${cliente.rota_nome}` : '';
+    const tags = [codigoTag, rotaTag, rotaNomeTag].filter(Boolean).map(tag => ({ tag }));
 
     const clienteOmie = {
         codigo_cliente_integracao: cliente.id,
@@ -53,16 +59,30 @@ function mapearClienteParaOmie(cliente) {
         endereco: (cliente.endereco || "").substring(0, 60),
         endereco_numero: (cliente.numero || "S/N").substring(0, 10),
         bairro: (cliente.bairro || "").substring(0, 60),
-        complemento: "",
+        complemento: (cliente.complemento || "").substring(0, 60),
         cidade: (cliente.cidade || "").substring(0, 60),
         estado: estadoNorm,
         cep: cepNorm,
-        contato: "",
-        email: (cliente.email || "nfe@paoemel.com.br").substring(0, 500),
+        contato: nomeContato,
+        email: emailNorm,
+        homepage: cliente.homepage || cliente.site || undefined,
+        telefone1_ddd: cliente.telefone1_ddd || cliente.ddd || undefined,
+        telefone1_numero: (cliente.telefone1_numero || cliente.telefone || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
+        telefone2_ddd: cliente.telefone2_ddd || undefined,
+        telefone2_numero: (cliente.telefone2_numero || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
+        fax_ddd: cliente.fax_ddd || undefined,
+        fax_numero: (cliente.fax_numero || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
+        email_fatura: cliente.email_fatura || undefined,
         contribuinte: isPessoaFisica ? "N" : "S",
         inscricao_estadual: cliente.inscricao_estadual || "",
-        observacao: "",
-        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N"
+        inscricao_municipal: cliente.inscricao_municipal || undefined,
+        optante_simples_nacional: cliente.optante_simples_nacional || undefined,
+        produtor_rural: cliente.produtor_rural || undefined,
+        exterior: cliente.exterior || undefined,
+        bloqueado: cliente.bloqueado || undefined,
+        observacao: cliente.observacao || undefined,
+        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
+        tags: tags.length ? tags : undefined
     };
 
     const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
@@ -104,12 +124,17 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Buscar clientes em paralelo (mais rápido que sequencial)
-        const clientePromises = clientesDoLote.map(id => 
-            base44.asServiceRole.entities.Cliente.get(id).catch(() => null)
-        );
-        const clienteResults = await Promise.all(clientePromises);
-        const clientesParaExportar = clienteResults.filter(Boolean);
+        // Buscar clientes + rotas em paralelo
+        const [clienteResults, rotas] = await Promise.all([
+            Promise.all(clientesDoLote.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))),
+            base44.asServiceRole.entities.Rota.list().catch(() => [])
+        ]);
+        const rotaMap = {};
+        rotas.forEach(rota => { rotaMap[rota.id] = rota.nome; });
+        const clientesParaExportar = clienteResults.filter(Boolean).map(cliente => ({
+            ...cliente,
+            rota_nome: cliente.rota_id ? rotaMap[cliente.rota_id] : undefined
+        }));
 
         console.log(`Lote ${lote_inicio}: ${clientesParaExportar.length} clientes de ${clientesDoLote.length} IDs`);
 
