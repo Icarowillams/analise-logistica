@@ -493,6 +493,22 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                   </Badge>
                 )}
               </CardTitle>
+              {selectedCliente && (
+                <div className="flex gap-2 pt-2">
+                  {onEdit && (
+                    <Button className="flex-1" variant="outline" size="sm" onClick={() => onEdit(selectedCliente)}>
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Editar
+                    </Button>
+                  )}
+                  {onDelete && (
+                    <Button className="flex-1" variant="outline" size="sm" onClick={() => onDelete(selectedCliente)}>
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Excluir
+                    </Button>
+                  )}
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-4 sm:p-5 space-y-4">
               {selectedCliente ? (
@@ -511,20 +527,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                     ))}
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                    {onEdit && (
-                      <Button className="w-full" variant="outline" onClick={() => onEdit(selectedCliente)}>
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Editar
-                      </Button>
-                    )}
-                    {onDelete && (
-                      <Button className="w-full" variant="outline" onClick={() => onDelete(selectedCliente)}>
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Excluir
-                      </Button>
-                    )}
-                  </div>
+
                 </>
               ) : (
                 <p className="text-sm text-slate-500">Nenhum cliente disponível para visualização.</p>
