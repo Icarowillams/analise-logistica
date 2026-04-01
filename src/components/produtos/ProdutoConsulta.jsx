@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Search, Filter, Tag, Package, List, Download, Pencil, Upload } from 'lucide-react';
+import { Search, Filter, Tag, Package, List, Download, Pencil, Upload, Eye } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function ProdutoConsulta({ onEdit, onDelete, onExportOmie }) {
+export default function ProdutoConsulta({ onView, onEdit, onDelete, onExportOmie }) {
   const [filters, setFilters] = useState({
     categoria_id: 'all',
     sub_categoria_id: 'all',
@@ -129,16 +129,26 @@ export default function ProdutoConsulta({ onEdit, onDelete, onExportOmie }) {
     {
       key: 'actions',
       label: 'Ações',
-      width: '80px',
+      width: '120px',
       render: (_, row) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onEdit && onEdit(row)}
-          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-        >
-          <Pencil className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onView && onView(row)}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          >
+            <Eye className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit && onEdit(row)}
+            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+        </div>
       )
     }
   ];

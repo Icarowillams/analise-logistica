@@ -120,7 +120,6 @@ export default function Funcionarios() {
 
   const handleEdit = (item) => {
     setSelected(item);
-    // Migrar supervisor_id legado para supervisor_ids se necessário
     let supervisorIds = item.supervisor_ids || [];
     if (supervisorIds.length === 0 && item.supervisor_id) {
       supervisorIds = [item.supervisor_id];
@@ -139,6 +138,29 @@ export default function Funcionarios() {
       status: item.status || 'ativo'
     });
     setIsEditing(true);
+    setActiveTab("cadastro");
+  };
+
+  const handleView = (item) => {
+    setSelected(item);
+    let supervisorIds = item.supervisor_ids || [];
+    if (supervisorIds.length === 0 && item.supervisor_id) {
+      supervisorIds = [item.supervisor_id];
+    }
+    setFormData({
+      nome: item.nome || '',
+      cpf: item.cpf || '',
+      email: item.email || '',
+      funcao: item.funcao || '',
+      departamento_id: item.departamento_id || '',
+      supervisor_id: item.supervisor_id || '',
+      supervisor_ids: supervisorIds,
+      telefone: item.telefone || '',
+      latitude: item.latitude || '',
+      longitude: item.longitude || '',
+      status: item.status || 'ativo'
+    });
+    setIsEditing(false);
     setActiveTab("cadastro");
   };
 
@@ -315,7 +337,7 @@ export default function Funcionarios() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Funcionário' : 'Novo Funcionário'}
+                {!isEditing && selected ? 'Visualizar Funcionário' : selected ? 'Editar Funcionário' : 'Novo Funcionário'}
               </h2>
               {!isEditing && (
                 <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
@@ -526,6 +548,7 @@ export default function Funcionarios() {
             funcoes={funcoes}
             departamentos={departamentos}
             isLoading={isLoading}
+            onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDelete}
             filters={consultaFilters}

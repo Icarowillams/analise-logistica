@@ -83,6 +83,13 @@ export default function Segmentos() {
     setActiveTab("cadastro");
   };
 
+  const handleView = (item) => {
+    setSelected(item);
+    setFormData({ nome: item.nome || '', descricao: item.descricao || '' });
+    setIsEditing(false);
+    setActiveTab("cadastro");
+  };
+
   const handleCancel = () => {
     resetForm();
     setIsEditing(false);
@@ -156,7 +163,7 @@ export default function Segmentos() {
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
-                {selected ? 'Editar Segmento' : 'Novo Segmento'}
+                {!isEditing && selected ? 'Visualizar Segmento' : selected ? 'Editar Segmento' : 'Novo Segmento'}
               </h2>
               {!isEditing && (
                 <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
@@ -207,7 +214,7 @@ export default function Segmentos() {
         </TabsContent>
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
-          <DataTable data={segmentos} columns={columns} searchFields={['nome']} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
+          <DataTable data={segmentos} columns={columns} searchFields={['nome']} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} pageSize={1000} isLoading={isLoading} />
         </TabsContent>
       </Tabs>
 

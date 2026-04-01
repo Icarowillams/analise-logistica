@@ -152,6 +152,27 @@ export default function Produtos() {
       unidade_produto_id: item.unidade_produto_id || '',
       peso: item.peso || ''
     });
+    setIsEditing(true);
+    setActiveTab("cadastro");
+  };
+
+  const handleView = (item) => {
+    setSelected(item);
+    setFormData({
+      codigo: item.codigo || '',
+      nome: item.nome || '',
+      cod_barras: item.cod_barras || '',
+      ncm: item.ncm || '',
+      cest: item.cest || '',
+      categoria_id: item.categoria_id || '',
+      sub_categoria_id: item.sub_categoria_id || '',
+      imagem_url: item.imagem_url || '',
+      estoque_atual: item.estoque_atual || 0,
+      status: item.status || 'ativo',
+      unidade_medida_id: item.unidade_medida_id || '',
+      unidade_produto_id: item.unidade_produto_id || '',
+      peso: item.peso || ''
+    });
     setIsEditing(false);
     setActiveTab("cadastro");
   };
@@ -629,6 +650,7 @@ export default function Produtos() {
         
         <TabsContent value="consulta" className="animate-in fade-in-50 duration-300">
           <ProdutoConsulta 
+            onView={handleView}
             onEdit={handleEdit} 
             onDelete={handleDelete} 
             onExportOmie={() => setExportOmieOpen(true)}

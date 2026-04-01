@@ -4,13 +4,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Pencil, Trash2, CheckCircle, XCircle, Filter, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Pencil, Trash2, CheckCircle, XCircle, Filter, X, Eye } from 'lucide-react';
 
 export default function FuncionariosConsulta({
   funcionarios = [],
   funcoes = [],
   departamentos = [],
   isLoading,
+  onView,
   onEdit,
   onDelete,
   filters,
@@ -219,6 +220,11 @@ export default function FuncionariosConsulta({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      {onView && (
+                        <Button variant="ghost" size="icon" onClick={() => onView(item)} className="h-8 w-8 text-neutral-500 hover:text-blue-600 hover:bg-blue-50">
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
                       {onEdit && (
                         <Button variant="ghost" size="icon" onClick={() => onEdit(item)} className="h-8 w-8 text-neutral-500 hover:text-amber-600 hover:bg-amber-50">
                           <Pencil className="w-4 h-4" />
