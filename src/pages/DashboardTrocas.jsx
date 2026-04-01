@@ -175,12 +175,14 @@ export default function DashboardTrocas() {
   const trocasDerivadas = useMemo(() => {
     return pedidoItensTroca.map(item => {
       const pedido = item._pedido;
+      const cliente = clientes.find(c => c.id === pedido.cliente_id);
+      const vendedorCliente = vendedoresAll.find(v => v.id === cliente?.vendedor_id);
       return {
         id: item.id,
         cliente_id: pedido.cliente_id,
         cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia,
-        vendedor_id: pedido.vendedor_id,
-        vendedor_nome: pedido.vendedor_nome,
+        vendedor_id: cliente?.vendedor_id || pedido.vendedor_id,
+        vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
         produto_original_id: item.produto_id,
         produto_original_nome: item.produto_nome,
         quantidade: item.quantidade || 0,
@@ -194,7 +196,7 @@ export default function DashboardTrocas() {
         _pedido_data: pedido.created_date ? pedido.created_date.split('T')[0] : ''
       };
     });
-  }, [pedidoItensTroca]);
+  }, [pedidoItensTroca, clientes, vendedoresAll]);
 
   const trocas = useMemo(() => filtrarPorCliente(trocasDerivadas), [trocasDerivadas, filtrarPorCliente]);
   const vendedores = useMemo(() => {

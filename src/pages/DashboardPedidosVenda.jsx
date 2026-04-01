@@ -81,12 +81,14 @@ export default function DashboardPedidosVenda() {
   const vendasDerivadas = useMemo(() => {
     return pedidoItensVenda.map(item => {
       const pedido = item._pedido;
+      const cliente = clientes.find(c => c.id === pedido.cliente_id);
+      const vendedorCliente = vendedoresAll.find(v => v.id === cliente?.vendedor_id);
       return {
         id: item.id,
         cliente_id: pedido.cliente_id,
         cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia,
-        vendedor_id: pedido.vendedor_id,
-        vendedor_nome: pedido.vendedor_nome,
+        vendedor_id: cliente?.vendedor_id || pedido.vendedor_id,
+        vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
         produto_id: item.produto_id,
         produto_nome: item.produto_nome,
         produto_codigo: item.produto_codigo,
@@ -99,7 +101,7 @@ export default function DashboardPedidosVenda() {
         _pedido_id: pedido.id
       };
     });
-  }, [pedidoItensVenda]);
+  }, [pedidoItensVenda, clientes, vendedoresAll]);
 
   const vendasPermitidas = useMemo(() => filtrarPorCliente(vendasDerivadas), [vendasDerivadas, filtrarPorCliente]);
 
