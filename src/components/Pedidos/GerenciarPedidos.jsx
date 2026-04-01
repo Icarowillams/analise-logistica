@@ -152,7 +152,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
       };
     });
-  }, [pedidos, clientesMap, vendedoresMap, vendedores]);
+  }, [pedidos, clientesByCodigoMap, vendedoresMap, vendedores]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
