@@ -20,7 +20,6 @@ export default function AcoesPromocionais() {
   const [editingAcao, setEditingAcao] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [filtroTabela, setFiltroTabela] = useState('all');
   const [filtroStatus, setFiltroStatus] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
@@ -71,8 +70,6 @@ export default function AcoesPromocionais() {
       const results = [];
       for (const prod of formData.produtos) {
         const acao = await base44.entities.AcaoPromocional.create({
-          tabela_id: formData.tabelaId,
-          tabela_nome: formData.tabelaNome,
           produto_id: prod.produto_id,
           produto_nome: prod.produto_nome,
           produto_codigo: prod.produto_codigo,
@@ -91,7 +88,7 @@ export default function AcoesPromocionais() {
         await registrarLog(
           acao.id,
           'criacao',
-          `Ação criada: ${prod.produto_nome} (${formData.tabelaNome}) - R$ ${prod.valor_acao.toFixed(2)} | ${formData.dataInicio} a ${formData.dataFim} | Clientes: ${clientesStr}`
+          `Ação criada: ${prod.produto_nome} - R$ ${prod.valor_acao.toFixed(2)} | ${formData.dataInicio} a ${formData.dataFim} | Clientes: ${clientesStr}`
         );
       }
       return results;
@@ -107,8 +104,6 @@ export default function AcoesPromocionais() {
     mutationFn: async (formData) => {
       const prod = formData.produtos[0];
       const updated = await base44.entities.AcaoPromocional.update(editingAcao.id, {
-        tabela_id: formData.tabelaId,
-        tabela_nome: formData.tabelaNome,
         valor_acao: prod.valor_acao,
         data_inicio: formData.dataInicio,
         data_fim: formData.dataFim,
@@ -122,7 +117,7 @@ export default function AcoesPromocionais() {
       await registrarLog(
         editingAcao.id,
         'edicao',
-        `Ação editada: ${prod.produto_nome} (${formData.tabelaNome}) - R$ ${prod.valor_acao.toFixed(2)} | ${formData.dataInicio} a ${formData.dataFim} | Clientes: ${clientesStr}`
+        `Ação editada: ${prod.produto_nome} - R$ ${prod.valor_acao.toFixed(2)} | ${formData.dataInicio} a ${formData.dataFim} | Clientes: ${clientesStr}`
       );
       return updated;
     },
@@ -153,15 +148,14 @@ export default function AcoesPromocionais() {
 
   const acoesFiltradas = useMemo(() => {
     return acoes.filter(a => {
-      if (filtroTabela !== 'all' && a.tabela_id !== filtroTabela) return false;
       if (filtroStatus !== 'all' && a.status !== filtroStatus) return false;
       if (searchText) {
         const s = searchText.toLowerCase();
-        if (!a.produto_nome?.toLowerCase().includes(s) && !a.produto_codigo?.includes(s) && !a.tabela_nome?.toLowerCase().includes(s)) return false;
+        if (!a.produto_nome?.toLowerCase().includes(s) && !a.produto_codigo?.includes(s)) return false;
       }
       return true;
     });
-  }, [acoes, filtroTabela, filtroStatus, searchText]);
+  }, [acoes, filtroStatus, searchText]);
 
   const handleNew = () => {
     setEditingAcao(null);
@@ -226,15 +220,6 @@ export default function AcoesPromocionais() {
               <Input placeholder="Buscar produto..." value={searchText} onChange={(e) => setSearchText(e.target.value)} className="pl-9" />
             </div>
             <div>
-              <Select value={filtroTabela} onValueChange={setFiltroTabela}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Tabela" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas Tabelas</SelectItem>
-                  {tabelas.map(t => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
               <Select value={filtroStatus} onValueChange={setFiltroStatus}>
                 <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
@@ -266,7 +251,6 @@ export default function AcoesPromocionais() {
                           {getStatusBadge(acao)}
                         </div>
                         <div className="mt-1.5 text-xs text-slate-500 space-y-0.5">
-                          <p>Tabela: <span className="font-medium text-slate-700">{acao.tabela_nome}</span></p>
                           <p className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
                             {acao.data_inicio} a {acao.data_fim}

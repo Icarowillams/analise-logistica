@@ -3,13 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Search, X, Plus, Trash2 } from 'lucide-react';
 
 export default function AcaoFormModal({ open, onOpenChange, onSubmit, editingAcao, tabelas, produtos, clientes, isSubmitting }) {
-  const [tabelaId, setTabelaId] = useState(editingAcao?.tabela_id || '');
   const [produtosSelecionados, setProdutosSelecionados] = useState(() => {
     if (editingAcao) {
       return [{ produto_id: editingAcao.produto_id, produto_nome: editingAcao.produto_nome, produto_codigo: editingAcao.produto_codigo, valor_acao: editingAcao.valor_acao }];
@@ -82,13 +80,10 @@ export default function AcaoFormModal({ open, onOpenChange, onSubmit, editingAca
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!tabelaId || produtosSelecionados.length === 0 || !dataInicio || !dataFim) {
+    if (produtosSelecionados.length === 0 || !dataInicio || !dataFim) {
       return;
     }
-    const tabela = tabelas.find(t => t.id === tabelaId);
     onSubmit({
-      tabelaId,
-      tabelaNome: tabela?.nome || '',
       produtos: produtosSelecionados,
       dataInicio,
       dataFim,
@@ -104,19 +99,6 @@ export default function AcaoFormModal({ open, onOpenChange, onSubmit, editingAca
           <DialogTitle>{editingAcao ? 'Editar Ação Promocional' : 'Nova Ação Promocional'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          {/* Tabela */}
-          <div>
-            <Label>Tabela de Preço *</Label>
-            <Select value={tabelaId} onValueChange={setTabelaId}>
-              <SelectTrigger><SelectValue placeholder="Selecione a tabela" /></SelectTrigger>
-              <SelectContent>
-                {tabelas.filter(t => t.status === 'ativo').map(t => (
-                  <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Produtos */}
           <div>
             <Label>Produtos *</Label>

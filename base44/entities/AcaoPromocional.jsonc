@@ -4,11 +4,11 @@
   "properties": {
     "tabela_id": {
       "type": "string",
-      "description": "ID da tabela de pre\u00e7o vinculada"
+      "description": "ID da tabela de pre\u00e7o vinculada (opcional)"
     },
     "tabela_nome": {
       "type": "string",
-      "description": "Nome da tabela de pre\u00e7o"
+      "description": "Nome da tabela de pre\u00e7o (opcional)"
     },
     "produto_id": {
       "type": "string",
@@ -79,7 +79,6 @@
     }
   },
   "required": [
-    "tabela_id",
     "produto_id",
     "valor_acao",
     "data_inicio",
