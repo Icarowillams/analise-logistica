@@ -439,11 +439,32 @@ export default function Clientes() {
       }
     }
     
-    if (selected) {
-      updateMutation.mutate({ id: selected.id, data: dataToSave });
-    } else {
-      createMutation.mutate(dataToSave);
-    }
+    // Se é pré-cadastro sendo ativado (sem código), gerar código automaticamente
+    const salvar = async () => {
+      if (selected && selected.pre_cadastro && !selected.codigo && dataToSave.status === 'ativo') {
+        try {
+          const response = await base44.functions.invoke('reservarCodigoCliente', {});
+          const codigoGerado = response.data?.codigo || '';
+          if (!codigoGerado) {
+            toast.error('Erro ao gerar código automático. Tente novamente.');
+            return;
+          }
+          dataToSave.codigo = codigoGerado;
+          dataToSave.pre_cadastro = false;
+          toast.info(`Código ${codigoGerado} gerado automaticamente para o cliente.`);
+        } catch (err) {
+          toast.error('Erro ao gerar código: ' + err.message);
+          return;
+        }
+      }
+
+      if (selected) {
+        updateMutation.mutate({ id: selected.id, data: dataToSave });
+      } else {
+        createMutation.mutate(dataToSave);
+      }
+    };
+    salvar();
   };
 
   const handleBulkImport = async (data) => {
