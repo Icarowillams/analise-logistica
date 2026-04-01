@@ -33,6 +33,7 @@ export default function CompararCSVBase44() {
   const [errosExec, setErrosExec] = useState([]);
   const [executando, setExecutando] = useState(false);
   const cancelRef = useRef(false);
+  const abortRef = useRef(null);
 
   const handleUploadEComparar = async () => {
     if (!arquivo && !csvUrl) return;
@@ -73,6 +74,7 @@ export default function CompararCSVBase44() {
   const executarSincronizacao = async () => {
     if (!csvUrl || !comparacao) return;
     cancelRef.current = false;
+    abortRef.current = new AbortController();
     setExecutando(true);
     setEtapa('executando');
     setErrosExec([]);
@@ -131,30 +133,14 @@ export default function CompararCSVBase44() {
       }
     }
 
-    // 3. Excluir sobrantes (do Base44 que não estão no CSV)
+    // 3. Excluir sobrantes — DESABILITADO POR SEGURANÇA
+    // A exclusão em massa foi removida para evitar perda de dados acidental.
+    // Os clientes que existem apenas no Base44 (não no CSV) NÃO serão excluídos automaticamente.
     const totalExcluir = comparacao.excluir_real || comparacao.so_no_base44 || 0;
-    if (totalExcluir > 0 && !cancelRef.current) {
-      setProgressoExcluir({ total: totalExcluir, atual: 0, ok: 0, erros: 0 });
-      let ok = 0, erros = 0;
-      let offset = 0;
-      let concluido = false;
-      while (!concluido && !cancelRef.current) {
-        try {
-          const res = await base44.functions.invoke('sincronizarClientesCSV', {
-            csv_url: csvUrl, etapa: 'excluir', offset, batch_size: 50
-          });
-          const d = res.data;
-          ok += d.processados || 0;
-          erros += d.erros || 0;
-          if (d.erros_detalhes) allErros.push(...d.erros_detalhes);
-          offset = d.nextOffset || 0;
-          concluido = d.concluido;
-          setProgressoExcluir({ total: d.total, atual: Math.min(offset, d.total), ok, erros });
-        } catch (e) {
-          allErros.push(e.message);
-          concluido = true;
-        }
-      }
+    if (totalExcluir > 0) {
+      // Apenas informar que existem sobrantes, sem excluir
+      setProgressoExcluir({ total: totalExcluir, atual: totalExcluir, ok: 0, erros: 0 });
+      allErros.push(`⚠️ ${totalExcluir} clientes sobrantes no Base44 NÃO foram excluídos (proteção ativa).`);
     }
 
     // 4. Enviar tudo para o Omie via UpsertCliente
@@ -335,7 +321,10 @@ export default function CompararCSVBase44() {
 
           <div className="flex gap-3 justify-center pt-4">
             {etapa === 'executando' && (
-              <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+              <Button variant="destructive" onClick={() => { 
+                cancelRef.current = true; 
+                if (abortRef.current) abortRef.current.abort();
+              }}>
                 <XCircle className="w-4 h-4 mr-2" /> Cancelar
               </Button>
             )}
