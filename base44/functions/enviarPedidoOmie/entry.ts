@@ -98,6 +98,50 @@ Deno.serve(async (req) => {
         }
 
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+            // Se o pedido já foi enviado mas o status local está inconsistente, corrigir
+            if (pedido.status === 'pendente' || !pedido.data_envio) {
+                console.log(`[enviarPedidoOmie] Pedido já enviado ao Omie (${pedido.omie_codigo_pedido}) mas status local inconsistente. Corrigindo...`);
+                
+                // Buscar número do pedido no Omie se não temos
+                let numeroPedidoOmie = pedido.numero_pedido || null;
+                if (!numeroPedidoOmie) {
+                    try {
+                        const consultaRes = await fetch(OMIE_URL, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                call: "ConsultarPedido",
+                                app_key: OMIE_APP_KEY,
+                                app_secret: OMIE_APP_SECRET,
+                                param: [{ codigo_pedido: Number(pedido.omie_codigo_pedido) }]
+                            })
+                        });
+                        const consultaData = await consultaRes.json();
+                        if (!consultaData.faultstring && consultaData.cabecalho) {
+                            numeroPedidoOmie = consultaData.cabecalho.numero_pedido || null;
+                        }
+                    } catch (e) {
+                        console.log('[enviarPedidoOmie] Erro ao consultar pedido no Omie:', e.message);
+                    }
+                }
+
+                const updateData = {
+                    status: 'enviado',
+                    data_envio: pedido.data_envio || new Date().toISOString(),
+                    omie_erro: null
+                };
+                if (numeroPedidoOmie) {
+                    updateData.numero_pedido = numeroPedidoOmie;
+                }
+                await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+                
+                return Response.json({
+                    sucesso: true,
+                    codigo_pedido_omie: pedido.omie_codigo_pedido,
+                    numero_pedido_omie: numeroPedidoOmie,
+                    mensagem: 'Pedido já existia no Omie, status local corrigido'
+                });
+            }
             return Response.json({ error: 'Este pedido já foi enviado ao Omie', codigo_omie: pedido.omie_codigo_pedido }, { status: 400 });
         }
 
@@ -427,9 +471,53 @@ Deno.serve(async (req) => {
         console.log('[enviarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 1000));
 
         if (resultado.faultstring) {
-            // Se já existe, tentar pegar o código
             const jaExiste = resultado.faultstring.includes("já cadastrado") || resultado.faultstring.includes("já existe");
             
+            if (jaExiste) {
+                // Pedido já existe no Omie — buscar o código e atualizar localmente
+                console.log('[enviarPedidoOmie] Pedido já existe no Omie, buscando código existente...');
+                try {
+                    const consultaRes = await fetch(OMIE_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            call: "ConsultarPedido",
+                            app_key: OMIE_APP_KEY,
+                            app_secret: OMIE_APP_SECRET,
+                            param: [{ codigo_pedido_integracao: pedido.id }]
+                        })
+                    });
+                    const consultaData = await consultaRes.json();
+                    
+                    if (!consultaData.faultstring && consultaData.cabecalho) {
+                        const codigoOmie = consultaData.cabecalho.codigo_pedido || null;
+                        const numeroPedidoOmie = consultaData.cabecalho.numero_pedido || null;
+                        
+                        const updateData = {
+                            omie_codigo_pedido: codigoOmie,
+                            omie_enviado: true,
+                            omie_erro: null,
+                            status: pedido.status === 'pendente' ? 'enviado' : pedido.status,
+                            data_envio: pedido.data_envio || new Date().toISOString()
+                        };
+                        if (numeroPedidoOmie) {
+                            updateData.numero_pedido = numeroPedidoOmie;
+                        }
+                        await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+                        
+                        console.log(`[enviarPedidoOmie] Pedido já existente recuperado! Código Omie: ${codigoOmie}, Nº: ${numeroPedidoOmie}`);
+                        return Response.json({
+                            sucesso: true,
+                            codigo_pedido_omie: codigoOmie,
+                            numero_pedido_omie: numeroPedidoOmie,
+                            mensagem: 'Pedido já existia no Omie, status local atualizado'
+                        });
+                    }
+                } catch (consultaErr) {
+                    console.error('[enviarPedidoOmie] Erro ao consultar pedido existente:', consultaErr.message);
+                }
+            }
+
             console.error('[enviarPedidoOmie] Erro Omie:', resultado.faultstring);
             
             // Registrar erro no pedido

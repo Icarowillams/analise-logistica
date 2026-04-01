@@ -107,21 +107,14 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             erroMsg = result.erro || 'Erro desconhecido no Omie';
           }
         } catch (omieErr) {
-          erroMsg = omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
+          erroMsg = omieErr?.response?.data?.erro || omieErr?.response?.data?.error || omieErr.message || 'Falha na comunicação com o Omie';
         }
 
         if (omieOk) {
-          await base44.entities.Pedido.update(pedido.id, {
-            status: 'enviado',
-            data_envio: new Date().toISOString(),
-            omie_erro: null
-          });
+          // Backend já atualiza o pedido localmente, apenas garantir status
           toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
         } else {
           await base44.entities.Pedido.update(pedido.id, {
-            status: 'pendente',
-            numero_pedido: null,
-            data_envio: null,
             omie_erro: erroMsg
           });
           toast.error(`Erro ao enviar pedido ao Omie: ${erroMsg}`);
