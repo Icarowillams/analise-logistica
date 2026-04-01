@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Upload, Loader2, CheckCircle, AlertTriangle, Link2,
   Play, XCircle, Table2, CreditCard, Wallet
@@ -38,6 +40,7 @@ export default function RevincularReferencias() {
   const [analise, setAnalise] = useState(null);
   const [erroMsg, setErroMsg] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [apenasAtivos, setApenasAtivos] = useState(true);
   const [progresso, setProgresso] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
   const [errosExec, setErrosExec] = useState([]);
   const [executando, setExecutando] = useState(false);
@@ -56,7 +59,7 @@ export default function RevincularReferencias() {
         setCsvUrl(file_url);
       }
       const res = await base44.functions.invoke('revincularReferenciasCSV', {
-        csv_url: fileUrl, etapa: 'analise'
+        csv_url: fileUrl, etapa: 'analise', apenas_ativos: apenasAtivos
       });
       setAnalise(res.data);
       setEtapa('resultado');
@@ -84,7 +87,7 @@ export default function RevincularReferencias() {
     while (!concluido && !cancelRef.current) {
       try {
         const res = await invocarComRetry('revincularReferenciasCSV', {
-          csv_url: csvUrl, etapa: 'executar', offset, batch_size: BATCH_SIZE
+          csv_url: csvUrl, etapa: 'executar', offset, batch_size: BATCH_SIZE, apenas_ativos: apenasAtivos
         });
         const d = res.data;
         ok += d.processados || 0;
@@ -130,6 +133,10 @@ export default function RevincularReferencias() {
                 Atualiza <strong>Tabela de Preço</strong>, <strong>Plano de Pagamento</strong> e <strong>Cobrança (Modalidade)</strong> de todos os clientes 
                 com base nos nomes que estão no CSV. Use quando as tabelas foram recriadas e os clientes ficaram sem vínculo.
               </p>
+            </div>
+            <div className="flex items-center gap-2 justify-center">
+              <Checkbox id="apenas-ativos" checked={apenasAtivos} onCheckedChange={setApenasAtivos} />
+              <Label htmlFor="apenas-ativos" className="text-sm cursor-pointer">Apenas clientes ativos</Label>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-3 max-w-lg mx-auto">
               <Input

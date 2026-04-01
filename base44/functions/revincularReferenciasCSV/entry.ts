@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { csv_url, etapa, offset = 0, batch_size = 30 } = body;
+        const { csv_url, etapa, offset = 0, batch_size = 30, apenas_ativos = false } = body;
 
         if (!csv_url) return Response.json({ error: 'csv_url obrigatório' }, { status: 400 });
 
@@ -102,7 +102,10 @@ Deno.serve(async (req) => {
 
         // Carregar clientes do Base44
         await delay(300);
-        const clientesSistema = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
+        let clientesSistema = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
+        if (apenas_ativos) {
+            clientesSistema = clientesSistema.filter(c => c.status === 'ativo');
+        }
         const sistemaMap = {};
         clientesSistema.forEach(c => { if (c.codigo) sistemaMap[c.codigo] = c; });
 
