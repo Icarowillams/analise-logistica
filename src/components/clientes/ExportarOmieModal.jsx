@@ -48,7 +48,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
 
     // Montar dados completos dos clientes a partir da lista já carregada no frontend
     const clientesSelecionados = baseClientes.filter(c => cliente_ids.includes(c.id));
-    const LOTE_SIZE = 10; // 10 por chamada (backend envia sequencialmente com 600ms cada = ~6s por lote)
+    const LOTE_SIZE = 5; // 5 por chamada (backend envia sequencialmente com 1.5s cada = ~7.5s por lote)
     let todosRes = [];
     let sucessosTotal = 0;
     let errosTotal = 0;

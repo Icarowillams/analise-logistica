@@ -4,8 +4,8 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_CARACT_URL = "https://app.omie.com.br/api/v1/geral/clientescaract/";
 
-// Rate limit: 350ms entre chamadas Omie
-const OMIE_DELAY_MS = 350;
+// Rate limit: 1500ms entre chamadas Omie (evita bloqueio por consumo indevido)
+const OMIE_DELAY_MS = 1500;
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function enviarCaracteristica(clienteCodigo, rotaNome) {

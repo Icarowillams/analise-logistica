@@ -116,10 +116,15 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
 
     let resultado = await chamarOmie(clienteOmie, metodo);
 
-    // Retry em caso de rate limit do Omie
+    // Retry em caso de rate limit / bloqueio do Omie
     const fault = (resultado.faultstring || '').toLowerCase();
-    if (fault && (fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again')) && tentativa < 3) {
-        await delay(2000 * Math.pow(2, tentativa));
+    const isBloqueio = fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again') || fault.includes('consumo indevido') || fault.includes('bloqueada');
+    if (fault && isBloqueio && tentativa < 5) {
+        // Tentar extrair tempo de espera da mensagem (ex: "68 segundos")
+        const matchSegundos = (resultado.faultstring || '').match(/(\d+)\s*segundo/i);
+        const waitSec = matchSegundos ? parseInt(matchSegundos[1]) + 5 : 15 * Math.pow(2, tentativa);
+        console.log(`[exportarClientesOmie] Bloqueio detectado, aguardando ${waitSec}s antes do retry ${tentativa + 1}/5...`);
+        await delay(waitSec * 1000);
         return fetchComRetry(cliente, modo, tentativa + 1);
     }
 
@@ -211,8 +216,8 @@ Deno.serve(async (req) => {
                     mensagem: err.message
                 });
             }
-            // 600ms entre chamadas (~100 req/min, dentro do limite do Omie)
-            if (i < clientes_data.length - 1) await delay(600);
+            // 1500ms entre chamadas (~40 req/min, evita bloqueio por consumo indevido)
+            if (i < clientes_data.length - 1) await delay(1500);
         }
 
         const sucessos = resultados.filter(r => r.sucesso).length;
