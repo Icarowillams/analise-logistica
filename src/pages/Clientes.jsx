@@ -87,19 +87,11 @@ export default function Clientes() {
     try {
       const response = await base44.functions.invoke('reservarCodigoCliente', {});
       const codigoReservado = response.data?.codigo || '';
-      if (codigoReservado) {
-        setFormData(prev => ({ ...prev, codigo: codigoReservado }));
-      } else {
-        throw new Error('Código vazio retornado');
-      }
+      if (!codigoReservado) throw new Error('Código vazio retornado');
+      setFormData(prev => ({ ...prev, codigo: codigoReservado }));
     } catch (err) {
-      console.error('Erro ao reservar código, gerando fallback local:', err);
-      // Fallback: buscar maior código existente dos clientes carregados
-      const todosClientes = await base44.entities.Cliente.list();
-      const maiorCodigo = Math.max(0, ...todosClientes.map(c => parseInt(String(c.codigo || '0').trim(), 10)).filter(Number.isFinite));
-      const novoCodigo = String(maiorCodigo + 1);
-      setFormData(prev => ({ ...prev, codigo: novoCodigo }));
-      toast.warning('Código gerado localmente. Verifique se está correto.');
+      console.error('Erro ao reservar código:', err);
+      toast.error('Erro ao gerar código automático. Tente novamente ou informe manualmente.');
     }
   };
 
