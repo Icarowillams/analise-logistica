@@ -140,6 +140,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return pedidos.map((pedido) => {
       const cliente = clientesMap[pedido.cliente_id];
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
+      const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
       return {
         ...pedido,
         cliente_codigo_base: cliente?.codigo || pedido.cliente_codigo,
@@ -147,10 +148,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
         vendedor_id: vendedorCliente?.id || pedido.vendedor_id,
         vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
-        usuario_envio: pedido.created_by || '-',
+        usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
       };
     });
-  }, [pedidos, clientesMap, vendedoresMap]);
+  }, [pedidos, clientesMap, vendedoresMap, vendedores]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
