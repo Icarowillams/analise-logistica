@@ -19,7 +19,8 @@ export default function ProdutoCardList({
   const [search, setSearch] = useState('');
 
   const produtosComPreco = useMemo(() => {
-    if (!tabelaPrecoId || precosAll.length === 0) return produtos;
+    if (!tabelaPrecoId) return [];
+    if (precosAll.length === 0) return [];
     const idsComPreco = new Set(
       precosAll
         .filter(p => p.valor_unitario > 0 || (p.ativacao_acao && p.valor_acao > 0))
