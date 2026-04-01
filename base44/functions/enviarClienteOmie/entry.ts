@@ -92,7 +92,7 @@ function mapearClienteParaOmie(clienteData) {
         // --- Inatividade ---
         inativo: (clienteData.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
 
-        // --- Tags (código interno) ---
+        // --- Tags (apenas código do cliente) ---
         tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : []
     };
 

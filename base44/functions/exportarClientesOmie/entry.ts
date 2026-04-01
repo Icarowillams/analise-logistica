@@ -45,10 +45,8 @@ function mapearClienteParaOmie(cliente) {
     const isPessoaFisica = cpfCnpj.length <= 11;
     const emailNorm = (cliente.email || "nfe@paoemel.com.br").substring(0, 500);
     const nomeContato = (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100);
-    const rotaTag = cliente.rota_id ? `ROTA_ID:${cliente.rota_id}` : '';
     const codigoTag = cliente.codigo ? `COD:${cliente.codigo}` : '';
-    const rotaNomeTag = cliente.rota_nome ? `ROTA:${cliente.rota_nome}` : '';
-    const tags = [codigoTag, rotaTag, rotaNomeTag].filter(Boolean).map(tag => ({ tag }));
+    const tags = [codigoTag].filter(Boolean).map(tag => ({ tag }));
 
     const clienteOmie = {
         codigo_cliente_integracao: cliente.codigo || cliente.id,
