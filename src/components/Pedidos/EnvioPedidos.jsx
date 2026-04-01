@@ -70,6 +70,10 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   };
 
   const enviarPedido = async (pedido) => {
+    if (!pedido.data_previsao_entrega && pedido.tipo !== 'troca') {
+      toast.error(`Pedido de ${pedido.cliente_nome} não tem Data de Previsão de Entrega. Edite o pedido para informar.`);
+      return;
+    }
     setEnviandoId(pedido.id);
     try {
       if (pedido.tipo === 'troca') {
@@ -140,6 +144,11 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     const erroMsgs = [];
     
     for (const pedido of pendentes) {
+      if (!pedido.data_previsao_entrega && pedido.tipo !== 'troca') {
+        erroCount++;
+        erroMsgs.push(`${pedido.cliente_nome}: Sem Data de Previsão de Entrega`);
+        continue;
+      }
       if (pedido.tipo === 'troca') {
         // Trocas: gerar número sequencial local com sufixo T
         const numero = await getNextNumeroTroca();
@@ -303,6 +312,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           )}
           
           <div className="text-xs text-slate-600 space-y-0.5">
+            {!pedido.data_previsao_entrega && pedido.tipo !== 'troca' && (
+              <p className="text-red-600 font-semibold">⚠ Sem data de previsão de entrega</p>
+            )}
             <p>Pgto: {pedido.plano_pagamento_nome || '-'}</p>
             <p>Itens: {items.length} | Vl. Total: R$ {(pedido.valor_total || 0).toFixed(2)}</p>
             <p>Modelo: {modeloLabel} | Emissão: {dataEmissao}</p>

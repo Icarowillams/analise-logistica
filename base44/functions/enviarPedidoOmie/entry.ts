@@ -101,6 +101,11 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Este pedido já foi enviado ao Omie', codigo_omie: pedido.omie_codigo_pedido }, { status: 400 });
         }
 
+        // Validar data de previsão de entrega (obrigatória)
+        if (!pedido.data_previsao_entrega) {
+            return Response.json({ sucesso: false, erro: 'Data de Previsão de Entrega é obrigatória para enviar ao Omie' }, { status: 400 });
+        }
+
         // Não gerar venda no Omie para Troca
         if (pedido.tipo === 'troca') {
             return Response.json({

@@ -216,6 +216,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const previewDadosNf = buildDadosAdicionaisNf();
 
   const salvarPedido = async () => {
+    if (!dataPrevisaoEntrega) {
+      toast.error('Informe a Data de Previsão de Entrega');
+      return;
+    }
     if (itensLocal.length === 0) {
       toast.error('Adicione pelo menos um item ao pedido');
       return;
@@ -365,8 +369,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <p className="text-sm font-medium">{tipo === 'troca' ? 'D1' : modeloNota === 'nfce' ? 'NFCe' : '55'}</p>
                 </div>
                 <div>
-                  <Label>Data Previsão de Entrega</Label>
-                  <Input type="date" value={dataPrevisaoEntrega} onChange={(e) => setDataPrevisaoEntrega(e.target.value)} />
+                  <Label>Data Previsão de Entrega <span className="text-red-500">*</span></Label>
+                  <Input type="date" value={dataPrevisaoEntrega} onChange={(e) => setDataPrevisaoEntrega(e.target.value)} className={!dataPrevisaoEntrega ? 'border-red-300' : ''} />
+                  {!dataPrevisaoEntrega && <p className="text-xs text-red-500 mt-1">Obrigatório</p>}
                 </div>
               </div>
               {mostrarCenarioFiscal && (
