@@ -67,14 +67,14 @@ function normalizeStr(s) {
 }
 
 function normalizePlano(csv_val) {
-    if (!csv_val || csv_val === '0') return 'AVISTA';
+    if (!csv_val || csv_val === '0') return '';
     const v = csv_val.toUpperCase().trim();
     if (v === 'A VISTA') return 'AVISTA';
     return v;
 }
 
 function normalizeCobranca(csv_val) {
-    if (!csv_val || csv_val === '0') return 'PIX';
+    if (!csv_val || csv_val === '0') return '';
     const v = csv_val.toUpperCase().trim();
     const map = {
         'BOLETO BANCARIO': 'BOELTO BANCARIO',
@@ -85,7 +85,7 @@ function normalizeCobranca(csv_val) {
         'CARTAO DE DEBITO': 'PIX',
         'CARTEIRA': 'PIX',
     };
-    return map[v] || 'PIX';
+    return map[v] || v;
 }
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -169,8 +169,10 @@ function buildLookups(planos, tabelas, segmentos, redes, rotas, vendedores, moda
 }
 
 function findPlanoId(csvVal, planoMap) {
-    const norm = normalizeStr(normalizePlano(csvVal));
-    return planoMap[norm] || planoMap['AVISTA'] || '';
+    const normalized = normalizePlano(csvVal);
+    if (!normalized) return '';
+    const norm = normalizeStr(normalized);
+    return planoMap[norm] || '';
 }
 
 function findTabelaId(csvVal, tabelaMap) {
@@ -236,7 +238,7 @@ function buildClienteData(row, lookups) {
         numero: row.numero || '',
         bairro: row.bairro || '',
         cidade: row.cidade || '',
-        estado: row.estado || 'PE',
+        estado: row.estado || '',
         cep: (row.cep || '').replace(/\D/g, ''),
         latitude: parseLat(row.latitude),
         longitude: parseLng(row.longitude),
@@ -249,7 +251,7 @@ function buildClienteData(row, lookups) {
         rota_id: findRotaId(row.rota, rotaMap),
         vendedor_id,
         supervisor_id: v?.supervisor_id || '',
-        modalidade_pagamento_id: modalidadeMap[normalizeStr(normalizeCobranca(row.cobranca))] || modalidadeMap['PIX'] || '',
+        modalidade_pagamento_id: normalizeCobranca(row.cobranca) ? (modalidadeMap[normalizeStr(normalizeCobranca(row.cobranca))] || '') : '',
     };
 }
 

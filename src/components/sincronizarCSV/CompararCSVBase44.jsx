@@ -34,19 +34,32 @@ export default function CompararCSVBase44() {
   const cancelRef = useRef(false);
 
   const handleUploadEComparar = async () => {
-    if (!arquivo) return;
+    if (!arquivo && !csvUrl) return;
     setErroMsg('');
     setUploading(true);
     setEtapa('verificando');
     try {
-      // Upload do arquivo
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: arquivo });
-      setCsvUrl(file_url);
-      // Comparar
-      const res = await base44.functions.invoke('compararCSVComBase44', {
-        csv_url: file_url, etapa: 'analise'
-      });
-      setComparacao(res.data);
+      let fileUrl = csvUrl;
+      if (arquivo) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: arquivo });
+        fileUrl = file_url;
+        setCsvUrl(file_url);
+      }
+      // Chamar ambas as funções em paralelo: visual + execução
+      const [resVisual, resExec] = await Promise.all([
+        base44.functions.invoke('compararCSVComBase44', { csv_url: fileUrl, etapa: 'analise' }),
+        base44.functions.invoke('sincronizarClientesCSV', { csv_url: fileUrl, etapa: 'analise' }),
+      ]);
+      // Combinar: dados visuais do compararCSV + contagens reais do sincronizar
+      const dadosCombinados = {
+        ...resVisual.data,
+        // Contagens reais de ação (do sincronizarCSV)
+        atualizar_real: resExec.data.atualizar || 0,
+        criar_real: resExec.data.criar || 0,
+        excluir_real: resExec.data.excluir || 0,
+        excluir_ids: resExec.data.excluir_ids || [],
+      };
+      setComparacao(dadosCombinados);
       setEtapa('resultado');
     } catch (err) {
       setErroMsg(err?.response?.data?.error || err.message);
@@ -65,9 +78,10 @@ export default function CompararCSVBase44() {
 
     const allErros = [];
 
-    // 1. Atualizar diferentes
-    if (comparacao.diferentes > 0) {
-      setProgressoAtualizar({ total: comparacao.diferentes, atual: 0, ok: 0, erros: 0 });
+    // 1. Atualizar diferentes (usar contagem real do sincronizarCSV)
+    const totalAtualizar = comparacao.atualizar_real || comparacao.diferentes || 0;
+    if (totalAtualizar > 0) {
+      setProgressoAtualizar({ total: totalAtualizar, atual: 0, ok: 0, erros: 0 });
       let ok = 0, erros = 0;
       let offset = 0;
       let concluido = false;
@@ -90,9 +104,10 @@ export default function CompararCSVBase44() {
       }
     }
 
-    // 2. Criar novos
-    if (comparacao.nao_encontrados > 0 && !cancelRef.current) {
-      setProgressoCriar({ total: comparacao.nao_encontrados, atual: 0, ok: 0, erros: 0 });
+    // 2. Criar novos (usar contagem real do sincronizarCSV)
+    const totalCriar = comparacao.criar_real || comparacao.nao_encontrados || 0;
+    if (totalCriar > 0 && !cancelRef.current) {
+      setProgressoCriar({ total: totalCriar, atual: 0, ok: 0, erros: 0 });
       let ok = 0, erros = 0;
       let offset = 0;
       let concluido = false;
@@ -116,8 +131,9 @@ export default function CompararCSVBase44() {
     }
 
     // 3. Excluir sobrantes (do Base44 que não estão no CSV)
-    if (comparacao.so_no_base44 > 0 && !cancelRef.current) {
-      setProgressoExcluir({ total: comparacao.so_no_base44, atual: 0, ok: 0, erros: 0 });
+    const totalExcluir = comparacao.excluir_real || comparacao.so_no_base44 || 0;
+    if (totalExcluir > 0 && !cancelRef.current) {
+      setProgressoExcluir({ total: totalExcluir, atual: 0, ok: 0, erros: 0 });
       let ok = 0, erros = 0;
       let offset = 0;
       let concluido = false;
@@ -158,7 +174,11 @@ export default function CompararCSVBase44() {
     setErrosExec([]);
   };
 
-  const temAcoes = comparacao && (comparacao.diferentes > 0 || comparacao.nao_encontrados > 0 || comparacao.so_no_base44 > 0);
+  const temAcoes = comparacao && (
+    (comparacao.atualizar_real || comparacao.diferentes || 0) > 0 || 
+    (comparacao.criar_real || comparacao.nao_encontrados || 0) > 0 || 
+    (comparacao.excluir_real || comparacao.so_no_base44 || 0) > 0
+  );
 
   return (
     <div className="space-y-4">
@@ -293,7 +313,29 @@ export default function CompararCSVBase44() {
             {etapa === 'concluido' && (
               <>
                 <Button variant="outline" onClick={handleReset}>Voltar</Button>
-                <Button onClick={handleUploadEComparar} disabled={!csvUrl} className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Button onClick={async () => {
+                  setUploading(true);
+                  setEtapa('verificando');
+                  try {
+                    const [resVisual, resExec] = await Promise.all([
+                      base44.functions.invoke('compararCSVComBase44', { csv_url: csvUrl, etapa: 'analise' }),
+                      base44.functions.invoke('sincronizarClientesCSV', { csv_url: csvUrl, etapa: 'analise' }),
+                    ]);
+                    setComparacao({
+                      ...resVisual.data,
+                      atualizar_real: resExec.data.atualizar || 0,
+                      criar_real: resExec.data.criar || 0,
+                      excluir_real: resExec.data.excluir || 0,
+                      excluir_ids: resExec.data.excluir_ids || [],
+                    });
+                    setEtapa('resultado');
+                  } catch (err) {
+                    setErroMsg(err?.response?.data?.error || err.message);
+                    setEtapa('idle');
+                  } finally {
+                    setUploading(false);
+                  }
+                }} disabled={!csvUrl} className="bg-blue-600 hover:bg-blue-700 text-white">
                   <Search className="w-4 h-4 mr-2" /> Reverificar
                 </Button>
               </>
