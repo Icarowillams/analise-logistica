@@ -142,8 +142,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
       return {
         ...pedido,
+        cliente_codigo_base: cliente?.codigo || pedido.cliente_codigo,
+        cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
+        cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
         vendedor_id: vendedorCliente?.id || pedido.vendedor_id,
         vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome,
+        usuario_envio: pedido.created_by || '-',
       };
     });
   }, [pedidos, clientesMap, vendedoresMap]);
@@ -204,10 +208,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const s = search.toLowerCase();
       list = list.filter(p =>
         (p.numero_pedido?.toString() || '').includes(s) ||
-        (p.cliente_nome || '').toLowerCase().includes(s) ||
-        (p.cliente_nome_fantasia || '').toLowerCase().includes(s) ||
+        (p.cliente_nome_base || '').toLowerCase().includes(s) ||
+        (p.cliente_fantasia_base || '').toLowerCase().includes(s) ||
         (p.cliente_cpf_cnpj || '').includes(s) ||
-        (p.cliente_codigo || '').toLowerCase().includes(s) ||
+        (p.cliente_codigo_base || '').toLowerCase().includes(s) ||
         (p.vendedor_nome || '').toLowerCase().includes(s) ||
         (p.numero_carga || '').toLowerCase().includes(s)
       );
@@ -252,9 +256,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (clienteSearch.trim()) {
       const cs = clienteSearch.toLowerCase();
       list = list.filter(p =>
-        (p.cliente_nome || '').toLowerCase().includes(cs) ||
-        (p.cliente_nome_fantasia || '').toLowerCase().includes(cs) ||
-        (p.cliente_codigo || '').includes(cs)
+        (p.cliente_nome_base || '').toLowerCase().includes(cs) ||
+        (p.cliente_fantasia_base || '').toLowerCase().includes(cs) ||
+        (p.cliente_codigo_base || '').includes(cs)
       );
     }
     // Cidade (texto)

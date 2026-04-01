@@ -76,6 +76,18 @@ export default function PedidoCellRenderer({ col, p }) {
     return <span className={`${truncClass} text-right`}>{formatCurrency(precoMedio)}</span>;
   }
 
+  if (col.id === 'cliente_nome') {
+    return <span className={truncClass} title={p.cliente_nome_base || ''}>{p.cliente_nome_base || '-'}</span>;
+  }
+
+  if (col.id === 'cliente_nome_fantasia') {
+    return <span className={truncClass} title={p.cliente_fantasia_base || ''}>{p.cliente_fantasia_base || '-'}</span>;
+  }
+
+  if (col.id === 'usuario_envio') {
+    return <span className={truncClass} title={p.usuario_envio || ''}>{p.usuario_envio || '-'}</span>;
+  }
+
   const value = p[col.field];
   return <span className={truncClass} title={value || ''}>{value || '-'}</span>;
 }
