@@ -24,6 +24,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
   const [failedImports, setFailedImports] = useState([]);
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [editingError, setEditingError] = useState(null);
+  const [selectedTabelaId, setSelectedTabelaId] = useState('');
 
   const resetState = () => {
     setFile(null);
@@ -97,8 +98,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         produto_id: produto?.id || null,
         produto_nome: produto?.nome || null,
         valor_unitario: valor,
-        erro: null,
-        criar_tabela: !tabela
+        erro: null
       };
 
       if (!produto) row.erro = `Produto "${codProduto}" não encontrado`;
@@ -137,6 +137,10 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
   const handleImport = async () => {
     const validRows = preview.filter(r => !r.erro);
+    if (!selectedTabelaId) {
+      toast.error('Selecione a tabela de destino');
+      return;
+    }
     if (validRows.length === 0) {
       toast.error('Nenhum registro válido para importar');
       return;
@@ -153,28 +157,14 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
     try {
       const existingPrices = await base44.entities.PrecoProduto.list();
-      const existingTables = [...tabelas];
       setProgress(10);
 
       const toCreate = [];
       const toUpdate = [];
 
       for (const row of validRows) {
-        let tabelaId = row.tabela_id;
-
-        if (!tabelaId) {
-          const novaTabela = await base44.entities.TabelaPreco.create({
-            nome: row.tabela_nome,
-            status: 'ativo'
-          });
-          existingTables.push(novaTabela);
-          tabelaId = novaTabela.id;
-          row.tabela_id = novaTabela.id;
-          row.criar_tabela = false;
-        }
-
         const existing = existingPrices.find(
-          p => p.produto_id === row.produto_id && p.tabela_id === tabelaId
+          p => p.produto_id === row.produto_id && p.tabela_id === selectedTabelaId
         );
 
         if (existing) {
@@ -182,7 +172,7 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         } else {
           toCreate.push({
             produto_id: row.produto_id,
-            tabela_id: tabelaId,
+            tabela_id: selectedTabelaId,
             valor_unitario: row.valor_unitario,
             valor_acao: 0,
             ativacao_acao: false
@@ -398,25 +388,40 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
-            <Label className="font-medium">Modo:</Label>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant={importMode === 'cadastrar' ? 'default' : 'outline'}
-                onClick={() => setImportMode('cadastrar')}
-                className={importMode === 'cadastrar' ? 'bg-emerald-600' : ''}
-              >
-                Cadastrar Novos
-              </Button>
-              <Button
-                size="sm"
-                variant={importMode === 'atualizar' ? 'default' : 'outline'}
-                onClick={() => setImportMode('atualizar')}
-                className={importMode === 'atualizar' ? 'bg-blue-600' : ''}
-              >
-                Atualizar Existentes
-              </Button>
+          <div className="grid gap-3 p-3 bg-slate-50 rounded-lg md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="font-medium">Tabela de destino</Label>
+              <Select value={selectedTabelaId} onValueChange={setSelectedTabelaId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma tabela" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tabelas.map((tabela) => (
+                    <SelectItem key={tabela.id} value={tabela.id}>{tabela.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-medium">Modo</Label>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={importMode === 'cadastrar' ? 'default' : 'outline'}
+                  onClick={() => setImportMode('cadastrar')}
+                  className={importMode === 'cadastrar' ? 'bg-emerald-600' : ''}
+                >
+                  Cadastrar Novos
+                </Button>
+                <Button
+                  size="sm"
+                  variant={importMode === 'atualizar' ? 'default' : 'outline'}
+                  onClick={() => setImportMode('atualizar')}
+                  className={importMode === 'atualizar' ? 'bg-blue-600' : ''}
+                >
+                  Atualizar Existentes
+                </Button>
+              </div>
             </div>
           </div>
 
