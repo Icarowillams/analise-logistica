@@ -108,19 +108,14 @@ Deno.serve(async (req) => {
 
                 let resultado = await chamarOmieComRetry("UpsertClienteCpfCnpj", clienteOmie, 2);
 
-                if (resultado.faultstring && resultado.faultstring.toLowerCase().includes('cliente já cadastrado para o cpf/cnpj')) {
-                    const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
-                    if (codigoOmieExistente) {
-                        resultado = await chamarOmieComRetry("UpsertCliente", {
-                            ...clienteOmie,
-                            codigo_cliente_omie: codigoOmieExistente
-                        }, 2);
-                    }
-                }
+                const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
+                if (resultado.faultstring && codigoOmieExistente) {
+                    const associacao = await chamarOmieComRetry("AssociarCodIntCliente", {
+                        codigo_cliente_omie: codigoOmieExistente,
+                        codigo_cliente_integracao: c.id
+                    }, 2);
 
-                if (resultado.faultstring && !erroEhRateLimit(resultado)) {
-                    const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
-                    if (codigoOmieExistente) {
+                    if (!associacao.faultstring) {
                         resultado = await chamarOmieComRetry("UpsertCliente", {
                             ...clienteOmie,
                             codigo_cliente_omie: codigoOmieExistente
