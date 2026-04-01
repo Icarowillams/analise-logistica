@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
@@ -24,125 +24,97 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     bairro: '',
     search: '',
     semLocalizacao: false,
-    inscricaoEstadual: null // null = sem filtro, true = com IE, false = sem IE
+    inscricaoEstadual: null,
   });
 
-  const { data: clientesAll = [], isLoading } = useQuery({
+  const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
+    queryFn: () => base44.entities.Cliente.list(),
   });
 
   const { data: vendedoresAll = [] } = useQuery({
     queryKey: ['vendedores'],
-    queryFn: () => base44.entities.Vendedor.list()
+    queryFn: () => base44.entities.Vendedor.list(),
   });
-
-  // Permissões de visibilidade de clientes
-  const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
-
-  // Dados filtrados por permissão
-  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
-  const vendedores = useMemo(() => {
-    if (vendedoresPermitidosIds === null) return vendedoresAll;
-    return vendedoresAll.filter(v => vendedoresPermitidosIds.has(v.id));
-  }, [vendedoresAll, vendedoresPermitidosIds]);
 
   const { data: redes = [] } = useQuery({
     queryKey: ['redes'],
-    queryFn: () => base44.entities.Rede.list()
+    queryFn: () => base44.entities.Rede.list(),
   });
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
-    queryFn: () => base44.entities.Segmento.list()
+    queryFn: () => base44.entities.Segmento.list(),
   });
 
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
-    queryFn: () => base44.entities.PlanoPagamento.list()
+    queryFn: () => base44.entities.PlanoPagamento.list(),
   });
 
-  // Extract unique supervisors (vendedores who are supervisors of others)
+  const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
+
+  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+
+  const vendedores = useMemo(() => {
+    if (vendedoresPermitidosIds === null) return vendedoresAll;
+    return vendedoresAll.filter((v) => vendedoresPermitidosIds.has(v.id));
+  }, [vendedoresAll, vendedoresPermitidosIds]);
+
   const supervisors = useMemo(() => {
-    const supervisorIds = [...new Set(vendedores.map(v => v.supervisor_id).filter(Boolean))];
-    return vendedores.filter(v => supervisorIds.includes(v.id));
+    const supervisorIds = [...new Set(vendedores.map((v) => v.supervisor_id).filter(Boolean))];
+    return vendedores.filter((v) => supervisorIds.includes(v.id));
   }, [vendedores]);
 
-  // Helper to get supervisor for a client (via client.vendedor_id -> vendedor.supervisor_id)
   const getSupervisorId = (cliente) => {
-    const vendedor = vendedores.find(v => v.id === cliente.vendedor_id);
+    const vendedor = vendedores.find((v) => v.id === cliente.vendedor_id);
     return vendedor ? vendedor.supervisor_id : null;
   };
 
+  const getName = (list, id) => {
+    if (!id) return '-';
+    const item = list.find((entry) => entry.id === id);
+    return item ? item.nome : '-';
+  };
+
+  const getVendedorName = (id) => getName(vendedores, id);
+
+  const getSupervisorNameForClient = (cliente) => {
+    const supId = getSupervisorId(cliente);
+    return getName(vendedores, supId);
+  };
+
   const filteredClientes = useMemo(() => {
-    return clientes.filter(cliente => {
-      // Filter by Vendedor (multi-select)
+    return clientes.filter((cliente) => {
       if (filters.vendedor_ids.length > 0) {
         const hasEmpty = filters.vendedor_ids.includes('__empty__');
-        const selectedIds = filters.vendedor_ids.filter(id => id !== '__empty__');
-        
-        if (hasEmpty && !cliente.vendedor_id) {
-          // Passa se está vazio e "vazio" está selecionado
-        } else if (selectedIds.includes(cliente.vendedor_id)) {
-          // Passa se o vendedor está selecionado
-        } else {
-          return false;
-        }
+        const selectedIds = filters.vendedor_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.vendedor_id) && !selectedIds.includes(cliente.vendedor_id)) return false;
       }
-      
-      // Filter by Supervisor (multi-select)
+
       if (filters.supervisor_ids.length > 0) {
         const supId = getSupervisorId(cliente);
         const hasEmpty = filters.supervisor_ids.includes('__empty__');
-        const selectedIds = filters.supervisor_ids.filter(id => id !== '__empty__');
-        
-        if (hasEmpty && !supId) {
-          // Passa se está vazio
-        } else if (selectedIds.includes(supId)) {
-          // Passa se o supervisor está selecionado
-        } else {
-          return false;
-        }
+        const selectedIds = filters.supervisor_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !supId) && !selectedIds.includes(supId)) return false;
       }
 
-      // Filter by Rede (multi-select)
       if (filters.rede_ids.length > 0) {
         const hasEmpty = filters.rede_ids.includes('__empty__');
-        const selectedIds = filters.rede_ids.filter(id => id !== '__empty__');
-        
-        if (hasEmpty && !cliente.rede_id) {
-          // Passa se está vazio
-        } else if (selectedIds.includes(cliente.rede_id)) {
-          // Passa se a rede está selecionada
-        } else {
-          return false;
-        }
+        const selectedIds = filters.rede_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.rede_id) && !selectedIds.includes(cliente.rede_id)) return false;
       }
 
-      // Filter by Segmento (multi-select)
       if (filters.segmento_ids.length > 0) {
         const hasEmpty = filters.segmento_ids.includes('__empty__');
-        const selectedIds = filters.segmento_ids.filter(id => id !== '__empty__');
-        
-        if (hasEmpty && !cliente.segmento_id) {
-          // Passa se está vazio
-        } else if (selectedIds.includes(cliente.segmento_id)) {
-          // Passa se o segmento está selecionado
-        } else {
-          return false;
-        }
+        const selectedIds = filters.segmento_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.segmento_id) && !selectedIds.includes(cliente.segmento_id)) return false;
       }
 
-      // Filter by Status
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
-
-      // Filter by Cidade (partial match)
       if (filters.cidade && !cliente.cidade?.toLowerCase().includes(filters.cidade.toLowerCase())) return false;
-
-      // Filter by Bairro (partial match)
       if (filters.bairro && !cliente.bairro?.toLowerCase().includes(filters.bairro.toLowerCase())) return false;
 
-      // General Search (matches text/numbers in key columns)
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const match = [
@@ -151,17 +123,13 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
           cliente.nome_fantasia,
           cliente.cpf_cnpj,
           cliente.endereco,
-          cliente.numero
-        ].some(val => val && String(val).toLowerCase().includes(searchLower));
+          cliente.numero,
+        ].some((val) => val && String(val).toLowerCase().includes(searchLower));
         if (!match) return false;
       }
 
-      // Filter by Sem Localização
-      if (filters.semLocalizacao) {
-        if (cliente.latitude && cliente.longitude) return false;
-      }
+      if (filters.semLocalizacao && cliente.latitude && cliente.longitude) return false;
 
-      // Filter by Inscrição Estadual
       if (filters.inscricaoEstadual === true) {
         if (!cliente.inscricao_estadual || cliente.inscricao_estadual.trim() === '') return false;
       } else if (filters.inscricaoEstadual === false) {
@@ -172,21 +140,9 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     });
   }, [clientes, filters, vendedores]);
 
-  const getName = (list, id) => {
-    if (!id) return '-';
-    const item = list.find(i => i.id === id);
-    return item ? item.nome : '-';
-  };
-
-  const getVendedorName = (id) => getName(vendedores, id);
-  const getSupervisorNameForClient = (cliente) => {
-    const supId = getSupervisorId(cliente);
-    return getName(vendedores, supId);
-  };
-
   const selectedCliente = useMemo(() => {
     if (!filteredClientes.length) return null;
-    return filteredClientes.find(cliente => cliente.id === selectedClienteId) || filteredClientes[0];
+    return filteredClientes.find((cliente) => cliente.id === selectedClienteId) || filteredClientes[0];
   }, [filteredClientes, selectedClienteId]);
 
   const previewFields = [
@@ -210,22 +166,22 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
 
   const columns = [
     { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
-    { 
-      key: 'nome_fantasia', 
-      label: 'Nome Fantasia', 
+    {
+      key: 'nome_fantasia',
+      label: 'Nome Fantasia',
       sortable: true,
-      render: (val, row) => val || row.razao_social
+      render: (val, row) => val || row.razao_social,
     },
     { key: 'cidade', label: 'Cidade' },
-    { 
-      key: 'vendedor_id', 
+    {
+      key: 'vendedor_id',
       label: 'Vendedor',
-      render: (val) => getVendedorName(val)
+      render: (val) => getVendedorName(val),
     },
-    { 
-      key: 'rede_id', 
+    {
+      key: 'rede_id',
       label: 'Rede',
-      render: (val) => getName(redes, val)
+      render: (val) => getName(redes, val),
     },
     {
       key: 'status',
@@ -235,7 +191,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
           {val}
         </Badge>
-      )
+      ),
     },
     {
       key: 'visualizar',
@@ -251,13 +207,12 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         >
           <Eye className="w-4 h-4" />
         </Button>
-      )
-    }
+      ),
+    },
   ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Filters */}
       <Card className="bg-white shadow-sm border-slate-200 overflow-hidden">
         <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
           <CardTitle className="text-base sm:text-lg font-medium flex items-center gap-2">
@@ -267,66 +222,57 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         </CardHeader>
         <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-            
-            {/* Vendedor */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Vendedor</label>
               <MultiSelectFilter
                 options={vendedores}
                 selectedIds={filters.vendedor_ids}
-                onChange={(ids) => setFilters({...filters, vendedor_ids: ids})}
+                onChange={(ids) => setFilters({ ...filters, vendedor_ids: ids })}
                 placeholder="Todos"
                 includeEmpty
                 emptyLabel="Sem Vendedor"
               />
             </div>
 
-            {/* Supervisor */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Supervisor</label>
               <MultiSelectFilter
                 options={supervisors}
                 selectedIds={filters.supervisor_ids}
-                onChange={(ids) => setFilters({...filters, supervisor_ids: ids})}
+                onChange={(ids) => setFilters({ ...filters, supervisor_ids: ids })}
                 placeholder="Todos"
                 includeEmpty
                 emptyLabel="Sem Supervisor"
               />
             </div>
 
-            {/* Rede */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Rede</label>
               <MultiSelectFilter
                 options={redes}
                 selectedIds={filters.rede_ids}
-                onChange={(ids) => setFilters({...filters, rede_ids: ids})}
+                onChange={(ids) => setFilters({ ...filters, rede_ids: ids })}
                 placeholder="Todas"
                 includeEmpty
                 emptyLabel="Sem Rede"
               />
             </div>
 
-            {/* Segmento */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Segmento</label>
               <MultiSelectFilter
                 options={segmentos}
                 selectedIds={filters.segmento_ids}
-                onChange={(ids) => setFilters({...filters, segmento_ids: ids})}
+                onChange={(ids) => setFilters({ ...filters, segmento_ids: ids })}
                 placeholder="Todos"
                 includeEmpty
                 emptyLabel="Sem Segmento"
               />
             </div>
 
-            {/* Status */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Status</label>
-              <Select 
-                value={filters.status} 
-                onValueChange={(v) => setFilters({...filters, status: v})}
-              >
+              <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
@@ -339,55 +285,51 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               </Select>
             </div>
 
-            {/* Cidade */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Cidade</label>
               <div className="relative">
                 <MapPin className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                <Input 
-                  placeholder="Buscar cidade..." 
+                <Input
+                  placeholder="Buscar cidade..."
                   value={filters.cidade}
-                  onChange={(e) => setFilters({...filters, cidade: e.target.value})}
+                  onChange={(e) => setFilters({ ...filters, cidade: e.target.value })}
                   className="pl-8"
                 />
               </div>
             </div>
 
-            {/* Bairro */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Bairro</label>
               <div className="relative">
                 <MapPin className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                <Input 
-                  placeholder="Buscar bairro..." 
+                <Input
+                  placeholder="Buscar bairro..."
                   value={filters.bairro}
-                  onChange={(e) => setFilters({...filters, bairro: e.target.value})}
+                  onChange={(e) => setFilters({ ...filters, bairro: e.target.value })}
                   className="pl-8"
                 />
               </div>
             </div>
 
-            {/* General Search */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Busca Geral</label>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                <Input 
-                  placeholder="Nome, CNPJ, Email, Telefone..." 
+                <Input
+                  placeholder="Nome, CNPJ, Email, Telefone..."
                   value={filters.search}
-                  onChange={(e) => setFilters({...filters, search: e.target.value})}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                   className="pl-8"
                 />
               </div>
             </div>
 
-            {/* Sem Localização */}
             <div className="space-y-1 flex items-end">
               <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-white">
                 <Checkbox
                   id="semLocalizacao"
                   checked={filters.semLocalizacao}
-                  onCheckedChange={(checked) => setFilters({...filters, semLocalizacao: checked})}
+                  onCheckedChange={(checked) => setFilters({ ...filters, semLocalizacao: checked })}
                 />
                 <label htmlFor="semLocalizacao" className="text-sm cursor-pointer flex items-center gap-1">
                   <MapPinOff className="w-4 h-4 text-amber-500" />
@@ -396,12 +338,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               </div>
             </div>
 
-            {/* Inscrição Estadual */}
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Inscrição Estadual</label>
               <Select
                 value={filters.inscricaoEstadual === null ? 'all' : filters.inscricaoEstadual ? 'com' : 'sem'}
-                onValueChange={(val) => setFilters({...filters, inscricaoEstadual: val === 'all' ? null : val === 'com'})}
+                onValueChange={(val) => setFilters({ ...filters, inscricaoEstadual: val === 'all' ? null : val === 'com' })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
@@ -413,12 +354,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 </SelectContent>
               </Select>
             </div>
-
           </div>
-          
+
           <div className="mt-4 flex justify-stretch sm:justify-end">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setFilters({
                 vendedor_ids: [],
                 supervisor_ids: [],
@@ -428,7 +368,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 cidade: '',
                 bairro: '',
                 search: '',
-                semLocalizacao: false
+                semLocalizacao: false,
+                inscricaoEstadual: null,
               })}
               className="w-full sm:w-auto text-slate-600 hover:text-slate-900"
             >
@@ -438,7 +379,6 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         </CardContent>
       </Card>
 
-      {/* Results Table */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-w-0">
           <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -459,8 +399,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
             )}
           </div>
           <div className="p-0 min-w-0">
-            <DataTable 
-              data={filteredClientes} 
+            <DataTable
+              data={filteredClientes}
               columns={columns}
               searchable={false}
               pageSize={1000}
