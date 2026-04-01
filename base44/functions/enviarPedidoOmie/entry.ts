@@ -68,8 +68,8 @@ Deno.serve(async (req) => {
 
         // Verificar permissão de enviar pedido (admin sempre pode, ou quem tem permissão)
         if (user.role !== 'admin') {
-            const vendedores = await base44.asServiceRole.entities.Vendedor.filter({ email: user.email });
-            const vendedor = vendedores[0];
+            const allVendedores = await base44.asServiceRole.entities.Vendedor.list();
+            const vendedor = allVendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
             if (vendedor) {
                 const permissoes = await base44.asServiceRole.entities.Permissao.filter({ vendedor_id: vendedor.id });
                 const perm = permissoes[0];
@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
                 etapa: etapa,
                 codigo_parcela: "999", // 999 = conforme parcelas informadas
                 quantidade_itens: allItems.length,
-                ...(pedido.cenario_fiscal_codigo ? { codigo_cenario_impostos: String(pedido.cenario_fiscal_codigo) } : {}),
+                ...(pedido.cenario_fiscal_codigo && !isNaN(Number(pedido.cenario_fiscal_codigo)) && Number(pedido.cenario_fiscal_codigo) > 0 ? { codigo_cenario_impostos: String(pedido.cenario_fiscal_codigo) } : {}),
 
             },
             det,
