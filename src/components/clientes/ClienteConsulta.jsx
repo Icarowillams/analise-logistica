@@ -19,6 +19,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     supervisor_ids: [],
     rede_ids: [],
     segmento_ids: [],
+    plano_pagamento_ids: [],
+    modalidade_pagamento_ids: [],
     status: 'all',
     cidade: '',
     bairro: '',
@@ -50,6 +52,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
     queryFn: () => base44.entities.PlanoPagamento.list(),
+  });
+
+  const { data: modalidadesPagamento = [] } = useQuery({
+    queryKey: ['modalidadesPagamento'],
+    queryFn: () => base44.entities.ModalidadePagamento.list(),
   });
 
   const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
@@ -109,6 +116,18 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         const hasEmpty = filters.segmento_ids.includes('__empty__');
         const selectedIds = filters.segmento_ids.filter((id) => id !== '__empty__');
         if (!(hasEmpty && !cliente.segmento_id) && !selectedIds.includes(cliente.segmento_id)) return false;
+      }
+
+      if (filters.plano_pagamento_ids.length > 0) {
+        const hasEmpty = filters.plano_pagamento_ids.includes('__empty__');
+        const selectedIds = filters.plano_pagamento_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.plano_pagamento_id) && !selectedIds.includes(cliente.plano_pagamento_id)) return false;
+      }
+
+      if (filters.modalidade_pagamento_ids.length > 0) {
+        const hasEmpty = filters.modalidade_pagamento_ids.includes('__empty__');
+        const selectedIds = filters.modalidade_pagamento_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.modalidade_pagamento_id) && !selectedIds.includes(cliente.modalidade_pagamento_id)) return false;
       }
 
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
@@ -271,6 +290,30 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
             </div>
 
             <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Plano de Pagamento</label>
+              <MultiSelectFilter
+                options={planosPagamento}
+                selectedIds={filters.plano_pagamento_ids}
+                onChange={(ids) => setFilters({ ...filters, plano_pagamento_ids: ids })}
+                placeholder="Todos"
+                includeEmpty
+                emptyLabel="Sem Plano"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Modalidade de Cobrança</label>
+              <MultiSelectFilter
+                options={modalidadesPagamento}
+                selectedIds={filters.modalidade_pagamento_ids}
+                onChange={(ids) => setFilters({ ...filters, modalidade_pagamento_ids: ids })}
+                placeholder="Todas"
+                includeEmpty
+                emptyLabel="Sem Modalidade"
+              />
+            </div>
+
+            <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Status</label>
               <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
                 <SelectTrigger>
@@ -364,6 +407,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 supervisor_ids: [],
                 rede_ids: [],
                 segmento_ids: [],
+                plano_pagamento_ids: [],
+                modalidade_pagamento_ids: [],
                 status: 'all',
                 cidade: '',
                 bairro: '',
