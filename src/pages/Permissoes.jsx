@@ -134,7 +134,7 @@ export default function Permissoes() {
           abas_visiveis: [],
           visibilidade_clientes: 'todos',
           permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
-          permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false, importar_atualizar_omie: false },
+          permissoes_cadastros: { criar: false, criar_precadastro: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false, importar_atualizar_omie: false },
           permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
           permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
           permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
@@ -354,7 +354,7 @@ export default function Permissoes() {
       abas_visiveis: [],
       visibilidade_clientes: 'todos',
       permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
-      permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false },
+      permissoes_cadastros: { criar: false, criar_precadastro: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false },
       permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
       permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
       permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
@@ -653,7 +653,7 @@ export default function Permissoes() {
                     ...prev,
                     abas_visiveis: ABAS_SISTEMA.map(a => a.id),
                     permissoes_metas: { visualizar: true, criar: true, alterar: true, excluir: true, exportar: true },
-                    permissoes_cadastros: { criar: true, editar: true, excluir: true, importar_massa: true, visualizar: true, visualizar_informacoes: true, exportar: true, importar_atualizar_omie: true },
+                    permissoes_cadastros: { criar: true, criar_precadastro: true, editar: true, excluir: true, importar_massa: true, visualizar: true, visualizar_informacoes: true, exportar: true, importar_atualizar_omie: true },
                     permissoes_importar: { visualizar: true, importar: true, importar_massa: true, excluir_lancamento: true },
                     permissoes_analises: { visualizar: true, utilizar_filtros: true, exportar: true },
                     permissoes_visitas: { visualizar: true, iniciar_roteiro: true, finalizar_roteiro: true, importar_fotos: true, marcar_solicitou_pedido: true, importar_ultimo_estoque: true, informar_estoque: true, informar_trocas: true },
@@ -680,7 +680,7 @@ export default function Permissoes() {
                     ...prev,
                     abas_visiveis: [],
                     permissoes_metas: { visualizar: false, criar: false, alterar: false, excluir: false, exportar: false },
-                    permissoes_cadastros: { criar: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false, importar_atualizar_omie: false },
+                    permissoes_cadastros: { criar: false, criar_precadastro: false, editar: false, excluir: false, importar_massa: false, visualizar: false, visualizar_informacoes: false, exportar: false, importar_atualizar_omie: false },
                     permissoes_importar: { visualizar: false, importar: false, importar_massa: false, excluir_lancamento: false },
                     permissoes_analises: { visualizar: false, utilizar_filtros: false, exportar: false },
                     permissoes_visitas: { visualizar: false, iniciar_roteiro: false, finalizar_roteiro: false, importar_fotos: false, marcar_solicitou_pedido: false, importar_ultimo_estoque: false, informar_estoque: false, informar_trocas: false },
@@ -820,9 +820,10 @@ export default function Permissoes() {
                   <CardTitle className="text-base">Permissões - Cadastros</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {['criar', 'editar', 'excluir', 'importar_massa', 'visualizar', 'visualizar_informacoes', 'exportar', 'importar_atualizar_omie'].map(perm => {
+                  {['criar', 'criar_precadastro', 'editar', 'excluir', 'importar_massa', 'visualizar', 'visualizar_informacoes', 'exportar', 'importar_atualizar_omie'].map(perm => {
                     const labels = {
                       criar: 'Criar',
+                      criar_precadastro: 'Criar Pré-Cadastro',
                       editar: 'Editar',
                       excluir: 'Excluir',
                       importar_massa: 'Importar em Massa',

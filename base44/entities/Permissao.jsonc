@@ -60,6 +60,11 @@
           "type": "boolean",
           "default": false
         },
+        "criar_precadastro": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permite criar pr\u00e9-cadastros de clientes (independente da permiss\u00e3o geral de criar)"
+        },
         "editar": {
           "type": "boolean",
           "default": false

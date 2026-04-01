@@ -60,6 +60,15 @@ export default function PreCadastros() {
 
   const funcionarioAtual = vendedores.find(v => v.email?.toLowerCase() === currentUser?.email?.toLowerCase());
 
+  const { data: permissoes = [] } = useQuery({
+    queryKey: ['permissoes'],
+    queryFn: () => base44.entities.Permissao.list()
+  });
+
+  const isAdmin = currentUser?.role === 'admin';
+  const userPermission = funcionarioAtual ? permissoes.find(p => p.vendedor_id === funcionarioAtual.id) : null;
+  const podeCriarPreCadastro = isAdmin || userPermission?.permissoes_cadastros?.criar_precadastro || userPermission?.permissoes_cadastros?.criar;
+
   // Auto-fill vendedor when starting new form
   useEffect(() => {
     if (isEditing && !selected && !formData.codigo) {
@@ -230,10 +239,12 @@ export default function PreCadastros() {
             <p className="text-neutral-500 mt-0.5">Cadastro simplificado de clientes (status inativo)</p>
           </div>
         </div>
-        <Button onClick={handleNew} className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold shadow-lg">
-          <UserPlus className="w-4 h-4 mr-2" />
-          Novo Pré-Cadastro
-        </Button>
+        {podeCriarPreCadastro && (
+          <Button onClick={handleNew} className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold shadow-lg">
+            <UserPlus className="w-4 h-4 mr-2" />
+            Novo Pré-Cadastro
+          </Button>
+        )}
       </div>
 
       {/* Form */}
