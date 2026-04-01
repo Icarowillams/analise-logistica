@@ -8,19 +8,20 @@ export default function PageHeader({
   icon: Icon,
   action,
   actionLabel = 'Novo',
-  actionIcon: ActionIcon = Plus
+  actionIcon: ActionIcon = Plus,
+  compact = false
 }) {
   return (
-    <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-      <div className="flex items-center gap-3 sm:gap-4">
+    <div className={`${compact ? 'mb-3 sm:mb-4 gap-2 sm:gap-3' : 'mb-6 sm:mb-8 gap-3 sm:gap-4'} flex flex-col sm:flex-row sm:items-center sm:justify-between`}>
+      <div className={`${compact ? 'gap-2 sm:gap-3' : 'gap-3 sm:gap-4'} flex items-center`}>
         {Icon && (
-          <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0">
-            <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-neutral-900" />
+          <div className={`${compact ? 'h-8 w-8 sm:h-9 sm:w-9 rounded-lg' : 'h-10 w-10 sm:h-12 sm:w-12 rounded-xl'} bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0`}>
+            <Icon className={`${compact ? 'h-4 w-4 sm:h-5 sm:w-5' : 'h-5 w-5 sm:h-6 sm:w-6'} text-neutral-900`} />
           </div>
         )}
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight truncate">{title}</h1>
-          {subtitle && <p className="text-xs sm:text-sm text-neutral-500 mt-0.5 truncate">{subtitle}</p>}
+          <h1 className={`${compact ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'} font-bold text-neutral-900 tracking-tight truncate`}>{title}</h1>
+          {subtitle && <p className={`${compact ? 'text-[11px] sm:text-xs' : 'text-xs sm:text-sm'} text-neutral-500 mt-0.5 truncate`}>{subtitle}</p>}
         </div>
       </div>
       

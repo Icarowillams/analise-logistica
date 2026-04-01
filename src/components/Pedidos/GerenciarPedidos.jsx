@@ -433,6 +433,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   return (
     <div className="space-y-1.5">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3 items-start">
+        <div className="space-y-1.5">
       {/* Filters - compact */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-1.5 p-2 bg-white border rounded-lg">
         {/* Buscar geral */}
@@ -527,7 +529,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 280px)', minHeight: '250px' }}>
+        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 320px)', minHeight: '250px' }}>
           <table className="text-[11px] border-collapse table-fixed" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
@@ -627,12 +629,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       )}
 
-      {selectedIds.length === 1 && (
-        <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
-      )}
-
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-slate-500 pb-20 xl:pb-0">
         {filtered.length} pedido(s) • Valor total: {formatCurrency(filtered.reduce((s, p) => s + (p.valor_total || 0), 0))}
+      </div>
+        </div>
+
+        <div className="xl:sticky xl:top-0 self-start">
+          <PedidoPreviewSelecionado pedidoId={selectedIds.length === 1 ? selectedIds[0] : null} />
+        </div>
       </div>
 
       {/* Batch actions - fixed bottom */}

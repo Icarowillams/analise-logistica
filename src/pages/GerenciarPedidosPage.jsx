@@ -79,7 +79,7 @@ export default function GerenciarPedidosPage() {
 
   return (
     <div>
-      <PageHeader title="Gerenciar Pedidos" subtitle="Gestão de todos os pedidos" icon={ClipboardList} />
+      <PageHeader title="Gerenciar Pedidos" subtitle="Gestão de todos os pedidos" icon={ClipboardList} compact />
       <GerenciarPedidos onEditPedido={handleEditPedido} />
     </div>
   );

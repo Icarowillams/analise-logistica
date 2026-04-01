@@ -13,16 +13,20 @@ export default function PedidoPreviewSelecionado({ pedidoId }) {
     enabled: !!pedidoId,
   });
 
-  if (!pedidoId) return null;
-
   return (
-    <Card className="border-amber-200 bg-amber-50/40">
+    <Card className="border-amber-200 bg-amber-50/40 h-full min-h-[220px]">
       <CardHeader className="py-3 px-4">
         <CardTitle className="text-sm font-semibold text-amber-900">Pré-visualização dos produtos</CardTitle>
       </CardHeader>
-      <CardContent className="px-4 pb-4 pt-0">
-        {itens.length === 0 ? (
-          <p className="text-xs text-slate-500">Nenhum item encontrado neste pedido.</p>
+      <CardContent className="px-4 pb-4 pt-0 h-[calc(100%-56px)]">
+        {!pedidoId ? (
+          <div className="h-full flex items-center justify-center text-center px-4">
+            <p className="text-xs text-slate-500">Selecione um pedido para visualizar os produtos aqui.</p>
+          </div>
+        ) : itens.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-center px-4">
+            <p className="text-xs text-slate-500">Nenhum item encontrado neste pedido.</p>
+          </div>
         ) : (
           <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
             {itens.map((item) => (
