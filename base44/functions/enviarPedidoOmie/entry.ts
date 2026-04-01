@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
         const pedidoOmie = {
             cabecalho: {
                 codigo_pedido_integracao: pedido.id,
-                codigo_cliente_integracao: pedido.cliente_id,
+                codigo_cliente_integracao: pedido.cliente_codigo || pedido.cliente_id,
                 data_previsao: dataPrevisao,
                 etapa: etapa,
                 codigo_parcela: "999", // 999 = conforme parcelas informadas
