@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -46,18 +46,10 @@ export default function PreCadastros() {
     queryFn: () => base44.entities.Cliente.filter({ pre_cadastro: true })
   });
 
-  const { data: clientesNumericos = [] } = useQuery({
-    queryKey: ['clientes-codigos'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
-
-  const proximoCodigoCliente = useMemo(() => {
-    const maiorCodigo = Math.max(
-      0,
-      ...clientesNumericos.map(cliente => Number.parseInt(String(cliente.codigo || '').trim(), 10)).filter(Number.isFinite)
-    );
-    return String(maiorCodigo + 1);
-  }, [clientesNumericos]);
+  const reservarCodigoCliente = async () => {
+    const response = await base44.functions.invoke('reservarCodigoCliente', {});
+    return response.data?.codigo || '';
+  };
 
   // Detect current user and auto-fill vendedor
   useEffect(() => {
@@ -70,18 +62,20 @@ export default function PreCadastros() {
 
   // Auto-fill vendedor when starting new form
   useEffect(() => {
-    if (isEditing && !selected) {
-      setFormData(prev => ({
-        ...prev,
-        codigo: proximoCodigoCliente,
-        vendedor_id: funcionarioAtual?.id || prev.vendedor_id
-      }));
+    if (isEditing && !selected && !formData.codigo) {
+      reservarCodigoCliente().then((codigoReservado) => {
+        setFormData(prev => ({
+          ...prev,
+          codigo: codigoReservado,
+          vendedor_id: funcionarioAtual?.id || prev.vendedor_id
+        }));
+      });
       if (funcionarioAtual?.supervisor_id) {
         const sup = vendedores.find(v => v.id === funcionarioAtual.supervisor_id);
         setSupervisorNome(sup?.nome || '');
       }
     }
-  }, [isEditing, selected, funcionarioAtual, vendedores, proximoCodigoCliente]);
+  }, [isEditing, selected, funcionarioAtual, vendedores, formData.codigo]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -189,7 +183,7 @@ export default function PreCadastros() {
       }
     }
 
-    let dataToSave = { ...formData, codigo: selected ? formData.codigo : proximoCodigoCliente };
+    let dataToSave = { ...formData, codigo: formData.codigo };
     dataToSave.status = 'inativo';
     dataToSave.pre_cadastro = true;
 

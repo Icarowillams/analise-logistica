@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -83,24 +83,17 @@ export default function Clientes() {
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
-  const { data: clientesNumericos = [] } = useQuery({
-    queryKey: ['clientes-codigos'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
-
-  const proximoCodigoCliente = useMemo(() => {
-    const maiorCodigo = Math.max(
-      0,
-      ...clientesNumericos.map(cliente => Number.parseInt(String(cliente.codigo || '').trim(), 10)).filter(Number.isFinite)
-    );
-    return String(maiorCodigo + 1);
-  }, [clientesNumericos]);
+  const reservarCodigoCliente = async () => {
+    const response = await base44.functions.invoke('reservarCodigoCliente', {});
+    const codigoReservado = response.data?.codigo || '';
+    setFormData(prev => ({ ...prev, codigo: codigoReservado }));
+  };
 
   useEffect(() => {
-    if (isEditing && !selected) {
-      setFormData(prev => ({ ...prev, codigo: proximoCodigoCliente }));
+    if (isEditing && !selected && !formData.codigo) {
+      reservarCodigoCliente();
     }
-  }, [isEditing, selected, proximoCodigoCliente]);
+  }, [isEditing, selected, formData.codigo]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -370,7 +363,7 @@ export default function Clientes() {
     }
 
     // Normalizar dados para formato Omie
-    let dataToSave = { ...formData, codigo: selected ? formData.codigo : proximoCodigoCliente };
+    let dataToSave = { ...formData, codigo: formData.codigo };
 
     // Remover aspas de todos os campos texto
     const removeQuotes = (val) => {
