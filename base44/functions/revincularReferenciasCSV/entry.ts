@@ -164,10 +164,14 @@ Deno.serve(async (req) => {
 
         // ===== ANÁLISE =====
         if (etapa === 'analise') {
-            // Contar clientes sem referência
-            const semTabela = clientesSistema.filter(c => !c.tabela_id).length;
-            const semPlano = clientesSistema.filter(c => !c.plano_pagamento_id).length;
-            const semModalidade = clientesSistema.filter(c => !c.modalidade_pagamento_id).length;
+            // Clientes sem referência - com detalhes
+            const semTabelaList = clientesSistema.filter(c => !c.tabela_id);
+            const semPlanoList = clientesSistema.filter(c => !c.plano_pagamento_id);
+            const semModalidadeList = clientesSistema.filter(c => !c.modalidade_pagamento_id);
+            const semTabela = semTabelaList.length;
+            const semPlano = semPlanoList.length;
+            const semModalidade = semModalidadeList.length;
+            const mapCliente = (c) => ({ codigo: c.codigo, nome: c.razao_social || c.nome_fantasia || '' });
 
             return Response.json({
                 sucesso: true,
@@ -177,6 +181,9 @@ Deno.serve(async (req) => {
                 sem_tabela: semTabela,
                 sem_plano: semPlano,
                 sem_modalidade: semModalidade,
+                clientes_sem_tabela: semTabelaList.map(mapCliente),
+                clientes_sem_plano: semPlanoList.map(mapCliente),
+                clientes_sem_modalidade: semModalidadeList.map(mapCliente),
                 preview: atualizacoes.slice(0, 50),
                 // Nomes não resolvidos (detalhados)
                 tabela_nao_resolvida: nomesNaoEncontrados.tabelas.size,

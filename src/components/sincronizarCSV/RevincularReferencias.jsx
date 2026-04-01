@@ -44,6 +44,7 @@ export default function RevincularReferencias() {
   const [progresso, setProgresso] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
   const [errosExec, setErrosExec] = useState([]);
   const [executando, setExecutando] = useState(false);
+  const [expandido, setExpandido] = useState(null); // 'tabela' | 'plano' | 'modalidade' | null
   const cancelRef = useRef(false);
 
   const handleUploadEAnalisar = async () => {
@@ -198,28 +199,58 @@ export default function RevincularReferencias() {
               {/* Campos sem referência atual */}
               <h4 className="text-sm font-medium text-slate-700 mb-2">Clientes sem referência no Base44:</h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+                <button onClick={() => setExpandido(expandido === 'tabela' ? null : 'tabela')} className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-3 hover:bg-red-100 transition-colors text-left w-full">
                   <Table2 className="w-5 h-5 text-red-500 shrink-0" />
                   <div>
                     <p className="text-lg font-bold text-red-700">{analise.sem_tabela}</p>
                     <p className="text-xs text-red-600">Sem Tabela Preço</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                </button>
+                <button onClick={() => setExpandido(expandido === 'plano' ? null : 'plano')} className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 hover:bg-amber-100 transition-colors text-left w-full">
                   <CreditCard className="w-5 h-5 text-amber-500 shrink-0" />
                   <div>
                     <p className="text-lg font-bold text-amber-700">{analise.sem_plano}</p>
                     <p className="text-xs text-amber-600">Sem Plano Pgto</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                </button>
+                <button onClick={() => setExpandido(expandido === 'modalidade' ? null : 'modalidade')} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors text-left w-full">
                   <Wallet className="w-5 h-5 text-blue-500 shrink-0" />
                   <div>
                     <p className="text-lg font-bold text-blue-700">{analise.sem_modalidade}</p>
                     <p className="text-xs text-blue-600">Sem Cobrança</p>
                   </div>
-                </div>
+                </button>
               </div>
+
+              {/* Lista expandida de clientes sem referência */}
+              {expandido && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 max-h-60 overflow-y-auto">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">
+                    {expandido === 'tabela' && 'Clientes sem Tabela de Preço:'}
+                    {expandido === 'plano' && 'Clientes sem Plano de Pagamento:'}
+                    {expandido === 'modalidade' && 'Clientes sem Cobrança:'}
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 sticky top-0">
+                      <tr>
+                        <th className="text-left p-1.5">Código</th>
+                        <th className="text-left p-1.5">Nome</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(expandido === 'tabela' ? analise.clientes_sem_tabela :
+                        expandido === 'plano' ? analise.clientes_sem_plano :
+                        analise.clientes_sem_modalidade
+                      )?.map((c, i) => (
+                        <tr key={i} className="border-t border-slate-100">
+                          <td className="p-1.5 font-mono">{c.codigo}</td>
+                          <td className="p-1.5">{c.nome}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Alertas de não resolvidos */}
               {(analise.tabela_nao_resolvida > 0 || analise.plano_nao_resolvido > 0 || analise.modalidade_nao_resolvida > 0) && (
