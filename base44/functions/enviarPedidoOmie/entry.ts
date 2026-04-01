@@ -367,7 +367,10 @@ Deno.serve(async (req) => {
 
 
 
-        // Buscar conta corrente no Omie
+        // Conta corrente padrão (Banco do Brasil - confirmada no Omie)
+        const CONTA_CORRENTE_PADRAO = 11464371392;
+
+        // Buscar conta corrente dinâmica no Omie, com fallback para a padrão
         let codigoContaCorrente = null;
         try {
             const ccResponse = await fetch("https://app.omie.com.br/api/v1/geral/contacorrente/", {
@@ -381,24 +384,24 @@ Deno.serve(async (req) => {
                 })
             });
             const ccData = await ccResponse.json();
-            if (ccData.ListarContasCorrentes && ccData.ListarContasCorrentes.length > 0) {
-                // Pegar a primeira conta corrente ativa
-                const contaPadrao = ccData.ListarContasCorrentes.find(c => c.cPadrao === "S") || ccData.ListarContasCorrentes[0];
-                codigoContaCorrente = contaPadrao.nCodCC;
-                console.log('[enviarPedidoOmie] Conta corrente encontrada:', codigoContaCorrente, contaPadrao.cDescricao);
-            }
-
-            if (!ccData.faultstring && ccData.conta_corrente_lista) {
-                const contaPadrao2 = ccData.conta_corrente_lista.find(c => c.padrao === "S") || ccData.conta_corrente_lista[0];
-                codigoContaCorrente = contaPadrao2.nCodCC || contaPadrao2.codigo;
+            const listaCC = ccData.ListarContasCorrentes || ccData.conta_corrente_lista || [];
+            
+            if (listaCC.length > 0) {
+                const contaPadrao = listaCC.find(c => c.cPadrao === "S" || c.padrao === "S") || listaCC[0];
+                codigoContaCorrente = contaPadrao.nCodCC || contaPadrao.codigo || null;
+                console.log('[enviarPedidoOmie] Conta corrente encontrada:', codigoContaCorrente);
             }
         } catch (ccErr) {
             console.log('[enviarPedidoOmie] Erro ao buscar conta corrente:', ccErr.message);
         }
 
-        if (codigoContaCorrente) {
-            pedidoOmie.informacoes_adicionais.codigo_conta_corrente = codigoContaCorrente;
+        // Garantir que sempre tenha conta corrente (fallback para padrão)
+        if (!codigoContaCorrente) {
+            codigoContaCorrente = CONTA_CORRENTE_PADRAO;
+            console.log('[enviarPedidoOmie] Usando conta corrente padrão (fallback):', codigoContaCorrente);
         }
+
+        pedidoOmie.informacoes_adicionais.codigo_conta_corrente = codigoContaCorrente;
 
         console.log('[enviarPedidoOmie] Enviando pedido:', pedido.id, '- Cliente:', pedido.cliente_nome);
         console.log('[enviarPedidoOmie] Payload:', JSON.stringify(pedidoOmie).substring(0, 2000));
