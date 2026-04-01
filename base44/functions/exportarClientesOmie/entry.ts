@@ -125,10 +125,9 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
         return fetchComRetry(cliente, modo, tentativa + 1);
     }
 
-    // Se deu erro de "já cadastrado" com código de integração diferente,
-    // tentar novamente usando o ID do Base44 como codigo_cliente_integracao (fallback para clientes antigos)
+    // Se deu erro de "já cadastrado" com código de integração diferente
     if (fault && fault.includes('já cadastrado') && metodo === 'UpsertCliente') {
-        // Extrair o codigo_integracao antigo da mensagem de erro: "código de integração [XXXXX]"
+        // Estratégia 1: Extrair o codigo_integracao antigo da mensagem de erro
         const matchCodigo = (resultado.faultstring || '').match(/código de integração \[([^\]]+)\]/i);
         const codigoAntigoOmie = matchCodigo ? matchCodigo[1] : null;
         
@@ -137,6 +136,33 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
             const clienteOmieFallback = { ...clienteOmie, codigo_cliente_integracao: codigoAntigoOmie };
             await delay(600);
             resultado = await chamarOmie(clienteOmieFallback, metodo);
+        }
+        
+        // Estratégia 2: Se ainda falhou, buscar pelo CPF/CNPJ no Omie
+        if (resultado.faultstring && clienteOmie.cnpj_cpf) {
+            await delay(600);
+            try {
+                const resCpf = await fetch(OMIE_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        call: "ListarClientes",
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [{ pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: clienteOmie.cnpj_cpf } }]
+                    })
+                });
+                const dataCpf = await resCpf.json();
+                if (!dataCpf.faultstring && dataCpf.clientes_cadastro && dataCpf.clientes_cadastro.length > 0) {
+                    const codAntigoReal = dataCpf.clientes_cadastro[0].codigo_cliente_integracao;
+                    console.log(`[exportarClientesOmie] Encontrado pelo CPF/CNPJ com codigo_integracao: ${codAntigoReal}`);
+                    const clienteOmieFallback2 = { ...clienteOmie, codigo_cliente_integracao: codAntigoReal };
+                    await delay(600);
+                    resultado = await chamarOmie(clienteOmieFallback2, metodo);
+                }
+            } catch (cpfErr) {
+                console.log(`[exportarClientesOmie] Erro busca CPF/CNPJ: ${cpfErr.message}`);
+            }
         }
     }
 

@@ -203,8 +203,71 @@ Deno.serve(async (req) => {
             }
         }
 
+        // Fallback final: buscar pelo CPF/CNPJ no Omie
+        if (!clienteEncontradoOmie && (clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj)) {
+            const cpfCnpj = (clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
+            if (cpfCnpj) {
+                console.log(`[enviarPedidoOmie] Tentando buscar cliente no Omie pelo CPF/CNPJ: ${cpfCnpj}`);
+                try {
+                    const resCpf = await fetch(OMIE_CLIENTES_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            call: "ListarClientes",
+                            app_key: OMIE_APP_KEY,
+                            app_secret: OMIE_APP_SECRET,
+                            param: [{ pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: cpfCnpj } }]
+                        })
+                    });
+                    const dataCpf = await resCpf.json();
+                    if (!dataCpf.faultstring && dataCpf.clientes_cadastro && dataCpf.clientes_cadastro.length > 0) {
+                        const clienteOmie = dataCpf.clientes_cadastro[0];
+                        codigoClienteIntegracao = clienteOmie.codigo_cliente_integracao;
+                        clienteEncontradoOmie = true;
+                        console.log(`[enviarPedidoOmie] Cliente encontrado no Omie pelo CPF/CNPJ! codigo_integracao: ${codigoClienteIntegracao}`);
+                        
+                        // Atualizar o codigo_cliente_integracao no Omie para o novo ID/codigo do Base44
+                        const novoCodigoIntegracao = clienteBase44?.codigo || pedido.cliente_id;
+                        if (novoCodigoIntegracao && novoCodigoIntegracao !== codigoClienteIntegracao) {
+                            try {
+                                const resAlt = await fetch(OMIE_CLIENTES_URL, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        call: "AlterarCliente",
+                                        app_key: OMIE_APP_KEY,
+                                        app_secret: OMIE_APP_SECRET,
+                                        param: [{
+                                            codigo_cliente_omie: clienteOmie.codigo_cliente_omie,
+                                            codigo_cliente_integracao: novoCodigoIntegracao,
+                                            razao_social: clienteOmie.razao_social,
+                                            cnpj_cpf: cpfCnpj
+                                        }]
+                                    })
+                                });
+                                const resAltData = await resAlt.json();
+                                if (!resAltData.faultstring) {
+                                    console.log(`[enviarPedidoOmie] codigo_cliente_integracao atualizado no Omie de "${codigoClienteIntegracao}" para "${novoCodigoIntegracao}"`);
+                                    codigoClienteIntegracao = novoCodigoIntegracao;
+                                } else {
+                                    console.log(`[enviarPedidoOmie] Não atualizou codigo_integracao no Omie: ${resAltData.faultstring}. Usando o antigo.`);
+                                }
+                            } catch (altErr) {
+                                console.log(`[enviarPedidoOmie] Erro ao atualizar codigo_integracao: ${altErr.message}. Usando o antigo.`);
+                            }
+                        }
+                    } else if (isErroBloqueio(dataCpf.faultstring)) {
+                        console.error(`[enviarPedidoOmie] API Omie bloqueada na busca por CPF/CNPJ: ${dataCpf.faultstring}`);
+                        return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
+                    }
+                } catch (cpfErr) {
+                    console.log(`[enviarPedidoOmie] Erro ao buscar por CPF/CNPJ: ${cpfErr.message}`);
+                }
+            }
+        }
+
         if (!clienteEncontradoOmie) {
-            console.error(`[enviarPedidoOmie] Cliente não encontrado no Omie com nenhum código de integração`);
+            console.error(`[enviarPedidoOmie] Cliente não encontrado no Omie com nenhum código de integração nem CPF/CNPJ`);
             return Response.json({ sucesso: false, erro: 'Cliente não cadastrado no Omie. Exporte o cliente primeiro.' });
         }
 
