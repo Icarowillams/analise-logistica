@@ -21,6 +21,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     segmento_ids: [],
     plano_pagamento_ids: [],
     modalidade_pagamento_ids: [],
+    tabela_preco_ids: [],
     status: 'all',
     cidade: '',
     bairro: '',
@@ -57,6 +58,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const { data: modalidadesPagamento = [] } = useQuery({
     queryKey: ['modalidadesPagamento'],
     queryFn: () => base44.entities.ModalidadePagamento.list(),
+  });
+
+  const { data: tabelasPreco = [] } = useQuery({
+    queryKey: ['tabelasPreco'],
+    queryFn: () => base44.entities.TabelaPreco.list(),
   });
 
   const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
@@ -130,6 +136,12 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         if (!(hasEmpty && !cliente.modalidade_pagamento_id) && !selectedIds.includes(cliente.modalidade_pagamento_id)) return false;
       }
 
+      if (filters.tabela_preco_ids.length > 0) {
+        const hasEmpty = filters.tabela_preco_ids.includes('__empty__');
+        const selectedIds = filters.tabela_preco_ids.filter((id) => id !== '__empty__');
+        if (!(hasEmpty && !cliente.tabela_id) && !selectedIds.includes(cliente.tabela_id)) return false;
+      }
+
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
       if (filters.cidade && !cliente.cidade?.toLowerCase().includes(filters.cidade.toLowerCase())) return false;
       if (filters.bairro && !cliente.bairro?.toLowerCase().includes(filters.bairro.toLowerCase())) return false;
@@ -180,6 +192,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Rede', value: selectedCliente ? getName(redes, selectedCliente.rede_id) : '-' },
     { label: 'Segmento', value: selectedCliente ? getName(segmentos, selectedCliente.segmento_id) : '-' },
     { label: 'Plano de pagamento', value: selectedCliente ? getName(planosPagamento, selectedCliente.plano_pagamento_id) : '-' },
+    { label: 'Tabela de preço', value: selectedCliente ? getName(tabelasPreco, selectedCliente.tabela_id) : '-' },
     { label: 'Status', value: selectedCliente?.status || '-' },
   ];
 
@@ -314,6 +327,18 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
             </div>
 
             <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Tabela de Preço</label>
+              <MultiSelectFilter
+                options={tabelasPreco}
+                selectedIds={filters.tabela_preco_ids}
+                onChange={(ids) => setFilters({ ...filters, tabela_preco_ids: ids })}
+                placeholder="Todas"
+                includeEmpty
+                emptyLabel="Sem Tabela"
+              />
+            </div>
+
+            <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Status</label>
               <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
                 <SelectTrigger>
@@ -409,6 +434,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 segmento_ids: [],
                 plano_pagamento_ids: [],
                 modalidade_pagamento_ids: [],
+                tabela_preco_ids: [],
                 status: 'all',
                 cidade: '',
                 bairro: '',
