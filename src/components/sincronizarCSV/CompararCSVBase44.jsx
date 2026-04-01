@@ -25,10 +25,11 @@ export default function CompararCSVBase44() {
   const [busca, setBusca] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  // Progresso de criação/atualização/exclusão
+  // Progresso de criação/atualização/exclusão/omie
   const [progressoAtualizar, setProgressoAtualizar] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
   const [progressoCriar, setProgressoCriar] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
   const [progressoExcluir, setProgressoExcluir] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
+  const [progressoOmie, setProgressoOmie] = useState({ total: 0, atual: 0, ok: 0, erros: 0 });
   const [errosExec, setErrosExec] = useState([]);
   const [executando, setExecutando] = useState(false);
   const cancelRef = useRef(false);
@@ -156,6 +157,32 @@ export default function CompararCSVBase44() {
       }
     }
 
+    // 4. Enviar tudo para o Omie via UpsertCliente
+    if (!cancelRef.current) {
+      // Primeiro: descobrir quantos clientes serão enviados
+      setProgressoOmie({ total: comparacao.csv_total || 0, atual: 0, ok: 0, erros: 0 });
+      let ok = 0, erros = 0;
+      let offset = 0;
+      let concluido = false;
+      while (!concluido && !cancelRef.current) {
+        try {
+          const res = await base44.functions.invoke('sincronizarClientesCSV', {
+            csv_url: csvUrl, etapa: 'enviar_omie', offset, batch_size: 20
+          });
+          const d = res.data;
+          ok += d.processados || 0;
+          erros += d.erros || 0;
+          if (d.erros_detalhes) allErros.push(...d.erros_detalhes);
+          offset = d.nextOffset || 0;
+          concluido = d.concluido;
+          setProgressoOmie({ total: d.total, atual: Math.min(offset, d.total), ok, erros });
+        } catch (e) {
+          allErros.push(e.message);
+          concluido = true;
+        }
+      }
+    }
+
     setErrosExec(allErros);
     setExecutando(false);
     setEtapa('concluido');
@@ -171,6 +198,7 @@ export default function CompararCSVBase44() {
     setProgressoAtualizar({ total: 0, atual: 0, ok: 0, erros: 0 });
     setProgressoCriar({ total: 0, atual: 0, ok: 0, erros: 0 });
     setProgressoExcluir({ total: 0, atual: 0, ok: 0, erros: 0 });
+    setProgressoOmie({ total: 0, atual: 0, ok: 0, erros: 0 });
     setErrosExec([]);
   };
 
@@ -300,6 +328,7 @@ export default function CompararCSVBase44() {
             progressoAtualizar={progressoAtualizar}
             progressoCriar={progressoCriar}
             progressoExcluir={progressoExcluir}
+            progressoOmie={progressoOmie}
             erros={errosExec}
             executando={executando}
           />

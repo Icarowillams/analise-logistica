@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle, Loader2, ArrowLeftRight, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle, Loader2, ArrowLeftRight, Plus, Trash2, Cloud } from 'lucide-react';
 
 function BarraProgresso({ titulo, icon, progresso, executando }) {
   if (progresso.total === 0) return null;
@@ -31,7 +31,7 @@ function BarraProgresso({ titulo, icon, progresso, executando }) {
   );
 }
 
-export default function ProgressoCriacaoCSV({ progressoAtualizar, progressoCriar, progressoExcluir, erros, executando }) {
+export default function ProgressoCriacaoCSV({ progressoAtualizar, progressoCriar, progressoExcluir, progressoOmie, erros, executando }) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -59,6 +59,14 @@ export default function ProgressoCriacaoCSV({ progressoAtualizar, progressoCriar
           progresso={progressoExcluir}
           executando={executando}
         />
+        {progressoOmie && progressoOmie.total > 0 && (
+          <BarraProgresso
+            titulo="Enviar para Omie"
+            icon={<Cloud className="w-3 h-3 text-blue-500" />}
+            progresso={progressoOmie}
+            executando={executando}
+          />
+        )}
 
         {erros.length > 0 && (
           <div className="max-h-40 overflow-y-auto bg-red-50 border border-red-200 rounded p-2 space-y-1">
