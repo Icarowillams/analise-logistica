@@ -34,7 +34,7 @@ function removerAspas(val) {
     return v;
 }
 
-function mapearClienteParaOmie(cliente) {
+function mapearClienteParaOmie(cliente, rotaNome) {
     for (const key of Object.keys(cliente)) {
         if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
     }
@@ -47,6 +47,8 @@ function mapearClienteParaOmie(cliente) {
     const nomeContato = (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100);
     const codigoTag = cliente.codigo ? `COD:${cliente.codigo}` : '';
     const tags = [codigoTag].filter(Boolean).map(tag => ({ tag }));
+    const rNome = rotaNome || cliente.rota_nome || '';
+    const caracteristicas = rNome ? [{ campo: "Rotas", conteudo: rNome }] : [];
 
     const clienteOmie = {
         codigo_cliente_integracao: cliente.codigo || cliente.id,
@@ -80,13 +82,14 @@ function mapearClienteParaOmie(cliente) {
         bloqueado: cliente.bloqueado || undefined,
         observacao: cliente.observacao || undefined,
         inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
-        tags: tags.length ? tags : undefined
+        tags: tags.length ? tags : undefined,
+        caracteristicas: caracteristicas.length ? caracteristicas : undefined
     };
 
     const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
     for (const [key, value] of Object.entries(clienteOmie)) {
         if (camposSempreEnviar.includes(key)) continue;
-        if (value === '' || value === null || value === undefined) {
+        if (value === '' || value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
             delete clienteOmie[key];
         }
     }
@@ -197,6 +200,18 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[exportarClientesOmie] Recebido ${clientes_data.length} clientes para exportar via ${modo}`);
+
+        // Buscar rotas para enriquecer com rota_nome
+        const rotas = await base44.asServiceRole.entities.Rota.list();
+        const rotasMap = {};
+        rotas.forEach(r => { rotasMap[r.id] = r.nome; });
+
+        // Enriquecer clientes com rota_nome
+        clientes_data.forEach(c => {
+            if (c.rota_id && rotasMap[c.rota_id] && !c.rota_nome) {
+                c.rota_nome = rotasMap[c.rota_id];
+            }
+        });
 
         // Enviar ao Omie SEQUENCIALMENTE com delay entre cada chamada
         const resultados = [];

@@ -52,7 +52,7 @@ function limparCamposTexto(obj) {
     return limpo;
 }
 
-function mapearClienteParaOmie(clienteData) {
+function mapearClienteParaOmie(clienteData, rotaNome) {
     const cnpjCpfLimpo = normalizarCpfCnpj(clienteData.cpf_cnpj);
     const estadoNorm = normalizarEstado(clienteData.estado);
     const cepNorm = normalizarCEP(clienteData.cep);
@@ -92,8 +92,11 @@ function mapearClienteParaOmie(clienteData) {
         // --- Inatividade ---
         inativo: (clienteData.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
 
-        // --- Tags (apenas código do cliente) ---
-        tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : []
+        // --- Tags (código do cliente) ---
+        tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : [],
+
+        // --- Características (nome da rota) ---
+        caracteristicas: rotaNome ? [{ campo: "Rotas", conteudo: rotaNome }] : []
     };
 
     // Remover campos vazios para não sobrescrever dados no Omie com strings vazias
@@ -102,7 +105,7 @@ function mapearClienteParaOmie(clienteData) {
     
     for (const [key, value] of Object.entries(clienteOmie)) {
         if (camposSempreEnviar.includes(key)) continue;
-        if (value === '' || value === null || value === undefined) {
+        if (value === '' || value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
             delete clienteOmie[key];
         }
     }
@@ -144,12 +147,19 @@ Deno.serve(async (req) => {
 
         console.log('[enviarClienteOmie] Cliente a enviar:', clienteData.razao_social, '- Status:', clienteData.status, '- ID:', clienteData.id);
 
-        // Só enviar clientes ativos/prospectos para o Omie 
-        // Clientes inativos: enviar com flag inativo="S" para marcar no Omie também
-        const statusCliente = (clienteData.status || 'ativo').toLowerCase().trim();
+        // Buscar nome da rota se o cliente tem rota_id
+        let rotaNome = '';
+        if (clienteData.rota_id) {
+            try {
+                const rota = await base44.asServiceRole.entities.Rota.get(clienteData.rota_id);
+                if (rota) rotaNome = rota.nome || '';
+            } catch (e) {
+                console.log('[enviarClienteOmie] Erro ao buscar rota:', e.message);
+            }
+        }
 
         // Mapear campos do Base44 para formato Omie completo
-        const clienteOmie = mapearClienteParaOmie(clienteData);
+        const clienteOmie = mapearClienteParaOmie(clienteData, rotaNome);
 
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
