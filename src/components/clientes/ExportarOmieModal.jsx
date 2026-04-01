@@ -10,13 +10,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ClientesComErroOmie from './ClientesComErroOmie';
 
 export default function ExportarOmieModal({ open, onOpenChange }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [resultados, setResultados] = useState(null);
-  const [apenasAtivos, setApenasAtivos] = useState(true);
+  const [apenasAtivos, setApenasAtivos] = useState(false);
+  const [modoExportacao, setModoExportacao] = useState('upsert');
   const [progressoExportacao, setProgressoExportacao] = useState(0);
   const [verificando, setVerificando] = useState(false);
   const [comparacaoOmie, setComparacaoOmie] = useState(null);
@@ -51,6 +53,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
       try {
         const response = await base44.functions.invoke('exportarClientesOmie', { 
           cliente_ids, 
+          modo: modoExportacao,
           lote_inicio: loteAtual 
         });
         const data = response.data;
@@ -214,7 +217,8 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
     setSelectedIds([]);
     setSearchTerm('');
     setResultados(null);
-    setApenasAtivos(true);
+    setApenasAtivos(false);
+    setModoExportacao('upsert');
     setComparacaoOmie(null);
     onOpenChange(false);
   };
@@ -276,15 +280,29 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
 
-              <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <Checkbox
-                  id="apenas-ativos"
-                  checked={apenasAtivos}
-                  onCheckedChange={setApenasAtivos}
-                />
-                <label htmlFor="apenas-ativos" className="text-sm font-medium text-amber-800 cursor-pointer">
-                  Mostrar apenas clientes ativos
-                </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200 flex-1">
+                  <Checkbox
+                    id="apenas-ativos"
+                    checked={apenasAtivos}
+                    onCheckedChange={setApenasAtivos}
+                  />
+                  <label htmlFor="apenas-ativos" className="text-sm font-medium text-amber-800 cursor-pointer">
+                    Apenas ativos
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200 flex-1">
+                  <label className="text-sm font-medium text-blue-800 whitespace-nowrap">Modo:</label>
+                  <Select value={modoExportacao} onValueChange={setModoExportacao}>
+                    <SelectTrigger className="h-7 text-xs border-blue-300">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="upsert">UpsertCliente (criar/atualizar)</SelectItem>
+                      <SelectItem value="incluir">IncluirCliente (apenas criar)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-3">
