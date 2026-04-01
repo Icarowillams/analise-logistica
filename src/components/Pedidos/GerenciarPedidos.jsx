@@ -132,9 +132,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Filter and sort
   const filtered = useMemo(() => {
-    // Gerenciar Pedidos: NÃO mostra pedidos com status "pendente" (não enviados)
-    // Pedidos não enviados ficam em "Emissão de Pedidos" > "Envio de Pedidos"
-    let list = pedidos.filter(p => p.status !== 'pendente');
+    // Gerenciar Pedidos: mostra todos os pedidos já enviados, independente do status atual.
+    // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
+    let list = pedidos.filter(p => p.data_envio || p.status !== 'pendente');
 
     if (statusFilter !== 'todos') {
       const statusFilterMap = {
