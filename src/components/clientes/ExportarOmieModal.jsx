@@ -130,8 +130,10 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen) handleClose();
+    }}>
+    <DialogContent className="max-w-2xl h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <img 
@@ -148,7 +150,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
 
         {!resultados ? (
           <>
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 min-h-0 overflow-hidden">
               <Input
                 placeholder="Buscar por nome, código ou CPF/CNPJ..."
                 value={searchTerm}
@@ -181,7 +183,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
                 </Badge>
               </div>
 
-              <ScrollArea className="h-[300px] border rounded-lg">
+              <ScrollArea className="flex-1 min-h-0 border rounded-lg">
                 {isLoading ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
@@ -225,7 +227,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               </ScrollArea>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-4 border-t bg-white shrink-0">
               <Button variant="outline" onClick={handleClose}>
                 Cancelar
               </Button>
@@ -262,7 +264,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
             </div>
           </>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1 min-h-0 overflow-hidden">
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-slate-50 rounded-lg p-4 text-center">
                 <p className="text-2xl font-bold text-slate-800">{resultados.resumo.total}</p>
@@ -278,7 +280,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               </div>
             </div>
 
-            <ScrollArea className="h-[250px] border rounded-lg">
+            <ScrollArea className="flex-1 min-h-0 border rounded-lg">
               <div className="p-2 space-y-2">
                 {resultados.resultados.map((r, idx) => (
                   <div
@@ -310,7 +312,7 @@ export default function ExportarOmieModal({ open, onOpenChange }) {
               </div>
             </ScrollArea>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-4 border-t bg-white shrink-0">
               <Button variant="outline" onClick={handleClose}>
                 Fechar
               </Button>
