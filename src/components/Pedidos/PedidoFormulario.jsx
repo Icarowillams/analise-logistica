@@ -151,21 +151,30 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [existingPedido]);
 
+  // Flag para controlar se já inicializou os itens do pedido
+  const [itensInitialized, setItensInitialized] = useState(false);
+
+  // Função para calcular o preço atualizado de um item
+  const calcularPrecoAtual = (item) => {
+    let precoAtual = item.valor_unitario;
+    const acaoClienteItem = acoesCliente.find(a => a.produto_id === item.produto_id);
+    if (acaoClienteItem && acaoClienteItem.valor_acao > 0) {
+      precoAtual = acaoClienteItem.valor_acao;
+    } else if (precosAll.length > 0) {
+      const precoTabela = precosAll.find(p => p.produto_id === item.produto_id);
+      if (precoTabela) {
+        const precoNovo = (precoTabela.ativacao_acao && precoTabela.valor_acao) ? precoTabela.valor_acao : precoTabela.valor_unitario;
+        if (precoNovo > 0) precoAtual = precoNovo;
+      }
+    }
+    return precoAtual;
+  };
+
+  // Inicializa itens ao carregar o pedido existente
   useEffect(() => {
-    if (existingItems.length > 0 && itensLocal.length === 0) {
+    if (existingItems.length > 0 && !itensInitialized) {
       setItensLocal(existingItems.map(item => {
-        // Prioridade: ação promocional do cliente > ação na tabela > preço base
-        let precoAtual = item.valor_unitario;
-        const acaoCliente = acoesCliente.find(a => a.produto_id === item.produto_id);
-        if (acaoCliente && acaoCliente.valor_acao > 0) {
-          precoAtual = acaoCliente.valor_acao;
-        } else if (precosAll.length > 0) {
-          const precoTabela = precosAll.find(p => p.produto_id === item.produto_id);
-          if (precoTabela) {
-            const precoNovo = (precoTabela.ativacao_acao && precoTabela.valor_acao) ? precoTabela.valor_acao : precoTabela.valor_unitario;
-            if (precoNovo > 0) precoAtual = precoNovo;
-          }
-        }
+        const precoAtual = calcularPrecoAtual(item);
         return {
           dbId: item.id,
           produto_id: item.produto_id,
@@ -178,8 +187,26 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
           motivo_troca_descricao: item.motivo_troca_descricao || ''
         };
       }));
+      setItensInitialized(true);
     }
   }, [existingItems, precosAll, acoesCliente]);
+
+  // Atualiza preços dos itens quando precosAll ou acoesCliente mudam DEPOIS da inicialização
+  useEffect(() => {
+    if (itensInitialized && itensLocal.length > 0 && (precosAll.length > 0 || acoesCliente.length > 0)) {
+      setItensLocal(prev => prev.map(item => {
+        const precoAtual = calcularPrecoAtual(item);
+        if (precoAtual !== item.valor_unitario) {
+          return {
+            ...item,
+            valor_unitario: precoAtual,
+            valor_total: item.quantidade * precoAtual
+          };
+        }
+        return item;
+      }));
+    }
+  }, [precosAll, acoesCliente, itensInitialized]);
 
   const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
