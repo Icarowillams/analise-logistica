@@ -48,12 +48,6 @@ export default function Clientes() {
 
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (isEditing && !selected) {
-      setFormData(prev => ({ ...prev, codigo: proximoCodigoCliente }));
-    }
-  }, [isEditing, selected, proximoCodigoCliente]);
-
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
     queryFn: () => base44.entities.Segmento.list()
@@ -101,6 +95,12 @@ export default function Clientes() {
     );
     return String(maiorCodigo + 1);
   }, [clientesNumericos]);
+
+  useEffect(() => {
+    if (isEditing && !selected) {
+      setFormData(prev => ({ ...prev, codigo: proximoCodigoCliente }));
+    }
+  }, [isEditing, selected, proximoCodigoCliente]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),

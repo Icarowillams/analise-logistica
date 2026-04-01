@@ -254,6 +254,10 @@ export default function PreCadastros() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
+                  <Label>Código</Label>
+                  <Input value={formData.codigo} disabled placeholder="Gerado automaticamente" className="bg-slate-50" />
+                </div>
+                <div>
                   <Label>Razão Social *</Label>
                   <Input value={formData.razao_social} onChange={e => setFormData({ ...formData, razao_social: e.target.value })} required />
                 </div>
