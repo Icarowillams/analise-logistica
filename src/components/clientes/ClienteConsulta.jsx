@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useClientesPermissao } from '@/components/hooks/useClientesPermissao';
-import { Search, Filter, MapPin, List, MapPinOff, Download } from 'lucide-react';
+import { Search, Filter, MapPin, List, MapPinOff, Download, Eye, Pencil, Trash2 } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 
 export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
+  const [selectedClienteId, setSelectedClienteId] = useState(null);
   const [filters, setFilters] = useState({
     vendedor_ids: [],
     supervisor_ids: [],
@@ -183,6 +184,30 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     return getName(vendedores, supId);
   };
 
+  const selectedCliente = useMemo(() => {
+    if (!filteredClientes.length) return null;
+    return filteredClientes.find(cliente => cliente.id === selectedClienteId) || filteredClientes[0];
+  }, [filteredClientes, selectedClienteId]);
+
+  const previewFields = [
+    { label: 'Código', value: selectedCliente?.codigo || '-' },
+    { label: 'Razão social', value: selectedCliente?.razao_social || '-' },
+    { label: 'Nome fantasia', value: selectedCliente?.nome_fantasia || '-' },
+    { label: 'CPF/CNPJ', value: selectedCliente?.cpf_cnpj || '-' },
+    { label: 'Inscrição estadual', value: selectedCliente?.inscricao_estadual || '-' },
+    { label: 'Cidade', value: selectedCliente?.cidade || '-' },
+    { label: 'Bairro', value: selectedCliente?.bairro || '-' },
+    { label: 'Endereço', value: selectedCliente?.endereco || '-' },
+    { label: 'Número', value: selectedCliente?.numero || '-' },
+    { label: 'CEP', value: selectedCliente?.cep || '-' },
+    { label: 'Vendedor', value: selectedCliente ? getVendedorName(selectedCliente.vendedor_id) : '-' },
+    { label: 'Supervisor', value: selectedCliente ? getSupervisorNameForClient(selectedCliente) : '-' },
+    { label: 'Rede', value: selectedCliente ? getName(redes, selectedCliente.rede_id) : '-' },
+    { label: 'Segmento', value: selectedCliente ? getName(segmentos, selectedCliente.segmento_id) : '-' },
+    { label: 'Plano de pagamento', value: selectedCliente ? getName(planosPagamento, selectedCliente.plano_pagamento_id) : '-' },
+    { label: 'Status', value: selectedCliente?.status || '-' },
+  ];
+
   const columns = [
     { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
     { 
@@ -210,6 +235,22 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         <Badge className={val === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
           {val}
         </Badge>
+      )
+    },
+    {
+      key: 'visualizar',
+      label: 'Ver',
+      width: '72px',
+      render: (_, row) => (
+        <Button
+          type="button"
+          variant={selectedCliente?.id === row.id ? 'default' : 'outline'}
+          size="sm"
+          className="h-8 px-2"
+          onClick={() => setSelectedClienteId(row.id)}
+        >
+          <Eye className="w-4 h-4" />
+        </Button>
       )
     }
   ];
@@ -398,34 +439,87 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       </Card>
 
       {/* Results Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-          <h3 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg">
-            <List className="w-4 h-4" />
-            Resultados ({filteredClientes.length})
-          </h3>
-          {onExport && (
-            <Button
-              onClick={() => onExport(filteredClientes)}
-              variant="outline"
-              size="sm"
-              className="w-full sm:w-auto border-green-200 text-green-700 hover:bg-green-50"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Exportar ({filteredClientes.length})
-            </Button>
-          )}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-w-0">
+          <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <h3 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg">
+              <List className="w-4 h-4" />
+              Resultados ({filteredClientes.length})
+            </h3>
+            {onExport && (
+              <Button
+                onClick={() => onExport(filteredClientes)}
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto border-green-200 text-green-700 hover:bg-green-50"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Exportar ({filteredClientes.length})
+              </Button>
+            )}
+          </div>
+          <div className="p-0 min-w-0">
+            <DataTable 
+              data={filteredClientes} 
+              columns={columns}
+              searchable={false}
+              pageSize={1000}
+              emptyMessage="Nenhum cliente encontrado com os filtros selecionados."
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          </div>
         </div>
-        <div className="p-0">
-          <DataTable 
-            data={filteredClientes} 
-            columns={columns}
-            searchable={false} // We have custom search
-            pageSize={1000}
-            emptyMessage="Nenhum cliente encontrado com os filtros selecionados."
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
+
+        <div className="xl:sticky xl:top-4">
+          <Card className="bg-white shadow-sm border-slate-200 overflow-hidden">
+            <CardHeader className="pb-3 px-4 sm:px-5 pt-4 sm:pt-5 border-b border-slate-100">
+              <CardTitle className="text-base font-semibold flex items-center justify-between gap-3">
+                <span>Visualização do cliente</span>
+                {selectedCliente && (
+                  <Badge className={selectedCliente.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
+                    {selectedCliente.status}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              {selectedCliente ? (
+                <>
+                  <div className="space-y-1">
+                    <h4 className="font-semibold text-slate-900 break-words">{selectedCliente.nome_fantasia || selectedCliente.razao_social}</h4>
+                    <p className="text-sm text-slate-500 break-words">{selectedCliente.razao_social || '-'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {previewFields.map((field) => (
+                      <div key={field.label} className="rounded-lg border border-slate-200 p-3 bg-slate-50/60">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">{field.label}</p>
+                        <p className="text-sm text-slate-800 break-words">{field.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                    {onEdit && (
+                      <Button className="w-full" variant="outline" onClick={() => onEdit(selectedCliente)}>
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Editar
+                      </Button>
+                    )}
+                    {onDelete && (
+                      <Button className="w-full" variant="outline" onClick={() => onDelete(selectedCliente)}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Excluir
+                      </Button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">Nenhum cliente disponível para visualização.</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
