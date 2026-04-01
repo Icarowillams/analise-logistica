@@ -27,6 +27,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     bairro: '',
     search: '',
     semLocalizacao: false,
+    semNomeFantasia: false,
     inscricaoEstadual: null,
   });
 
@@ -164,6 +165,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       }
 
       if (filters.semLocalizacao && cliente.latitude && cliente.longitude) return false;
+      if (filters.semNomeFantasia && cliente.nome_fantasia && cliente.nome_fantasia.trim() !== '') return false;
 
       if (filters.inscricaoEstadual === true) {
         if (!cliente.inscricao_estadual || cliente.inscricao_estadual.trim() === '') return false;
@@ -410,6 +412,20 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               </div>
             </div>
 
+            <div className="space-y-1 flex items-end">
+              <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-white">
+                <Checkbox
+                  id="semNomeFantasia"
+                  checked={filters.semNomeFantasia}
+                  onCheckedChange={(checked) => setFilters({ ...filters, semNomeFantasia: checked })}
+                />
+                <label htmlFor="semNomeFantasia" className="text-sm cursor-pointer flex items-center gap-1">
+                  <Filter className="w-4 h-4 text-red-500" />
+                  Sem nome fantasia
+                </label>
+              </div>
+            </div>
+
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">Inscrição Estadual</label>
               <Select
@@ -444,6 +460,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 bairro: '',
                 search: '',
                 semLocalizacao: false,
+                semNomeFantasia: false,
                 inscricaoEstadual: null,
               })}
               className="w-full sm:w-auto text-slate-600 hover:text-slate-900"
