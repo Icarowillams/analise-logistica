@@ -21,8 +21,19 @@ export default function SincronizarOmieClientesModal({ open, onOpenChange }) {
     setEtapa('verificando');
     setVerificacao(null);
     try {
-      const res = await base44.functions.invoke('sincronizarClientesOmie', { modo: 'verificar' });
-      setVerificacao(res.data);
+      const res = await base44.functions.invoke('consultarClientesOmie', { acao: 'comparar' });
+
+      const listaFaltando = res.data?.lista_so_base44 || [];
+      const totalBase44 = res.data?.total_base44 || 0;
+      const totalOmie = res.data?.total_omie || 0;
+
+      setVerificacao({
+        total_base44: totalBase44,
+        total_omie: totalOmie,
+        ja_existem_no_omie: Math.max(totalBase44 - listaFaltando.length, 0),
+        faltando_no_omie: listaFaltando.length,
+        clientes_faltando: listaFaltando
+      });
       setEtapa('resultado');
     } catch (err) {
       toast.error('Erro ao verificar: ' + err.message);
@@ -146,9 +157,9 @@ export default function SincronizarOmieClientesModal({ open, onOpenChange }) {
                 <p className="text-xl font-bold text-slate-800">{verificacao.total_base44}</p>
                 <p className="text-xs text-slate-500">No Base44</p>
               </div>
-              <div className="bg-green-50 rounded-lg p-3 text-center">
-                <p className="text-xl font-bold text-green-600">{verificacao.ja_existem_no_omie}</p>
-                <p className="text-xs text-green-600">Já no Omie</p>
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-blue-600">{verificacao.total_omie}</p>
+                <p className="text-xs text-blue-600">Total no Omie</p>
               </div>
               <div className={`rounded-lg p-3 text-center ${verificacao.faltando_no_omie > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
                 <p className={`text-xl font-bold ${verificacao.faltando_no_omie > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -170,7 +181,7 @@ export default function SincronizarOmieClientesModal({ open, onOpenChange }) {
                 <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
                   <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
                   <p className="text-amber-800 text-sm">
-                    <strong>{verificacao.faltando_no_omie} cliente(s)</strong> do Base44 não foram encontrados no Omie. Clique em "Sincronizar" para enviá-los.
+                    <strong>{verificacao.faltando_no_omie} cliente(s)</strong> do Base44 não foram encontrados no Omie pela comparação correta de código e CPF/CNPJ. Clique em "Sincronizar" para enviá-los.
                   </p>
                 </div>
 
