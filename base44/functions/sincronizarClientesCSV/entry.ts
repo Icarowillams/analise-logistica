@@ -186,8 +186,8 @@ function buildClienteData(row, lookups) {
 
 // === OMIE ===
 
-async function chamarOmieComRetry(callName, param, maxRetries = 3) {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+async function chamarOmieComRetry(callName, param, maxRetries = 2) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -482,14 +482,24 @@ Deno.serve(async (req) => {
                     tags: c.codigo ? [{ tag: `COD:${c.codigo}` }] : [],
                 };
 
-                const resultado = await chamarOmieComRetry("UpsertCliente", clienteOmie, 3);
+                let resultado = await chamarOmieComRetry("UpsertClienteCpfCnpj", clienteOmie, 2);
+                if (resultado.faultstring && resultado.faultstring.toLowerCase().includes('cliente já cadastrado para o cpf/cnpj')) {
+                    const match = (resultado.faultstring || '').match(/Id \[(\d+)\]/i);
+                    const codigoOmieExistente = match ? Number(match[1]) : null;
+                    if (codigoOmieExistente) {
+                        resultado = await chamarOmieComRetry("UpsertCliente", {
+                            ...clienteOmie,
+                            codigo_cliente_omie: codigoOmieExistente
+                        }, 2);
+                    }
+                }
                 if (resultado.faultstring) {
                     erros++;
                     errosList.push(`${c.codigo} - ${c.razao_social}: ${resultado.faultstring}`);
                 } else {
                     ok++;
                 }
-                await delay(500);
+                await delay(250);
             }
 
             const nextOffset = offset + bulkSize;

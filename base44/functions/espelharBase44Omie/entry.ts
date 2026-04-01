@@ -23,6 +23,11 @@ function extrairCodigoOmieDoErro(mensagem) {
     return match ? Number(match[1]) : null;
 }
 
+function erroEhRateLimit(resultado) {
+    const fault = (resultado?.faultstring || '').toLowerCase();
+    return fault.includes('too many requests') || fault.includes('já existe uma requisição') || fault.includes('ja existe uma requisicao') || fault.includes('try again') || fault.includes('tente novamente');
+}
+
 async function chamarOmieComRetry(callName, param, maxRetries = 2) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
@@ -101,7 +106,7 @@ Deno.serve(async (req) => {
                     tags: c.codigo ? [{ tag: `COD:${c.codigo}` }] : [],
                 };
 
-                let resultado = await chamarOmieComRetry("UpsertCliente", clienteOmie, 3);
+                let resultado = await chamarOmieComRetry("UpsertClienteCpfCnpj", clienteOmie, 2);
 
                 if (resultado.faultstring && resultado.faultstring.toLowerCase().includes('cliente já cadastrado para o cpf/cnpj')) {
                     const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
@@ -109,7 +114,17 @@ Deno.serve(async (req) => {
                         resultado = await chamarOmieComRetry("UpsertCliente", {
                             ...clienteOmie,
                             codigo_cliente_omie: codigoOmieExistente
-                        }, 3);
+                        }, 2);
+                    }
+                }
+
+                if (resultado.faultstring && !erroEhRateLimit(resultado)) {
+                    const codigoOmieExistente = extrairCodigoOmieDoErro(resultado.faultstring);
+                    if (codigoOmieExistente) {
+                        resultado = await chamarOmieComRetry("UpsertCliente", {
+                            ...clienteOmie,
+                            codigo_cliente_omie: codigoOmieExistente
+                        }, 2);
                     }
                 }
 
@@ -119,7 +134,7 @@ Deno.serve(async (req) => {
                 } else {
                     ok++;
                 }
-                await delay(500);
+                await delay(250);
             }
 
             const nextOffset = offset + bulkSize;
