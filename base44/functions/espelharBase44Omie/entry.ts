@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
                 if (resultado.faultstring && codigoOmieExistente) {
                     const associacao = await chamarOmieComRetry("AssociarCodIntCliente", {
                         codigo_cliente_omie: codigoOmieExistente,
-                        codigo_cliente_integracao: c.id
+                        codigo_cliente_integracao: clienteOmie.codigo_cliente_integracao
                     }, 2);
 
                     if (!associacao.faultstring) {
