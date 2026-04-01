@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Minus, Package, Check, Trash2 } from 'lucide-react';
+import { Search, Plus, Minus, Package, Check, Trash2, AlertCircle } from 'lucide-react';
 
 export default function ProdutoCardList({
   produtos,
@@ -14,6 +14,7 @@ export default function ProdutoCardList({
   onRemoveTrocaItem,
   motivosTroca,
   isTroca,
+  bloquearSemTabela = false,
 }) {
   const [search, setSearch] = useState('');
 
@@ -73,19 +74,29 @@ export default function ProdutoCardList({
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <Input
-          placeholder="Buscar por código ou nome..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+      {bloquearSemTabela ? (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">Cliente sem tabela de preço cadastrada</p>
+            <p className="text-sm text-amber-800">Nenhum produto pode ser exibido até que uma tabela de preço seja vinculada ao cliente.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Buscar por código ou nome..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
 
-      <p className="text-xs text-slate-500">{filtered.length} produto(s) disponíveis</p>
+          <p className="text-xs text-slate-500">{filtered.length} produto(s) disponíveis</p>
 
-      <div className="space-y-2 max-h-[60vh] overflow-auto pr-1">
+          <div className="space-y-2 max-h-[60vh] overflow-auto pr-1">
         {filtered.map(produto => {
           const preco = getPreco(produto.id);
 
@@ -148,7 +159,9 @@ export default function ProdutoCardList({
             </div>
           );
         })}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

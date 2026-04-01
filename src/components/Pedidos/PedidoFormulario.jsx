@@ -145,6 +145,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
+  const clienteSemTabela = !tabelaPrecoId;
 
   const handleUpdateQuantidade = (produto, preco, novaQtd) => {
     setItensLocal(prev => {
@@ -455,6 +456,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                 onRemoveTrocaItem={handleRemoveTrocaItem}
                 motivosTroca={motivosTroca}
                 isTroca={isTroca}
+                bloquearSemTabela={clienteSemTabela}
               />
             </CardContent>
           </Card>
