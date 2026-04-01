@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -40,21 +40,31 @@ Deno.serve(async (req) => {
             return Response.json({ sucesso: true, mensagem: 'Pedido de Troca não integra com Omie' });
         }
 
+        const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
+        if (!codigoPedidoOmie || isNaN(codigoPedidoOmie)) {
+            console.error(`[liberarPedidoOmie] codigo_pedido inválido: ${pedido.omie_codigo_pedido} (tipo: ${typeof pedido.omie_codigo_pedido})`);
+            return Response.json({ sucesso: false, erro: `Código do pedido Omie inválido: ${pedido.omie_codigo_pedido}` });
+        }
+
         const etapaLabel = etapaOmie === "20" ? "Pedidos Liberados" : "Pedido de Venda";
-        console.log(`[liberarPedidoOmie] Alterando etapa do pedido ${pedido.omie_codigo_pedido} para ${etapaOmie} (${etapaLabel})`);
+        console.log(`[liberarPedidoOmie] Alterando etapa do pedido ${codigoPedidoOmie} para ${etapaOmie} (${etapaLabel})`);
+
+        const payload = {
+            call: "TrocarEtapaPedido",
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [{
+                codigo_pedido: codigoPedidoOmie,
+                etapa: etapaOmie
+            }]
+        };
+
+        console.log('[liberarPedidoOmie] Payload:', JSON.stringify(payload.param[0]));
 
         const response = await fetch(OMIE_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "TrocarEtapaPedido",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{
-                    codigo_pedido: pedido.omie_codigo_pedido,
-                    etapa: etapaOmie
-                }]
-            })
+            body: JSON.stringify(payload)
         });
 
         const resultado = await response.json();
@@ -65,7 +75,7 @@ Deno.serve(async (req) => {
             return Response.json({ sucesso: false, erro: resultado.faultstring });
         }
 
-        console.log(`[liberarPedidoOmie] Pedido movido para ${etapaLabel} no Omie com sucesso!`);
+        console.log(`[liberarPedidoOmie] Pedido ${codigoPedidoOmie} movido para ${etapaLabel} no Omie com sucesso!`);
         return Response.json({ sucesso: true, mensagem: `Pedido movido para ${etapaLabel} no Omie` });
 
     } catch (error) {

@@ -368,8 +368,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
     let jaLiberados = 0;
     let naoAlteraveis = 0;
     let bloqueadosFinanceiro = 0;
+    let errosOmie = 0;
     const naoAlteravelLabels = [];
     const clientesBloqueados = [];
+    const clientesErroOmie = [];
 
     for (const p of allSelected) {
       const analise = getAnaliseStatus(p);
@@ -388,7 +390,23 @@ export default function GerenciarPedidos({ onEditPedido }) {
           }
         }
 
-        // Pode liberar
+        // Pode liberar — primeiro tenta no Omie, depois atualiza localmente
+        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+          try {
+            const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
+            if (res.data && !res.data.sucesso && res.data.erro) {
+              errosOmie++;
+              const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo;
+              clientesErroOmie.push(`${nomeCliente}: ${res.data.erro}`);
+              continue; // Não libera localmente se o Omie rejeitou
+            }
+          } catch (e) {
+            errosOmie++;
+            const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo;
+            clientesErroOmie.push(`${nomeCliente}: ${e.message}`);
+            continue; // Não libera localmente se houve erro
+          }
+        }
         const updateData = {
           status: 'liberado',
           liberado_por: currentUser?.email,
@@ -396,13 +414,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
           data_liberacao: new Date().toISOString(),
         };
         await base44.entities.Pedido.update(p.id, updateData);
-        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
-          try {
-            await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
-          } catch (e) {
-            console.error('Erro ao liberar no Omie:', e);
-          }
-        }
         liberados++;
       } else if (analise === 'Liberados') {
         jaLiberados++;
@@ -415,6 +426,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     const items = [];
     if (liberados > 0) items.push({ color: 'green', text: `${liberados} pedido(s) liberado(s) com sucesso` });
     if (bloqueadosFinanceiro > 0) items.push({ color: 'red', text: `${bloqueadosFinanceiro} pedido(s) BLOQUEADO(S) financeiramente:\n${clientesBloqueados.join('\n')}` });
+    if (errosOmie > 0) items.push({ color: 'red', text: `${errosOmie} pedido(s) com ERRO no Omie (não liberados):\n${clientesErroOmie.join('\n')}` });
     if (jaLiberados > 0) items.push({ color: 'yellow', text: `${jaLiberados} pedido(s) já liberado(s), sem alteração` });
     if (naoAlteraveis > 0) items.push({ color: 'red', text: `${naoAlteraveis} pedido(s) em ${naoAlteravelLabels.join('/')} não puderam ser alterados` });
 
@@ -436,20 +448,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
     for (const p of allSelected) {
       const analise = getAnaliseStatus(p);
       if (analise === 'Liberados') {
-        // Pode bloquear (reverter para pendente/enviado)
+        // Pode bloquear — primeiro tenta reverter no Omie
+        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
+          try {
+            const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id, etapa: '10' });
+            if (res.data && !res.data.sucesso && res.data.erro) {
+              naoAlteraveis++;
+              if (!naoAlteravelLabels.includes('Erro Omie')) naoAlteravelLabels.push('Erro Omie');
+              continue;
+            }
+          } catch (e) {
+            naoAlteraveis++;
+            if (!naoAlteravelLabels.includes('Erro Omie')) naoAlteravelLabels.push('Erro Omie');
+            continue;
+          }
+        }
         await base44.entities.Pedido.update(p.id, {
           status: 'enviado',
           liberado_por: null,
           liberado_por_nome: null,
           data_liberacao: null,
         });
-        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
-          try {
-            await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id, etapa: '10' });
-          } catch (e) {
-            console.error('Erro ao reverter no Omie:', e);
-          }
-        }
         bloqueados++;
       } else if (analise === 'Pendente') {
         jaPendentes++;
