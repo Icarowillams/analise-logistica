@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap, Sparkles } from 'lucide-react';
+import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap, Sparkles, Download } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
@@ -624,6 +624,33 @@ function GerenciarPrecos() {
     setShowDropdownNome(false);
   };
 
+  const exportarTabelasCsv = () => {
+    const linhas = ['TABELA;COD PRODUTO;VALOR UNITARIO'];
+
+    tabelas.forEach((tabela) => {
+      const data = precosPorTabela[tabela.id];
+      if (!data?.precos?.length) return;
+
+      data.precos.forEach((p) => {
+        const valorAtual = p.ativacao_acao && p.valor_acao > 0 ? p.valor_acao : p.valor_unitario;
+        linhas.push([
+          tabela.nome || '',
+          p.produto?.codigo || '',
+          (valorAtual || 0).toFixed(2).replace('.', ',')
+        ].join(';'));
+      });
+    });
+
+    const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'exportacao_precos_tabelas.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV exportado com sucesso!');
+  };
+
   // Função para imprimir tabela
   const handlePrint = (tabelaId = null) => {
     const tabelasParaImprimir = tabelaId ? [tabelaId] : tabelas.map(t => t.id);
@@ -712,7 +739,15 @@ function GerenciarPrecos() {
   return (
     <div className="space-y-6">
       {/* Header com botão de importação */}
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 flex-wrap">
+        <Button 
+          onClick={exportarTabelasCsv}
+          variant="outline"
+          className="border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Exportar CSV
+        </Button>
         <Button 
           onClick={() => handlePrint()}
           variant="outline"
