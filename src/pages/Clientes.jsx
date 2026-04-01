@@ -439,9 +439,14 @@ export default function Clientes() {
       }
     }
     
-    // Se é pré-cadastro sendo ativado (sem código), gerar código automaticamente
+    // Gerar código automaticamente se o cliente ainda não tem código:
+    // 1) Novo cliente (sem selected) → sempre gerar
+    // 2) Pré-cadastro sendo ativado (sem código) → gerar ao ativar
+    const precisaGerarCodigo = (!selected && !dataToSave.codigo) || 
+      (selected && !selected.codigo && !dataToSave.codigo);
+
     const salvar = async () => {
-      if (selected && selected.pre_cadastro && !selected.codigo && dataToSave.status === 'ativo') {
+      if (precisaGerarCodigo) {
         try {
           const response = await base44.functions.invoke('reservarCodigoCliente', {});
           const codigoGerado = response.data?.codigo || '';
@@ -450,12 +455,16 @@ export default function Clientes() {
             return;
           }
           dataToSave.codigo = codigoGerado;
-          dataToSave.pre_cadastro = false;
-          toast.info(`Código ${codigoGerado} gerado automaticamente para o cliente.`);
+          toast.info(`Código ${codigoGerado} gerado automaticamente.`);
         } catch (err) {
           toast.error('Erro ao gerar código: ' + err.message);
           return;
         }
+      }
+
+      // Se era pré-cadastro e está sendo ativado, limpar flag
+      if (selected?.pre_cadastro && dataToSave.status === 'ativo') {
+        dataToSave.pre_cadastro = false;
       }
 
       if (selected) {
