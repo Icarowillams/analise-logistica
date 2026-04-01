@@ -51,7 +51,7 @@ function mapearClienteParaOmie(cliente) {
     const tags = [codigoTag, rotaTag, rotaNomeTag].filter(Boolean).map(tag => ({ tag }));
 
     const clienteOmie = {
-        codigo_cliente_integracao: cliente.id,
+        codigo_cliente_integracao: cliente.codigo || cliente.id,
         razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
         nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
         cnpj_cpf: cpfCnpj,

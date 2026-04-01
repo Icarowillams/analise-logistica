@@ -33,7 +33,7 @@ async function mudarTagUpsert(clienteBase44) {
         app_key: OMIE_APP_KEY,
         app_secret: OMIE_APP_SECRET,
         param: [{
-            codigo_cliente_integracao: clienteBase44.id,
+            codigo_cliente_integracao: clienteBase44.codigo || clienteBase44.id,
             razao_social: (clienteBase44.razao_social || clienteBase44.nome_fantasia || 'Cliente').substring(0, 60),
             cnpj_cpf: cnpj,
             pessoa_fisica: isPF ? "S" : "N",

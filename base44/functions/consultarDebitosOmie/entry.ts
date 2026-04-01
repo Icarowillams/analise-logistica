@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
                 param: [{
-                    codigo_cliente_integracao: cliente_id
+                    codigo_cliente_integracao: cliente.codigo || cliente_id
                 }]
             })
         });

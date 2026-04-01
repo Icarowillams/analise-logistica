@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
                 skip += PAGE_SIZE;
             }
 
-            // Indexar Omie por id de integração e por CPF/CNPJ normalizado
+            // Indexar Omie por id de integração, por código e por CPF/CNPJ normalizado
             const omieMapPorId = {};
             const omieMapPorCpfCnpj = {};
             todosOmie.forEach(c => {
@@ -116,16 +116,12 @@ Deno.serve(async (req) => {
             });
 
             const base44Ids = new Set(clientesBase44.map(c => c.id));
+            const base44Codigos = new Set(clientesBase44.map(c => c.codigo).filter(Boolean));
 
-            let iguais = 0;
-            const diferentes = [];
-            const soNoBase44 = [];
-            const soNoOmie = [];
-
-            // Clientes no Base44 — considerar existente se bater por ID de integração OU CPF/CNPJ
+            // Clientes no Base44 — considerar existente se bater por código, ID de integração OU CPF/CNPJ
             for (const cb of clientesBase44) {
                 const cpfCnpjBase44 = (cb.cpf_cnpj || '').replace(/\D/g, '');
-                const co = omieMapPorId[cb.id] || omieMapPorCpfCnpj[cpfCnpjBase44];
+                const co = (cb.codigo && omieMapPorId[cb.codigo]) || omieMapPorId[cb.id] || omieMapPorCpfCnpj[cpfCnpjBase44];
 
                 if (!co) {
                     soNoBase44.push({
@@ -182,7 +178,7 @@ Deno.serve(async (req) => {
             for (const co of todosOmie) {
                 const codigoIntegracao = (co.codigo_cliente_integracao || '').trim();
                 const cpfCnpj = (co.cnpj_cpf || '').replace(/\D/g, '');
-                const existeNoBase44 = (codigoIntegracao && base44Ids.has(codigoIntegracao)) || (cpfCnpj && base44CpfCnpjSet.has(cpfCnpj));
+                const existeNoBase44 = (codigoIntegracao && (base44Ids.has(codigoIntegracao) || base44Codigos.has(codigoIntegracao))) || (cpfCnpj && base44CpfCnpjSet.has(cpfCnpj));
 
                 if (!existeNoBase44) {
                     soNoOmie.push({

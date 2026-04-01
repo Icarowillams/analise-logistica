@@ -61,7 +61,7 @@ function mapearClienteParaOmie(clienteData) {
     // Mapeamento completo conforme documentação Omie API - clientes_cadastro
     const clienteOmie = {
         // --- Identificação ---
-        codigo_cliente_integracao: clienteData.id,
+        codigo_cliente_integracao: clienteData.codigo || clienteData.id,
         
         // --- Dados principais ---
         razao_social: (clienteData.razao_social || clienteData.nome_fantasia || "Cliente sem nome").substring(0, 60),

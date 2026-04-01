@@ -17,15 +17,15 @@ Deno.serve(async (req) => {
 
         // Determinar o ID do cliente para usar como codigo_cliente_integracao
         // Na exclusão, o data pode vir com os dados do registro antes da exclusão
-        const clienteId = event?.entity_id || cliente?.id;
+        const clienteCodigo = cliente?.codigo || event?.entity_id || cliente?.id;
         const clienteNome = cliente?.razao_social || cliente?.nome_fantasia || 'N/A';
 
-        if (!clienteId) {
-            console.log('[excluirClienteOmie] Nenhum ID de cliente encontrado no payload');
+        if (!clienteCodigo) {
+            console.log('[excluirClienteOmie] Nenhum código de cliente encontrado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
         }
 
-        console.log('[excluirClienteOmie] Excluindo cliente do Omie - ID:', clienteId, '- Nome:', clienteNome);
+        console.log('[excluirClienteOmie] Excluindo cliente do Omie - Código:', clienteCodigo, '- Nome:', clienteNome);
 
         const response = await fetch(OMIE_URL, {
             method: "POST",
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
                 param: [{
-                    codigo_cliente_integracao: clienteId
+                    codigo_cliente_integracao: clienteCodigo
                 }]
             })
         });

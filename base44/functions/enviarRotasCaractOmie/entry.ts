@@ -8,7 +8,7 @@ const OMIE_CARACT_URL = "https://app.omie.com.br/api/v1/geral/clientescaract/";
 const OMIE_DELAY_MS = 350;
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function enviarCaracteristica(clienteId, rotaNome) {
+async function enviarCaracteristica(clienteCodigo, rotaNome) {
     // Usa AlterarCaractCliente que funciona como upsert conforme doc Omie:
     // "Caso não encontre a característica um novo cadastro será adicionado"
     const response = await fetch(OMIE_CARACT_URL, {
@@ -19,7 +19,7 @@ async function enviarCaracteristica(clienteId, rotaNome) {
             app_key: OMIE_APP_KEY,
             app_secret: OMIE_APP_SECRET,
             param: [{
-                codigo_cliente_integracao: clienteId,
+                codigo_cliente_integracao: clienteCodigo,
                 campo: "Rotas",
                 conteudo: rotaNome
             }]
@@ -45,7 +45,7 @@ async function enviarCaracteristica(clienteId, rotaNome) {
                     app_key: OMIE_APP_KEY,
                     app_secret: OMIE_APP_SECRET,
                     param: [{
-                        codigo_cliente_integracao: clienteId,
+                        codigo_cliente_integracao: clienteCodigo,
                         campo: "Rotas",
                         conteudo: rotaNome
                     }]
@@ -88,6 +88,7 @@ Deno.serve(async (req) => {
                 .filter(c => c.rota_id && rotasMap[c.rota_id])
                 .map(c => ({
                     cliente_id: c.id,
+                    cliente_codigo: c.codigo || c.id,
                     codigo: c.codigo,
                     razao_social: c.razao_social,
                     nome_fantasia: c.nome_fantasia,
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
             let erros = 0;
 
             for (const item of lote) {
-                const resultado = await enviarCaracteristica(item.cliente_id, item.rota_nome);
+                const resultado = await enviarCaracteristica(item.cliente_codigo || item.cliente_id, item.rota_nome);
                 if (resultado.sucesso) {
                     sucesso++;
                     resultados.push({ cliente_id: item.cliente_id, sucesso: true });
