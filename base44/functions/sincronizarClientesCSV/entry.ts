@@ -323,14 +323,43 @@ Deno.serve(async (req) => {
                         ok = lote.length;
                         break;
                     } catch (e) {
-                        if (e.message?.includes('Rate limit') && attempt < 3) {
+                        const isRateLimit = e.message?.includes('Rate limit') || e.message?.includes('429');
+                        if (isRateLimit && attempt < 3) {
                             console.log(`[atualizar] Rate limit, tentativa ${attempt + 1}, aguardando ${5000 * (attempt + 1)}ms`);
                             await delay(5000 * (attempt + 1));
+                            continue;
+                        }
+
+                        if (isRateLimit) {
+                            console.log('[atualizar] BulkUpdate travou por limite, alternando para atualização individual em lotes pequenos');
+                            for (const item of lote) {
+                                let atualizado = false;
+                                for (let itemAttempt = 0; itemAttempt < 4; itemAttempt++) {
+                                    try {
+                                        await base44.asServiceRole.entities.Cliente.update(item.id, item);
+                                        ok++;
+                                        atualizado = true;
+                                        await delay(150);
+                                        break;
+                                    } catch (itemError) {
+                                        const itemRateLimit = itemError.message?.includes('Rate limit') || itemError.message?.includes('429');
+                                        if (itemRateLimit && itemAttempt < 3) {
+                                            await delay(3000 * (itemAttempt + 1));
+                                            continue;
+                                        }
+                                        break;
+                                    }
+                                }
+                                if (!atualizado) {
+                                    erros++;
+                                    errosList.push(`Cliente ${item.codigo || item.id}: limite/excesso ao atualizar`);
+                                }
+                            }
                         } else {
                             erros = lote.length;
                             errosList.push(`Lote ${offset}-${offset + lote.length}: ${e.message}`);
-                            break;
                         }
+                        break;
                     }
                 }
             }
@@ -365,14 +394,43 @@ Deno.serve(async (req) => {
                         ok = lote.length;
                         break;
                     } catch (e) {
-                        if (e.message?.includes('Rate limit') && attempt < 3) {
+                        const isRateLimit = e.message?.includes('Rate limit') || e.message?.includes('429');
+                        if (isRateLimit && attempt < 3) {
                             console.log(`[criar] Rate limit, tentativa ${attempt + 1}, aguardando ${5000 * (attempt + 1)}ms`);
                             await delay(5000 * (attempt + 1));
+                            continue;
+                        }
+
+                        if (isRateLimit) {
+                            console.log('[criar] BulkCreate travou por limite, alternando para criação individual em lotes pequenos');
+                            for (const item of lote) {
+                                let criado = false;
+                                for (let itemAttempt = 0; itemAttempt < 4; itemAttempt++) {
+                                    try {
+                                        await base44.asServiceRole.entities.Cliente.create(item);
+                                        ok++;
+                                        criado = true;
+                                        await delay(150);
+                                        break;
+                                    } catch (itemError) {
+                                        const itemRateLimit = itemError.message?.includes('Rate limit') || itemError.message?.includes('429');
+                                        if (itemRateLimit && itemAttempt < 3) {
+                                            await delay(3000 * (itemAttempt + 1));
+                                            continue;
+                                        }
+                                        break;
+                                    }
+                                }
+                                if (!criado) {
+                                    erros++;
+                                    errosList.push(`Cliente ${item.codigo || 'sem código'}: limite/excesso ao criar`);
+                                }
+                            }
                         } else {
                             erros = lote.length;
                             errosList.push(`Lote ${offset}-${offset + lote.length}: ${e.message}`);
-                            break;
                         }
+                        break;
                     }
                 }
             }
