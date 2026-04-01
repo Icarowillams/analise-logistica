@@ -31,7 +31,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [itensLocal, setItensLocal] = useState([]);
   const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
   const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
-  const [cenariosPadraoAplicado, setCenariosPadraoAplicado] = useState(false);
 
   const { data: planosPagamento = [] } = useQuery({
     queryKey: ['planosPagamento'],
@@ -79,17 +78,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const cenarios = cenariosData || [];
 
-  // Pré-selecionar cenário padrão quando os dados carregam
+  // Pré-selecionar cenário padrão quando os dados carregam (apenas para pedidos novos)
   useEffect(() => {
-    if (cenarios.length > 0 && !cenarioFiscalCodigo && !cenariosPadraoAplicado && !editingPedidoId) {
+    if (cenarios.length > 0 && !cenarioFiscalCodigo && !editingPedidoId) {
       const padrao = cenarios.find(c => c.padrao);
       if (padrao) {
         setCenarioFiscalCodigo(String(padrao.codigo));
         setCenarioFiscalNome(padrao.nome);
       }
-      setCenariosPadraoAplicado(true);
     }
-  }, [cenarios, cenarioFiscalCodigo, cenariosPadraoAplicado, editingPedidoId]);
+  }, [cenarios.length]);
 
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
