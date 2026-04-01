@@ -522,7 +522,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   return (
     <div className="space-y-1.5">
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3 items-start">
+      <div>
         <div className="space-y-1.5">
       {/* Filters - compact */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-1.5 p-2 bg-white border rounded-lg">
@@ -723,9 +723,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
       </div>
         </div>
 
-        <div className="xl:sticky xl:top-0 self-start">
-          <PedidoPreviewSelecionado pedidoId={selectedIds.length === 1 ? selectedIds[0] : null} />
-        </div>
+        {selectedIds.length === 1 && (
+          <div className="max-w-md">
+            <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
+          </div>
+        )}
       </div>
 
       {/* Batch actions - fixed bottom */}
