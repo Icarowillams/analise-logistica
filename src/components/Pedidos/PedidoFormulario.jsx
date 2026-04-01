@@ -133,19 +133,30 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   useEffect(() => {
     if (existingItems.length > 0 && itensLocal.length === 0) {
-      setItensLocal(existingItems.map(item => ({
-        dbId: item.id,
-        produto_id: item.produto_id,
-        produto_codigo: item.produto_codigo,
-        produto_nome: item.produto_nome,
-        quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario,
-        valor_total: item.valor_total,
-        motivo_troca_id: item.motivo_troca_id || '',
-        motivo_troca_descricao: item.motivo_troca_descricao || ''
-      })));
+      setItensLocal(existingItems.map(item => {
+        // Atualizar preço com valor atual da tabela (inclui ações promocionais)
+        let precoAtual = item.valor_unitario;
+        if (precosAll.length > 0) {
+          const precoTabela = precosAll.find(p => p.produto_id === item.produto_id);
+          if (precoTabela) {
+            const precoNovo = (precoTabela.ativacao_acao && precoTabela.valor_acao) ? precoTabela.valor_acao : precoTabela.valor_unitario;
+            if (precoNovo > 0) precoAtual = precoNovo;
+          }
+        }
+        return {
+          dbId: item.id,
+          produto_id: item.produto_id,
+          produto_codigo: item.produto_codigo,
+          produto_nome: item.produto_nome,
+          quantidade: item.quantidade,
+          valor_unitario: precoAtual,
+          valor_total: item.quantidade * precoAtual,
+          motivo_troca_id: item.motivo_troca_id || '',
+          motivo_troca_descricao: item.motivo_troca_descricao || ''
+        };
+      }));
     }
-  }, [existingItems]);
+  }, [existingItems, precosAll]);
 
   const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
