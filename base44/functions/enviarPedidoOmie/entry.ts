@@ -159,11 +159,25 @@ Deno.serve(async (req) => {
             return await res.json();
         };
 
+        // Verificar se o erro é de rate limit/bloqueio (não deve ser interpretado como "não encontrado")
+        const isErroBloqueio = (fault) => {
+            if (!fault) return false;
+            const f = fault.toLowerCase();
+            return f.includes('bloqueada') || f.includes('too many') || f.includes('try again') || f.includes('tente novamente');
+        };
+
         // Tentar com o codigo do cliente primeiro
         const consultaCodigo = await tentarConsultarCliente(codigoClienteIntegracao);
         if (!consultaCodigo.faultstring) {
             clienteEncontradoOmie = true;
             console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo_integracao: ${codigoClienteIntegracao}`);
+        } else if (isErroBloqueio(consultaCodigo.faultstring)) {
+            // API bloqueada — não podemos saber se o cliente existe, abortar com erro claro
+            console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaCodigo.faultstring}`);
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
+            });
+            return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
         } else {
             // Tentar com o ID do Base44
             const idBase44 = pedido.cliente_id;
@@ -173,6 +187,12 @@ Deno.serve(async (req) => {
                     codigoClienteIntegracao = idBase44;
                     clienteEncontradoOmie = true;
                     console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com ID Base44: ${idBase44}`);
+                } else if (isErroBloqueio(consultaId.faultstring)) {
+                    console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaId.faultstring}`);
+                    await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                        omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
+                    });
+                    return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
                 }
             }
             // Tentar também com o campo codigo do cliente (se diferente)
@@ -182,6 +202,12 @@ Deno.serve(async (req) => {
                     codigoClienteIntegracao = clienteBase44.codigo;
                     clienteEncontradoOmie = true;
                     console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo: ${clienteBase44.codigo}`);
+                } else if (isErroBloqueio(consultaCod2.faultstring)) {
+                    console.error(`[enviarPedidoOmie] API Omie bloqueada: ${consultaCod2.faultstring}`);
+                    await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                        omie_erro: `API Omie temporariamente bloqueada. Tente novamente em alguns minutos.`
+                    });
+                    return Response.json({ sucesso: false, erro: 'API Omie temporariamente bloqueada. Tente novamente em alguns minutos.' });
                 }
             }
         }
