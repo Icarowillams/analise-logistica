@@ -62,7 +62,8 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     const roteiroDia = roteiros.find(r => r.dia_semana === selectedDia);
     if (!roteiroDia || !roteiroDia.clientes_detalhes) return [];
     return roteiroDia.clientes_detalhes.map(cd => {
-      const clienteCompleto = clientes.find(c => c.id === cd.cliente_id);
+      const clienteCompleto = (cd.cliente_codigo ? clientes.find(c => c.codigo === cd.cliente_codigo) : undefined)
+        || clientes.find(c => c.id === cd.cliente_id);
       return clienteCompleto ? { ...clienteCompleto, ordem: cd.ordem } : null;
     }).filter(Boolean);
   }, [roteiros, selectedDia, clientes]);
