@@ -18,6 +18,7 @@ import CancelarPedidoModal from './CancelarPedidoModal';
 import DebitosClienteModal from './DebitosClienteModal';
 import PedidoAgrupado from './PedidoAgrupado';
 import PedidoPdf from './PedidoPdf';
+import PedidoPdfMultiplo from './PedidoPdfMultiplo';
 import PedidoPreviewSelecionado from './PedidoPreviewSelecionado';
 import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
@@ -84,6 +85,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [showAgrupado, setShowAgrupado] = useState(false);
   const [viewPedidoId, setViewPedidoId] = useState(null);
   const [viewPedidoAnaliticoId, setViewPedidoAnaliticoId] = useState(null);
+  const [viewPedidoAnaliticoIds, setViewPedidoAnaliticoIds] = useState(null);
   const [batchResult, setBatchResult] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
 
@@ -530,6 +532,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
     );
   }
 
+  if (viewPedidoAnaliticoIds && viewPedidoAnaliticoIds.length > 0) {
+    return <PedidoPdfMultiplo pedidoIds={viewPedidoAnaliticoIds} onVoltar={() => setViewPedidoAnaliticoIds(null)} />;
+  }
+
   if (viewPedidoAnaliticoId) {
     return (
       <div className="space-y-4">
@@ -762,8 +768,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
             <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
           </Button>
-          <Button size="sm" variant="outline" disabled={selectedIds.length !== 1} onClick={() => setViewPedidoAnaliticoId(selectedIds[0])}>
-            <Printer className="w-3 h-3 mr-1" /> Imprimir Analítico
+          <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => {
+            if (selectedIds.length === 1) {
+              setViewPedidoAnaliticoId(selectedIds[0]);
+            } else if (selectedIds.length > 1) {
+              setViewPedidoAnaliticoIds([...selectedIds]);
+            }
+          }}>
+            <Printer className="w-3 h-3 mr-1" /> Analítico ({selectedIds.length})
           </Button>
           {(() => {
             const canEdit = selectedIds.length === 1;
