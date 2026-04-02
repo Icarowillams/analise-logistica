@@ -157,7 +157,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
           cliente.codigo,
           cliente.razao_social,
           cliente.nome_fantasia,
-          cliente.cpf_cnpj,
+          cliente.cnpj_cpf,
           cliente.endereco,
           cliente.numero,
         ].some((val) => val && String(val).toLowerCase().includes(searchLower));
@@ -186,7 +186,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Código', value: selectedCliente?.codigo || '-' },
     { label: 'Razão social', value: selectedCliente?.razao_social || '-' },
     { label: 'Nome fantasia', value: selectedCliente?.nome_fantasia || '-' },
-    { label: 'CPF/CNPJ', value: selectedCliente?.cpf_cnpj || '-' },
+    { label: 'CPF/CNPJ', value: selectedCliente?.cnpj_cpf || '-' },
     { label: 'Inscrição estadual', value: selectedCliente?.inscricao_estadual || '-' },
     { label: 'Cidade', value: selectedCliente?.cidade || '-' },
     { label: 'Bairro', value: selectedCliente?.bairro || '-' },
