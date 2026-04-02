@@ -1,0 +1,83 @@
+{
+  "name": "ParadaRoteiro",
+  "type": "object",
+  "description": "Parada individual dentro de uma execu\u00e7\u00e3o real de roteiro/carga \u2014 registra o que aconteceu em cada cliente",
+  "properties": {
+    "carga_id": {
+      "type": "string",
+      "description": "Carga \u00e0 qual esta parada pertence (se log\u00edstica)"
+    },
+    "roteiro_id": {
+      "type": "string",
+      "description": "Roteiro padr\u00e3o de origem (se visita comercial)"
+    },
+    "data": {
+      "type": "string",
+      "format": "date"
+    },
+    "ordem": {
+      "type": "number",
+      "description": "Posi\u00e7\u00e3o na sequ\u00eancia da rota"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "cliente_cidade": {
+      "type": "string"
+    },
+    "pedido_venda_id": {
+      "type": "string",
+      "description": "Pedido vinculado a esta parada"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "entrega",
+        "visita",
+        "troca",
+        "comodato",
+        "cobranca",
+        "prospeccao"
+      ],
+      "default": "entrega"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "realizado",
+        "nao_realizado",
+        "reagendado"
+      ],
+      "default": "pendente"
+    },
+    "hora_chegada": {
+      "type": "string",
+      "description": "HH:MM"
+    },
+    "hora_saida": {
+      "type": "string",
+      "description": "HH:MM"
+    },
+    "latitude": {
+      "type": "number"
+    },
+    "longitude": {
+      "type": "number"
+    },
+    "motivo_nao_realizacao": {
+      "type": "string"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "cliente_id",
+    "tipo"
+  ]
+}

@@ -1,10 +1,10 @@
 {
   "name": "ItemPedidoVenda",
   "type": "object",
+  "description": "Itens de um PedidoVenda \u2014 \u00fanico modelo para comercial e log\u00edstica",
   "properties": {
     "pedido_venda_id": {
-      "type": "string",
-      "description": "ID do PedidoVenda"
+      "type": "string"
     },
     "produto_id": {
       "type": "string"
@@ -18,8 +18,16 @@
     "unidade_medida": {
       "type": "string"
     },
-    "quantidade": {
+    "quantidade_pedida": {
       "type": "number"
+    },
+    "quantidade_entregue": {
+      "type": "number",
+      "description": "Preenchido no fechamento da entrega"
+    },
+    "quantidade_devolvida": {
+      "type": "number",
+      "default": 0
     },
     "preco_unitario": {
       "type": "number"
@@ -42,6 +50,6 @@
   "required": [
     "pedido_venda_id",
     "produto_id",
-    "quantidade"
+    "quantidade_pedida"
   ]
 }

@@ -1,0 +1,98 @@
+{
+  "name": "Divergencia",
+  "type": "object",
+  "description": "Diverg\u00eancias entre o que foi carregado/vendido e o que foi entregue \u2014 base para acerto de caixa do motorista",
+  "properties": {
+    "numero_divergencia": {
+      "type": "string"
+    },
+    "data": {
+      "type": "string",
+      "format": "date"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "sobra_produto",
+        "falta_produto",
+        "diferenca_valor",
+        "produto_errado",
+        "nota_fiscal",
+        "pagamento"
+      ],
+      "description": "Tipo da diverg\u00eancia"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "identificada",
+        "em_analise",
+        "justificada",
+        "estornada",
+        "encerrada"
+      ],
+      "default": "identificada"
+    },
+    "carga_id": {
+      "type": "string"
+    },
+    "carga_numero": {
+      "type": "string"
+    },
+    "motorista_id": {
+      "type": "string"
+    },
+    "motorista_nome": {
+      "type": "string"
+    },
+    "pedido_venda_id": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "produto_id": {
+      "type": "string"
+    },
+    "produto_nome": {
+      "type": "string"
+    },
+    "quantidade_esperada": {
+      "type": "number"
+    },
+    "quantidade_real": {
+      "type": "number"
+    },
+    "valor_esperado": {
+      "type": "number"
+    },
+    "valor_real": {
+      "type": "number"
+    },
+    "valor_diferenca": {
+      "type": "number",
+      "description": "Calculado: real - esperado"
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "justificativa": {
+      "type": "string"
+    },
+    "responsavel_resolucao_id": {
+      "type": "string"
+    },
+    "data_resolucao": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "numero_divergencia",
+    "data",
+    "tipo"
+  ]
+}

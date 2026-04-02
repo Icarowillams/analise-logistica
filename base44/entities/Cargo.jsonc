@@ -1,0 +1,74 @@
+{
+  "name": "Cargo",
+  "type": "object",
+  "description": "Cargos/perfis da empresa \u2014 define permiss\u00f5es e pap\u00e9is de acesso ao sistema",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome do cargo (ex: Motorista, Supervisor, Gerente Comercial)"
+    },
+    "nivel": {
+      "type": "string",
+      "enum": [
+        "operacional",
+        "tatico",
+        "estrategico"
+      ],
+      "default": "operacional"
+    },
+    "modulos_acesso": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "comercial",
+          "logistica",
+          "pedidos",
+          "cargas",
+          "entregas",
+          "trocas",
+          "comodatos",
+          "relatorios",
+          "cadastros",
+          "financeiro",
+          "admin",
+          "metas",
+          "roteiros",
+          "ocorrencias"
+        ]
+      },
+      "default": [],
+      "description": "M\u00f3dulos que este cargo tem acesso"
+    },
+    "pode_aprovar_troca": {
+      "type": "boolean",
+      "default": false
+    },
+    "pode_aprovar_cancelamento": {
+      "type": "boolean",
+      "default": false
+    },
+    "pode_emitir_pedido": {
+      "type": "boolean",
+      "default": false
+    },
+    "pode_montar_carga": {
+      "type": "boolean",
+      "default": false
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    }
+  },
+  "required": [
+    "nome"
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "PedidoTroca",
   "type": "object",
+  "description": "Trocas, devolu\u00e7\u00f5es e bonifica\u00e7\u00f5es \u2014 originadas de entregas ou solicita\u00e7\u00f5es comerciais",
   "properties": {
     "numero_troca": {
       "type": "string"
@@ -25,9 +26,21 @@
       "enum": [
         "troca",
         "devolucao",
-        "bonificacao"
+        "bonificacao",
+        "cancelamento_parcial"
       ],
       "default": "troca"
+    },
+    "origem": {
+      "type": "string",
+      "enum": [
+        "entrega",
+        "visita_comercial",
+        "reclamacao",
+        "avaria",
+        "vencimento"
+      ],
+      "description": "Origem da solicita\u00e7\u00e3o"
     },
     "cliente_id": {
       "type": "string"
@@ -41,20 +54,21 @@
     "vendedor_nome": {
       "type": "string"
     },
-    "carga_id": {
+    "motorista_id": {
       "type": "string",
-      "description": "Carga de origem"
+      "description": "Motorista que recebeu a troca na rota"
+    },
+    "carga_id": {
+      "type": "string"
     },
     "pedido_venda_id": {
-      "type": "string",
-      "description": "Pedido de venda de origem"
+      "type": "string"
     },
     "pedido_venda_numero": {
       "type": "string"
     },
     "motivo_id": {
-      "type": "string",
-      "description": "ID do motivo (MotivoTroca)"
+      "type": "string"
     },
     "motivo_descricao": {
       "type": "string"
@@ -62,15 +76,15 @@
     "valor_total": {
       "type": "number"
     },
-    "observacoes": {
-      "type": "string"
-    },
     "aprovado_por": {
       "type": "string"
     },
     "data_aprovacao": {
       "type": "string",
       "format": "date"
+    },
+    "observacoes": {
+      "type": "string"
     }
   },
   "required": [

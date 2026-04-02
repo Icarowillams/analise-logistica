@@ -7,8 +7,7 @@
       "description": "C\u00f3digo interno do produto"
     },
     "nome": {
-      "type": "string",
-      "description": "Nome do produto"
+      "type": "string"
     },
     "cod_barras": {
       "type": "string",
@@ -16,28 +15,65 @@
     },
     "ncm": {
       "type": "string",
-      "description": "NCM - Nomenclatura Comum do Mercosul (8 d\u00edgitos)"
+      "description": "NCM (8 d\u00edgitos)"
     },
     "cest": {
       "type": "string",
-      "description": "CEST - C\u00f3digo Especificador da Substitui\u00e7\u00e3o Tribut\u00e1ria (7 d\u00edgitos)"
+      "description": "CEST (7 d\u00edgitos)"
     },
     "categoria_id": {
-      "type": "string",
-      "description": "ID da Categoria"
+      "type": "string"
     },
     "sub_categoria_id": {
-      "type": "string",
-      "description": "ID da Subcategoria"
+      "type": "string"
     },
     "imagem_url": {
-      "type": "string",
-      "description": "URL da imagem do produto"
+      "type": "string"
     },
     "estoque_atual": {
       "type": "number",
+      "default": 0
+    },
+    "estoque_minimo": {
+      "type": "number",
       "default": 0,
-      "description": "Quantidade em estoque"
+      "description": "Ponto de reposi\u00e7\u00e3o"
+    },
+    "unidade_medida_id": {
+      "type": "string"
+    },
+    "unidade_produto_id": {
+      "type": "string"
+    },
+    "peso": {
+      "type": "number",
+      "default": 0,
+      "description": "Peso unit\u00e1rio em kg"
+    },
+    "volume_m3": {
+      "type": "number",
+      "default": 0,
+      "description": "Volume unit\u00e1rio em m\u00b3 (para c\u00e1lculo de carga)"
+    },
+    "fator_caixa": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantidade de unidades por caixa fechada"
+    },
+    "permite_fracionado": {
+      "type": "boolean",
+      "default": true,
+      "description": "Permite venda fracionada (abaixo de 1 caixa)"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "produto",
+        "servico",
+        "equipamento_comodato",
+        "embalagem"
+      ],
+      "default": "produto"
     },
     "status": {
       "type": "string",
@@ -47,18 +83,9 @@
       ],
       "default": "ativo"
     },
-    "unidade_medida_id": {
+    "omie_id": {
       "type": "string",
-      "description": "ID da Unidade de Medida"
-    },
-    "unidade_produto_id": {
-      "type": "string",
-      "description": "ID da Unidade de Produto (Tipo de Produto)"
-    },
-    "peso": {
-      "type": "number",
-      "description": "Peso do produto",
-      "default": 0
+      "description": "ID do produto no Omie"
     }
   },
   "required": [

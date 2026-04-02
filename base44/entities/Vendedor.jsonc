@@ -1,31 +1,36 @@
 {
   "name": "Vendedor",
   "type": "object",
+  "description": "Entidade central de funcion\u00e1rios \u2014 cobre vendedores, motoristas, supervisores e outros pap\u00e9is",
   "properties": {
     "nome": {
       "type": "string",
       "description": "Nome completo do funcion\u00e1rio"
     },
     "cpf": {
-      "type": "string",
-      "description": "CPF do funcion\u00e1rio"
+      "type": "string"
     },
     "email": {
       "type": "string",
-      "format": "email",
-      "description": "Email do funcion\u00e1rio"
+      "format": "email"
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "cargo_id": {
+      "type": "string",
+      "description": "ID do Cargo (entidade Cargo)"
     },
     "funcao": {
       "type": "string",
-      "description": "Fun\u00e7\u00e3o do funcion\u00e1rio (Legacy string)"
+      "description": "Fun\u00e7\u00e3o legado (string livre)"
     },
     "funcao_id": {
       "type": "string",
-      "description": "ID da fun\u00e7\u00e3o"
+      "description": "ID da fun\u00e7\u00e3o (entidade Funcao)"
     },
     "departamento_id": {
-      "type": "string",
-      "description": "ID do departamento"
+      "type": "string"
     },
     "supervisor_id": {
       "type": "string",
@@ -39,29 +44,55 @@
       "default": [],
       "description": "IDs dos supervisores vinculados"
     },
-    "telefone": {
+    "papeis": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "vendedor",
+          "motorista",
+          "ajudante",
+          "supervisor",
+          "gerente",
+          "admin_logistica"
+        ]
+      },
+      "default": [],
+      "description": "Pap\u00e9is operacionais do funcion\u00e1rio \u2014 um mesmo funcion\u00e1rio pode ter m\u00faltiplos pap\u00e9is"
+    },
+    "cnh_numero": {
       "type": "string",
-      "description": "Telefone de contato"
+      "description": "N\u00famero da CNH (para motoristas)"
+    },
+    "cnh_categoria": {
+      "type": "string",
+      "description": "Categoria da CNH (A, B, C, D, E)"
+    },
+    "cnh_validade": {
+      "type": "string",
+      "format": "date"
+    },
+    "veiculo_id": {
+      "type": "string",
+      "description": "Ve\u00edculo padr\u00e3o do motorista"
     },
     "latitude": {
-      "type": "number",
-      "description": "Latitude da localiza\u00e7\u00e3o do funcion\u00e1rio"
+      "type": "number"
     },
     "longitude": {
-      "type": "number",
-      "description": "Longitude da localiza\u00e7\u00e3o do funcion\u00e1rio"
+      "type": "number"
     },
     "status": {
       "type": "string",
       "enum": [
         "ativo",
-        "inativo"
+        "inativo",
+        "afastado"
       ],
       "default": "ativo"
     },
     "foto_url": {
-      "type": "string",
-      "description": "URL da foto do funcion\u00e1rio"
+      "type": "string"
     }
   },
   "required": [

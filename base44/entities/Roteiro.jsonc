@@ -1,14 +1,14 @@
 {
   "name": "Roteiro",
   "type": "object",
+  "description": "Roteiro padr\u00e3o de visita/entrega por funcion\u00e1rio e dia da semana",
   "properties": {
     "vendedor_id": {
       "type": "string",
-      "description": "ID do funcion\u00e1rio respons\u00e1vel pelo roteiro"
+      "description": "ID do funcion\u00e1rio respons\u00e1vel"
     },
     "vendedor_nome": {
-      "type": "string",
-      "description": "Nome do funcion\u00e1rio"
+      "type": "string"
     },
     "dia_semana": {
       "type": "string",
@@ -20,16 +20,24 @@
         "sexta-feira",
         "sabado",
         "domingo"
+      ]
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "visita_comercial",
+        "entrega",
+        "misto"
       ],
-      "description": "Dia da semana do roteiro"
+      "default": "visita_comercial",
+      "description": "Finalidade do roteiro"
     },
     "clientes_ids": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "default": [],
-      "description": "Lista de IDs dos clientes na ordem de visita"
+      "default": []
     },
     "clientes_detalhes": {
       "type": "array",
@@ -56,8 +64,7 @@
           }
         }
       },
-      "default": [],
-      "description": "Detalhes dos clientes no roteiro"
+      "default": []
     },
     "status": {
       "type": "string",
@@ -67,17 +74,14 @@
         "pausado",
         "concluido"
       ],
-      "default": "planejado",
-      "description": "Status do roteiro"
+      "default": "planejado"
     },
     "ativo": {
       "type": "boolean",
-      "default": true,
-      "description": "Indica se o roteiro est\u00e1 ativo (vis\u00edvel para funcion\u00e1rios e relat\u00f3rios)"
+      "default": true
     },
     "observacoes": {
-      "type": "string",
-      "description": "Observa\u00e7\u00f5es sobre o roteiro"
+      "type": "string"
     }
   },
   "required": [

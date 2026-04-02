@@ -1,0 +1,80 @@
+{
+  "name": "Cancelamento",
+  "type": "object",
+  "description": "Registro de cancelamentos de pedidos ou itens \u2014 mant\u00e9m rastreabilidade",
+  "properties": {
+    "numero_cancelamento": {
+      "type": "string"
+    },
+    "data_cancelamento": {
+      "type": "string",
+      "format": "date"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "pedido_completo",
+        "item_pedido",
+        "carga"
+      ],
+      "default": "pedido_completo"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "solicitado",
+        "aprovado",
+        "recusado",
+        "executado"
+      ],
+      "default": "solicitado"
+    },
+    "pedido_venda_id": {
+      "type": "string",
+      "description": "Pedido cancelado"
+    },
+    "pedido_venda_numero": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "solicitado_por_id": {
+      "type": "string",
+      "description": "ID do funcion\u00e1rio que solicitou"
+    },
+    "solicitado_por_nome": {
+      "type": "string"
+    },
+    "aprovado_por_id": {
+      "type": "string"
+    },
+    "aprovado_por_nome": {
+      "type": "string"
+    },
+    "data_aprovacao": {
+      "type": "string",
+      "format": "date"
+    },
+    "motivo": {
+      "type": "string"
+    },
+    "valor_cancelado": {
+      "type": "number"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "numero_cancelamento",
+    "data_cancelamento",
+    "motivo"
+  ]
+}

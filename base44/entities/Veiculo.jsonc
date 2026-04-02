@@ -1,0 +1,86 @@
+{
+  "name": "Veiculo",
+  "type": "object",
+  "properties": {
+    "placa": {
+      "type": "string",
+      "description": "Placa do ve\u00edculo"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Ex: VUC Iveco Daily Branco"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "vuc",
+        "van",
+        "truck",
+        "toco",
+        "bitruck",
+        "carreta",
+        "moto",
+        "utilitario",
+        "outro"
+      ],
+      "default": "vuc"
+    },
+    "marca": {
+      "type": "string"
+    },
+    "modelo": {
+      "type": "string"
+    },
+    "ano": {
+      "type": "number"
+    },
+    "cor": {
+      "type": "string"
+    },
+    "capacidade_peso_kg": {
+      "type": "number",
+      "description": "Capacidade m\u00e1xima de carga em kg"
+    },
+    "capacidade_volume_m3": {
+      "type": "number",
+      "description": "Capacidade m\u00e1xima em m\u00b3"
+    },
+    "capacidade_caixas": {
+      "type": "number",
+      "description": "Capacidade em caixas (refer\u00eancia operacional)"
+    },
+    "motorista_padrao_id": {
+      "type": "string",
+      "description": "ID do motorista padr\u00e3o deste ve\u00edculo"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "disponivel",
+        "em_rota",
+        "manutencao",
+        "inativo"
+      ],
+      "default": "disponivel"
+    },
+    "km_atual": {
+      "type": "number"
+    },
+    "ultima_revisao_km": {
+      "type": "number"
+    },
+    "proxima_revisao_km": {
+      "type": "number"
+    },
+    "data_ultima_revisao": {
+      "type": "string",
+      "format": "date"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "placa"
+  ]
+}

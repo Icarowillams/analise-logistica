@@ -27,33 +27,35 @@
       "description": "Email do cliente para NF-e",
       "default": "nfe@paoemel.com.br"
     },
+    "telefone": {
+      "type": "string"
+    },
     "modalidade_pagamento_id": {
-      "type": "string",
-      "description": "ID da modalidade de pagamento"
+      "type": "string"
     },
     "plano_pagamento_id": {
-      "type": "string",
-      "description": "ID do plano de pagamento"
+      "type": "string"
     },
     "segmento_id": {
-      "type": "string",
-      "description": "ID do segmento"
+      "type": "string"
     },
     "rede_id": {
-      "type": "string",
-      "description": "ID da rede/franquia"
+      "type": "string"
     },
     "vendedor_id": {
       "type": "string",
-      "description": "ID do vendedor respons\u00e1vel"
+      "description": "ID do vendedor/representante respons\u00e1vel"
+    },
+    "motorista_id": {
+      "type": "string",
+      "description": "ID do motorista respons\u00e1vel pela entrega habitual"
     },
     "supervisor_id": {
-      "type": "string",
-      "description": "ID do supervisor (preenchido automaticamente via vendedor)"
+      "type": "string"
     },
     "rota_id": {
       "type": "string",
-      "description": "ID da rota"
+      "description": "ID da Rota de entrega"
     },
     "tabela_id": {
       "type": "string",
@@ -63,6 +65,9 @@
       "type": "string"
     },
     "numero": {
+      "type": "string"
+    },
+    "complemento": {
       "type": "string"
     },
     "bairro": {
@@ -78,12 +83,34 @@
       "type": "string"
     },
     "latitude": {
-      "type": "number",
-      "description": "Latitude da localiza\u00e7\u00e3o do cliente"
+      "type": "number"
     },
     "longitude": {
-      "type": "number",
-      "description": "Longitude da localiza\u00e7\u00e3o do cliente"
+      "type": "number"
+    },
+    "janela_entrega_inicio": {
+      "type": "string",
+      "description": "Hor\u00e1rio in\u00edcio da janela de entrega (HH:MM)"
+    },
+    "janela_entrega_fim": {
+      "type": "string",
+      "description": "Hor\u00e1rio fim da janela de entrega (HH:MM)"
+    },
+    "dias_entrega": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "segunda",
+          "terca",
+          "quarta",
+          "quinta",
+          "sexta",
+          "sabado",
+          "domingo"
+        ]
+      },
+      "description": "Dias da semana em que aceita entrega"
     },
     "data_primeiro_contato": {
       "type": "string",
@@ -94,14 +121,25 @@
       "enum": [
         "ativo",
         "inativo",
-        "prospecto"
+        "prospecto",
+        "bloqueado"
       ],
       "default": "ativo"
     },
+    "motivo_bloqueio": {
+      "type": "string"
+    },
     "pre_cadastro": {
       "type": "boolean",
-      "default": false,
-      "description": "Indica se o cliente \u00e9 um pr\u00e9-cadastro"
+      "default": false
+    },
+    "observacoes_logistica": {
+      "type": "string",
+      "description": "Obs espec\u00edficas para entrega (portaria, acesso, etc.)"
+    },
+    "omie_id": {
+      "type": "string",
+      "description": "ID do cliente no Omie"
     }
   },
   "required": [

@@ -1,6 +1,7 @@
 {
   "name": "EntregaRota",
   "type": "object",
+  "description": "Registro de execu\u00e7\u00e3o de cada entrega \u2014 gerado automaticamente a partir dos itens da Carga",
   "properties": {
     "carga_id": {
       "type": "string"
@@ -8,8 +9,9 @@
     "carga_numero": {
       "type": "string"
     },
-    "item_carga_id": {
-      "type": "string"
+    "parada_roteiro_id": {
+      "type": "string",
+      "description": "ParadaRoteiro vinculada"
     },
     "pedido_venda_id": {
       "type": "string"
@@ -27,9 +29,13 @@
       "type": "string",
       "format": "date"
     },
-    "hora_entrega": {
+    "hora_chegada": {
       "type": "string",
-      "description": "Hor\u00e1rio da entrega HH:MM"
+      "description": "HH:MM"
+    },
+    "hora_saida": {
+      "type": "string",
+      "description": "HH:MM"
     },
     "status": {
       "type": "string",
@@ -55,8 +61,7 @@
       "type": "number"
     },
     "assinatura_recebedor": {
-      "type": "string",
-      "description": "Nome de quem recebeu"
+      "type": "string"
     },
     "foto_comprovante_url": {
       "type": "string"

@@ -3,23 +3,23 @@
   "type": "object",
   "properties": {
     "numero_carga": {
-      "type": "string",
-      "description": "N\u00famero identificador da carga"
+      "type": "string"
     },
     "data_montagem": {
       "type": "string",
-      "format": "date",
-      "description": "Data de montagem da carga"
+      "format": "date"
     },
     "data_saida_prevista": {
       "type": "string",
-      "format": "date",
-      "description": "Data prevista para sa\u00edda"
+      "format": "date"
     },
     "data_saida_real": {
       "type": "string",
-      "format": "date",
-      "description": "Data real de sa\u00edda"
+      "format": "date"
+    },
+    "data_retorno_real": {
+      "type": "string",
+      "format": "date"
     },
     "status": {
       "type": "string",
@@ -30,60 +30,62 @@
         "finalizada",
         "cancelada"
       ],
-      "default": "montando",
-      "description": "Status da carga"
+      "default": "montando"
     },
     "motorista_id": {
       "type": "string",
-      "description": "ID do motorista (Vendedor)"
+      "description": "ID do motorista (Vendedor com papel=motorista)"
     },
     "motorista_nome": {
-      "type": "string",
-      "description": "Nome do motorista"
+      "type": "string"
     },
-    "rota_id": {
+    "ajudante_id": {
       "type": "string",
-      "description": "ID da Rota associada"
-    },
-    "rota_nome": {
-      "type": "string",
-      "description": "Nome da Rota"
-    },
-    "veiculo": {
-      "type": "string",
-      "description": "Placa ou identifica\u00e7\u00e3o do ve\u00edculo"
+      "description": "ID do ajudante (Vendedor)"
     },
     "ajudante_nome": {
+      "type": "string"
+    },
+    "veiculo_id": {
       "type": "string",
-      "description": "Nome do ajudante"
+      "description": "ID do Veiculo"
+    },
+    "veiculo_placa": {
+      "type": "string"
+    },
+    "rota_id": {
+      "type": "string"
+    },
+    "rota_nome": {
+      "type": "string"
     },
     "total_pedidos": {
-      "type": "number",
-      "description": "Quantidade de pedidos na carga"
+      "type": "number"
     },
     "total_volumes": {
-      "type": "number",
-      "description": "Total de volumes/caixas"
+      "type": "number"
     },
     "total_peso_kg": {
-      "type": "number",
-      "description": "Peso total em kg"
+      "type": "number"
     },
     "valor_total": {
-      "type": "number",
-      "description": "Valor total da carga (R$)"
+      "type": "number"
     },
-    "observacoes": {
-      "type": "string",
-      "description": "Observa\u00e7\u00f5es gerais"
+    "valor_entregue": {
+      "type": "number",
+      "description": "Valor efetivamente entregue (calculado no fechamento)"
+    },
+    "valor_devolvido": {
+      "type": "number"
     },
     "km_saida": {
-      "type": "number",
-      "description": "Quilometragem na sa\u00edda"
+      "type": "number"
     },
     "km_retorno": {
-      "type": "number",
-      "description": "Quilometragem no retorno"
+      "type": "number"
+    },
+    "observacoes": {
+      "type": "string"
     }
   },
   "required": [
