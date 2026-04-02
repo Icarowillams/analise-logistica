@@ -1,0 +1,98 @@
+{
+  "name": "Comodato",
+  "type": "object",
+  "properties": {
+    "numero_comodato": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "produto_id": {
+      "type": "string",
+      "description": "Produto/equipamento em comodato"
+    },
+    "produto_nome": {
+      "type": "string"
+    },
+    "descricao_equipamento": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o detalhada do equipamento"
+    },
+    "numero_serie": {
+      "type": "string"
+    },
+    "quantidade": {
+      "type": "number",
+      "default": 1
+    },
+    "data_entrega": {
+      "type": "string",
+      "format": "date"
+    },
+    "data_retirada_prevista": {
+      "type": "string",
+      "format": "date"
+    },
+    "data_retirada_real": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "retirado",
+        "extraviado",
+        "danificado",
+        "em_manutencao"
+      ],
+      "default": "ativo"
+    },
+    "condicao_entrega": {
+      "type": "string",
+      "enum": [
+        "novo",
+        "bom",
+        "regular",
+        "ruim"
+      ]
+    },
+    "condicao_retirada": {
+      "type": "string",
+      "enum": [
+        "novo",
+        "bom",
+        "regular",
+        "ruim",
+        "danificado"
+      ]
+    },
+    "valor_equipamento": {
+      "type": "number"
+    },
+    "observacoes": {
+      "type": "string"
+    },
+    "foto_entrega_url": {
+      "type": "string"
+    },
+    "foto_retirada_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "numero_comodato",
+    "cliente_id",
+    "data_entrega"
+  ]
+}

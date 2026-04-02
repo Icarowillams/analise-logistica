@@ -24,7 +24,12 @@ import {
   Shield,
   Languages,
   HelpCircle,
-  MapPin
+  MapPin,
+  PackageCheck,
+  Warehouse,
+  MonitorSpeaker,
+  AlertTriangle,
+  FileOutput
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
@@ -148,6 +153,20 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
           { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
+        ]
+      },
+      {
+        title: 'Logística',
+        icon: Warehouse,
+        submenu: [
+          { title: 'Montagem de Cargas', path: 'MontagemCargas' },
+          { title: 'Controle de Entregas', path: 'ControleEntregas' },
+          { title: 'Pedidos de Venda', path: 'ControlePedidosVenda' },
+          { title: 'Pedidos de Troca', path: 'ControlePedidosTroca' },
+          { title: 'Comodatos / Galeias', path: 'ControleComodatos' },
+          { title: 'Ocorrências Operacionais', path: 'OcorrenciasOperacionais' },
+          { title: 'Relatório Logístico', path: 'RelatorioLogistico' },
+          { title: 'Documentos Operacionais', path: 'DocumentosOperacionais' },
         ]
       }
     ];

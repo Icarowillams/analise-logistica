@@ -1,0 +1,114 @@
+{
+  "name": "PedidoVenda",
+  "type": "object",
+  "properties": {
+    "numero_pedido": {
+      "type": "string",
+      "description": "N\u00famero do pedido"
+    },
+    "numero_omie": {
+      "type": "string",
+      "description": "N\u00famero do pedido no Omie"
+    },
+    "data_pedido": {
+      "type": "string",
+      "format": "date"
+    },
+    "data_entrega_prevista": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "rascunho",
+        "confirmado",
+        "faturado",
+        "em_rota",
+        "entregue",
+        "cancelado",
+        "devolvido"
+      ],
+      "default": "rascunho"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do Cliente"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "cliente_cnpj_cpf": {
+      "type": "string"
+    },
+    "cliente_endereco": {
+      "type": "string"
+    },
+    "cliente_cidade": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "rota_id": {
+      "type": "string"
+    },
+    "rota_nome": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string",
+      "description": "ID da Carga onde est\u00e1 inserido"
+    },
+    "tabela_preco_id": {
+      "type": "string"
+    },
+    "plano_pagamento_id": {
+      "type": "string"
+    },
+    "plano_pagamento_nome": {
+      "type": "string"
+    },
+    "valor_produtos": {
+      "type": "number"
+    },
+    "valor_desconto": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_frete": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_total": {
+      "type": "number"
+    },
+    "numero_nota_fiscal": {
+      "type": "string"
+    },
+    "data_faturamento": {
+      "type": "string",
+      "format": "date"
+    },
+    "observacoes": {
+      "type": "string"
+    },
+    "origem": {
+      "type": "string",
+      "enum": [
+        "sistema",
+        "omie",
+        "importacao"
+      ],
+      "default": "sistema"
+    }
+  },
+  "required": [
+    "numero_pedido",
+    "data_pedido",
+    "cliente_id"
+  ]
+}

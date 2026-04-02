@@ -1,0 +1,79 @@
+{
+  "name": "EntregaRota",
+  "type": "object",
+  "properties": {
+    "carga_id": {
+      "type": "string"
+    },
+    "carga_numero": {
+      "type": "string"
+    },
+    "item_carga_id": {
+      "type": "string"
+    },
+    "pedido_venda_id": {
+      "type": "string"
+    },
+    "pedido_venda_numero": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "data_entrega": {
+      "type": "string",
+      "format": "date"
+    },
+    "hora_entrega": {
+      "type": "string",
+      "description": "Hor\u00e1rio da entrega HH:MM"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "entregue",
+        "parcial",
+        "nao_entregue",
+        "reagendado"
+      ],
+      "default": "pendente"
+    },
+    "motivo_nao_entrega": {
+      "type": "string"
+    },
+    "valor_entregue": {
+      "type": "number"
+    },
+    "volumes_entregues": {
+      "type": "number"
+    },
+    "volumes_devolvidos": {
+      "type": "number"
+    },
+    "assinatura_recebedor": {
+      "type": "string",
+      "description": "Nome de quem recebeu"
+    },
+    "foto_comprovante_url": {
+      "type": "string"
+    },
+    "latitude": {
+      "type": "number"
+    },
+    "longitude": {
+      "type": "number"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "carga_id",
+    "cliente_id",
+    "data_entrega"
+  ]
+}

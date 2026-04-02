@@ -1,0 +1,93 @@
+{
+  "name": "Carga",
+  "type": "object",
+  "properties": {
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero identificador da carga"
+    },
+    "data_montagem": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de montagem da carga"
+    },
+    "data_saida_prevista": {
+      "type": "string",
+      "format": "date",
+      "description": "Data prevista para sa\u00edda"
+    },
+    "data_saida_real": {
+      "type": "string",
+      "format": "date",
+      "description": "Data real de sa\u00edda"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "montando",
+        "aguardando_saida",
+        "em_rota",
+        "finalizada",
+        "cancelada"
+      ],
+      "default": "montando",
+      "description": "Status da carga"
+    },
+    "motorista_id": {
+      "type": "string",
+      "description": "ID do motorista (Vendedor)"
+    },
+    "motorista_nome": {
+      "type": "string",
+      "description": "Nome do motorista"
+    },
+    "rota_id": {
+      "type": "string",
+      "description": "ID da Rota associada"
+    },
+    "rota_nome": {
+      "type": "string",
+      "description": "Nome da Rota"
+    },
+    "veiculo": {
+      "type": "string",
+      "description": "Placa ou identifica\u00e7\u00e3o do ve\u00edculo"
+    },
+    "ajudante_nome": {
+      "type": "string",
+      "description": "Nome do ajudante"
+    },
+    "total_pedidos": {
+      "type": "number",
+      "description": "Quantidade de pedidos na carga"
+    },
+    "total_volumes": {
+      "type": "number",
+      "description": "Total de volumes/caixas"
+    },
+    "total_peso_kg": {
+      "type": "number",
+      "description": "Peso total em kg"
+    },
+    "valor_total": {
+      "type": "number",
+      "description": "Valor total da carga (R$)"
+    },
+    "observacoes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es gerais"
+    },
+    "km_saida": {
+      "type": "number",
+      "description": "Quilometragem na sa\u00edda"
+    },
+    "km_retorno": {
+      "type": "number",
+      "description": "Quilometragem no retorno"
+    }
+  },
+  "required": [
+    "numero_carga",
+    "data_montagem"
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "PedidoTroca",
+  "type": "object",
+  "properties": {
+    "numero_troca": {
+      "type": "string"
+    },
+    "data_troca": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "aberto",
+        "em_analise",
+        "aprovado",
+        "recusado",
+        "finalizado"
+      ],
+      "default": "aberto"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "troca",
+        "devolucao",
+        "bonificacao"
+      ],
+      "default": "troca"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string",
+      "description": "Carga de origem"
+    },
+    "pedido_venda_id": {
+      "type": "string",
+      "description": "Pedido de venda de origem"
+    },
+    "pedido_venda_numero": {
+      "type": "string"
+    },
+    "motivo_id": {
+      "type": "string",
+      "description": "ID do motivo (MotivoTroca)"
+    },
+    "motivo_descricao": {
+      "type": "string"
+    },
+    "valor_total": {
+      "type": "number"
+    },
+    "observacoes": {
+      "type": "string"
+    },
+    "aprovado_por": {
+      "type": "string"
+    },
+    "data_aprovacao": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "numero_troca",
+    "data_troca",
+    "cliente_id"
+  ]
+}

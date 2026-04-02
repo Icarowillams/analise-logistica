@@ -1,0 +1,47 @@
+{
+  "name": "ItemPedidoVenda",
+  "type": "object",
+  "properties": {
+    "pedido_venda_id": {
+      "type": "string",
+      "description": "ID do PedidoVenda"
+    },
+    "produto_id": {
+      "type": "string"
+    },
+    "produto_nome": {
+      "type": "string"
+    },
+    "produto_codigo": {
+      "type": "string"
+    },
+    "unidade_medida": {
+      "type": "string"
+    },
+    "quantidade": {
+      "type": "number"
+    },
+    "preco_unitario": {
+      "type": "number"
+    },
+    "percentual_desconto": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_desconto": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_total": {
+      "type": "number"
+    },
+    "observacao": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pedido_venda_id",
+    "produto_id",
+    "quantidade"
+  ]
+}

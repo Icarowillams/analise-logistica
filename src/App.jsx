@@ -13,6 +13,15 @@ import RelatorioMetasGerais from './pages/RelatorioMetasGerais';
 import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
 
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
+import MontagemCargas from './pages/MontagemCargas';
+import DetalheCarga from './pages/DetalheCarga';
+import ControlePedidosVenda from './pages/ControlePedidosVenda';
+import ControlePedidosTroca from './pages/ControlePedidosTroca';
+import ControleComodatos from './pages/ControleComodatos';
+import OcorrenciasOperacionais from './pages/OcorrenciasOperacionais';
+import RelatorioLogistico from './pages/RelatorioLogistico';
+import DocumentosOperacionais from './pages/DocumentosOperacionais';
+import ControleEntregas from './pages/ControleEntregas';
 import PreCadastros from './pages/PreCadastros';
 import SincronizarClientesOmie from './pages/SincronizarClientesOmie';
 import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
@@ -78,6 +87,15 @@ const AuthenticatedApp = () => {
       <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
       <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
       <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
+      <Route path="/MontagemCargas" element={<LayoutWrapper currentPageName="MontagemCargas"><MontagemCargas /></LayoutWrapper>} />
+      <Route path="/DetalheCarga" element={<LayoutWrapper currentPageName="DetalheCarga"><DetalheCarga /></LayoutWrapper>} />
+      <Route path="/ControlePedidosVenda" element={<LayoutWrapper currentPageName="ControlePedidosVenda"><ControlePedidosVenda /></LayoutWrapper>} />
+      <Route path="/ControlePedidosTroca" element={<LayoutWrapper currentPageName="ControlePedidosTroca"><ControlePedidosTroca /></LayoutWrapper>} />
+      <Route path="/ControleComodatos" element={<LayoutWrapper currentPageName="ControleComodatos"><ControleComodatos /></LayoutWrapper>} />
+      <Route path="/OcorrenciasOperacionais" element={<LayoutWrapper currentPageName="OcorrenciasOperacionais"><OcorrenciasOperacionais /></LayoutWrapper>} />
+      <Route path="/RelatorioLogistico" element={<LayoutWrapper currentPageName="RelatorioLogistico"><RelatorioLogistico /></LayoutWrapper>} />
+      <Route path="/DocumentosOperacionais" element={<LayoutWrapper currentPageName="DocumentosOperacionais"><DocumentosOperacionais /></LayoutWrapper>} />
+      <Route path="/ControleEntregas" element={<LayoutWrapper currentPageName="ControleEntregas"><ControleEntregas /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
