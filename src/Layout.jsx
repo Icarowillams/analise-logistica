@@ -160,6 +160,7 @@ export default function Layout({ children, currentPageName }) {
         icon: Warehouse,
         submenu: [
           { title: 'Montagem de Cargas', path: 'MontagemCargas' },
+          { title: 'Calculadora de Carga', path: 'CalculadoraCarga' },
           { title: 'Controle de Entregas', path: 'ControleEntregas' },
           { title: 'Pedidos de Venda', path: 'ControlePedidosVenda' },
           { title: 'Pedidos de Troca', path: 'ControlePedidosTroca' },

@@ -23,6 +23,7 @@ import RelatorioLogistico from './pages/RelatorioLogistico';
 import DocumentosOperacionais from './pages/DocumentosOperacionais';
 import ControleEntregas from './pages/ControleEntregas';
 import MonitoramentoGaleias from './pages/MonitoramentoGaleias';
+import CalculadoraCarga from './pages/CalculadoraCarga';
 import ControleRetornos from './pages/ControleRetornos';
 import ControleTrocas from './pages/ControleTrocas';
 import ControleCancelamentos from './pages/ControleCancelamentos';
@@ -103,6 +104,7 @@ const AuthenticatedApp = () => {
       <Route path="/RelatorioLogistico" element={<LayoutWrapper currentPageName="RelatorioLogistico"><RelatorioLogistico /></LayoutWrapper>} />
       <Route path="/DocumentosOperacionais" element={<LayoutWrapper currentPageName="DocumentosOperacionais"><DocumentosOperacionais /></LayoutWrapper>} />
       <Route path="/ControleEntregas" element={<LayoutWrapper currentPageName="ControleEntregas"><ControleEntregas /></LayoutWrapper>} />
+      <Route path="/CalculadoraCarga" element={<LayoutWrapper currentPageName="CalculadoraCarga"><CalculadoraCarga /></LayoutWrapper>} />
       <Route path="/MonitoramentoGaleias" element={<LayoutWrapper currentPageName="MonitoramentoGaleias"><MonitoramentoGaleias /></LayoutWrapper>} />
       <Route path="/ControleRetornos" element={<LayoutWrapper currentPageName="ControleRetornos"><ControleRetornos /></LayoutWrapper>} />
       <Route path="/ControleTrocas" element={<LayoutWrapper currentPageName="ControleTrocas"><ControleTrocas /></LayoutWrapper>} />
