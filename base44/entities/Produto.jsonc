@@ -1,17 +1,56 @@
 {
   "name": "Produto",
   "type": "object",
+  "description": "Entidade central de produtos \u2014 compartilhada entre Comercial e Log\u00edstica",
   "properties": {
     "codigo": {
       "type": "string",
       "description": "C\u00f3digo interno do produto"
     },
-    "nome": {
-      "type": "string"
+    "codigo_omie": {
+      "type": "string",
+      "description": "C\u00f3digo de integra\u00e7\u00e3o no Omie"
+    },
+    "codigo_integracao": {
+      "type": "string",
+      "description": "C\u00f3digo em outros sistemas externos"
     },
     "cod_barras": {
       "type": "string",
       "description": "C\u00f3digo de Barras (EAN/GTIN)"
+    },
+    "nome": {
+      "type": "string"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o detalhada do produto"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "produto",
+        "servico",
+        "equipamento_comodato",
+        "embalagem",
+        "bonificacao"
+      ],
+      "default": "produto",
+      "description": "Classifica\u00e7\u00e3o geral do produto"
+    },
+    "categoria_id": {
+      "type": "string"
+    },
+    "sub_categoria_id": {
+      "type": "string"
+    },
+    "unidade_medida_id": {
+      "type": "string",
+      "description": "Unidade de medida principal (UN, CX, KG, L...)"
+    },
+    "unidade_produto_id": {
+      "type": "string",
+      "description": "Tipo de produto (linha, fam\u00edlia)"
     },
     "ncm": {
       "type": "string",
@@ -21,59 +60,8 @@
       "type": "string",
       "description": "CEST (7 d\u00edgitos)"
     },
-    "categoria_id": {
-      "type": "string"
-    },
-    "sub_categoria_id": {
-      "type": "string"
-    },
     "imagem_url": {
       "type": "string"
-    },
-    "estoque_atual": {
-      "type": "number",
-      "default": 0
-    },
-    "estoque_minimo": {
-      "type": "number",
-      "default": 0,
-      "description": "Ponto de reposi\u00e7\u00e3o"
-    },
-    "unidade_medida_id": {
-      "type": "string"
-    },
-    "unidade_produto_id": {
-      "type": "string"
-    },
-    "peso": {
-      "type": "number",
-      "default": 0,
-      "description": "Peso unit\u00e1rio em kg"
-    },
-    "volume_m3": {
-      "type": "number",
-      "default": 0,
-      "description": "Volume unit\u00e1rio em m\u00b3 (para c\u00e1lculo de carga)"
-    },
-    "fator_caixa": {
-      "type": "number",
-      "default": 1,
-      "description": "Quantidade de unidades por caixa fechada"
-    },
-    "permite_fracionado": {
-      "type": "boolean",
-      "default": true,
-      "description": "Permite venda fracionada (abaixo de 1 caixa)"
-    },
-    "tipo": {
-      "type": "string",
-      "enum": [
-        "produto",
-        "servico",
-        "equipamento_comodato",
-        "embalagem"
-      ],
-      "default": "produto"
     },
     "status": {
       "type": "string",
@@ -83,9 +71,72 @@
       ],
       "default": "ativo"
     },
-    "omie_id": {
+    "peso": {
+      "type": "number",
+      "default": 0,
+      "description": "Peso unit\u00e1rio em kg"
+    },
+    "volume_m3": {
+      "type": "number",
+      "default": 0,
+      "description": "Volume unit\u00e1rio em m\u00b3 \u2014 usado no c\u00e1lculo de capacidade da carga"
+    },
+    "fator_caixa": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantidade de unidades por caixa fechada (ex: 12 UN por CX)"
+    },
+    "permite_fracionado": {
+      "type": "boolean",
+      "default": true,
+      "description": "Permite venda/entrega fracionada (abaixo de 1 caixa)"
+    },
+    "unidade_fracionada": {
       "type": "string",
-      "description": "ID do produto no Omie"
+      "description": "Unidade usada para venda fracionada (ex: UN quando o padr\u00e3o \u00e9 CX)"
+    },
+    "multiplo_carga": {
+      "type": "number",
+      "default": 1,
+      "description": "M\u00faltiplo m\u00ednimo para montagem de carga (ex: apenas em m\u00faltiplos de 6)"
+    },
+    "tipo_embalagem": {
+      "type": "string",
+      "enum": [
+        "caixa",
+        "galeia",
+        "fardo",
+        "saco",
+        "lata",
+        "pet",
+        "vidro",
+        "bag",
+        "outro"
+      ],
+      "description": "Tipo de embalagem \u2014 vincula com galeia/caixa quando aplic\u00e1vel"
+    },
+    "galeia_id": {
+      "type": "string",
+      "description": "ID do produto de embalagem/galeia associada a este produto (quando tipo_embalagem = galeia)"
+    },
+    "retornavel": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indica se a embalagem \u00e9 retorn\u00e1vel (galeia, vasilhame)"
+    },
+    "controla_estoque": {
+      "type": "boolean",
+      "default": true,
+      "description": "Define se o produto entra no controle de estoque"
+    },
+    "estoque_atual": {
+      "type": "number",
+      "default": 0
+    },
+    "estoque_minimo": {
+      "type": "number",
+      "default": 0,
+      "description": "Ponto de reposi\u00e7\u00e3o"
     }
   },
   "required": [
