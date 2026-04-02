@@ -72,6 +72,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [produtoIds, setProdutoIds] = useState([]);
   const [produtoModalOpen, setProdutoModalOpen] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
+  const [redeFilter, setRedeFilter] = useState('todas');
   const [cidadeSearch, setCidadeSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [sortField, setSortField] = useState('created_date');
@@ -115,6 +116,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Cliente.list(),
   });
 
+  const { data: redes = [] } = useQuery({
+    queryKey: ['redes-gerenciar'],
+    queryFn: () => base44.entities.Rede.list(),
+  });
+
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos-gerenciar'],
     queryFn: () => base44.entities.Produto.list(),
@@ -149,6 +155,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         cliente_codigo_base: cliente?.codigo || pedido.cliente_codigo,
         cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
+        rede_id: cliente?.rede_id || '',
         vendedor_id: cliente?.vendedor_id || '',
         vendedor_nome: vendedorCliente?.nome || '-',
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
@@ -172,16 +179,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (vendedorSearch.trim() || vendedorIds.length) c++;
     if (produtoSearch.trim() || produtoIds.length) c++;
     if (clienteSearch.trim()) c++;
+    if (redeFilter !== 'todas') c++;
     if (cidadeSearch.trim()) c++;
     return c;
-  }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteSearch, cidadeSearch]);
+  }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteSearch, redeFilter, cidadeSearch]);
 
   const clearAllFilters = () => {
     setSearch(''); setStatusFilter('todos'); setTipoFilter('todos');
     setEnvioInicio(''); setEnvioFim('');
     setVendedorSearch(''); setVendedorIds([]);
     setProdutoSearch(''); setProdutoIds([]);
-    setClienteSearch(''); setCidadeSearch('');
+    setClienteSearch(''); setRedeFilter('todas'); setCidadeSearch('');
   };
 
   // Filter and sort
@@ -265,6 +273,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.cliente_codigo_base || '').includes(cs)
       );
     }
+    // Rede
+    if (redeFilter !== 'todas') {
+      list = list.filter(p => p.rede_id === redeFilter);
+    }
     // Cidade (texto)
     if (cidadeSearch.trim()) {
       const ci = cidadeSearch.toLowerCase();
@@ -285,7 +297,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     });
 
     return list;
-  }, [pedidosComVendedorCliente, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, cidadeSearch, pedidoItems]);
+  }, [pedidosComVendedorCliente, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, redeFilter, cidadeSearch, pedidoItems]);
 
   // Verificar cancelamentos de pedidos faturados no Omie
   const syncFaturadosOmie = async () => {
@@ -550,7 +562,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       <div>
         <div className="space-y-1.5">
       {/* Filters - compact */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-1.5 p-2 bg-white border rounded-lg">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-10 gap-1.5 p-2 bg-white border rounded-lg">
         {/* Buscar geral */}
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
           <div className="relative">
@@ -605,6 +617,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
         {/* Cliente */}
         <div>
           <Input placeholder="Cliente..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="h-6 text-[10px]" />
+        </div>
+        {/* Rede */}
+        <div>
+          <Select value={redeFilter} onValueChange={setRedeFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Rede" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas Redes</SelectItem>
+              {redes.filter(r => r.status === 'ativo').map(rede => (
+                <SelectItem key={rede.id} value={rede.id}>{rede.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {/* Cidade */}
         <div>
