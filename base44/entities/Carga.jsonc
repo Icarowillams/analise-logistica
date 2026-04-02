@@ -1,11 +1,12 @@
 {
   "name": "Carga",
   "type": "object",
+  "description": "N\u00facleo da opera\u00e7\u00e3o log\u00edstica \u2014 montada a partir de pedidos, segue para faturamento e entrega",
   "properties": {
     "numero_carga": {
       "type": "string"
     },
-    "data_montagem": {
+    "data_carga": {
       "type": "string",
       "format": "date"
     },
@@ -24,31 +25,31 @@
     "status": {
       "type": "string",
       "enum": [
-        "montando",
-        "aguardando_saida",
+        "aberta",
+        "montagem",
+        "fechada",
+        "faturada",
         "em_rota",
-        "finalizada",
+        "entregue",
         "cancelada"
       ],
-      "default": "montando"
+      "default": "aberta",
+      "description": "Etapa atual da carga"
     },
     "motorista_id": {
-      "type": "string",
-      "description": "ID do motorista (Vendedor com papel=motorista)"
+      "type": "string"
     },
     "motorista_nome": {
       "type": "string"
     },
     "ajudante_id": {
-      "type": "string",
-      "description": "ID do ajudante (Vendedor)"
+      "type": "string"
     },
     "ajudante_nome": {
       "type": "string"
     },
     "veiculo_id": {
-      "type": "string",
-      "description": "ID do Veiculo"
+      "type": "string"
     },
     "veiculo_placa": {
       "type": "string"
@@ -59,17 +60,87 @@
     "rota_nome": {
       "type": "string"
     },
-    "total_pedidos": {
-      "type": "number"
+    "pedidos_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "IDs dos Pedidos vinculados a esta carga"
     },
-    "total_volumes": {
-      "type": "number"
+    "notas_fiscais": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "N\u00fameros das notas fiscais emitidas para esta carga"
+    },
+    "produtos_consolidados": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "produto_codigo": {
+            "type": "string"
+          },
+          "quantidade_total": {
+            "type": "number"
+          },
+          "unidade_medida": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "Resumo consolidado de todos os produtos da carga"
+    },
+    "produtos_faltantes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "quantidade_faltante": {
+            "type": "number"
+          }
+        }
+      },
+      "default": [],
+      "description": "Produtos que faltaram no momento da montagem ou confer\u00eancia"
+    },
+    "tem_falta_produto": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indicador de falta de produto \u2014 true se houver qualquer item em faltantes"
+    },
+    "total_pedidos": {
+      "type": "number",
+      "default": 0
+    },
+    "total_pacotes": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade total de pacotes/volumes na carga"
     },
     "total_peso_kg": {
-      "type": "number"
+      "type": "number",
+      "default": 0
     },
     "valor_total": {
-      "type": "number"
+      "type": "number",
+      "default": 0
     },
     "valor_entregue": {
       "type": "number",
@@ -90,6 +161,6 @@
   },
   "required": [
     "numero_carga",
-    "data_montagem"
+    "data_carga"
   ]
 }

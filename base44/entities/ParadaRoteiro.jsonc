@@ -1,23 +1,20 @@
 {
   "name": "ParadaRoteiro",
   "type": "object",
-  "description": "Parada individual dentro de uma execu\u00e7\u00e3o real de roteiro/carga \u2014 registra o que aconteceu em cada cliente",
+  "description": "Execu\u00e7\u00e3o real de cada parada/visita no roteiro de entregas",
   "properties": {
-    "carga_id": {
-      "type": "string",
-      "description": "Carga \u00e0 qual esta parada pertence (se log\u00edstica)"
-    },
     "roteiro_id": {
-      "type": "string",
-      "description": "Roteiro padr\u00e3o de origem (se visita comercial)"
+      "type": "string"
     },
-    "data": {
-      "type": "string",
-      "format": "date"
+    "carga_id": {
+      "type": "string"
     },
-    "ordem": {
-      "type": "number",
-      "description": "Posi\u00e7\u00e3o na sequ\u00eancia da rota"
+    "pedido_id": {
+      "type": "string",
+      "description": "Pedido vinculado a esta parada"
+    },
+    "pedido_numero": {
+      "type": "string"
     },
     "cliente_id": {
       "type": "string"
@@ -28,47 +25,100 @@
     "cliente_cidade": {
       "type": "string"
     },
-    "pedido_venda_id": {
-      "type": "string",
-      "description": "Pedido vinculado a esta parada"
+    "cliente_endereco": {
+      "type": "string"
     },
-    "tipo": {
+    "ordem": {
+      "type": "number",
+      "description": "Sequ\u00eancia da parada no roteiro"
+    },
+    "checkin_hora": {
       "type": "string",
-      "enum": [
-        "entrega",
-        "visita",
-        "troca",
-        "comodato",
-        "cobranca",
-        "prospeccao"
-      ],
-      "default": "entrega"
+      "description": "HH:MM \u2014 hor\u00e1rio de chegada"
+    },
+    "checkin_latitude": {
+      "type": "number"
+    },
+    "checkin_longitude": {
+      "type": "number"
+    },
+    "checkout_hora": {
+      "type": "string",
+      "description": "HH:MM \u2014 hor\u00e1rio de sa\u00edda"
+    },
+    "checkout_latitude": {
+      "type": "number"
+    },
+    "checkout_longitude": {
+      "type": "number"
+    },
+    "galeias_deixadas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          }
+        }
+      },
+      "default": [],
+      "description": "Galeias/embalagens deixadas neste cliente"
+    },
+    "galeias_recolhidas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          }
+        }
+      },
+      "default": [],
+      "description": "Galeias/embalagens recolhidas deste cliente"
     },
     "status": {
       "type": "string",
       "enum": [
         "pendente",
         "realizado",
+        "parcial",
         "nao_realizado",
         "reagendado"
       ],
       "default": "pendente"
     },
-    "hora_chegada": {
-      "type": "string",
-      "description": "HH:MM"
+    "motivo_nao_atendimento_id": {
+      "type": "string"
     },
-    "hora_saida": {
-      "type": "string",
-      "description": "HH:MM"
+    "motivo_nao_atendimento_descricao": {
+      "type": "string"
     },
-    "latitude": {
+    "reagendado_para": {
+      "type": "string",
+      "format": "date",
+      "description": "Data para reagendamento"
+    },
+    "valor_entregue": {
       "type": "number"
     },
-    "longitude": {
-      "type": "number"
+    "foto_comprovante_url": {
+      "type": "string"
     },
-    "motivo_nao_realizacao": {
+    "assinatura_recebedor": {
       "type": "string"
     },
     "observacoes": {
@@ -76,8 +126,8 @@
     }
   },
   "required": [
-    "data",
+    "roteiro_id",
     "cliente_id",
-    "tipo"
+    "ordem"
   ]
 }

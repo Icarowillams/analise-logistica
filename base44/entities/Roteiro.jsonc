@@ -1,91 +1,108 @@
 {
   "name": "Roteiro",
   "type": "object",
-  "description": "Roteiro padr\u00e3o de visita/entrega por funcion\u00e1rio e dia da semana",
+  "description": "Roteiro de entregas derivado da opera\u00e7\u00e3o log\u00edstica \u2014 conectado a cargas e paradas",
   "properties": {
-    "vendedor_id": {
+    "data": {
       "type": "string",
-      "description": "ID do funcion\u00e1rio respons\u00e1vel"
+      "format": "date"
     },
-    "vendedor_nome": {
+    "motorista_id": {
       "type": "string"
     },
-    "dia_semana": {
-      "type": "string",
-      "enum": [
-        "segunda-feira",
-        "terca-feira",
-        "quarta-feira",
-        "quinta-feira",
-        "sexta-feira",
-        "sabado",
-        "domingo"
-      ]
+    "motorista_nome": {
+      "type": "string"
     },
-    "tipo": {
+    "motorista_email": {
+      "type": "string"
+    },
+    "veiculo_id": {
+      "type": "string"
+    },
+    "veiculo_placa": {
+      "type": "string"
+    },
+    "carga_id": {
       "type": "string",
-      "enum": [
-        "visita_comercial",
-        "entrega",
-        "misto"
-      ],
-      "default": "visita_comercial",
-      "description": "Finalidade do roteiro"
+      "description": "Carga de origem deste roteiro"
+    },
+    "carga_numero": {
+      "type": "string"
+    },
+    "rota_id": {
+      "type": "string"
+    },
+    "rota_nome": {
+      "type": "string"
     },
     "clientes_ids": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "default": []
+      "default": [],
+      "description": "IDs dos clientes na sequ\u00eancia de entrega"
     },
-    "clientes_detalhes": {
+    "total_galeias_saida": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade total de galeias que sa\u00edram na carga"
+    },
+    "tipos_galeias_saida": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "cliente_id": {
+          "produto_id": {
             "type": "string"
           },
-          "cliente_nome": {
+          "produto_nome": {
             "type": "string"
           },
-          "nome_fantasia": {
-            "type": "string"
-          },
-          "cliente_codigo": {
-            "type": "string"
-          },
-          "cliente_cidade": {
-            "type": "string"
-          },
-          "ordem": {
+          "quantidade": {
             "type": "number"
           }
         }
       },
-      "default": []
+      "default": [],
+      "description": "Detalhamento por tipo de galeia na sa\u00edda"
+    },
+    "total_paradas": {
+      "type": "number",
+      "default": 0
+    },
+    "paradas_realizadas": {
+      "type": "number",
+      "default": 0
+    },
+    "paradas_nao_realizadas": {
+      "type": "number",
+      "default": 0
     },
     "status": {
       "type": "string",
       "enum": [
-        "planejado",
-        "ativo",
-        "pausado",
-        "concluido"
+        "pendente",
+        "em_andamento",
+        "finalizado",
+        "cancelado"
       ],
-      "default": "planejado"
+      "default": "pendente"
     },
-    "ativo": {
-      "type": "boolean",
-      "default": true
+    "hora_inicio": {
+      "type": "string",
+      "description": "HH:MM \u2014 hora de sa\u00edda real"
+    },
+    "hora_fim": {
+      "type": "string",
+      "description": "HH:MM \u2014 hora de retorno real"
     },
     "observacoes": {
       "type": "string"
     }
   },
   "required": [
-    "vendedor_id",
-    "dia_semana"
+    "data",
+    "motorista_id"
   ]
 }
