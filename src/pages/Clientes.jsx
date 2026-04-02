@@ -397,8 +397,10 @@ export default function Clientes() {
     }
     
     // CPF/CNPJ: armazenar apenas dígitos (Omie rejeita formatado em alguns casos)
-    if (dataToSave.cpf_cnpj) {
-      dataToSave.cpf_cnpj = dataToSave.cpf_cnpj.replace(/\D/g, '');
+    // e renomear cpf_cnpj → cnpj_cpf (nome real da entidade Cliente)
+    if (dataToSave.cpf_cnpj !== undefined) {
+      dataToSave.cnpj_cpf = (dataToSave.cpf_cnpj || '').replace(/\D/g, '');
+      delete dataToSave.cpf_cnpj;
     }
     
     // Razão social: max 60 chars (limite Omie)
@@ -610,6 +612,12 @@ export default function Clientes() {
         rota_id: findId(rotas, item.rota),
         status: normalizedStatus
       };
+
+      // Renomear cpf_cnpj → cnpj_cpf (nome real da entidade Cliente)
+      if (clienteData.cpf_cnpj !== undefined) {
+        clienteData.cnpj_cpf = clienteData.cpf_cnpj;
+        delete clienteData.cpf_cnpj;
+      }
 
       // Remove temporary name fields
       delete clienteData.plano_pagamento;
