@@ -2,64 +2,71 @@
   "name": "Cliente",
   "type": "object",
   "properties": {
-    "codigo": {
+    "codigo_interno": {
       "type": "string",
-      "description": "C\u00f3digo interno do cliente"
+      "description": "C\u00f3digo interno do cliente no sistema"
+    },
+    "codigo_omie": {
+      "type": "string",
+      "description": "C\u00f3digo de integra\u00e7\u00e3o no Omie"
+    },
+    "codigo_integracao": {
+      "type": "string",
+      "description": "C\u00f3digo em outros sistemas externos"
+    },
+    "tipo_pessoa": {
+      "type": "string",
+      "enum": [
+        "juridica",
+        "fisica"
+      ],
+      "default": "juridica"
     },
     "razao_social": {
       "type": "string",
-      "description": "Raz\u00e3o social do cliente"
+      "description": "Raz\u00e3o social ou nome completo (PF)"
     },
     "nome_fantasia": {
-      "type": "string",
-      "description": "Nome fantasia"
+      "type": "string"
     },
-    "cpf_cnpj": {
-      "type": "string",
-      "description": "CPF ou CNPJ do cliente"
+    "cnpj_cpf": {
+      "type": "string"
     },
     "inscricao_estadual": {
+      "type": "string"
+    },
+    "inscricao_municipal": {
+      "type": "string"
+    },
+    "cnae": {
       "type": "string",
-      "description": "Inscri\u00e7\u00e3o Estadual do cliente"
+      "description": "C\u00f3digo CNAE principal da atividade"
     },
     "email": {
+      "type": "string"
+    },
+    "email_nfe": {
       "type": "string",
-      "description": "Email do cliente para NF-e",
-      "default": "nfe@paoemel.com.br"
+      "description": "Email espec\u00edfico para envio de NF-e"
     },
     "telefone": {
       "type": "string"
     },
-    "modalidade_pagamento_id": {
+    "telefone_2": {
       "type": "string"
     },
-    "plano_pagamento_id": {
+    "whatsapp": {
       "type": "string"
     },
-    "segmento_id": {
+    "site": {
       "type": "string"
     },
-    "rede_id": {
-      "type": "string"
-    },
-    "vendedor_id": {
+    "contato_nome": {
       "type": "string",
-      "description": "ID do vendedor/representante respons\u00e1vel"
+      "description": "Nome do respons\u00e1vel / contato principal"
     },
-    "motorista_id": {
-      "type": "string",
-      "description": "ID do motorista respons\u00e1vel pela entrega habitual"
-    },
-    "supervisor_id": {
+    "cep": {
       "type": "string"
-    },
-    "rota_id": {
-      "type": "string",
-      "description": "ID da Rota de entrega"
-    },
-    "tabela_id": {
-      "type": "string",
-      "description": "ID da tabela de pre\u00e7os vinculada"
     },
     "endereco": {
       "type": "string"
@@ -79,14 +86,57 @@
     "estado": {
       "type": "string"
     },
-    "cep": {
-      "type": "string"
-    },
     "latitude": {
       "type": "number"
     },
     "longitude": {
       "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo",
+        "prospecto",
+        "bloqueado"
+      ],
+      "default": "ativo"
+    },
+    "bloquear_faturamento": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bloqueia emiss\u00e3o de pedidos/NF para este cliente"
+    },
+    "motivo_bloqueio": {
+      "type": "string"
+    },
+    "segmento_id": {
+      "type": "string"
+    },
+    "rede_id": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string",
+      "description": "Vendedor/representante respons\u00e1vel"
+    },
+    "supervisor_id": {
+      "type": "string"
+    },
+    "motorista_id": {
+      "type": "string",
+      "description": "Motorista padr\u00e3o de entrega"
+    },
+    "rota_id": {
+      "type": "string",
+      "description": "Rota de entrega padr\u00e3o"
+    },
+    "tabela_id": {
+      "type": "string",
+      "description": "Tabela de pre\u00e7os vinculada"
+    },
+    "plano_pagamento_id": {
+      "type": "string"
     },
     "janela_entrega_inicio": {
       "type": "string",
@@ -110,40 +160,40 @@
           "domingo"
         ]
       },
+      "default": [],
       "description": "Dias da semana em que aceita entrega"
+    },
+    "observacoes_logistica": {
+      "type": "string",
+      "description": "Instru\u00e7\u00f5es espec\u00edficas para entrega (portaria, acesso, etc.)"
+    },
+    "estoque_comodatos": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade atual de galeias/comodatos no cliente"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Tags livres para segmenta\u00e7\u00e3o e filtros"
+    },
+    "observacoes": {
+      "type": "string"
     },
     "data_primeiro_contato": {
       "type": "string",
       "format": "date"
     },
-    "status": {
-      "type": "string",
-      "enum": [
-        "ativo",
-        "inativo",
-        "prospecto",
-        "bloqueado"
-      ],
-      "default": "ativo"
-    },
-    "motivo_bloqueio": {
-      "type": "string"
-    },
     "pre_cadastro": {
       "type": "boolean",
       "default": false
-    },
-    "observacoes_logistica": {
-      "type": "string",
-      "description": "Obs espec\u00edficas para entrega (portaria, acesso, etc.)"
-    },
-    "omie_id": {
-      "type": "string",
-      "description": "ID do cliente no Omie"
     }
   },
   "required": [
     "razao_social",
-    "cpf_cnpj"
+    "cnpj_cpf"
   ]
 }
