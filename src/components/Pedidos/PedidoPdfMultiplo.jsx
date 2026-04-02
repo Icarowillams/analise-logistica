@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -187,32 +187,43 @@ function PedidoPageContent({ pedido, items, empresa }) {
 
 export default function PedidoPdfMultiplo({ pedidoIds, onVoltar }) {
   const printRef = useRef();
-  const [loading, setLoading] = useState(true);
-  const [pedidosData, setPedidosData] = useState([]);
 
   const { data: empresas = [] } = useQuery({
     queryKey: ['empresa-pdf'],
     queryFn: () => base44.entities.Empresa.list()
   });
+
+  const { data: pedidos = [], isLoading: loadingPedidos } = useQuery({
+    queryKey: ['pedido-pdf-multiplo-pedidos', pedidoIds.join(',')],
+    queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
+    enabled: pedidoIds.length > 0,
+  });
+
+  const { data: allItems = [], isLoading: loadingItems } = useQuery({
+    queryKey: ['pedido-pdf-multiplo-items'],
+    queryFn: () => base44.entities.PedidoItem.list('-created_date', 10000),
+    enabled: pedidoIds.length > 0,
+  });
+
   const empresa = empresas[0];
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      const results = [];
-      for (const id of pedidoIds) {
-        const pedidos = await base44.entities.Pedido.filter({});
-        const pedido = pedidos.find(p => p.id === id);
-        if (pedido) {
-          const items = await base44.entities.PedidoItem.filter({ pedido_id: id });
-          results.push({ pedido, items });
-        }
-      }
-      setPedidosData(results);
-      setLoading(false);
-    };
-    if (pedidoIds.length > 0) fetchAll();
-  }, [pedidoIds]);
+  const pedidosData = useMemo(() => {
+    if (!pedidoIds.length) return [];
+
+    return pedidoIds
+      .map((id) => {
+        const pedido = pedidos.find((p) => p.id === id);
+        if (!pedido) return null;
+
+        return {
+          pedido,
+          items: allItems.filter((item) => item.pedido_id === id),
+        };
+      })
+      .filter(Boolean);
+  }, [pedidoIds, pedidos, allItems]);
+
+  const loading = loadingPedidos || loadingItems;
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -244,7 +255,7 @@ export default function PedidoPdfMultiplo({ pedidoIds, onVoltar }) {
       </div>
 
       <div ref={printRef} className="bg-white border rounded-xl shadow-sm max-w-4xl mx-auto" style={{ fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#000' }}>
-        {pedidosData.map(({ pedido, items }, idx) => (
+        {pedidosData.map(({ pedido, items }) => (
           <PedidoPageContent key={pedido.id} pedido={pedido} items={items} empresa={empresa} />
         ))}
       </div>
