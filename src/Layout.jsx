@@ -167,6 +167,13 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Ocorrências Operacionais', path: 'OcorrenciasOperacionais' },
           { title: 'Relatório Logístico', path: 'RelatorioLogistico' },
           { title: 'Documentos Operacionais', path: 'DocumentosOperacionais' },
+          { title: 'Monitoramento de Galeias', path: 'MonitoramentoGaleias' },
+          { title: 'Retornos', path: 'ControleRetornos' },
+          { title: 'Trocas Logísticas', path: 'ControleTrocas' },
+          { title: 'Cancelamentos', path: 'ControleCancelamentos' },
+          { title: 'Divergências', path: 'ControleDivergencias' },
+          { title: 'Transferências', path: 'ControleTransferencias' },
+          { title: 'Acerto de Caixa', path: 'AcertoCaixa' },
         ]
       }
     ];
