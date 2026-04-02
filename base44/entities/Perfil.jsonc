@@ -1,0 +1,89 @@
+{
+  "name": "Perfil",
+  "type": "object",
+  "description": "Perfis/cargos do sistema \u2014 define menus, telas e permiss\u00f5es por papel",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Ex: Administrador, Auxiliar de Expedi\u00e7\u00e3o, Motorista"
+    },
+    "codigo": {
+      "type": "string",
+      "enum": [
+        "administrador",
+        "auxiliar_expedicao",
+        "motorista",
+        "supervisor",
+        "vendedor",
+        "gerente"
+      ],
+      "description": "C\u00f3digo padronizado do perfil"
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "blocos_acesso": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "cadastros",
+          "pedidos",
+          "montagem_carga",
+          "faturamento",
+          "entrega_roteiro",
+          "ocorrencias_pos_entrega",
+          "relatorios",
+          "configuracoes"
+        ]
+      },
+      "default": [],
+      "description": "Blocos funcionais vis\u00edveis para este perfil"
+    },
+    "permissoes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "criar_pedido",
+          "editar_pedido",
+          "cancelar_pedido",
+          "montar_carga",
+          "fechar_carga",
+          "faturar_carga",
+          "registrar_entrega",
+          "registrar_troca",
+          "registrar_retorno",
+          "aprovar_cancelamento",
+          "aprovar_troca",
+          "ver_relatorios",
+          "exportar_dados",
+          "gerenciar_usuarios",
+          "configurar_sistema"
+        ]
+      },
+      "default": [],
+      "description": "Permiss\u00f5es granulares do perfil"
+    },
+    "menus_visiveis": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lista de paths/p\u00e1ginas vis\u00edveis para este perfil"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    }
+  },
+  "required": [
+    "nome",
+    "codigo"
+  ]
+}

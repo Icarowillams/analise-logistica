@@ -1,0 +1,33 @@
+{
+  "name": "SaldoGaleia",
+  "type": "object",
+  "description": "Saldo atual de galeias/comodatos por cliente \u2014 atualizado a cada movimenta\u00e7\u00e3o",
+  "properties": {
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "tipo_galeia_id": {
+      "type": "string"
+    },
+    "tipo_galeia_nome": {
+      "type": "string",
+      "description": "FORNO NOBRE, SUPER CAIXA, CEASA, etc."
+    },
+    "saldo_atual": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de galeias atualmente no cliente"
+    },
+    "ultima_atualizacao": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "cliente_id",
+    "tipo_galeia_id"
+  ]
+}

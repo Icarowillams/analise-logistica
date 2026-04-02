@@ -1,0 +1,73 @@
+{
+  "name": "MovimentacaoGaleia",
+  "type": "object",
+  "description": "Registro de cada movimenta\u00e7\u00e3o de galeia \u2014 base para saldo por cliente, dia e motorista",
+  "properties": {
+    "data": {
+      "type": "string",
+      "format": "date"
+    },
+    "tipo_movimento": {
+      "type": "string",
+      "enum": [
+        "deixada",
+        "recolhida",
+        "ajuste_manual",
+        "perda",
+        "quebra"
+      ],
+      "description": "Tipo de movimenta\u00e7\u00e3o"
+    },
+    "tipo_galeia_id": {
+      "type": "string"
+    },
+    "tipo_galeia_nome": {
+      "type": "string"
+    },
+    "quantidade": {
+      "type": "number"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "motorista_id": {
+      "type": "string"
+    },
+    "motorista_nome": {
+      "type": "string"
+    },
+    "roteiro_id": {
+      "type": "string"
+    },
+    "parada_roteiro_id": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string"
+    },
+    "carga_numero": {
+      "type": "string"
+    },
+    "saldo_anterior": {
+      "type": "number",
+      "description": "Saldo do cliente antes desta movimenta\u00e7\u00e3o"
+    },
+    "saldo_posterior": {
+      "type": "number",
+      "description": "Saldo do cliente ap\u00f3s esta movimenta\u00e7\u00e3o"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "tipo_movimento",
+    "tipo_galeia_id",
+    "cliente_id",
+    "quantidade"
+  ]
+}

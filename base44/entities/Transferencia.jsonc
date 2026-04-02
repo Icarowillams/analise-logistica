@@ -1,56 +1,12 @@
 {
   "name": "Transferencia",
   "type": "object",
-  "description": "Transfer\u00eancia de pedidos entre cargas, rotas ou motoristas",
+  "description": "Transfer\u00eancia/reenvio de NF para outro cliente ou data",
   "properties": {
     "numero_transferencia": {
       "type": "string"
     },
-    "data_transferencia": {
-      "type": "string",
-      "format": "date"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "solicitada",
-        "aprovada",
-        "executada",
-        "cancelada"
-      ],
-      "default": "solicitada"
-    },
-    "tipo": {
-      "type": "string",
-      "enum": [
-        "entre_cargas",
-        "entre_motoristas",
-        "entre_rotas"
-      ],
-      "default": "entre_cargas"
-    },
-    "pedido_venda_id": {
-      "type": "string"
-    },
-    "pedido_venda_numero": {
-      "type": "string"
-    },
-    "carga_origem_id": {
-      "type": "string"
-    },
-    "carga_destino_id": {
-      "type": "string"
-    },
-    "motorista_origem_id": {
-      "type": "string"
-    },
-    "motorista_destino_id": {
-      "type": "string"
-    },
-    "rota_origem_id": {
-      "type": "string"
-    },
-    "rota_destino_id": {
+    "numero_nf": {
       "type": "string"
     },
     "cliente_id": {
@@ -59,18 +15,36 @@
     "cliente_nome": {
       "type": "string"
     },
-    "motivo": {
+    "carga_id": {
       "type": "string"
     },
-    "solicitado_por_id": {
+    "pedido_id": {
       "type": "string"
     },
-    "aprovado_por_id": {
+    "pedido_numero": {
       "type": "string"
     },
-    "data_aprovacao": {
+    "valor": {
+      "type": "number"
+    },
+    "data_reenvio": {
+      "type": "string",
+      "format": "date",
+      "description": "Data prevista para reenvio"
+    },
+    "data_efetivado": {
       "type": "string",
       "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "agendado",
+        "efetivado",
+        "cancelado"
+      ],
+      "default": "pendente"
     },
     "observacoes": {
       "type": "string"
@@ -78,7 +52,7 @@
   },
   "required": [
     "numero_transferencia",
-    "data_transferencia",
-    "tipo"
+    "data_reenvio",
+    "cliente_id"
   ]
 }

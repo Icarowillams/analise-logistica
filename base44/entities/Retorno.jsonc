@@ -1,14 +1,10 @@
 {
-  "name": "Troca",
+  "name": "Retorno",
   "type": "object",
-  "description": "Registro de troca de produto em campo",
+  "description": "Registro de retorno de mercadoria \u2014 NF devolvida ao estoque",
   "properties": {
-    "numero_troca": {
+    "numero_retorno": {
       "type": "string"
-    },
-    "data_troca": {
-      "type": "string",
-      "format": "date"
     },
     "carga_id": {
       "type": "string"
@@ -34,11 +30,24 @@
     "cliente_nome": {
       "type": "string"
     },
-    "pedido_id": {
-      "type": "string"
+    "numero_nf": {
+      "type": "string",
+      "description": "N\u00famero da nota fiscal retornada"
     },
-    "pedido_numero": {
-      "type": "string"
+    "data_emissao_nf": {
+      "type": "string",
+      "format": "date"
+    },
+    "data_retorno": {
+      "type": "string",
+      "format": "date"
+    },
+    "horario_retorno": {
+      "type": "string",
+      "description": "HH:MM"
+    },
+    "valor_retorno": {
+      "type": "number"
     },
     "motivo_id": {
       "type": "string"
@@ -46,7 +55,7 @@
     "motivo_descricao": {
       "type": "string"
     },
-    "produtos_troca": {
+    "produtos_retornados": {
       "type": "array",
       "items": {
         "type": "object",
@@ -67,29 +76,14 @@
       },
       "default": []
     },
-    "valor_total": {
-      "type": "number"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "registrada",
-        "aprovada",
-        "recusada",
-        "finalizada"
-      ],
-      "default": "registrada"
-    },
-    "aprovado_por": {
-      "type": "string"
-    },
     "observacoes": {
       "type": "string"
     }
   },
   "required": [
-    "numero_troca",
-    "data_troca",
-    "cliente_id"
+    "numero_retorno",
+    "carga_id",
+    "cliente_id",
+    "data_retorno"
   ]
 }
