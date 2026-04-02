@@ -301,7 +301,7 @@ export default function Clientes() {
       codigo: item.codigo || '',
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
-      cpf_cnpj: item.cpf_cnpj || item.cnpj || '',
+      cpf_cnpj: item.cnpj_cpf || '',
       inscricao_estadual: item.inscricao_estadual || '',
       email: item.email || 'nfe@paoemel.com.br',
       endereco: item.endereco || '',
