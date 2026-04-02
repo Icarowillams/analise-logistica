@@ -1,48 +1,66 @@
 {
   "name": "PedidoItem",
   "type": "object",
+  "description": "Item vinculado a um Pedido \u2014 serve para vendas, trocas e devolu\u00e7\u00f5es",
   "properties": {
     "pedido_id": {
       "type": "string",
-      "description": "ID do pedido"
+      "description": "ID do Pedido pai"
     },
     "produto_id": {
-      "type": "string",
-      "description": "ID do produto"
+      "type": "string"
     },
     "produto_codigo": {
-      "type": "string",
-      "description": "C\u00f3digo do produto"
+      "type": "string"
     },
     "produto_nome": {
-      "type": "string",
-      "description": "Nome do produto"
+      "type": "string"
     },
-    "quantidade": {
-      "type": "number",
-      "description": "Quantidade"
+    "produto_descricao": {
+      "type": "string"
     },
-    "valor_unitario": {
+    "unidade_medida": {
+      "type": "string"
+    },
+    "quantidade_pedida": {
+      "type": "number"
+    },
+    "quantidade_entregue": {
       "type": "number",
-      "description": "Valor unit\u00e1rio"
+      "description": "Preenchido no fechamento da entrega"
+    },
+    "quantidade_devolvida": {
+      "type": "number",
+      "default": 0
+    },
+    "preco_unitario": {
+      "type": "number"
+    },
+    "percentual_desconto": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_desconto": {
+      "type": "number",
+      "default": 0
     },
     "valor_total": {
-      "type": "number",
-      "description": "Valor total (qtde x unit)"
+      "type": "number"
     },
     "motivo_troca_id": {
       "type": "string",
-      "description": "ID do motivo da troca (apenas para pedidos de troca)"
+      "description": "Motivo de troca/devolu\u00e7\u00e3o (quando aplic\u00e1vel)"
     },
     "motivo_troca_descricao": {
-      "type": "string",
-      "description": "Descri\u00e7\u00e3o do motivo da troca"
+      "type": "string"
+    },
+    "observacao": {
+      "type": "string"
     }
   },
   "required": [
     "pedido_id",
     "produto_id",
-    "quantidade",
-    "valor_unitario"
+    "quantidade_pedida"
   ]
 }

@@ -1,14 +1,26 @@
 {
   "name": "Veiculo",
   "type": "object",
+  "description": "Ve\u00edculo de entrega \u2014 base para carga, roteiro e custo operacional",
   "properties": {
     "placa": {
-      "type": "string",
-      "description": "Placa do ve\u00edculo"
+      "type": "string"
     },
     "descricao": {
       "type": "string",
       "description": "Ex: VUC Iveco Daily Branco"
+    },
+    "marca": {
+      "type": "string"
+    },
+    "modelo": {
+      "type": "string"
+    },
+    "ano": {
+      "type": "number"
+    },
+    "cor": {
+      "type": "string"
     },
     "tipo": {
       "type": "string",
@@ -25,16 +37,11 @@
       ],
       "default": "vuc"
     },
-    "marca": {
-      "type": "string"
+    "motorista_padrao_id": {
+      "type": "string",
+      "description": "ID do Motorista padr\u00e3o deste ve\u00edculo"
     },
-    "modelo": {
-      "type": "string"
-    },
-    "ano": {
-      "type": "number"
-    },
-    "cor": {
+    "motorista_padrao_nome": {
       "type": "string"
     },
     "capacidade_peso_kg": {
@@ -47,11 +54,32 @@
     },
     "capacidade_caixas": {
       "type": "number",
-      "description": "Capacidade em caixas (refer\u00eancia operacional)"
+      "description": "Capacidade referencial em caixas"
     },
-    "motorista_padrao_id": {
+    "horario_inicio": {
       "type": "string",
-      "description": "ID do motorista padr\u00e3o deste ve\u00edculo"
+      "description": "Hor\u00e1rio de in\u00edcio de opera\u00e7\u00e3o (HH:MM)"
+    },
+    "horario_fim": {
+      "type": "string",
+      "description": "Hor\u00e1rio de fim de opera\u00e7\u00e3o (HH:MM)"
+    },
+    "dias_operacao": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "segunda",
+          "terca",
+          "quarta",
+          "quinta",
+          "sexta",
+          "sabado",
+          "domingo"
+        ]
+      },
+      "default": [],
+      "description": "Dias da semana em que o ve\u00edculo opera"
     },
     "status": {
       "type": "string",
@@ -66,15 +94,16 @@
     "km_atual": {
       "type": "number"
     },
-    "ultima_revisao_km": {
-      "type": "number"
+    "data_ultima_revisao": {
+      "type": "string",
+      "format": "date"
     },
     "proxima_revisao_km": {
       "type": "number"
     },
-    "data_ultima_revisao": {
-      "type": "string",
-      "format": "date"
+    "ativo": {
+      "type": "boolean",
+      "default": true
     },
     "observacoes": {
       "type": "string"
