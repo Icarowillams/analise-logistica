@@ -471,7 +471,7 @@ export default function PainelGestorVisita() {
         </TabsContent>
 
         <TabsContent value="visitas" className="space-y-4">
-          <VisitasDoDia visitas={visitas} vendedoresMap={vendedoresMap} clientesMap={clientesMap} />
+          <VisitasDoDia visitas={visitas} vendedoresMap={vendedoresMap} clientesMap={clientesMap} clientesMapByCodigo={clientesMapByCodigo} />
         </TabsContent>
 
         <TabsContent value="pendentes" className="space-y-4">
@@ -1352,7 +1352,7 @@ function ClientesList({ clientes, tipo }) {
   );
 }
 
-function VisitasDoDia({ visitas, vendedoresMap, clientesMap }) {
+function VisitasDoDia({ visitas, vendedoresMap, clientesMap, clientesMapByCodigo }) {
   const hoje = new Date().toISOString().split('T')[0];
   const [filtroVendedor, setFiltroVendedor] = useState('todos');
   
