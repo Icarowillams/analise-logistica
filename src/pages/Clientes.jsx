@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -83,23 +83,20 @@ export default function Clientes() {
     queryFn: () => base44.entities.TabelaPreco.list()
   });
 
-  const reservarCodigoCliente = async () => {
-    try {
-      const response = await base44.functions.invoke('reservarCodigoCliente', {});
-      const codigoReservado = response.data?.codigo || '';
-      if (!codigoReservado) throw new Error('Código vazio retornado');
-      setFormData(prev => ({ ...prev, codigo: codigoReservado }));
-    } catch (err) {
-      console.error('Erro ao reservar código:', err);
-      toast.error('Erro ao gerar código automático. Tente novamente ou informe manualmente.');
-    }
-  };
+  const { data: todosClientes = [] } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => base44.entities.Cliente.list()
+  });
 
-  useEffect(() => {
-    if (isEditing && !selected && !formData.codigo) {
-      reservarCodigoCliente();
-    }
-  }, [isEditing, selected, formData.codigo]);
+  // Calcula o maior código numérico já cadastrado
+  const ultimoCodigo = useMemo(() => {
+    let maior = 0;
+    todosClientes.forEach(c => {
+      const num = parseInt(String(c.codigo || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > maior) maior = num;
+    });
+    return maior > 0 ? String(maior) : '—';
+  }, [todosClientes]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Cliente.create(data),
@@ -441,41 +438,21 @@ export default function Clientes() {
       }
     }
     
-    // Gerar código automaticamente se o cliente ainda não tem código:
-    // 1) Novo cliente (sem selected) → sempre gerar
-    // 2) Pré-cadastro sendo ativado (sem código) → gerar ao ativar
-    const precisaGerarCodigo = (!selected && !dataToSave.codigo) || 
-      (selected && !selected.codigo && !dataToSave.codigo);
+    // Código: apenas trim, mantém o que o usuário digitou (não impede duplicatas)
+    if (dataToSave.codigo) {
+      dataToSave.codigo = String(dataToSave.codigo).trim();
+    }
 
-    const salvar = async () => {
-      if (precisaGerarCodigo) {
-        try {
-          const response = await base44.functions.invoke('reservarCodigoCliente', {});
-          const codigoGerado = response.data?.codigo || '';
-          if (!codigoGerado) {
-            toast.error('Erro ao gerar código automático. Tente novamente.');
-            return;
-          }
-          dataToSave.codigo = codigoGerado;
-          toast.info(`Código ${codigoGerado} gerado automaticamente.`);
-        } catch (err) {
-          toast.error('Erro ao gerar código: ' + err.message);
-          return;
-        }
-      }
+    // Se era pré-cadastro e está sendo ativado, limpar flag
+    if (selected?.pre_cadastro && dataToSave.status === 'ativo') {
+      dataToSave.pre_cadastro = false;
+    }
 
-      // Se era pré-cadastro e está sendo ativado, limpar flag
-      if (selected?.pre_cadastro && dataToSave.status === 'ativo') {
-        dataToSave.pre_cadastro = false;
-      }
-
-      if (selected) {
-        updateMutation.mutate({ id: selected.id, data: dataToSave });
-      } else {
-        createMutation.mutate(dataToSave);
-      }
-    };
-    salvar();
+    if (selected) {
+      updateMutation.mutate({ id: selected.id, data: dataToSave });
+    } else {
+      createMutation.mutate(dataToSave);
+    }
   };
 
   const handleBulkImport = async (data) => {
@@ -1013,13 +990,19 @@ export default function Clientes() {
             <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <div>
-                   <Label>Código</Label>
-                   <Input
-                     value={formData.codigo}
-                     disabled
-                     placeholder="Gerado automaticamente"
-                     className="bg-slate-50"
-                   />
+                  <Label>Código</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={formData.codigo}
+                      onChange={(e) => setFormData({ ...formData, codigo: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Digite o código"
+                      disabled={!isEditing}
+                      inputMode="numeric"
+                    />
+                    <div className="shrink-0 px-3 h-9 rounded-md border border-slate-200 bg-amber-50 text-amber-800 text-xs font-medium flex items-center gap-1 whitespace-nowrap">
+                      Último: <span className="font-bold">{ultimoCodigo}</span>
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <Label>Razão Social *</Label>
