@@ -1,0 +1,58 @@
+{
+  "name": "Transferencia",
+  "type": "object",
+  "description": "Transfer\u00eancia de NF/pedido entre cargas \u2014 para reenvio em outra rota/dia",
+  "properties": {
+    "pedido_codigo_omie": {
+      "type": "string"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "numero_nf": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "carga_origem_id": {
+      "type": "string"
+    },
+    "carga_origem_numero": {
+      "type": "string"
+    },
+    "carga_destino_id": {
+      "type": "string"
+    },
+    "carga_destino_numero": {
+      "type": "string"
+    },
+    "motivo": {
+      "type": "string"
+    },
+    "valor_nf": {
+      "type": "number"
+    },
+    "funcionario_id": {
+      "type": "string"
+    },
+    "funcionario_nome": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "concluida",
+        "cancelada"
+      ],
+      "default": "pendente"
+    }
+  },
+  "required": [
+    "pedido_codigo_omie"
+  ]
+}

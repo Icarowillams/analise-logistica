@@ -1,0 +1,99 @@
+{
+  "name": "LogCorte",
+  "type": "object",
+  "description": "Auditoria de altera\u00e7\u00f5es de quantidade (corte) em pedidos Omie \u2014 rastreia quem cortou, quando e com que justificativa",
+  "properties": {
+    "pedido_codigo_omie": {
+      "type": "string",
+      "description": "nCodPed do pedido no Omie"
+    },
+    "pedido_codigo_integracao": {
+      "type": "string",
+      "description": "cCodIntPed do pedido"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "cnpj_cpf_cliente": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string",
+      "description": "ID da Carga vinculada, se houver"
+    },
+    "produto_codigo": {
+      "type": "string"
+    },
+    "produto_codigo_integracao": {
+      "type": "string"
+    },
+    "produto_descricao": {
+      "type": "string"
+    },
+    "quantidade_anterior": {
+      "type": "number"
+    },
+    "quantidade_nova": {
+      "type": "number"
+    },
+    "quantidade_cortada": {
+      "type": "number"
+    },
+    "valor_unitario": {
+      "type": "number"
+    },
+    "valor_anterior": {
+      "type": "number"
+    },
+    "valor_novo": {
+      "type": "number"
+    },
+    "valor_cortado": {
+      "type": "number"
+    },
+    "motivo": {
+      "type": "string",
+      "description": "Motivo/justificativa do corte"
+    },
+    "tipo_operacao": {
+      "type": "string",
+      "enum": [
+        "corte_quantidade",
+        "remocao_item",
+        "zeragem",
+        "ajuste_preco"
+      ],
+      "default": "corte_quantidade"
+    },
+    "funcionario_id": {
+      "type": "string",
+      "description": "Quem executou o corte"
+    },
+    "funcionario_nome": {
+      "type": "string"
+    },
+    "sincronizado_omie": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se AlterarPedidoVenda foi executado com sucesso"
+    },
+    "notificado_analise_comercial": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o webhook para app externo foi disparado"
+    },
+    "erro_omie": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pedido_codigo_omie",
+    "tipo_operacao"
+  ]
+}

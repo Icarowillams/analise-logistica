@@ -1,0 +1,56 @@
+{
+  "name": "ParametroNaturezaOperacao",
+  "type": "object",
+  "description": "Cadastro de naturezas de opera\u00e7\u00e3o / CFOPs \u2014 usadas em emiss\u00e3o de pedidos, cortes e devolu\u00e7\u00f5es. Diferente de CenarioFiscal (que vem do Omie), esta \u00e9 uma configura\u00e7\u00e3o local flex\u00edvel.",
+  "properties": {
+    "cfop": {
+      "type": "string",
+      "description": "C\u00f3digo CFOP (ex: 5102, 5202, 5929)"
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "tipo_operacao": {
+      "type": "string",
+      "enum": [
+        "venda",
+        "devolucao",
+        "remessa",
+        "bonificacao",
+        "troca",
+        "transferencia",
+        "outros"
+      ],
+      "default": "venda"
+    },
+    "dentro_estado": {
+      "type": "boolean",
+      "default": true,
+      "description": "CFOP usado para opera\u00e7\u00f5es dentro do estado (5xxx)"
+    },
+    "cenario_fiscal_id": {
+      "type": "string",
+      "description": "ID do CenarioFiscal Omie associado"
+    },
+    "codigo_cenario_impostos": {
+      "type": "string",
+      "description": "nCodigo do cen\u00e1rio Omie"
+    },
+    "padrao": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 o CFOP padr\u00e3o para este tipo de opera\u00e7\u00e3o"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cfop",
+    "tipo_operacao"
+  ]
+}

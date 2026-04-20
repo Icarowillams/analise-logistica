@@ -1,0 +1,217 @@
+{
+  "name": "Carga",
+  "type": "object",
+  "description": "Carga de entrega \u2014 agrupa pedidos Omie (etapa 50+) atribu\u00eddos a um motorista/ve\u00edculo/rota para faturamento e roteiriza\u00e7\u00e3o",
+  "properties": {
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero/c\u00f3digo interno da carga"
+    },
+    "data_carga": {
+      "type": "string",
+      "format": "date",
+      "description": "Data prevista de sa\u00edda da carga"
+    },
+    "data_faturamento": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora em que a carga foi faturada no Omie"
+    },
+    "rota_id": {
+      "type": "string",
+      "description": "Rota principal da carga"
+    },
+    "rota_nome": {
+      "type": "string"
+    },
+    "motorista_id": {
+      "type": "string"
+    },
+    "motorista_nome": {
+      "type": "string"
+    },
+    "veiculo_id": {
+      "type": "string"
+    },
+    "veiculo_placa": {
+      "type": "string"
+    },
+    "ajudante_id": {
+      "type": "string"
+    },
+    "ajudante_nome": {
+      "type": "string"
+    },
+    "pedidos_omie": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo_pedido": {
+            "type": "string"
+          },
+          "codigo_pedido_integracao": {
+            "type": "string"
+          },
+          "numero_pedido": {
+            "type": "string"
+          },
+          "numero_nf": {
+            "type": "string"
+          },
+          "codigo_cliente": {
+            "type": "string"
+          },
+          "codigo_cliente_integracao": {
+            "type": "string"
+          },
+          "cnpj_cpf_cliente": {
+            "type": "string"
+          },
+          "nome_cliente": {
+            "type": "string"
+          },
+          "nome_fantasia": {
+            "type": "string"
+          },
+          "cidade": {
+            "type": "string"
+          },
+          "data_previsao": {
+            "type": "string"
+          },
+          "etapa": {
+            "type": "string"
+          },
+          "quantidade_itens": {
+            "type": "number"
+          },
+          "valor_total_pedido": {
+            "type": "number"
+          },
+          "tags_cliente": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "caracteristicas_cliente": {
+            "type": "array"
+          },
+          "rota_cliente": {
+            "type": "string"
+          },
+          "produtos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "codigo_produto": {
+                  "type": "string"
+                },
+                "codigo_produto_integracao": {
+                  "type": "string"
+                },
+                "descricao": {
+                  "type": "string"
+                },
+                "quantidade": {
+                  "type": "number"
+                },
+                "valor_unitario": {
+                  "type": "number"
+                },
+                "valor_total": {
+                  "type": "number"
+                },
+                "unidade": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "default": [],
+      "description": "Snapshot dos pedidos Omie atribu\u00eddos \u00e0 carga"
+    },
+    "pedidos_troca": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "IDs de PedidoTroca associados \u00e0 carga"
+    },
+    "produtos_resumo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo_produto": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "quantidade_total": {
+            "type": "number"
+          },
+          "unidade": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "Resumo consolidado de produtos da carga para montagem/confer\u00eancia"
+    },
+    "quantidade_pedidos": {
+      "type": "number",
+      "default": 0
+    },
+    "quantidade_clientes": {
+      "type": "number",
+      "default": 0
+    },
+    "valor_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Valor total somado dos pedidos da carga"
+    },
+    "peso_total_kg": {
+      "type": "number",
+      "default": 0
+    },
+    "volume_total_m3": {
+      "type": "number",
+      "default": 0
+    },
+    "status_carga": {
+      "type": "string",
+      "enum": [
+        "montando",
+        "conferindo",
+        "pronta",
+        "faturada",
+        "em_rota",
+        "finalizada",
+        "cancelada"
+      ],
+      "default": "montando"
+    },
+    "observacoes": {
+      "type": "string"
+    },
+    "pdf_resumo_url": {
+      "type": "string",
+      "description": "URL do PDF de resumo da carga"
+    },
+    "pdf_romaneio_url": {
+      "type": "string",
+      "description": "URL do PDF de romaneio de entrega"
+    }
+  },
+  "required": [
+    "data_carga"
+  ]
+}

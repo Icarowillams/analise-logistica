@@ -1,0 +1,104 @@
+{
+  "name": "Retorno",
+  "type": "object",
+  "description": "Produtos que retornaram da entrega \u2014 base para devolu\u00e7\u00e3o parcial, troca ou acerto de estoque",
+  "properties": {
+    "carga_id": {
+      "type": "string"
+    },
+    "carga_numero": {
+      "type": "string"
+    },
+    "pedido_codigo_omie": {
+      "type": "string"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "numero_nf": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "data_retorno": {
+      "type": "string",
+      "format": "date"
+    },
+    "produtos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo_produto": {
+            "type": "string"
+          },
+          "codigo_produto_integracao": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "valor_unitario": {
+            "type": "number"
+          },
+          "valor_total": {
+            "type": "number"
+          },
+          "motivo": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "tipo_retorno": {
+      "type": "string",
+      "enum": [
+        "devolucao_total",
+        "devolucao_parcial",
+        "troca",
+        "recusa_cliente",
+        "nao_entregue",
+        "avaria"
+      ],
+      "default": "devolucao_parcial"
+    },
+    "valor_total_retorno": {
+      "type": "number",
+      "default": 0
+    },
+    "motivo_geral": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "processado",
+        "devolvido_omie",
+        "cancelado"
+      ],
+      "default": "pendente"
+    },
+    "motorista_id": {
+      "type": "string"
+    },
+    "motorista_nome": {
+      "type": "string"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pedido_codigo_omie",
+    "tipo_retorno"
+  ]
+}
