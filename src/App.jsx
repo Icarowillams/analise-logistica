@@ -20,6 +20,7 @@ import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
 import Veiculos from './pages/Veiculos.jsx';
 import Motoristas from './pages/Motoristas.jsx';
 import CenariosFiscais from './pages/CenariosFiscais.jsx';
+import IntegracaoOmieDashboard from './pages/IntegracaoOmieDashboard.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -80,6 +81,7 @@ const AuthenticatedApp = () => {
       <Route path="/Veiculos" element={<LayoutWrapper currentPageName="Veiculos"><Veiculos /></LayoutWrapper>} />
       <Route path="/Motoristas" element={<LayoutWrapper currentPageName="Motoristas"><Motoristas /></LayoutWrapper>} />
       <Route path="/CenariosFiscais" element={<LayoutWrapper currentPageName="CenariosFiscais"><CenariosFiscais /></LayoutWrapper>} />
+      <Route path="/IntegracaoOmieDashboard" element={<LayoutWrapper currentPageName="IntegracaoOmieDashboard"><IntegracaoOmieDashboard /></LayoutWrapper>} />
       <Route path="/CadastroMetas" element={<LayoutWrapper currentPageName="CadastroMetas"><CadastroMetas /></LayoutWrapper>} />
       <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
       <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
