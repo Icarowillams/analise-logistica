@@ -159,22 +159,8 @@ export default function Layout({ children, currentPageName }) {
         title: 'Logística',
         icon: Warehouse,
         submenu: [
-          { title: 'Montagem de Cargas', path: 'MontagemCargas' },
-          { title: 'Calculadora de Carga', path: 'CalculadoraCarga' },
-          { title: 'Controle de Entregas', path: 'ControleEntregas' },
           { title: 'Pedidos de Venda', path: 'ControlePedidosVenda' },
           { title: 'Pedidos de Troca', path: 'ControlePedidosTroca' },
-          { title: 'Comodatos / Galeias', path: 'ControleComodatos' },
-          { title: 'Ocorrências Operacionais', path: 'OcorrenciasOperacionais' },
-          { title: 'Relatório Logístico', path: 'RelatorioLogistico' },
-          { title: 'Documentos Operacionais', path: 'DocumentosOperacionais' },
-          { title: 'Monitoramento de Galeias', path: 'MonitoramentoGaleias' },
-          { title: 'Retornos', path: 'ControleRetornos' },
-          { title: 'Trocas Logísticas', path: 'ControleTrocas' },
-          { title: 'Cancelamentos', path: 'ControleCancelamentos' },
-          { title: 'Divergências', path: 'ControleDivergencias' },
-          { title: 'Transferências', path: 'ControleTransferencias' },
-          { title: 'Acerto de Caixa', path: 'AcertoCaixa' },
         ]
       }
     ];

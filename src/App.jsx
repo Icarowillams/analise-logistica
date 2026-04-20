@@ -13,23 +13,8 @@ import RelatorioMetasGerais from './pages/RelatorioMetasGerais';
 import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
 
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
-import MontagemCargas from './pages/MontagemCargas';
-import DetalheCarga from './pages/DetalheCarga';
 import ControlePedidosVenda from './pages/ControlePedidosVenda';
 import ControlePedidosTroca from './pages/ControlePedidosTroca';
-import ControleComodatos from './pages/ControleComodatos';
-import OcorrenciasOperacionais from './pages/OcorrenciasOperacionais';
-import RelatorioLogistico from './pages/RelatorioLogistico';
-import DocumentosOperacionais from './pages/DocumentosOperacionais';
-import ControleEntregas from './pages/ControleEntregas';
-import MonitoramentoGaleias from './pages/MonitoramentoGaleias';
-import CalculadoraCarga from './pages/CalculadoraCarga';
-import ControleRetornos from './pages/ControleRetornos';
-import ControleTrocas from './pages/ControleTrocas';
-import ControleCancelamentos from './pages/ControleCancelamentos';
-import ControleDivergencias from './pages/ControleDivergencias';
-import ControleTransferencias from './pages/ControleTransferencias';
-import AcertoCaixa from './pages/AcertoCaixa';
 import PreCadastros from './pages/PreCadastros';
 import SincronizarClientesOmie from './pages/SincronizarClientesOmie';
 import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
@@ -95,23 +80,8 @@ const AuthenticatedApp = () => {
       <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
       <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
       <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
-      <Route path="/MontagemCargas" element={<LayoutWrapper currentPageName="MontagemCargas"><MontagemCargas /></LayoutWrapper>} />
-      <Route path="/DetalheCarga" element={<LayoutWrapper currentPageName="DetalheCarga"><DetalheCarga /></LayoutWrapper>} />
       <Route path="/ControlePedidosVenda" element={<LayoutWrapper currentPageName="ControlePedidosVenda"><ControlePedidosVenda /></LayoutWrapper>} />
       <Route path="/ControlePedidosTroca" element={<LayoutWrapper currentPageName="ControlePedidosTroca"><ControlePedidosTroca /></LayoutWrapper>} />
-      <Route path="/ControleComodatos" element={<LayoutWrapper currentPageName="ControleComodatos"><ControleComodatos /></LayoutWrapper>} />
-      <Route path="/OcorrenciasOperacionais" element={<LayoutWrapper currentPageName="OcorrenciasOperacionais"><OcorrenciasOperacionais /></LayoutWrapper>} />
-      <Route path="/RelatorioLogistico" element={<LayoutWrapper currentPageName="RelatorioLogistico"><RelatorioLogistico /></LayoutWrapper>} />
-      <Route path="/DocumentosOperacionais" element={<LayoutWrapper currentPageName="DocumentosOperacionais"><DocumentosOperacionais /></LayoutWrapper>} />
-      <Route path="/ControleEntregas" element={<LayoutWrapper currentPageName="ControleEntregas"><ControleEntregas /></LayoutWrapper>} />
-      <Route path="/CalculadoraCarga" element={<LayoutWrapper currentPageName="CalculadoraCarga"><CalculadoraCarga /></LayoutWrapper>} />
-      <Route path="/MonitoramentoGaleias" element={<LayoutWrapper currentPageName="MonitoramentoGaleias"><MonitoramentoGaleias /></LayoutWrapper>} />
-      <Route path="/ControleRetornos" element={<LayoutWrapper currentPageName="ControleRetornos"><ControleRetornos /></LayoutWrapper>} />
-      <Route path="/ControleTrocas" element={<LayoutWrapper currentPageName="ControleTrocas"><ControleTrocas /></LayoutWrapper>} />
-      <Route path="/ControleCancelamentos" element={<LayoutWrapper currentPageName="ControleCancelamentos"><ControleCancelamentos /></LayoutWrapper>} />
-      <Route path="/ControleDivergencias" element={<LayoutWrapper currentPageName="ControleDivergencias"><ControleDivergencias /></LayoutWrapper>} />
-      <Route path="/ControleTransferencias" element={<LayoutWrapper currentPageName="ControleTransferencias"><ControleTransferencias /></LayoutWrapper>} />
-      <Route path="/AcertoCaixa" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixa /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
