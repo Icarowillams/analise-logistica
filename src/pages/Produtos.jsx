@@ -629,11 +629,38 @@ export default function Produtos() {
               </div>
               
               {isEditing && (
-                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-100">
                   <Button type="button" variant="outline" onClick={handleCancel}>
                     <Ban className="w-4 h-4 mr-2" />
                     Cancelar
                   </Button>
+                  {selected && selected.tipo !== 'bonificacao' && podeOmie && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-amber-400 text-amber-700 hover:bg-amber-50"
+                      onClick={async () => {
+                        try {
+                          toast.info('Enviando ao Omie…');
+                          const res = await base44.functions.invoke('enviarProdutoOmie', {
+                            event: { type: 'manual', entity_id: selected.id },
+                            data: selected
+                          });
+                          if (res.data?.sucesso) {
+                            toast.success(`✅ Enviado ao Omie (código ${res.data.codigo_omie || '—'})`);
+                            queryClient.invalidateQueries(['produtos']);
+                          } else {
+                            toast.error('❌ ' + (res.data?.erro || 'Falha no envio'));
+                          }
+                        } catch (e) {
+                          toast.error('❌ ' + e.message);
+                        }
+                      }}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      Enviar ao Omie
+                    </Button>
+                  )}
                   <Button 
                     type="submit" 
                     disabled={createMutation.isPending || updateMutation.isPending || isUploading}
