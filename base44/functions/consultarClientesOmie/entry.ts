@@ -75,7 +75,11 @@ Deno.serve(async (req) => {
 
         if (acao === 'comparar') {
             // Buscar TODOS os clientes do Omie (paginado)
-            let todosOmie = [];
+            const todosOmie = [];
+            const soNoBase44 = [];
+            const soNoOmie = [];
+            const diferentes = [];
+            let iguais = 0;
             let pagina = 1;
             let totalPaginas = 1;
 
