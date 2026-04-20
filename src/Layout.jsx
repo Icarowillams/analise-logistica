@@ -166,6 +166,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Notas Fiscais Omie', path: 'NotasOmie' },
           { title: 'Montagem de Carga', path: 'MontagemCarga' },
           { title: 'Cargas', path: 'Cargas' },
+          { title: 'Ajustes de Pedidos', path: 'AjustesPedidos' },
         ]
       }
     ];
