@@ -25,6 +25,7 @@ import NotasOmie from './pages/NotasOmie.jsx';
 import MontagemCarga from './pages/MontagemCarga.jsx';
 import Cargas from './pages/Cargas.jsx';
 import AjustesPedidos from './pages/AjustesPedidos.jsx';
+import BoletosOmie from './pages/BoletosOmie.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -96,6 +97,7 @@ const AuthenticatedApp = () => {
       <Route path="/MontagemCarga" element={<LayoutWrapper currentPageName="MontagemCarga"><MontagemCarga /></LayoutWrapper>} />
       <Route path="/Cargas" element={<LayoutWrapper currentPageName="Cargas"><Cargas /></LayoutWrapper>} />
       <Route path="/AjustesPedidos" element={<LayoutWrapper currentPageName="AjustesPedidos"><AjustesPedidos /></LayoutWrapper>} />
+      <Route path="/BoletosOmie" element={<LayoutWrapper currentPageName="BoletosOmie"><BoletosOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

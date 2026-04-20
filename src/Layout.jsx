@@ -167,6 +167,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Montagem de Carga', path: 'MontagemCarga' },
           { title: 'Cargas', path: 'Cargas' },
           { title: 'Ajustes de Pedidos', path: 'AjustesPedidos' },
+          { title: 'Boletos Omie', path: 'BoletosOmie' },
         ]
       }
     ];

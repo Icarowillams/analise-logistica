@@ -1,0 +1,87 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+
+async function omieCall(call, param, tentativa = 1) {
+  const res = await fetch(OMIE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
+  });
+  const data = await res.json();
+  if (data.faultstring) {
+    const msg = data.faultstring.toLowerCase();
+    const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
+    if (isRate && tentativa < 5) {
+      await new Promise(r => setTimeout(r, 3000 * tentativa));
+      return omieCall(call, param, tentativa + 1);
+    }
+    throw new Error(data.faultstring);
+  }
+  return data;
+}
+
+// Gera boletos em lote no Omie
+// body: { titulos: [codigo_lancamento], id_conta_corrente (opcional) }
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const body = await req.json().catch(() => ({}));
+    const { titulos = [], id_conta_corrente } = body;
+    if (!Array.isArray(titulos) || titulos.length === 0) {
+      return Response.json({ error: 'titulos vazio' }, { status: 400 });
+    }
+
+    const resultados = [];
+    for (const codigo of titulos) {
+      try {
+        const param = { codigo_lancamento: Number(codigo) };
+        if (id_conta_corrente) param.id_conta_corrente = Number(id_conta_corrente);
+
+        const data = await omieCall('GerarBoleto', param);
+        resultados.push({
+          codigo_lancamento: codigo,
+          sucesso: true,
+          numero_boleto: data.numero_boleto || data.nNumBoleto || '',
+          codigo_barras: data.codigo_barras || data.cCodBarras || '',
+          linha_digitavel: data.linha_digitavel || data.cLinDig || '',
+          link_boleto: data.link_boleto || data.cLinkBoleto || ''
+        });
+      } catch (err) {
+        const msg = err.message.toLowerCase();
+        const liquidado = msg.includes('liquidado') || msg.includes('baixado');
+        const cancelado = msg.includes('cancelado');
+        resultados.push({
+          codigo_lancamento: codigo,
+          sucesso: false,
+          skip: liquidado || cancelado,
+          mensagem: err.message
+        });
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    const sucessos = resultados.filter(r => r.sucesso).length;
+    const erros = resultados.filter(r => !r.sucesso && !r.skip).length;
+    const skips = resultados.filter(r => r.skip).length;
+
+    await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+      endpoint: 'financas/contareceber',
+      call: 'GerarBoleto',
+      operacao: 'gerar_boletos_lote',
+      status: erros > 0 ? 'warning' : 'sucesso',
+      mensagem_erro: erros > 0 ? `${erros} boletos falharam` : null,
+      tentativas: titulos.length,
+      usuario_email: user.email
+    }).catch(() => {});
+
+    return Response.json({ sucesso: true, total: titulos.length, sucessos, erros, skips, resultados });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});
