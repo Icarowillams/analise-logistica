@@ -7,21 +7,25 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Ler secrets dentro do handler (sempre atualizado)
     const appKey = Deno.env.get('OMIE_APP_KEY');
     const appSecret = Deno.env.get('OMIE_APP_SECRET');
 
     if (!appKey || !appSecret) {
       return Response.json({
         ok: false,
-        error: 'OMIE_APP_KEY ou OMIE_APP_SECRET não configurados nos secrets.'
-      }, { status: 400 });
+        error: 'OMIE_APP_KEY ou OMIE_APP_SECRET não configurados nos secrets.',
+        debug: {
+          has_key: !!appKey,
+          has_secret: !!appSecret
+        }
+      });
     }
 
     const startedAt = Date.now();
-    // Teste: chamar ListarEmpresas (endpoint leve que valida credenciais)
     const res = await fetch(`${OMIE_BASE_URL}geral/empresas/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -36,11 +40,11 @@ Deno.serve(async (req) => {
     const text = await res.text();
     let json;
     try { json = JSON.parse(text); } catch { json = { raw: text }; }
-
     const duracao_ms = Date.now() - startedAt;
 
-    // Log
     const sucesso = !json.faultstring && !json.faultcode;
+
+    // Log em LogIntegracaoOmie
     try {
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: 'geral/empresas',
@@ -65,7 +69,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Extrai info básica da empresa
     const empresa = json.empresas_cadastro?.[0] || {};
     return Response.json({
       ok: true,
