@@ -88,9 +88,17 @@ Deno.serve(async (req) => {
         }
 
         // Buscar pedido
-        const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+        let pedido;
+        try {
+            pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+        } catch (e) {
+            if (/not found/i.test(e.message)) {
+                return Response.json({ error: 'Pedido não encontrado', sucesso: false, erro: 'Pedido não encontrado' }, { status: 404 });
+            }
+            throw e;
+        }
         if (!pedido) {
-            return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
+            return Response.json({ error: 'Pedido não encontrado', sucesso: false, erro: 'Pedido não encontrado' }, { status: 404 });
         }
 
         if (!['pendente', 'enviado', 'liberado'].includes(pedido.status)) {

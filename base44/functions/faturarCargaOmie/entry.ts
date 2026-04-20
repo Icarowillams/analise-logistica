@@ -35,7 +35,15 @@ Deno.serve(async (req) => {
     const { carga_id, etapa_destino = '60' } = body;
     if (!carga_id) return Response.json({ error: 'carga_id obrigatório' }, { status: 400 });
 
-    const carga = await base44.asServiceRole.entities.Carga.get(carga_id);
+    let carga;
+    try {
+      carga = await base44.asServiceRole.entities.Carga.get(carga_id);
+    } catch (e) {
+      if (/not found/i.test(e.message)) {
+        return Response.json({ error: 'Carga não encontrada' }, { status: 404 });
+      }
+      throw e;
+    }
     if (!carga) return Response.json({ error: 'Carga não encontrada' }, { status: 404 });
 
     const pedidos = carga.pedidos_omie || [];

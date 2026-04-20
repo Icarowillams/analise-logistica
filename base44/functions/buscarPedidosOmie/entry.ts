@@ -50,7 +50,16 @@ Deno.serve(async (req) => {
     if (apenas_faturar) param.filtrar_apenas_ab_pedidos = 'S';
 
     const t0 = Date.now();
-    const data = await omieCall('ListarPedidos', param);
+    let data;
+    try {
+      data = await omieCall('ListarPedidos', param);
+    } catch (e) {
+      // Omie retorna erro quando não há registros — tratar como lista vazia
+      if (/n[ãa]o existem registros/i.test(e.message)) {
+        return Response.json({ sucesso: true, pedidos: [], pagina: pagina, total_de_paginas: 0, total_de_registros: 0, registros: 0 });
+      }
+      throw e;
+    }
     const duracao = Date.now() - t0;
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
