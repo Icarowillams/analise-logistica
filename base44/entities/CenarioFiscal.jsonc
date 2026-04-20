@@ -1,11 +1,20 @@
 {
   "name": "CenarioFiscal",
   "type": "object",
-  "description": "Cen\u00e1rio fiscal para emiss\u00e3o de notas \u2014 configura\u00e7\u00f5es de tributa\u00e7\u00e3o/CFOP/natureza de opera\u00e7\u00e3o",
+  "description": "Cen\u00e1rio fiscal para emiss\u00e3o de notas \u2014 naturezas de opera\u00e7\u00e3o e etapas de faturamento do Omie",
   "properties": {
+    "tipo_registro": {
+      "type": "string",
+      "enum": [
+        "cenario",
+        "etapa"
+      ],
+      "default": "cenario",
+      "description": "cenario = Natureza de Opera\u00e7\u00e3o (ListarCenarios); etapa = Etapa de Faturamento (ListarEtapasFaturamento)"
+    },
     "codigo": {
       "type": "string",
-      "description": "C\u00f3digo do cen\u00e1rio fiscal"
+      "description": "C\u00f3digo do cen\u00e1rio fiscal ou etapa"
     },
     "nome": {
       "type": "string",
@@ -54,7 +63,12 @@
     },
     "omie_id": {
       "type": "string",
-      "description": "ID do cen\u00e1rio correspondente no Omie (cCodCenarioFiscal)"
+      "description": "ID do cen\u00e1rio correspondente no Omie (nCodigo) ou cCodigo da etapa"
+    },
+    "padrao": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 cen\u00e1rio/etapa marcado como padr\u00e3o no Omie"
     },
     "status": {
       "type": "string",
