@@ -59,7 +59,8 @@ function limparCamposTexto(obj) {
 }
 
 function mapearClienteParaOmie(clienteData, rotaNome) {
-    const cnpjCpfLimpo = normalizarCpfCnpj(clienteData.cpf_cnpj);
+    // Aceitar tanto cnpj_cpf (nome real da entidade) quanto cpf_cnpj (legado)
+    const cnpjCpfLimpo = normalizarCpfCnpj(clienteData.cnpj_cpf || clienteData.cpf_cnpj);
     const estadoNorm = normalizarEstado(clienteData.estado);
     const cepNorm = normalizarCEP(clienteData.cep);
     const isPessoaFisica = cnpjCpfLimpo.length <= 11;
@@ -192,20 +193,25 @@ Deno.serve(async (req) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        call: 'ConsultarCliente',
+                        call: 'ListarClientes',
                         app_key: OMIE_APP_KEY,
                         app_secret: OMIE_APP_SECRET,
-                        param: [{ cnpj_cpf: cnpjLimpo }]
+                        param: [{
+                            pagina: 1,
+                            registros_por_pagina: 1,
+                            apenas_importado_api: 'N',
+                            clientesFiltro: { cnpj_cpf: cnpjLimpo }
+                        }]
                     })
                 });
                 const achado = await consulta.json();
-                if (achado?.codigo_cliente_omie) {
-                    if (achado.codigo_cliente_integracao && achado.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
-                        console.log('[enviarClienteOmie] Reutilizando codigo_cliente_integracao existente no Omie:', achado.codigo_cliente_integracao);
-                        clienteOmie.codigo_cliente_integracao = achado.codigo_cliente_integracao;
+                const existente = achado?.clientes_cadastro?.[0];
+                if (existente?.codigo_cliente_omie) {
+                    if (existente.codigo_cliente_integracao && existente.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
+                        console.log('[enviarClienteOmie] Reutilizando codigo_cliente_integracao existente no Omie:', existente.codigo_cliente_integracao);
+                        clienteOmie.codigo_cliente_integracao = existente.codigo_cliente_integracao;
                     }
-                    // Incluir também o codigo_cliente_omie para garantir update
-                    clienteOmie.codigo_cliente_omie = achado.codigo_cliente_omie;
+                    clienteOmie.codigo_cliente_omie = existente.codigo_cliente_omie;
                 }
             } catch (e) {
                 console.log('[enviarClienteOmie] Pré-consulta CNPJ falhou (segue fluxo normal):', e.message);
