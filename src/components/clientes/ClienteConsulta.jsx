@@ -29,6 +29,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     semLocalizacao: false,
     semNomeFantasia: false,
     inscricaoEstadual: null,
+    tipoNota: 'all',
   });
 
   const { data: clientesAll = [] } = useQuery({
@@ -173,6 +174,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
         if (cliente.inscricao_estadual && cliente.inscricao_estadual.trim() !== '') return false;
       }
 
+      if (filters.tipoNota !== 'all') {
+        const tipo = cliente.tipo_nota || '55';
+        if (tipo !== filters.tipoNota) return false;
+      }
+
       return true;
     });
   }, [clientes, filters, vendedores]);
@@ -200,6 +206,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Plano de pagamento', value: selectedCliente ? getName(planosPagamento, selectedCliente.plano_pagamento_id) : '-' },
     { label: 'Tabela de preço', value: selectedCliente ? (selectedCliente.tabela_id && !tabelaIdsExistentes.has(selectedCliente.tabela_id) ? '⚠️ Tabela excluída (vincular nova)' : getName(tabelasPreco, selectedCliente.tabela_id)) : '-' },
     { label: 'Status', value: selectedCliente?.status || '-' },
+    { label: 'Tipo de Nota', value: selectedCliente ? ((selectedCliente.tipo_nota || '55') === 'D1' ? 'D1 — Sem NF (interno)' : '55 — NF-e') : '-' },
   ];
 
   const columns = [
@@ -230,6 +237,20 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
           {val}
         </Badge>
       ),
+    },
+    {
+      key: 'tipo_nota',
+      label: 'Tipo Nota',
+      width: '90px',
+      sortable: true,
+      render: (val) => {
+        const tipo = val || '55';
+        return (
+          <Badge className={tipo === 'D1' ? 'bg-orange-100 text-orange-700 border border-orange-300' : 'bg-blue-100 text-blue-700 border border-blue-300'}>
+            {tipo}
+          </Badge>
+        );
+      },
     },
     {
       key: 'visualizar',
@@ -442,6 +463,23 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Tipo de Nota</label>
+              <Select
+                value={filters.tipoNota}
+                onValueChange={(val) => setFilters({ ...filters, tipoNota: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="55">55 — NF-e (Omie)</SelectItem>
+                  <SelectItem value="D1">D1 — Sem NF (interno)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="mt-4 flex justify-stretch sm:justify-end">
@@ -462,6 +500,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 semLocalizacao: false,
                 semNomeFantasia: false,
                 inscricaoEstadual: null,
+                tipoNota: 'all',
               })}
               className="w-full sm:w-auto text-slate-600 hover:text-slate-900"
             >
