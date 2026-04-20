@@ -1,7 +1,11 @@
-# 🚚 Roadmap de Migração — Logística Pão & Mel → Análise Comercial
+# 🚚 Roadmap de Migração — Logística → Este App
 
 **Data:** 2026-04-20  
-**Objetivo:** Absorver integralmente o app de Logística Pão & Mel neste app (Análise Comercial), centralizando Comercial + Logística + Omie em um único ambiente.
+**Objetivo:** Absorver integralmente a operação de Logística neste app, centralizando Comercial + Logística + Omie em um único ambiente.
+
+## 🔒 REGRA ABSOLUTA
+Este app **NÃO consulta nem se comunica com outros apps Base44**.  
+**Única integração externa = Omie.** Todo dado vem do Omie ou de entidades locais. Nada de webhooks inbound/outbound para apps irmãos, nada de `BASE_REMOTE_API_KEY`, nada de chamar URL de outro app Base44.
 
 ---
 
