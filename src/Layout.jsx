@@ -104,7 +104,9 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Cadastro de Metas', path: 'CadastroMetas' },
           { title: 'Empresa', path: 'Empresa' },
           { title: 'Pré-Cadastros', path: 'PreCadastros' },
-          { title: 'Sincronizar Clientes Omie', path: 'SincronizarClientesOmie' }
+          { title: 'Veículos', path: 'Veiculos' },
+          { title: 'Motoristas', path: 'Motoristas' },
+          { title: 'Cenários Fiscais', path: 'CenariosFiscais' }
         ]
       },
       {

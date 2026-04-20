@@ -41,7 +41,7 @@ export default function Clientes() {
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     latitude: '', longitude: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-    data_primeiro_contato: '', status: 'ativo'
+    data_primeiro_contato: '', status: 'ativo', tipo_nota: '55'
   });
   const [supervisorNome, setSupervisorNome] = useState('');
   const [docErro, setDocErro] = useState('');
@@ -278,7 +278,7 @@ export default function Clientes() {
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       latitude: '', longitude: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-      data_primeiro_contato: '', status: 'ativo'
+      data_primeiro_contato: '', status: 'ativo', tipo_nota: '55'
     });
     setSupervisorNome('');
     setDocErro('');
@@ -317,7 +317,8 @@ export default function Clientes() {
       modalidade_pagamento_id: item.modalidade_pagamento_id || '',
       tabela_id: item.tabela_id || '',
       data_primeiro_contato: item.data_primeiro_contato || '',
-      status: item.status || 'ativo'
+      status: item.status || 'ativo',
+      tipo_nota: item.tipo_nota || '55'
     });
     // Buscar supervisor do vendedor
     if (item.vendedor_id) {
@@ -1324,6 +1325,25 @@ export default function Clientes() {
                       <SelectItem value="prospecto">Prospecto</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label>Tipo de Nota</Label>
+                  <Select
+                    value={formData.tipo_nota || '55'}
+                    onValueChange={(v) => setFormData({ ...formData, tipo_nota: v })}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className={formData.tipo_nota === 'D1' ? 'border-orange-400 bg-orange-50' : ''}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="55">55 — NF-e (envia ao Omie)</SelectItem>
+                      <SelectItem value="D1">D1 — Sem NF (não envia ao Omie)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formData.tipo_nota === 'D1' && (
+                    <p className="text-xs text-orange-600 mt-1">⚠️ Cliente D1: vendas serão apenas internas, sem envio ao Omie.</p>
+                  )}
                 </div>
               </div>
               
