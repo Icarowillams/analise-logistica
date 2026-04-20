@@ -7,32 +7,40 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '');
 
-async function omieCall(call, param) {
-  const res = await fetch(OMIE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
-  });
-  return res.json();
-}
-
-async function listarClientesOmie() {
-  const todos = [];
-  let pagina = 1;
-  let totalPaginas = 1;
-  while (pagina <= totalPaginas) {
-    const data = await omieCall("ListarClientesResumido", {
-      pagina, registros_por_pagina: 500, apenas_importado_api: "N"
-    });
-    await delay(800);
-    if (data.faultstring) throw new Error(`Omie ListarClientesResumido: ${data.faultstring}`);
-    totalPaginas = data.total_de_paginas || 1;
-    if (data.clientes_cadastro_resumido) todos.push(...data.clientes_cadastro_resumido);
-    pagina++;
+async function omieCall(call, param, maxTentativas = 4) {
+  let ultimoErro = null;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      const res = await fetch(OMIE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+      });
+      const data = await res.json();
+      if (data.faultstring && /Internal Error|PBB|timeout|Gateway|indispon/i.test(data.faultstring)) {
+        ultimoErro = data.faultstring;
+        await delay(2000 * tentativa);
+        continue;
+      }
+      return data;
+    } catch (e) {
+      ultimoErro = e.message;
+      await delay(2000 * tentativa);
+    }
   }
-  return todos;
+  return { faultstring: ultimoErro || 'Falha após múltiplas tentativas' };
 }
 
+/**
+ * Importa clientes do Omie para o Base44 vinculando codigo_omie por CNPJ/CPF.
+ *
+ * Processa UMA PÁGINA do Omie por chamada (500 clientes/página).
+ * O frontend deve chamar em loop passando `pagina` até `concluido=true`.
+ *
+ * Payload:
+ *   - pagina: número da página do Omie a processar (default 1)
+ *   - apenas_simular: true não grava, só retorna contagens
+ */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -42,14 +50,20 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { apenas_simular = false } = body;
+    const { pagina = 1, apenas_simular = false } = body;
 
-    console.log('[IMPORTAR] Buscando clientes do Omie...');
-    const clientesOmie = await listarClientesOmie();
-    console.log(`[IMPORTAR] ${clientesOmie.length} clientes no Omie`);
+    // 1. Buscar UMA página do Omie
+    const data = await omieCall("ListarClientes", {
+      pagina, registros_por_pagina: 500, apenas_importado_api: "N"
+    });
+    if (data.faultstring) throw new Error(`Omie ListarClientes: ${data.faultstring}`);
 
+    const clientesOmie = data.clientes_cadastro || [];
+    const totalPaginas = data.total_de_paginas || 1;
+    const totalRegistros = data.total_de_registros || clientesOmie.length;
+
+    // 2. Buscar TODOS clientes Base44 (só na primeira página — depois poderíamos cachear, mas é rápido)
     const clientesBase44 = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-    console.log(`[IMPORTAR] ${clientesBase44.length} clientes no Base44`);
 
     // Index Base44 por CNPJ/CPF normalizado
     const porDoc = new Map();
@@ -58,11 +72,12 @@ Deno.serve(async (req) => {
       if (d) porDoc.set(d, c);
     }
 
+    // 3. Processar apenas os clientes desta página
     let vinculados = 0;
     let jaVinculados = 0;
     let naoEncontrados = 0;
-    const naoEncontradosAmostra = [];
     const atualizacoes = [];
+    const naoEncontradosAmostra = [];
 
     for (const cOmie of clientesOmie) {
       const docOmie = onlyDigits(cOmie.cnpj_cpf);
@@ -72,41 +87,66 @@ Deno.serve(async (req) => {
       const match = porDoc.get(docOmie);
       if (!match) {
         naoEncontrados++;
-        if (naoEncontradosAmostra.length < 20) {
+        if (naoEncontradosAmostra.length < 10) {
           naoEncontradosAmostra.push({
             codigo_omie: codigoOmie,
-            nome: cOmie.razao_social || cOmie.nome_fantasia,
+            nome: cOmie.razao_social,
             cnpj_cpf: cOmie.cnpj_cpf
           });
         }
         continue;
       }
-
       if (String(match.codigo_omie || '') === codigoOmie) {
         jaVinculados++;
         continue;
       }
-
-      atualizacoes.push({ id: match.id, codigo_omie: codigoOmie, nome: match.razao_social });
+      atualizacoes.push({ id: match.id, codigo_omie: codigoOmie });
     }
 
-    if (!apenas_simular) {
+    // 4. Gravar — sequencial com retry em 429 (rate limit Base44)
+    const erros = [];
+    async function updateComRetry(id, data, maxTentativas = 5) {
+      for (let t = 1; t <= maxTentativas; t++) {
+        try {
+          await base44.asServiceRole.entities.Cliente.update(id, data);
+          return true;
+        } catch (err) {
+          const is429 = /429|Rate limit/i.test(err.message || '');
+          if (is429 && t < maxTentativas) {
+            await delay(1500 * t); // backoff: 1.5s, 3s, 4.5s, 6s
+            continue;
+          }
+          erros.push({ id, erro: err.message });
+          return false;
+        }
+      }
+      return false;
+    }
+
+    if (!apenas_simular && atualizacoes.length > 0) {
       for (const up of atualizacoes) {
-        await base44.asServiceRole.entities.Cliente.update(up.id, { codigo_omie: up.codigo_omie });
-        vinculados++;
-        if (vinculados % 100 === 0) console.log(`[IMPORTAR] ${vinculados}/${atualizacoes.length} vinculados`);
+        const ok = await updateComRetry(up.id, { codigo_omie: up.codigo_omie });
+        if (ok) vinculados++;
+        await delay(120); // throttle: ~8 req/s, bem abaixo do limite
       }
     }
 
     return Response.json({
       sucesso: true,
       simulacao: apenas_simular,
-      total_omie: clientesOmie.length,
-      total_base44: clientesBase44.length,
-      ja_vinculados: jaVinculados,
-      novos_vinculos: apenas_simular ? atualizacoes.length : vinculados,
-      nao_encontrados_no_base44: naoEncontrados,
-      amostra_nao_encontrados: naoEncontradosAmostra
+      pagina,
+      total_paginas: totalPaginas,
+      total_registros_omie: totalRegistros,
+      concluido: pagina >= totalPaginas,
+      proxima_pagina: pagina < totalPaginas ? pagina + 1 : null,
+      nesta_pagina: {
+        clientes_omie: clientesOmie.length,
+        novos_vinculos: apenas_simular ? atualizacoes.length : vinculados,
+        ja_vinculados: jaVinculados,
+        nao_encontrados: naoEncontrados,
+        erros: erros.length,
+        amostra_nao_encontrados: naoEncontradosAmostra
+      }
     });
   } catch (error) {
     console.error('[IMPORTAR] ERRO:', error.message);

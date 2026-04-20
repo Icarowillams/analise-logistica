@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown, Send } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown, Send, Link2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import PageHeader from '@/components/ui/PageHeader';
@@ -21,6 +21,7 @@ import ClienteMapa from '@/components/clientes/ClienteMapa';
 import ExportarOmieModal from '@/components/clientes/ExportarOmieModal';
 import ClientesComErroOmie from '@/components/clientes/ClientesComErroOmie';
 import SincronizarOmieClientesModal from '@/components/clientes/SincronizarOmieClientesModal';
+import VincularOmieModal from '@/components/clientes/VincularOmieModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
@@ -34,6 +35,7 @@ export default function Clientes() {
   const [modoImportacao, setModoImportacao] = useState('cadastro'); // 'cadastro' ou 'atualizacao'
   const [omieModalOpen, setOmieModalOpen] = useState(false);
   const [sincronizarOmieOpen, setSincronizarOmieOpen] = useState(false);
+  const [vincularOmieOpen, setVincularOmieOpen] = useState(false);
   const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
@@ -942,6 +944,10 @@ export default function Clientes() {
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Sincronizar Omie
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setVincularOmieOpen(true)}>
+                    <Link2 className="w-4 h-4 mr-2" />
+                    Vincular Omie (por CNPJ)
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setCorrigirErrosOpen(true)} className="text-red-600">
                     <Ban className="w-4 h-4 mr-2" />
                     Corrigir Erros Omie
@@ -1434,6 +1440,11 @@ export default function Clientes() {
       <SincronizarOmieClientesModal
         open={sincronizarOmieOpen}
         onOpenChange={setSincronizarOmieOpen}
+      />
+
+      <VincularOmieModal
+        open={vincularOmieOpen}
+        onOpenChange={setVincularOmieOpen}
       />
 
       <ClientesComErroOmie
