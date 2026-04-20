@@ -1,0 +1,207 @@
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Truck, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+function gerarNumeroCarga(cargas) {
+  const numeros = cargas
+    .map(c => parseInt((c.numero_carga || '').replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n) && n < 10000);
+  const maior = numeros.length ? Math.max(...numeros) : 0;
+  return String(maior + 1).padStart(3, '0');
+}
+
+export default function PainelFecharCarga({ pedidos, selecionados, motoristas, veiculos, cargas, onSuccess }) {
+  const navigate = useNavigate();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [motoristaId, setMotoristaId] = useState('');
+  const [veiculoId, setVeiculoId] = useState('');
+  const [dataSaida, setDataSaida] = useState(hoje);
+  const [obs, setObs] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const pedidosSel = useMemo(
+    () => pedidos.filter(p => selecionados.includes(p.codigo_pedido)),
+    [pedidos, selecionados]
+  );
+
+  const vendas = pedidosSel.filter(p => p.tipo !== 'troca');
+  const trocas = pedidosSel.filter(p => p.tipo === 'troca');
+  const valorTotal = pedidosSel.reduce((s, p) => s + (p.valor_total_pedido || 0), 0);
+  const qtdPacotesTotal = pedidosSel.reduce((s, p) =>
+    s + (p.produtos || []).reduce((sp, pr) => sp + (Number(pr.quantidade) || 0), 0), 0
+  );
+  const produtosDistintos = new Set(
+    pedidosSel.flatMap(p => (p.produtos || []).map(pr => pr.codigo_produto || pr.descricao))
+  ).size;
+
+  const fecharCarga = async () => {
+    if (pedidosSel.length === 0) { toast.error('Selecione ao menos 1 pedido'); return; }
+    if (!motoristaId || !veiculoId || !dataSaida) {
+      toast.error('Motorista, Veículo e Data de Saída são obrigatórios');
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const numero = gerarNumeroCarga(cargas);
+      const motorista = motoristas.find(m => m.id === motoristaId);
+      const veiculo = veiculos.find(v => v.id === veiculoId);
+
+      // Formatar pedidos para persistência
+      const pedidosOmieFmt = vendas.map(v => ({
+        codigo_pedido: v.codigo_pedido,
+        codigo_pedido_integracao: v.codigo_pedido_integracao || '',
+        numero_pedido: v.numero_pedido,
+        codigo_cliente: v.codigo_cliente,
+        codigo_cliente_integracao: v.codigo_cliente_integracao || '',
+        codigo_cliente_cod: v.codigo_cliente_cod || '',
+        nome_cliente: v.nome_cliente,
+        nome_fantasia: v.nome_fantasia,
+        cidade: v.cidade,
+        rota_cliente: v.rota_nome,
+        valor_total_pedido: v.valor_total_pedido || 0,
+        quantidade_itens: v.quantidade_itens || 0,
+        tags_cliente: v.tags_cliente || [],
+        produtos: v.produtos || []
+      }));
+
+      const pedidosTrocaFmt = trocas.map(t => ({
+        pedido_troca_id: t.pedido_troca_id,
+        numero_pedido: t.numero_pedido,
+        cliente_id: t.cliente_id,
+        nome_cliente: t.nome_cliente,
+        nome_fantasia: t.nome_fantasia,
+        cidade: t.cidade,
+        rota_cliente: t.rota_nome,
+        valor_total_pedido: t.valor_total_pedido || 0,
+        quantidade_itens: t.quantidade_itens || 0,
+        produtos: t.produtos || []
+      }));
+
+      // 1) Atualizar previsão no Omie (só vendas) — fire-and-continue (não aborta se falhar)
+      if (vendas.length > 0) {
+        try {
+          await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
+            pedidos: vendas.map(v => ({
+              codigo_pedido: v.codigo_pedido,
+              codigo_pedido_integracao: v.codigo_pedido_integracao,
+              numero_pedido: v.numero_pedido
+            })),
+            data_previsao: dataSaida
+          });
+        } catch (e) { console.warn('Falha previsão Omie:', e.message); }
+
+        // 2) Trocar etapa 20 → 50 no Omie
+        try {
+          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
+            pedidos: vendas.map(v => ({
+              codigo_pedido: v.codigo_pedido,
+              codigo_pedido_integracao: v.codigo_pedido_integracao,
+              numero_pedido: v.numero_pedido
+            })),
+            etapa_destino: '50'
+          });
+        } catch (e) { console.warn('Falha trocar etapa:', e.message); }
+      }
+
+      // 3) Criar Carga local
+      const clientesUnicos = new Set(pedidosSel.map(p => p.cliente_id || p.codigo_cliente));
+      const carga = await base44.entities.Carga.create({
+        numero_carga: numero,
+        data_carga: dataSaida,
+        motorista_id: motoristaId,
+        motorista_nome: motorista?.nome || '',
+        veiculo_id: veiculoId,
+        veiculo_placa: veiculo?.placa || '',
+        status_carga: 'montagem',
+        valor_total: valorTotal,
+        valor_total_carga: valorTotal,
+        quantidade_pedidos: pedidosSel.length,
+        quantidade_clientes: clientesUnicos.size,
+        quantidade_total_pacotes: qtdPacotesTotal,
+        notas_fiscais: pedidosSel.map(p => p.numero_pedido).filter(Boolean),
+        pedidos_omie: pedidosOmieFmt,
+        pedidos_troca: pedidosTrocaFmt,
+        observacao: obs,
+        observacoes: obs
+      });
+
+      // 4) Atualizar PedidoTroca local com carga_id
+      for (const t of trocas) {
+        try {
+          await base44.entities.PedidoTroca.update(t.pedido_troca_id, {
+            carga_id: carga.id,
+            motorista_id: motoristaId
+          });
+        } catch (e) { console.warn('Falha vincular troca:', e.message); }
+      }
+
+      toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
+      onSuccess?.(carga);
+      navigate('/Cargas');
+    } catch (e) {
+      toast.error('Erro ao fechar carga: ' + e.message);
+    }
+    setSalvando(false);
+  };
+
+  return (
+    <Card className="sticky top-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Truck className="w-5 h-5 text-amber-500" />
+          Fechar Carga
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label>Motorista *</Label>
+          <Select value={motoristaId} onValueChange={setMotoristaId}>
+            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {motoristas.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Veículo *</Label>
+          <Select value={veiculoId} onValueChange={setVeiculoId}>
+            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {veiculos.map(v => <SelectItem key={v.id} value={v.id}>{v.placa} — {v.descricao || v.modelo || ''}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Data de Saída *</Label>
+          <Input type="date" value={dataSaida} onChange={(e) => setDataSaida(e.target.value)} />
+        </div>
+        <div>
+          <Label>Observações</Label>
+          <Textarea rows={2} value={obs} onChange={(e) => setObs(e.target.value)} />
+        </div>
+
+        <div className="border-t pt-3 space-y-1 text-sm">
+          <div className="flex justify-between"><span className="text-slate-500">Vendas</span><span>{vendas.length}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span>{trocas.length}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Produtos distintos</span><span>{produtosDistintos}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Pacotes total</span><span>{qtdPacotesTotal}</span></div>
+          <div className="flex justify-between font-semibold border-t pt-1"><span>Valor total</span><span>R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+        </div>
+
+        <Button className="w-full" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
+          {salvando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
+          Fechar Carga ({pedidosSel.length} pedidos)
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}

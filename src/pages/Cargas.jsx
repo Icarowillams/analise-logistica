@@ -11,11 +11,14 @@ import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import { toast } from 'sonner';
 
 const STATUS_COLORS = {
+  montagem: 'bg-slate-200 text-slate-700',
+  fechada: 'bg-slate-300 text-slate-700',
   montando: 'bg-slate-200 text-slate-700',
   conferindo: 'bg-amber-100 text-amber-800',
   pronta: 'bg-blue-100 text-blue-800',
   faturada: 'bg-green-100 text-green-800',
   em_rota: 'bg-indigo-100 text-indigo-800',
+  entregue: 'bg-emerald-100 text-emerald-800',
   finalizada: 'bg-emerald-100 text-emerald-800',
   cancelada: 'bg-red-100 text-red-800'
 };
@@ -26,10 +29,14 @@ export default function Cargas() {
   const [faturando, setFaturando] = useState(null);
   const [excluindo, setExcluindo] = useState(null);
 
-  const { data: cargas = [], isLoading } = useQuery({
+  const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
     queryFn: () => base44.entities.Carga.list('-created_date', 500)
   });
+
+  // Tela /Cargas exibe apenas cargas já faturadas / entregues / em rota.
+  // "montagem" e "fechada" aparecem só na tela de Montagem/Faturamento.
+  const cargas = cargasTodas.filter(c => !['montagem', 'fechada'].includes(c.status_carga));
 
   const faturar = async (carga) => {
     if (!confirm(`Faturar carga ${carga.numero_carga} (${carga.quantidade_pedidos} pedidos)?`)) return;
@@ -86,7 +93,7 @@ export default function Cargas() {
       width: '200px',
       render: (_, row) => (
         <div className="flex gap-1">
-          {['montando', 'conferindo', 'pronta'].includes(row.status_carga) && (
+          {['montagem', 'montando', 'conferindo', 'pronta'].includes(row.status_carga) && (
             <Button size="sm" onClick={() => faturar(row)} disabled={faturando === row.id}>
               {faturando === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Faturar'}
             </Button>
