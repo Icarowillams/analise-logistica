@@ -100,52 +100,11 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
           { title: 'Unidades de Medida', path: 'UnidadesMedida' },
           { title: 'Rotas', path: 'Rotas' },
-          { title: 'Roteiros', path: 'Roteiros' },
-          { title: 'Cadastro de Metas', path: 'CadastroMetas' },
           { title: 'Empresa', path: 'Empresa' },
           { title: 'Pré-Cadastros', path: 'PreCadastros' },
           { title: 'Veículos', path: 'Veiculos' },
           { title: 'Motoristas', path: 'Motoristas' },
           { title: 'Cenários Fiscais', path: 'CenariosFiscais' }
-        ]
-      },
-      {
-        title: 'Metas',
-        icon: Target,
-        submenu: [
-          { title: 'Relatório Metas Gerais', path: 'RelatorioMetasGerais' },
-          { title: 'Relatório Metas Rodrigo', path: 'PainelRodrigosM' }
-        ]
-      },
-      {
-        title: 'Análises Comercial',
-        icon: BarChart3,
-        submenu: [
-          { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
-          { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
-          { title: 'Dashboard Vendas', path: 'DashboardPedidosVenda' },
-          { title: 'Dashboard Clientes', path: 'DashboardClientes' },
-          { title: 'Análise de Visitas', path: 'AnaliseVisitas' },
-          { title: 'Mapa de Visitas', path: 'MapaVendas' }
-        ]
-      },
-      {
-        title: 'Relatórios Visitas',
-        icon: FileSpreadsheet,
-        submenu: [
-          { title: 'Roteiros/Visitas', path: 'RelatorioRoteiros' },
-          { title: 'Estoque', path: 'RelatorioEstoque' },
-          { title: 'Trocas', path: 'RelatorioTrocas' },
-          { title: 'Rotina Supervisores', path: 'RelatorioRotinaSupervisores' }
-        ]
-      },
-      {
-        title: 'Roteiros',
-        icon: TrendingUp,
-        submenu: [
-          { title: 'Meus Roteiros', path: 'MeusRoteiros' },
-          { title: 'Rota Supervisores', path: 'RotaSupervisores' },
-          { title: 'Painel de Roteiros', path: 'PainelGestorVisita' }
         ]
       },
       {

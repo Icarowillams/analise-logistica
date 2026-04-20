@@ -7,11 +7,6 @@ import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import RelatorioRotinaSupervisores from './pages/RelatorioRotinaSupervisores';
-import CadastroMetas from './pages/CadastroMetas';
-import RelatorioMetasGerais from './pages/RelatorioMetasGerais';
-import DashboardPedidosVenda from './pages/DashboardPedidosVenda';
-
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import ControlePedidosVenda from './pages/ControlePedidosVenda';
 import ControlePedidosTroca from './pages/ControlePedidosTroca';
@@ -79,17 +74,12 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
-      <Route path="/RelatorioRotinaSupervisores" element={<LayoutWrapper currentPageName="RelatorioRotinaSupervisores"><RelatorioRotinaSupervisores /></LayoutWrapper>} />
-
       <Route path="/enviarrotasomie" element={<LayoutWrapper currentPageName="EnviarRotasOmie"><EnviarRotasOmie /></LayoutWrapper>} />
       <Route path="/precadastros" element={<LayoutWrapper currentPageName="PreCadastros"><PreCadastros /></LayoutWrapper>} />
       <Route path="/Veiculos" element={<LayoutWrapper currentPageName="Veiculos"><Veiculos /></LayoutWrapper>} />
       <Route path="/Motoristas" element={<LayoutWrapper currentPageName="Motoristas"><Motoristas /></LayoutWrapper>} />
       <Route path="/CenariosFiscais" element={<LayoutWrapper currentPageName="CenariosFiscais"><CenariosFiscais /></LayoutWrapper>} />
       <Route path="/IntegracaoOmieDashboard" element={<LayoutWrapper currentPageName="IntegracaoOmieDashboard"><IntegracaoOmieDashboard /></LayoutWrapper>} />
-      <Route path="/CadastroMetas" element={<LayoutWrapper currentPageName="CadastroMetas"><CadastroMetas /></LayoutWrapper>} />
-      <Route path="/RelatorioMetasGerais" element={<LayoutWrapper currentPageName="RelatorioMetasGerais"><RelatorioMetasGerais /></LayoutWrapper>} />
-      <Route path="/DashboardPedidosVenda" element={<LayoutWrapper currentPageName="DashboardPedidosVenda"><DashboardPedidosVenda /></LayoutWrapper>} />
       <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
       <Route path="/ControlePedidosVenda" element={<LayoutWrapper currentPageName="ControlePedidosVenda"><ControlePedidosVenda /></LayoutWrapper>} />
       <Route path="/ControlePedidosTroca" element={<LayoutWrapper currentPageName="ControlePedidosTroca"><ControlePedidosTroca /></LayoutWrapper>} />
