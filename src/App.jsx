@@ -17,7 +17,7 @@ import Motoristas from './pages/Motoristas.jsx';
 import CenariosFiscais from './pages/CenariosFiscais.jsx';
 import IntegracaoOmieDashboard from './pages/IntegracaoOmieDashboard.jsx';
 import NotasOmie from './pages/NotasOmie.jsx';
-import MontagemCarga from './pages/MontagemCarga';
+import MontagemCarga from './pages/MontagemCarga.jsx';
 import Cargas from './pages/Cargas.jsx';
 import AjustesPedidos from './pages/AjustesPedidos.jsx';
 import BoletosOmie from './pages/BoletosOmie.jsx';
