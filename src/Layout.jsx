@@ -163,6 +163,7 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Pedidos de Venda', path: 'ControlePedidosVenda' },
           { title: 'Pedidos de Troca', path: 'ControlePedidosTroca' },
+          { title: 'Notas Fiscais Omie', path: 'NotasOmie' },
         ]
       }
     ];

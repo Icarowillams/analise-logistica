@@ -1,0 +1,196 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { FileText, Search, Download, ExternalLink, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import DataTable from '@/components/ui/DataTable';
+
+export default function NotasOmie() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const primeiroDia = hoje.slice(0, 8) + '01';
+  const formatarData = (d) => {
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}/${y}`;
+  };
+
+  const [filtros, setFiltros] = useState({
+    data_inicial: formatarData(primeiroDia),
+    data_final: formatarData(hoje),
+    nome_cliente: '',
+    cnpj_cliente: ''
+  });
+  const [pagina, setPagina] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [loadingDetalhe, setLoadingDetalhe] = useState(null);
+
+  const buscar = async (pg = 1) => {
+    setLoading(true);
+    try {
+      const { data } = await base44.functions.invoke('listarNfsOmie', {
+        ...filtros,
+        pagina: pg,
+        registros_por_pagina: 50
+      });
+      if (data?.sucesso) {
+        setResultado(data);
+        setPagina(pg);
+      } else {
+        toast.error(data?.error || 'Erro ao consultar NFs');
+      }
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setLoading(false);
+  };
+
+  const abrirDocs = async (nf) => {
+    setLoadingDetalhe(nf.nIdNF);
+    try {
+      const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
+        nIdNF: nf.nIdNF
+      });
+      if (data?.danfe_url) window.open(data.danfe_url, '_blank');
+      if (data?.xml_url) window.open(data.xml_url, '_blank');
+      if (!data?.danfe_url && !data?.xml_url) {
+        toast.warning('URLs não disponíveis ainda (NF pode estar em processamento)');
+      }
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setLoadingDetalhe(null);
+  };
+
+  const columns = [
+    { key: 'cNumero', label: 'Nº NF', width: '100px', sortable: true },
+    { key: 'cSerie', label: 'Série', width: '70px' },
+    { key: 'dEmiNF', label: 'Emissão', width: '110px', sortable: true },
+    { key: 'cRazao', label: 'Cliente' },
+    { key: 'cCPFCNPJDest', label: 'CNPJ/CPF', width: '160px' },
+    {
+      key: 'nValorNF',
+      label: 'Valor',
+      width: '120px',
+      sortable: true,
+      render: (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+    },
+    {
+      key: 'cStatus',
+      label: 'Status',
+      width: '100px',
+      render: (v) => {
+        const cor = v === 'A' ? 'bg-green-100 text-green-800' : v === 'C' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+        return <Badge className={cor}>{v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v}</Badge>;
+      }
+    },
+    {
+      key: 'acoes',
+      label: 'Docs',
+      width: '90px',
+      render: (_, row) => (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => abrirDocs(row)}
+          disabled={loadingDetalhe === row.nIdNF}
+        >
+          {loadingDetalhe === row.nIdNF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <div className="space-y-4 max-w-7xl mx-auto">
+      <div className="flex items-center gap-3">
+        <FileText className="w-8 h-8 text-amber-500" />
+        <div>
+          <h1 className="text-2xl font-bold">Notas Fiscais Omie</h1>
+          <p className="text-sm text-slate-500">Consulta e download de DANFE/XML</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Filtros</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+              <Label>Data inicial (DD/MM/AAAA)</Label>
+              <Input
+                value={filtros.data_inicial}
+                onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })}
+                placeholder="01/04/2026"
+              />
+            </div>
+            <div>
+              <Label>Data final (DD/MM/AAAA)</Label>
+              <Input
+                value={filtros.data_final}
+                onChange={(e) => setFiltros({ ...filtros, data_final: e.target.value })}
+                placeholder="20/04/2026"
+              />
+            </div>
+            <div>
+              <Label>Nome cliente</Label>
+              <Input
+                value={filtros.nome_cliente}
+                onChange={(e) => setFiltros({ ...filtros, nome_cliente: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>CNPJ/CPF</Label>
+              <Input
+                value={filtros.cnpj_cliente}
+                onChange={(e) => setFiltros({ ...filtros, cnpj_cliente: e.target.value })}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button onClick={() => buscar(1)} disabled={loading} className="w-full">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                Buscar
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {resultado && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>
+                {resultado.total_de_registros || 0} NFs encontradas
+              </span>
+              {resultado.total_de_paginas > 1 && (
+                <div className="flex gap-2 items-center text-sm">
+                  <Button size="sm" variant="outline" disabled={pagina <= 1 || loading} onClick={() => buscar(pagina - 1)}>
+                    Anterior
+                  </Button>
+                  <span>Página {pagina} / {resultado.total_de_paginas}</span>
+                  <Button size="sm" variant="outline" disabled={pagina >= resultado.total_de_paginas || loading} onClick={() => buscar(pagina + 1)}>
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              data={resultado.nfs || []}
+              columns={columns}
+              searchable
+              pageSize={50}
+              emptyMessage="Nenhuma NF encontrada"
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

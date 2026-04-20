@@ -21,6 +21,7 @@ import Veiculos from './pages/Veiculos.jsx';
 import Motoristas from './pages/Motoristas.jsx';
 import CenariosFiscais from './pages/CenariosFiscais.jsx';
 import IntegracaoOmieDashboard from './pages/IntegracaoOmieDashboard.jsx';
+import NotasOmie from './pages/NotasOmie.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
       <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
       <Route path="/ControlePedidosVenda" element={<LayoutWrapper currentPageName="ControlePedidosVenda"><ControlePedidosVenda /></LayoutWrapper>} />
       <Route path="/ControlePedidosTroca" element={<LayoutWrapper currentPageName="ControlePedidosTroca"><ControlePedidosTroca /></LayoutWrapper>} />
+      <Route path="/NotasOmie" element={<LayoutWrapper currentPageName="NotasOmie"><NotasOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
