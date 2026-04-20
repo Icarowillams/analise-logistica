@@ -56,15 +56,17 @@ export default function IntegracaoOmieDashboard() {
     try {
       const res = await base44.functions.invoke('testarConexaoOmie', {});
       setTestResult(res.data);
-      if (res.data.ok) {
+      if (res.data?.ok) {
         toast.success('✅ Conexão Omie OK!');
       } else {
-        toast.error('❌ ' + (res.data.error || 'Falha'));
+        toast.error('❌ ' + (res.data?.error || 'Falha'));
       }
       qc.invalidateQueries(['logsOmie']);
     } catch (e) {
-      setTestResult({ ok: false, error: e.message });
-      toast.error('Erro: ' + e.message);
+      // Axios joga erro quando status != 2xx — precisamos ler o payload para ver o diagnóstico
+      const payload = e?.response?.data || { ok: false, error: e.message };
+      setTestResult(payload);
+      toast.error('❌ ' + (payload.error || e.message));
     } finally {
       setTesting(false);
     }
@@ -112,10 +114,18 @@ export default function IntegracaoOmieDashboard() {
             ) : (
               <div className="flex items-start gap-3">
                 <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p className="font-semibold text-red-900">Falha na conexão</p>
                   <p className="text-sm text-red-800 mt-1">{testResult.error}</p>
                   {testResult.code && <p className="text-xs text-red-700 mt-1">Código: {testResult.code}</p>}
+                  {testResult.debug && (
+                    <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded text-xs text-red-900 space-y-1">
+                      <p className="font-semibold">Diagnóstico:</p>
+                      <p>• OMIE_APP_KEY presente no ambiente: <strong>{String(testResult.debug.appKey_presente)}</strong></p>
+                      <p>• OMIE_APP_SECRET presente no ambiente: <strong>{String(testResult.debug.appSecret_presente)}</strong></p>
+                      <p>• Vars OMIE visíveis: <code>{(testResult.debug.env_vars_omie || []).join(', ') || '(nenhuma)'}</code></p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
