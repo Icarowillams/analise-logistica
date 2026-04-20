@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { FileText, Plus, Pencil, Trash2, Save, Ban } from 'lucide-react';
+import { FileText, Plus, Pencil, Trash2, Save, Ban, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,9 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 const initialForm = {
+  tipo_registro: 'cenario',
   codigo: '', nome: '', descricao: '', cfop: '', natureza_operacao: '',
   tipo_nota: '55', cst_icms: '', aliquota_icms: '',
   cst_pis: '', aliquota_pis: '', cst_cofins: '', aliquota_cofins: '',
@@ -25,6 +27,29 @@ export default function CenariosFiscais() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(initialForm);
+  const [tab, setTab] = useState('cenario');
+  const [importando, setImportando] = useState(false);
+
+  const handleImportarOmie = async () => {
+    if (!window.confirm('Importar Cenários (Naturezas) e Etapas de Faturamento do Omie?')) return;
+    setImportando(true);
+    try {
+      const res = await base44.functions.invoke('importarCenariosFiscaisOmie', {});
+      const d = res.data;
+      if (d.sucesso) {
+        toast.success(
+          `✅ ${d.cenarios.criados + d.cenarios.atualizados} cenários e ${d.etapas.criadas + d.etapas.atualizadas} etapas sincronizados`
+        );
+        qc.invalidateQueries(['cenariosFiscais']);
+      } else {
+        toast.error('❌ ' + (d.error || 'Erro desconhecido'));
+      }
+    } catch (e) {
+      toast.error('❌ ' + e.message);
+    } finally {
+      setImportando(false);
+    }
+  };
 
   const { data: cenarios = [] } = useQuery({
     queryKey: ['cenariosFiscais'],
@@ -53,7 +78,7 @@ export default function CenariosFiscais() {
     }
   });
 
-  const openNew = () => { setSelected(null); setForm(initialForm); setModalOpen(true); };
+  const openNew = () => { setSelected(null); setForm({ ...initialForm, tipo_registro: tab }); setModalOpen(true); };
   const openEdit = (c) => { setSelected(c); setForm({ ...initialForm, ...c }); setModalOpen(true); };
   const closeModal = () => { setModalOpen(false); setSelected(null); setForm(initialForm); };
 
@@ -80,45 +105,102 @@ export default function CenariosFiscais() {
             <p className="text-sm text-neutral-500">Configurações de tributação e emissão de nota</p>
           </div>
         </div>
-        <Button onClick={openNew} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold">
-          <Plus className="w-4 h-4 mr-2" />Novo Cenário
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleImportarOmie}
+            disabled={importando}
+            variant="outline"
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            {importando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+            Importar do Omie
+          </Button>
+          <Button onClick={openNew} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold">
+            <Plus className="w-4 h-4 mr-2" />Novo
+          </Button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">Código</th>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">Nome</th>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">CFOP</th>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">Nota</th>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">ICMS</th>
-              <th className="text-left p-3 text-xs font-semibold text-slate-600">Status</th>
-              <th className="text-right p-3 text-xs font-semibold text-slate-600">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cenarios.map(c => (
-              <tr key={c.id} className="border-b hover:bg-slate-50">
-                <td className="p-3 text-sm font-mono">{c.codigo || '-'}</td>
-                <td className="p-3 text-sm font-medium">{c.nome}</td>
-                <td className="p-3 text-sm font-mono">{c.cfop || '-'}</td>
-                <td className="p-3 text-sm"><Badge variant="outline">{c.tipo_nota}</Badge></td>
-                <td className="p-3 text-sm">{c.aliquota_icms != null ? `${c.aliquota_icms}%` : '-'}</td>
-                <td className="p-3"><Badge className={c.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}>{c.status}</Badge></td>
-                <td className="p-3 text-right">
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setSelected(c); setDeleteOpen(true); }}><Trash2 className="w-4 h-4 text-red-500" /></Button>
-                </td>
-              </tr>
-            ))}
-            {cenarios.length === 0 && (
-              <tr><td colSpan={7} className="p-8 text-center text-slate-400">Nenhum cenário fiscal cadastrado</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="cenario">
+            Cenários / Naturezas ({cenarios.filter(c => (c.tipo_registro || 'cenario') === 'cenario').length})
+          </TabsTrigger>
+          <TabsTrigger value="etapa">
+            Etapas de Faturamento ({cenarios.filter(c => c.tipo_registro === 'etapa').length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cenario">
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Código</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Nome</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">CFOP</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Nota</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">ICMS</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Omie ID</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Status</th>
+                  <th className="text-right p-3 text-xs font-semibold text-slate-600">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cenarios.filter(c => (c.tipo_registro || 'cenario') === 'cenario').map(c => (
+                  <tr key={c.id} className="border-b hover:bg-slate-50">
+                    <td className="p-3 text-sm font-mono">{c.codigo || '-'}</td>
+                    <td className="p-3 text-sm font-medium">{c.nome}</td>
+                    <td className="p-3 text-sm font-mono">{c.cfop || '-'}</td>
+                    <td className="p-3 text-sm"><Badge variant="outline">{c.tipo_nota}</Badge></td>
+                    <td className="p-3 text-sm">{c.aliquota_icms != null ? `${c.aliquota_icms}%` : '-'}</td>
+                    <td className="p-3 text-xs font-mono text-slate-500">{c.omie_id || '-'}</td>
+                    <td className="p-3"><Badge className={c.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}>{c.status}</Badge></td>
+                    <td className="p-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setSelected(c); setDeleteOpen(true); }}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+                    </td>
+                  </tr>
+                ))}
+                {cenarios.filter(c => (c.tipo_registro || 'cenario') === 'cenario').length === 0 && (
+                  <tr><td colSpan={8} className="p-8 text-center text-slate-400">Nenhum cenário cadastrado — clique em "Importar do Omie"</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="etapa">
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Código</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Operação / Etapa</th>
+                  <th className="text-left p-3 text-xs font-semibold text-slate-600">Status</th>
+                  <th className="text-right p-3 text-xs font-semibold text-slate-600">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cenarios.filter(c => c.tipo_registro === 'etapa').map(c => (
+                  <tr key={c.id} className="border-b hover:bg-slate-50">
+                    <td className="p-3 text-sm font-mono">{c.codigo || '-'}</td>
+                    <td className="p-3 text-sm font-medium">{c.nome}</td>
+                    <td className="p-3"><Badge className={c.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}>{c.status}</Badge></td>
+                    <td className="p-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setSelected(c); setDeleteOpen(true); }}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+                    </td>
+                  </tr>
+                ))}
+                {cenarios.filter(c => c.tipo_registro === 'etapa').length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhuma etapa cadastrada — clique em "Importar do Omie"</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

@@ -181,7 +181,8 @@ Deno.serve(async (req) => {
         detalhes: resultadoCenarios
       },
       etapas: {
-        total_omie: etapasOmie.length,
+        total_omie: etapasFlat.length,
+        total_operacoes: operacoesOmie.length,
         criadas: etapasCriadas,
         atualizadas: etapasAtualizadas,
         detalhes: resultadoEtapas
