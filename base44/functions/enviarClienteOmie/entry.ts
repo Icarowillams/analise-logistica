@@ -183,6 +183,35 @@ Deno.serve(async (req) => {
         // Mapear campos do Base44 para formato Omie completo
         const clienteOmie = mapearClienteParaOmie(clienteData, rotaNome);
 
+        // Pré-consulta por CNPJ: se já existe no Omie, reutilizar o codigo_cliente_integracao existente
+        // para evitar erro "Cliente já cadastrado... (add)" quando a integração antiga foi criada com outro ID.
+        const cnpjLimpo = clienteOmie.cnpj_cpf;
+        if (cnpjLimpo) {
+            try {
+                const consulta = await fetch(OMIE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        call: 'ConsultarCliente',
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [{ cnpj_cpf: cnpjLimpo }]
+                    })
+                });
+                const achado = await consulta.json();
+                if (achado?.codigo_cliente_omie) {
+                    if (achado.codigo_cliente_integracao && achado.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
+                        console.log('[enviarClienteOmie] Reutilizando codigo_cliente_integracao existente no Omie:', achado.codigo_cliente_integracao);
+                        clienteOmie.codigo_cliente_integracao = achado.codigo_cliente_integracao;
+                    }
+                    // Incluir também o codigo_cliente_omie para garantir update
+                    clienteOmie.codigo_cliente_omie = achado.codigo_cliente_omie;
+                }
+            } catch (e) {
+                console.log('[enviarClienteOmie] Pré-consulta CNPJ falhou (segue fluxo normal):', e.message);
+            }
+        }
+
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
         const startedAt = Date.now();
