@@ -20,11 +20,11 @@
 ## 🗺️ FASES DE MIGRAÇÃO
 
 ### **FASE 1 — Fundação (1-2 dias)** ⚡ Baixo risco
-**Objetivo:** Preparar infra para os módulos logísticos.
+**Objetivo:** Preparar infra para os módulos logísticos. **Só Omie** — sem webhooks externos.
 
 | Item | Tipo | Detalhes |
 |---|---|---|
-| Secrets | config | `PAO_MEL_WEBHOOK_URL`, `PAO_MEL_API_KEY`, `ANALISE_COMERCIAL_API_KEY`, `BASE_REMOTE_API_KEY` |
+| Secrets | ✅ já existem | `OMIE_APP_KEY` + `OMIE_APP_SECRET` |
 | Entidade `Carga` | criar | Agrupa pedidos_omie[] + motorista + veículo + rota + status |
 | Entidade `LogCorte` | criar | Auditoria de alterações de quantidade em pedidos |
 | Entidade `Cancelamento` | criar | NFs canceladas + motivo |
@@ -32,7 +32,7 @@
 | Entidade `Retorno` | criar | Produtos devolvidos na entrega |
 | Entidade `ParametroNaturezaOperacao` | criar | Cadastro CFOPs (não confundir com CenarioFiscal) |
 
-**Entregável:** Schemas prontos + secrets configurados.
+**Entregável:** Schemas prontos.
 
 ---
 
@@ -99,15 +99,8 @@
 
 ---
 
-### **FASE 6 — Webhooks Bidirecionais (1 dia)** 🔗
-**Objetivo:** App fica reativo a eventos externos.
-
-| Endpoint | Tipo | Função |
-|---|---|---|
-| `POST webhookAnaliseComercial` | inbound | Recebe eventos do app externo (trocas, ajustes) |
-| `notificarAppExterno` | outbound util | Dispara em corte/cancela/fatura |
-
-**Entregável:** Integração viva entre os dois apps.
+### ~~**FASE 6 — Webhooks Bidirecionais**~~ ❌ REMOVIDA
+**Motivo:** Este app é o único orquestrador. Só conversa com o Omie. Não existe app externo para notificar.
 
 ---
 
@@ -130,10 +123,10 @@
 ```
 FASE 1 (fundação)  →  FASE 2 (leitura)  →  FASE 3 (carga)
                                                 ↓
-FASE 6 (webhooks)  ←  FASE 5 (financeiro)  ←  FASE 4 (ajustes)
+                    FASE 5 (financeiro)  ←  FASE 4 (ajustes)
 ```
 
-**Total estimado:** 10-14 dias úteis de desenvolvimento executando em série.
+**Total estimado:** 8-11 dias úteis de desenvolvimento executando em série.
 
 ---
 

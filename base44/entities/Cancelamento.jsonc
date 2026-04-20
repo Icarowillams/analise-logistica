@@ -53,7 +53,6 @@
       "enum": [
         "manual",
         "acerto_caixa",
-        "analise_comercial",
         "rota_devolucao",
         "outros"
       ],
@@ -77,10 +76,6 @@
     },
     "erro_omie": {
       "type": "string"
-    },
-    "notificado_analise_comercial": {
-      "type": "boolean",
-      "default": false
     }
   },
   "required": [

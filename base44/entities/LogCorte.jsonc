@@ -83,11 +83,6 @@
       "default": false,
       "description": "Se AlterarPedidoVenda foi executado com sucesso"
     },
-    "notificado_analise_comercial": {
-      "type": "boolean",
-      "default": false,
-      "description": "Se o webhook para app externo foi disparado"
-    },
     "erro_omie": {
       "type": "string"
     }
