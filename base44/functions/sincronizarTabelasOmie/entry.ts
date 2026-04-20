@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -7,36 +7,35 @@ const OMIE_URL_PRODUTO = "https://app.omie.com.br/api/v1/geral/produtos/";
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function logOmie(base44, payload) {
+  try { await base44.asServiceRole.entities.LogIntegracaoOmie.create(payload); } catch (_) {}
+}
+
 async function omieCall(url, call, param) {
+  const startedAt = Date.now();
   console.log(`[OMIE] ${call}`, JSON.stringify(param).substring(0, 200));
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      call,
-      app_key: OMIE_APP_KEY,
-      app_secret: OMIE_APP_SECRET,
-      param: [param]
-    })
+    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
   });
   const data = await response.json();
   if (data.faultstring) console.log(`[OMIE] ERRO ${call}: ${data.faultstring}`);
-  return data;
+  return { data, duracao_ms: Date.now() - startedAt };
 }
 
 async function listarTabelasOmie() {
   const todasTabelas = [];
   let pagina = 1;
   let totalPaginas = 1;
-
   while (pagina <= totalPaginas) {
-    const result = await omieCall(OMIE_URL_TABELA, "ListarTabelasPreco", {
+    const { data } = await omieCall(OMIE_URL_TABELA, "ListarTabelasPreco", {
       nPagina: pagina, nRegPorPagina: 50
     });
     await delay(1000);
-    if (result.faultstring) throw new Error(`Erro ao listar tabelas Omie: ${result.faultstring}`);
-    totalPaginas = result.nTotPaginas || 1;
-    if (result.listaTabelasPreco) todasTabelas.push(...result.listaTabelasPreco);
+    if (data.faultstring) throw new Error(`Erro ao listar tabelas Omie: ${data.faultstring}`);
+    totalPaginas = data.nTotPaginas || 1;
+    if (data.listaTabelasPreco) todasTabelas.push(...data.listaTabelasPreco);
     pagina++;
   }
   return todasTabelas;
@@ -46,38 +45,27 @@ async function listarItensTabela(nCodTabPreco, cCodIntTabPreco) {
   const todosItens = [];
   let pagina = 1;
   let totalPaginas = 1;
-
   while (pagina <= totalPaginas) {
     const param = { nPagina: pagina, nRegPorPagina: 50 };
     if (nCodTabPreco) param.nCodTabPreco = nCodTabPreco;
     if (cCodIntTabPreco) param.cCodIntTabPreco = cCodIntTabPreco;
-    const result = await omieCall(OMIE_URL_TABELA, "ListarTabelaItens", param);
+    const { data } = await omieCall(OMIE_URL_TABELA, "ListarTabelaItens", param);
     await delay(1000);
-    if (result.faultstring) {
-      if (result.faultstring.includes("Nenhum") || result.faultstring.includes("nenhum")) return [];
-      throw new Error(`Erro ao listar itens: ${result.faultstring}`);
+    if (data.faultstring) {
+      if (/nenhum/i.test(data.faultstring)) return [];
+      throw new Error(`Erro ao listar itens: ${data.faultstring}`);
     }
-    totalPaginas = result.nTotPaginas || 1;
-    if (result.itensTabela) todosItens.push(...result.itensTabela);
+    totalPaginas = data.nTotPaginas || 1;
+    if (data.itensTabela) todosItens.push(...data.itensTabela);
     pagina++;
   }
   return todosItens;
 }
 
-async function buscarProdutoOmie(codigoIntegracao) {
-  const result = await omieCall(OMIE_URL_PRODUTO, "ConsultarProduto", {
-    codigo_produto_integracao: codigoIntegracao
-  });
-  if (result.faultstring) return null;
-  return result.codigo_produto || null;
-}
-
 async function consultarProdutoOmiePorId(nCodProd) {
-  const result = await omieCall(OMIE_URL_PRODUTO, "ConsultarProduto", {
-    codigo_produto: nCodProd
-  });
-  if (result.faultstring) return null;
-  return result;
+  const { data } = await omieCall(OMIE_URL_PRODUTO, "ConsultarProduto", { codigo_produto: nCodProd });
+  if (data.faultstring) return null;
+  return data;
 }
 
 Deno.serve(async (req) => {
@@ -127,6 +115,13 @@ Deno.serve(async (req) => {
         await delay(200);
       }
 
+      await logOmie(base44, {
+        endpoint: 'produtos/tabelaprecos', call: 'ListarTabelasPreco',
+        operacao: 'importar_tabelas', status: 'sucesso',
+        mensagem_erro: `${criadas} criadas, ${atualizadas} atualizadas, ${tabelasOmie.length} total`,
+        usuario_email: user.email
+      });
+
       return Response.json({
         sucesso: true, mensagem: `${criadas} tabelas criadas, ${atualizadas} atualizadas.`,
         total_omie: tabelasOmie.length, resultados
@@ -134,7 +129,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
-    // EXPORTAR TABELA DO BASE44 → OMIE
+    // EXPORTAR TABELA DO BASE44 → OMIE (cabeçalho)
     // ==========================================
     if (acao === "exportar_tabela") {
       const { tabela_id } = body;
@@ -144,14 +139,12 @@ Deno.serve(async (req) => {
       const tabela = tabelas.find(t => t.id === tabela_id);
       if (!tabela) return Response.json({ error: "Tabela não encontrada" }, { status: 404 });
 
-      // Omie aceita no máximo 20 caracteres para cCodIntTabPreco
-      const codIntRaw = tabela.omie_cod_int || `TP${tabela.id}`;
-      const codInt = codIntRaw.substring(0, 20);
+      const codInt = (tabela.omie_cod_int || `TP${tabela.id}`).substring(0, 20);
       let nCodTabPreco = tabela.omie_id || null;
 
       // Verificar se já existe no Omie
       if (!nCodTabPreco) {
-        const consulta = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
+        const { data: consulta } = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
         await delay(1000);
         if (!consulta.faultstring) nCodTabPreco = consulta.nCodTabPreco;
       }
@@ -166,33 +159,46 @@ Deno.serve(async (req) => {
         outrasInfo: { nCodOrigTab: 0, nPercAcrescimo: 0, nPercDesconto: 0 },
         caracteristicas: { cTemValidade: "N", cTemDesconto: "N", cArredPreco: "N" }
       };
-
       if (nCodTabPreco) payload.nCodTabPreco = nCodTabPreco;
 
-      let tabelaResult = nCodTabPreco
-        ? await omieCall(OMIE_URL_TABELA, "AlterarTabelaPreco", payload)
-        : await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
+      const callUsada = nCodTabPreco ? "AlterarTabelaPreco" : "IncluirTabelaPreco";
+      let { data: tabelaResult, duracao_ms } = await omieCall(OMIE_URL_TABELA, callUsada, payload);
       await delay(1500);
 
-      // Tabela obsoleta
+      // Tabela obsoleta no Omie — recriar
       if (tabelaResult.faultstring && nCodTabPreco &&
-          (tabelaResult.faultstring.includes("não cadastrada") || tabelaResult.faultstring.includes("nao cadastrada"))) {
+          /não cadastrada|nao cadastrada/i.test(tabelaResult.faultstring)) {
         delete payload.nCodTabPreco;
-        tabelaResult = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
+        const r = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
+        tabelaResult = r.data;
         await delay(1500);
         nCodTabPreco = null;
       }
 
-      // Já cadastrada
-      if (tabelaResult.faultstring && tabelaResult.faultstring.includes("já cadastrad")) {
-        nCodTabPreco = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
+      // Já cadastrada — buscar ID
+      if (tabelaResult.faultstring && /já cadastrad/i.test(tabelaResult.faultstring)) {
+        const { data: c } = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
         await delay(1000);
-        if (nCodTabPreco && !nCodTabPreco.faultstring) {
-          nCodTabPreco = nCodTabPreco.nCodTabPreco;
+        if (!c.faultstring) {
+          nCodTabPreco = c.nCodTabPreco;
         } else {
+          await logOmie(base44, {
+            endpoint: 'produtos/tabelaprecos', call: callUsada, operacao: 'exportar_tabela',
+            entidade_tipo: 'TabelaPreco', entidade_id: tabela.id, status: 'erro',
+            codigo_erro: tabelaResult.faultcode, mensagem_erro: tabelaResult.faultstring,
+            payload_enviado: JSON.stringify(payload).slice(0, 3000), duracao_ms,
+            usuario_email: user.email
+          });
           return Response.json({ sucesso: false, erro: tabelaResult.faultstring });
         }
       } else if (tabelaResult.faultstring) {
+        await logOmie(base44, {
+          endpoint: 'produtos/tabelaprecos', call: callUsada, operacao: 'exportar_tabela',
+          entidade_tipo: 'TabelaPreco', entidade_id: tabela.id, status: 'erro',
+          codigo_erro: tabelaResult.faultcode, mensagem_erro: tabelaResult.faultstring,
+          payload_enviado: JSON.stringify(payload).slice(0, 3000), duracao_ms,
+          usuario_email: user.email
+        });
         return Response.json({ sucesso: false, erro: tabelaResult.faultstring });
       } else {
         nCodTabPreco = tabelaResult.nCodTabPreco || nCodTabPreco;
@@ -205,17 +211,18 @@ Deno.serve(async (req) => {
         omie_id: omieIdFinal, omie_cod_int: codInt
       });
 
-      // Atualizar produtos na tabela (API só aceita nCodTabPreco + cCodIntTabPreco)
-      await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
-        nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt
-      });
+      // Popular produtos padrão e ativar
+      await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt });
       await delay(3000);
-
-      // Ativar tabela
-      await omieCall(OMIE_URL_TABELA, "AtivarTabelaPreco", {
-        nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt
-      });
+      await omieCall(OMIE_URL_TABELA, "AtivarTabelaPreco", { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt });
       await delay(2000);
+
+      await logOmie(base44, {
+        endpoint: 'produtos/tabelaprecos', call: callUsada, operacao: 'exportar_tabela',
+        entidade_tipo: 'TabelaPreco', entidade_id: tabela.id, status: 'sucesso',
+        payload_enviado: JSON.stringify(payload).slice(0, 3000), duracao_ms,
+        usuario_email: user.email
+      });
 
       return Response.json({
         sucesso: true, omie_id: omieIdFinal, omie_cod_int: codInt,
@@ -224,7 +231,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
-    // EXPORTAR PREÇOS DE UMA TABELA → OMIE
+    // EXPORTAR PREÇOS DE UMA TABELA → OMIE (em lotes)
     // ==========================================
     if (acao === "exportar_precos") {
       const { tabela_id, lote_inicio = 0, lote_tamanho = 5, omie_id_override } = body;
@@ -232,10 +239,8 @@ Deno.serve(async (req) => {
 
       const tabelas = await base44.asServiceRole.entities.TabelaPreco.list();
       const tabela = tabelas.find(t => t.id === tabela_id);
-      
-      // Usar omie_id_override se fornecido (caso a tabela acabou de ser exportada e o BD ainda não atualizou)
       const omieIdTabela = omie_id_override || tabela?.omie_id;
-      
+
       if (!tabela || !omieIdTabela) {
         return Response.json({ error: "Tabela não vinculada ao Omie" }, { status: 400 });
       }
@@ -247,6 +252,7 @@ Deno.serve(async (req) => {
 
       const lote = precos.slice(lote_inicio, lote_inicio + lote_tamanho);
       const itensResultados = [];
+      const isAuxiliar = tabela?.nome?.toUpperCase().includes('TABELA AUXILIAR');
 
       for (const preco of lote) {
         const produto = produtos.find(p => p.id === preco.produto_id);
@@ -255,85 +261,65 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Buscar nCodProd no Omie
-        const nCodProd = await buscarProdutoOmie(produto.id);
-        await delay(1500);
-
+        // Usar codigo_omie já gravado (muito mais rápido que ConsultarProduto)
+        const nCodProd = produto.codigo_omie ? Number(produto.codigo_omie) : null;
         if (!nCodProd) {
           itensResultados.push({
             produto_id: produto.id, produto_nome: produto.nome, produto_codigo: produto.codigo,
-            sucesso: false, mensagem: "Produto não encontrado no Omie. Exporte os produtos primeiro."
+            sucesso: false, mensagem: "Produto sem codigo_omie. Sincronize os produtos primeiro."
           });
           continue;
         }
 
         let valorAtual = (preco.ativacao_acao && preco.valor_acao > 0) ? preco.valor_acao : (preco.valor_unitario || 0);
-        
-        // Para TABELA AUXILIAR, enviar todos os produtos mesmo com preço 0 (usar R$0.01 como mínimo)
-        // Isso garante que todos os produtos sejam cadastrados na tabela do Omie
-        const isAuxiliar = tabela?.nome?.toUpperCase().includes('TABELA AUXILIAR');
-        
+
+        // Preço zero ignorado (exceto TABELA AUXILIAR — usa R$0,01 para cadastrar)
         if (valorAtual <= 0 && !isAuxiliar) {
           itensResultados.push({
             produto_id: produto.id, produto_nome: produto.nome, produto_codigo: produto.codigo,
-            sucesso: false, mensagem: "Preço zero ou negativo, ignorado."
+            sucesso: false, mensagem: "Preço zero, ignorado."
           });
           continue;
         }
-        
-        // Se auxiliar e preço 0, usar 0.01 para garantir cadastro
-        if (valorAtual <= 0 && isAuxiliar) {
-          valorAtual = 0.01;
-          console.log(`[AUXILIAR] Produto ${produto.codigo} - ${produto.nome}: preço 0, usando R$0.01 para garantir cadastro no Omie`);
-        }
+        if (valorAtual <= 0 && isAuxiliar) valorAtual = 0.01;
 
-        // Tentar AlterarPrecoItem (usar omieIdTabela em vez de tabela.omie_id)
-        let itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
-          nCodTabPreco: omieIdTabela, nCodProd: nCodProd,
-          nValorTabela: Number(valorAtual.toFixed(2))
+        // Tentar AlterarPrecoItem
+        let { data: itemResult } = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
+          nCodTabPreco: omieIdTabela, nCodProd, nValorTabela: Number(valorAtual.toFixed(2))
         });
-        await delay(2000);
+        await delay(1200);
 
-        // Se produto não está na tabela, incluir produto na tabela e tentar de novo
+        // Se produto não está na tabela, incluir e tentar novamente
         if (itemResult.faultstring &&
-            (itemResult.faultstring.includes("não encontrado") ||
-             itemResult.faultstring.includes("não localizado") ||
-             itemResult.faultstring.includes("nao encontrado") ||
-             itemResult.faultstring.includes("não cadastrado na Tabela") ||
-             itemResult.faultstring.includes("nao cadastrado na Tabela"))) {
+            /não encontrado|não localizado|nao encontrado|não cadastrado na Tabela|nao cadastrado na Tabela/i.test(itemResult.faultstring)) {
 
-          console.log(`[RETRY] Produto ${nCodProd} (${produto.codigo}) não na tabela ${omieIdTabela}. Tentando IncluirProdutoTabPreco...`);
-          
-          // Incluir o produto específico na tabela
-          const inclResult = await omieCall(OMIE_URL_TABELA, "IncluirProdutoTabPreco", {
-            nCodTabPreco: omieIdTabela, nCodProd: nCodProd
+          const { data: inclResult } = await omieCall(OMIE_URL_TABELA, "IncluirProdutoTabPreco", {
+            nCodTabPreco: omieIdTabela, nCodProd
           });
-          await delay(2000);
-          
-          console.log(`[RETRY] IncluirProdutoTabPreco resultado: ${JSON.stringify(inclResult).substring(0, 200)}`);
+          await delay(1500);
 
-          // Se falhou, tentar AtualizarProdutos para re-sincronizar toda a tabela
-          if (inclResult.faultstring) {
-            console.log(`[RETRY] IncluirProdutoTabPreco falhou. Tentando AtualizarProdutos...`);
-            const codIntTabela = tabela.omie_cod_int || `TP${tabela.id}`.substring(0, 20);
+          if (inclResult.faultstring && !/já cadastrad/i.test(inclResult.faultstring)) {
+            // Fallback: AtualizarProdutos (re-sincroniza toda a tabela)
+            const codIntTabela = (tabela.omie_cod_int || `TP${tabela.id}`).substring(0, 20);
             await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
               nCodTabPreco: omieIdTabela, cCodIntTabPreco: codIntTabela
             });
-            await delay(3000);
+            await delay(2500);
           }
 
-          // Tentar alterar o preço novamente
-          itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
-            nCodTabPreco: omieIdTabela, nCodProd: nCodProd,
-            nValorTabela: Number(valorAtual.toFixed(2))
+          const retry = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
+            nCodTabPreco: omieIdTabela, nCodProd, nValorTabela: Number(valorAtual.toFixed(2))
           });
-          await delay(2000);
+          itemResult = retry.data;
+          await delay(1500);
         }
 
         const sucesso = !itemResult.faultstring;
-        if (sucesso) {
-          await base44.asServiceRole.entities.PrecoProduto.update(preco.id, { omie_sincronizado: true });
-        }
+        try {
+          await base44.asServiceRole.entities.PrecoProduto.update(preco.id, {
+            preco_omie_sincronizado: sucesso ? 'sim' : 'nao'
+          });
+        } catch (_) {}
 
         itensResultados.push({
           produto_id: produto.id, produto_nome: produto.nome, produto_codigo: produto.codigo,
@@ -371,12 +357,18 @@ Deno.serve(async (req) => {
       if (tabela.omie_id) param.nCodTabPreco = tabela.omie_id;
       if (tabela.omie_cod_int) param.cCodIntTabPreco = tabela.omie_cod_int;
 
-      const result = await omieCall(OMIE_URL_TABELA, "ExcluirTabelaPreco", param);
+      const { data: result, duracao_ms } = await omieCall(OMIE_URL_TABELA, "ExcluirTabelaPreco", param);
       await delay(1000);
 
-      if (result.faultstring) {
-        return Response.json({ sucesso: false, erro: result.faultstring });
-      }
+      await logOmie(base44, {
+        endpoint: 'produtos/tabelaprecos', call: 'ExcluirTabelaPreco',
+        operacao: 'excluir_tabela', entidade_tipo: 'TabelaPreco', entidade_id: tabela.id,
+        status: result.faultstring ? 'erro' : 'sucesso',
+        codigo_erro: result.faultcode, mensagem_erro: result.faultstring,
+        duracao_ms, usuario_email: user.email
+      });
+
+      if (result.faultstring) return Response.json({ sucesso: false, erro: result.faultstring });
 
       await base44.asServiceRole.entities.TabelaPreco.update(tabela.id, {
         omie_id: null, omie_cod_int: null
@@ -412,7 +404,10 @@ Deno.serve(async (req) => {
         const valorTabela = item.nValorTabela || 0;
         if (valorTabela <= 0) continue;
 
-        let produtoBase44 = produtos.find(p => p.id === String(nCodProd));
+        // Buscar produto local por codigo_omie gravado
+        let produtoBase44 = produtos.find(p => p.codigo_omie && Number(p.codigo_omie) === Number(nCodProd));
+
+        // Fallback: consultar Omie para pegar codigo_produto_integracao
         if (!produtoBase44) {
           const prodOmie = await consultarProdutoOmiePorId(nCodProd);
           await delay(800);
@@ -433,13 +428,14 @@ Deno.serve(async (req) => {
         const precoExistente = precosBase44.find(p => p.produto_id === produtoBase44.id);
         if (precoExistente) {
           await base44.asServiceRole.entities.PrecoProduto.update(precoExistente.id, {
-            valor_unitario: valorTabela, omie_sincronizado: true
+            valor_unitario: valorTabela, preco_omie_sincronizado: 'sim'
           });
           atualizados++;
         } else {
           await base44.asServiceRole.entities.PrecoProduto.create({
             produto_id: produtoBase44.id, tabela_id: tabela.id,
-            valor_unitario: valorTabela, valor_acao: 0, ativacao_acao: false, omie_sincronizado: true
+            valor_unitario: valorTabela, valor_acao: 0, ativacao_acao: false,
+            preco_omie_sincronizado: 'sim'
           });
           criados++;
         }
