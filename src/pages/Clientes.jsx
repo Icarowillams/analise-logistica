@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown, Send } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import PageHeader from '@/components/ui/PageHeader';
@@ -1353,6 +1353,33 @@ export default function Clientes() {
                     <Ban className="w-4 h-4 mr-2" />
                     Cancelar
                   </Button>
+                  {selected && selected.tipo_nota !== 'D1' && podeOmie && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-amber-400 text-amber-700 hover:bg-amber-50"
+                      onClick={async () => {
+                        try {
+                          toast.info('Enviando ao Omie…');
+                          const res = await base44.functions.invoke('enviarClienteOmie', {
+                            event: { type: 'manual', entity_id: selected.id },
+                            data: selected
+                          });
+                          if (res.data?.sucesso) {
+                            toast.success(`✅ Enviado ao Omie (código ${res.data.codigo_omie || '—'})`);
+                            queryClient.invalidateQueries(['clientes']);
+                          } else {
+                            toast.error('❌ ' + (res.data?.erro || 'Falha no envio'));
+                          }
+                        } catch (e) {
+                          toast.error('❌ ' + e.message);
+                        }
+                      }}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      Enviar ao Omie
+                    </Button>
+                  )}
                   <Button 
                     type="submit" 
                     disabled={createMutation.isPending || updateMutation.isPending}

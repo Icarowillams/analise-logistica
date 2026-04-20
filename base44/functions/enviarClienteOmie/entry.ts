@@ -1,8 +1,14 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+
+async function logOmie(base44, payload) {
+    try {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create(payload);
+    } catch (_) {}
+}
 
 // Mapa de nome completo do estado para sigla UF
 const estadoParaUF = {
@@ -142,6 +148,22 @@ Deno.serve(async (req) => {
             clienteData.id = event.entity_id;
         }
 
+        // REGRA D1: cliente com tipo_nota = 'D1' NÃO vai para o Omie
+        if (clienteData.tipo_nota === 'D1') {
+            console.log('[enviarClienteOmie] Cliente D1 — não envia ao Omie:', clienteData.razao_social);
+            await logOmie(base44, {
+                endpoint: 'geral/clientes',
+                call: 'UpsertCliente',
+                operacao: 'enviar_cliente',
+                entidade_tipo: 'Cliente',
+                entidade_id: clienteData.id,
+                status: 'warning',
+                mensagem_erro: 'Cliente D1 — envio ao Omie ignorado por regra de negócio',
+                tentativas: 0
+            });
+            return Response.json({ sucesso: true, pulado: true, motivo: 'cliente_d1' });
+        }
+
         // Limpar aspas de todos os campos texto
         clienteData = limparCamposTexto(clienteData);
 
@@ -163,11 +185,10 @@ Deno.serve(async (req) => {
 
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
+        const startedAt = Date.now();
         const response = await fetch(OMIE_URL, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 call: "UpsertCliente",
                 app_key: OMIE_APP_KEY,
@@ -175,26 +196,64 @@ Deno.serve(async (req) => {
                 param: [clienteOmie]
             })
         });
-
         const resultado = await response.json();
+        const duracao_ms = Date.now() - startedAt;
 
         console.log('[enviarClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
 
         if (resultado.faultstring) {
             console.error('[enviarClienteOmie] Erro Omie:', resultado.faultstring);
-            return Response.json({ 
-                sucesso: false, 
+            await logOmie(base44, {
+                endpoint: 'geral/clientes',
+                call: 'UpsertCliente',
+                operacao: 'enviar_cliente',
+                entidade_tipo: 'Cliente',
+                entidade_id: clienteData.id,
+                status: 'erro',
+                codigo_erro: resultado.faultcode,
+                mensagem_erro: resultado.faultstring,
+                payload_enviado: JSON.stringify(clienteOmie).slice(0, 5000),
+                payload_resposta: JSON.stringify(resultado).slice(0, 5000),
+                duracao_ms,
+                tentativas: 1
+            });
+            return Response.json({
+                sucesso: false,
                 erro: resultado.faultstring,
                 cliente_id: clienteData.id
             });
         }
 
-        console.log('[enviarClienteOmie] Cliente enviado para Omie:', clienteData.razao_social, '- Código Omie:', resultado.codigo_cliente_omie);
+        // Sucesso: gravar codigo_omie de volta no Cliente
+        const codigoOmie = resultado.codigo_cliente_omie;
+        if (codigoOmie && clienteData.id) {
+            try {
+                await base44.asServiceRole.entities.Cliente.update(clienteData.id, {
+                    codigo_omie: String(codigoOmie)
+                });
+            } catch (e) {
+                console.log('[enviarClienteOmie] Falha gravando codigo_omie:', e.message);
+            }
+        }
 
+        await logOmie(base44, {
+            endpoint: 'geral/clientes',
+            call: 'UpsertCliente',
+            operacao: 'enviar_cliente',
+            entidade_tipo: 'Cliente',
+            entidade_id: clienteData.id,
+            status: 'sucesso',
+            payload_enviado: JSON.stringify(clienteOmie).slice(0, 5000),
+            payload_resposta: JSON.stringify(resultado).slice(0, 5000),
+            duracao_ms,
+            tentativas: 1
+        });
+
+        console.log('[enviarClienteOmie] Cliente enviado:', clienteData.razao_social, '- Omie:', codigoOmie);
         return Response.json({
             sucesso: true,
             cliente_id: clienteData.id,
-            codigo_omie: resultado.codigo_cliente_omie,
+            codigo_omie: codigoOmie,
             mensagem: resultado.descricao_status || "Cliente enviado com sucesso"
         });
 
