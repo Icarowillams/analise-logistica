@@ -34,9 +34,8 @@ export default function Cargas() {
     queryFn: () => base44.entities.Carga.list('-created_date', 500)
   });
 
-  // Exibe todas as cargas exceto as ainda em montagem (que aparecem na tela de Montagem).
-  // Cargas "fechada" precisam aparecer aqui para serem faturadas.
-  const cargas = cargasTodas.filter(c => c.status_carga !== 'montagem');
+  // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
+  const cargas = cargasTodas;
 
   const faturar = async (carga) => {
     if (!confirm(`Faturar carga ${carga.numero_carga} (${carga.quantidade_pedidos} pedidos)?`)) return;
