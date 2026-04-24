@@ -331,8 +331,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
     } else {
       pedidoData.status = 'pendente';
-      pedidoData.data_pedido = new Date().toISOString().split('T')[0];
-      pedidoData.numero_pedido = `P-${Date.now()}`;
       const created = await base44.entities.Pedido.create(pedidoData);
       savedPedidoId = created.id;
       setPedidoId(created.id);
@@ -345,7 +343,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         produto_id: item.produto_id,
         produto_codigo: item.produto_codigo,
         produto_nome: item.produto_nome,
-        quantidade_pedida: item.quantidade,
+        quantidade: item.quantidade,
         valor_unitario: item.valor_unitario,
         valor_total: item.valor_total
       };

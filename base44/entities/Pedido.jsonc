@@ -1,16 +1,8 @@
 {
   "name": "Pedido",
   "type": "object",
-  "description": "Entidade \u00fanica de pedidos \u2014 cobre venda e troca, fluxo comercial e log\u00edstico",
+  "description": "Pedido de venda ou troca \u2014 fluxo comercial, faturamento (Omie) e log\u00edstico",
   "properties": {
-    "numero_pedido": {
-      "type": "string",
-      "description": "N\u00famero interno do pedido"
-    },
-    "codigo_integracao": {
-      "type": "string",
-      "description": "N\u00famero no Omie ou outro sistema externo"
-    },
     "tipo": {
       "type": "string",
       "enum": [
@@ -31,52 +23,23 @@
         "app_vendedor",
         "manual"
       ],
-      "default": "sistema",
-      "description": "Canal de origem do pedido"
+      "default": "sistema"
     },
-    "cliente_id": {
-      "type": "string"
-    },
-    "cliente_nome": {
-      "type": "string"
-    },
-    "cliente_cnpj_cpf": {
-      "type": "string"
-    },
-    "cliente_cidade": {
-      "type": "string"
-    },
-    "cliente_endereco": {
-      "type": "string"
-    },
-    "vendedor_id": {
-      "type": "string"
-    },
-    "vendedor_nome": {
-      "type": "string"
-    },
-    "data_pedido": {
+    "numero_pedido": {
       "type": "string",
-      "format": "date"
+      "description": "N\u00famero do pedido (preenchido pelo Omie ap\u00f3s envio)"
     },
-    "data_entrega_prevista": {
-      "type": "string",
-      "format": "date"
-    },
-    "data_entrega_real": {
-      "type": "string",
-      "format": "date"
-    },
-    "status_comercial": {
+    "status": {
       "type": "string",
       "enum": [
-        "rascunho",
-        "confirmado",
-        "aprovado",
+        "pendente",
+        "enviado",
+        "liberado",
+        "faturado",
         "cancelado"
       ],
-      "default": "rascunho",
-      "description": "Status no fluxo comercial"
+      "default": "pendente",
+      "description": "Status do fluxo de venda"
     },
     "status_logistico": {
       "type": "string",
@@ -89,8 +52,7 @@
         "nao_entregue",
         "devolvido"
       ],
-      "default": "aguardando",
-      "description": "Status no fluxo log\u00edstico \u2014 s\u00f3 preenchido ap\u00f3s entrada na carga"
+      "default": "aguardando"
     },
     "etapa": {
       "type": "string",
@@ -101,24 +63,45 @@
         "pos_entrega",
         "encerrado"
       ],
-      "default": "comercial",
-      "description": "Etapa atual do fluxo do pedido"
+      "default": "comercial"
     },
-    "carga_id": {
-      "type": "string",
-      "description": "Carga onde o pedido foi inserido"
-    },
-    "rota_id": {
+    "cliente_id": {
       "type": "string"
     },
-    "rota_nome": {
+    "cliente_codigo": {
       "type": "string"
     },
-    "ordem_entrega": {
-      "type": "number",
-      "description": "Posi\u00e7\u00e3o na sequ\u00eancia de entrega da carga"
+    "cliente_nome": {
+      "type": "string"
     },
-    "tabela_preco_id": {
+    "cliente_nome_fantasia": {
+      "type": "string"
+    },
+    "cliente_cpf_cnpj": {
+      "type": "string"
+    },
+    "cliente_endereco": {
+      "type": "string"
+    },
+    "cliente_numero": {
+      "type": "string"
+    },
+    "cliente_bairro": {
+      "type": "string"
+    },
+    "cliente_cidade": {
+      "type": "string"
+    },
+    "cliente_estado": {
+      "type": "string"
+    },
+    "cliente_cep": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
       "type": "string"
     },
     "plano_pagamento_id": {
@@ -127,7 +110,49 @@
     "plano_pagamento_nome": {
       "type": "string"
     },
-    "valor_produtos": {
+    "tabela_preco_id": {
+      "type": "string"
+    },
+    "tabela_preco_nome": {
+      "type": "string"
+    },
+    "modelo_nota": {
+      "type": "string",
+      "enum": [
+        "55",
+        "nfce",
+        "d1"
+      ],
+      "default": "55",
+      "description": "55 = NF-e, nfce = NFC-e, d1 = Troca (sem NF)"
+    },
+    "cenario_fiscal_codigo": {
+      "type": "number",
+      "description": "C\u00f3digo do cen\u00e1rio fiscal (Omie)"
+    },
+    "cenario_fiscal_nome": {
+      "type": "string"
+    },
+    "data_previsao_entrega": {
+      "type": "string",
+      "format": "date"
+    },
+    "data_entrega_real": {
+      "type": "string",
+      "format": "date"
+    },
+    "numero_pedido_compra": {
+      "type": "string",
+      "description": "N\u00ba do pedido de compra do cliente"
+    },
+    "dados_adicionais_nf": {
+      "type": "string",
+      "description": "Texto que ser\u00e1 impresso na DANFE"
+    },
+    "total_itens": {
+      "type": "number"
+    },
+    "valor_total": {
       "type": "number"
     },
     "valor_desconto": {
@@ -138,23 +163,47 @@
       "type": "number",
       "default": 0
     },
-    "valor_total": {
+    "valor_entregue": {
       "type": "number"
     },
-    "valor_entregue": {
-      "type": "number",
-      "description": "Valor efetivamente recebido na entrega"
+    "carga_id": {
+      "type": "string"
     },
-    "faturado": {
+    "rota_id": {
+      "type": "string"
+    },
+    "rota_nome": {
+      "type": "string"
+    },
+    "ordem_entrega": {
+      "type": "number"
+    },
+    "data_envio": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora em que foi enviado ao Omie"
+    },
+    "omie_enviado": {
       "type": "boolean",
       "default": false
+    },
+    "omie_codigo_pedido": {
+      "type": "string",
+      "description": "nCodPed retornado pelo Omie"
+    },
+    "omie_erro": {
+      "type": "string"
     },
     "numero_nota_fiscal": {
       "type": "string"
     },
     "data_faturamento": {
       "type": "string",
-      "format": "date"
+      "format": "date-time"
+    },
+    "faturado": {
+      "type": "boolean",
+      "default": false
     },
     "pedido_origem_id": {
       "type": "string",
@@ -164,8 +213,7 @@
       "type": "string"
     },
     "motivo_troca_id": {
-      "type": "string",
-      "description": "Motivo quando tipo = troca/devolucao"
+      "type": "string"
     },
     "motivo_troca_descricao": {
       "type": "string"
@@ -178,9 +226,7 @@
     }
   },
   "required": [
-    "numero_pedido",
     "tipo",
-    "cliente_id",
-    "data_pedido"
+    "cliente_id"
   ]
 }
