@@ -34,9 +34,9 @@ export default function Cargas() {
     queryFn: () => base44.entities.Carga.list('-created_date', 500)
   });
 
-  // Tela /Cargas exibe apenas cargas já faturadas / entregues / em rota.
-  // "montagem" e "fechada" aparecem só na tela de Montagem/Faturamento.
-  const cargas = cargasTodas.filter(c => !['montagem', 'fechada'].includes(c.status_carga));
+  // Exibe todas as cargas exceto as ainda em montagem (que aparecem na tela de Montagem).
+  // Cargas "fechada" precisam aparecer aqui para serem faturadas.
+  const cargas = cargasTodas.filter(c => c.status_carga !== 'montagem');
 
   const faturar = async (carga) => {
     if (!confirm(`Faturar carga ${carga.numero_carga} (${carga.quantidade_pedidos} pedidos)?`)) return;
@@ -93,7 +93,7 @@ export default function Cargas() {
       width: '200px',
       render: (_, row) => (
         <div className="flex gap-1">
-          {['montagem', 'montando', 'conferindo', 'pronta'].includes(row.status_carga) && (
+          {['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga) && (
             <Button size="sm" onClick={() => faturar(row)} disabled={faturando === row.id}>
               {faturando === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Faturar'}
             </Button>
