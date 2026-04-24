@@ -109,9 +109,39 @@ Deno.serve(async (req) => {
           r.etapa_atual = etapaAtual;
           r.numero_nf = numeroNf;
           r.nf_emitida = nfEmitida;
-          r.mensagem = nfEmitida
-            ? `NF ${numeroNf} emitida no Omie.`
-            : `Pedido na etapa ${etapaAtual || '?'}. NF ainda não emitida — verifique pendências no Omie.`;
+
+          if (nfEmitida) {
+            r.mensagem = `NF ${numeroNf} emitida no Omie.`;
+          } else {
+            // NF não emitida → busca motivo real no StatusPedido do Omie
+            let motivoOmie = null;
+            try {
+              const status = await omieCall('StatusPedido', {
+                codigo_pedido: Number(r.codigo_pedido)
+              });
+              // StatusPedido retorna lista de pendências/erros
+              const pendencias = status?.pendencias || status?.lista_pendencias || [];
+              const pendenciasArr = Array.isArray(pendencias) ? pendencias : (pendencias?.pendencia || []);
+              if (pendenciasArr.length > 0) {
+                motivoOmie = pendenciasArr
+                  .map(p => p.cDescricao || p.descricao || p.cMensagem || p.mensagem)
+                  .filter(Boolean)
+                  .join(' | ');
+              }
+              // Alguns retornos trazem também cStatus / cDescStatus
+              if (!motivoOmie && status?.cDescStatus) {
+                motivoOmie = status.cDescStatus;
+              }
+            } catch (statusErr) {
+              motivoOmie = `Falha ao consultar status: ${statusErr.message}`;
+            }
+
+            r.motivo_omie = motivoOmie;
+            r.sucesso = false; // reclassifica como erro para aparecer no toast vermelho
+            r.mensagem = motivoOmie
+              ? `NF NÃO emitida — Omie: ${motivoOmie}`
+              : `Pedido na etapa ${etapaAtual || '?'}. NF ainda não emitida — verifique pendências no Omie.`;
+          }
         } catch (err) {
           r.mensagem = `Movido, mas falha ao consultar status: ${err.message}`;
         }
