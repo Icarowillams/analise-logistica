@@ -331,6 +331,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
     } else {
       pedidoData.status = 'pendente';
+      pedidoData.data_pedido = new Date().toISOString().split('T')[0];
+      pedidoData.numero_pedido = `P-${Date.now()}`;
       const created = await base44.entities.Pedido.create(pedidoData);
       savedPedidoId = created.id;
       setPedidoId(created.id);
