@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
             app_secret: OMIE_APP_SECRET,
             param: [{
                 codigo_pedido: codigoPedidoOmie,
+                codigo_pedido_integracao: pedido.id,
                 etapa: etapaOmie
             }]
         };
