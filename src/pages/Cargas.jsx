@@ -6,9 +6,12 @@ import { Truck, Plus, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import { toast } from 'sonner';
+
+const FATURAVEL = ['montagem', 'montando', 'fechada', 'conferindo', 'pronta'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
@@ -28,6 +31,8 @@ export default function Cargas() {
   const queryClient = useQueryClient();
   const [faturando, setFaturando] = useState(null);
   const [excluindo, setExcluindo] = useState(null);
+  const [selecionadas, setSelecionadas] = useState([]);
+  const [faturandoLote, setFaturandoLote] = useState(false);
 
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
@@ -54,6 +59,47 @@ export default function Cargas() {
     setFaturando(null);
   };
 
+  const faturarLote = async () => {
+    const cargasFaturar = cargas.filter(c => selecionadas.includes(c.id) && FATURAVEL.includes(c.status_carga));
+    if (cargasFaturar.length === 0) {
+      toast.error('Nenhuma carga selecionada está em status que permita faturamento');
+      return;
+    }
+    if (!confirm(`Faturar ${cargasFaturar.length} carga(s) selecionada(s)?`)) return;
+
+    setFaturandoLote(true);
+    let totalSucessos = 0, totalErros = 0, totalSkips = 0, cargasErro = 0;
+
+    for (const carga of cargasFaturar) {
+      try {
+        const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
+        if (data?.sucesso) {
+          totalSucessos += data.sucessos || 0;
+          totalErros += data.erros || 0;
+          totalSkips += data.skips || 0;
+        } else {
+          cargasErro++;
+        }
+      } catch (e) {
+        cargasErro++;
+      }
+    }
+
+    toast.success(`${cargasFaturar.length} carga(s): ${totalSucessos} pedidos faturados | ${totalErros} erros | ${totalSkips} D1${cargasErro ? ` | ${cargasErro} cargas falharam` : ''}`);
+    queryClient.invalidateQueries({ queryKey: ['cargas'] });
+    setSelecionadas([]);
+    setFaturandoLote(false);
+  };
+
+  const toggleSelecionada = (id) => {
+    setSelecionadas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleTodas = () => {
+    const faturaveis = cargas.filter(c => FATURAVEL.includes(c.status_carga)).map(c => c.id);
+    setSelecionadas(prev => prev.length === faturaveis.length ? [] : faturaveis);
+  };
+
   const excluir = async () => {
     if (!excluindo) return;
     try {
@@ -66,7 +112,28 @@ export default function Cargas() {
     setExcluindo(null);
   };
 
+  const faturaveisIds = cargas.filter(c => FATURAVEL.includes(c.status_carga)).map(c => c.id);
+  const todasSelecionadas = faturaveisIds.length > 0 && selecionadas.length === faturaveisIds.length;
+
   const columns = [
+    {
+      key: 'select',
+      label: (
+        <Checkbox
+          checked={todasSelecionadas}
+          onCheckedChange={toggleTodas}
+          aria-label="Selecionar todas"
+        />
+      ),
+      width: '40px',
+      render: (_, row) => FATURAVEL.includes(row.status_carga) ? (
+        <Checkbox
+          checked={selecionadas.includes(row.id)}
+          onCheckedChange={() => toggleSelecionada(row.id)}
+          aria-label="Selecionar"
+        />
+      ) : null
+    },
     { key: 'numero_carga', label: 'Nº Carga', sortable: true, width: '140px' },
     { key: 'data_carga', label: 'Data', sortable: true, width: '120px' },
     { key: 'motorista_nome', label: 'Motorista' },
@@ -115,10 +182,22 @@ export default function Cargas() {
             <p className="text-sm text-slate-500">Cargas montadas para faturamento e rota</p>
           </div>
         </div>
-        <Button onClick={() => navigate('/MontagemCarga')}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nova carga
-        </Button>
+        <div className="flex gap-2">
+          {selecionadas.length > 0 && (
+            <Button
+              onClick={faturarLote}
+              disabled={faturandoLote}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {faturandoLote ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Faturar {selecionadas.length} selecionada(s)
+            </Button>
+          )}
+          <Button onClick={() => navigate('/MontagemCarga')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nova carga
+          </Button>
+        </div>
       </div>
 
       <Card>
