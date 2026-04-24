@@ -72,7 +72,10 @@ Deno.serve(async (req) => {
         resultados.push({
           codigo_pedido: p.codigo_pedido,
           sucesso: true,
-          mensagem: `Movido para etapa ${etapa_destino}. A emissão da NF ocorrerá no Omie.`
+          etapa_atual: String(etapa_destino),
+          nf_emitida: false,
+          numero_nf: null,
+          mensagem: `Movido para etapa ${etapa_destino}. Aguardando emissão da NF no Omie…`
         });
       } catch (err) {
         resultados.push({
@@ -84,9 +87,43 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
+    // Aguarda alguns segundos para o scheduler do Omie processar e consulta
+    // o status real de cada pedido que foi movido com sucesso.
+    const paraConsultar = resultados.filter(r => r.sucesso === true);
+    if (paraConsultar.length > 0) {
+      await new Promise(r => setTimeout(r, 8000));
+
+      for (const r of paraConsultar) {
+        try {
+          const consulta = await omieCall('ConsultarPedido', {
+            codigo_pedido: Number(r.codigo_pedido)
+          });
+          const cab = consulta?.pedido_venda_produto?.cabecalho || consulta?.cabecalho || {};
+          const infoNf = consulta?.pedido_venda_produto?.informacoes_adicionais || consulta?.informacoes_adicionais || {};
+          const totalNf = consulta?.pedido_venda_produto?.total_pedido || {};
+
+          const numeroNf = cab.numero_nf || infoNf.numero_nf || totalNf.numero_nf || null;
+          const etapaAtual = cab.etapa || null;
+          const nfEmitida = !!numeroNf;
+
+          r.etapa_atual = etapaAtual;
+          r.numero_nf = numeroNf;
+          r.nf_emitida = nfEmitida;
+          r.mensagem = nfEmitida
+            ? `NF ${numeroNf} emitida no Omie.`
+            : `Pedido na etapa ${etapaAtual || '?'}. NF ainda não emitida — verifique pendências no Omie.`;
+        } catch (err) {
+          r.mensagem = `Movido, mas falha ao consultar status: ${err.message}`;
+        }
+        await new Promise(r2 => setTimeout(r2, 800));
+      }
+    }
+
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => r.sucesso === false).length;
     const skips = resultados.filter(r => r.skip).length;
+    const nfsEmitidas = resultados.filter(r => r.nf_emitida).length;
+    const aguardandoNf = resultados.filter(r => r.sucesso === true && !r.nf_emitida).length;
 
     await base44.asServiceRole.entities.Carga.update(carga_id, {
       status_carga: erros > 0 ? 'conferindo' : 'faturada',
@@ -116,6 +153,8 @@ Deno.serve(async (req) => {
       sucessos,
       erros,
       skips,
+      nfs_emitidas: nfsEmitidas,
+      aguardando_nf: aguardandoNf,
       resultados
     });
   } catch (error) {

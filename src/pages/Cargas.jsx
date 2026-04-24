@@ -48,12 +48,14 @@ export default function Cargas() {
     try {
       const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
       if (data?.sucesso) {
+        const nfsEmitidas = data.nfs_emitidas || 0;
+        const aguardando = data.aguardando_nf || 0;
         if (data.erros > 0) {
           const erros = (data.resultados || []).filter(r => r.sucesso === false);
           const msg = erros.map(r => `Pedido ${r.codigo_pedido}: ${r.mensagem}`).join('\n');
-          toast.error(`${data.sucessos} faturados | ${data.erros} erros`, { description: msg, duration: 15000 });
+          toast.error(`${nfsEmitidas} NFs emitidas | ${aguardando} aguardando | ${data.erros} erros`, { description: msg, duration: 15000 });
         } else {
-          toast.success(`${data.sucessos} faturados | ${data.skips} ignorados (D1)`);
+          toast.success(`${nfsEmitidas} NFs emitidas | ${aguardando} aguardando scheduler Omie | ${data.skips} D1 ignorados`, { duration: 8000 });
         }
         queryClient.invalidateQueries({ queryKey: ['cargas'] });
       } else {
@@ -74,13 +76,14 @@ export default function Cargas() {
     if (!confirm(`Faturar ${cargasFaturar.length} carga(s) selecionada(s)?`)) return;
 
     setFaturandoLote(true);
-    let totalSucessos = 0, totalErros = 0, totalSkips = 0, cargasErro = 0;
+    let totalNfs = 0, totalAguardando = 0, totalErros = 0, totalSkips = 0, cargasErro = 0;
 
     for (const carga of cargasFaturar) {
       try {
         const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
         if (data?.sucesso) {
-          totalSucessos += data.sucessos || 0;
+          totalNfs += data.nfs_emitidas || 0;
+          totalAguardando += data.aguardando_nf || 0;
           totalErros += data.erros || 0;
           totalSkips += data.skips || 0;
         } else {
@@ -91,7 +94,7 @@ export default function Cargas() {
       }
     }
 
-    toast.success(`${cargasFaturar.length} carga(s): ${totalSucessos} pedidos faturados | ${totalErros} erros | ${totalSkips} D1${cargasErro ? ` | ${cargasErro} cargas falharam` : ''}`);
+    toast.success(`${cargasFaturar.length} carga(s): ${totalNfs} NFs emitidas | ${totalAguardando} aguardando | ${totalErros} erros | ${totalSkips} D1${cargasErro ? ` | ${cargasErro} cargas falharam` : ''}`, { duration: 10000 });
     queryClient.invalidateQueries({ queryKey: ['cargas'] });
     setSelecionadas([]);
     setFaturandoLote(false);
