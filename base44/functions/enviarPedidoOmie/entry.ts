@@ -392,13 +392,18 @@ Deno.serve(async (req) => {
                 infAdic.dados_adicionais_item = `Pedido de Compra: ${pedido.numero_pedido_compra}`;
             }
 
+            // Preferir codigo_produto (Omie) se disponível, senão usar codigo_produto_integracao
+            const produtoRef = prod.codigo_omie
+                ? { codigo_produto: Number(prod.codigo_omie) }
+                : { codigo_produto_integracao: item.produto_id };
+
             return {
                 ide: {
                     codigo_item_integracao: item.id
                 },
                 inf_adic: infAdic,
                 produto: {
-                    codigo_produto_integracao: item.produto_id,
+                    ...produtoRef,
                     descricao: item.produto_nome || prod.nome || '',
                     ncm: prod.ncm || '',
                     quantidade: item.quantidade,
