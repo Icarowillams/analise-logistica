@@ -48,7 +48,13 @@ export default function Cargas() {
     try {
       const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
       if (data?.sucesso) {
-        toast.success(`${data.sucessos} faturados | ${data.erros} erros | ${data.skips} ignorados (D1)`);
+        if (data.erros > 0) {
+          const erros = (data.resultados || []).filter(r => r.sucesso === false);
+          const msg = erros.map(r => `Pedido ${r.codigo_pedido}: ${r.mensagem}`).join('\n');
+          toast.error(`${data.sucessos} faturados | ${data.erros} erros`, { description: msg, duration: 15000 });
+        } else {
+          toast.success(`${data.sucessos} faturados | ${data.skips} ignorados (D1)`);
+        }
         queryClient.invalidateQueries({ queryKey: ['cargas'] });
       } else {
         toast.error(data?.error || 'Erro ao faturar');

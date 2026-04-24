@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { carga_id, etapa_destino = '60' } = body;
+    const { carga_id, etapa_destino = '50' } = body;
     if (!carga_id) return Response.json({ error: 'carga_id obrigatório' }, { status: 400 });
 
     let carga;
@@ -63,11 +63,14 @@ Deno.serve(async (req) => {
             etapa: String(etapa_destino)
           }
         });
-        const ok = data.cCodStatus === '0' || data.cCodStatus === 0;
+        // Sucesso quando não há faultstring (omieCall já lança erro nesse caso)
+        // cCodStatus '0' = sucesso; caso venha outro status não-zero, considerar erro
+        const statusStr = String(data.cCodStatus ?? '0');
+        const ok = statusStr === '0' || statusStr === '';
         resultados.push({
           codigo_pedido: p.codigo_pedido,
           sucesso: ok,
-          mensagem: data.cDescStatus || ''
+          mensagem: data.cDescStatus || (ok ? 'OK' : 'Resposta inesperada do Omie')
         });
       } catch (err) {
         resultados.push({
@@ -88,6 +91,11 @@ Deno.serve(async (req) => {
       data_faturamento: new Date().toISOString()
     });
 
+    const errosDetalhados = resultados
+      .filter(r => r.sucesso === false)
+      .map(r => `Pedido ${r.codigo_pedido}: ${r.mensagem}`)
+      .join(' | ');
+
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedido',
       call: 'AlterarPedidoVenda',
@@ -95,7 +103,8 @@ Deno.serve(async (req) => {
       entidade_tipo: 'Carga',
       entidade_id: carga_id,
       status: erros > 0 ? 'warning' : 'sucesso',
-      mensagem_erro: erros > 0 ? `${erros} pedidos falharam` : null,
+      mensagem_erro: erros > 0 ? `${erros} pedidos falharam: ${errosDetalhados}`.substring(0, 2000) : null,
+      payload_resposta: JSON.stringify(resultados).substring(0, 2000),
       usuario_email: user.email
     }).catch(() => {});
 
