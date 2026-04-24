@@ -11,6 +11,7 @@ async function omieCall(call, param, tentativa = 1) {
     body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
   });
   const data = await res.json();
+  // Erro no formato faultstring
   if (data.faultstring) {
     const msg = data.faultstring.toLowerCase();
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
@@ -19,6 +20,10 @@ async function omieCall(call, param, tentativa = 1) {
       return omieCall(call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
+  }
+  // Erro no formato {status:"error", message:"..."}
+  if (data.status === 'error' || (res.status >= 400 && data.message)) {
+    throw new Error(data.message || 'Erro desconhecido no Omie');
   }
   return data;
 }
@@ -57,20 +62,17 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const data = await omieCall('AlterarPedidoVenda', {
-          cabecalho: {
-            codigo_pedido: Number(p.codigo_pedido),
-            etapa: String(etapa_destino)
-          }
+        // Move pedido para etapa 50 (Faturar). A emissão da NF-e no Omie é
+        // feita automaticamente pelo scheduler interno assim que o pedido
+        // está na etapa 50 sem pendências.
+        await omieCall('TrocarEtapaPedido', {
+          codigo_pedido: Number(p.codigo_pedido),
+          etapa: String(etapa_destino)
         });
-        // Sucesso quando não há faultstring (omieCall já lança erro nesse caso)
-        // cCodStatus '0' = sucesso; caso venha outro status não-zero, considerar erro
-        const statusStr = String(data.cCodStatus ?? '0');
-        const ok = statusStr === '0' || statusStr === '';
         resultados.push({
           codigo_pedido: p.codigo_pedido,
-          sucesso: ok,
-          mensagem: data.cDescStatus || (ok ? 'OK' : 'Resposta inesperada do Omie')
+          sucesso: true,
+          mensagem: `Movido para etapa ${etapa_destino}. A emissão da NF ocorrerá no Omie.`
         });
       } catch (err) {
         resultados.push({
