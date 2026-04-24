@@ -534,14 +534,14 @@ Deno.serve(async (req) => {
                         const numeroPedidoOmie = consultaData.cabecalho.numero_pedido || null;
                         
                         const updateData = {
-                            omie_codigo_pedido: codigoOmie,
+                            omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
                             omie_enviado: true,
                             omie_erro: null,
                             status: pedido.status === 'pendente' ? 'enviado' : pedido.status,
                             data_envio: pedido.data_envio || new Date().toISOString()
                         };
                         if (numeroPedidoOmie) {
-                            updateData.numero_pedido = numeroPedidoOmie;
+                            updateData.numero_pedido = String(numeroPedidoOmie);
                         }
                         await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
                         
@@ -578,12 +578,12 @@ Deno.serve(async (req) => {
 
         // Atualizar pedido no Base44 com dados do Omie (incluindo número do pedido Omie)
         const updateData = {
-            omie_codigo_pedido: codigoOmie,
+            omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
             omie_enviado: true,
             omie_erro: null
         };
         if (numeroPedidoOmie) {
-            updateData.numero_pedido = numeroPedidoOmie;
+            updateData.numero_pedido = String(numeroPedidoOmie);
             // Atualizar dados_adicionais_nf com o número do pedido automaticamente
             const dadosAtuais = pedido.dados_adicionais_nf || '';
             // Remover prefixo antigo se existir
