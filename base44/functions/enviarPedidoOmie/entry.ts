@@ -580,7 +580,9 @@ Deno.serve(async (req) => {
         const updateData = {
             omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
             omie_enviado: true,
-            omie_erro: null
+            omie_erro: null,
+            status: pedido.status === 'pendente' ? 'enviado' : pedido.status,
+            data_envio: pedido.data_envio || new Date().toISOString()
         };
         if (numeroPedidoOmie) {
             updateData.numero_pedido = String(numeroPedidoOmie);
