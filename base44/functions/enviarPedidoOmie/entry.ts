@@ -211,7 +211,32 @@ Deno.serve(async (req) => {
         // Se não encontrar, tentar com o ID do Base44
         const OMIE_CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
         let clienteEncontradoOmie = false;
-        
+
+        // Se o cliente tem codigo_omie salvo no Base44, tentar direto por ele (mais confiável)
+        if (clienteBase44?.codigo_omie) {
+            try {
+                const resOmieId = await fetch(OMIE_CLIENTES_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        call: "ConsultarCliente",
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [{ codigo_cliente_omie: Number(clienteBase44.codigo_omie) }]
+                    })
+                });
+                const dataOmieId = await resOmieId.json();
+                if (!dataOmieId.faultstring && dataOmieId.codigo_cliente_omie) {
+                    // Encontrou! Usar o codigo_cliente_integracao do Omie (se tiver) ou o próprio id do Base44
+                    codigoClienteIntegracao = dataOmieId.codigo_cliente_integracao || pedido.cliente_id;
+                    clienteEncontradoOmie = true;
+                    console.log(`[enviarPedidoOmie] Cliente encontrado no Omie via codigo_omie: ${clienteBase44.codigo_omie}, usando codigo_integracao: ${codigoClienteIntegracao}`);
+                }
+            } catch (e) {
+                console.log('[enviarPedidoOmie] Erro consultando por codigo_omie:', e.message);
+            }
+        }
+
         const tentarConsultarCliente = async (codIntegracao) => {
             const res = await fetch(OMIE_CLIENTES_URL, {
                 method: "POST",
@@ -233,9 +258,11 @@ Deno.serve(async (req) => {
             return f.includes('bloqueada') || f.includes('too many') || f.includes('try again') || f.includes('tente novamente');
         };
 
-        // Tentar com o codigo do cliente primeiro
-        const consultaCodigo = await tentarConsultarCliente(codigoClienteIntegracao);
-        if (!consultaCodigo.faultstring) {
+        // Se já achou via codigo_omie, pular as demais tentativas
+        const consultaCodigo = clienteEncontradoOmie ? { faultstring: null } : await tentarConsultarCliente(codigoClienteIntegracao);
+        if (clienteEncontradoOmie) {
+            // já resolvido
+        } else if (!consultaCodigo.faultstring) {
             clienteEncontradoOmie = true;
             console.log(`[enviarPedidoOmie] Cliente encontrado no Omie com codigo_integracao: ${codigoClienteIntegracao}`);
         } else if (isErroBloqueio(consultaCodigo.faultstring)) {
