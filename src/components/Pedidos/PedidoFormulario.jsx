@@ -345,7 +345,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         produto_id: item.produto_id,
         produto_codigo: item.produto_codigo,
         produto_nome: item.produto_nome,
-        quantidade: item.quantidade,
+        quantidade_pedida: item.quantidade,
         valor_unitario: item.valor_unitario,
         valor_total: item.valor_total
       };
