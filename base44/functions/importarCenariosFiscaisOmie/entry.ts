@@ -73,7 +73,18 @@ Deno.serve(async (req) => {
     // ==========================================
     // IMPORTAR CENÁRIOS (Naturezas de Operação)
     // ==========================================
-    const cenariosOmie = await listarTodosCenarios();
+    let cenariosOmie = [];
+    let cenariosErro = null;
+    try {
+      cenariosOmie = await listarTodosCenarios();
+    } catch (err) {
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('chave de acesso') || msg.includes('não preenchida') || msg.includes('nao preenchida')) {
+        cenariosErro = 'Módulo "Cenários de Impostos" não habilitado nesta conta Omie — apenas Etapas serão sincronizadas.';
+      } else {
+        throw err;
+      }
+    }
     let cenariosCriados = 0, cenariosAtualizados = 0;
     const resultadoCenarios = [];
 
@@ -178,7 +189,8 @@ Deno.serve(async (req) => {
         total_omie: cenariosOmie.length,
         criados: cenariosCriados,
         atualizados: cenariosAtualizados,
-        detalhes: resultadoCenarios
+        detalhes: resultadoCenarios,
+        aviso: cenariosErro
       },
       etapas: {
         total_omie: etapasFlat.length,
