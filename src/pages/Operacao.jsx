@@ -81,28 +81,27 @@ export default function Operacao() {
     );
   };
 
-  // Solicita confirmação para mover pedido
+  // Solicita confirmação para mover pedido para qualquer etapa
   const solicitarMover = (pedido, etapaAtual, etapaDestino) => {
     if (etapaAtual === etapaDestino) return;
-
-    // Faturar (50→60) é regra especial: tem que ir via carga
-    if (etapaDestino === '60') {
-      toast.warning('Para faturar, monte uma carga e clique em "Faturar Carga"', { duration: 5000 });
-      navigate('/MontagemCarga');
-      return;
-    }
 
     const de = ETAPAS[etapaAtual];
     const para = ETAPAS[etapaDestino];
     if (!para) return;
 
+    // Aviso especial para faturamento (60) — ainda permite, mas alerta
+    const ehFaturar = etapaDestino === '60';
+
     setAcaoPendente({
       tipo: 'mover_etapa',
       titulo: `Mover pedido para ${para.label}?`,
-      descricao: `O pedido será movido no Omie da etapa "${de?.label || etapaAtual}" para "${para.label}".`,
+      descricao: ehFaturar
+        ? 'Atenção: ao mover para "Faturado" o Omie irá tentar emitir a NF-e automaticamente. Tem certeza?'
+        : `O pedido será movido no Omie da etapa "${de?.label || etapaAtual}" para "${para.label}".`,
       de: de?.label || etapaAtual,
       para: para.label,
       badgeColor: para.color,
+      perigo: ehFaturar,
       pedido,
       payload: { etapaDestino, etapaAtual }
     });
@@ -190,7 +189,7 @@ export default function Operacao() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-neutral-900">Operação Completa</h1>
-            <p className="text-sm text-neutral-500">Arraste cards entre colunas ou use o botão "Avançar" para mover pedidos no Omie</p>
+            <p className="text-sm text-neutral-500">Arraste cards entre quaisquer colunas — o pedido é movido no Omie automaticamente</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
