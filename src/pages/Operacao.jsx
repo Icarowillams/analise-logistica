@@ -151,6 +151,25 @@ export default function Operacao() {
       }
 
       if (acaoPendente.tipo === 'emitir_nf') {
+        // 1) VALIDA primeiro (ValidarPedidoVenda) — Omie diz se há bloqueio fiscal/financeiro
+        let validacao;
+        try {
+          validacao = await base44.functions.invoke('emitirNfPedidoOmie', {
+            codigo_pedido: acaoPendente.pedido.codigo_pedido,
+            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
+            validar_apenas: true
+          });
+        } catch (httpErr) {
+          const msgOmie = httpErr?.response?.data?.error || httpErr?.message;
+          throw new Error(msgOmie);
+        }
+        const valData = validacao?.data;
+        // cCodStatus "1" = erro de validação. Sucesso retorna outro código (vazio ou "0").
+        if (valData?.cCodStatus === '1' || /n[ãa]o \u00e9 poss[ií]vel faturar/i.test(valData?.cDescStatus || '')) {
+          throw new Error(valData?.cDescStatus || 'Pedido não pode ser faturado');
+        }
+
+        // 2) FATURA de verdade (FaturarPedidoVenda)
         let resp;
         try {
           resp = await base44.functions.invoke('emitirNfPedidoOmie', {
@@ -158,7 +177,7 @@ export default function Operacao() {
             codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao
           });
         } catch (httpErr) {
-          const msgOmie = httpErr?.response?.data?.error || httpErr?.message || 'Erro desconhecido no Omie';
+          const msgOmie = httpErr?.response?.data?.error || httpErr?.message;
           throw new Error(msgOmie);
         }
         const data = resp?.data;
@@ -166,7 +185,7 @@ export default function Operacao() {
           throw new Error(data?.error || 'O Omie rejeitou a emissão da NF');
         }
         toast.success(`NF do pedido ${acaoPendente.pedido.numero_pedido} enviada para emissão`, {
-          description: 'Aguarde alguns minutos para a SEFAZ processar. O pedido aparecerá em "Faturado" automaticamente.',
+          description: data.cDescStatus || 'Aguarde alguns minutos para a SEFAZ processar. O pedido aparecerá em "Faturado" automaticamente.',
           duration: 8000
         });
         await new Promise(r => setTimeout(r, 3000));

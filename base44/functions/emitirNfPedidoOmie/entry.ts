@@ -1,11 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+// ENDPOINT CORRETO: pedidovendafat (Faturamento de Pedido de Venda) — diferente de /pedido/
+const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 async function omieCall(call, param, tentativa = 1) {
-  const res = await fetch(OMIE_URL, {
+  const res = await fetch(OMIE_FAT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
@@ -23,7 +24,8 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
-// Dispara a emissão da NF-e via Omie (FaturarPedido).
+// Dispara a emissão da NF-e via Omie usando FaturarPedidoVenda
+// (endpoint /produtos/pedidovendafat/ — diferente do /produtos/pedido/).
 // O Omie processa de forma assíncrona — a etapa só vai pra 60 quando a SEFAZ autorizar.
 Deno.serve(async (req) => {
   try {
@@ -32,26 +34,27 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { codigo_pedido, codigo_pedido_integracao } = body;
+    const { codigo_pedido, codigo_pedido_integracao, validar_apenas = false } = body;
 
     if (!codigo_pedido && !codigo_pedido_integracao) {
       return Response.json({ error: 'Informe codigo_pedido ou codigo_pedido_integracao' }, { status: 400 });
     }
 
+    // Parâmetros conforme doc Omie: nCodPed (integer) e cCodIntPed (string60)
     const param = {};
-    if (codigo_pedido) param.codigo_pedido = Number(codigo_pedido);
-    if (codigo_pedido_integracao) param.codigo_pedido_integracao = codigo_pedido_integracao;
+    if (codigo_pedido) param.nCodPed = Number(codigo_pedido);
+    if (codigo_pedido_integracao) param.cCodIntPed = codigo_pedido_integracao;
 
+    const callName = validar_apenas ? 'ValidarPedidoVenda' : 'FaturarPedidoVenda';
     const t0 = Date.now();
     let resposta;
     try {
-      resposta = await omieCall('FaturarPedido', param);
+      resposta = await omieCall(callName, param);
     } catch (e) {
-      // Mensagens comuns do Omie: cliente bloqueado, sem estoque, NCM faltando, etc.
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-        endpoint: 'produtos/pedido',
-        call: 'FaturarPedido',
-        operacao: 'emitir_nf',
+        endpoint: 'produtos/pedidovendafat',
+        call: callName,
+        operacao: validar_apenas ? 'validar_nf' : 'emitir_nf',
         status: 'erro',
         duracao_ms: Date.now() - t0,
         mensagem_erro: e.message,
@@ -62,9 +65,9 @@ Deno.serve(async (req) => {
     }
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-      endpoint: 'produtos/pedido',
-      call: 'FaturarPedido',
-      operacao: 'emitir_nf',
+      endpoint: 'produtos/pedidovendafat',
+      call: callName,
+      operacao: validar_apenas ? 'validar_nf' : 'emitir_nf',
       status: 'sucesso',
       duracao_ms: Date.now() - t0,
       payload_enviado: JSON.stringify(param).substring(0, 1500),
@@ -75,6 +78,8 @@ Deno.serve(async (req) => {
     return Response.json({
       sucesso: true,
       mensagem: resposta?.cDescStatus || 'Pedido enviado para emissão de NF-e. Aguarde alguns minutos para o Omie processar.',
+      cCodStatus: resposta?.cCodStatus,
+      cDescStatus: resposta?.cDescStatus,
       resposta
     });
   } catch (error) {
