@@ -41,11 +41,16 @@ export default function Operacao() {
     return data?.pedidos || [];
   };
 
+  const fetchFaturados = async () => {
+    const { data } = await base44.functions.invoke('consultarStatusFaturamentoOmie', { registros_por_pagina: 50 });
+    return data?.pedidos || [];
+  };
+
   const queries = {
     '10': useQuery({ queryKey: ['operacaoOmie', '10'], queryFn: () => fetchEtapa('10'), staleTime: 30000, refetchOnWindowFocus: false }),
     '20': useQuery({ queryKey: ['operacaoOmie', '20'], queryFn: () => fetchEtapa('20'), staleTime: 30000, refetchOnWindowFocus: false }),
     '50': useQuery({ queryKey: ['operacaoOmie', '50'], queryFn: () => fetchEtapa('50'), staleTime: 30000, refetchOnWindowFocus: false }),
-    '60': useQuery({ queryKey: ['operacaoOmie', '60'], queryFn: () => fetchEtapa('60'), staleTime: 30000, refetchOnWindowFocus: false }),
+    '60': useQuery({ queryKey: ['operacaoOmie', '60-status'], queryFn: fetchFaturados, staleTime: 30000, refetchOnWindowFocus: false }),
   };
 
   const { data: clientes = [] } = useQuery({
@@ -153,28 +158,43 @@ export default function Operacao() {
     if (pedido.codigo_pedido) solicitarMover(pedido, etapaOrigem, etapaDestino);
   };
 
+  const STATUS_CORES = {
+    emitida:        { border: '#22c55e', origem: 'NF emitida' },
+    rejeitada:      { border: '#ef4444', origem: 'NF rejeitada' },
+    cancelada:      { border: '#64748b', origem: 'NF cancelada' },
+    denegada:       { border: '#dc2626', origem: 'NF denegada' },
+    aguardando_nf:  { border: '#f59e0b', origem: 'Aguardando NF' }
+  };
+
   const renderCards = (etapa) => {
     const lista = filtrar(queries[etapa].data || []);
     const proximaEtapa = FLUXO[FLUXO.indexOf(etapa) + 1];
     const proxLabel = proximaEtapa ? ETAPAS[proximaEtapa]?.label : null;
     const proxColor = proximaEtapa ? ETAPAS[proximaEtapa]?.color : 'amber';
 
-    return lista.map(p => (
-      <KanbanCard
-        key={p.codigo_pedido}
-        numero={p.numero_pedido}
-        titulo={p.cliente_nome}
-        valor={p.valor_total_pedido}
-        data={formatarData(p.data_previsao)}
-        borderColor={ETAPAS[etapa].border}
-        origem="Omie"
-        draggable
-        onDragStart={(e) => onDragStart(e, p, etapa)}
-        acaoLabel={proxLabel ? `Avançar para ${proxLabel}` : null}
-        acaoColor={proxColor}
-        onAvancar={proximaEtapa ? () => solicitarMover(p, etapa, proximaEtapa) : null}
-      />
-    ));
+    return lista.map(p => {
+      // Coluna Faturado usa status real (NF) em vez de "Omie"
+      const corStatus = etapa === '60' ? STATUS_CORES[p.status_real] : null;
+      const borderColor = corStatus?.border || ETAPAS[etapa].border;
+      const origem = etapa === '60' ? (p.status_label || corStatus?.origem || 'Faturado') : 'Omie';
+
+      return (
+        <KanbanCard
+          key={p.codigo_pedido}
+          numero={p.numero_pedido}
+          titulo={p.cliente_nome}
+          valor={p.valor_total_pedido}
+          data={formatarData(p.data_previsao)}
+          borderColor={borderColor}
+          origem={origem}
+          draggable
+          onDragStart={(e) => onDragStart(e, p, etapa)}
+          acaoLabel={etapa !== '60' && proxLabel ? `Avançar para ${proxLabel}` : null}
+          acaoColor={proxColor}
+          onAvancar={etapa !== '60' && proximaEtapa ? () => solicitarMover(p, etapa, proximaEtapa) : null}
+        />
+      );
+    });
   };
 
   const cargasEntrega = cargas.filter(c => ['em_rota', 'entregue', 'finalizada'].includes(c.status_carga));
