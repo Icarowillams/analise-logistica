@@ -94,19 +94,26 @@ export default function Operacao() {
     const para = ETAPAS[etapaDestino];
     if (!para) return;
 
-    // Aviso especial para faturamento (60) — ainda permite, mas alerta
-    const ehFaturar = etapaDestino === '60';
+    // BLOQUEIO: a API do Omie NÃO permite mover manualmente para etapa 60.
+    // Resposta oficial: "Não é possível trocar a etapa desse pedido para [60].
+    // Utilize o processo de faturamento para conseguir executar essa ação!"
+    // O pedido só vai para 60 quando o scheduler do Omie emite a NF-e.
+    if (etapaDestino === '60') {
+      toast.error('Não é possível mover manualmente para "Faturado".', {
+        description: 'O Omie só move o pedido para Faturado APÓS emitir a NF-e. Mova para "Faturar" (50) e aguarde alguns minutos — o Omie processa automaticamente.',
+        duration: 10000
+      });
+      return;
+    }
 
     setAcaoPendente({
       tipo: 'mover_etapa',
       titulo: `Mover pedido para ${para.label}?`,
-      descricao: ehFaturar
-        ? 'Atenção: ao mover para "Faturado" o Omie irá tentar emitir a NF-e automaticamente. Tem certeza?'
-        : `O pedido será movido no Omie da etapa "${de?.label || etapaAtual}" para "${para.label}".`,
+      descricao: `O pedido será movido no Omie da etapa "${de?.label || etapaAtual}" para "${para.label}".`,
       de: de?.label || etapaAtual,
       para: para.label,
       badgeColor: para.color,
-      perigo: ehFaturar,
+      perigo: false,
       pedido,
       payload: { etapaDestino, etapaAtual }
     });
