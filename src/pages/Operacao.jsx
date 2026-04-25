@@ -136,7 +136,9 @@ export default function Operacao() {
           throw new Error(data?.error || data?.resposta?.cDescStatus || 'O Omie rejeitou a alteração de etapa');
         }
         toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`);
-        queryClient.invalidateQueries({ queryKey: ['operacaoOmie'] });
+        // Aguarda 2.5s para o Omie indexar a mudança antes de refazer ListarPedidos
+        await new Promise(r => setTimeout(r, 2500));
+        await queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
       }
       setAcaoPendente(null);
     } catch (e) {
