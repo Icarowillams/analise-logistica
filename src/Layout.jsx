@@ -29,7 +29,8 @@ import {
   Warehouse,
   MonitorSpeaker,
   AlertTriangle,
-  FileOutput
+  FileOutput,
+  Workflow
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
@@ -115,6 +116,11 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
           { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
         ]
+      },
+      {
+        title: 'Operação Completa',
+        icon: Workflow,
+        path: 'Operacao'
       },
       {
         title: 'Logística',
