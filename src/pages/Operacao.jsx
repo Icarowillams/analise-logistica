@@ -7,7 +7,6 @@ import {
 
 import EmissaoPedidos from '@/pages/EmissaoPedidos';
 import GerenciarPedidosPage from '@/pages/GerenciarPedidosPage';
-import ControlePedidosVenda from '@/pages/ControlePedidosVenda';
 import MontagemCarga from '@/pages/MontagemCarga';
 import Cargas from '@/pages/Cargas';
 import NotasOmie from '@/pages/NotasOmie';
@@ -31,19 +30,11 @@ const ETAPAS = [
     Component: GerenciarPedidosPage
   },
   {
-    id: 'liberados',
-    label: 'Pedidos Liberados',
-    icon: CheckCircle2,
-    color: 'blue',
-    descricao: 'Pedidos aprovados aguardando faturamento',
-    Component: ControlePedidosVenda
-  },
-  {
     id: 'faturar',
-    label: 'Faturar',
+    label: 'Montagem de Carga',
     icon: FileBarChart,
     color: 'orange',
-    descricao: 'Montagem da carga para faturamento',
+    descricao: 'Montar carga com pedidos liberados',
     Component: MontagemCarga
   },
   {
@@ -100,7 +91,6 @@ export default function Operacao() {
   const contadores = useMemo(() => ({
     pedido_venda: pedidos.filter(p => p.status === 'rascunho' || p.status === 'confirmado').length,
     gerenciar: pedidos.filter(p => p.status === 'rascunho' || p.status === 'confirmado').length,
-    liberados: pedidos.filter(p => p.status === 'confirmado').length,
     faturar: cargas.filter(c => ['montagem', 'fechada', 'conferindo', 'pronta'].includes(c.status_carga)).length,
     faturado: cargas.filter(c => c.status_carga === 'faturada').length,
     nfs: cargas.filter(c => c.status_carga === 'faturada').length,
