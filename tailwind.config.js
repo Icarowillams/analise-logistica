@@ -97,6 +97,13 @@ module.exports = {
     'border-amber-200', 'text-amber-500', 'text-amber-600',
     'border-purple-200', 'text-purple-500', 'text-purple-600',
     'border-blue-200', 'text-blue-500', 'text-blue-600',
+    // Operação Kanban — cores dinâmicas
+    'bg-amber-50', 'bg-amber-100', 'bg-amber-200', 'bg-amber-500', 'bg-amber-600', 'text-amber-700', 'text-amber-800', 'border-amber-200',
+    'bg-blue-50', 'bg-blue-200', 'bg-blue-600', 'text-blue-700', 'border-blue-200',
+    'bg-orange-50', 'bg-orange-100', 'bg-orange-200', 'bg-orange-500', 'bg-orange-600', 'text-orange-700', 'border-orange-200',
+    'bg-emerald-50', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-500', 'bg-emerald-600', 'text-emerald-700', 'text-emerald-800', 'border-emerald-200',
+    'bg-indigo-50', 'bg-indigo-100', 'bg-indigo-200', 'bg-indigo-500', 'bg-indigo-600', 'text-indigo-700', 'text-indigo-800', 'border-indigo-200',
+    'bg-slate-50', 'bg-slate-200', 'text-slate-800',
   ],
   plugins: [require("tailwindcss-animate")],
 }
