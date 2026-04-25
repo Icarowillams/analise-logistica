@@ -42,12 +42,36 @@ Deno.serve(async (req) => {
     if (codigo_pedido_integracao) param.codigo_pedido_integracao = codigo_pedido_integracao;
 
     const t0 = Date.now();
-    const data = await omieCall('TrocarEtapaPedido', param);
-    const duracao = Date.now() - t0;
+    const respostaTroca = await omieCall('TrocarEtapaPedido', param);
 
-    // TrocarEtapaPedido retorna { cCodStatus: "0", cDescStatus: "..." } em sucesso.
-    // Se chegou até aqui sem throw, o Omie aceitou.
-    const sucesso = !data.faultstring && (data.cCodStatus === '0' || data.cCodStatus === 0 || !data.cCodStatus);
+    // Aguarda 1.5s para o Omie indexar a mudança e VALIDA consultando o pedido
+    await new Promise(r => setTimeout(r, 1500));
+    let etapaReal = null;
+    let validacaoErro = null;
+    try {
+      const consulta = await omieCall('ConsultarPedido', codigo_pedido
+        ? { codigo_pedido: Number(codigo_pedido) }
+        : { codigo_pedido_integracao });
+      etapaReal = consulta?.pedido_venda_produto?.cabecalho?.etapa
+        || consulta?.cabecalho?.etapa
+        || null;
+    } catch (e) {
+      validacaoErro = e.message;
+    }
+
+    const duracao = Date.now() - t0;
+    const sucesso = etapaReal === String(etapa);
+
+    let mensagemErro = null;
+    if (!sucesso) {
+      if (validacaoErro) {
+        mensagemErro = `Falha ao validar etapa: ${validacaoErro}`;
+      } else if (etapaReal) {
+        mensagemErro = `Omie retornou OK, mas pedido permaneceu na etapa ${etapaReal} (esperado ${etapa}). Pode haver bloqueio fiscal/financeiro.`;
+      } else {
+        mensagemErro = 'Não foi possível confirmar a troca de etapa no Omie.';
+      }
+    }
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedido',
@@ -55,11 +79,23 @@ Deno.serve(async (req) => {
       operacao: 'trocar_etapa',
       status: sucesso ? 'sucesso' : 'erro',
       duracao_ms: duracao,
-      mensagem_erro: sucesso ? null : (data.cDescStatus || 'erro desconhecido'),
+      mensagem_erro: mensagemErro,
+      payload_enviado: JSON.stringify(param).substring(0, 1500),
+      payload_resposta: JSON.stringify({ resposta_troca: respostaTroca, etapa_real: etapaReal }).substring(0, 1500),
       usuario_email: user.email
     }).catch(() => {});
 
-    return Response.json({ sucesso, resposta: data });
+    if (!sucesso) {
+      return Response.json({
+        sucesso: false,
+        error: mensagemErro,
+        etapa_solicitada: String(etapa),
+        etapa_real: etapaReal,
+        resposta: respostaTroca
+      }, { status: 400 });
+    }
+
+    return Response.json({ sucesso: true, etapa_real: etapaReal, resposta: respostaTroca });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
