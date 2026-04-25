@@ -114,19 +114,28 @@ export default function Operacao() {
 
     try {
       if (acaoPendente.tipo === 'mover_etapa') {
-        const { data } = await base44.functions.invoke('trocarEtapaPedidoOmie', {
-          codigo_pedido: acaoPendente.pedido.codigo_pedido,
-          etapa: acaoPendente.payload.etapaDestino
-        });
-        if (data?.sucesso === false || data?.error) {
-          throw new Error(data?.error || data?.resposta?.cDescStatus || 'Falha ao mover');
+        let resp;
+        try {
+          resp = await base44.functions.invoke('trocarEtapaPedidoOmie', {
+            codigo_pedido: acaoPendente.pedido.codigo_pedido,
+            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
+            etapa: acaoPendente.payload.etapaDestino
+          });
+        } catch (httpErr) {
+          // Quando function retorna status >= 400, o SDK lança — extrai a mensagem do Omie
+          const msgOmie = httpErr?.response?.data?.error || httpErr?.message || 'Erro desconhecido no Omie';
+          throw new Error(msgOmie);
+        }
+        const data = resp?.data;
+        if (!data?.sucesso) {
+          throw new Error(data?.error || data?.resposta?.cDescStatus || 'O Omie rejeitou a alteração de etapa');
         }
         toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`);
         queryClient.invalidateQueries({ queryKey: ['operacaoOmie'] });
       }
       setAcaoPendente(null);
     } catch (e) {
-      toast.error(e.message || 'Erro ao executar ação');
+      toast.error(e.message || 'Erro ao mover pedido', { duration: 8000 });
     } finally {
       setExecutando(false);
     }
