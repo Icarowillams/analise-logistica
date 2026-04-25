@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 import EmissaoPedidos from '@/pages/EmissaoPedidos';
+import GerenciarPedidosPage from '@/pages/GerenciarPedidosPage';
 import ControlePedidosVenda from '@/pages/ControlePedidosVenda';
 import MontagemCarga from '@/pages/MontagemCarga';
 import Cargas from '@/pages/Cargas';
@@ -20,6 +21,14 @@ const ETAPAS = [
     color: 'amber',
     descricao: 'Criação e emissão de pedidos',
     Component: EmissaoPedidos
+  },
+  {
+    id: 'gerenciar',
+    label: 'Gerenciar / Liberar',
+    icon: CheckCircle2,
+    color: 'cyan',
+    descricao: 'Liberar pedidos para faturamento',
+    Component: GerenciarPedidosPage
   },
   {
     id: 'liberados',
@@ -65,6 +74,7 @@ const ETAPAS = [
 
 const COLOR_CLASSES = {
   amber:   { bg: 'bg-amber-50',   border: 'border-amber-300',   text: 'text-amber-700',   active: 'bg-amber-500 text-white border-amber-600' },
+  cyan:    { bg: 'bg-cyan-50',    border: 'border-cyan-300',    text: 'text-cyan-700',    active: 'bg-cyan-500 text-white border-cyan-600' },
   blue:    { bg: 'bg-blue-50',    border: 'border-blue-300',    text: 'text-blue-700',    active: 'bg-blue-500 text-white border-blue-600' },
   orange:  { bg: 'bg-orange-50',  border: 'border-orange-300',  text: 'text-orange-700',  active: 'bg-orange-500 text-white border-orange-600' },
   green:   { bg: 'bg-green-50',   border: 'border-green-300',   text: 'text-green-700',   active: 'bg-green-500 text-white border-green-600' },
@@ -89,6 +99,7 @@ export default function Operacao() {
 
   const contadores = useMemo(() => ({
     pedido_venda: pedidos.filter(p => p.status === 'rascunho' || p.status === 'confirmado').length,
+    gerenciar: pedidos.filter(p => p.status === 'rascunho' || p.status === 'confirmado').length,
     liberados: pedidos.filter(p => p.status === 'confirmado').length,
     faturar: cargas.filter(c => ['montagem', 'fechada', 'conferindo', 'pronta'].includes(c.status_carga)).length,
     faturado: cargas.filter(c => c.status_carga === 'faturada').length,
@@ -124,7 +135,7 @@ export default function Operacao() {
               <React.Fragment key={etapa.id}>
                 <button
                   onClick={() => setEtapaAtiva(etapa.id)}
-                  className={`flex-1 min-w-[180px] px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                  className={`flex-1 min-w-[170px] px-4 py-3 rounded-lg border-2 transition-all text-left ${
                     isActive
                       ? cls.active + ' shadow-md scale-[1.02]'
                       : `${cls.bg} ${cls.border} ${cls.text} hover:shadow-sm`
