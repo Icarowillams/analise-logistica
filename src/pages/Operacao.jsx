@@ -94,14 +94,18 @@ export default function Operacao() {
     const para = ETAPAS[etapaDestino];
     if (!para) return;
 
-    // BLOQUEIO: a API do Omie NÃO permite mover manualmente para etapa 60.
-    // Resposta oficial: "Não é possível trocar a etapa desse pedido para [60].
-    // Utilize o processo de faturamento para conseguir executar essa ação!"
-    // O pedido só vai para 60 quando o scheduler do Omie emite a NF-e.
+    // Mover para "Faturado" (60) = disparar emissão da NF-e (FaturarPedido no Omie)
     if (etapaDestino === '60') {
-      toast.error('Não é possível mover manualmente para "Faturado".', {
-        description: 'O Omie só move o pedido para Faturado APÓS emitir a NF-e. Mova para "Faturar" (50) e aguarde alguns minutos — o Omie processa automaticamente.',
-        duration: 10000
+      setAcaoPendente({
+        tipo: 'emitir_nf',
+        titulo: 'Emitir Nota Fiscal?',
+        descricao: 'Isso vai disparar a emissão da NF-e no Omie. A NF é processada pela SEFAZ e em alguns minutos o pedido aparece em "Faturado".',
+        de: de?.label || etapaAtual,
+        para: 'Emitir NF-e',
+        badgeColor: 'emerald',
+        perigo: true,
+        pedido,
+        payload: { etapaDestino, etapaAtual }
       });
       return;
     }
@@ -134,7 +138,6 @@ export default function Operacao() {
             etapa: acaoPendente.payload.etapaDestino
           });
         } catch (httpErr) {
-          // Quando function retorna status >= 400, o SDK lança — extrai a mensagem do Omie
           const msgOmie = httpErr?.response?.data?.error || httpErr?.message || 'Erro desconhecido no Omie';
           throw new Error(msgOmie);
         }
@@ -143,8 +146,30 @@ export default function Operacao() {
           throw new Error(data?.error || data?.resposta?.cDescStatus || 'O Omie rejeitou a alteração de etapa');
         }
         toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`);
-        // Aguarda 2.5s para o Omie indexar a mudança antes de refazer ListarPedidos
         await new Promise(r => setTimeout(r, 2500));
+        await queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
+      }
+
+      if (acaoPendente.tipo === 'emitir_nf') {
+        let resp;
+        try {
+          resp = await base44.functions.invoke('emitirNfPedidoOmie', {
+            codigo_pedido: acaoPendente.pedido.codigo_pedido,
+            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao
+          });
+        } catch (httpErr) {
+          const msgOmie = httpErr?.response?.data?.error || httpErr?.message || 'Erro desconhecido no Omie';
+          throw new Error(msgOmie);
+        }
+        const data = resp?.data;
+        if (!data?.sucesso) {
+          throw new Error(data?.error || 'O Omie rejeitou a emissão da NF');
+        }
+        toast.success(`NF do pedido ${acaoPendente.pedido.numero_pedido} enviada para emissão`, {
+          description: 'Aguarde alguns minutos para a SEFAZ processar. O pedido aparecerá em "Faturado" automaticamente.',
+          duration: 8000
+        });
+        await new Promise(r => setTimeout(r, 3000));
         await queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
       }
       setAcaoPendente(null);
