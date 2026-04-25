@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Plus, Loader2, Trash2 } from 'lucide-react';
+import { Truck, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -202,10 +202,6 @@ export default function Cargas() {
               Faturar {selecionadas.length} selecionada(s)
             </Button>
           )}
-          <Button onClick={() => navigate('/MontagemCarga')}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nova carga
-          </Button>
         </div>
       </div>
 
