@@ -37,19 +37,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Informe codigo_pedido ou codigo_pedido_integracao' }, { status: 400 });
     }
 
-    const cabecalho = { etapa: String(etapa) };
-    if (codigo_pedido) cabecalho.codigo_pedido = Number(codigo_pedido);
-    if (codigo_pedido_integracao) cabecalho.codigo_pedido_integracao = codigo_pedido_integracao;
+    const param = { etapa: String(etapa) };
+    if (codigo_pedido) param.codigo_pedido = Number(codigo_pedido);
+    if (codigo_pedido_integracao) param.codigo_pedido_integracao = codigo_pedido_integracao;
 
     const t0 = Date.now();
-    const data = await omieCall('AlterarPedidoVenda', { cabecalho });
+    const data = await omieCall('TrocarEtapaPedido', param);
     const duracao = Date.now() - t0;
 
-    const sucesso = data.cCodStatus === '0' || data.cCodStatus === 0;
+    // TrocarEtapaPedido retorna { cCodStatus: "0", cDescStatus: "..." } em sucesso.
+    // Se chegou até aqui sem throw, o Omie aceitou.
+    const sucesso = !data.faultstring && (data.cCodStatus === '0' || data.cCodStatus === 0 || !data.cCodStatus);
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedido',
-      call: 'AlterarPedidoVenda',
+      call: 'TrocarEtapaPedido',
       operacao: 'trocar_etapa',
       status: sucesso ? 'sucesso' : 'erro',
       duracao_ms: duracao,
