@@ -22,6 +22,7 @@ import Cargas from './pages/Cargas.jsx';
 import AjustesPedidos from './pages/AjustesPedidos.jsx';
 import BoletosOmie from './pages/BoletosOmie.jsx';
 import Operacao from './pages/Operacao.jsx';
+import TestesOmie from './pages/TestesOmie.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -90,6 +91,7 @@ const AuthenticatedApp = () => {
       <Route path="/AjustesPedidos" element={<LayoutWrapper currentPageName="AjustesPedidos"><AjustesPedidos /></LayoutWrapper>} />
       <Route path="/BoletosOmie" element={<LayoutWrapper currentPageName="BoletosOmie"><BoletosOmie /></LayoutWrapper>} />
       <Route path="/Operacao" element={<LayoutWrapper currentPageName="Operacao"><Operacao /></LayoutWrapper>} />
+      <Route path="/TestesOmie" element={<LayoutWrapper currentPageName="TestesOmie"><TestesOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

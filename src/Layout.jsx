@@ -144,6 +144,11 @@ export default function Layout({ children, currentPageName }) {
         path: 'IntegracaoOmieDashboard'
       });
       allMenuItems.push({
+        title: 'Testes Omie',
+        icon: AlertTriangle,
+        path: 'TestesOmie'
+      });
+      allMenuItems.push({
         title: 'Permissões',
         icon: Shield,
         path: 'Permissoes'
