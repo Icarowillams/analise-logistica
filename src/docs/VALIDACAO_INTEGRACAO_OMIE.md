@@ -13,7 +13,7 @@
 | Secret `OMIE_APP_SECRET` configurado | ✅ | Confirmado nos secrets do app |
 | Padrão de chamada `{ call, app_key, app_secret, param: [...] }` | ✅ | Aplicado em todas as funções |
 | Endpoint base `https://app.omie.com.br/api/v1/` | ✅ | Padronizado |
-| Backoff exponencial / retry para rate limit | ⚠️ Parcial | Implementado em `trocarEtapaPedidoOmie`, `emitirNfPedidoOmie`, `consultarStatusFaturamentoOmie`. **Falta** em: `enviarPedidoOmie`, `enviarClienteOmie`, `enviarProdutoOmie` |
+| Backoff exponencial / retry para rate limit | ✅ | `trocarEtapaPedidoOmie`, `emitirNfPedidoOmie`, `consultarStatusFaturamentoOmie`, `buscarPedidosOmie`, `faturarCargaOmie`, **`enviarClienteOmie` ✅**, **`enviarProdutoOmie` ✅**. Pendente apenas em `enviarPedidoOmie` (fluxo complexo, baixo risco). |
 
 ---
 
@@ -31,9 +31,9 @@
 - [x] `inscricao_estadual` enviado ✅
 - [x] `caracteristicas` (Rota) ✅
 - [x] `tags` (código do cliente) ✅
-- [ ] **Validação de dígito verificador de CPF/CNPJ antes do envio** ❌ Não implementado — só limpa, não valida
-- [ ] **Característica "Vendedor"** ❌ Apenas "Rotas" é enviada
-- [ ] **Campo `tabela_preco`** ❌ Não enviado no payload do cliente
+- [x] **Validação de dígito verificador de CPF/CNPJ antes do envio** ✅ Implementado (rejeita com erro claro antes de bater na API)
+- [x] **Característica "Vendedor"** ✅ Enviada junto com "Rotas" quando `vendedor_id` existe
+- [x] **Campo `tabela_preco`** ✅ Enviado quando cliente tem `tabela_id` vinculada
 - [x] Regra D1 → não envia ao Omie ✅
 - [x] Pré-consulta por CNPJ para reutilizar `codigo_cliente_integracao` ✅
 - [x] Grava `codigo_omie` retornado no Base44 ✅
@@ -248,18 +248,14 @@
 
 | Evento | Função esperada | Status |
 |--------|-----------------|--------|
-| `VendaProduto.StatusAlterado` | `receberStatusLogistico` | ❌ **NÃO EXISTE** |
-| `VendaProduto.Faturado` | `receberStatusLogistico` | ❌ **NÃO EXISTE** |
-| `Cliente.Excluido` | handler de exclusão | ❌ **NÃO EXISTE** |
-| Validação de webhook (token compartilhado) | — | ❌ **NÃO IMPLEMENTADO** |
+| `VendaProduto.StatusAlterado` | `receberWebhookOmie` | ✅ Implementado |
+| `VendaProduto.Faturado` | `receberWebhookOmie` | ✅ Implementado |
+| `VendaProduto.Cancelado` | `receberWebhookOmie` | ✅ Implementado |
+| `Cliente.Excluido` | `receberWebhookOmie` | ✅ Implementado |
+| Validação de webhook (token via query string) | `OMIE_WEBHOOK_TOKEN` | ✅ Implementado |
 
-> **Workaround atual:** o status é puxado por **polling** (`sincronizarStatusPedidosOmie` + `consultarStatusFaturamentoOmie`) em vez de webhook. Funciona, mas não é tempo real.
-
-### 🔧 Ação recomendada
-Criar função `receberWebhookOmie` que:
-1. Valide token via header (`X-Webhook-Token`)
-2. Roteie eventos `VendaProduto.*` para atualização de pedido local
-3. Roteie `Cliente.*` para limpeza/sync local
+> **Falta apenas:** configurar a URL no painel do Omie:
+> `https://<seu-app>.base44.app/functions/receberWebhookOmie?token=<OMIE_WEBHOOK_TOKEN>`
 
 ---
 
@@ -275,11 +271,11 @@ Criar função `receberWebhookOmie` que:
 | Problema | Tratamento | Status |
 |----------|------------|--------|
 | SOAP-ERROR Encoding | Sanitização com `removerAspas` / `cleanStrings` | ✅ |
-| CNPJ inválido | Limpeza com `normalizarCpfCnpj` | ✅ (limpeza); ❌ (validação de DV) |
+| CNPJ inválido | Limpeza + validação de DV | ✅ Ambos |
 | Preço errado no pedido | Cálculo no frontend | ⚠️ Auditar |
 | Cliente duplicado | Pré-consulta por CNPJ | ✅ |
-| Rate limit (429) | Backoff exponencial | ⚠️ Parcial (só em algumas funções) |
-| `tabela_preco` não aplica | — | ❌ **Não enviado no cadastro do cliente** |
+| Rate limit (429) | Backoff exponencial | ✅ Em todas as funções de escrita críticas (exceto `enviarPedidoOmie`) |
+| `tabela_preco` não aplica | Enviado no UpsertCliente | ✅ |
 | Pedido sem etapa | `etapa: "10"` no cabeçalho | ✅ |
 | Frete obrigatório | `modalidade: "9"` sempre | ✅ |
 
@@ -293,18 +289,22 @@ Criar função `receberWebhookOmie` que:
 - Logs auditáveis em `LogIntegracaoOmie`
 - Páginas administrativas completas (Operação, Cargas, NotasOmie, BoletosOmie, etc.)
 
-### ⚠️ Gaps a Confirmar (auditoria de código)
-1. **Validação de DV de CPF/CNPJ** antes de enviar cliente
-2. **Característica "Vendedor"** no cliente Omie
-3. **Campo `tabela_preco`** no payload do cliente
-4. **Regra de bloqueio financeiro** (X dias vencidos)
-5. **Backoff exponencial** em `enviarPedidoOmie`/`enviarClienteOmie`/`enviarProdutoOmie`
-6. **Cálculo de `valor_unitario`** no frontend de emissão (3 níveis de prioridade)
-7. **`ajustarPrecosOriginaisOmie`** realmente seta R$ 1,00
+### ✅ Fechado nesta iteração
+1. ✅ Validação de DV de CPF/CNPJ antes de enviar cliente
+2. ✅ Característica "Vendedor" no UpsertCliente
+3. ✅ Campo `tabela_preco` no UpsertCliente
+4. ✅ Backoff exponencial em `enviarClienteOmie` e `enviarProdutoOmie`
+5. ✅ Webhook receptor (`receberWebhookOmie`) com validação por token
 
-### ❌ Faltando (necessita implementação)
-1. **Webhooks** do Omie (`receberWebhookOmie`)
-2. Validação completa de **dígito verificador** de CPF/CNPJ
+### ⚠️ Gaps remanescentes (precisam auditoria de código existente)
+1. **Cálculo de `valor_unitario`** no frontend (3 níveis: AcaoPromocional > PrecoProduto.valor_acao > PrecoProduto.valor_unitario) — auditar `components/Pedidos/PedidoFormulario`
+2. **`ajustarPrecosOriginaisOmie`** — confirmar que a Ação 1 reseta produtos para R$ 1,00 (já está no código, falta testar em produção)
+3. **`consultarBloqueioFinanceiroOmie`** — confirmar regra de "X dias vencidos bloqueia emissão"
+4. **`enviarRotasCaractOmie`** — garantir criação prévia das características "Vendedor" e "Rotas" no Omie
+5. **Backoff em `enviarPedidoOmie`** — fluxo grande, ainda pendente
+
+### 🔧 Ações operacionais (não-código)
+1. Configurar webhook no painel do Omie apontando para `receberWebhookOmie?token=...`
 
 ---
 
@@ -342,16 +342,24 @@ Banner azul de aviso adicionado em ambas as páginas explicando o fluxo.
 
 > Marque com `[x]` ao concluir cada item.
 
-- [ ] **AUDITORIA-1**: Verificar cálculo de `valor_unitario` no frontend (regra 5.2)
-- [ ] **AUDITORIA-2**: Verificar `ajustarPrecosOriginaisOmie` (reset R$ 1,00)
-- [ ] **AUDITORIA-3**: Verificar `enviarRotasCaractOmie` (existência de "Vendedor" + "Rotas")
-- [ ] **AUDITORIA-4**: Verificar `consultarBloqueioFinanceiroOmie` (regra de dias)
-- [ ] **GAP-1**: Adicionar característica "Vendedor" em `enviarClienteOmie`
-- [ ] **GAP-2**: Adicionar `tabela_preco` no payload de `enviarClienteOmie`
-- [ ] **GAP-3**: Adicionar validação de DV CPF/CNPJ
-- [ ] **GAP-4**: Adicionar backoff exponencial em `enviarPedidoOmie`/`enviarClienteOmie`/`enviarProdutoOmie`
-- [ ] **NOVO-1**: Criar função `receberWebhookOmie`
-- [ ] **NOVO-2**: Configurar webhook no painel do Omie apontando para a função
+### Concluído ✅
+- [x] **GAP-1**: Característica "Vendedor" em `enviarClienteOmie`
+- [x] **GAP-2**: `tabela_preco` no payload de `enviarClienteOmie`
+- [x] **GAP-3**: Validação de DV CPF/CNPJ
+- [x] **GAP-4 (parcial)**: Backoff exponencial em `enviarClienteOmie` + `enviarProdutoOmie`
+- [x] **NOVO-1**: Função `receberWebhookOmie` criada com validação por token
+
+### Pendente — código
+- [ ] **GAP-4 (resto)**: Backoff em `enviarPedidoOmie` (fluxo grande, fazer com cuidado)
+- [ ] **AUDITORIA-1**: Cálculo de `valor_unitario` no frontend (regra 5.2)
+- [ ] **AUDITORIA-2**: `ajustarPrecosOriginaisOmie` reset R$ 1,00
+- [ ] **AUDITORIA-3**: `enviarRotasCaractOmie` (existência de "Vendedor" + "Rotas")
+- [ ] **AUDITORIA-4**: `consultarBloqueioFinanceiroOmie` (regra de dias)
+
+### Pendente — operacional
+- [ ] **NOVO-2**: Configurar webhook no painel do Omie:
+  - URL: `https://<seu-app>.base44.app/functions/receberWebhookOmie?token=<OMIE_WEBHOOK_TOKEN>`
+  - Eventos: `VendaProduto.Faturado`, `VendaProduto.Cancelado`, `VendaProduto.StatusAlterado`, `Cliente.Excluido`
 
 ---
 
