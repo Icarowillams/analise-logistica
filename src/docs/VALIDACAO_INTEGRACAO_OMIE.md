@@ -308,6 +308,23 @@ Criar função `receberWebhookOmie` que:
 
 ---
 
+## ✅ 13. Hardening Aplicado nesta Iteração
+
+| Item | Onde | Status |
+|------|------|--------|
+| Backoff exponencial em rate-limit (429 / cota / redundante) | `enviarClienteOmie`, `enviarProdutoOmie`, `emitirNfPedidoOmie`, `trocarEtapaPedidoOmie`, `consultarStatusFaturamentoOmie`, `buscarPedidosOmie`, `faturarCargaOmie` | ✅ |
+| Validação dígito verificador CPF/CNPJ no envio | `enviarClienteOmie` (rejeita antes de chamar API) | ✅ |
+| Característica "Vendedor" no UpsertCliente | `enviarClienteOmie` | ✅ |
+| Vínculo `tabela_preco` no UpsertCliente | `enviarClienteOmie` | ✅ |
+| Webhook receptor (`receberWebhookOmie`) com validação de token | Função pública nova | ✅ |
+| Secret `OMIE_WEBHOOK_TOKEN` | Configurada no painel | ✅ |
+
+> **Configuração do webhook no Omie:**
+> URL: `https://<seu-app>.base44.app/functions/receberWebhookOmie?token=<OMIE_WEBHOOK_TOKEN>`
+> Tópicos suportados: `VendaProduto.Faturado`, `VendaProduto.Cancelado`, `VendaProduto.StatusAlterado`, `Cliente.Excluido`
+
+---
+
 ## 🚫 12. Criação Manual de Pedidos — REMOVIDA
 
 > **Decisão arquitetural (2026-05-01):** O sistema é 100% integrado ao Omie. Toda criação de pedido (Venda, Troca, Devolução) **acontece no Omie** e é sincronizada para cá. Não faz sentido criar pedidos manualmente no Base44.

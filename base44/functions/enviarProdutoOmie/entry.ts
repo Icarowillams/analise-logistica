@@ -2,6 +2,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/produtos/';
 
+// Backoff exponencial para chamadas Omie sujeitas a rate-limit (429 / cota / redundante)
+async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.faultstring) {
+        const msg = data.faultstring.toLowerCase();
+        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('too many') || res.status === 429;
+        if (isRate && tentativa < maxTentativas) {
+            await new Promise(r => setTimeout(r, 2000 * tentativa));
+            return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
+        }
+    }
+    return data;
+}
+
 async function logOmie(base44, payload) {
     try {
         await base44.asServiceRole.entities.LogIntegracaoOmie.create(payload);
@@ -126,17 +145,12 @@ Deno.serve(async (req) => {
 
         // Pré-consulta por código interno: se já existe no Omie, reutilizar o codigo_produto_integracao real
         try {
-            const consulta = await fetch(OMIE_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    call: 'ConsultarProduto',
-                    app_key: OMIE_APP_KEY,
-                    app_secret: OMIE_APP_SECRET,
-                    param: [{ codigo: produtoOmie.codigo }]
-                })
+            const achado = await omieFetchComRetry(OMIE_URL, {
+                call: 'ConsultarProduto',
+                app_key: OMIE_APP_KEY,
+                app_secret: OMIE_APP_SECRET,
+                param: [{ codigo: produtoOmie.codigo }]
             });
-            const achado = await consulta.json();
             if (achado?.codigo_produto) {
                 produtoOmie.codigo_produto = achado.codigo_produto;
                 if (achado.codigo_produto_integracao && achado.codigo_produto_integracao !== produtoOmie.codigo_produto_integracao) {
@@ -146,17 +160,12 @@ Deno.serve(async (req) => {
         } catch (_) { /* pré-consulta é best-effort */ }
 
         const started = Date.now();
-        const response = await fetch(OMIE_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                call: 'UpsertProduto',
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [produtoOmie]
-            })
+        const resultado = await omieFetchComRetry(OMIE_URL, {
+            call: 'UpsertProduto',
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [produtoOmie]
         });
-        const resultado = await response.json();
         const duracao_ms = Date.now() - started;
 
         if (resultado.faultstring || resultado.faultcode) {
