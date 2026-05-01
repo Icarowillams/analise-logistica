@@ -1,63 +1,71 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Workflow, RefreshCw, Search, Plus, FileBarChart, Truck, ExternalLink } from 'lucide-react';
+import { Workflow, RefreshCw, Search, Plus, FileBarChart, Truck, ExternalLink, Activity, Wifi } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import KanbanColumn from '@/components/operacao/KanbanColumn';
-import KanbanCard from '@/components/operacao/KanbanCard';
+import CardPedidoKanban from '@/components/operacao/CardPedidoKanban';
 import ConfirmarAcaoModal from '@/components/operacao/ConfirmarAcaoModal';
+import { useOperacaoOmie } from '@/components/operacao/useOperacaoOmie.js';
 
-// Mapa de etapas e cores
+// === Espelho fiel das etapas Omie (ListarEtapasFaturamento) ===
 const ETAPAS = {
   '10': { label: 'Pedido de Venda', color: 'amber',   border: '#f59e0b' },
   '20': { label: 'Liberados',       color: 'blue',    border: '#3b82f6' },
   '50': { label: 'Faturar',         color: 'orange',  border: '#f97316' },
   '60': { label: 'Faturado',        color: 'emerald', border: '#22c55e' },
 };
+const FLUXO = ['10', '20', '50', '60'];
 
-const FLUXO = ['10', '20', '50', '60']; // ordem de avanço
+// Cores de status NF (etapa 60)
+const STATUS_NF = {
+  emitida:        { border: '#22c55e' },
+  rejeitada:      { border: '#ef4444' },
+  cancelada:      { border: '#64748b' },
+  denegada:       { border: '#dc2626' },
+  aguardando_nf:  { border: '#f59e0b' }
+};
 
 function formatarData(d) {
   if (!d) return '';
   const partes = d.split('/');
   if (partes.length !== 3) return d;
   const data = new Date(`${partes[2]}-${partes[1]}-${partes[0]}T12:00:00`);
+  if (isNaN(data.getTime())) return d;
   const dia = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][data.getDay()];
   return `${partes[0]}/${partes[1]} ${dia}`;
+}
+
+function tempoDecorrido(timestamp) {
+  if (!timestamp) return '—';
+  const diff = Math.floor((Date.now() - timestamp) / 1000);
+  if (diff < 5) return 'agora';
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}min`;
+  return `${Math.floor(diff / 3600)}h`;
 }
 
 export default function Operacao() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [busca, setBusca] = useState('');
   const [acaoPendente, setAcaoPendente] = useState(null);
   const [executando, setExecutando] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [tick, setTick] = useState(0);
 
-  const fetchEtapa = async (etapa) => {
-    const { data } = await base44.functions.invoke('buscarPedidosOmie', { etapa, registros_por_pagina: 50 });
-    return data?.pedidos || [];
-  };
+  // Tick a cada segundo só pra atualizar o "atualizado há Xs"
+  useEffect(() => {
+    const i = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(i);
+  }, []);
 
-  const fetchFaturados = async () => {
-    const { data } = await base44.functions.invoke('consultarStatusFaturamentoOmie', { registros_por_pagina: 50 });
-    return data?.pedidos || [];
-  };
-
-  const queries = {
-    '10': useQuery({ queryKey: ['operacaoOmie', '10'], queryFn: () => fetchEtapa('10'), staleTime: 30000, refetchOnWindowFocus: false }),
-    '20': useQuery({ queryKey: ['operacaoOmie', '20'], queryFn: () => fetchEtapa('20'), staleTime: 30000, refetchOnWindowFocus: false }),
-    '50': useQuery({ queryKey: ['operacaoOmie', '50'], queryFn: () => fetchEtapa('50'), staleTime: 30000, refetchOnWindowFocus: false }),
-    '60': useQuery({ queryKey: ['operacaoOmie', '60-status'], queryFn: fetchFaturados, staleTime: 30000, refetchOnWindowFocus: false }),
-  };
-
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes-mini'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 3000),
-    staleTime: 60000
-  });
+  const { queries, refetchAll, lastFullUpdate, isAnyLoading, totalGeral, valorGeral } = useOperacaoOmie({ autoRefresh });
 
   const { data: cargas = [], isLoading: loadingCargas, refetch: refetchCargas } = useQuery({
     queryKey: ['cargasOperacao'],
@@ -65,36 +73,40 @@ export default function Operacao() {
     staleTime: 30000
   });
 
-  const clientePorCodigo = useMemo(() => {
-    const map = {};
-    clientes.forEach(c => { if (c.codigo_omie) map[String(c.codigo_omie)] = c; });
-    return map;
-  }, [clientes]);
-
-  const enriquecer = (p) => {
-    const cli = clientePorCodigo[p.codigo_cliente];
-    return { ...p, cliente_nome: cli?.nome_fantasia || cli?.razao_social || `Cliente ${p.codigo_cliente}` };
+  // Filtro de busca + ordenação por data prevista
+  const filtrarOrdenar = (lista) => {
+    const t = busca.trim().toLowerCase();
+    let r = lista;
+    if (t) {
+      r = lista.filter(p =>
+        (p.numero_pedido || '').toString().toLowerCase().includes(t) ||
+        (p.cliente_nome || '').toLowerCase().includes(t) ||
+        (p.cliente_cpf_cnpj || '').includes(t) ||
+        (p.numero_nf || '').toString().includes(t) ||
+        (p.cliente_cidade || '').toLowerCase().includes(t) ||
+        (p.rota_nome || '').toLowerCase().includes(t) ||
+        (p.vendedor_nome || '').toLowerCase().includes(t)
+      );
+    }
+    // Ordena por data prevista (mais antiga primeiro)
+    return [...r].sort((a, b) => {
+      const da = (a.data_previsao || '').split('/').reverse().join('');
+      const db = (b.data_previsao || '').split('/').reverse().join('');
+      return da.localeCompare(db);
+    });
   };
 
-  const filtrar = (lista) => {
-    const enrich = lista.map(enriquecer);
-    if (!busca.trim()) return enrich;
-    const t = busca.toLowerCase();
-    return enrich.filter(p =>
-      p.numero_pedido?.toString().includes(t) ||
-      p.cliente_nome.toLowerCase().includes(t)
-    );
+  const valorColuna = (etapa) => {
+    return (queries[etapa].data || []).reduce((s, p) => s + (Number(p.valor_total_pedido) || 0), 0);
   };
 
-  // Solicita confirmação para mover pedido para qualquer etapa
+  // Solicita confirmação de movimentação
   const solicitarMover = (pedido, etapaAtual, etapaDestino) => {
     if (etapaAtual === etapaDestino) return;
-
     const de = ETAPAS[etapaAtual];
     const para = ETAPAS[etapaDestino];
     if (!para) return;
 
-    // Mover para "Faturado" (60) = disparar emissão da NF-e (FaturarPedido no Omie)
     if (etapaDestino === '60') {
       setAcaoPendente({
         tipo: 'emitir_nf',
@@ -123,73 +135,49 @@ export default function Operacao() {
     });
   };
 
-  // Confirma e executa
   const executarAcao = async () => {
     if (!acaoPendente) return;
     setExecutando(true);
-
     try {
       if (acaoPendente.tipo === 'mover_etapa') {
-        let resp;
-        try {
-          resp = await base44.functions.invoke('trocarEtapaPedidoOmie', {
-            codigo_pedido: acaoPendente.pedido.codigo_pedido,
-            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
-            etapa: acaoPendente.payload.etapaDestino
-          });
-        } catch (httpErr) {
-          const msgOmie = httpErr?.response?.data?.error || httpErr?.message || 'Erro desconhecido no Omie';
-          throw new Error(msgOmie);
-        }
+        const resp = await base44.functions.invoke('trocarEtapaPedidoOmie', {
+          codigo_pedido: acaoPendente.pedido.codigo_pedido,
+          codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
+          etapa: acaoPendente.payload.etapaDestino
+        }).catch(err => { throw new Error(err?.response?.data?.error || err.message); });
+
         const data = resp?.data;
-        if (!data?.sucesso) {
-          throw new Error(data?.error || data?.resposta?.cDescStatus || 'O Omie rejeitou a alteração de etapa');
-        }
+        if (!data?.sucesso) throw new Error(data?.error || data?.resposta?.cDescStatus || 'Omie rejeitou a mudança de etapa');
         toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`);
         await new Promise(r => setTimeout(r, 2500));
-        await queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
+        await refetchAll();
       }
 
       if (acaoPendente.tipo === 'emitir_nf') {
-        // 1) VALIDA primeiro (ValidarPedidoVenda) — Omie diz se há bloqueio fiscal/financeiro
-        let validacao;
-        try {
-          validacao = await base44.functions.invoke('emitirNfPedidoOmie', {
-            codigo_pedido: acaoPendente.pedido.codigo_pedido,
-            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
-            validar_apenas: true
-          });
-        } catch (httpErr) {
-          const msgOmie = httpErr?.response?.data?.error || httpErr?.message;
-          throw new Error(msgOmie);
-        }
+        // Validação prévia
+        const validacao = await base44.functions.invoke('emitirNfPedidoOmie', {
+          codigo_pedido: acaoPendente.pedido.codigo_pedido,
+          codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao,
+          validar_apenas: true
+        }).catch(err => { throw new Error(err?.response?.data?.error || err.message); });
         const valData = validacao?.data;
-        // cCodStatus "1" = erro de validação. Sucesso retorna outro código (vazio ou "0").
         if (valData?.cCodStatus === '1' || /n[ãa]o \u00e9 poss[ií]vel faturar/i.test(valData?.cDescStatus || '')) {
           throw new Error(valData?.cDescStatus || 'Pedido não pode ser faturado');
         }
 
-        // 2) FATURA de verdade (FaturarPedidoVenda)
-        let resp;
-        try {
-          resp = await base44.functions.invoke('emitirNfPedidoOmie', {
-            codigo_pedido: acaoPendente.pedido.codigo_pedido,
-            codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao
-          });
-        } catch (httpErr) {
-          const msgOmie = httpErr?.response?.data?.error || httpErr?.message;
-          throw new Error(msgOmie);
-        }
+        // Faturar
+        const resp = await base44.functions.invoke('emitirNfPedidoOmie', {
+          codigo_pedido: acaoPendente.pedido.codigo_pedido,
+          codigo_pedido_integracao: acaoPendente.pedido.codigo_pedido_integracao
+        }).catch(err => { throw new Error(err?.response?.data?.error || err.message); });
         const data = resp?.data;
-        if (!data?.sucesso) {
-          throw new Error(data?.error || 'O Omie rejeitou a emissão da NF');
-        }
+        if (!data?.sucesso) throw new Error(data?.error || 'Omie rejeitou a emissão da NF');
         toast.success(`NF do pedido ${acaoPendente.pedido.numero_pedido} enviada para emissão`, {
-          description: data.cDescStatus || 'Aguarde alguns minutos para a SEFAZ processar. O pedido aparecerá em "Faturado" automaticamente.',
+          description: data.cDescStatus || 'Aguarde alguns minutos para a SEFAZ processar.',
           duration: 8000
         });
         await new Promise(r => setTimeout(r, 3000));
-        await queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
+        await refetchAll();
       }
       setAcaoPendente(null);
     } catch (e) {
@@ -199,47 +187,36 @@ export default function Operacao() {
     }
   };
 
-  // Drag and drop entre colunas
+  // Drag and drop
   const onDragStart = (e, pedido, etapaOrigem) => {
     e.dataTransfer.setData('pedido', JSON.stringify(pedido));
     e.dataTransfer.setData('etapa', etapaOrigem);
   };
-
   const onDrop = (e, etapaDestino) => {
     const pedido = JSON.parse(e.dataTransfer.getData('pedido') || '{}');
     const etapaOrigem = e.dataTransfer.getData('etapa');
     if (pedido.codigo_pedido) solicitarMover(pedido, etapaOrigem, etapaDestino);
   };
 
-  const STATUS_CORES = {
-    emitida:        { border: '#22c55e', origem: 'NF emitida' },
-    rejeitada:      { border: '#ef4444', origem: 'NF rejeitada' },
-    cancelada:      { border: '#64748b', origem: 'NF cancelada' },
-    denegada:       { border: '#dc2626', origem: 'NF denegada' },
-    aguardando_nf:  { border: '#f59e0b', origem: 'Aguardando NF' }
-  };
-
   const renderCards = (etapa) => {
-    const lista = filtrar(queries[etapa].data || []);
+    const lista = filtrarOrdenar(queries[etapa].data || []);
     const proximaEtapa = FLUXO[FLUXO.indexOf(etapa) + 1];
     const proxLabel = proximaEtapa ? ETAPAS[proximaEtapa]?.label : null;
     const proxColor = proximaEtapa ? ETAPAS[proximaEtapa]?.color : 'amber';
 
     return lista.map(p => {
-      // Coluna Faturado usa status real (NF) em vez de "Omie"
-      const corStatus = etapa === '60' ? STATUS_CORES[p.status_real] : null;
+      const corStatus = etapa === '60' ? STATUS_NF[p.status_real] : null;
       const borderColor = corStatus?.border || ETAPAS[etapa].border;
-      const origem = etapa === '60' ? (p.status_label || corStatus?.origem || 'Faturado') : 'Omie';
+      const origemLabel = etapa === '60'
+        ? (p.status_label || 'Faturado')
+        : `Etapa Omie ${p.etapa || etapa}`;
 
       return (
-        <KanbanCard
+        <CardPedidoKanban
           key={p.codigo_pedido}
-          numero={p.numero_pedido}
-          titulo={p.cliente_nome}
-          valor={p.valor_total_pedido}
-          data={formatarData(p.data_previsao)}
+          pedido={{ ...p, data_previsao: formatarData(p.data_previsao) }}
           borderColor={borderColor}
-          origem={origem}
+          origemLabel={origemLabel}
           draggable
           onDragStart={(e) => onDragStart(e, p, etapa)}
           acaoLabel={etapa !== '60' && proxLabel ? `Avançar para ${proxLabel}` : null}
@@ -252,17 +229,24 @@ export default function Operacao() {
 
   const cargasEntrega = cargas.filter(c => ['em_rota', 'entregue', 'finalizada'].includes(c.status_carga));
   const cargasFiltradas = busca.trim()
-    ? cargasEntrega.filter(c => (c.motorista_nome || '').toLowerCase().includes(busca.toLowerCase()) || c.numero_carga?.includes(busca))
+    ? cargasEntrega.filter(c =>
+        (c.motorista_nome || '').toLowerCase().includes(busca.toLowerCase()) ||
+        (c.numero_carga || '').includes(busca)
+      )
     : cargasEntrega;
 
   const recarregarTudo = () => {
-    Object.values(queries).forEach(q => q.refetch());
+    refetchAll();
     refetchCargas();
     toast.info('Atualizando dados do Omie...');
   };
 
+  const segundosDesdeUpdate = Math.floor((Date.now() - lastFullUpdate) / 1000);
+  // referencia tick pra forçar re-render
+  void tick;
+
   return (
-    <div className="space-y-4 max-w-[1900px] mx-auto">
+    <div className="space-y-3 max-w-[1900px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -271,21 +255,40 @@ export default function Operacao() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-neutral-900">Operação Completa</h1>
-            <p className="text-sm text-neutral-500">Arraste cards entre quaisquer colunas — o pedido é movido no Omie automaticamente</p>
+            <p className="text-sm text-neutral-500">
+              Espelho fiel do Omie · {totalGeral} pedidos · R$ {valorGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-64">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status sync */}
+          <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+            <Activity className={`w-3.5 h-3.5 ${isAnyLoading ? 'text-amber-500 animate-pulse' : 'text-emerald-500'}`} />
+            <span className="text-xs text-slate-600 font-medium">
+              {isAnyLoading ? 'Sincronizando...' : `Atualizado há ${tempoDecorrido(lastFullUpdate)}`}
+            </span>
+          </div>
+
+          {/* Auto refresh toggle */}
+          <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+            <Wifi className={`w-3.5 h-3.5 ${autoRefresh ? 'text-blue-500' : 'text-slate-400'}`} />
+            <span className="text-xs text-slate-600 font-medium">Auto</span>
+            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+          </div>
+
+          <div className="relative w-56">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <Input
-              placeholder="Pesquisar..."
+              placeholder="Pedido, cliente, NF, cidade..."
               className="pl-9 h-9"
               value={busca}
               onChange={e => setBusca(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={recarregarTudo} className="h-9">
-            <RefreshCw className="w-4 h-4 mr-2" />
+
+          <Button variant="outline" onClick={recarregarTudo} className="h-9" disabled={isAnyLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isAnyLoading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
         </div>
@@ -296,8 +299,9 @@ export default function Operacao() {
         <KanbanColumn
           titulo="Pedido de Venda"
           headerColor="amber"
-          badge="Em digitação"
-          count={filtrar(queries['10'].data || []).length}
+          badge="Em digitação no Omie"
+          count={filtrarOrdenar(queries['10'].data || []).length}
+          valorTotal={valorColuna('10')}
           loading={queries['10'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '10')}
@@ -313,8 +317,9 @@ export default function Operacao() {
         <KanbanColumn
           titulo="Liberados"
           headerColor="blue"
-          badge="Aprovados"
-          count={filtrar(queries['20'].data || []).length}
+          badge="Aprovados pra faturar"
+          count={filtrarOrdenar(queries['20'].data || []).length}
+          valorTotal={valorColuna('20')}
           loading={queries['20'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '20')}
@@ -330,8 +335,9 @@ export default function Operacao() {
         <KanbanColumn
           titulo="Faturar"
           headerColor="orange"
-          badge="Prontos para NF"
-          count={filtrar(queries['50'].data || []).length}
+          badge="Prontos pra NF"
+          count={filtrarOrdenar(queries['50'].data || []).length}
+          valorTotal={valorColuna('50')}
           loading={queries['50'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '50')}
@@ -347,8 +353,9 @@ export default function Operacao() {
         <KanbanColumn
           titulo="Faturado"
           headerColor="emerald"
-          badge="NF emitida"
-          count={filtrar(queries['60'].data || []).length}
+          badge="NF emitida (90 dias)"
+          count={filtrarOrdenar(queries['60'].data || []).length}
+          valorTotal={valorColuna('60')}
           loading={queries['60'].isLoading}
           footer={
             <Button variant="outline" className="w-full" onClick={() => navigate('/NotasOmie')}>
@@ -372,15 +379,18 @@ export default function Operacao() {
           }
         >
           {cargasFiltradas.map(c => (
-            <KanbanCard
+            <CardPedidoKanban
               key={c.id}
-              numero={c.numero_carga}
-              titulo={c.motorista_nome || 'Sem motorista'}
-              subtitulo={c.veiculo_placa ? `Veículo ${c.veiculo_placa}` : ''}
-              valor={c.valor_total}
-              data={c.data_carga ? new Date(c.data_carga + 'T12:00:00').toLocaleDateString('pt-BR') : ''}
+              pedido={{
+                numero_pedido: c.numero_carga,
+                codigo_pedido: c.id,
+                cliente_nome: c.motorista_nome || 'Sem motorista',
+                cliente_cidade: c.veiculo_placa ? `Veículo ${c.veiculo_placa}` : null,
+                valor_total_pedido: c.valor_total,
+                data_previsao: c.data_carga ? new Date(c.data_carga + 'T12:00:00').toLocaleDateString('pt-BR') : ''
+              }}
               borderColor="#6366f1"
-              origem={`Status: ${c.status_carga}`}
+              origemLabel={`Status: ${c.status_carga}`}
               onClick={() => navigate('/Cargas')}
             />
           ))}
