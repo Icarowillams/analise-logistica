@@ -4,6 +4,25 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
+// Backoff exponencial para chamadas Omie (429 / cota / redundante)
+async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.faultstring) {
+        const msg = data.faultstring.toLowerCase();
+        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('too many') || res.status === 429;
+        if (isRate && tentativa < maxTentativas) {
+            await new Promise(r => setTimeout(r, 2000 * tentativa));
+            return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
+        }
+    }
+    return data;
+}
+
 // Formata data DD/MM/YYYY
 function formatDateOmie(dateStr) {
     if (!dateStr) {
@@ -495,19 +514,13 @@ Deno.serve(async (req) => {
         console.log('[enviarPedidoOmie] Enviando pedido:', pedido.id, '- Cliente:', pedido.cliente_nome);
         console.log('[enviarPedidoOmie] Payload:', JSON.stringify(pedidoOmie).substring(0, 2000));
 
-        // Enviar para Omie
-        const response = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "IncluirPedido",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [pedidoOmie]
-            })
+        // Enviar para Omie (com backoff em rate-limit)
+        const resultado = await omieFetchComRetry(OMIE_URL, {
+            call: "IncluirPedido",
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [pedidoOmie]
         });
-
-        const resultado = await response.json();
         console.log('[enviarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 1000));
 
         if (resultado.faultstring) {

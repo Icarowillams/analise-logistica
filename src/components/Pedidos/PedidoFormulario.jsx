@@ -12,14 +12,23 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProdutoCardList from './ProdutoCardList';
 
-function getAcoesAtivasParaCliente(acoes, clienteId) {
+// Regra de prioridade de preço (escopo Omie):
+// 1. AcaoPromocional ativa (status=ativa, dentro do período, vinculada ao cliente OU à tabela do cliente)
+// 2. PrecoProduto.valor_acao se ativacao_acao=true (e dentro do período)
+// 3. PrecoProduto.valor_unitario
+function getAcoesAtivasParaCliente(acoes, clienteId, tabelaClienteId) {
   const hoje = new Date().toISOString().split('T')[0];
   return acoes.filter(a => {
     if (a.status !== 'ativa') return false;
     if (a.data_inicio > hoje || a.data_fim < hoje) return false;
-    // Se não tem clientes vinculados, vale para todos
-    if (!a.clientes_ids || a.clientes_ids.length === 0) return true;
-    return a.clientes_ids.includes(clienteId);
+    // Se a ação está vinculada a uma tabela específica, ela só vale para clientes daquela tabela
+    if (a.tabela_id && a.tabela_id !== tabelaClienteId) return false;
+    // Se tem lista de clientes, precisa estar nela
+    if (a.clientes_ids && a.clientes_ids.length > 0) {
+      return a.clientes_ids.includes(clienteId);
+    }
+    // Sem lista de clientes E (sem tabela OU tabela igual à do cliente) → vale para todos
+    return true;
   });
 }
 
@@ -70,8 +79,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   });
 
   const acoesCliente = useMemo(() => {
-    return getAcoesAtivasParaCliente(acoesPromocionais, cliente.id);
-  }, [acoesPromocionais, cliente.id]);
+    return getAcoesAtivasParaCliente(acoesPromocionais, cliente.id, tabelaPrecoId);
+  }, [acoesPromocionais, cliente.id, tabelaPrecoId]);
 
   const isTroca = cenarioFiscalCodigo === 'troca';
 
@@ -154,16 +163,27 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Flag para controlar se já inicializou os itens do pedido
   const [itensInitialized, setItensInitialized] = useState(false);
 
-  // Função para calcular o preço atualizado de um item
+  // Função para calcular o preço atualizado de um item — segue prioridade Omie:
+  // 1) AcaoPromocional do cliente/tabela (com período válido)
+  // 2) PrecoProduto.valor_acao (se ativacao_acao=true e periodo_acao_fim >= hoje)
+  // 3) PrecoProduto.valor_unitario (preço base da tabela)
   const calcularPrecoAtual = (item) => {
+    const hoje = new Date().toISOString().split('T')[0];
     let precoAtual = item.valor_unitario;
+
+    // 1) Ação promocional ativa para este produto
     const acaoClienteItem = acoesCliente.find(a => a.produto_id === item.produto_id);
     if (acaoClienteItem && acaoClienteItem.valor_acao > 0) {
-      precoAtual = acaoClienteItem.valor_acao;
-    } else if (precosAll.length > 0) {
+      return acaoClienteItem.valor_acao;
+    }
+
+    // 2/3) Preço da tabela
+    if (precosAll.length > 0) {
       const precoTabela = precosAll.find(p => p.produto_id === item.produto_id);
       if (precoTabela) {
-        const precoNovo = (precoTabela.ativacao_acao && precoTabela.valor_acao) ? precoTabela.valor_acao : precoTabela.valor_unitario;
+        const periodoOk = !precoTabela.periodo_acao_fim || precoTabela.periodo_acao_fim >= hoje;
+        const acaoVigente = precoTabela.ativacao_acao && precoTabela.valor_acao > 0 && periodoOk;
+        const precoNovo = acaoVigente ? precoTabela.valor_acao : precoTabela.valor_unitario;
         if (precoNovo > 0) precoAtual = precoNovo;
       }
     }
