@@ -43,11 +43,14 @@ Deno.serve(async (req) => {
     }));
 
     let erroOmie = null;
+    let nIdDevolucao = null;
     try {
-      await omieCall('DevolverPedido', {
+      const resp = await omieCall('DevolverPedido', {
         nCodPed: Number(codigo_pedido),
         produtos: produtosDevolver
       });
+      // Captura nIdDevolucao retornado pelo Omie para rastreio
+      nIdDevolucao = resp?.nIdDevolucao || resp?.nCodDevolucao || null;
     } catch (err) {
       erroOmie = err.message;
     }
@@ -70,7 +73,8 @@ Deno.serve(async (req) => {
       tipo_retorno,
       valor_total_retorno: valorTotal,
       motivo_geral,
-      status: erroOmie ? 'pendente' : 'devolvido_omie'
+      status: erroOmie ? 'pendente' : 'devolvido_omie',
+      observacoes: nIdDevolucao ? `nIdDevolucao Omie: ${nIdDevolucao}` : null
     });
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -85,7 +89,7 @@ Deno.serve(async (req) => {
     }).catch(() => {});
 
     if (erroOmie) return Response.json({ error: erroOmie, registro_id: registro.id }, { status: 500 });
-    return Response.json({ sucesso: true, registro_id: registro.id, valor_total: valorTotal });
+    return Response.json({ sucesso: true, registro_id: registro.id, valor_total: valorTotal, nIdDevolucao });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

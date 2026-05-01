@@ -247,12 +247,14 @@ Aplicado em:
 - Backoff em todas as funções de escrita
 - Auditoria centralizada em `LogIntegracaoOmie`
 
-### ⚠️ Melhorias menores (não bloqueiam)
-1. **`devolverPedidoOmie`** — capturar `nIdDevolucao` da resposta para rastreio
-2. **`cancelarNfOmie`** — confirmar se `/produtos/pedido/CancelarPedidoVenda` ainda é o endpoint correto, ou mover para `/pedidovendafat/`
-3. **`transferirPedidoCarga`** — recalcular `produtos_resumo`, `peso_total_kg`, `volume_total_m3` após mover pedido
-4. **`gerarBoletosOmie`** — pré-filtrar títulos liquidados/com boleto antes de chamar a API (economia de quota)
-5. **`cortarPedidoOmie`** — opcional: refletir corte também no `Pedido` local quando existir vínculo (`omie_codigo_pedido`)
+### ✅ Melhorias aplicadas (2026-05-01)
+1. **`devolverPedidoOmie`** ✅ Captura `nIdDevolucao` retornado pelo Omie e grava em `Retorno.observacoes` + retorna no JSON
+2. **`cancelarNfOmie`** ✅ Movido para endpoint correto `/produtos/pedidovendafat/` com parâmetros `nCodPed` + `cJustCanc`
+3. **`transferirPedidoCarga`** ✅ Recalcula `produtos_resumo`, `peso_total_kg`, `volume_total_m3`, `quantidade_clientes`, `valor_total_carga` em ambas as cargas (origem e destino) usando peso/volume real do `Produto`
+4. **`gerarBoletosOmie`** ✅ Pré-filtra via `ListarContasReceber` removendo títulos liquidados ou com boleto já gerado antes de chamar `GerarBoleto` (economia de quota Omie)
+
+### ⏳ Não aplicadas (opcional, baixa prioridade)
+- **`cortarPedidoOmie`** — refletir corte no `Pedido` local quando existir vínculo. Não aplicado porque o pedido faturado é fonte da verdade no Omie e o `LogCorte` já preserva histórico.
 
 ### 🎉 Pendentes do escopo logístico — TODOS fechados
 - ✅ Match fuzzy → eliminado
@@ -267,13 +269,13 @@ Aplicado em:
 
 > Marque com `[x]` ao concluir cada item.
 
-### Pendente — código (melhorias menores, não bloqueantes)
-- [ ] **LOG-1**: `devolverPedidoOmie` capturar `nIdDevolucao` no retorno e salvar no `Retorno`
-- [ ] **LOG-2**: `transferirPedidoCarga` recalcular `produtos_resumo`/peso/volume da carga
-- [ ] **LOG-3**: `gerarBoletosOmie` pré-filtrar títulos liquidados antes de chamar API
-- [ ] **LOG-4**: Auditar endpoint de `CancelarPedidoVenda` (`/produtos/pedido/` vs `/pedidovendafat/`)
+### Concluído ✅
+- [x] **LOG-1**: `devolverPedidoOmie` captura `nIdDevolucao` e grava no Retorno
+- [x] **LOG-2**: `transferirPedidoCarga` recalcula produtos_resumo/peso/volume com peso real do `Produto`
+- [x] **LOG-3**: `gerarBoletosOmie` pré-filtra títulos liquidados/com boleto antes da API
+- [x] **LOG-4**: `cancelarNfOmie` migrado para endpoint correto `/produtos/pedidovendafat/`
 
-### Operacional
+### Operacional (única ação restante)
 - [ ] Configurar webhook Omie (já documentado em `VALIDACAO_INTEGRACAO_OMIE.md`)
 
 ---

@@ -32,13 +32,61 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { titulos = [], id_conta_corrente } = body;
+    const { titulos = [], id_conta_corrente, pular_validacao = false } = body;
     if (!Array.isArray(titulos) || titulos.length === 0) {
       return Response.json({ error: 'titulos vazio' }, { status: 400 });
     }
 
-    const resultados = [];
-    for (const codigo of titulos) {
+    // Pré-filtro: consulta os títulos no Omie e remove os que já têm boleto OU foram liquidados/cancelados.
+    // Economiza chamadas de GerarBoleto (cada uma consome quota Omie).
+    let titulosValidos = titulos;
+    let preSkips = [];
+    if (!pular_validacao) {
+      try {
+        const consultaUrl = 'https://app.omie.com.br/api/v1/financas/contareceber/';
+        const consultaRes = await fetch(consultaUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            call: 'ListarContasReceber',
+            app_key: APP_KEY,
+            app_secret: APP_SECRET,
+            param: [{ pagina: 1, registros_por_pagina: 500, apenas_importado_api: 'N' }]
+          })
+        });
+        const consultaData = await consultaRes.json();
+        const todos = consultaData?.conta_receber_cadastro || [];
+        const mapa = new Map(todos.map(t => [String(t.codigo_lancamento_omie), t]));
+
+        titulosValidos = [];
+        for (const cod of titulos) {
+          const t = mapa.get(String(cod));
+          if (!t) {
+            // não achou na listagem → manda mesmo assim, deixa o Omie validar
+            titulosValidos.push(cod);
+            continue;
+          }
+          const liquidado = t.status_titulo && t.status_titulo !== 'ABERTO';
+          const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
+          if (liquidado || jaTemBoleto) {
+            preSkips.push({
+              codigo_lancamento: cod,
+              sucesso: false,
+              skip: true,
+              mensagem: liquidado ? `Título ${t.status_titulo}` : `Boleto já gerado: ${t.numero_boleto}`
+            });
+          } else {
+            titulosValidos.push(cod);
+          }
+        }
+      } catch (_) {
+        // Se a pré-validação falhar, segue com a lista original
+        titulosValidos = titulos;
+      }
+    }
+
+    const resultados = [...preSkips];
+    for (const codigo of titulosValidos) {
       try {
         const param = { codigo_lancamento: Number(codigo) };
         if (id_conta_corrente) param.id_conta_corrente = Number(id_conta_corrente);
@@ -80,7 +128,7 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    return Response.json({ sucesso: true, total: titulos.length, sucessos, erros, skips, resultados });
+    return Response.json({ sucesso: true, total: titulos.length, processados: titulosValidos.length, sucessos, erros, skips, resultados });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

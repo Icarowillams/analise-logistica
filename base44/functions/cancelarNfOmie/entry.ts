@@ -1,11 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+// Endpoints Omie:
+// - /produtos/pedido/ → ConsultarPedido (consulta dados do pedido)
+// - /produtos/pedidovendafat/ → CancelarPedidoVenda (cancela NF faturada)
+const OMIE_URL_PEDIDO = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_URL_FAT = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
-async function omieCall(call, param, tentativa = 1) {
-  const res = await fetch(OMIE_URL, {
+async function omieCall(url, call, param, tentativa = 1) {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
@@ -16,7 +20,7 @@ async function omieCall(call, param, tentativa = 1) {
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
     if (isRate && tentativa < 4) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(call, param, tentativa + 1);
+      return omieCall(url, call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
   }
@@ -42,17 +46,18 @@ Deno.serve(async (req) => {
     let clienteNome = '';
 
     try {
-      const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
+      const consulta = await omieCall(OMIE_URL_PEDIDO, 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
       const pedido = consulta.pedido_venda_produto;
       numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
       valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
       clienteNome = pedido?.cabecalho?.codigo_cliente || '';
     } catch (_) { /* ignore */ }
 
+    // CancelarPedidoVenda fica em /produtos/pedidovendafat/ (endpoint de faturamento)
     try {
-      await omieCall('CancelarPedidoVenda', {
-        codigo_pedido: Number(codigo_pedido),
-        observacao: motivo || `Cancelamento via ${origem}`
+      await omieCall(OMIE_URL_FAT, 'CancelarPedidoVenda', {
+        nCodPed: Number(codigo_pedido),
+        cJustCanc: motivo || `Cancelamento via ${origem}`
       });
     } catch (err) {
       const msg = err.message.toLowerCase();
@@ -78,7 +83,7 @@ Deno.serve(async (req) => {
     });
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-      endpoint: 'produtos/pedido',
+      endpoint: 'produtos/pedidovendafat',
       call: 'CancelarPedidoVenda',
       operacao: `cancelar_${origem}`,
       entidade_tipo: 'Pedido',
