@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import KanbanColumn from '@/components/operacao/KanbanColumn';
 import CardPedidoKanban from '@/components/operacao/CardPedidoKanban';
 import ConfirmarAcaoModal from '@/components/operacao/ConfirmarAcaoModal';
-import { useOperacaoOmie } from '@/components/operacao/useOperacaoOmie.js';
+import { useOperacaoOmie } from '@/components/operacao/useOperacaoOmie';
 
 // === Espelho fiel das etapas Omie (ListarEtapasFaturamento) ===
 const ETAPAS = {
