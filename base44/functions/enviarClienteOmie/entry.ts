@@ -41,6 +41,64 @@ function normalizarCpfCnpj(doc) {
     return (doc || '').replace(/[.\-\/\s]/g, '');
 }
 
+// Valida dígito verificador de CPF
+function validarCPF(cpf) {
+    cpf = cpf.replace(/\D/g, '');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let soma = 0;
+    for (let i = 0; i < 9; i++) soma += parseInt(cpf[i]) * (10 - i);
+    let dv1 = (soma * 10) % 11;
+    if (dv1 === 10) dv1 = 0;
+    if (dv1 !== parseInt(cpf[9])) return false;
+    soma = 0;
+    for (let i = 0; i < 10; i++) soma += parseInt(cpf[i]) * (11 - i);
+    let dv2 = (soma * 10) % 11;
+    if (dv2 === 10) dv2 = 0;
+    return dv2 === parseInt(cpf[10]);
+}
+
+// Valida dígito verificador de CNPJ
+function validarCNPJ(cnpj) {
+    cnpj = cnpj.replace(/\D/g, '');
+    if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+    const calc = (base, pesos) => {
+        let soma = 0;
+        for (let i = 0; i < pesos.length; i++) soma += parseInt(base[i]) * pesos[i];
+        const r = soma % 11;
+        return r < 2 ? 0 : 11 - r;
+    };
+    const dv1 = calc(cnpj, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    if (dv1 !== parseInt(cnpj[12])) return false;
+    const dv2 = calc(cnpj, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return dv2 === parseInt(cnpj[13]);
+}
+
+function validarCpfCnpj(doc) {
+    const limpo = (doc || '').replace(/\D/g, '');
+    if (limpo.length === 11) return validarCPF(limpo);
+    if (limpo.length === 14) return validarCNPJ(limpo);
+    return false;
+}
+
+// Backoff exponencial para chamadas Omie
+async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.faultstring) {
+        const msg = data.faultstring.toLowerCase();
+        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('too many') || res.status === 429;
+        if (isRate && tentativa < maxTentativas) {
+            await new Promise(r => setTimeout(r, 2000 * tentativa));
+            return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
+        }
+    }
+    return data;
+}
+
 function removerAspas(val) {
     if (typeof val !== 'string') return val;
     let v = val.trim();
@@ -58,7 +116,7 @@ function limparCamposTexto(obj) {
     return limpo;
 }
 
-function mapearClienteParaOmie(clienteData, rotaNome) {
+function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId) {
     // Aceitar tanto cnpj_cpf (nome real da entidade) quanto cpf_cnpj (legado)
     const cnpjCpfLimpo = normalizarCpfCnpj(clienteData.cnpj_cpf || clienteData.cpf_cnpj);
     const estadoNorm = normalizarEstado(clienteData.estado);
@@ -102,9 +160,17 @@ function mapearClienteParaOmie(clienteData, rotaNome) {
         // --- Tags (código do cliente) ---
         tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : [],
 
-        // --- Características (nome da rota) ---
-        caracteristicas: rotaNome ? [{ campo: "Rotas", conteudo: rotaNome }] : []
+        // --- Características (Rota + Vendedor) ---
+        caracteristicas: [
+            ...(rotaNome ? [{ campo: "Rotas", conteudo: rotaNome }] : []),
+            ...(vendedorNome ? [{ campo: "Vendedor", conteudo: vendedorNome }] : [])
+        ]
     };
+
+    // Tabela de preço vinculada ao cliente
+    if (tabelaOmieId) {
+        clienteOmie.tabela_preco = Number(tabelaOmieId);
+    }
 
     // Remover campos vazios para não sobrescrever dados no Omie com strings vazias
     // Mantemos sempre: codigo_cliente_integracao, razao_social, pessoa_fisica, contribuinte, inativo
@@ -181,30 +247,59 @@ Deno.serve(async (req) => {
             }
         }
 
+        // Buscar nome do vendedor (se houver)
+        let vendedorNome = '';
+        if (clienteData.vendedor_id) {
+            try {
+                const vendedor = await base44.asServiceRole.entities.Vendedor.get(clienteData.vendedor_id);
+                if (vendedor) vendedorNome = vendedor.nome || '';
+            } catch (e) {
+                console.log('[enviarClienteOmie] Erro ao buscar vendedor:', e.message);
+            }
+        }
+
+        // Buscar omie_id da tabela de preço (se houver)
+        let tabelaOmieId = null;
+        if (clienteData.tabela_id) {
+            try {
+                const tabela = await base44.asServiceRole.entities.TabelaPreco.get(clienteData.tabela_id);
+                if (tabela?.omie_id) tabelaOmieId = tabela.omie_id;
+            } catch (e) {
+                console.log('[enviarClienteOmie] Erro ao buscar tabela de preço:', e.message);
+            }
+        }
+
         // Mapear campos do Base44 para formato Omie completo
-        const clienteOmie = mapearClienteParaOmie(clienteData, rotaNome);
+        const clienteOmie = mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId);
+
+        // Validar dígito verificador de CPF/CNPJ antes do envio
+        if (clienteOmie.cnpj_cpf && !validarCpfCnpj(clienteOmie.cnpj_cpf)) {
+            const erro = `CPF/CNPJ inválido: ${clienteOmie.cnpj_cpf} (dígito verificador não confere)`;
+            console.error('[enviarClienteOmie]', erro);
+            await logOmie(base44, {
+                endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente',
+                entidade_tipo: 'Cliente', entidade_id: clienteData.id,
+                status: 'erro', mensagem_erro: erro, tentativas: 0
+            });
+            return Response.json({ sucesso: false, erro, cliente_id: clienteData.id });
+        }
 
         // Pré-consulta por CNPJ: se já existe no Omie, reutilizar o codigo_cliente_integracao existente
         // para evitar erro "Cliente já cadastrado... (add)" quando a integração antiga foi criada com outro ID.
         const cnpjLimpo = clienteOmie.cnpj_cpf;
         if (cnpjLimpo) {
             try {
-                const consulta = await fetch(OMIE_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        call: 'ListarClientes',
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [{
-                            pagina: 1,
-                            registros_por_pagina: 1,
-                            apenas_importado_api: 'N',
-                            clientesFiltro: { cnpj_cpf: cnpjLimpo }
-                        }]
-                    })
+                const achado = await omieFetchComRetry(OMIE_URL, {
+                    call: 'ListarClientes',
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [{
+                        pagina: 1,
+                        registros_por_pagina: 1,
+                        apenas_importado_api: 'N',
+                        clientesFiltro: { cnpj_cpf: cnpjLimpo }
+                    }]
                 });
-                const achado = await consulta.json();
                 const existente = achado?.clientes_cadastro?.[0];
                 if (existente?.codigo_cliente_omie) {
                     if (existente.codigo_cliente_integracao && existente.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
@@ -221,17 +316,12 @@ Deno.serve(async (req) => {
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
         const startedAt = Date.now();
-        const response = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "UpsertCliente",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [clienteOmie]
-            })
+        const resultado = await omieFetchComRetry(OMIE_URL, {
+            call: "UpsertCliente",
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [clienteOmie]
         });
-        const resultado = await response.json();
         const duracao_ms = Date.now() - startedAt;
 
         console.log('[enviarClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));

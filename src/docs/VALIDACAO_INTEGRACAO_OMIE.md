@@ -308,6 +308,19 @@ Criar função `receberWebhookOmie` que:
 
 ---
 
+## 🚫 12. Criação Manual de Pedidos — REMOVIDA
+
+> **Decisão arquitetural (2026-05-01):** O sistema é 100% integrado ao Omie. Toda criação de pedido (Venda, Troca, Devolução) **acontece no Omie** e é sincronizada para cá. Não faz sentido criar pedidos manualmente no Base44.
+
+| Página | Antes | Depois |
+|--------|-------|--------|
+| `pages/ControlePedidosVenda` | Botão "Novo Pedido" + modal de criação | ✅ Apenas visualização + botão "Sincronizar Omie" |
+| `pages/ControlePedidosTroca` | Botão "Nova Troca" + modal + aprovar/recusar | ✅ Apenas visualização (read-only) |
+
+Banner azul de aviso adicionado em ambas as páginas explicando o fluxo.
+
+---
+
 ## 🚦 Próximas Ações Sugeridas
 
 > Marque com `[x]` ao concluir cada item.
