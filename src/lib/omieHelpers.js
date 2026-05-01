@@ -160,3 +160,145 @@ export function avaliarBloqueio({ titulosOmie = [], limiteCredito = 0, saldoUtil
   const limiteEstourado = limiteCredito > 0 && saldoUtilizado > limiteCredito;
   return { bloqueado: atrasados > 0 || limiteEstourado, atrasados, limiteEstourado };
 }
+
+// === Carga: cálculo de peso/volume/totais ===
+// Espelha a lógica de transferirPedidoCarga e MontagemCarga
+export function calcularTotaisCarga(pedidos = [], produtosBase = []) {
+  const pesoMap = new Map();
+  produtosBase.forEach(p => {
+    if (p.codigo_omie) pesoMap.set(String(p.codigo_omie), { peso: p.peso || 0, volume: p.volume_m3 || 0 });
+  });
+
+  const produtosResumo = new Map();
+  let peso = 0;
+  let volume = 0;
+  let valor = 0;
+  const clientes = new Set();
+
+  for (const p of pedidos) {
+    valor += Number(p.valor_total_pedido || 0);
+    if (p.codigo_cliente) clientes.add(String(p.codigo_cliente));
+    for (const item of (p.produtos || [])) {
+      const cod = String(item.codigo_produto || item.codigo_produto_integracao || '');
+      const qtd = Number(item.quantidade) || 0;
+      const atual = produtosResumo.get(cod) || { codigo_produto: cod, descricao: item.descricao || '', quantidade_total: 0, unidade: item.unidade || 'UN' };
+      atual.quantidade_total += qtd;
+      produtosResumo.set(cod, atual);
+      const dadosFis = pesoMap.get(cod);
+      if (dadosFis) {
+        peso += dadosFis.peso * qtd;
+        volume += dadosFis.volume * qtd;
+      }
+    }
+  }
+
+  return {
+    quantidade_pedidos: pedidos.length,
+    quantidade_clientes: clientes.size,
+    valor_total: Math.round(valor * 100) / 100,
+    peso_total_kg: Math.round(peso * 100) / 100,
+    volume_total_m3: Math.round(volume * 1000) / 1000,
+    produtos_resumo: Array.from(produtosResumo.values())
+  };
+}
+
+// === Capacidade do veículo ===
+export function avaliarCapacidadeVeiculo(veiculo, totaisCarga) {
+  const usoPeso = veiculo?.capacidade_peso_kg ? totaisCarga.peso_total_kg / veiculo.capacidade_peso_kg : 0;
+  const usoVolume = veiculo?.capacidade_volume_m3 ? totaisCarga.volume_total_m3 / veiculo.capacidade_volume_m3 : 0;
+  const excedePeso = veiculo?.capacidade_peso_kg > 0 && totaisCarga.peso_total_kg > veiculo.capacidade_peso_kg;
+  const excedeVolume = veiculo?.capacidade_volume_m3 > 0 && totaisCarga.volume_total_m3 > veiculo.capacidade_volume_m3;
+  return {
+    excedePeso,
+    excedeVolume,
+    podeSair: !excedePeso && !excedeVolume,
+    percentualPeso: Math.round(usoPeso * 100),
+    percentualVolume: Math.round(usoVolume * 100)
+  };
+}
+
+// === Mapeamento etapas Omie ===
+export const ETAPAS_OMIE = {
+  '10': 'Pedido de Venda',
+  '20': 'Pedidos Liberados',
+  '50': 'Faturar',
+  '60': 'Faturado',
+  '70': 'Entrega',
+  '80': 'Cancelado'
+};
+
+export function labelEtapa(etapa) {
+  return ETAPAS_OMIE[String(etapa)] || `Etapa ${etapa}`;
+}
+
+// === Mapeamento status NF (SEFAZ cStat) ===
+export function classificarStatusNF(cStat) {
+  const s = String(cStat || '');
+  if (s === '100' || s === '150') return { status: 'emitida', label: 'NF emitida' };
+  if (s === '101' || s === '135') return { status: 'cancelada', label: 'NF cancelada' };
+  if (['110', '301', '302', '205'].includes(s)) return { status: 'denegada', label: 'NF denegada' };
+  const num = Number(s);
+  if (num >= 200 && num < 300) return { status: 'rejeitada', label: `NF rejeitada (${s})` };
+  return { status: 'desconhecido', label: 'Status desconhecido' };
+}
+
+// === Validação de pedido antes de envio ao Omie ===
+export function validarPedidoParaEnvio(pedido, itens = []) {
+  const erros = [];
+  if (!pedido) { erros.push('Pedido vazio'); return { valido: false, erros }; }
+  if (!pedido.cliente_id) erros.push('Cliente não informado');
+  if (!pedido.data_previsao_entrega) erros.push('Data de previsão de entrega obrigatória');
+  if (!Array.isArray(itens) || itens.length === 0) erros.push('Pedido sem itens');
+  if (pedido.tipo === 'troca') erros.push('Pedido de troca não envia ao Omie');
+  if (pedido.omie_enviado && pedido.omie_codigo_pedido) erros.push('Pedido já enviado ao Omie');
+  for (const it of itens) {
+    if (!it.produto_id) { erros.push('Item sem produto'); break; }
+    if (!it.quantidade || it.quantidade <= 0) { erros.push('Item com quantidade inválida'); break; }
+    if (it.valor_unitario == null || it.valor_unitario < 0) { erros.push('Item com valor unitário inválido'); break; }
+  }
+  return { valido: erros.length === 0, erros };
+}
+
+// === Resolução de cliente Omie (com fallback CPF/CNPJ) ===
+export function resolverClienteOmie({ pedido, cliente, clientesOmieMap = {}, clientesOmiePorCpf = {} }) {
+  // 1) codigo_omie direto
+  if (cliente?.codigo_omie && clientesOmieMap[String(cliente.codigo_omie)]) {
+    return { codigoIntegracao: cliente.codigo_omie, origem: 'codigo_omie' };
+  }
+  // 2) codigo_cliente_integracao
+  const codInt = pedido?.cliente_codigo || pedido?.cliente_id;
+  if (codInt && clientesOmieMap[codInt]) {
+    return { codigoIntegracao: codInt, origem: 'codigo_integracao' };
+  }
+  // 3) CPF/CNPJ
+  const cpfCnpj = (cliente?.cnpj_cpf || pedido?.cliente_cpf_cnpj || '').replace(/\D/g, '');
+  if (cpfCnpj && clientesOmiePorCpf[cpfCnpj]) {
+    return { codigoIntegracao: clientesOmiePorCpf[cpfCnpj].codigo_cliente_integracao, origem: 'cpf_cnpj' };
+  }
+  return { codigoIntegracao: null, origem: 'nao_encontrado' };
+}
+
+// === Fator caixa: converte pedido em unidades para caixas ===
+export function converterParaCaixas(quantidade, fatorCaixa = 1, permiteFracionado = true) {
+  if (!fatorCaixa || fatorCaixa <= 1) return { caixas: quantidade, fracionado: 0 };
+  const caixas = Math.floor(quantidade / fatorCaixa);
+  const fracionado = quantidade % fatorCaixa;
+  if (!permiteFracionado && fracionado > 0) {
+    return { caixas: caixas + 1, fracionado: 0, ajustado: true };
+  }
+  return { caixas, fracionado };
+}
+
+// === Saudação por horário (UX) ===
+export function saudacaoPorHorario(hora) {
+  const h = hora ?? new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+// === Truncamento Omie ===
+export function truncarOmie(texto, max) {
+  if (!texto) return '';
+  return String(texto).substring(0, max);
+}

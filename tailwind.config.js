@@ -105,6 +105,14 @@ module.exports = {
     'bg-indigo-50', 'bg-indigo-100', 'bg-indigo-200', 'bg-indigo-500', 'bg-indigo-600', 'text-indigo-700', 'text-indigo-800', 'border-indigo-200',
     'bg-slate-50', 'bg-slate-200', 'text-slate-800',
     'bg-red-50', 'bg-red-100', 'bg-red-200', 'border-red-200', 'text-red-700', 'text-red-800',
+    // Testes — cores dinâmicas das suítes
+    'bg-violet-600', 'hover:bg-violet-700', 'text-violet-600',
+    'bg-cyan-600', 'hover:bg-cyan-700', 'text-cyan-600',
+    'bg-emerald-600', 'hover:bg-emerald-700', 'text-emerald-600',
+    'bg-orange-600', 'hover:bg-orange-700', 'text-orange-600',
+    'bg-amber-600', 'hover:bg-amber-700', 'text-amber-600',
+    'bg-indigo-600', 'hover:bg-indigo-700', 'text-indigo-600',
+    'bg-blue-600', 'hover:bg-blue-700', 'text-blue-600',
   ],
   plugins: [require("tailwindcss-animate")],
 }
