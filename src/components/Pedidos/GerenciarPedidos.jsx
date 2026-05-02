@@ -126,6 +126,38 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Produto.list(),
   });
 
+  // Etapas Omie em tempo real — busca em paralelo as 4 etapas + faturados
+  const { data: omieMap = {} } = useQuery({
+    queryKey: ['gerenciar-pedidos-omie-etapas'],
+    queryFn: async () => {
+      const etapas = ['10', '20', '50'];
+      const resultados = await Promise.all([
+        ...etapas.map(et =>
+          base44.functions.invoke('buscarPedidosOmie', {
+            etapa: et,
+            registros_por_pagina: 100,
+            buscar_todas_paginas: true
+          }).then(r => ({ etapa: et, pedidos: r.data?.pedidos || [] })).catch(() => ({ etapa: et, pedidos: [] }))
+        ),
+        base44.functions.invoke('consultarStatusFaturamentoOmie', {
+          registros_por_pagina: 100,
+          buscar_todas_paginas: true
+        }).then(r => ({ etapa: '60', pedidos: r.data?.pedidos || [] })).catch(() => ({ etapa: '60', pedidos: [] }))
+      ]);
+      const map = {};
+      resultados.forEach(({ etapa, pedidos }) => {
+        pedidos.forEach(p => {
+          const key = String(p.codigo_pedido);
+          map[key] = { etapa, ...p };
+          if (p.numero_pedido) map[`np:${p.numero_pedido}`] = { etapa, ...p };
+        });
+      });
+      return map;
+    },
+    staleTime: 30000,
+    refetchOnWindowFocus: false
+  });
+
   const { data: pedidoItems = [] } = useQuery({
     queryKey: ['pedidoItems-gerenciar'],
     queryFn: () => base44.entities.PedidoItem.list(),
@@ -149,6 +181,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const cliente = pedido.cliente_codigo ? clientesByCodigoMap[pedido.cliente_codigo] : null;
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
       const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
+
+      // Cruzamento com etapa real do Omie
+      let omieInfo = null;
+      if (pedido.omie_codigo_pedido) omieInfo = omieMap[String(pedido.omie_codigo_pedido)];
+      if (!omieInfo && pedido.numero_pedido) omieInfo = omieMap[`np:${pedido.numero_pedido}`];
+
       return {
         ...pedido,
         cliente_codigo: cliente?.codigo || pedido.cliente_codigo,
@@ -159,9 +197,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         vendedor_id: cliente?.vendedor_id || '',
         vendedor_nome: vendedorCliente?.nome || '-',
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
+        omie_etapa_real: omieInfo?.etapa || null,
+        omie_numero_nf: omieInfo?.numero_nf || null,
+        omie_status_nf: omieInfo?.status_real || null,
+        omie_status_label: omieInfo?.status_label || null,
       };
     });
-  }, [pedidos, clientesByCodigoMap, vendedoresMap, vendedores]);
+  }, [pedidos, clientesByCodigoMap, vendedoresMap, vendedores, omieMap]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {

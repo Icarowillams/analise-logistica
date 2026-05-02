@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'gerenciar-pedidos-column-order-v3';
+const STORAGE_KEY = 'gerenciar-pedidos-column-order-v4';
 
 export const DEFAULT_COLUMNS = [
   { id: 'numero_pedido', label: 'Nº Pedido', field: 'numero_pedido' },
@@ -13,6 +13,8 @@ export const DEFAULT_COLUMNS = [
   { id: 'preco_medio', label: 'Preço Médio', field: 'preco_medio', computed: true },
   { id: 'tipo', label: 'Tipo', field: 'tipo' },
   { id: 'status', label: 'Status', field: 'status', custom: true },
+  { id: 'etapa_omie', label: 'Etapa Omie', field: 'omie_etapa_real', custom: true },
+  { id: 'numero_nf', label: 'Nº NF', field: 'omie_numero_nf', custom: true },
   { id: 'vendedor_nome', label: 'Vendedor', field: 'vendedor_nome' },
   { id: 'cliente_cidade', label: 'Cidade', field: 'cliente_cidade' },
   { id: 'plano_pagamento_nome', label: 'Plano Pgto', field: 'plano_pagamento_nome' },

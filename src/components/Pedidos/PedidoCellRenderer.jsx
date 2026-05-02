@@ -29,6 +29,21 @@ const formatCurrency = (v) => {
   return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 };
 
+const ETAPA_OMIE_LABELS = {
+  '10': { label: 'Pedido Venda', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
+  '20': { label: 'Liberados', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  '50': { label: 'Faturar', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
+  '60': { label: 'Faturado', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+};
+
+const NF_STATUS_LABELS = {
+  emitida:       { label: 'NF Emitida',       bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300' },
+  rejeitada:     { label: 'NF Rejeitada',     bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
+  cancelada:     { label: 'NF Cancelada',     bg: 'bg-gray-200',   text: 'text-gray-800',   border: 'border-gray-400' },
+  denegada:      { label: 'NF Denegada',      bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
+  aguardando_nf: { label: 'Aguardando NF',    bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
+};
+
 export default function PedidoCellRenderer({ col, p }) {
   if (col.id === 'status') {
     const label = STATUS_LABELS[p.status] || p.status;
@@ -38,6 +53,36 @@ export default function PedidoCellRenderer({ col, p }) {
         {label}
       </Badge>
     );
+  }
+
+  if (col.id === 'etapa_omie') {
+    if (!p.omie_codigo_pedido) {
+      return <span className="block truncate text-slate-300 text-[10px]">—</span>;
+    }
+    if (!p.omie_etapa_real) {
+      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-[10px]">Sincronizando…</Badge>;
+    }
+    const e = ETAPA_OMIE_LABELS[p.omie_etapa_real];
+    if (!e) return <span className="block truncate text-[10px]">{p.omie_etapa_real}</span>;
+    // Etapa 60 + status NF detalhado
+    if (p.omie_etapa_real === '60' && p.omie_status_nf && NF_STATUS_LABELS[p.omie_status_nf]) {
+      const nf = NF_STATUS_LABELS[p.omie_status_nf];
+      return (
+        <Badge className={`${nf.bg} ${nf.text} ${nf.border} border text-[10px]`} title={p.omie_status_label || ''}>
+          {nf.label}
+        </Badge>
+      );
+    }
+    return (
+      <Badge className={`${e.bg} ${e.text} ${e.border} border text-[10px]`}>
+        {e.label}
+      </Badge>
+    );
+  }
+
+  if (col.id === 'numero_nf') {
+    if (!p.omie_numero_nf) return <span className="block truncate text-slate-300 text-[10px]">—</span>;
+    return <span className="block truncate font-medium text-[10px] text-green-700">{p.omie_numero_nf}</span>;
   }
 
   // Nº Carregamento — usa campo numero_carga salvo no banco
