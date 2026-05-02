@@ -253,15 +253,39 @@ async function processar(base44, jobId) {
   }
 
   // ===== 5. Salvar resultado =====
+  // CRÍTICO: limitar tamanho do JSON para não estourar limite de string da entidade
+  // Ordenar por mais recentes primeiro (clientes recém-criados têm prioridade visível)
+  // Os clientes do Base44 já vêm ordenados por '-created_date' (linha 168)
+  const MAX_LISTA = 1500;
+  const listaB44Truncada = soNoBase44.slice(0, MAX_LISTA);
+  const listaOmieTruncada = soNoOmie.slice(0, MAX_LISTA);
+
+  // Validação: garantir que o JSON cabe em ~180KB (margem de segurança)
+  const MAX_JSON_BYTES = 180000;
+  let jsonB44 = JSON.stringify(listaB44Truncada);
+  let jsonOmie = JSON.stringify(listaOmieTruncada);
+  
+  // Se ainda passar do limite, reduzir progressivamente
+  while (jsonB44.length > MAX_JSON_BYTES && listaB44Truncada.length > 50) {
+    listaB44Truncada.splice(Math.floor(listaB44Truncada.length / 2));
+    jsonB44 = JSON.stringify(listaB44Truncada);
+  }
+  while (jsonOmie.length > MAX_JSON_BYTES && listaOmieTruncada.length > 50) {
+    listaOmieTruncada.splice(Math.floor(listaOmieTruncada.length / 2));
+    jsonOmie = JSON.stringify(listaOmieTruncada);
+  }
+
   await update({
     status: 'concluido',
-    etapa_descricao: 'Auditoria concluída',
+    etapa_descricao: soNoBase44.length > listaB44Truncada.length
+      ? `Auditoria concluída (mostrando ${listaB44Truncada.length} de ${soNoBase44.length} faltantes)`
+      : 'Auditoria concluída',
     iguais,
     diferentes: diferentes.length,
     so_no_base44: soNoBase44.length,
     so_no_omie: soNoOmie.length,
-    lista_so_base44: JSON.stringify(soNoBase44),
-    lista_so_omie: JSON.stringify(soNoOmie.slice(0, 500)),
+    lista_so_base44: jsonB44,
+    lista_so_omie: jsonOmie,
     lista_diferentes: '[]',
     concluido_em: new Date().toISOString(),
   });
