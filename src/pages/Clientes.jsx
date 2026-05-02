@@ -23,6 +23,7 @@ import ClientesComErroOmie from '@/components/clientes/ClientesComErroOmie';
 import SincronizarOmieClientesModal from '@/components/clientes/SincronizarOmieClientesModal';
 import VincularOmieModal from '@/components/clientes/VincularOmieModal';
 import LimparIEsInvalidasModal from '@/components/clientes/LimparIEsInvalidasModal';
+import AuditoriaOmieModal from '@/components/clientes/AuditoriaOmieModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
@@ -39,6 +40,7 @@ export default function Clientes() {
   const [vincularOmieOpen, setVincularOmieOpen] = useState(false);
   const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [limparIesOpen, setLimparIesOpen] = useState(false);
+  const [auditoriaOpen, setAuditoriaOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: 'nfe@paoemel.com.br',
@@ -973,6 +975,10 @@ export default function Clientes() {
                     <AlertCircle className="w-4 h-4 mr-2" />
                     Limpar IEs Inválidas (rejeição 233)
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAuditoriaOpen(true)} className="text-emerald-700 font-semibold">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Auditoria Omie (clientes faltantes)
+                  </DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -1477,6 +1483,11 @@ export default function Clientes() {
       <LimparIEsInvalidasModal
         open={limparIesOpen}
         onOpenChange={setLimparIesOpen}
+      />
+
+      <AuditoriaOmieModal
+        open={auditoriaOpen}
+        onOpenChange={setAuditoriaOpen}
       />
     </div>
   );
