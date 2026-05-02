@@ -317,8 +317,9 @@ Deno.serve(async (req) => {
         }
 
         // Fallback final: buscar pelo CPF/CNPJ no Omie
-        if (!clienteEncontradoOmie && (clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj)) {
-            const cpfCnpj = (clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
+        // ATENÇÃO: a entidade Cliente usa o campo "cnpj_cpf" (e não "cpf_cnpj")
+        if (!clienteEncontradoOmie && (clienteBase44?.cnpj_cpf || clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj)) {
+            const cpfCnpj = (clienteBase44?.cnpj_cpf || clienteBase44?.cpf_cnpj || pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
             if (cpfCnpj) {
                 console.log(`[enviarPedidoOmie] Tentando buscar cliente no Omie pelo CPF/CNPJ: ${cpfCnpj}`);
                 try {
@@ -338,6 +339,18 @@ Deno.serve(async (req) => {
                         codigoClienteIntegracao = clienteOmie.codigo_cliente_integracao;
                         clienteEncontradoOmie = true;
                         console.log(`[enviarPedidoOmie] Cliente encontrado no Omie pelo CPF/CNPJ! codigo_integracao: ${codigoClienteIntegracao}`);
+
+                        // AUTO-VINCULAR: gravar codigo_omie no Base44 para evitar problema na próxima vez
+                        if (clienteBase44?.id && clienteOmie.codigo_cliente_omie) {
+                            try {
+                                await base44.asServiceRole.entities.Cliente.update(clienteBase44.id, {
+                                    codigo_omie: String(clienteOmie.codigo_cliente_omie)
+                                });
+                                console.log(`[enviarPedidoOmie] codigo_omie ${clienteOmie.codigo_cliente_omie} salvo no cliente Base44 ${clienteBase44.id}`);
+                            } catch (e) {
+                                console.log(`[enviarPedidoOmie] Falha ao salvar codigo_omie:`, e.message);
+                            }
+                        }
                         
                         // Atualizar o codigo_cliente_integracao no Omie para o novo ID/codigo do Base44
                         const novoCodigoIntegracao = clienteBase44?.codigo || pedido.cliente_id;
