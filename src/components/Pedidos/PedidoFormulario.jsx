@@ -395,6 +395,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryClient.invalidateQueries({ queryKey: ['pedido-items'] });
     queryClient.invalidateQueries({ queryKey: ['todos-pedidos'] });
     queryClient.invalidateQueries({ queryKey: ['pedidoItems-all-gestao'] });
+    queryClient.invalidateQueries({ queryKey: ['pedidoItems-all'] });
     setSalvando(false);
     onVoltar();
   };
