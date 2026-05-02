@@ -1,57 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search, AlertCircle, CheckCircle2, Send, Download, ShieldCheck } from 'lucide-react';
+import { Loader2, Search, AlertCircle, CheckCircle2, Send, Download, ShieldCheck, Database, Cloud, GitCompare } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
- * Audita Base44 vs Omie e permite exportar em massa os clientes que faltam no Omie.
- * Resolve o erro "Cliente não cadastrado no Omie. Exporte o cliente primeiro."
+ * Audita Base44 vs Omie em job assíncrono com polling de progresso.
+ * Otimizado conforme docs Omie: 100 reg/página, 4 simultâneas, 240 req/min.
  */
 export default function AuditoriaOmieModal({ open, onOpenChange }) {
-  const [comparando, setComparando] = useState(false);
-  const [resumo, setResumo] = useState(null);
-  const [faltantes, setFaltantes] = useState([]);
+  const [jobId, setJobId] = useState(null);
+  const [progresso, setProgresso] = useState(null);
+  const [resultado, setResultado] = useState(null);
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
   const [exportando, setExportando] = useState(false);
-  const [progresso, setProgresso] = useState(null);
+  const [progressoExport, setProgressoExport] = useState(null);
   const [resultadoExport, setResultadoExport] = useState(null);
   const queryClient = useQueryClient();
+  const pollRef = useRef(null);
 
-  const comparar = async () => {
-    setComparando(true);
-    setResumo(null);
-    setFaltantes([]);
+  // Polling do job
+  useEffect(() => {
+    if (!jobId || resultado) return;
+
+    const poll = async () => {
+      try {
+        const res = await base44.functions.invoke('auditoriaClientesOmieJob', {
+          acao: 'progresso',
+          job_id: jobId,
+        });
+        const data = res.data;
+        if (!data) return;
+        setProgresso(data);
+
+        if (data.status === 'concluido') {
+          setResultado({
+            total_base44: data.total_base44,
+            total_omie: data.total_omie_obtidos,
+            iguais: data.iguais,
+            diferentes: data.diferentes,
+            so_no_base44: data.so_no_base44,
+            so_no_omie: data.so_no_omie,
+            lista_so_base44: data.lista_so_base44 || [],
+            lista_so_omie: data.lista_so_omie || [],
+          });
+          // Pré-seleciona apenas ativos
+          const ativos = (data.lista_so_base44 || []).filter(c => c.status !== 'inativo');
+          setSelecionados(new Set(ativos.map(c => c.id)));
+          toast.success(`Auditoria concluída: ${data.so_no_base44} faltam no Omie`);
+        } else if (data.status === 'erro') {
+          toast.error('❌ ' + (data.erro_mensagem || 'Erro na auditoria'));
+        }
+      } catch (e) {
+        console.error('Polling erro:', e.message);
+      }
+    };
+
+    poll(); // imediato
+    pollRef.current = setInterval(poll, 1500);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [jobId, resultado]);
+
+  const iniciar = async () => {
+    setProgresso(null);
+    setResultado(null);
     setSelecionados(new Set());
     setResultadoExport(null);
     try {
-      const res = await base44.functions.invoke('consultarClientesOmie', { acao: 'comparar' });
-      if (res.data?.error) {
-        toast.error('❌ ' + res.data.error);
-        return;
+      const res = await base44.functions.invoke('auditoriaClientesOmieJob', { acao: 'iniciar' });
+      if (res.data?.job_id) {
+        setJobId(res.data.job_id);
+      } else {
+        toast.error('❌ ' + (res.data?.error || 'Falha ao iniciar'));
       }
-      const lista = (res.data?.lista_so_base44 || []).filter(c => c.status !== 'inativo');
-      setResumo({
-        total_base44: res.data.total_base44,
-        total_omie: res.data.total_omie,
-        iguais: res.data.iguais,
-        so_no_base44: lista.length,
-      });
-      setFaltantes(lista);
-      // Pré-seleciona todos
-      setSelecionados(new Set(lista.map(c => c.id)));
-      toast.success(`Comparação concluída: ${lista.length} cliente(s) faltam no Omie`);
     } catch (e) {
-      toast.error('❌ Erro: ' + e.message);
-    } finally {
-      setComparando(false);
+      toast.error('❌ ' + e.message);
     }
   };
+
+  const faltantes = (resultado?.lista_so_base44 || []).filter(c => c.status !== 'inativo');
 
   const filtrados = faltantes.filter(c => {
     if (!busca.trim()) return true;
@@ -59,17 +93,15 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     return (
       (c.razao_social || '').toLowerCase().includes(s) ||
       (c.nome_fantasia || '').toLowerCase().includes(s) ||
-      (c.cpf_cnpj || '').includes(s) ||
-      (c.codigo || '').toLowerCase().includes(s)
+      (c.cnpj_cpf || '').includes(s) ||
+      (c.codigo || '').toLowerCase().includes(s) ||
+      (c.cidade || '').toLowerCase().includes(s)
     );
   });
 
   const toggleAll = () => {
-    if (selecionados.size === filtrados.length) {
-      setSelecionados(new Set());
-    } else {
-      setSelecionados(new Set(filtrados.map(c => c.id)));
-    }
+    if (selecionados.size === filtrados.length) setSelecionados(new Set());
+    else setSelecionados(new Set(filtrados.map(c => c.id)));
   };
 
   const toggleOne = (id) => {
@@ -86,7 +118,6 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     setExportando(true);
     setResultadoExport(null);
 
-    // Buscar dados completos dos clientes selecionados
     const ids = Array.from(selecionados);
     const completos = [];
     for (const id of ids) {
@@ -102,31 +133,25 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
       return;
     }
 
-    // Enviar em lotes de 30 para evitar timeout
     const LOTE = 30;
-    let totalOk = 0;
-    let totalErro = 0;
+    let totalOk = 0, totalErro = 0;
     const erros = [];
 
     for (let i = 0; i < completos.length; i += LOTE) {
       const batch = completos.slice(i, i + LOTE);
       const loteNum = Math.floor(i / LOTE) + 1;
       const totalLotes = Math.ceil(completos.length / LOTE);
-      setProgresso({ atual: i, total: completos.length, lote: loteNum, totalLotes });
+      setProgressoExport({ atual: i, total: completos.length, lote: loteNum, totalLotes });
 
       try {
         const res = await base44.functions.invoke('exportarClientesOmie', {
           clientes_data: batch,
-          modo: 'upsert'
+          modo: 'upsert',
         });
-        const resumoLote = res.data?.resumo;
-        if (resumoLote) {
-          totalOk += resumoLote.sucessos || 0;
-          totalErro += resumoLote.erros || 0;
-        }
-        const resultadosLote = res.data?.resultados || [];
-        resultadosLote.filter(r => !r.sucesso).forEach(r => {
-          erros.push({ razao_social: r.razao_social, mensagem: r.mensagem });
+        const r = res.data?.resumo;
+        if (r) { totalOk += r.sucessos || 0; totalErro += r.erros || 0; }
+        (res.data?.resultados || []).filter(x => !x.sucesso).forEach(x => {
+          erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
         });
       } catch (e) {
         totalErro += batch.length;
@@ -134,22 +159,20 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
       }
     }
 
-    setProgresso(null);
+    setProgressoExport(null);
     setExportando(false);
     setResultadoExport({ totalOk, totalErro, erros: erros.slice(0, 50) });
     queryClient.invalidateQueries(['clientes']);
-    if (totalErro === 0) {
-      toast.success(`✅ ${totalOk} cliente(s) exportado(s) ao Omie!`);
-    } else {
-      toast.warning(`${totalOk} ok | ${totalErro} com erro`);
-    }
+    if (totalErro === 0) toast.success(`✅ ${totalOk} cliente(s) exportado(s) ao Omie!`);
+    else toast.warning(`${totalOk} ok | ${totalErro} com erro`);
   };
 
   const baixarCSV = () => {
     if (faltantes.length === 0) return;
-    const headers = ['codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj', 'status'];
+    const headers = ['codigo', 'razao_social', 'nome_fantasia', 'cnpj_cpf', 'cidade', 'estado', 'status'];
     const linhas = faltantes.map(c => [
-      c.codigo || '', c.razao_social || '', c.nome_fantasia || '', c.cpf_cnpj || '', c.status || ''
+      c.codigo || '', c.razao_social || '', c.nome_fantasia || '', c.cnpj_cpf || '',
+      c.cidade || '', c.estado || '', c.status || ''
     ]);
     const csv = [headers.join(';'), ...linhas.map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -160,10 +183,16 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
   };
 
   const fechar = () => {
-    setResumo(null); setFaltantes([]); setSelecionados(new Set());
-    setBusca(''); setResultadoExport(null); setProgresso(null);
+    if (pollRef.current) clearInterval(pollRef.current);
+    setJobId(null); setProgresso(null); setResultado(null); setSelecionados(new Set());
+    setBusca(''); setResultadoExport(null); setProgressoExport(null);
     onOpenChange(false);
   };
+
+  const emProgresso = jobId && !resultado;
+  const pctOmie = progresso?.total_omie_estimado
+    ? Math.min(100, (progresso.total_omie_obtidos / progresso.total_omie_estimado) * 100)
+    : 0;
 
   return (
     <Dialog open={open} onOpenChange={fechar}>
@@ -176,41 +205,110 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         </DialogHeader>
 
         <div className="flex-1 overflow-auto space-y-4 text-sm">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-blue-900">
-              Compara <b>todos</b> os clientes ativos da sua base com o Omie. Lista os que <b>existem aqui mas NÃO no Omie</b> —
-              que é o que causa o erro <i>"Cliente não cadastrado no Omie. Exporte o cliente primeiro"</i> ao faturar.
-            </p>
-            <p className="text-blue-800 mt-1 text-xs">
-              Comparação por: <b>código de integração</b>, <b>ID</b> e <b>CPF/CNPJ</b>.
-            </p>
-          </div>
-
-          {!resumo && (
-            <Button onClick={comparar} disabled={comparando} className="w-full bg-emerald-600 hover:bg-emerald-700">
-              {comparando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {comparando ? 'Comparando bases (pode levar 1-2 min)...' : 'Iniciar Auditoria'}
-            </Button>
+          {!jobId && !resultado && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-blue-900">
+                  Lista os clientes que <b>existem aqui mas NÃO no Omie</b> — causa do erro
+                  <i> "Cliente não cadastrado no Omie. Exporte o cliente primeiro"</i>.
+                </p>
+                <p className="text-blue-800 mt-1 text-xs">
+                  Otimizado: 100 reg/página • 3 páginas em paralelo • respeita rate limit Omie (240 req/min).
+                </p>
+              </div>
+              <Button onClick={iniciar} className="w-full bg-emerald-600 hover:bg-emerald-700">
+                <Search className="w-4 h-4 mr-2" />
+                Iniciar Auditoria
+              </Button>
+            </>
           )}
 
-          {resumo && (
+          {emProgresso && progresso && (
+            <div className="space-y-3">
+              {/* Status etapa */}
+              <div className="bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                  <p className="font-semibold text-blue-900">{progresso.etapa_descricao}</p>
+                </div>
+
+                {/* Etapa: buscando Omie */}
+                {progresso.status === 'buscando_omie' && progresso.total_omie_estimado > 0 && (
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-blue-700 flex items-center gap-1">
+                        <Cloud className="w-3 h-3" /> Buscando Omie
+                      </span>
+                      <span className="font-mono text-blue-900">
+                        {progresso.total_omie_obtidos}/{progresso.total_omie_estimado}
+                        {' '}({progresso.pagina_atual}/{progresso.total_paginas} pág)
+                      </span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${pctOmie}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1 text-right">{pctOmie.toFixed(1)}%</p>
+                  </div>
+                )}
+
+                {/* Etapa: buscando Base44 */}
+                {progresso.status === 'buscando_base44' && (
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <Database className="w-4 h-4" />
+                    <span className="text-xs">Lendo {progresso.total_omie_obtidos} clientes Omie + base local...</span>
+                  </div>
+                )}
+
+                {/* Etapa: comparando */}
+                {progresso.status === 'comparando' && (
+                  <div className="flex items-center gap-2 text-purple-700">
+                    <GitCompare className="w-4 h-4" />
+                    <span className="text-xs">
+                      Cruzando {progresso.total_base44} clientes locais com {progresso.total_omie_obtidos} do Omie...
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Mini cards parciais */}
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="border rounded p-2 bg-slate-50">
+                  <p className="text-slate-500">Omie</p>
+                  <p className="font-bold text-base">{progresso.total_omie_obtidos}</p>
+                </div>
+                <div className="border rounded p-2 bg-slate-50">
+                  <p className="text-slate-500">Base44</p>
+                  <p className="font-bold text-base">{progresso.total_base44 || '...'}</p>
+                </div>
+                <div className="border rounded p-2 bg-slate-50">
+                  <p className="text-slate-500">Status</p>
+                  <p className="font-bold text-xs uppercase">{progresso.status.replace('_', ' ')}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {resultado && (
             <>
               <div className="grid grid-cols-4 gap-2">
                 <div className="border rounded-lg p-2 bg-slate-50 text-center">
                   <p className="text-xs text-slate-500">Base44</p>
-                  <p className="text-xl font-bold">{resumo.total_base44}</p>
+                  <p className="text-xl font-bold">{resultado.total_base44}</p>
                 </div>
                 <div className="border rounded-lg p-2 bg-slate-50 text-center">
                   <p className="text-xs text-slate-500">Omie</p>
-                  <p className="text-xl font-bold">{resumo.total_omie}</p>
+                  <p className="text-xl font-bold">{resultado.total_omie}</p>
                 </div>
                 <div className="border rounded-lg p-2 bg-emerald-50 border-emerald-200 text-center">
                   <p className="text-xs text-emerald-600">Sincronizados</p>
-                  <p className="text-xl font-bold text-emerald-700">{resumo.iguais}</p>
+                  <p className="text-xl font-bold text-emerald-700">{resultado.iguais}</p>
                 </div>
                 <div className="border rounded-lg p-2 bg-red-50 border-red-200 text-center">
                   <p className="text-xs text-red-600">Faltam no Omie</p>
-                  <p className="text-xl font-bold text-red-700">{resumo.so_no_base44}</p>
+                  <p className="text-xl font-bold text-red-700">{resultado.so_no_base44}</p>
                 </div>
               </div>
 
@@ -228,14 +326,14 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                       <Input
                         value={busca}
                         onChange={e => setBusca(e.target.value)}
-                        placeholder="Buscar por razão social, CNPJ, código..."
+                        placeholder="Buscar por razão social, CNPJ, código, cidade..."
                         className="pl-8"
                       />
                     </div>
                     <Button variant="outline" size="sm" onClick={baixarCSV}>
                       <Download className="w-4 h-4 mr-1" /> CSV
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => { setResumo(null); comparar(); }}>
+                    <Button variant="outline" size="sm" onClick={() => { setJobId(null); setResultado(null); iniciar(); }}>
                       Recomparar
                     </Button>
                   </div>
@@ -258,6 +356,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                           <th className="p-2 text-left">Razão Social</th>
                           <th className="p-2 text-left">Fantasia</th>
                           <th className="p-2 text-left">CNPJ/CPF</th>
+                          <th className="p-2 text-left">Cidade/UF</th>
                           <th className="p-2 text-left">Status</th>
                         </tr>
                       </thead>
@@ -273,10 +372,17 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                             <td className="p-2 font-mono">{c.codigo || '-'}</td>
                             <td className="p-2">{c.razao_social}</td>
                             <td className="p-2 text-slate-500">{c.nome_fantasia || '-'}</td>
-                            <td className="p-2 font-mono text-slate-500">{c.cpf_cnpj || '-'}</td>
+                            <td className="p-2 font-mono text-slate-700">{c.cnpj_cpf || '-'}</td>
+                            <td className="p-2 text-slate-500">
+                              {c.cidade ? `${c.cidade}/${c.estado || '?'}` : '-'}
+                            </td>
                             <td className="p-2">
-                              <span className={`px-2 py-0.5 rounded text-[10px] ${c.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                {c.status}
+                              <span className={`px-2 py-0.5 rounded text-[10px] ${
+                                c.tipo_nota === 'D1' ? 'bg-orange-100 text-orange-700' :
+                                c.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' :
+                                'bg-slate-100 text-slate-600'
+                              }`}>
+                                {c.tipo_nota === 'D1' ? 'D1' : c.status}
                               </span>
                             </td>
                           </tr>
@@ -285,18 +391,18 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                     </table>
                   </div>
 
-                  {progresso && (
+                  {progressoExport && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
                         <p className="font-medium text-amber-900">
-                          Lote {progresso.lote}/{progresso.totalLotes} — {progresso.atual} de {progresso.total} processados
+                          Lote {progressoExport.lote}/{progressoExport.totalLotes} — {progressoExport.atual} de {progressoExport.total} processados
                         </p>
                       </div>
                       <div className="w-full bg-amber-200 rounded-full h-2">
                         <div
                           className="bg-amber-600 h-2 rounded-full transition-all"
-                          style={{ width: `${(progresso.atual / progresso.total) * 100}%` }}
+                          style={{ width: `${(progressoExport.atual / progressoExport.total) * 100}%` }}
                         />
                       </div>
                     </div>
