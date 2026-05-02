@@ -104,6 +104,9 @@ Deno.serve(async (req) => {
         }
 
         const pedidoOmieAtual = consultaResult.pedido_venda_produto || consultaResult;
+        if (JSON.stringify(pedidoOmieAtual).toLowerCase().includes('cancelado') || JSON.stringify(pedidoOmieAtual).toLowerCase().includes('cancelada')) {
+            return Response.json({ sucesso: false, erro: 'Pedido cancelado: não é permitido editar ou ajustar.' });
+        }
         const itensOmieAtuais = pedidoOmieAtual.det || [];
         
         // Criar um mapa de itens do Omie por codigo_produto_integracao (= produto_id no Base44)

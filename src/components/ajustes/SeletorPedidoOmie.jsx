@@ -13,7 +13,10 @@ const ETAPA_LABELS = {
   '20': { label: 'Liberados', color: 'bg-blue-100 text-blue-800' },
   '50': { label: 'Faturar', color: 'bg-orange-100 text-orange-800' },
   '60': { label: 'Faturado', color: 'bg-green-100 text-green-800' },
+  cancelado: { label: 'Cancelado', color: 'bg-red-100 text-red-800' },
 };
+
+const pedidoCancelado = (pedido) => pedido?.cancelado === true || pedido?.status_pedido === 'cancelado' || pedido?.status === 'cancelado';
 
 /**
  * Seletor de pedidos do Omie. Carrega TODOS os pedidos das etapas indicadas
@@ -44,7 +47,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
       // Remove duplicatas por codigo_pedido
       const map = new Map();
       todos.forEach(p => map.set(String(p.codigo_pedido), p));
-      return Array.from(map.values());
+      return Array.from(map.values()).sort((a, b) => Number(pedidoCancelado(a)) - Number(pedidoCancelado(b)));
     },
     staleTime: 60000,
     refetchOnWindowFocus: false
@@ -132,9 +135,10 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
                 </thead>
                 <tbody>
                   {filtrados.map(p => {
-                    const etapa = ETAPA_LABELS[p.etapa] || { label: p.etapa, color: 'bg-slate-100' };
+                    const cancelado = pedidoCancelado(p);
+                    const etapa = cancelado ? ETAPA_LABELS.cancelado : (ETAPA_LABELS[p.etapa] || { label: p.etapa, color: 'bg-slate-100' });
                     return (
-                      <tr key={p.codigo_pedido} className="border-t hover:bg-amber-50">
+                      <tr key={p.codigo_pedido} className={`border-t ${cancelado ? 'bg-red-50 text-slate-500' : 'hover:bg-amber-50'}`}>
                         <td className="p-2 font-medium">{p.numero_pedido || p.codigo_pedido}</td>
                         <td className="p-2 truncate max-w-[260px]" title={p.cliente_nome}>
                           {p.cliente_nome || '-'}
@@ -150,12 +154,14 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={carregandoId === p.codigo_pedido}
+                            disabled={cancelado || carregandoId === p.codigo_pedido}
                             onClick={() => carregarPedido(p.codigo_pedido)}
                           >
-                            {carregandoId === p.codigo_pedido
-                              ? <Loader2 className="w-3 h-3 animate-spin" />
-                              : 'Selecionar'}
+                            {cancelado
+                              ? 'Cancelado'
+                              : carregandoId === p.codigo_pedido
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : 'Selecionar'}
                           </Button>
                         </td>
                       </tr>

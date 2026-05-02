@@ -23,6 +23,11 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
+function pedidoCancelado(pedido) {
+  const texto = JSON.stringify(pedido || {}).toLowerCase();
+  return texto.includes('cancelado') || texto.includes('cancelada');
+}
+
 // Consulta bruta de um pedido no Omie (retorna o objeto pedido_venda_produto completo)
 Deno.serve(async (req) => {
   try {
@@ -44,6 +49,14 @@ Deno.serve(async (req) => {
     const pedido = data.pedido_venda_produto;
 
     if (!pedido) return Response.json({ error: 'Pedido não retornado pelo Omie' }, { status: 404 });
+
+    const cancelado = pedidoCancelado(pedido);
+    pedido.cabecalho = {
+      ...(pedido.cabecalho || {}),
+      cancelado,
+      status_pedido: cancelado ? 'cancelado' : (pedido.cabecalho?.status_pedido || pedido.cabecalho?.status || ''),
+      etapa: cancelado ? 'cancelado' : pedido.cabecalho?.etapa
+    };
 
     return Response.json({ sucesso: true, pedido });
   } catch (error) {

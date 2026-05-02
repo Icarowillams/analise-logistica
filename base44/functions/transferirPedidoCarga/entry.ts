@@ -20,6 +20,9 @@ Deno.serve(async (req) => {
 
     const pedido = (origem.pedidos_omie || []).find(p => String(p.codigo_pedido) === String(pedido_codigo_omie));
     if (!pedido) return Response.json({ error: 'Pedido não está na carga origem' }, { status: 404 });
+    if (JSON.stringify(pedido).toLowerCase().includes('cancelado') || JSON.stringify(pedido).toLowerCase().includes('cancelada')) {
+      return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
+    }
 
     // Remove da origem
     const novosPedidosOrigem = (origem.pedidos_omie || []).filter(p => String(p.codigo_pedido) !== String(pedido_codigo_omie));

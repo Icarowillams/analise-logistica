@@ -27,6 +27,11 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
+function pedidoCancelado(pedido) {
+  const texto = JSON.stringify(pedido || {}).toLowerCase();
+  return texto.includes('cancelado') || texto.includes('cancelada');
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -76,13 +81,17 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const pedidos = (data.pedido_venda_produto || []).map(p => ({
+    const pedidos = (data.pedido_venda_produto || []).map(p => {
+      const cancelado = pedidoCancelado(p);
+      return {
       codigo_pedido: String(p.cabecalho?.codigo_pedido || ''),
       codigo_pedido_integracao: p.cabecalho?.codigo_pedido_integracao || '',
       numero_pedido: p.cabecalho?.numero_pedido || '',
       codigo_cliente: String(p.cabecalho?.codigo_cliente || ''),
       data_previsao: p.cabecalho?.data_previsao || '',
-      etapa: p.cabecalho?.etapa || '',
+      etapa: cancelado ? 'cancelado' : (p.cabecalho?.etapa || ''),
+      status_pedido: cancelado ? 'cancelado' : (p.cabecalho?.status_pedido || p.cabecalho?.status || ''),
+      cancelado,
       valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
       quantidade_itens: (p.det || []).length,
       produtos: (p.det || []).map(d => ({
@@ -94,7 +103,8 @@ Deno.serve(async (req) => {
         valor_total: d.produto?.valor_total || 0,
         unidade: d.produto?.unidade || ''
       }))
-    }));
+    };
+    });
 
     return Response.json({
       sucesso: true,

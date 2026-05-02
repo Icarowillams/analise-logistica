@@ -37,6 +37,11 @@ Deno.serve(async (req) => {
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
     if (produtos.length === 0) return Response.json({ error: 'produtos vazio' }, { status: 400 });
 
+    const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
+    if (JSON.stringify(consulta?.pedido_venda_produto || {}).toLowerCase().includes('cancelado') || JSON.stringify(consulta?.pedido_venda_produto || {}).toLowerCase().includes('cancelada')) {
+      return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
+    }
+
     const produtosDevolver = produtos.map(p => ({
       nCodProd: Number(p.nCodProd || p.codigo_produto),
       nQtde: Number(p.quantidade)

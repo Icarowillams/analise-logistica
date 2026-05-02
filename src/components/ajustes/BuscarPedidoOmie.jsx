@@ -7,6 +7,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Search, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const pedidoCancelado = (pedido) => pedido?.cabecalho?.cancelado === true || pedido?.cabecalho?.status_pedido === 'cancelado' || pedido?.cabecalho?.status === 'cancelado';
+
 export default function BuscarPedidoOmie({ onPedidoCarregado }) {
   const [codigoPedido, setCodigoPedido] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,6 +21,10 @@ export default function BuscarPedidoOmie({ onPedidoCarregado }) {
         codigo_pedido: codigoPedido
       });
       if (data?.sucesso && data?.pedido) {
+        if (pedidoCancelado(data.pedido)) {
+          toast.error('Pedido cancelado: não é permitido editar ou ajustar.');
+          return;
+        }
         onPedidoCarregado(data.pedido);
       } else {
         toast.error(data?.error || 'Pedido não encontrado');

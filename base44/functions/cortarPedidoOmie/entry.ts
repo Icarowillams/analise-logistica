@@ -41,6 +41,9 @@ Deno.serve(async (req) => {
     const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
     const pedido = consulta.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
+    if (JSON.stringify(pedido).toLowerCase().includes('cancelado') || JSON.stringify(pedido).toLowerCase().includes('cancelada')) {
+      return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
+    }
 
     const itensAtuais = pedido.det || [];
     const logs = [];
