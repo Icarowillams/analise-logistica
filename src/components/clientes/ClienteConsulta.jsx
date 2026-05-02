@@ -34,7 +34,17 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
 
   const { data: clientesAll = [] } = useQuery({
     queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list(),
+    queryFn: async () => {
+      const lista = await base44.entities.Cliente.list();
+      return lista.map((cliente) => ({
+        ...cliente,
+        ...(cliente.data || {}),
+        id: cliente.id,
+        codigo_interno: cliente.codigo_interno || cliente.data?.codigo_interno || cliente.codigo || cliente.data?.codigo || '',
+        codigo_integracao: cliente.codigo_integracao || cliente.data?.codigo_integracao || cliente.codigo || cliente.data?.codigo || '',
+      }));
+    },
+    refetchOnMount: 'always',
   });
 
   const { data: vendedoresAll = [] } = useQuery({
@@ -69,7 +79,16 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
 
   const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
 
-  const clientes = useMemo(() => filtrarClientes(clientesAll), [clientesAll, filtrarClientes]);
+  const clientes = useMemo(() => {
+    const normalizados = clientesAll.map((cliente) => ({
+      ...cliente,
+      ...(cliente.data || {}),
+      id: cliente.id,
+      codigo_interno: cliente.codigo_interno || cliente.data?.codigo_interno || cliente.codigo || cliente.data?.codigo || '',
+      codigo_integracao: cliente.codigo_integracao || cliente.data?.codigo_integracao || cliente.codigo || cliente.data?.codigo || '',
+    }));
+    return filtrarClientes(normalizados);
+  }, [clientesAll, filtrarClientes]);
 
   const vendedores = useMemo(() => {
     if (vendedoresPermitidosIds === null) return vendedoresAll;
