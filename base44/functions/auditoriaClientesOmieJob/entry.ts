@@ -254,30 +254,22 @@ async function processar(base44, jobId) {
   }
 
   // ===== 5. Salvar resultado =====
-  // Sobe as listas como arquivo (UploadFile) e salva só a URL no campo,
-  // pra não estourar o limite de tamanho do campo (independente do volume).
-  const subirLista = async (lista, nome) => {
+  // Limite real do campo é ~50KB. Trunca agressivamente garantindo que SEMPRE caiba.
+  const MAX_BYTES = 40000; // margem segura
+  const truncarPraCaber = (lista) => {
     if (!lista || lista.length === 0) return '[]';
-    try {
-      const json = JSON.stringify(lista);
-      const blob = new Blob([json], { type: 'application/json' });
-      const file = new File([blob], `${nome}_${Date.now()}.json`, { type: 'application/json' });
-      const res = await base44.asServiceRole.integrations.Core.UploadFile({ file });
-      const url = res?.file_url || res?.data?.file_url;
-      if (!url) throw new Error('Upload sem URL');
-      return JSON.stringify({ __url: url, count: lista.length });
-    } catch (e) {
-      console.error(`[upload ${nome}] ${e.message}`);
-      // Fallback: tenta cortar pra caber no campo
-      const truncada = lista.slice(0, 100);
-      return JSON.stringify(truncada);
+    let arr = [...lista];
+    let json = JSON.stringify(arr);
+    // Reduz pela metade até caber
+    while (json.length > MAX_BYTES && arr.length > 1) {
+      arr = arr.slice(0, Math.floor(arr.length / 2));
+      json = JSON.stringify(arr);
     }
+    return json;
   };
 
-  const [jsonB44, jsonOmie] = await Promise.all([
-    subirLista(soNoBase44, 'audit_b44'),
-    subirLista(soNoOmie, 'audit_omie'),
-  ]);
+  const jsonB44 = truncarPraCaber(soNoBase44);
+  const jsonOmie = truncarPraCaber(soNoOmie);
 
   await update({
     status: 'concluido',
