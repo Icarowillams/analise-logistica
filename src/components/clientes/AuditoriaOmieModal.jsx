@@ -213,7 +213,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
       return;
     }
 
-    const LOTE = 30;
+    const LOTE = 60;
     let totalOk = 0, totalErro = 0;
     const erros = [];
 

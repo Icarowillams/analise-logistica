@@ -213,27 +213,35 @@ Deno.serve(async (req) => {
             }
         });
 
-        // Enviar ao Omie SEQUENCIALMENTE com delay entre cada chamada
-        const resultados = [];
-        for (let i = 0; i < clientes_data.length; i++) {
-            const cliente = clientes_data[i];
-            try {
-                const res = await fetchComRetry(cliente, modo);
-                resultados.push(res);
-                console.log(`[exportarClientesOmie] ${i+1}/${clientes_data.length} ${res.sucesso ? 'OK' : 'ERRO'}: ${cliente.razao_social} - ${res.mensagem}`);
-            } catch (err) {
-                resultados.push({
-                    cliente_id: cliente.id,
-                    razao_social: cliente.razao_social,
-                    nome_fantasia: cliente.nome_fantasia,
-                    sucesso: false,
-                    codigo_omie: null,
-                    mensagem: err.message
-                });
+        // Envio em PARALELO com concorrência limitada (doc Omie: 4 simultâneas, 240 req/min)
+        // 3 simultâneas = conservador, abaixo do limite. fetchComRetry já tem backoff em 425/520.
+        const PARALELISMO = 3;
+        const resultados = new Array(clientes_data.length);
+        let cursor = 0;
+
+        const worker = async () => {
+            while (true) {
+                const i = cursor++;
+                if (i >= clientes_data.length) break;
+                const cliente = clientes_data[i];
+                try {
+                    const res = await fetchComRetry(cliente, modo);
+                    resultados[i] = res;
+                    console.log(`[exportarClientesOmie] ${i + 1}/${clientes_data.length} ${res.sucesso ? 'OK' : 'ERRO'}: ${cliente.razao_social}`);
+                } catch (err) {
+                    resultados[i] = {
+                        cliente_id: cliente.id,
+                        razao_social: cliente.razao_social,
+                        nome_fantasia: cliente.nome_fantasia,
+                        sucesso: false,
+                        codigo_omie: null,
+                        mensagem: err.message
+                    };
+                }
             }
-            // 1500ms entre chamadas (~40 req/min, evita bloqueio por consumo indevido)
-            if (i < clientes_data.length - 1) await delay(1500);
-        }
+        };
+
+        await Promise.all(Array.from({ length: PARALELISMO }, () => worker()));
 
         const sucessos = resultados.filter(r => r.sucesso).length;
         const erros = resultados.filter(r => !r.sucesso).length;
