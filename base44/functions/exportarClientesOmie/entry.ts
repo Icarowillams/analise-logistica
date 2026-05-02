@@ -32,6 +32,15 @@ function uf(estado) {
   return ESTADO_UF[chave] || v.substring(0, 2).toUpperCase();
 }
 
+function normalizarCidade(cidade) {
+  const original = texto(cidade, 60);
+  const chave = original.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  const correcoes = {
+    'LAGOA DO CAROO': 'LAGOA DO CARRO'
+  };
+  return correcoes[chave] || original;
+}
+
 function telefonePartes(valor) {
   const d = somenteDigitos(valor);
   if (d.length < 10) return { ddd: '', numero: '' };
@@ -112,7 +121,7 @@ function mapearClienteOmie(cliente) {
     endereco_numero: texto(cliente.numero || 'S/N', 10),
     complemento: texto(cliente.complemento, 60),
     bairro: texto(cliente.bairro, 60),
-    cidade: texto(cliente.cidade, 60),
+    cidade: normalizarCidade(cliente.cidade),
     estado: uf(cliente.estado),
     cep: somenteDigitos(cliente.cep).substring(0, 8),
     contribuinte: fiscal.contribuinte,
@@ -143,6 +152,47 @@ async function chamarOmie(call, param, tentativa = 0) {
     }
   }
   return data;
+}
+
+async function incluirIndividual(payload, cliente) {
+  const retorno = await chamarOmie('IncluirCliente', payload);
+  const erro = String(retorno.faultstring || '');
+  if (erro) {
+    const duplicado = erro.toLowerCase().includes('já cadastrado') || erro.toLowerCase().includes('ja cadastrado') || erro.toLowerCase().includes('already');
+    return duplicado ? montarSucesso(cliente, { mensagem: 'Cliente já existia no Omie' }) : montarErro(cliente, erro);
+  }
+  return montarSucesso(cliente, retorno);
+}
+
+async function processarLoteComFallback(lote, clientePorCodigo) {
+  const retorno = await chamarOmie('IncluirClientesPorLote', { lote: 1, clientes_cadastro: lote });
+  const textoErro = String(retorno.faultstring || '');
+
+  // O Omie pode retornar uma faultstring misturando erro + vários "Cliente cadastrado com sucesso".
+  // Quando isso acontece, o único jeito seguro é reprocessar individualmente só esse lote para obter resultado por cliente.
+  if (textoErro) {
+    const resultados = [];
+    for (const payload of lote) {
+      const cliente = clientePorCodigo.get(payload.codigo_cliente_integracao) || {};
+      resultados.push(await incluirIndividual(payload, cliente));
+      await sleep(300);
+    }
+    return resultados;
+  }
+
+  const itens = retorno.clientes_cadastro || retorno.clientes || retorno.cadastro || [];
+  if (!Array.isArray(itens) || itens.length === 0) {
+    return lote.map(payload => montarSucesso(clientePorCodigo.get(payload.codigo_cliente_integracao) || {}, retorno));
+  }
+
+  return lote.map((payload, index) => {
+    const item = itens[index] || {};
+    const cliente = clientePorCodigo.get(payload.codigo_cliente_integracao) || {};
+    if (item.faultstring || item.erro || item.codigo_status === '1') {
+      return montarErro(cliente, item.faultstring || item.erro || item.descricao_status || 'Erro ao incluir cliente');
+    }
+    return montarSucesso(cliente, item);
+  });
 }
 
 function montarErro(cliente, mensagem) {
@@ -208,35 +258,8 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < validos.length; i += TAMANHO_LOTE_OMIE) {
       const lote = validos.slice(i, i + TAMANHO_LOTE_OMIE);
-      const loteNumero = Math.floor(i / TAMANHO_LOTE_OMIE) + 1;
-      const retorno = await chamarOmie('IncluirClientesPorLote', { lote: loteNumero, clientes_cadastro: lote });
-
-      if (retorno.faultstring) {
-        for (const payload of lote) {
-          const cliente = clientePorCodigo.get(payload.codigo_cliente_integracao) || {};
-          resultados.push(montarErro(cliente, retorno.faultstring));
-        }
-      } else {
-        const itens = retorno.clientes_cadastro || retorno.clientes || retorno.cadastro || [];
-        if (Array.isArray(itens) && itens.length > 0) {
-          for (let j = 0; j < lote.length; j++) {
-            const payload = lote[j];
-            const item = itens[j] || {};
-            const cliente = clientePorCodigo.get(payload.codigo_cliente_integracao) || {};
-            if (item.faultstring || item.erro || item.codigo_status === '1') {
-              resultados.push(montarErro(cliente, item.faultstring || item.erro || item.descricao_status || 'Erro ao incluir cliente'));
-            } else {
-              resultados.push(montarSucesso(cliente, item));
-            }
-          }
-        } else {
-          for (const payload of lote) {
-            const cliente = clientePorCodigo.get(payload.codigo_cliente_integracao) || {};
-            resultados.push(montarSucesso(cliente, retorno));
-          }
-        }
-      }
-
+      const resultadosLote = await processarLoteComFallback(lote, clientePorCodigo);
+      resultados.push(...resultadosLote);
       if (i + TAMANHO_LOTE_OMIE < validos.length) await sleep(1200);
     }
 
