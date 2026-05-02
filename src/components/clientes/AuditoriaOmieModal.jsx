@@ -21,6 +21,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
   const [exportando, setExportando] = useState(false);
   const [progressoExport, setProgressoExport] = useState(null);
   const [resultadoExport, setResultadoExport] = useState(null);
+  const [filtroStatus, setFiltroStatus] = useState('ativo'); // 'ativo' | 'todos' | 'inativo' | 'prospecto' | 'bloqueado'
   const queryClient = useQueryClient();
   const pollRef = useRef(null);
 
@@ -118,8 +119,8 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
             lista_so_base44: listaB44,
             lista_so_omie: listaOmie,
           });
-          // Pré-seleciona apenas ativos
-          const ativos = listaB44.filter(c => c.status !== 'inativo');
+          // Pré-seleciona apenas ativos (filtro padrão)
+          const ativos = listaB44.filter(c => c.status === 'ativo');
           setSelecionados(new Set(ativos.map(c => c.id)));
           toast.success(`Auditoria concluída: ${data.so_no_base44} faltam no Omie`);
         } else if (data.status === 'erro') {
@@ -154,7 +155,17 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     }
   };
 
-  const faltantes = (resultado?.lista_so_base44 || []).filter(c => c.status !== 'inativo');
+  const todosFaltantes = resultado?.lista_so_base44 || [];
+  // Contagem por status (pra mostrar no UI)
+  const contagemStatus = todosFaltantes.reduce((acc, c) => {
+    const s = c.status || 'sem_status';
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {});
+  const faltantes = todosFaltantes.filter(c => {
+    if (filtroStatus === 'todos') return true;
+    return (c.status || 'sem_status') === filtroStatus;
+  });
 
   const filtrados = faltantes.filter(c => {
     if (!busca.trim()) return true;
@@ -381,11 +392,11 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                 </div>
               </div>
 
-              {faltantes.length === 0 ? (
+              {todosFaltantes.length === 0 ? (
                 <div className="text-center py-8 text-emerald-600">
                   <CheckCircle2 className="w-12 h-12 mx-auto mb-2" />
                   <p className="font-semibold">100% sincronizado!</p>
-                  <p className="text-xs text-slate-500">Todos os clientes ativos estão no Omie.</p>
+                  <p className="text-xs text-slate-500">Todos os clientes estão no Omie.</p>
                 </div>
               ) : (
                 <>
@@ -407,8 +418,34 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                     </Button>
                   </div>
 
+                  <div className="flex flex-wrap gap-1.5 items-center text-xs">
+                    <span className="text-slate-600 mr-1">Status:</span>
+                    {[
+                      { v: 'ativo', label: 'Ativos', cor: 'emerald' },
+                      { v: 'inativo', label: 'Inativos', cor: 'slate' },
+                      { v: 'prospecto', label: 'Prospectos', cor: 'blue' },
+                      { v: 'bloqueado', label: 'Bloqueados', cor: 'red' },
+                      { v: 'todos', label: 'Todos', cor: 'amber' },
+                    ].map(opt => {
+                      const count = opt.v === 'todos' ? todosFaltantes.length : (contagemStatus[opt.v] || 0);
+                      const ativo = filtroStatus === opt.v;
+                      return (
+                        <button
+                          key={opt.v}
+                          onClick={() => { setFiltroStatus(opt.v); setSelecionados(new Set()); }}
+                          className={`px-2 py-1 rounded border transition ${
+                            ativo
+                              ? 'bg-amber-500 border-amber-600 text-neutral-900 font-semibold'
+                              : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {opt.label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="text-xs text-slate-600">
-                    {selecionados.size} selecionado(s) de {filtrados.length} listado(s)
+                    {selecionados.size} selecionado(s) de {filtrados.length} listado(s) — Total faltantes: <b>{todosFaltantes.length}</b>
                   </div>
 
                   <div className="border rounded-lg overflow-auto max-h-[40vh]">
@@ -513,7 +550,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
           <Button variant="outline" onClick={fechar} disabled={exportando}>
             Fechar
           </Button>
-          {faltantes.length > 0 && (
+          {todosFaltantes.length > 0 && (
             <Button
               onClick={exportarSelecionados}
               disabled={exportando || selecionados.size === 0}
