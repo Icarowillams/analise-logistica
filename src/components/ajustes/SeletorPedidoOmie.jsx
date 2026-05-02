@@ -37,7 +37,8 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
         base44.functions.invoke('buscarPedidosOmie', {
           etapa: et,
           registros_por_pagina: 100,
-          buscar_todas_paginas: true
+          buscar_todas_paginas: true,
+          incluir_cancelados: true
         })
           .then(r => (r.data?.pedidos || []).map(p => ({ ...p, etapa: et })))
           .catch(() => [])

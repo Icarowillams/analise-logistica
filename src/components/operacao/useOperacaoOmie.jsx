@@ -15,7 +15,8 @@ async function fetchEtapa(etapa) {
   const { data } = await base44.functions.invoke('buscarPedidosOmie', {
     etapa,
     registros_por_pagina: 100,
-    buscar_todas_paginas: true
+    buscar_todas_paginas: true,
+    incluir_cancelados: false
   });
   return data?.pedidos || [];
 }
@@ -23,7 +24,8 @@ async function fetchEtapa(etapa) {
 async function fetchFaturados() {
   const { data } = await base44.functions.invoke('consultarStatusFaturamentoOmie', {
     registros_por_pagina: 100,
-    buscar_todas_paginas: true
+    buscar_todas_paginas: true,
+    incluir_cancelados: false
   });
   return data?.pedidos || [];
 }

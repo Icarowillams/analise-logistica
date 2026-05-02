@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       data_final,
       pagina = 1,
       registros_por_pagina = 100,
-      apenas_faturar = false
+      apenas_faturar = false,
+      incluir_cancelados = false
     } = body;
 
     // Doc Omie: máx 100 registros/página
@@ -81,30 +82,32 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const pedidos = (data.pedido_venda_produto || []).map(p => {
-      const cancelado = pedidoCancelado(p);
-      return {
-      codigo_pedido: String(p.cabecalho?.codigo_pedido || ''),
-      codigo_pedido_integracao: p.cabecalho?.codigo_pedido_integracao || '',
-      numero_pedido: p.cabecalho?.numero_pedido || '',
-      codigo_cliente: String(p.cabecalho?.codigo_cliente || ''),
-      data_previsao: p.cabecalho?.data_previsao || '',
-      etapa: cancelado ? 'cancelado' : (p.cabecalho?.etapa || ''),
-      status_pedido: cancelado ? 'cancelado' : (p.cabecalho?.status_pedido || p.cabecalho?.status || ''),
-      cancelado,
-      valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
-      quantidade_itens: (p.det || []).length,
-      produtos: (p.det || []).map(d => ({
-        codigo_produto: String(d.produto?.codigo_produto || ''),
-        codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
-        descricao: d.produto?.descricao || '',
-        quantidade: d.produto?.quantidade || 0,
-        valor_unitario: d.produto?.valor_unitario || 0,
-        valor_total: d.produto?.valor_total || 0,
-        unidade: d.produto?.unidade || ''
-      }))
-    };
-    });
+    const pedidos = (data.pedido_venda_produto || [])
+      .filter(p => incluir_cancelados || !pedidoCancelado(p))
+      .map(p => {
+        const cancelado = pedidoCancelado(p);
+        return {
+          codigo_pedido: String(p.cabecalho?.codigo_pedido || ''),
+          codigo_pedido_integracao: p.cabecalho?.codigo_pedido_integracao || '',
+          numero_pedido: p.cabecalho?.numero_pedido || '',
+          codigo_cliente: String(p.cabecalho?.codigo_cliente || ''),
+          data_previsao: p.cabecalho?.data_previsao || '',
+          etapa: cancelado ? 'cancelado' : (p.cabecalho?.etapa || ''),
+          status_pedido: cancelado ? 'cancelado' : (p.cabecalho?.status_pedido || p.cabecalho?.status || ''),
+          cancelado,
+          valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
+          quantidade_itens: (p.det || []).length,
+          produtos: (p.det || []).map(d => ({
+            codigo_produto: String(d.produto?.codigo_produto || ''),
+            codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
+            descricao: d.produto?.descricao || '',
+            quantidade: d.produto?.quantidade || 0,
+            valor_unitario: d.produto?.valor_unitario || 0,
+            valor_total: d.produto?.valor_total || 0,
+            unidade: d.produto?.unidade || ''
+          }))
+        };
+      });
 
     return Response.json({
       sucesso: true,

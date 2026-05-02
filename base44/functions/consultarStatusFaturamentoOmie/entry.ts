@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { registros_por_pagina = 50, pagina = 1 } = body;
+    const { registros_por_pagina = 50, pagina = 1, incluir_cancelados = false } = body;
 
     // 1) Pedidos etapa 60
     let pedidosData;
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     } while (paginaNf <= totalPaginas);
 
     // 3) Cruza pedidos com NFs e classifica status real
-    const enriquecidos = pedidos.map(p => {
+    const enriquecidosTodos = pedidos.map(p => {
       const nf = nfsMap[p.codigo_pedido];
       let status_real = 'aguardando_nf'; // default: etapa 60 mas sem NF localizada
       let label = 'Aguardando NF';
@@ -143,6 +143,10 @@ Deno.serve(async (req) => {
         status_label: label
       };
     });
+
+    const enriquecidos = incluir_cancelados
+      ? enriquecidosTodos
+      : enriquecidosTodos.filter(p => p.status_real !== 'cancelada' && p.status_real !== 'denegada');
 
     return Response.json({
       sucesso: true,
