@@ -123,6 +123,28 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
     const cepNorm = normalizarCEP(clienteData.cep);
     const isPessoaFisica = cnpjCpfLimpo.length <= 11;
 
+    // === REGRAS DE INSCRIÇÃO ESTADUAL E CONTRIBUINTE (Omie API geral/clientes) ===
+    // contribuinte é "S" (sim, contribuinte de ICMS) ou "N" (não-contribuinte / isento / pessoa física)
+    // PF (CPF, 11 dígitos): contribuinte="N", IE = "" (vazio, não enviar)
+    // PJ com IE preenchida (dígitos): contribuinte="S", IE = só dígitos
+    // PJ SEM IE / isenta: contribuinte="N", IE = "ISENTO"
+    const ieRaw = String(clienteData.inscricao_estadual || '').trim();
+    const ieDigitos = ieRaw.replace(/\D/g, '');
+    const ieIsenta = !ieDigitos || /^isent/i.test(ieRaw);
+
+    let contribuinte;
+    let inscricaoEstadualEnvio;
+    if (isPessoaFisica) {
+        contribuinte = "N";
+        inscricaoEstadualEnvio = "";
+    } else if (ieIsenta) {
+        contribuinte = "N";
+        inscricaoEstadualEnvio = "ISENTO";
+    } else {
+        contribuinte = "S";
+        inscricaoEstadualEnvio = ieDigitos;
+    }
+
     // Mapeamento completo conforme documentação Omie API - clientes_cadastro
     const clienteOmie = {
         // --- Identificação ---
@@ -148,8 +170,8 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
         email: (clienteData.email || "nfe@paoemel.com.br").substring(0, 500),
 
         // --- Tributação ---
-        contribuinte: isPessoaFisica ? "N" : "S",
-        inscricao_estadual: clienteData.inscricao_estadual || "",
+        contribuinte,
+        inscricao_estadual: inscricaoEstadualEnvio,
         
         // --- Observações ---
         observacao: "",

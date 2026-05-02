@@ -49,12 +49,16 @@ function mapearProdutoParaOmie(produto, unidadeSigla) {
     const cest = (produto.cest || '').replace(/\D/g, '');
     const codigo = String(produto.codigo || '').trim();
 
+    // NCM precisa ter exatamente 8 dígitos para Omie aceitar
+    const ncm8 = ncm.padStart(8, '0').substring(0, 8);
+
     const produtoOmie = {
         codigo_produto_integracao: codigo,
         codigo: codigo.substring(0, 60),
         descricao: (produto.nome || 'Produto sem nome').trim().substring(0, 120),
         unidade: (unidadeSigla || 'UN').substring(0, 6).toUpperCase(),
-        ncm: ncm.substring(0, 8),
+        ncm: ncm8,
+        tipoItem: '00', // 00 = Mercadoria para Revenda (padrão geral)
         peso_bruto: Number(produto.peso) || 0,
         peso_liq: Number(produto.peso) || 0,
         bloqueado: produto.status === 'inativo' ? 'S' : 'N',
