@@ -50,12 +50,27 @@ export default function Cargas() {
       if (data?.sucesso) {
         const nfsEmitidas = data.nfs_emitidas || 0;
         const aguardando = data.aguardando_nf || 0;
-        if (data.erros > 0) {
-          const erros = (data.resultados || []).filter(r => r.sucesso === false);
-          const msg = erros.map(r => `Pedido ${r.codigo_pedido}: ${r.mensagem}`).join('\n');
-          toast.error(`${nfsEmitidas} NFs emitidas | ${aguardando} aguardando | ${data.erros} erros`, { description: msg, duration: 15000 });
+        const erros = (data.resultados || []).filter(r => r.sucesso === false);
+
+        if (erros.length > 0) {
+          const msg = erros
+            .map(r => `Pedido ${r.codigo_pedido} (etapa ${r.etapa_atual || '?'}): ${r.motivo_omie || r.mensagem || 'erro desconhecido'}`)
+            .join('\n');
+          // Cabeçalho deixa claro: pedidos MUDARAM de etapa, mas a NF foi rejeitada
+          toast.error(
+            `Carga movida para Faturar, mas ${erros.length} pedido(s) com erro de NF`,
+            {
+              description: `${nfsEmitidas} NF(s) emitida(s) · ${aguardando} aguardando SEFAZ · ${erros.length} rejeitada(s)\n\n${msg}`,
+              duration: 20000
+            }
+          );
+        } else if (aguardando > 0 && nfsEmitidas === 0) {
+          toast.warning(`Carga movida para Faturar — ${aguardando} NF(s) aguardando SEFAZ`, {
+            description: 'Nenhuma NF foi emitida ainda. Atualize em alguns minutos para ver o resultado.',
+            duration: 8000
+          });
         } else {
-          toast.success(`${nfsEmitidas} NFs emitidas | ${aguardando} aguardando scheduler Omie | ${data.skips} D1 ignorados`, { duration: 8000 });
+          toast.success(`${nfsEmitidas} NF(s) emitida(s) | ${aguardando} aguardando SEFAZ | ${data.skips} D1 ignorados`, { duration: 8000 });
         }
         queryClient.invalidateQueries({ queryKey: ['cargas'] });
       } else {
