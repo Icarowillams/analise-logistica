@@ -538,23 +538,23 @@ export default function Clientes() {
         }
       }
 
-      // Converter latitude e longitude
-      let lat = item.latitude;
-      let lng = item.longitude;
-      
-      if (lat === '' || lat === null || lat === undefined) {
-        lat = null;
-      } else {
-        lat = parseFloat(lat);
-        if (isNaN(lat)) lat = null;
-      }
-      
-      if (lng === '' || lng === null || lng === undefined) {
-        lng = null;
-      } else {
-        lng = parseFloat(lng);
-        if (isNaN(lng)) lng = null;
-      }
+      // Converter latitude e longitude — aceita formato Omie (multiplicado por 10^7) e formato decimal
+      const parseCoord = (val) => {
+        if (val === '' || val === null || val === undefined) return null;
+        // troca vírgula por ponto e remove qualquer caractere não numérico/sinal/ponto
+        const cleaned = String(val).replace(',', '.').replace(/[^\d.\-]/g, '');
+        if (!cleaned) return null;
+        const num = parseFloat(cleaned);
+        if (isNaN(num) || num === 0) return null;
+        // Heurística: lat/lng válidas estão entre -180 e 180
+        // Se vier um número absurdamente grande, é formato Omie (x10^7) ou x10^8
+        if (Math.abs(num) > 100000) return num / 1e7;
+        if (Math.abs(num) > 1000) return num / 1e8;
+        if (Math.abs(num) > 180) return num / 100;
+        return num;
+      };
+      const lat = parseCoord(item.latitude);
+      const lng = parseCoord(item.longitude);
 
       // Normalizar estado: converter nome completo para sigla UF
       const estadoUfMap = {
@@ -579,11 +579,28 @@ export default function Clientes() {
         }
       }
 
+      // Limpar CPF/CNPJ — deixa apenas dígitos
+      const cnpjCpfLimpo = item.cpf_cnpj
+        ? String(item.cpf_cnpj).replace(/\D/g, '')
+        : '';
+
+      // Limpar CEP — apenas 8 dígitos
+      const cepLimpo = item.cep
+        ? String(item.cep).replace(/\D/g, '').substring(0, 8)
+        : '';
+
+      // Estado: garantir uppercase e 2 letras (caso a normalização anterior não tenha pego)
+      const estadoFinal = (estadoNormalizado || item.estado || '')
+        .trim()
+        .toUpperCase()
+        .substring(0, 2);
+
       const clienteData = {
         ...item,
         latitude: lat,
         longitude: lng,
-        estado: estadoNormalizado || item.estado || '',
+        cep: cepLimpo,
+        estado: estadoFinal,
         inscricao_estadual: item.inscricao_estadual != null ? String(item.inscricao_estadual).trim() : '',
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
         tabela_id: findId(tabelas, item.tabela_preco),
@@ -595,11 +612,9 @@ export default function Clientes() {
         status: normalizedStatus
       };
 
-      // Renomear cpf_cnpj → cnpj_cpf (nome real da entidade Cliente)
-      if (clienteData.cpf_cnpj !== undefined) {
-        clienteData.cnpj_cpf = clienteData.cpf_cnpj;
-        delete clienteData.cpf_cnpj;
-      }
+      // Renomear cpf_cnpj → cnpj_cpf (nome real da entidade Cliente) e usar versão limpa
+      clienteData.cnpj_cpf = cnpjCpfLimpo;
+      delete clienteData.cpf_cnpj;
 
       // Remove temporary name fields
       delete clienteData.plano_pagamento;

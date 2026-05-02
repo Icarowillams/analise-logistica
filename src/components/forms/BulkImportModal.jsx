@@ -161,7 +161,12 @@ export default function BulkImportModal({
       'data primeiro contato': 'data_primeiro_contato',
     };
     const headers = headerValues.map(h => {
-      const raw = removeQuotes(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // Remove BOM (\ufeff) que aparece no início de CSVs salvos pelo Excel/sistemas Windows
+      const raw = removeQuotes(h)
+        .replace(/^\ufeff/, '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
       const withUnderscores = raw.replace(/\s+/g, '_');
       const noSpaces = raw.replace(/\s+/g, '');
       // Try multiple formats for alias matching
