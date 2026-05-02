@@ -379,9 +379,49 @@ Deno.serve(async (req) => {
             }
         }
 
+        // FALLBACK FINAL: Cliente não está no Omie → exportar automaticamente e tentar de novo
         if (!clienteEncontradoOmie) {
-            console.error(`[enviarPedidoOmie] Cliente não encontrado no Omie com nenhum código de integração nem CPF/CNPJ`);
-            return Response.json({ sucesso: false, erro: 'Cliente não cadastrado no Omie. Exporte o cliente primeiro.' });
+            console.log(`[enviarPedidoOmie] Cliente não encontrado no Omie. Exportando automaticamente antes de enviar o pedido...`);
+            
+            if (!clienteBase44) {
+                return Response.json({ sucesso: false, erro: 'Cliente do pedido não encontrado no Base44.' });
+            }
+
+            // Cliente D1 não vai pro Omie
+            if (clienteBase44.tipo_nota === 'D1') {
+                return Response.json({ sucesso: false, erro: 'Cliente está marcado como D1 (sem NF). Não pode emitir pedido no Omie.' });
+            }
+
+            try {
+                const exportRes = await base44.asServiceRole.functions.invoke('enviarClienteOmie', {
+                    event: { type: 'auto_pedido', entity_id: clienteBase44.id },
+                    data: clienteBase44
+                });
+
+                const exportData = exportRes?.data || exportRes;
+                if (!exportData?.sucesso) {
+                    const erroExport = exportData?.erro || 'Falha desconhecida';
+                    console.error(`[enviarPedidoOmie] Falha ao exportar cliente automaticamente: ${erroExport}`);
+                    return Response.json({ 
+                        sucesso: false, 
+                        erro: `Cliente não estava no Omie e a exportação automática falhou: ${erroExport}` 
+                    });
+                }
+
+                // Cliente exportado com sucesso → usar o codigo_cliente_integracao = ID do Base44
+                codigoClienteIntegracao = clienteBase44.id;
+                clienteEncontradoOmie = true;
+                console.log(`[enviarPedidoOmie] Cliente exportado automaticamente! codigo_omie: ${exportData.codigo_omie}, codigo_integracao: ${codigoClienteIntegracao}`);
+
+                // Pequena pausa para o Omie indexar
+                await new Promise(r => setTimeout(r, 1500));
+            } catch (autoExportErr) {
+                console.error(`[enviarPedidoOmie] Erro na exportação automática:`, autoExportErr.message);
+                return Response.json({ 
+                    sucesso: false, 
+                    erro: `Cliente não estava no Omie e erro ao exportar automaticamente: ${autoExportErr.message}` 
+                });
+            }
         }
 
         console.log(`[enviarPedidoOmie] Usando codigo_cliente_integracao: ${codigoClienteIntegracao}`);
