@@ -1,11 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
-async function omieCall(call, param, tentativa = 1) {
-  const res = await fetch(OMIE_URL, {
+async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
@@ -17,7 +18,7 @@ async function omieCall(call, param, tentativa = 1) {
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
     if (isRate && tentativa < 4) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(call, param, tentativa + 1);
+      return omieCall(call, param, tentativa + 1, url);
     }
     throw new Error(data.faultstring);
   }
@@ -62,20 +63,32 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Move pedido para etapa 50 (Faturar). A emissão da NF-e no Omie é
-        // feita automaticamente pelo scheduler interno assim que o pedido
-        // está na etapa 50 sem pendências.
+        // 1) Move pedido para etapa 50 (Faturar)
         await omieCall('TrocarEtapaPedido', {
           codigo_pedido: Number(p.codigo_pedido),
           etapa: String(etapa_destino)
         });
+
+        // 2) Dispara a emissão da NF-e via FaturarPedidoVenda (endpoint pedidovendafat)
+        // Sem esse passo o pedido fica parado em 50 esperando o scheduler interno do Omie.
+        let faturamentoErro = null;
+        try {
+          await omieCall('FaturarPedidoVenda', {
+            nCodPed: Number(p.codigo_pedido)
+          }, 1, OMIE_FAT_URL);
+        } catch (fatErr) {
+          faturamentoErro = fatErr.message;
+        }
+
         resultados.push({
           codigo_pedido: p.codigo_pedido,
-          sucesso: true,
+          sucesso: !faturamentoErro,
           etapa_atual: String(etapa_destino),
           nf_emitida: false,
           numero_nf: null,
-          mensagem: `Movido para etapa ${etapa_destino}. Aguardando emissão da NF no Omie…`
+          mensagem: faturamentoErro
+            ? `Movido para etapa ${etapa_destino}, mas Omie rejeitou faturamento: ${faturamentoErro}`
+            : `Movido para etapa ${etapa_destino} e faturamento solicitado. Aguardando SEFAZ…`
         });
       } catch (err) {
         resultados.push({

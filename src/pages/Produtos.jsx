@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Package, CheckCircle, XCircle, Upload, Tag, Barcode, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send, SearchCheck } from 'lucide-react';
+import { Package, Upload, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
-import BulkImportModal from '@/components/forms/BulkImportModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProdutoConsulta from '@/components/produtos/ProdutoConsulta';
 import ExportarProdutosOmieModal from '@/components/produtos/ExportarProdutosOmieModal';
-import ExportarFaltantesOmieModal from '@/components/produtos/ExportarFaltantesOmieModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Produtos() {
@@ -24,13 +21,9 @@ export default function Produtos() {
   const [isEditing, setIsEditing] = useState(false);
   
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [exportOmieOpen, setExportOmieOpen] = useState(false);
-  const [faltantesOmieOpen, setFaltantesOmieOpen] = useState(false);
-  const [modoProduto, setModoProduto] = useState('cadastro');
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '',
@@ -68,11 +61,6 @@ export default function Produtos() {
   const { data: unidadesProduto = [] } = useQuery({
     queryKey: ['unidadesProduto'],
     queryFn: () => base44.entities.UnidadeProduto.list()
-  });
-
-  const { data: produtos = [] } = useQuery({
-    queryKey: ['produtos'],
-    queryFn: () => base44.entities.Produto.list()
   });
 
   const createMutation = useMutation({
@@ -222,96 +210,6 @@ export default function Produtos() {
     }
   };
 
-  const handleBulkImport = async (data) => {
-    setIsImporting(true);
-    let atualizados = 0;
-    let criados = 0;
-    let erros = 0;
-
-    for (const item of data) {
-      try {
-        const cat = categorias.find(c => c.nome.toLowerCase() === (item.categoria_nome || '').toLowerCase());
-        const subCat = subCategorias.find(sc => sc.nome.toLowerCase() === (item.sub_categoria_nome || '').toLowerCase());
-        const unidade = unidadesMedida.find(u => u.nome.toLowerCase() === (item.unidade_medida_nome || '').toLowerCase());
-        const unidadeProd = unidadesProduto.find(u => u.nome.toLowerCase() === (item.unidade_produto_nome || '').toLowerCase());
-        
-        if (modoProduto === 'atualizacao') {
-          // Modo atualização - buscar produto existente por código
-          const produtoExistente = produtos.find(p => p.codigo === item.codigo);
-          
-          if (produtoExistente) {
-            const dadosAtualizacao = {};
-            
-            // Só atualiza campos que foram informados
-            if (item.nome) dadosAtualizacao.nome = item.nome;
-            if (item.cod_barras) dadosAtualizacao.cod_barras = item.cod_barras;
-            if (item.ncm) dadosAtualizacao.ncm = (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8);
-            if (item.cest) dadosAtualizacao.cest = (item.cest || '').replace(/[^\d]/g, '').substring(0, 7);
-            if (cat) dadosAtualizacao.categoria_id = cat.id;
-            if (subCat) dadosAtualizacao.sub_categoria_id = subCat.id;
-            if (unidade) dadosAtualizacao.unidade_medida_id = unidade.id;
-            if (unidadeProd) dadosAtualizacao.unidade_produto_id = unidadeProd.id;
-            if (item.peso) dadosAtualizacao.peso = parseFloat(item.peso) || 0;
-            if (item.status) dadosAtualizacao.status = item.status;
-            
-            await base44.entities.Produto.update(produtoExistente.id, dadosAtualizacao);
-            atualizados++;
-          } else {
-            erros++;
-          }
-        } else {
-          // Modo cadastro - criar novo produto
-          await base44.entities.Produto.create({
-            codigo: item.codigo,
-            nome: item.nome,
-            cod_barras: item.cod_barras,
-            ncm: (item.ncm || '').replace(/[^\d]/g, '').substring(0, 8),
-            cest: (item.cest || '').replace(/[^\d]/g, '').substring(0, 7),
-            categoria_id: cat ? cat.id : null,
-            sub_categoria_id: subCat ? subCat.id : null,
-            unidade_medida_id: unidade ? unidade.id : null,
-            unidade_produto_id: unidadeProd ? unidadeProd.id : null,
-            peso: parseFloat(item.peso) || 0,
-            status: item.status || 'ativo',
-            estoque_atual: 0
-          });
-          criados++;
-        }
-      } catch (err) {
-        erros++;
-      }
-    }
-
-    queryClient.invalidateQueries(['produtos']);
-    setIsImporting(false);
-    setBulkOpen(false);
-    
-    if (modoProduto === 'atualizacao') {
-      toast.success(`✅ ${atualizados} produtos atualizados${erros > 0 ? `, ${erros} não encontrados` : ''}`);
-    } else {
-      toast.success(`✅ ${criados} produtos criados com sucesso!`);
-    }
-  };
-
-  const bulkColumns = [
-    { key: 'codigo', label: 'Código', required: true },
-    { key: 'nome', label: 'Nome', required: true },
-    { key: 'cod_barras', label: 'Cód. Barras' },
-    { key: 'ncm', label: 'NCM (8 dígitos)' },
-    { key: 'cest', label: 'CEST (7 dígitos)' },
-    { key: 'categoria_nome', label: 'Nome da Categoria' },
-    { key: 'sub_categoria_nome', label: 'Nome da Subcategoria' },
-    { key: 'unidade_medida_nome', label: 'Nome da Unidade de Medida' },
-    { key: 'unidade_produto_nome', label: 'Nome da Unidade de Produto' },
-    { key: 'peso', label: 'Peso', type: 'number' },
-    { key: 'status', label: 'Status' }
-  ];
-
-  const bulkExampleData = [
-    { codigo: '001', nome: 'Produto Exemplo 1', cod_barras: '7891234567890', ncm: '19059090', cest: '1702100', categoria_nome: 'Bebidas', sub_categoria_nome: 'Refrigerantes', unidade_medida_nome: 'UN', unidade_produto_nome: 'FD', peso: '1.5', status: 'ativo' },
-    { codigo: '002', nome: 'Produto Exemplo 2', cod_barras: '7890987654321', ncm: '19059090', cest: '1702100', categoria_nome: 'Alimentos', sub_categoria_nome: 'Massas', unidade_medida_nome: 'KG', unidade_produto_nome: 'UN', peso: '0.5', status: 'ativo' }
-  ];
-
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -326,33 +224,15 @@ export default function Produtos() {
         </div>
         <div className="flex gap-2">
           {podeOmie && (
-            <>
-              <Button
-                onClick={() => setFaltantesOmieOpen(true)}
-                variant="outline"
-                className="border-green-200 text-green-700 hover:bg-green-50"
-              >
-                <SearchCheck className="w-4 h-4 mr-2" />
-                Faltantes Omie
-              </Button>
-              <Button
-                onClick={() => setExportOmieOpen(true)}
-                variant="outline"
-                className="border-blue-200 text-blue-700 hover:bg-blue-50"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Exportar Omie
-              </Button>
-            </>
+            <Button
+              onClick={() => setExportOmieOpen(true)}
+              variant="outline"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Sincronizar com Omie
+            </Button>
           )}
-          <Button
-            onClick={() => setBulkOpen(true)}
-            variant="outline"
-            className="border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Importar em Massa
-          </Button>
           <Button
             onClick={handleNew}
             className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
@@ -680,7 +560,6 @@ export default function Produtos() {
             onView={handleView}
             onEdit={handleEdit} 
             onDelete={handleDelete} 
-            onExportOmie={() => setExportOmieOpen(true)}
           />
         </TabsContent>
       </Tabs>
@@ -692,27 +571,9 @@ export default function Produtos() {
         isDeleting={deleteMutation.isPending}
       />
 
-      <BulkImportModal
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-        title="Importar Produtos em Massa"
-        description="Importe vários produtos de uma vez usando CSV ou colando dados do Excel"
-        columns={bulkColumns}
-        exampleData={bulkExampleData}
-        onImport={handleBulkImport}
-        isImporting={isImporting}
-        modoProduto={modoProduto}
-        onModoProdutoChange={setModoProduto}
-      />
-
       <ExportarProdutosOmieModal
         open={exportOmieOpen}
         onOpenChange={setExportOmieOpen}
-      />
-
-      <ExportarFaltantesOmieModal
-        open={faltantesOmieOpen}
-        onOpenChange={setFaltantesOmieOpen}
       />
 
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>

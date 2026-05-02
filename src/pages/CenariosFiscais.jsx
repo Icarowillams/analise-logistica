@@ -8,7 +8,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 import AbaNaturezasOmie from '@/components/cenariosFiscais/AbaNaturezasOmie';
 import AbaEtapasOmie from '@/components/cenariosFiscais/AbaEtapasOmie';
-import AbaCfopsLocais from '@/components/cenariosFiscais/AbaCfopsLocais';
 
 export default function CenariosFiscais() {
   const qc = useQueryClient();
@@ -61,7 +60,7 @@ export default function CenariosFiscais() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-neutral-900">Cenários Fiscais</h1>
-            <p className="text-sm text-neutral-500">Naturezas e etapas do Omie + CFOPs locais</p>
+            <p className="text-sm text-neutral-500">Espelho somente leitura do Omie — Naturezas e Etapas</p>
           </div>
         </div>
         <Button
@@ -71,7 +70,7 @@ export default function CenariosFiscais() {
           className="border-blue-300 text-blue-700 hover:bg-blue-50"
         >
           {sincronizando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          Sincronizar do Omie
+          Importar do Omie
         </Button>
       </div>
 
@@ -79,7 +78,6 @@ export default function CenariosFiscais() {
         <TabsList>
           <TabsTrigger value="naturezas">Naturezas Omie ({naturezas.length})</TabsTrigger>
           <TabsTrigger value="etapas">Etapas Omie ({etapas.length})</TabsTrigger>
-          <TabsTrigger value="cfops">CFOPs Locais</TabsTrigger>
         </TabsList>
 
         <TabsContent value="naturezas" className="mt-4">
@@ -88,10 +86,6 @@ export default function CenariosFiscais() {
 
         <TabsContent value="etapas" className="mt-4">
           <AbaEtapasOmie etapas={etapas} />
-        </TabsContent>
-
-        <TabsContent value="cfops" className="mt-4">
-          <AbaCfopsLocais naturezas={naturezas} />
         </TabsContent>
       </Tabs>
     </div>

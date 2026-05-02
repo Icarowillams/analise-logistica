@@ -1,11 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Users, CheckCircle, XCircle, Upload, List, Ban, Save, Send } from 'lucide-react';
+import { Users, CheckCircle, XCircle, List, Ban, Save, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
-import BulkImportModal from '@/components/forms/BulkImportModal';
 import ExportarVendedoresOmieModal from '@/components/funcionarios/ExportarVendedoresOmieModal';
 import FuncionariosConsulta from '@/components/funcionarios/FuncionariosConsulta';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
@@ -22,9 +21,7 @@ export default function Funcionarios() {
   const [isEditing, setIsEditing] = useState(false);
   
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [exportarOmieOpen, setExportarOmieOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [selected, setSelected] = useState(null);
   const [consultaFilters, setConsultaFilters] = useState({
     search: '', funcao: '', departamento_id: '', supervisor_id: '', status: ''
@@ -209,19 +206,6 @@ export default function Funcionarios() {
     }
   };
 
-  const handleBulkImport = async (data) => {
-    setIsImporting(true);
-    for (const item of data) {
-      await base44.entities.Vendedor.create({
-        ...item,
-        status: item.status || 'ativo'
-      });
-    }
-    queryClient.invalidateQueries(['vendedores']);
-    setIsImporting(false);
-    setBulkOpen(false);
-  };
-
   const getSupervisorNames = (item) => {
     const ids = item.supervisor_ids?.length > 0 ? item.supervisor_ids : (item.supervisor_id ? [item.supervisor_id] : []);
     if (ids.length === 0) return '-';
@@ -236,22 +220,6 @@ export default function Funcionarios() {
     const dept = departamentos.find(d => d.id === id);
     return dept ? dept.nome : '-';
   };
-
-  const bulkColumns = [
-    { key: 'nome', label: 'Nome', required: true },
-    { key: 'cpf', label: 'CPF' },
-    { key: 'email', label: 'Email', required: true },
-    { key: 'funcao', label: 'Função' },
-    { key: 'departamento_id', label: 'ID Departamento' },
-    { key: 'supervisor_id', label: 'ID Supervisor' },
-    { key: 'telefone', label: 'Telefone' },
-    { key: 'status', label: 'Status' }
-  ];
-
-  const bulkExampleData = [
-    { nome: 'João Silva', cpf: '123.456.789-00', email: 'joao@empresa.com', funcao: 'Vendedor', supervisor_id: '', status: 'ativo' },
-    { nome: 'Maria Santos', cpf: '987.654.321-00', email: 'maria@empresa.com', funcao: 'Gerente', supervisor_id: '', status: 'ativo' }
-  ];
 
   const columns = [
     { key: 'nome', label: 'Nome', sortable: true },
@@ -300,18 +268,10 @@ export default function Funcionarios() {
               variant="outline"
               className="border-blue-200 text-blue-700 hover:bg-blue-50"
             >
-              <Send className="w-4 h-4 mr-2" />
-              Exportar Omie
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Sincronizar com Omie
             </Button>
           )}
-          <Button
-            onClick={() => setBulkOpen(true)}
-            variant="outline"
-            className="border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Importar em Massa
-          </Button>
           <Button
             onClick={handleNew}
             className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
@@ -562,17 +522,6 @@ export default function Funcionarios() {
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate(selected?.id)}
         isDeleting={deleteMutation.isPending}
-      />
-
-      <BulkImportModal
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-        title="Importar Funcionários em Massa"
-        description="Importe vários funcionários de uma vez usando CSV ou colando dados do Excel"
-        columns={bulkColumns}
-        exampleData={bulkExampleData}
-        onImport={handleBulkImport}
-        isImporting={isImporting}
       />
 
       <ExportarVendedoresOmieModal
