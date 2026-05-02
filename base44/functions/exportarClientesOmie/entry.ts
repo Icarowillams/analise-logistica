@@ -90,8 +90,10 @@ function mapearClienteOmie(cliente) {
   ].filter(Boolean).join(' | ');
 
   const tags = Array.isArray(cliente.tags) ? cliente.tags.filter(Boolean).map(tag => ({ tag: texto(tag, 60) })) : [];
-  if (cliente.codigo || cliente.codigo_interno) tags.push({ tag: `COD:${texto(cliente.codigo || cliente.codigo_interno, 50)}` });
-  if (cliente.tipo_nota) tags.push({ tag: `TIPO_NOTA:${texto(cliente.tipo_nota, 20)}` });
+  const codigoCliente = cliente.codigo || cliente.codigo_interno || cliente.codigo_integracao;
+  const rotaCliente = cliente.rota_nome || cliente.rota || cliente.rota_id;
+  if (codigoCliente) tags.push({ tag: `CODIGO_CLIENTE:${texto(codigoCliente, 45)}` });
+  if (rotaCliente) tags.push({ tag: `ROTA:${texto(rotaCliente, 55)}` });
 
   const caracteristicas = [
     cliente.rota_id ? { campo: 'Rota ID', conteudo: texto(cliente.rota_id, 60) } : null,
