@@ -227,7 +227,17 @@ export default function Operacao() {
     });
   };
 
-  const cargasEntrega = cargas.filter(c => ['em_rota', 'entregue', 'finalizada'].includes(c.status_carga));
+  // Cargas montadas/fechadas/prontas — aguardando faturamento
+  const cargasParaFaturar = cargas.filter(c => ['montagem', 'fechada', 'conferindo', 'pronta'].includes(c.status_carga));
+  const cargasParaFaturarFiltradas = busca.trim()
+    ? cargasParaFaturar.filter(c =>
+        (c.motorista_nome || '').toLowerCase().includes(busca.toLowerCase()) ||
+        (c.numero_carga || '').includes(busca)
+      )
+    : cargasParaFaturar;
+
+  // Cargas em rota / entregues
+  const cargasEntrega = cargas.filter(c => ['em_rota', 'entregue', 'finalizada', 'faturada'].includes(c.status_carga));
   const cargasFiltradas = busca.trim()
     ? cargasEntrega.filter(c =>
         (c.motorista_nome || '').toLowerCase().includes(busca.toLowerCase()) ||
@@ -297,35 +307,40 @@ export default function Operacao() {
       {/* Kanban */}
       <div className="flex gap-3 overflow-x-auto pb-3">
         <KanbanColumn
-          titulo="Pedido de Venda"
+          titulo="1. Pedido de Venda"
           headerColor="amber"
-          badge="Em digitação no Omie"
+          badge="Aguardando liberação"
           count={filtrarOrdenar(queries['10'].data || []).length}
           valorTotal={valorColuna('10')}
           loading={queries['10'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '10')}
           footer={
-            <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white" onClick={() => navigate('/EmissaoPedidos')}>
-              <Plus className="w-4 h-4 mr-1" /> Novo Pedido
-            </Button>
+            <div className="space-y-2">
+              <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white" onClick={() => navigate('/EmissaoPedidos')}>
+                <Plus className="w-4 h-4 mr-1" /> Novo Pedido
+              </Button>
+              <Button variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => navigate('/GerenciarPedidosPage')}>
+                <ExternalLink className="w-4 h-4 mr-1" /> Liberar Pedidos
+              </Button>
+            </div>
           }
         >
           {renderCards('10')}
         </KanbanColumn>
 
         <KanbanColumn
-          titulo="Liberados"
+          titulo="2. Liberados"
           headerColor="blue"
-          badge="Aprovados pra faturar"
+          badge="Prontos pra carga"
           count={filtrarOrdenar(queries['20'].data || []).length}
           valorTotal={valorColuna('20')}
           loading={queries['20'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '20')}
           footer={
-            <Button variant="outline" className="w-full" onClick={() => navigate('/AjustesPedidos')}>
-              <ExternalLink className="w-4 h-4 mr-1" /> Ajustar pedidos
+            <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate('/MontagemCarga')}>
+              <FileBarChart className="w-4 h-4 mr-1" /> Montar Carga
             </Button>
           }
         >
@@ -333,25 +348,50 @@ export default function Operacao() {
         </KanbanColumn>
 
         <KanbanColumn
-          titulo="Faturar"
+          titulo="3. Em Carga"
           headerColor="orange"
-          badge="Prontos pra NF"
+          badge="Cargas aguardando faturar"
+          count={cargasParaFaturarFiltradas.length}
+          loading={loadingCargas}
+          footer={
+            <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white" onClick={() => navigate('/Cargas')}>
+              <Truck className="w-4 h-4 mr-1" /> Faturar Cargas
+            </Button>
+          }
+        >
+          {cargasParaFaturarFiltradas.map(c => (
+            <CardPedidoKanban
+              key={c.id}
+              pedido={{
+                numero_pedido: `Carga ${c.numero_carga || c.id.slice(-4)}`,
+                codigo_pedido: c.id,
+                cliente_nome: c.motorista_nome || 'Sem motorista',
+                cliente_cidade: `${c.quantidade_pedidos || 0} pedidos${c.veiculo_placa ? ` · ${c.veiculo_placa}` : ''}`,
+                valor_total_pedido: c.valor_total,
+                data_previsao: c.data_carga ? new Date(c.data_carga + 'T12:00:00').toLocaleDateString('pt-BR') : ''
+              }}
+              borderColor="#f97316"
+              origemLabel={`Status: ${c.status_carga}`}
+              onClick={() => navigate('/Cargas')}
+            />
+          ))}
+        </KanbanColumn>
+
+        <KanbanColumn
+          titulo="4. Faturar (NF)"
+          headerColor="amber"
+          badge="Pedidos prontos pra NF"
           count={filtrarOrdenar(queries['50'].data || []).length}
           valorTotal={valorColuna('50')}
           loading={queries['50'].isLoading}
           acceptDrop
           onDrop={(e) => onDrop(e, '50')}
-          footer={
-            <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white" onClick={() => navigate('/MontagemCarga')}>
-              <FileBarChart className="w-4 h-4 mr-1" /> Montar Carga
-            </Button>
-          }
         >
           {renderCards('50')}
         </KanbanColumn>
 
         <KanbanColumn
-          titulo="Faturado"
+          titulo="5. Faturado"
           headerColor="emerald"
           badge="NF emitida (90 dias)"
           count={filtrarOrdenar(queries['60'].data || []).length}
