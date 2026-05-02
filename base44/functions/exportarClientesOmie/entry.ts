@@ -89,14 +89,22 @@ function mapearClienteOmie(cliente) {
     cliente.motivo_bloqueio ? `Bloqueio: ${cliente.motivo_bloqueio}` : ''
   ].filter(Boolean).join(' | ');
 
-  const tags = Array.isArray(cliente.tags) ? cliente.tags.filter(Boolean).map(tag => ({ tag: texto(tag, 60) })) : [];
+  const tags = Array.isArray(cliente.tags)
+    ? cliente.tags
+        .filter(Boolean)
+        .filter(tag => {
+          const tagUpper = String(tag).toUpperCase();
+          return !tagUpper.startsWith('CODIGO_CLIENTE:') && !tagUpper.startsWith('ROTA:');
+        })
+        .map(tag => ({ tag: texto(tag, 60) }))
+    : [];
   const codigoCliente = cliente.codigo || cliente.codigo_interno || cliente.codigo_integracao;
   const rotaCliente = cliente.rota_nome || cliente.rota || cliente.rota_id;
-  if (codigoCliente) tags.push({ tag: `CODIGO_CLIENTE:${texto(codigoCliente, 45)}` });
-  if (rotaCliente) tags.push({ tag: `ROTA:${texto(rotaCliente, 55)}` });
   const tagsUnicas = Array.from(new Map(tags.filter(t => t.tag).map(t => [String(t.tag).toUpperCase(), t])).values());
 
   const caracteristicas = [
+    codigoCliente ? { campo: 'Código', conteudo: texto(codigoCliente, 60) } : null,
+    rotaCliente ? { campo: 'Rotas', conteudo: texto(rotaCliente, 60) } : null,
     cliente.rota_id ? { campo: 'Rota ID', conteudo: texto(cliente.rota_id, 60) } : null,
     cliente.vendedor_id ? { campo: 'Vendedor ID', conteudo: texto(cliente.vendedor_id, 60) } : null,
     cliente.supervisor_id ? { campo: 'Supervisor ID', conteudo: texto(cliente.supervisor_id, 60) } : null,
