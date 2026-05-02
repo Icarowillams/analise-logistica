@@ -155,7 +155,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const match = [
-          cliente.codigo,
+          cliente.codigo_interno,
+          cliente.codigo_integracao,
           cliente.razao_social,
           cliente.nome_fantasia,
           cliente.cnpj_cpf,
@@ -189,7 +190,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   }, [filteredClientes, selectedClienteId]);
 
   const previewFields = [
-    { label: 'Código', value: selectedCliente?.codigo || '-' },
+    { label: 'Código', value: selectedCliente?.codigo_interno || selectedCliente?.codigo_integracao || '-' },
     { label: 'Razão social', value: selectedCliente?.razao_social || '-' },
     { label: 'Nome fantasia', value: selectedCliente?.nome_fantasia || '-' },
     { label: 'CPF/CNPJ', value: selectedCliente?.cnpj_cpf || '-' },
@@ -210,7 +211,13 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   ];
 
   const columns = [
-    { key: 'codigo', label: 'Código', sortable: true, width: '100px' },
+    {
+      key: 'codigo_interno',
+      label: 'Código',
+      sortable: true,
+      width: '100px',
+      render: (val, row) => val || row.codigo_integracao || '-'
+    },
     {
       key: 'nome_fantasia',
       label: 'Nome Fantasia',
@@ -411,7 +418,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
                 <Input
-                  placeholder="Nome, CNPJ, Email, Telefone..."
+                  placeholder="Código, nome, CNPJ, endereço..."
                   value={filters.search}
                   onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                   className="pl-8"
