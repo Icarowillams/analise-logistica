@@ -214,8 +214,8 @@ Deno.serve(async (req) => {
         });
 
         // Envio em PARALELO com concorrência limitada (doc Omie: 4 simultâneas, 240 req/min)
-        // 3 simultâneas = conservador, abaixo do limite. fetchComRetry já tem backoff em 425/520.
-        const PARALELISMO = 3;
+        // 4 simultâneas no limite. fetchComRetry já tem backoff em 425/520.
+        const PARALELISMO = 4;
         const resultados = new Array(clientes_data.length);
         let cursor = 0;
 

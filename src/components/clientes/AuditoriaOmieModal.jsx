@@ -213,31 +213,48 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
       return;
     }
 
-    const LOTE = 60;
+    const LOTE = 50;
+    const LOTES_PARALELOS = 4; // 4 lotes simultâneos no frontend
     let totalOk = 0, totalErro = 0;
+    let processados = 0;
     const erros = [];
 
+    // Monta todos os lotes
+    const lotes = [];
     for (let i = 0; i < completos.length; i += LOTE) {
-      const batch = completos.slice(i, i + LOTE);
-      const loteNum = Math.floor(i / LOTE) + 1;
-      const totalLotes = Math.ceil(completos.length / LOTE);
-      setProgressoExport({ atual: i, total: completos.length, lote: loteNum, totalLotes });
-
-      try {
-        const res = await base44.functions.invoke('exportarClientesOmie', {
-          clientes_data: batch,
-          modo: 'upsert',
-        });
-        const r = res.data?.resumo;
-        if (r) { totalOk += r.sucessos || 0; totalErro += r.erros || 0; }
-        (res.data?.resultados || []).filter(x => !x.sucesso).forEach(x => {
-          erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
-        });
-      } catch (e) {
-        totalErro += batch.length;
-        batch.forEach(c => erros.push({ razao_social: c.razao_social, mensagem: e.message }));
-      }
+      lotes.push(completos.slice(i, i + LOTE));
     }
+    const totalLotes = lotes.length;
+
+    setProgressoExport({ atual: 0, total: completos.length, lote: 0, totalLotes });
+
+    // Worker que processa lotes da fila
+    let cursor = 0;
+    const worker = async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= lotes.length) break;
+        const batch = lotes[idx];
+        try {
+          const res = await base44.functions.invoke('exportarClientesOmie', {
+            clientes_data: batch,
+            modo: 'upsert',
+          });
+          const r = res.data?.resumo;
+          if (r) { totalOk += r.sucessos || 0; totalErro += r.erros || 0; }
+          (res.data?.resultados || []).filter(x => !x.sucesso).forEach(x => {
+            erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
+          });
+        } catch (e) {
+          totalErro += batch.length;
+          batch.forEach(c => erros.push({ razao_social: c.razao_social, mensagem: e.message }));
+        }
+        processados += batch.length;
+        setProgressoExport({ atual: processados, total: completos.length, lote: idx + 1, totalLotes });
+      }
+    };
+
+    await Promise.all(Array.from({ length: LOTES_PARALELOS }, () => worker()));
 
     setProgressoExport(null);
     setExportando(false);
