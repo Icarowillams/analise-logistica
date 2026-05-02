@@ -39,7 +39,26 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         setProgresso(data);
 
         if (data.status === 'concluido') {
-          // Backend agora envia campos curtos pra caber no limite do campo. Re-expandir aqui.
+          // Backend pode enviar a lista direto OU um placeholder { __url, count } apontando pra um arquivo.
+          // Resolve isso baixando o arquivo se necessário.
+          const resolverLista = async (raw) => {
+            if (!raw) return [];
+            if (Array.isArray(raw)) return raw;
+            if (raw && typeof raw === 'object' && raw.__url) {
+              try {
+                const r = await fetch(raw.__url);
+                return await r.json();
+              } catch (e) {
+                console.error('Erro ao baixar lista:', e.message);
+                return [];
+              }
+            }
+            return [];
+          };
+          const rawB44 = await resolverLista(data.lista_so_base44);
+          const rawOmie = await resolverLista(data.lista_so_omie);
+
+          // Backend envia campos curtos pra caber no limite do campo. Re-expandir aqui.
           const expandirB44 = (c) => ({
             id: c.id,
             codigo: c.c ?? c.codigo,
@@ -59,8 +78,8 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
             cnpj_cpf: c.d ?? c.cnpj_cpf,
             inativo: c.in ?? c.inativo,
           });
-          const listaB44 = (data.lista_so_base44 || []).map(expandirB44);
-          const listaOmie = (data.lista_so_omie || []).map(expandirOmie);
+          const listaB44 = (rawB44 || []).map(expandirB44);
+          const listaOmie = (rawOmie || []).map(expandirOmie);
           setResultado({
             total_base44: data.total_base44,
             total_omie: data.total_omie_obtidos,

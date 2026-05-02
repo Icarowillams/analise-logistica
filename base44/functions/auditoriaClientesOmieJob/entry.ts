@@ -254,29 +254,34 @@ async function processar(base44, jobId) {
   }
 
   // ===== 5. Salvar resultado =====
-  // CRÍTICO: o campo da entidade tem limite de ~60KB. Truncar agressivamente.
-  const MAX_JSON_BYTES = 50000; // 50KB de margem segura
-  const listaB44Truncada = [...soNoBase44];
-  const listaOmieTruncada = [...soNoOmie];
+  // Sobe as listas como arquivo (UploadFile) e salva só a URL no campo,
+  // pra não estourar o limite de tamanho do campo (independente do volume).
+  const subirLista = async (lista, nome) => {
+    if (!lista || lista.length === 0) return '[]';
+    try {
+      const json = JSON.stringify(lista);
+      const blob = new Blob([json], { type: 'application/json' });
+      const file = new File([blob], `${nome}_${Date.now()}.json`, { type: 'application/json' });
+      const res = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+      const url = res?.file_url || res?.data?.file_url;
+      if (!url) throw new Error('Upload sem URL');
+      return JSON.stringify({ __url: url, count: lista.length });
+    } catch (e) {
+      console.error(`[upload ${nome}] ${e.message}`);
+      // Fallback: tenta cortar pra caber no campo
+      const truncada = lista.slice(0, 100);
+      return JSON.stringify(truncada);
+    }
+  };
 
-  let jsonB44 = JSON.stringify(listaB44Truncada);
-  let jsonOmie = JSON.stringify(listaOmieTruncada);
-
-  // Reduzir até caber no limite do campo
-  while (jsonB44.length > MAX_JSON_BYTES && listaB44Truncada.length > 1) {
-    listaB44Truncada.splice(Math.floor(listaB44Truncada.length * 0.8));
-    jsonB44 = JSON.stringify(listaB44Truncada);
-  }
-  while (jsonOmie.length > MAX_JSON_BYTES && listaOmieTruncada.length > 1) {
-    listaOmieTruncada.splice(Math.floor(listaOmieTruncada.length * 0.8));
-    jsonOmie = JSON.stringify(listaOmieTruncada);
-  }
+  const [jsonB44, jsonOmie] = await Promise.all([
+    subirLista(soNoBase44, 'audit_b44'),
+    subirLista(soNoOmie, 'audit_omie'),
+  ]);
 
   await update({
     status: 'concluido',
-    etapa_descricao: soNoBase44.length > listaB44Truncada.length
-      ? `Auditoria concluída (mostrando ${listaB44Truncada.length} de ${soNoBase44.length} faltantes)`
-      : 'Auditoria concluída',
+    etapa_descricao: 'Auditoria concluída',
     iguais,
     diferentes: diferentes.length,
     so_no_base44: soNoBase44.length,
