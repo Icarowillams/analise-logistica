@@ -199,16 +199,31 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     setResultadoExport(null);
 
     const ids = Array.from(selecionados);
+    setProgressoExport({ atual: 0, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
+
+    // Carrega clientes em paralelo (10 simultâneos) — bem mais rápido que sequencial
     const completos = [];
-    for (const id of ids) {
-      try {
-        const c = await base44.entities.Cliente.get(id);
-        if (c) completos.push(c);
-      } catch (_) {}
-    }
+    let cursorLoad = 0;
+    let loaded = 0;
+    const loadWorker = async () => {
+      while (true) {
+        const i = cursorLoad++;
+        if (i >= ids.length) break;
+        try {
+          const c = await base44.entities.Cliente.get(ids[i]);
+          if (c) completos.push(c);
+        } catch (_) {}
+        loaded++;
+        if (loaded % 25 === 0 || loaded === ids.length) {
+          setProgressoExport({ atual: loaded, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 10 }, () => loadWorker()));
 
     if (completos.length === 0) {
       setExportando(false);
+      setProgressoExport(null);
       toast.error('Não foi possível carregar dados dos clientes');
       return;
     }
@@ -519,7 +534,9 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                       <div className="flex items-center gap-2 mb-2">
                         <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
                         <p className="font-medium text-amber-900">
-                          Lote {progressoExport.lote}/{progressoExport.totalLotes} — {progressoExport.atual} de {progressoExport.total} processados
+                          {progressoExport.fase === 'carregando'
+                            ? `Carregando dados: ${progressoExport.atual}/${progressoExport.total}`
+                            : `Lote ${progressoExport.lote}/${progressoExport.totalLotes} — ${progressoExport.atual} de ${progressoExport.total} enviados ao Omie`}
                         </p>
                       </div>
                       <div className="w-full bg-amber-200 rounded-full h-2">
