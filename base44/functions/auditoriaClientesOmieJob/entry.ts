@@ -185,8 +185,9 @@ async function processar(base44, jobId) {
     if (doc) omiePorCpfCnpj[doc] = c;
   });
 
+  const obterCodigoBase44 = (c) => c.codigo || c.codigo_interno || c.codigo_integracao || '';
   const base44Ids = new Set(clientesBase44.map(c => c.id));
-  const base44Codigos = new Set(clientesBase44.map(c => c.codigo).filter(Boolean));
+  const base44Codigos = new Set(clientesBase44.map(c => obterCodigoBase44(c)).filter(Boolean));
   const base44CpfCnpjSet = new Set(
     clientesBase44.map(c => (c.cnpj_cpf || '').replace(/\D/g, '')).filter(Boolean)
   );
@@ -197,13 +198,14 @@ async function processar(base44, jobId) {
 
   for (const cb of clientesBase44) {
     const docBase = (cb.cnpj_cpf || '').replace(/\D/g, '');
-    const co = (cb.codigo && omiePorId[cb.codigo]) || omiePorId[cb.id] || omiePorCpfCnpj[docBase];
+    const codigoBase = obterCodigoBase44(cb);
+    const co = (codigoBase && omiePorId[codigoBase]) || omiePorId[cb.id] || omiePorCpfCnpj[docBase];
 
     if (!co) {
       // Campos enxutos pra caber mais clientes no campo limitado
       soNoBase44.push({
         id: cb.id,
-        c: cb.codigo || '',
+        c: codigoBase || '',
         r: (cb.razao_social || '').substring(0, 60),
         f: (cb.nome_fantasia || '').substring(0, 40),
         d: cb.cnpj_cpf || '',

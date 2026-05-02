@@ -74,7 +74,8 @@ function limparVazios(obj) {
   return obj;
 }
 
-function mapearClienteOmie(cliente) {
+function mapearClienteOmie(clienteOriginal) {
+  const cliente = { ...(clienteOriginal.data || {}), ...clienteOriginal, id: clienteOriginal.id };
   const doc = somenteDigitos(cliente.cnpj_cpf || cliente.cpf_cnpj);
   const isPF = doc.length === 11;
   const tel1 = telefonePartes(cliente.telefone || cliente.whatsapp);
@@ -264,7 +265,7 @@ Deno.serve(async (req) => {
       }
       const payload = mapearClienteOmie(cliente);
       validos.push(payload);
-      clientePorCodigo.set(payload.codigo_cliente_integracao, cliente);
+      clientePorCodigo.set(payload.codigo_cliente_integracao, { ...(cliente.data || {}), ...cliente, id: cliente.id });
     }
 
     for (let i = 0; i < validos.length; i += TAMANHO_LOTE_OMIE) {
