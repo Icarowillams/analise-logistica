@@ -254,22 +254,61 @@ async function processar(base44, jobId) {
   }
 
   // ===== 5. Salvar resultado =====
-  // Limite real do campo é ~50KB. Trunca agressivamente garantindo que SEMPRE caiba.
-  const MAX_BYTES = 40000; // margem segura
-  const truncarPraCaber = (lista) => {
-    if (!lista || lista.length === 0) return '[]';
-    let arr = [...lista];
-    let json = JSON.stringify(arr);
-    // Reduz pela metade até caber
-    while (json.length > MAX_BYTES && arr.length > 1) {
-      arr = arr.slice(0, Math.floor(arr.length / 2));
-      json = JSON.stringify(arr);
-    }
-    return json;
-  };
+  // Salva TODOS os faltantes em uma entidade dedicada (em lotes via bulkCreate),
+  // sem qualquer truncamento. O campo do job só guarda um marcador apontando pra entidade.
 
-  const jsonB44 = truncarPraCaber(soNoBase44);
-  const jsonOmie = truncarPraCaber(soNoOmie);
+  // Limpa registros antigos do mesmo job (caso seja reexecução)
+  try {
+    const antigos = await base44.asServiceRole.entities.AuditoriaClienteFaltante.filter({ job_id: jobId });
+    for (const a of antigos) {
+      await base44.asServiceRole.entities.AuditoriaClienteFaltante.delete(a.id);
+    }
+  } catch (_) {}
+
+  const registrosB44 = soNoBase44.map(c => ({
+    job_id: jobId,
+    lado: 'base44',
+    cliente_id: c.id || '',
+    codigo: c.c || '',
+    razao_social: c.r || '',
+    nome_fantasia: c.f || '',
+    cnpj_cpf: c.d || '',
+    cidade: c.ci || '',
+    estado: c.uf || '',
+    status: c.s || '',
+    tipo_nota: c.tn || '',
+  }));
+  const registrosOmie = soNoOmie.map(c => ({
+    job_id: jobId,
+    lado: 'omie',
+    codigo_omie: String(c.co || ''),
+    codigo_integracao: c.ci || '',
+    razao_social: c.r || '',
+    nome_fantasia: c.f || '',
+    cnpj_cpf: c.d || '',
+    inativo: c.in || 'N',
+  }));
+
+  // Insere em lotes de 100
+  const inserirLotes = async (registros) => {
+    for (let i = 0; i < registros.length; i += 100) {
+      const lote = registros.slice(i, i + 100);
+      try {
+        await base44.asServiceRole.entities.AuditoriaClienteFaltante.bulkCreate(lote);
+      } catch (e) {
+        // Fallback unitário
+        for (const r of lote) {
+          try { await base44.asServiceRole.entities.AuditoriaClienteFaltante.create(r); } catch (_) {}
+        }
+      }
+    }
+  };
+  await inserirLotes(registrosB44);
+  await inserirLotes(registrosOmie);
+
+  // Marcadores no job: indicam que a lista está na entidade dedicada
+  const jsonB44 = JSON.stringify({ __entity: 'AuditoriaClienteFaltante', job_id: jobId, lado: 'base44', count: soNoBase44.length });
+  const jsonOmie = JSON.stringify({ __entity: 'AuditoriaClienteFaltante', job_id: jobId, lado: 'omie', count: soNoOmie.length });
 
   await update({
     status: 'concluido',

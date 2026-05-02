@@ -1,0 +1,59 @@
+{
+  "name": "AuditoriaClienteFaltante",
+  "type": "object",
+  "description": "Cliente faltante no Omie detectado por uma execu\u00e7\u00e3o de auditoria. Permite listar volumes grandes sem estourar limite de campo.",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "ID do JobAuditoriaOmie a que pertence"
+    },
+    "lado": {
+      "type": "string",
+      "enum": [
+        "base44",
+        "omie"
+      ],
+      "description": "base44 = falta no Omie, omie = falta no Base44"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "codigo": {
+      "type": "string"
+    },
+    "codigo_omie": {
+      "type": "string"
+    },
+    "codigo_integracao": {
+      "type": "string"
+    },
+    "razao_social": {
+      "type": "string"
+    },
+    "nome_fantasia": {
+      "type": "string"
+    },
+    "cnpj_cpf": {
+      "type": "string"
+    },
+    "cidade": {
+      "type": "string"
+    },
+    "estado": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "tipo_nota": {
+      "type": "string"
+    },
+    "inativo": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "lado"
+  ]
+}

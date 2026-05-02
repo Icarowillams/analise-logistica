@@ -39,24 +39,52 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         setProgresso(data);
 
         if (data.status === 'concluido') {
-          // Backend pode enviar a lista direto OU um placeholder { __url, count } apontando pra um arquivo.
-          // Resolve isso baixando o arquivo se necessário.
-          const resolverLista = async (raw) => {
+          // Backend pode enviar a lista direto OU um placeholder apontando pra entidade/URL.
+          const carregarTodosDaEntidade = async (lado) => {
+            const todos = [];
+            const PAGE = 500;
+            let skip = 0;
+            while (true) {
+              const lote = await base44.entities.AuditoriaClienteFaltante.filter(
+                { job_id: data.job_id || jobId, lado },
+                '-created_date',
+                PAGE,
+                skip
+              );
+              const arr = Array.isArray(lote) ? lote : [];
+              todos.push(...arr);
+              if (arr.length < PAGE) break;
+              skip += PAGE;
+            }
+            // Mapear pro formato curto que o expandir* espera
+            if (lado === 'base44') {
+              return todos.map(t => ({
+                id: t.cliente_id, c: t.codigo, r: t.razao_social, f: t.nome_fantasia,
+                d: t.cnpj_cpf, ci: t.cidade, uf: t.estado, s: t.status, tn: t.tipo_nota,
+              }));
+            }
+            return todos.map(t => ({
+              co: t.codigo_omie, ci: t.codigo_integracao, r: t.razao_social,
+              f: t.nome_fantasia, d: t.cnpj_cpf, in: t.inativo,
+            }));
+          };
+
+          const resolverLista = async (raw, lado) => {
             if (!raw) return [];
             if (Array.isArray(raw)) return raw;
-            if (raw && typeof raw === 'object' && raw.__url) {
-              try {
-                const r = await fetch(raw.__url);
-                return await r.json();
-              } catch (e) {
-                console.error('Erro ao baixar lista:', e.message);
-                return [];
+            if (raw && typeof raw === 'object') {
+              if (raw.__entity === 'AuditoriaClienteFaltante') {
+                return await carregarTodosDaEntidade(lado);
+              }
+              if (raw.__url) {
+                try { const r = await fetch(raw.__url); return await r.json(); }
+                catch (e) { console.error('Erro ao baixar lista:', e.message); return []; }
               }
             }
             return [];
           };
-          const rawB44 = await resolverLista(data.lista_so_base44);
-          const rawOmie = await resolverLista(data.lista_so_omie);
+          const rawB44 = await resolverLista(data.lista_so_base44, 'base44');
+          const rawOmie = await resolverLista(data.lista_so_omie, 'omie');
 
           // Backend envia campos curtos pra caber no limite do campo. Re-expandir aqui.
           const expandirB44 = (c) => ({
