@@ -28,14 +28,35 @@ function parseCoord(val) {
   return num;
 }
 
+function cleanCell(value) {
+  const v = String(value || '').trim().replace(/^\uFEFF/, '');
+  if (v.startsWith('"') && v.endsWith('"')) {
+    return v.slice(1, -1).replace(/""/g, '"').trim();
+  }
+  return v;
+}
+
 function parseLine(line) {
   const parts = [];
   let cur = '';
-  for (const ch of line) {
-    if (ch === ';') { parts.push(cur); cur = ''; }
-    else cur += ch;
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ';' && !inQuotes) {
+      parts.push(cleanCell(cur));
+      cur = '';
+    } else {
+      cur += ch;
+    }
   }
-  parts.push(cur);
+  parts.push(cleanCell(cur));
   return parts;
 }
 
@@ -96,9 +117,8 @@ Deno.serve(async (req) => {
 
       const [
         codigo, razao_social, fantasia, cpf_cnpj, ie,
-        endereco, bairro, numero, cep, cidade, uf,
-        lat, lng, cobranca, plano_pag, vendedor,
-        tabela, rota, status, segmento, rede
+        plano_pag, tabela, segmento, rede, vendedor, rota,
+        endereco, numero, bairro, cidade, uf, cep, lat, lng, status
       ] = p;
 
       if (!razao_social || razao_social.trim() === '') continue;
@@ -107,6 +127,7 @@ Deno.serve(async (req) => {
 
       records.push({
         codigo_interno: (codigo || '').trim() || undefined,
+        codigo_integracao: (codigo || '').trim() || undefined,
         razao_social: (razao_social || '').trim(),
         nome_fantasia: (fantasia || '').trim() || undefined,
         cnpj_cpf: cnpj_cpf || undefined,
@@ -126,9 +147,11 @@ Deno.serve(async (req) => {
         segmento_id: findId(segmentos, segmento) || undefined,
         tabela_id: findId(tabelas, tabela) || undefined,
         rede_id: findId(redes, rede) || undefined,
-        // Dados de pagamento/cobrança em observações
+        tags: [
+          codigo ? `CODIGO_CLIENTE:${codigo.trim()}` : '',
+          rota ? `ROTA:${rota.trim()}` : '',
+        ].filter(Boolean),
         observacoes: [
-          cobranca ? `Cobrança: ${(cobranca||'').trim()}` : '',
           plano_pag ? `Plano: ${(plano_pag||'').trim()}` : '',
         ].filter(Boolean).join(' | ') || undefined,
       });

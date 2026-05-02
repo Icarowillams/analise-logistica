@@ -94,6 +94,7 @@ function mapearClienteOmie(cliente) {
   const rotaCliente = cliente.rota_nome || cliente.rota || cliente.rota_id;
   if (codigoCliente) tags.push({ tag: `CODIGO_CLIENTE:${texto(codigoCliente, 45)}` });
   if (rotaCliente) tags.push({ tag: `ROTA:${texto(rotaCliente, 55)}` });
+  const tagsUnicas = Array.from(new Map(tags.filter(t => t.tag).map(t => [String(t.tag).toUpperCase(), t])).values());
 
   const caracteristicas = [
     cliente.rota_id ? { campo: 'Rota ID', conteudo: texto(cliente.rota_id, 60) } : null,
@@ -132,7 +133,7 @@ function mapearClienteOmie(cliente) {
     inativo: cliente.status === 'inativo' ? 'S' : 'N',
     bloquear_faturamento: cliente.bloquear_faturamento ? 'S' : 'N',
     observacao: texto(observacoes, 500),
-    tags,
+    tags: tagsUnicas,
     caracteristicas
   });
 }
