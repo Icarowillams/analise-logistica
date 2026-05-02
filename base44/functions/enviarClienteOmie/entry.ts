@@ -130,14 +130,22 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
     // PJ SEM IE / isenta: contribuinte="N", IE = "ISENTO"
     const ieRaw = String(clienteData.inscricao_estadual || '').trim();
     const ieDigitos = ieRaw.replace(/\D/g, '');
-    const ieIsenta = !ieDigitos || /^isent/i.test(ieRaw);
+    // IE é considerada inválida (= ISENTO) se:
+    //  - vazia
+    //  - texto "isento" (qualquer variação)
+    //  - menos de 2 dígitos
+    //  - todos dígitos iguais (000000000, 111111111, etc.)
+    const ieLixo = !ieDigitos
+        || /^isent/i.test(ieRaw)
+        || ieDigitos.length < 2
+        || /^(\d)\1+$/.test(ieDigitos);
 
     let contribuinte;
     let inscricaoEstadualEnvio;
     if (isPessoaFisica) {
         contribuinte = "N";
         inscricaoEstadualEnvio = "";
-    } else if (ieIsenta) {
+    } else if (ieLixo) {
         contribuinte = "N";
         inscricaoEstadualEnvio = "ISENTO";
     } else {
