@@ -98,7 +98,7 @@ export default function Clientes() {
   const ultimoCodigo = useMemo(() => {
     let maior = 0;
     todosClientes.forEach(c => {
-      const num = parseInt(String(c.codigo || '').replace(/\D/g, ''), 10);
+      const num = parseInt(String(c.codigo_interno || c.codigo_integracao || '').replace(/\D/g, ''), 10);
       if (!isNaN(num) && num > maior) maior = num;
     });
     return maior > 0 ? String(maior) : '—';
@@ -158,7 +158,7 @@ export default function Clientes() {
     try {
       // Buscar logs pendentes com o código deste cliente
       const logs = await base44.entities.LogClienteNaoCadastrado.filter({ 
-        codigo_cliente: cliente.codigo,
+        codigo_cliente: cliente.codigo_interno || cliente.codigo_integracao,
         status: 'pendente' 
       });
 
@@ -196,7 +196,7 @@ export default function Clientes() {
                 {
                   cliente_id: cliente.id,
                   cliente_nome: cliente.razao_social || cliente.nome_fantasia,
-                  cliente_codigo: cliente.codigo,
+                  cliente_codigo: cliente.codigo_interno || cliente.codigo_integracao,
                   cliente_cidade: cliente.cidade,
                   ordem: novosClientesIds.length
                 }
@@ -218,7 +218,7 @@ export default function Clientes() {
               clientes_detalhes: [{
                 cliente_id: cliente.id,
                 cliente_nome: cliente.razao_social || cliente.nome_fantasia,
-                cliente_codigo: cliente.codigo,
+                cliente_codigo: cliente.codigo_interno || cliente.codigo_integracao,
                 cliente_cidade: cliente.cidade,
                 ordem: 1
               }],
@@ -251,7 +251,7 @@ export default function Clientes() {
       const todasTrocas = await base44.entities.Troca.list('-data', 5000);
       const trocasParaAtualizar = todasTrocas.filter(t => 
         (!t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado')) &&
-        t.cliente_nome?.includes(`Cliente Não Cadastrado: ${cliente.codigo}`)
+        t.cliente_nome?.includes(`Cliente Não Cadastrado: ${cliente.codigo_interno || cliente.codigo_integracao}`)
       );
 
       if (trocasParaAtualizar.length > 0) {
@@ -301,7 +301,7 @@ export default function Clientes() {
   const handleEdit = (item) => {
     setSelected(item);
     setFormData({
-      codigo: item.codigo || '',
+      codigo: item.codigo_interno || item.codigo_integracao || '',
       razao_social: item.razao_social || '',
       nome_fantasia: item.nome_fantasia || '',
       cpf_cnpj: item.cnpj_cpf || '',
@@ -373,7 +373,7 @@ export default function Clientes() {
     }
 
     // Normalizar dados para formato Omie
-    let dataToSave = { ...formData, codigo: formData.codigo };
+    let dataToSave = { ...formData };
 
     // Remover aspas de todos os campos texto
     const removeQuotes = (val) => {
@@ -445,9 +445,12 @@ export default function Clientes() {
       }
     }
     
-    // Código: apenas trim, mantém o que o usuário digitou (não impede duplicatas)
+    // Código: salvar nos campos reais da entidade
     if (dataToSave.codigo) {
-      dataToSave.codigo = String(dataToSave.codigo).trim();
+      const codigoCliente = String(dataToSave.codigo).trim();
+      dataToSave.codigo_interno = codigoCliente;
+      dataToSave.codigo_integracao = codigoCliente;
+      delete dataToSave.codigo;
     }
 
     // Se era pré-cadastro e está sendo ativado, limpar flag
@@ -508,8 +511,8 @@ export default function Clientes() {
     // Normalizar códigos (trim e lowercase) para garantir comparação correta
     const existingClientsMap = {};
     existingClients.forEach(c => {
-      const key = String(c.codigo || '').trim().toLowerCase();
-      existingClientsMap[key] = c;
+      const key = String(c.codigo_interno || c.codigo_integracao || '').trim().toLowerCase();
+      if (key) existingClientsMap[key] = c;
     });
     
     const findId = (list, name) => {
@@ -597,8 +600,17 @@ export default function Clientes() {
         .toUpperCase()
         .substring(0, 2);
 
+      const codigoCliente = String(item.codigo || item.codigo_interno || item.codigo_integracao || '').trim();
+      const rotaNome = String(item.rota || '').trim();
+
       const clienteData = {
         ...item,
+        codigo_interno: codigoCliente || undefined,
+        codigo_integracao: codigoCliente || undefined,
+        tags: [
+          codigoCliente ? `CODIGO_CLIENTE:${codigoCliente}` : '',
+          rotaNome ? `ROTA:${rotaNome}` : '',
+        ].filter(Boolean),
         latitude: lat,
         longitude: lng,
         cep: cepLimpo,
@@ -625,6 +637,7 @@ export default function Clientes() {
       delete clienteData.rede;
       delete clienteData.vendedor;
       delete clienteData.rota;
+      delete clienteData.codigo;
 
       return clienteData;
     });
@@ -636,7 +649,7 @@ export default function Clientes() {
 
     for (const clienteData of clientesData) {
       // Normalizar código para comparação
-      const codigoNormalizado = String(clienteData.codigo || '').trim().toLowerCase();
+      const codigoNormalizado = String(clienteData.codigo_interno || clienteData.codigo_integracao || '').trim().toLowerCase();
       const existingClient = existingClientsMap[codigoNormalizado];
       
       if (modoImportacao === 'atualizacao') {
@@ -666,7 +679,7 @@ export default function Clientes() {
       console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
       // Log primeiros 3 registros para debug
       clientesData.slice(0, 3).forEach((c, i) => {
-        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
+        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo_interno || c.codigo_integracao}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
       });
     }
     if (toUpdate.length > 0) {
@@ -886,7 +899,7 @@ export default function Clientes() {
     };
 
     const rows = clientes.map(c => [
-      c.codigo || '',
+      c.codigo_interno || c.codigo_integracao || '',
       c.razao_social || '',
       c.nome_fantasia || '',
       c.cpf_cnpj || '',
