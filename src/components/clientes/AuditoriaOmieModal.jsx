@@ -214,7 +214,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     }
 
     const LOTE = 50;
-    const LOTES_PARALELOS = 4; // 4 lotes simultâneos no frontend
+    const LOTES_PARALELOS = 2; // 2 lotes × 4 paralelismo backend = 8 simultâneas (limite Omie)
     let totalOk = 0, totalErro = 0;
     let processados = 0;
     const erros = [];

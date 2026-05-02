@@ -119,14 +119,12 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
 
     let resultado = await chamarOmie(clienteOmie, metodo);
 
-    // Retry em caso de rate limit / bloqueio do Omie
+    // Retry em caso de rate limit / bloqueio do Omie (máx 2 tentativas, espera curta)
     const fault = (resultado.faultstring || '').toLowerCase();
     const isBloqueio = fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again') || fault.includes('consumo indevido') || fault.includes('bloqueada');
-    if (fault && isBloqueio && tentativa < 5) {
-        // Tentar extrair tempo de espera da mensagem (ex: "68 segundos")
-        const matchSegundos = (resultado.faultstring || '').match(/(\d+)\s*segundo/i);
-        const waitSec = matchSegundos ? parseInt(matchSegundos[1]) + 5 : 15 * Math.pow(2, tentativa);
-        console.log(`[exportarClientesOmie] Bloqueio detectado, aguardando ${waitSec}s antes do retry ${tentativa + 1}/5...`);
+    if (fault && isBloqueio && tentativa < 2) {
+        const waitSec = 5 * (tentativa + 1); // 5s, 10s
+        console.log(`[exportarClientesOmie] Bloqueio, retry ${tentativa + 1}/2 em ${waitSec}s`);
         await delay(waitSec * 1000);
         return fetchComRetry(cliente, modo, tentativa + 1);
     }
