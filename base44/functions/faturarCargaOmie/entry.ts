@@ -125,14 +125,18 @@ Deno.serve(async (req) => {
 
           if (nfEmitida) {
             r.mensagem = `NF ${numeroNf} emitida no Omie.`;
+          } else if (String(etapaAtual) === '60') {
+            // Etapa 60 significa que o faturamento foi aceito/processado no Omie.
+            // A NF pode aparecer alguns minutos depois; isso NÃO é erro da carga.
+            r.sucesso = true;
+            r.mensagem = 'Pedido faturado no Omie (etapa 60). NF ainda aguardando processamento/retorno da SEFAZ.';
           } else {
-            // NF não emitida → busca motivo real no StatusPedido do Omie
+            // Só trata como erro quando o pedido NÃO chegou na etapa de faturado.
             let motivoOmie = null;
             try {
               const status = await omieCall('StatusPedido', {
                 codigo_pedido: Number(r.codigo_pedido)
               });
-              // StatusPedido retorna lista de pendências/erros
               const pendencias = status?.pendencias || status?.lista_pendencias || [];
               const pendenciasArr = Array.isArray(pendencias) ? pendencias : (pendencias?.pendencia || []);
               if (pendenciasArr.length > 0) {
@@ -141,7 +145,6 @@ Deno.serve(async (req) => {
                   .filter(Boolean)
                   .join(' | ');
               }
-              // Alguns retornos trazem também cStatus / cDescStatus
               if (!motivoOmie && status?.cDescStatus) {
                 motivoOmie = status.cDescStatus;
               }
@@ -150,7 +153,7 @@ Deno.serve(async (req) => {
             }
 
             r.motivo_omie = motivoOmie;
-            r.sucesso = false; // reclassifica como erro para aparecer no toast vermelho
+            r.sucesso = false;
             r.mensagem = motivoOmie
               ? `NF NÃO emitida — Omie: ${motivoOmie}`
               : `Pedido na etapa ${etapaAtual || '?'}. NF ainda não emitida — verifique pendências no Omie.`;

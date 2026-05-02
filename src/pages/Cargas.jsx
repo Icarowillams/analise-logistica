@@ -65,8 +65,8 @@ export default function Cargas() {
             }
           );
         } else if (aguardando > 0 && nfsEmitidas === 0) {
-          toast.warning(`Carga movida para Faturar — ${aguardando} NF(s) aguardando SEFAZ`, {
-            description: 'Nenhuma NF foi emitida ainda. Atualize em alguns minutos para ver o resultado.',
+          toast.success(`Carga faturada no Omie — ${aguardando} NF(s) aguardando SEFAZ`, {
+            description: 'O pedido já foi para etapa 60. A NF pode aparecer em alguns minutos no Omie.',
             duration: 8000
           });
         } else {
