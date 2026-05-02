@@ -39,6 +39,28 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         setProgresso(data);
 
         if (data.status === 'concluido') {
+          // Backend agora envia campos curtos pra caber no limite do campo. Re-expandir aqui.
+          const expandirB44 = (c) => ({
+            id: c.id,
+            codigo: c.c ?? c.codigo,
+            razao_social: c.r ?? c.razao_social,
+            nome_fantasia: c.f ?? c.nome_fantasia,
+            cnpj_cpf: c.d ?? c.cnpj_cpf,
+            cidade: c.ci ?? c.cidade,
+            estado: c.uf ?? c.estado,
+            status: c.s ?? c.status,
+            tipo_nota: c.tn ?? c.tipo_nota,
+          });
+          const expandirOmie = (c) => ({
+            codigo_omie: c.co ?? c.codigo_omie,
+            codigo_integracao: c.ci ?? c.codigo_integracao,
+            razao_social: c.r ?? c.razao_social,
+            nome_fantasia: c.f ?? c.nome_fantasia,
+            cnpj_cpf: c.d ?? c.cnpj_cpf,
+            inativo: c.in ?? c.inativo,
+          });
+          const listaB44 = (data.lista_so_base44 || []).map(expandirB44);
+          const listaOmie = (data.lista_so_omie || []).map(expandirOmie);
           setResultado({
             total_base44: data.total_base44,
             total_omie: data.total_omie_obtidos,
@@ -46,11 +68,11 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
             diferentes: data.diferentes,
             so_no_base44: data.so_no_base44,
             so_no_omie: data.so_no_omie,
-            lista_so_base44: data.lista_so_base44 || [],
-            lista_so_omie: data.lista_so_omie || [],
+            lista_so_base44: listaB44,
+            lista_so_omie: listaOmie,
           });
           // Pré-seleciona apenas ativos
-          const ativos = (data.lista_so_base44 || []).filter(c => c.status !== 'inativo');
+          const ativos = listaB44.filter(c => c.status !== 'inativo');
           setSelecionados(new Set(ativos.map(c => c.id)));
           toast.success(`Auditoria concluída: ${data.so_no_base44} faltam no Omie`);
         } else if (data.status === 'erro') {

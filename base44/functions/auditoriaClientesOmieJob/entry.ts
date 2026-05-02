@@ -200,16 +200,17 @@ async function processar(base44, jobId) {
     const co = (cb.codigo && omiePorId[cb.codigo]) || omiePorId[cb.id] || omiePorCpfCnpj[docBase];
 
     if (!co) {
+      // Campos enxutos pra caber mais clientes no campo limitado
       soNoBase44.push({
         id: cb.id,
-        codigo: cb.codigo,
-        razao_social: cb.razao_social,
-        nome_fantasia: cb.nome_fantasia,
-        cnpj_cpf: cb.cnpj_cpf,
-        cidade: cb.cidade,
-        estado: cb.estado,
-        status: cb.status,
-        tipo_nota: cb.tipo_nota,
+        c: cb.codigo || '',
+        r: (cb.razao_social || '').substring(0, 60),
+        f: (cb.nome_fantasia || '').substring(0, 40),
+        d: cb.cnpj_cpf || '',
+        ci: (cb.cidade || '').substring(0, 30),
+        uf: cb.estado || '',
+        s: cb.status || '',
+        tn: cb.tipo_nota || '',
       });
       continue;
     }
@@ -242,36 +243,32 @@ async function processar(base44, jobId) {
     const existe = (codInt && (base44Ids.has(codInt) || base44Codigos.has(codInt))) || (doc && base44CpfCnpjSet.has(doc));
     if (!existe) {
       soNoOmie.push({
-        codigo_omie: co.codigo_cliente_omie,
-        codigo_integracao: co.codigo_cliente_integracao,
-        razao_social: co.razao_social,
-        nome_fantasia: co.nome_fantasia,
-        cnpj_cpf: co.cnpj_cpf,
-        inativo: co.inativo,
+        co: co.codigo_cliente_omie,
+        ci: co.codigo_cliente_integracao,
+        r: (co.razao_social || '').substring(0, 60),
+        f: (co.nome_fantasia || '').substring(0, 40),
+        d: co.cnpj_cpf || '',
+        in: co.inativo || 'N',
       });
     }
   }
 
   // ===== 5. Salvar resultado =====
-  // CRÍTICO: limitar tamanho do JSON para não estourar limite de string da entidade
-  // Ordenar por mais recentes primeiro (clientes recém-criados têm prioridade visível)
-  // Os clientes do Base44 já vêm ordenados por '-created_date' (linha 168)
-  const MAX_LISTA = 1500;
-  const listaB44Truncada = soNoBase44.slice(0, MAX_LISTA);
-  const listaOmieTruncada = soNoOmie.slice(0, MAX_LISTA);
+  // CRÍTICO: o campo da entidade tem limite de ~60KB. Truncar agressivamente.
+  const MAX_JSON_BYTES = 50000; // 50KB de margem segura
+  const listaB44Truncada = [...soNoBase44];
+  const listaOmieTruncada = [...soNoOmie];
 
-  // Validação: garantir que o JSON cabe em ~180KB (margem de segurança)
-  const MAX_JSON_BYTES = 180000;
   let jsonB44 = JSON.stringify(listaB44Truncada);
   let jsonOmie = JSON.stringify(listaOmieTruncada);
-  
-  // Se ainda passar do limite, reduzir progressivamente
-  while (jsonB44.length > MAX_JSON_BYTES && listaB44Truncada.length > 50) {
-    listaB44Truncada.splice(Math.floor(listaB44Truncada.length / 2));
+
+  // Reduzir até caber no limite do campo
+  while (jsonB44.length > MAX_JSON_BYTES && listaB44Truncada.length > 1) {
+    listaB44Truncada.splice(Math.floor(listaB44Truncada.length * 0.8));
     jsonB44 = JSON.stringify(listaB44Truncada);
   }
-  while (jsonOmie.length > MAX_JSON_BYTES && listaOmieTruncada.length > 50) {
-    listaOmieTruncada.splice(Math.floor(listaOmieTruncada.length / 2));
+  while (jsonOmie.length > MAX_JSON_BYTES && listaOmieTruncada.length > 1) {
+    listaOmieTruncada.splice(Math.floor(listaOmieTruncada.length * 0.8));
     jsonOmie = JSON.stringify(listaOmieTruncada);
   }
 
