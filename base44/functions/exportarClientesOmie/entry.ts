@@ -117,6 +117,18 @@ async function fetchComRetry(cliente, modo, tentativa = 0) {
     const clienteOmie = mapearClienteParaOmie({ ...cliente });
     const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
 
+    // Validação preventiva: Omie rejeita sem CPF/CNPJ — falhar instantâneo, sem chamar API
+    if (!clienteOmie.cnpj_cpf || clienteOmie.cnpj_cpf.length < 11) {
+        return {
+            cliente_id: cliente.id,
+            razao_social: cliente.razao_social,
+            nome_fantasia: cliente.nome_fantasia,
+            sucesso: false,
+            codigo_omie: null,
+            mensagem: "CPF/CNPJ ausente ou inválido — Omie exige documento"
+        };
+    }
+
     let resultado = await chamarOmie(clienteOmie, metodo);
 
     // Retry em caso de rate limit / bloqueio do Omie (máx 2 tentativas, espera curta)

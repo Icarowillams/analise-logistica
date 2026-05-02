@@ -198,7 +198,24 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     setExportando(true);
     setResultadoExport(null);
 
-    const ids = Array.from(selecionados);
+    // Filtra previamente clientes SEM CPF/CNPJ — Omie rejeita 100% deles
+    const idsSelecionados = Array.from(selecionados);
+    const semDoc = todosFaltantes.filter(c => selecionados.has(c.id) && !(c.cnpj_cpf || '').replace(/\D/g, ''));
+    const ids = idsSelecionados.filter(id => {
+      const c = todosFaltantes.find(x => x.id === id);
+      return c && (c.cnpj_cpf || '').replace(/\D/g, '');
+    });
+
+    if (semDoc.length > 0) {
+      toast.warning(`${semDoc.length} cliente(s) sem CPF/CNPJ foram ignorados (Omie exige documento).`);
+    }
+
+    if (ids.length === 0) {
+      setExportando(false);
+      toast.error('Nenhum cliente válido para exportar — todos selecionados estão sem CPF/CNPJ.');
+      return;
+    }
+
     setProgressoExport({ atual: 0, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
 
     // Carrega clientes em paralelo (10 simultâneos) — bem mais rápido que sequencial
@@ -476,9 +493,23 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
                       );
                     })}
                   </div>
-                  <div className="text-xs text-slate-600">
-                    {selecionados.size} selecionado(s) de {filtrados.length} listado(s) — Total faltantes: <b>{todosFaltantes.length}</b>
-                  </div>
+                  {(() => {
+                    const semDocSelecionados = filtrados.filter(c => selecionados.has(c.id) && !(c.cnpj_cpf || '').replace(/\D/g, '')).length;
+                    const semDocTotal = todosFaltantes.filter(c => !(c.cnpj_cpf || '').replace(/\D/g, '')).length;
+                    return (
+                      <div className="space-y-1">
+                        <div className="text-xs text-slate-600">
+                          {selecionados.size} selecionado(s) de {filtrados.length} listado(s) — Total faltantes: <b>{todosFaltantes.length}</b>
+                        </div>
+                        {semDocTotal > 0 && (
+                          <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1">
+                            ⚠️ <b>{semDocTotal}</b> faltantes estão SEM CPF/CNPJ e serão ignorados (Omie exige documento).
+                            {semDocSelecionados > 0 && ` Dos selecionados: ${semDocSelecionados} serão pulados.`}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="border rounded-lg overflow-auto max-h-[40vh]">
                     <table className="w-full text-xs">
