@@ -198,24 +198,7 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     setExportando(true);
     setResultadoExport(null);
 
-    // Filtra previamente clientes SEM CPF/CNPJ — Omie rejeita 100% deles
-    const idsSelecionados = Array.from(selecionados);
-    const semDoc = todosFaltantes.filter(c => selecionados.has(c.id) && !(c.cnpj_cpf || '').replace(/\D/g, ''));
-    const ids = idsSelecionados.filter(id => {
-      const c = todosFaltantes.find(x => x.id === id);
-      return c && (c.cnpj_cpf || '').replace(/\D/g, '');
-    });
-
-    if (semDoc.length > 0) {
-      toast.warning(`${semDoc.length} cliente(s) sem CPF/CNPJ foram ignorados (Omie exige documento).`);
-    }
-
-    if (ids.length === 0) {
-      setExportando(false);
-      toast.error('Nenhum cliente válido para exportar — todos selecionados estão sem CPF/CNPJ.');
-      return;
-    }
-
+    const ids = Array.from(selecionados);
     setProgressoExport({ atual: 0, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
 
     // Carrega clientes em paralelo (10 simultâneos) — bem mais rápido que sequencial
@@ -270,7 +253,6 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         try {
           const res = await base44.functions.invoke('exportarClientesOmie', {
             clientes_data: batch,
-            modo: 'upsert',
           });
           const r = res.data?.resumo;
           if (r) { totalOk += r.sucessos || 0; totalErro += r.erros || 0; }

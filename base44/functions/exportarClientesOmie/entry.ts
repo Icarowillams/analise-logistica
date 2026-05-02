@@ -1,10 +1,33 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+// ============================================================================
+// exportarClientesOmie — INSERT DIRETO no Omie (IncluirCliente)
+// ============================================================================
+// Filosofia:
+//  - Recebe array de clientes do Base44 (já completos, vindos do frontend)
+//  - Mapeia TODOS os campos relevantes para clientes_cadastro do Omie
+//  - Chama IncluirCliente direto (sem upsert, sem fallback, sem consulta prévia)
+//  - Paralelismo 4 (limite oficial Omie: 4 simultâneas / 240 req/min)
+//  - Backoff só em rate-limit (425/520/429). Erro de negócio falha imediato.
+//  - Validação local antes da chamada → economiza tempo e crédito da API.
+//
+// Doc Omie: https://app.omie.com.br/api/v1/geral/clientes/
+// ============================================================================
+
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
-const estadoParaUF = {
+const PARALELISMO = 4; // Limite oficial Omie
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Estado por extenso → UF
+const ESTADO_UF = {
     'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
     'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
     'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
@@ -14,218 +37,314 @@ const estadoParaUF = {
     'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
 };
 
-function normalizarEstado(estado) {
-    let normalizado = (estado || '').trim();
-    if (normalizado.length > 2) {
-        const chave = normalizado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        normalizado = estadoParaUF[chave] || normalizado.substring(0, 2).toUpperCase();
+function normalizarUF(estado) {
+    let v = (estado || '').trim();
+    if (v.length > 2) {
+        const k = v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return ESTADO_UF[k] || v.substring(0, 2).toUpperCase();
+    }
+    return v.toUpperCase();
+}
+
+function limparDoc(doc) {
+    return (doc || '').replace(/\D/g, '');
+}
+
+function limparCEP(cep) {
+    return (cep || '').replace(/\D/g, '').substring(0, 8);
+}
+
+function limparTel(tel) {
+    return (tel || '').replace(/\D/g, '').substring(0, 20);
+}
+
+// Remove aspas extras de campos texto
+function rmAspas(v) {
+    if (typeof v !== 'string') return v;
+    let s = v.trim();
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.slice(1, -1).trim();
+    }
+    return s;
+}
+
+// Separa telefone em DDD + número
+function separarTelefone(tel) {
+    const limpo = limparTel(tel);
+    if (limpo.length < 10) return { ddd: '', numero: '' };
+    return { ddd: limpo.substring(0, 2), numero: limpo.substring(2) };
+}
+
+// Valida dígito verificador de CPF
+function validarCPF(cpf) {
+    cpf = limparDoc(cpf);
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let s = 0;
+    for (let i = 0; i < 9; i++) s += parseInt(cpf[i]) * (10 - i);
+    let d1 = (s * 10) % 11; if (d1 === 10) d1 = 0;
+    if (d1 !== parseInt(cpf[9])) return false;
+    s = 0;
+    for (let i = 0; i < 10; i++) s += parseInt(cpf[i]) * (11 - i);
+    let d2 = (s * 10) % 11; if (d2 === 10) d2 = 0;
+    return d2 === parseInt(cpf[10]);
+}
+
+// Valida dígito verificador de CNPJ
+function validarCNPJ(cnpj) {
+    cnpj = limparDoc(cnpj);
+    if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+    const calc = (base, pesos) => {
+        let s = 0;
+        for (let i = 0; i < pesos.length; i++) s += parseInt(base[i]) * pesos[i];
+        const r = s % 11;
+        return r < 2 ? 0 : 11 - r;
+    };
+    const d1 = calc(cnpj, [5,4,3,2,9,8,7,6,5,4,3,2]);
+    if (d1 !== parseInt(cnpj[12])) return false;
+    const d2 = calc(cnpj, [6,5,4,3,2,9,8,7,6,5,4,3,2]);
+    return d2 === parseInt(cnpj[13]);
+}
+
+function validarDoc(doc) {
+    const d = limparDoc(doc);
+    if (d.length === 11) return validarCPF(d);
+    if (d.length === 14) return validarCNPJ(d);
+    return false;
+}
+
+// ============================================================================
+// MAPPER — Cliente Base44 → clientes_cadastro Omie
+// ============================================================================
+
+function mapearCliente(c, contexto = {}) {
+    // Limpar aspas em todos os campos string
+    const cli = {};
+    for (const [k, v] of Object.entries(c)) {
+        cli[k] = typeof v === 'string' ? rmAspas(v) : v;
+    }
+
+    const doc = limparDoc(cli.cnpj_cpf || cli.cpf_cnpj);
+    const isPF = doc.length === 11;
+    const uf = normalizarUF(cli.estado);
+
+    // === Inscrição Estadual / Contribuinte ===
+    const ieRaw = String(cli.inscricao_estadual || '').trim();
+    const ieDigitos = ieRaw.replace(/\D/g, '');
+    const ieLixo = !ieDigitos
+        || /^isent/i.test(ieRaw)
+        || ieDigitos.length < 2
+        || /^(\d)\1+$/.test(ieDigitos);
+
+    let contribuinte, ieEnvio;
+    if (isPF) {
+        contribuinte = "N";
+        ieEnvio = "";
+    } else if (ieLixo) {
+        contribuinte = "N";
+        ieEnvio = "ISENTO";
     } else {
-        normalizado = normalizado.toUpperCase();
-    }
-    return normalizado;
-}
-
-function removerAspas(val) {
-    if (typeof val !== 'string') return val;
-    let v = val.trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-        v = v.slice(1, -1).trim();
-    }
-    return v;
-}
-
-function mapearClienteParaOmie(cliente, rotaNome) {
-    for (const key of Object.keys(cliente)) {
-        if (typeof cliente[key] === 'string') cliente[key] = removerAspas(cliente[key]);
+        contribuinte = "S";
+        ieEnvio = ieDigitos;
     }
 
-    const cpfCnpj = (cliente.cpf_cnpj || "").replace(/[^\d]/g, "");
-    const estadoNorm = normalizarEstado(cliente.estado);
-    const cepNorm = (cliente.cep || "").replace(/[^\d]/g, "").substring(0, 8);
-    const isPessoaFisica = cpfCnpj.length <= 11;
-    const emailNorm = (cliente.email || "nfe@paoemel.com.br").substring(0, 500);
-    const nomeContato = (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100);
-    const codigoTag = cliente.codigo ? `COD:${cliente.codigo}` : '';
-    const tags = [codigoTag].filter(Boolean).map(tag => ({ tag }));
-    const rNome = rotaNome || cliente.rota_nome || '';
-    const caracteristicas = rNome ? [{ campo: "Rotas", conteudo: rNome }] : [];
+    // === Telefones ===
+    const tel1 = separarTelefone(cli.telefone);
+    const tel2 = separarTelefone(cli.telefone_2);
 
-    const clienteOmie = {
-        codigo_cliente_integracao: cliente.codigo || cliente.id,
-        razao_social: (cliente.razao_social || cliente.nome_fantasia || "Cliente sem nome").substring(0, 60),
-        nome_fantasia: (cliente.nome_fantasia || cliente.razao_social || "").substring(0, 100),
-        cnpj_cpf: cpfCnpj,
-        pessoa_fisica: isPessoaFisica ? "S" : "N",
-        endereco: (cliente.endereco || "").substring(0, 60),
-        endereco_numero: (cliente.numero || "S/N").substring(0, 10),
-        bairro: (cliente.bairro || "").substring(0, 60),
-        complemento: (cliente.complemento || "").substring(0, 60),
-        cidade: (cliente.cidade || "").substring(0, 60),
-        estado: estadoNorm,
-        cep: cepNorm,
-        contato: nomeContato,
-        email: emailNorm,
-        homepage: cliente.homepage || cliente.site || undefined,
-        telefone1_ddd: cliente.telefone1_ddd || cliente.ddd || undefined,
-        telefone1_numero: (cliente.telefone1_numero || cliente.telefone || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
-        telefone2_ddd: cliente.telefone2_ddd || undefined,
-        telefone2_numero: (cliente.telefone2_numero || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
-        fax_ddd: cliente.fax_ddd || undefined,
-        fax_numero: (cliente.fax_numero || '').replace(/[^\d]/g, '').substring(0, 20) || undefined,
-        email_fatura: cliente.email_fatura || undefined,
-        contribuinte: isPessoaFisica ? "N" : "S",
-        inscricao_estadual: cliente.inscricao_estadual || "",
-        inscricao_municipal: cliente.inscricao_municipal || undefined,
-        optante_simples_nacional: cliente.optante_simples_nacional || undefined,
-        produtor_rural: cliente.produtor_rural || undefined,
-        exterior: cliente.exterior || undefined,
-        bloqueado: cliente.bloqueado || undefined,
-        observacao: cliente.observacao || undefined,
-        inativo: (cliente.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
-        tags: tags.length ? tags : undefined,
-        caracteristicas: caracteristicas.length ? caracteristicas : undefined
+    // === Tags ===
+    const tagsBase = (cli.tags || []).filter(t => t).map(t => ({ tag: String(t).substring(0, 60) }));
+    if (cli.codigo) tagsBase.push({ tag: `COD:${cli.codigo}` });
+
+    // === Características (Rota + Vendedor) ===
+    const caracts = [];
+    if (contexto.rotaNome) caracts.push({ campo: "Rotas", conteudo: String(contexto.rotaNome).substring(0, 60) });
+    if (contexto.vendedorNome) caracts.push({ campo: "Vendedor", conteudo: String(contexto.vendedorNome).substring(0, 60) });
+
+    // === Observação combinada (CNAE, observações livres) ===
+    const obsPartes = [];
+    if (cli.cnae) obsPartes.push(`CNAE: ${cli.cnae}`);
+    if (cli.observacoes) obsPartes.push(cli.observacoes);
+
+    // === Email ===
+    const email = (cli.email_nfe || cli.email || '').substring(0, 500);
+
+    // === Cadastro completo conforme doc Omie ===
+    const omie = {
+        // Identificação
+        codigo_cliente_integracao: cli.codigo || cli.id,
+
+        // Dados principais
+        razao_social: (cli.razao_social || cli.nome_fantasia || 'Cliente').substring(0, 60),
+        nome_fantasia: (cli.nome_fantasia || cli.razao_social || '').substring(0, 100),
+        cnpj_cpf: doc,
+        pessoa_fisica: isPF ? "S" : "N",
+
+        // Contato
+        contato: (cli.contato_nome || '').substring(0, 100),
+        email: email,
+        homepage: (cli.site || '').substring(0, 200),
+
+        // Telefones
+        telefone1_ddd: tel1.ddd,
+        telefone1_numero: tel1.numero,
+        telefone2_ddd: tel2.ddd,
+        telefone2_numero: tel2.numero,
+
+        // Endereço
+        endereco: (cli.endereco || '').substring(0, 60),
+        endereco_numero: (cli.numero || 'S/N').substring(0, 10),
+        complemento: (cli.complemento || '').substring(0, 100),
+        bairro: (cli.bairro || '').substring(0, 60),
+        cidade: (cli.cidade || '').substring(0, 60),
+        estado: uf,
+        cep: limparCEP(cli.cep),
+
+        // Tributação
+        contribuinte: contribuinte,
+        inscricao_estadual: ieEnvio,
+        inscricao_municipal: (cli.inscricao_municipal || '').substring(0, 30),
+
+        // Status
+        inativo: (cli.status === 'inativo' || cli.bloquear_faturamento) ? "S" : "N",
+        bloquear_faturamento: cli.bloquear_faturamento ? "S" : "N",
+
+        // Observação
+        observacao: obsPartes.join(' | ').substring(0, 500),
+
+        // Tags & Características
+        tags: tagsBase,
+        caracteristicas: caracts,
     };
 
-    const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
-    for (const [key, value] of Object.entries(clienteOmie)) {
-        if (camposSempreEnviar.includes(key)) continue;
-        if (value === '' || value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-            delete clienteOmie[key];
+    // Tabela de preço
+    if (contexto.tabelaOmieId) {
+        omie.tabela_preco = Number(contexto.tabelaOmieId);
+    }
+
+    // Limpar campos vazios (Omie aceita ausência, mas não string vazia em alguns)
+    const SEMPRE_ENVIAR = ['codigo_cliente_integracao', 'razao_social', 'cnpj_cpf', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
+    for (const [k, v] of Object.entries(omie)) {
+        if (SEMPRE_ENVIAR.includes(k)) continue;
+        if (v === '' || v === null || v === undefined || (Array.isArray(v) && v.length === 0)) {
+            delete omie[k];
         }
     }
 
-    return clienteOmie;
+    return omie;
 }
 
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+// ============================================================================
+// CHAMADA OMIE — IncluirCliente com backoff só em rate-limit
+// ============================================================================
 
-async function chamarOmie(clienteOmie, metodo) {
-    const response = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+async function incluirClienteOmie(payload, tentativa = 0) {
+    const res = await fetch(OMIE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            call: metodo,
+            call: 'IncluirCliente',
             app_key: OMIE_APP_KEY,
             app_secret: OMIE_APP_SECRET,
-            param: [clienteOmie]
+            param: [payload]
         })
     });
-    return await response.json();
+    const data = await res.json();
+
+    // Retry SOMENTE em rate-limit (425/520/429), nunca em erro de negócio
+    if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        const fc = String(data.faultcode || '');
+        const isRate = fc.includes('425') || fc.includes('520') || res.status === 429
+            || msg.includes('too many') || msg.includes('cota') || msg.includes('limite de requisi')
+            || msg.includes('aguarde') || msg.includes('try again');
+        if (isRate && tentativa < 3) {
+            await sleep(1500 * (tentativa + 1));
+            return incluirClienteOmie(payload, tentativa + 1);
+        }
+    }
+    return data;
 }
 
-async function fetchComRetry(cliente, modo, tentativa = 0) {
-    const clienteOmie = mapearClienteParaOmie({ ...cliente });
-    const metodo = modo === "incluir" ? "IncluirCliente" : "UpsertCliente";
+// ============================================================================
+// PROCESSADOR INDIVIDUAL
+// ============================================================================
 
-    // Validação preventiva: Omie rejeita sem CPF/CNPJ — falhar instantâneo, sem chamar API
-    if (!clienteOmie.cnpj_cpf || clienteOmie.cnpj_cpf.length < 11) {
-        return {
-            cliente_id: cliente.id,
-            razao_social: cliente.razao_social,
-            nome_fantasia: cliente.nome_fantasia,
-            sucesso: false,
-            codigo_omie: null,
-            mensagem: "CPF/CNPJ ausente ou inválido — Omie exige documento"
-        };
+async function processarCliente(cliente, contextos) {
+    // Validação local — falha instantânea sem chamar Omie
+    const doc = limparDoc(cliente.cnpj_cpf || cliente.cpf_cnpj);
+    if (!doc) {
+        return resultado(cliente, false, null, 'CPF/CNPJ ausente');
+    }
+    if (!validarDoc(doc)) {
+        return resultado(cliente, false, null, `CPF/CNPJ inválido (dígito verificador): ${doc}`);
+    }
+    if (!cliente.razao_social && !cliente.nome_fantasia) {
+        return resultado(cliente, false, null, 'Razão social/Nome fantasia ausente');
+    }
+    if (cliente.tipo_nota === 'D1') {
+        return resultado(cliente, false, null, 'Cliente D1 — não vai ao Omie');
     }
 
-    let resultado = await chamarOmie(clienteOmie, metodo);
+    // Contexto adicional (rota, vendedor, tabela)
+    const ctx = {
+        rotaNome: contextos.rotas?.[cliente.rota_id] || cliente.rota_nome || '',
+        vendedorNome: contextos.vendedores?.[cliente.vendedor_id] || cliente.vendedor_nome || '',
+        tabelaOmieId: contextos.tabelas?.[cliente.tabela_id] || null,
+    };
 
-    // Retry em caso de rate limit / bloqueio do Omie (máx 2 tentativas, espera curta)
-    const fault = (resultado.faultstring || '').toLowerCase();
-    const isBloqueio = fault.includes('too many') || fault.includes('já existe uma requisição') || fault.includes('try again') || fault.includes('consumo indevido') || fault.includes('bloqueada');
-    if (fault && isBloqueio && tentativa < 2) {
-        const waitSec = 5 * (tentativa + 1); // 5s, 10s
-        console.log(`[exportarClientesOmie] Bloqueio, retry ${tentativa + 1}/2 em ${waitSec}s`);
-        await delay(waitSec * 1000);
-        return fetchComRetry(cliente, modo, tentativa + 1);
+    const payload = mapearCliente(cliente, ctx);
+    const resp = await incluirClienteOmie(payload);
+
+    if (resp.faultstring) {
+        return resultado(cliente, false, null, resp.faultstring);
     }
 
-    // Se deu erro de "já cadastrado" com código de integração diferente
-    if (fault && fault.includes('já cadastrado') && metodo === 'UpsertCliente') {
-        // Estratégia 1: Extrair o codigo_integracao antigo da mensagem de erro
-        const matchCodigo = (resultado.faultstring || '').match(/código de integração \[([^\]]+)\]/i);
-        const codigoAntigoOmie = matchCodigo ? matchCodigo[1] : null;
-        
-        if (codigoAntigoOmie && codigoAntigoOmie !== clienteOmie.codigo_cliente_integracao) {
-            console.log(`[exportarClientesOmie] Fallback: usando codigo_integracao antigo "${codigoAntigoOmie}" para ${cliente.razao_social}`);
-            const clienteOmieFallback = { ...clienteOmie, codigo_cliente_integracao: codigoAntigoOmie };
-            await delay(600);
-            resultado = await chamarOmie(clienteOmieFallback, metodo);
-        }
-        
-        // Estratégia 2: Se ainda falhou, buscar pelo CPF/CNPJ no Omie
-        if (resultado.faultstring && clienteOmie.cnpj_cpf) {
-            await delay(600);
-            try {
-                const resCpf = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: "ListarClientes",
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [{ pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: clienteOmie.cnpj_cpf } }]
-                    })
-                });
-                const dataCpf = await resCpf.json();
-                if (!dataCpf.faultstring && dataCpf.clientes_cadastro && dataCpf.clientes_cadastro.length > 0) {
-                    const codAntigoReal = dataCpf.clientes_cadastro[0].codigo_cliente_integracao;
-                    console.log(`[exportarClientesOmie] Encontrado pelo CPF/CNPJ com codigo_integracao: ${codAntigoReal}`);
-                    const clienteOmieFallback2 = { ...clienteOmie, codigo_cliente_integracao: codAntigoReal };
-                    await delay(600);
-                    resultado = await chamarOmie(clienteOmieFallback2, metodo);
-                }
-            } catch (cpfErr) {
-                console.log(`[exportarClientesOmie] Erro busca CPF/CNPJ: ${cpfErr.message}`);
-            }
-        }
-    }
+    return resultado(cliente, true, resp.codigo_cliente_omie, resp.descricao_status || 'Incluído com sucesso');
+}
 
+function resultado(c, sucesso, codigo, msg) {
     return {
-        cliente_id: cliente.id,
-        razao_social: cliente.razao_social,
-        nome_fantasia: cliente.nome_fantasia,
-        sucesso: !resultado.faultstring,
-        codigo_omie: resultado.codigo_cliente_omie || null,
-        mensagem: resultado.faultstring || resultado.descricao_status || "Exportado com sucesso"
+        cliente_id: c.id,
+        razao_social: c.razao_social,
+        nome_fantasia: c.nome_fantasia,
+        sucesso,
+        codigo_omie: codigo,
+        mensagem: msg
     };
 }
+
+// ============================================================================
+// HANDLER
+// ============================================================================
 
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
+        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        if (!user) {
-            return Response.json({ error: 'Não autorizado' }, { status: 401 });
+        const { clientes_data } = await req.json();
+        if (!Array.isArray(clientes_data) || clientes_data.length === 0) {
+            return Response.json({ error: 'clientes_data vazio' }, { status: 400 });
         }
 
-        const body = await req.json();
-        const { clientes_data, modo = "upsert" } = body;
+        const t0 = Date.now();
+        console.log(`[exportarClientesOmie] Iniciando ${clientes_data.length} clientes — paralelismo ${PARALELISMO}`);
 
-        // clientes_data = array de objetos cliente já completos (enviados pelo frontend)
-        if (!clientes_data || !Array.isArray(clientes_data) || clientes_data.length === 0) {
-            return Response.json({ error: 'Informe os dados dos clientes para exportar' }, { status: 400 });
-        }
+        // Pré-carregar contextos (rotas, vendedores, tabelas) — 1 query cada
+        const [rotas, vendedores, tabelas] = await Promise.all([
+            base44.asServiceRole.entities.Rota.list().catch(() => []),
+            base44.asServiceRole.entities.Vendedor.list().catch(() => []),
+            base44.asServiceRole.entities.TabelaPreco.list().catch(() => []),
+        ]);
 
-        console.log(`[exportarClientesOmie] Recebido ${clientes_data.length} clientes para exportar via ${modo}`);
+        const contextos = {
+            rotas: Object.fromEntries(rotas.map(r => [r.id, r.nome])),
+            vendedores: Object.fromEntries(vendedores.map(v => [v.id, v.nome])),
+            tabelas: Object.fromEntries(tabelas.filter(t => t.omie_id).map(t => [t.id, t.omie_id])),
+        };
 
-        // Buscar rotas para enriquecer com rota_nome
-        const rotas = await base44.asServiceRole.entities.Rota.list();
-        const rotasMap = {};
-        rotas.forEach(r => { rotasMap[r.id] = r.nome; });
-
-        // Enriquecer clientes com rota_nome
-        clientes_data.forEach(c => {
-            if (c.rota_id && rotasMap[c.rota_id] && !c.rota_nome) {
-                c.rota_nome = rotasMap[c.rota_id];
-            }
-        });
-
-        // Envio em PARALELO com concorrência limitada (doc Omie: 4 simultâneas, 240 req/min)
-        // 4 simultâneas no limite. fetchComRetry já tem backoff em 425/520.
-        const PARALELISMO = 4;
+        // Processar com paralelismo controlado
         const resultados = new Array(clientes_data.length);
         let cursor = 0;
 
@@ -233,40 +352,38 @@ Deno.serve(async (req) => {
             while (true) {
                 const i = cursor++;
                 if (i >= clientes_data.length) break;
-                const cliente = clientes_data[i];
                 try {
-                    const res = await fetchComRetry(cliente, modo);
-                    resultados[i] = res;
-                    console.log(`[exportarClientesOmie] ${i + 1}/${clientes_data.length} ${res.sucesso ? 'OK' : 'ERRO'}: ${cliente.razao_social}`);
-                } catch (err) {
-                    resultados[i] = {
-                        cliente_id: cliente.id,
-                        razao_social: cliente.razao_social,
-                        nome_fantasia: cliente.nome_fantasia,
-                        sucesso: false,
-                        codigo_omie: null,
-                        mensagem: err.message
-                    };
+                    resultados[i] = await processarCliente(clientes_data[i], contextos);
+                } catch (e) {
+                    resultados[i] = resultado(clientes_data[i], false, null, e.message);
                 }
             }
         };
 
         await Promise.all(Array.from({ length: PARALELISMO }, () => worker()));
 
+        // Atualizar codigo_omie no Base44 para os que sucederam (em paralelo, sem bloquear retorno)
+        const updates = resultados
+            .filter(r => r.sucesso && r.codigo_omie && r.cliente_id)
+            .map(r =>
+                base44.asServiceRole.entities.Cliente.update(r.cliente_id, { codigo_omie: String(r.codigo_omie) })
+                    .catch(e => console.log(`[exportarClientesOmie] Falha update ${r.cliente_id}: ${e.message}`))
+            );
+        await Promise.all(updates);
+
         const sucessos = resultados.filter(r => r.sucesso).length;
-        const erros = resultados.filter(r => !r.sucesso).length;
+        const erros = resultados.length - sucessos;
+        const dur = ((Date.now() - t0) / 1000).toFixed(1);
+
+        console.log(`[exportarClientesOmie] Concluído em ${dur}s — ${sucessos} ok / ${erros} erro`);
 
         return Response.json({
-            resumo: {
-                total: resultados.length,
-                sucessos,
-                erros
-            },
+            resumo: { total: resultados.length, sucessos, erros, duracao_s: Number(dur) },
             resultados
         });
 
     } catch (error) {
-        console.error('[exportarClientesOmie] Erro geral:', error.message);
+        console.error('[exportarClientesOmie] Erro fatal:', error.message);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
