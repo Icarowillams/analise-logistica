@@ -27,8 +27,12 @@ async function listarClientesOmie(pagina, tentativa = 0) {
   });
   const data = await res.json();
   if (data.faultstring) {
-    const msg = (data.faultstring || '').toLowerCase();
-    const isRate = msg.includes('too many') || msg.includes('aguarde') || msg.includes('cota') || res.status === 429;
+    const msg = String(data.faultstring).toLowerCase();
+    const fc = String(data.faultcode || '');
+    // Doc Omie: 425 = rate limit, 520 = transiente. Backoff exponencial.
+    const isRate = msg.includes('too many') || msg.includes('aguarde') || msg.includes('cota')
+      || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon')
+      || fc.includes('425') || fc.includes('520') || res.status === 429;
     if (isRate && tentativa < 4) {
       await sleep(2000 * (tentativa + 1));
       return listarClientesOmie(pagina, tentativa + 1);

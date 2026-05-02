@@ -352,7 +352,8 @@ async function mapearClienteParaOmie(clienteOriginal) {
 }
 
 // Busca UMA página de clientes do Omie
-async function buscarPaginaOmie(pagina, registrosPorPagina = 500) {
+// Doc Omie: máximo 100 registros/página, 240 req/min, 4 simultâneas. Retry com backoff em 425/520.
+async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0) {
     const response = await fetch(OMIE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -362,12 +363,23 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 500) {
             app_secret: OMIE_APP_SECRET,
             param: [{
                 pagina,
-                registros_por_pagina: registrosPorPagina,
+                registros_por_pagina: Math.min(registrosPorPagina, 100),
                 apenas_importado_api: "N"
             }]
         })
     });
-    return await response.json();
+    const data = await response.json();
+    if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
+            || String(data.faultcode || '').includes('425') || String(data.faultcode || '').includes('520')
+            || response.status === 429;
+        if (isRate && tentativa < 4) {
+            await new Promise(r => setTimeout(r, 2000 * (tentativa + 1)));
+            return buscarPaginaOmie(pagina, registrosPorPagina, tentativa + 1);
+        }
+    }
+    return data;
 }
 
 Deno.serve(async (req) => {
@@ -401,7 +413,7 @@ Deno.serve(async (req) => {
                 id: c.id,
                 razao_social: c.razao_social || '',
                 nome_fantasia: c.nome_fantasia || '',
-                cpf_cnpj: c.cpf_cnpj || '',
+                cpf_cnpj: c.cnpj_cpf || c.cpf_cnpj || '',
                 status: c.status || 'ativo'
             }));
 
@@ -422,7 +434,7 @@ Deno.serve(async (req) => {
         // ====================================================================
         if (modo === "listar_omie") {
             console.log(`[sync] Buscando página ${pagina_omie} do Omie...`);
-            const data = await buscarPaginaOmie(pagina_omie, 500);
+            const data = await buscarPaginaOmie(pagina_omie, 100);
 
             if (data.faultstring) {
                 console.error('[sync] Erro Omie:', data.faultstring);

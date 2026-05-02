@@ -6,7 +6,8 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function listarClientesOmie(pagina = 1, registrosPorPagina = 500) {
+// Doc Omie: máx 100 reg/pág, 4 simultâneas, 240 req/min. Backoff em 425/520/429.
+async function listarClientesOmie(pagina = 1, registrosPorPagina = 100, tentativa = 0) {
     const response = await fetch(OMIE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -16,12 +17,23 @@ async function listarClientesOmie(pagina = 1, registrosPorPagina = 500) {
             app_secret: OMIE_APP_SECRET,
             param: [{
                 pagina,
-                registros_por_pagina: registrosPorPagina,
+                registros_por_pagina: Math.min(registrosPorPagina, 100),
                 clientesFiltro: { }
             }]
         })
     });
-    return await response.json();
+    const data = await response.json();
+    if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        const fc = String(data.faultcode || '');
+        const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
+            || fc.includes('425') || fc.includes('520') || response.status === 429;
+        if (isRate && tentativa < 4) {
+            await delay(2000 * (tentativa + 1));
+            return listarClientesOmie(pagina, registrosPorPagina, tentativa + 1);
+        }
+    }
+    return data;
 }
 
 Deno.serve(async (req) => {
@@ -39,7 +51,7 @@ Deno.serve(async (req) => {
         if (acao === 'listar_omie') {
             // Retorna uma página de clientes do Omie
             const pag = pagina_omie || 1;
-            const resultado = await listarClientesOmie(pag, 50);
+            const resultado = await listarClientesOmie(pag, 100);
             
             if (resultado.faultstring) {
                 return Response.json({ error: resultado.faultstring }, { status: 400 });
@@ -74,25 +86,32 @@ Deno.serve(async (req) => {
         }
 
         if (acao === 'comparar') {
-            // Buscar TODOS os clientes do Omie (paginado)
+            // Buscar TODOS os clientes do Omie (paginado, em paralelo controlado)
             const todosOmie = [];
             const soNoBase44 = [];
             const soNoOmie = [];
             const diferentes = [];
             let iguais = 0;
-            let pagina = 1;
-            let totalPaginas = 1;
+            const PARALELISMO = 3;
 
-            while (pagina <= totalPaginas) {
-                const resultado = await listarClientesOmie(pagina, 500);
-                if (resultado.faultstring) {
-                    return Response.json({ error: `Erro Omie pag ${pagina}: ${resultado.faultstring}` }, { status: 400 });
+            // Primeira página → descobre total
+            const primeira = await listarClientesOmie(1, 100);
+            if (primeira.faultstring) {
+                return Response.json({ error: `Erro Omie pag 1: ${primeira.faultstring}` }, { status: 400 });
+            }
+            const totalPaginas = primeira.total_de_paginas || 1;
+            todosOmie.push(...(primeira.clientes_cadastro || []));
+
+            // Demais páginas em lotes paralelos (3 simultâneas, abaixo do limite de 4)
+            const paginasRestantes = [];
+            for (let p = 2; p <= totalPaginas; p++) paginasRestantes.push(p);
+            for (let i = 0; i < paginasRestantes.length; i += PARALELISMO) {
+                const lote = paginasRestantes.slice(i, i + PARALELISMO);
+                const resultados = await Promise.all(lote.map(p => listarClientesOmie(p, 100)));
+                for (const r of resultados) {
+                    if (r.clientes_cadastro) todosOmie.push(...r.clientes_cadastro);
                 }
-                totalPaginas = resultado.total_de_paginas || 1;
-                const clientes = resultado.clientes_cadastro || [];
-                todosOmie.push(...clientes);
-                pagina++;
-                if (pagina <= totalPaginas) await delay(500);
+                if (i + PARALELISMO < paginasRestantes.length) await delay(1000);
             }
 
             // Buscar todos os clientes do Base44 com paginação

@@ -17,10 +17,16 @@ async function omieCall(call, param, maxTentativas = 4) {
         body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
       });
       const data = await res.json();
-      if (data.faultstring && /Internal Error|PBB|timeout|Gateway|indispon/i.test(data.faultstring)) {
-        ultimoErro = data.faultstring;
-        await delay(2000 * tentativa);
-        continue;
+      if (data.faultstring) {
+        const fs = String(data.faultstring);
+        const fc = String(data.faultcode || '');
+        const isTransient = /Internal Error|PBB|timeout|Gateway|indispon|limite de requisi|cota|aguarde/i.test(fs)
+          || fc.includes('425') || fc.includes('520') || res.status === 429;
+        if (isTransient) {
+          ultimoErro = fs;
+          await delay(2000 * tentativa);
+          continue;
+        }
       }
       return data;
     } catch (e) {
@@ -52,9 +58,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { pagina = 1, apenas_simular = false } = body;
 
-    // 1. Buscar UMA página do Omie
+    // 1. Buscar UMA página do Omie (Doc Omie: máx 100 reg/página)
     const data = await omieCall("ListarClientes", {
-      pagina, registros_por_pagina: 500, apenas_importado_api: "N"
+      pagina, registros_por_pagina: 100, apenas_importado_api: "N"
     });
     if (data.faultstring) throw new Error(`Omie ListarClientes: ${data.faultstring}`);
 

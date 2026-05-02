@@ -16,12 +16,8 @@ Deno.serve(async (req) => {
         const body = await req.json();
         const mode = body.mode || 'compare'; // 'compare' or 'sync'
 
-        // Buscar TODOS os produtos do Omie (paginado)
-        let pagina = 1;
-        let totalPaginas = 1;
-        const produtosOmie = [];
-
-        while (pagina <= totalPaginas) {
+        // Doc Omie: máx 100 reg/pág, 4 paralelas, 240 req/min. Backoff em 425/520.
+        async function listarPagina(pag, tent = 0) {
             const response = await fetch(OMIE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -30,24 +26,36 @@ Deno.serve(async (req) => {
                     app_key: OMIE_APP_KEY,
                     app_secret: OMIE_APP_SECRET,
                     param: [{
-                        pagina,
-                        registros_por_pagina: 500,
+                        pagina: pag,
+                        registros_por_pagina: 100,
                         apenas_importado_api: "N",
                         filtrar_apenas_omiepdv: "N"
                     }]
                 })
             });
-
             const data = await response.json();
-
             if (data.faultstring) {
-                return Response.json({ error: data.faultstring }, { status: 400 });
+                const msg = String(data.faultstring).toLowerCase();
+                const fc = String(data.faultcode || '');
+                const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
+                    || fc.includes('425') || fc.includes('520') || response.status === 429;
+                if (isRate && tent < 4) {
+                    await new Promise(r => setTimeout(r, 2000 * (tent + 1)));
+                    return listarPagina(pag, tent + 1);
+                }
+                throw new Error(data.faultstring);
             }
+            return data;
+        }
 
-            totalPaginas = data.total_de_paginas || 1;
-            const lista = data.produto_servico_cadastro || [];
-            
-            for (const p of lista) {
+        const produtosOmie = [];
+        const PARALELISMO = 3;
+
+        // Primeira página → descobre total
+        const primeira = await listarPagina(1);
+        const totalPaginas = primeira.total_de_paginas || 1;
+        const pushLista = (lista) => {
+            for (const p of lista || []) {
                 produtosOmie.push({
                     codigo: p.codigo || '',
                     descricao: p.descricao || '',
@@ -61,10 +69,19 @@ Deno.serve(async (req) => {
                     inativo: p.inativo === 'S',
                 });
             }
+        };
+        pushLista(primeira.produto_servico_cadastro);
 
-            pagina++;
-            // Rate limit
-            await new Promise(r => setTimeout(r, 500));
+        // Demais páginas em lotes paralelos
+        const paginasRestantes = [];
+        for (let p = 2; p <= totalPaginas; p++) paginasRestantes.push(p);
+        for (let i = 0; i < paginasRestantes.length; i += PARALELISMO) {
+            const lote = paginasRestantes.slice(i, i + PARALELISMO);
+            const resultados = await Promise.all(lote.map(p => listarPagina(p)));
+            resultados.forEach(r => pushLista(r.produto_servico_cadastro));
+            if (i + PARALELISMO < paginasRestantes.length) {
+                await new Promise(r => setTimeout(r, 1000)); // respeita 240 req/min
+            }
         }
 
         console.log(`[sincronizarProdutosOmie] Total produtos Omie: ${produtosOmie.length}`);

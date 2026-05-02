@@ -29,22 +29,20 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'omie_codigos é obrigatório (array)' }, { status: 400 });
         }
 
-        // Limitar a 80 pedidos por chamada (para não estourar rate limit do Omie)
+        // Doc Omie: 240 req/min (4/s), 4 simultâneas. Em paralelo controlado é MUITO mais rápido.
         const codigos = omie_codigos.slice(0, 80);
         const resultados = {};
+        const PARALELISMO = 3; // conservador (limite 4)
+        let apiBloqueada = false;
 
-        for (const item of codigos) {
-            // Pedidos de troca não existem no Omie — pular
+        async function consultarUm(item, tent = 0) {
             if (item.tipo === 'troca') {
-                resultados[item.pedido_id] = { etapa: null, etapa_label: 'Troca (local)', cancelado: false, erro: false };
-                continue;
+                return [item.pedido_id, { etapa: null, etapa_label: 'Troca (local)', cancelado: false, erro: false }];
             }
             const codigoPedido = Number(item.omie_codigo_pedido);
             if (!codigoPedido) {
-                resultados[item.pedido_id] = { etapa: null, etapa_label: 'Sem código Omie', cancelado: false, erro: true };
-                continue;
+                return [item.pedido_id, { etapa: null, etapa_label: 'Sem código Omie', cancelado: false, erro: true }];
             }
-
             try {
                 const response = await fetch(OMIE_URL, {
                     method: "POST",
@@ -56,61 +54,69 @@ Deno.serve(async (req) => {
                         param: [{ codigo_pedido: codigoPedido }]
                     })
                 });
-
                 const text = await response.text();
                 let result;
-                try { result = JSON.parse(text); } catch (e) {
-                    resultados[item.pedido_id] = { etapa: null, etapa_label: 'Erro de resposta', cancelado: false, erro: true };
-                    continue;
-                }
+                try { result = JSON.parse(text); }
+                catch { return [item.pedido_id, { etapa: null, etapa_label: 'Erro de resposta', cancelado: false, erro: true }]; }
 
                 if (result.faultstring || result.faultcode) {
                     const faultMsg = (result.faultstring || '').toLowerCase();
+                    const fc = String(result.faultcode || '');
+                    const isRate = faultMsg.includes('limite de requisi') || faultMsg.includes('cota') || faultMsg.includes('aguarde')
+                        || fc.includes('425') || fc.includes('520') || response.status === 429;
+                    if (isRate && tent < 3) {
+                        await new Promise(r => setTimeout(r, 2000 * (tent + 1)));
+                        return consultarUm(item, tent + 1);
+                    }
                     const naoEncontrado = faultMsg.includes('não encontrad') || faultMsg.includes('nao encontrad') ||
                         faultMsg.includes('excluíd') || faultMsg.includes('excluid') ||
                         faultMsg.includes('não existe') || faultMsg.includes('nao existe');
-                    const apiBloqueada = faultMsg.includes('bloqueada por consumo indevido');
-                    
-                    if (apiBloqueada) {
-                        // API bloqueada — parar de consultar para não piorar
-                        console.warn('[consultarStatusPedidosOmie] API Omie BLOQUEADA. Parando consulta.');
-                        // Marcar todos os pendentes restantes como api_bloqueada
-                        for (const remaining of codigos) {
-                            if (!resultados[remaining.pedido_id]) {
-                                resultados[remaining.pedido_id] = { etapa: null, etapa_label: null, cancelado: false, erro: false, api_bloqueada: true };
-                            }
-                        }
-                        break;
+                    if (faultMsg.includes('bloqueada por consumo indevido')) {
+                        apiBloqueada = true;
+                        return [item.pedido_id, { etapa: null, etapa_label: null, cancelado: false, erro: false, api_bloqueada: true }];
                     }
-                    
-                    resultados[item.pedido_id] = {
+                    return [item.pedido_id, {
                         etapa: naoEncontrado ? '80' : null,
                         etapa_label: naoEncontrado ? 'Excluído no Omie' : null,
                         cancelado: naoEncontrado,
                         erro: !naoEncontrado,
                         api_bloqueada: false,
                         mensagem_erro: result.faultstring || null
-                    };
-                } else if (result.pedido_venda_produto) {
+                    }];
+                }
+                if (result.pedido_venda_produto) {
                     const etapa = result.pedido_venda_produto.cabecalho?.etapa || null;
                     const cancelado = result.pedido_venda_produto.infoCadastro?.cancelado === 'S';
-
-                    resultados[item.pedido_id] = {
+                    return [item.pedido_id, {
                         etapa,
                         etapa_label: cancelado ? 'Cancelado' : (ETAPA_LABELS[etapa] || `Etapa ${etapa}`),
                         cancelado,
                         erro: false
-                    };
-                } else {
-                    resultados[item.pedido_id] = { etapa: null, etapa_label: 'Resposta inesperada', cancelado: false, erro: true };
+                    }];
                 }
-
-                // Rate limit do Omie - 100 chamadas/min = 1 a cada 600ms
-                await new Promise(r => setTimeout(r, 600));
-
+                return [item.pedido_id, { etapa: null, etapa_label: 'Resposta inesperada', cancelado: false, erro: true }];
             } catch (e) {
                 console.error(`[consultarStatusPedidosOmie] Erro pedido ${item.pedido_id}:`, e.message);
-                resultados[item.pedido_id] = { etapa: null, etapa_label: 'Erro na consulta', cancelado: false, erro: true };
+                return [item.pedido_id, { etapa: null, etapa_label: 'Erro na consulta', cancelado: false, erro: true }];
+            }
+        }
+
+        // Lotes paralelos respeitando o rate limit (240 req/min = 4/s)
+        for (let i = 0; i < codigos.length; i += PARALELISMO) {
+            if (apiBloqueada) {
+                for (const r of codigos.slice(i)) {
+                    if (!resultados[r.pedido_id]) {
+                        resultados[r.pedido_id] = { etapa: null, etapa_label: null, cancelado: false, erro: false, api_bloqueada: true };
+                    }
+                }
+                break;
+            }
+            const lote = codigos.slice(i, i + PARALELISMO);
+            const pares = await Promise.all(lote.map(it => consultarUm(it)));
+            for (const [pid, dados] of pares) resultados[pid] = dados;
+            // 3 reqs em paralelo a cada ~1s = 180 req/min, abaixo do limite de 240
+            if (i + PARALELISMO < codigos.length) {
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
 

@@ -13,12 +13,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Listar todos os cenários fiscais do Omie (paginado)
-        let todosRegistros = [];
-        let pagina = 1;
-        let totalPaginas = 1;
-
-        while (pagina <= totalPaginas) {
+        // Doc Omie: máx 100 reg/pág, backoff em rate limit
+        async function listarPagina(nPagina, tent = 0) {
             const response = await fetch(CENARIOS_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -26,24 +22,44 @@ Deno.serve(async (req) => {
                     call: "ListarCenarios",
                     app_key: OMIE_APP_KEY,
                     app_secret: OMIE_APP_SECRET,
-                    param: [{ nPagina: pagina, nRegPorPagina: 50 }]
+                    param: [{ nPagina, nRegPorPagina: 100 }]
                 })
             });
-
             const data = await response.json();
-
             if (data.faultstring) {
-                return Response.json({ 
-                    sucesso: false, 
-                    erro: data.faultstring,
-                    cenarios: [] 
-                });
+                const msg = String(data.faultstring).toLowerCase();
+                const fc = String(data.faultcode || '');
+                const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
+                    || fc.includes('425') || fc.includes('520') || response.status === 429;
+                if (isRate && tent < 4) {
+                    await new Promise(r => setTimeout(r, 2000 * (tent + 1)));
+                    return listarPagina(nPagina, tent + 1);
+                }
             }
+            return data;
+        }
 
-            totalPaginas = data.nTotPaginas || 1;
-            const encontrados = data.cenariosEncontrados || [];
-            todosRegistros = todosRegistros.concat(encontrados);
-            pagina++;
+        let todosRegistros = [];
+        const primeira = await listarPagina(1);
+        if (primeira.faultstring) {
+            return Response.json({ sucesso: false, erro: primeira.faultstring, cenarios: [] });
+        }
+        const totalPaginas = primeira.nTotPaginas || 1;
+        todosRegistros = todosRegistros.concat(primeira.cenariosEncontrados || []);
+
+        // Demais páginas em paralelo (3 simultâneas)
+        const PARALELISMO = 3;
+        const restantes = [];
+        for (let p = 2; p <= totalPaginas; p++) restantes.push(p);
+        for (let i = 0; i < restantes.length; i += PARALELISMO) {
+            const lote = restantes.slice(i, i + PARALELISMO);
+            const resultados = await Promise.all(lote.map(p => listarPagina(p)));
+            for (const r of resultados) {
+                if (r.cenariosEncontrados) todosRegistros = todosRegistros.concat(r.cenariosEncontrados);
+            }
+            if (i + PARALELISMO < restantes.length) {
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
 
         // Filtrar apenas cenários ativos

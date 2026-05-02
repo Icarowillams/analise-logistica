@@ -4,6 +4,7 @@ const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
+// Doc Omie: backoff em rate limit (425), erros transientes (520) e 429
 async function omieCall(call, param, tentativa = 1) {
   const res = await fetch(OMIE_URL, {
     method: 'POST',
@@ -12,10 +13,13 @@ async function omieCall(call, param, tentativa = 1) {
   });
   const data = await res.json();
   if (data.faultstring) {
-    const msg = data.faultstring.toLowerCase();
-    const isRateLimit = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRateLimit && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
+    const msg = String(data.faultstring).toLowerCase();
+    const fc = String(data.faultcode || '');
+    const isTransient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
+      || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon')
+      || fc.includes('425') || fc.includes('520') || res.status === 429;
+    if (isTransient && tentativa < 4) {
+      await new Promise(r => setTimeout(r, 2000 * tentativa));
       return omieCall(call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
@@ -39,7 +43,8 @@ Deno.serve(async (req) => {
       cnpj_cliente
     } = body;
 
-    const param = { pagina, registros_por_pagina };
+    // Doc Omie: máx 100 registros/página
+    const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
     if (data_inicial) param.dEmiInicial = data_inicial;
     if (data_final) param.dEmiFinal = data_final;
     if (nome_cliente) param.cRazao = nome_cliente;
