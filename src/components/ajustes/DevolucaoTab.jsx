@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Loader2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
-import BuscarPedidoOmie from './BuscarPedidoOmie';
+import SeletorPedidoOmie from './SeletorPedidoOmie';
 
 export default function DevolucaoTab() {
   const [pedido, setPedido] = useState(null);
@@ -70,7 +70,7 @@ export default function DevolucaoTab() {
 
   return (
     <div className="space-y-4">
-      <BuscarPedidoOmie onPedidoCarregado={onPedidoCarregado} />
+      {!pedido && <SeletorPedidoOmie onPedidoCarregado={onPedidoCarregado} etapas={['60']} />}
 
       {pedido && (
         <Card>

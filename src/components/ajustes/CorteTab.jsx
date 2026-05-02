@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
-import BuscarPedidoOmie from './BuscarPedidoOmie';
+import SeletorPedidoOmie from './SeletorPedidoOmie';
 
 export default function CorteTab() {
   const [pedido, setPedido] = useState(null);
@@ -59,7 +59,7 @@ export default function CorteTab() {
 
   return (
     <div className="space-y-4">
-      <BuscarPedidoOmie onPedidoCarregado={onPedidoCarregado} />
+      {!pedido && <SeletorPedidoOmie onPedidoCarregado={onPedidoCarregado} etapas={['10', '20', '50']} />}
 
       {pedido && (
         <Card>
