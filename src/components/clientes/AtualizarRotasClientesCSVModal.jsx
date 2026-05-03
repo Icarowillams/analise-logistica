@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { AlertCircle, CheckCircle2, Loader2, Route, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,13 +19,17 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
   const [fileUrl, setFileUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const executandoRef = useRef(false);
 
   const executar = async (dryRun) => {
+    if (loading || executandoRef.current) return;
+
     if (!file && !fileUrl) {
       toast.error('Selecione um CSV primeiro.');
       return;
     }
 
+    executandoRef.current = true;
     setLoading(true);
     try {
       let url = fileUrl;
@@ -50,6 +54,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
     } catch (error) {
       toast.error(error?.response?.data?.error || error.message);
     }
+    executandoRef.current = false;
     setLoading(false);
   };
 

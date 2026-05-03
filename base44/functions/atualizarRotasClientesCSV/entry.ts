@@ -8,6 +8,23 @@ const normalizeText = (value) => String(value || '')
   .replace(/\s+/g, ' ');
 
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isRateLimitError = (error) => {
+  const message = String(error?.message || error?.response?.data?.error || error?.response?.data?.detail || '').toLowerCase();
+  return message.includes('rate limit') || message.includes('429');
+};
+
+async function atualizarClienteComRetry(base44, id, patch) {
+  for (let tentativa = 1; tentativa <= 6; tentativa++) {
+    try {
+      return await base44.asServiceRole.entities.Cliente.update(id, patch);
+    } catch (error) {
+      if (!isRateLimitError(error) || tentativa === 6) throw error;
+      await delay(1200 * tentativa);
+    }
+  }
+}
 
 const normalizeStatus = (value) => {
   const text = normalizeText(value);
@@ -241,9 +258,9 @@ Deno.serve(async (req) => {
     }
 
     if (!dryRun) {
-      const lote = 25;
-      for (let i = 0; i < atualizacoes.length; i += lote) {
-        await Promise.all(atualizacoes.slice(i, i + lote).map(item => base44.asServiceRole.entities.Cliente.update(item.id, item.patch)));
+      for (const item of atualizacoes) {
+        await atualizarClienteComRetry(base44, item.id, item.patch);
+        await delay(120);
       }
     }
 
