@@ -36,6 +36,13 @@ const ETAPA_OMIE_LABELS = {
   '60': { label: 'Faturado', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
 };
 
+const formatNumeroPedido = (pedido) => {
+  if (!pedido?.numero_pedido) return '-';
+  if (pedido.tipo !== 'troca') return pedido.numero_pedido;
+  const digits = String(pedido.numero_pedido).replace(/\D/g, '');
+  return `${digits.padStart(4, '0')}T`;
+};
+
 const NF_STATUS_LABELS = {
   emitida:       { label: 'NF Emitida',       bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300' },
   rejeitada:     { label: 'NF Rejeitada',     bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
@@ -108,7 +115,7 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'numero_pedido') {
-    return <span className={`${truncClass} font-medium`}>{p[col.field] || '-'}</span>;
+    return <span className={`${truncClass} font-medium`}>{formatNumeroPedido(p)}</span>;
   }
 
   if (col.id === 'total_itens') {

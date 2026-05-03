@@ -58,6 +58,13 @@ const getLocalDateFromIso = (value) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatNumeroPedidoBusca = (pedido) => {
+  if (!pedido?.numero_pedido) return '';
+  if (pedido.tipo !== 'troca') return String(pedido.numero_pedido);
+  const digits = String(pedido.numero_pedido).replace(/\D/g, '');
+  return `${digits.padStart(4, '0')}T`;
+};
+
 export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
@@ -261,7 +268,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (search.trim()) {
       const s = search.toLowerCase();
       list = list.filter(p =>
-        (p.numero_pedido?.toString() || '').includes(s) ||
+        (p.numero_pedido?.toString() || '').toLowerCase().includes(s) ||
+        formatNumeroPedidoBusca(p).toLowerCase().includes(s) ||
         (p.cliente_nome_base || '').toLowerCase().includes(s) ||
         (p.cliente_fantasia_base || '').toLowerCase().includes(s) ||
         (p.cliente_cpf_cnpj || '').includes(s) ||
