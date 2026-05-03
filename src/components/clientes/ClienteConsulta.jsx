@@ -23,6 +23,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     modalidade_pagamento_ids: [],
     tabela_preco_ids: [],
     status: 'all',
+    rota: 'all',
     cidade: '',
     bairro: '',
     search: '',
@@ -75,6 +76,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
     queryFn: () => base44.entities.TabelaPreco.list(),
+  });
+
+  const { data: rotas = [] } = useQuery({
+    queryKey: ['rotas'],
+    queryFn: () => base44.entities.Rota.list(),
   });
 
   const { filtrarClientes, vendedoresPermitidosIds } = useClientesPermissao();
@@ -168,6 +174,8 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       }
 
       if (filters.status !== 'all' && cliente.status !== filters.status) return false;
+      if (filters.rota === 'com' && !cliente.rota_id) return false;
+      if (filters.rota === 'sem' && cliente.rota_id) return false;
       if (filters.cidade && !cliente.cidade?.toLowerCase().includes(filters.cidade.toLowerCase())) return false;
       if (filters.bairro && !cliente.bairro?.toLowerCase().includes(filters.bairro.toLowerCase())) return false;
 
@@ -221,6 +229,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'CEP', value: selectedCliente?.cep || '-' },
     { label: 'Vendedor', value: selectedCliente ? getVendedorName(selectedCliente.vendedor_id) : '-' },
     { label: 'Supervisor', value: selectedCliente ? getSupervisorNameForClient(selectedCliente) : '-' },
+    { label: 'Rota', value: selectedCliente ? getName(rotas, selectedCliente.rota_id) : '-' },
     { label: 'Rede', value: selectedCliente ? getName(redes, selectedCliente.rede_id) : '-' },
     { label: 'Segmento', value: selectedCliente ? getName(segmentos, selectedCliente.segmento_id) : '-' },
     { label: 'Plano de pagamento', value: selectedCliente ? getName(planosPagamento, selectedCliente.plano_pagamento_id) : '-' },
@@ -253,6 +262,11 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
       key: 'rede_id',
       label: 'Rede',
       render: (val) => getName(redes, val),
+    },
+    {
+      key: 'rota_id',
+      label: 'Rota',
+      render: (val) => getName(rotas, val),
     },
     {
       key: 'status',
@@ -398,16 +412,30 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="inativo">Inativo</SelectItem>
-                  <SelectItem value="prospecto">Prospecto</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="ativo">Ativos</SelectItem>
+                <SelectItem value="inativo">Inativos</SelectItem>
+                <SelectItem value="prospecto">Prospectos</SelectItem>
                 </SelectContent>
-              </Select>
-            </div>
+                </Select>
+                </div>
 
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Cidade</label>
+                <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Rota</label>
+                <Select value={filters.rota} onValueChange={(v) => setFilters({ ...filters, rota: v })}>
+                <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="com">Clientes com rota</SelectItem>
+                <SelectItem value="sem">Clientes sem rota</SelectItem>
+                </SelectContent>
+                </Select>
+                </div>
+
+                <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Cidade</label>
               <div className="relative">
                 <MapPin className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
                 <Input
@@ -520,6 +548,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
                 modalidade_pagamento_ids: [],
                 tabela_preco_ids: [],
                 status: 'all',
+                rota: 'all',
                 cidade: '',
                 bairro: '',
                 search: '',
