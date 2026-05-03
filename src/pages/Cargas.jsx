@@ -36,7 +36,14 @@ export default function Cargas() {
 
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
-    queryFn: () => base44.entities.Carga.list('-created_date', 500)
+    queryFn: async () => {
+      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
+        list_limit: 500,
+        sync_limit: 50
+      });
+      return data?.cargas || [];
+    },
+    refetchOnWindowFocus: true
   });
 
   // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
@@ -203,7 +210,7 @@ export default function Cargas() {
           <Truck className="w-8 h-8 text-amber-500" />
           <div>
             <h1 className="text-2xl font-bold">Cargas</h1>
-            <p className="text-sm text-slate-500">Cargas montadas para faturamento e rota</p>
+            <p className="text-sm text-slate-500">Cargas com status consultado direto no Omie</p>
           </div>
         </div>
         <div className="flex gap-2">
