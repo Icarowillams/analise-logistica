@@ -23,7 +23,14 @@ const STATUS_COLORS = {
   em_rota: 'bg-indigo-100 text-indigo-800',
   entregue: 'bg-emerald-100 text-emerald-800',
   finalizada: 'bg-emerald-100 text-emerald-800',
-  cancelada: 'bg-red-100 text-red-800'
+  cancelada: 'bg-red-100 text-red-800',
+  excluida: 'bg-red-100 text-red-800'
+};
+
+const statusExibido = (carga) => {
+  const pedidos = carga.pedidos_omie || [];
+  const excluida = pedidos.length > 0 && pedidos.every(p => p.status_pedido === 'excluido_no_omie' || p.etapa === 'excluido');
+  return excluida ? 'excluida' : carga.status_carga;
 };
 
 export default function Cargas() {
@@ -182,7 +189,10 @@ export default function Cargas() {
       key: 'status_carga',
       label: 'Status',
       width: '120px',
-      render: (v) => <Badge className={STATUS_COLORS[v] || ''}>{v}</Badge>
+      render: (_, row) => {
+        const status = statusExibido(row);
+        return <Badge className={STATUS_COLORS[status] || ''}>{status === 'excluida' ? 'excluída no Omie' : status}</Badge>;
+      }
     },
     {
       key: 'acoes',

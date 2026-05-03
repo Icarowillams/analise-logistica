@@ -42,9 +42,15 @@ function extrairPedido(consulta, pedidoOriginal) {
   };
 }
 
+function erroPedidoExcluido(mensagem) {
+  const texto = String(mensagem || '').toLowerCase();
+  return texto.includes('não existem registros') || texto.includes('nao existem registros') || texto.includes('não encontrado') || texto.includes('nao encontrado') || texto.includes('não cadastrado') || texto.includes('nao cadastrado') || texto.includes('excluído') || texto.includes('excluido') || texto.includes('inexistente');
+}
+
 function definirStatusCarga(pedidosStatus, statusAtual) {
   if (pedidosStatus.length === 0) return statusAtual || 'montagem';
-  if (pedidosStatus.every(p => p.cancelado)) return 'cancelada';
+  if (pedidosStatus.every(p => p.excluido)) return 'cancelada';
+  if (pedidosStatus.every(p => p.cancelado || p.excluido)) return 'cancelada';
   if (pedidosStatus.every(p => p.faturado)) return 'faturada';
   if (pedidosStatus.some(p => p.etapa === '60')) return 'faturada';
   if (pedidosStatus.some(p => p.etapa === '50')) return 'pronta';
@@ -92,7 +98,17 @@ Deno.serve(async (req) => {
             numero_nf: status.numero_nf || pedido.numero_nf
           });
         } catch (error) {
-          pedidosAtualizados.push(pedido);
+          if (erroPedidoExcluido(error.message)) {
+            pedidosStatus.push({ excluido: true, cancelado: true, faturado: false, etapa: 'excluido' });
+            pedidosAtualizados.push({
+              ...pedido,
+              etapa: 'excluido',
+              status_pedido: 'excluido_no_omie',
+              status_real_omie: 'Pedido excluído/inexistente no Omie'
+            });
+          } else {
+            pedidosAtualizados.push(pedido);
+          }
         }
 
         await new Promise(r => setTimeout(r, 250));
