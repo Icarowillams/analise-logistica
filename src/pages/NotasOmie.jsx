@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Search, Download, ExternalLink, Loader2 } from 'lucide-react';
+import { FileText, Search, Download, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataTable from '@/components/ui/DataTable';
+import NfCompletaDialog from '@/components/notasOmie/NfCompletaDialog';
 
 export default function NotasOmie() {
   const hoje = new Date().toISOString().slice(0, 10);
@@ -27,6 +28,7 @@ export default function NotasOmie() {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(null);
+  const [detalheCompleto, setDetalheCompleto] = useState(null);
 
   const buscar = async (pg = 1) => {
     setLoading(true);
@@ -48,17 +50,17 @@ export default function NotasOmie() {
     setLoading(false);
   };
 
-  const abrirDocs = async (nf) => {
-    setLoadingDetalhe(nf.nIdNF);
+  const extrairCompleto = async (nf) => {
+    setLoadingDetalhe(nf.nIdNF || nf.nCodNF || nf.cNumero);
     try {
       const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
-        nIdNF: nf.nIdNF
+        nIdNF: nf.nIdNF || nf.nCodNF,
+        nCodNF: nf.nCodNF || nf.nIdNF,
+        nNF: nf.cNumero,
+        nIdPedido: nf.nIdPedido
       });
-      if (data?.danfe_url) window.open(data.danfe_url, '_blank');
-      if (data?.xml_url) window.open(data.xml_url, '_blank');
-      if (!data?.danfe_url && !data?.xml_url) {
-        toast.warning('URLs não disponíveis ainda (NF pode estar em processamento)');
-      }
+      if (data?.sucesso) setDetalheCompleto(data);
+      else toast.error(data?.error || 'Não foi possível extrair a NF-e');
     } catch (e) {
       toast.error(e.message);
     }
@@ -89,16 +91,17 @@ export default function NotasOmie() {
     },
     {
       key: 'acoes',
-      label: 'Docs',
-      width: '90px',
+      label: 'Extrair',
+      width: '110px',
       render: (_, row) => (
         <Button
           size="sm"
           variant="outline"
-          onClick={() => abrirDocs(row)}
-          disabled={loadingDetalhe === row.nIdNF}
+          onClick={() => extrairCompleto(row)}
+          disabled={loadingDetalhe === (row.nIdNF || row.nCodNF || row.cNumero)}
         >
-          {loadingDetalhe === row.nIdNF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {loadingDetalhe === (row.nIdNF || row.nCodNF || row.cNumero) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4 mr-1" />}
+          Ver
         </Button>
       )
     }
@@ -110,7 +113,7 @@ export default function NotasOmie() {
         <FileText className="w-8 h-8 text-amber-500" />
         <div>
           <h1 className="text-2xl font-bold">Notas Fiscais Omie</h1>
-          <p className="text-sm text-slate-500">Consulta e download de DANFE/XML</p>
+          <p className="text-sm text-slate-500">Consulta, DANFE, XML, itens, impostos, pedido e JSON bruto completo</p>
         </div>
       </div>
 
@@ -185,12 +188,18 @@ export default function NotasOmie() {
               data={resultado.nfs || []}
               columns={columns}
               searchable
+              searchFields={['cNumero', 'cRazao', 'cCPFCNPJDest', 'cChaveNFe']}
               pageSize={50}
               emptyMessage="Nenhuma NF encontrada"
             />
           </CardContent>
         </Card>
       )}
+      <NfCompletaDialog
+        open={!!detalheCompleto}
+        onOpenChange={(open) => !open && setDetalheCompleto(null)}
+        detalhe={detalheCompleto}
+      />
     </div>
   );
 }

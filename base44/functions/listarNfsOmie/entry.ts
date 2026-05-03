@@ -64,17 +64,22 @@ Deno.serve(async (req) => {
     }).catch(() => {});
 
     const nfs = (data.nfCadastro || []).map(nf => ({
-      nIdNF: nf.compl?.nIdNF || nf.nIdNF,
+      nIdNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
+      nCodNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
       nIdPedido: nf.compl?.nIdPedido || nf.nIdPedido,
       cNumero: nf.ide?.nNF || nf.cNumero,
       cSerie: nf.ide?.serie || nf.cSerie,
       cChaveNFe: nf.compl?.cChaveNFe || nf.cChaveNFe,
       dEmiNF: nf.ide?.dEmi || nf.dEmiNF,
+      hEmiNF: nf.ide?.hEmi || nf.hEmiNF,
       cRazao: nf.nfDestInt?.cRazao || nf.cRazao,
       cCPFCNPJDest: nf.nfDestInt?.cnpj_cpf || nf.cCPFCNPJDest,
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
       cStatus: nf.ide?.cStat || nf.cStatus,
-      cOperacao: nf.ide?.cNatOp || nf.cOperacao
+      cOperacao: nf.ide?.cNatOp || nf.cOperacao,
+      itens: nf.det || [],
+      total: nf.total || null,
+      nf_raw: nf
     }));
 
     return Response.json({
