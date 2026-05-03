@@ -15,11 +15,12 @@ async function omieCall(call, param, tentativa = 1) {
   if (data.faultstring) {
     const msg = String(data.faultstring).toLowerCase();
     const fc = String(data.faultcode || '');
-    const isTransient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
+    const bloqueio = msg.includes('bloqueada por consumo indevido');
+    const isTransient = !bloqueio && (msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
       || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon')
-      || fc.includes('425') || fc.includes('520') || res.status === 429;
-    if (isTransient && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 2000 * tentativa));
+      || fc.includes('425') || fc.includes('520') || res.status === 429);
+    if (isTransient && tentativa < 3) {
+      await new Promise(r => setTimeout(r, 2500 * tentativa));
       return omieCall(call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
@@ -27,9 +28,15 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
 function pedidoCancelado(pedido) {
-  const texto = JSON.stringify(pedido || {}).toLowerCase();
-  return texto.includes('cancelado') || texto.includes('cancelada');
+  const cab = pedido?.cabecalho || {};
+  const info = [cab.cancelado, cab.status_pedido, cab.status, cab.etapa, cab.descricao_status]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return cab.cancelado === 'S' || info.includes('cancelado') || info.includes('cancelada');
 }
 
 Deno.serve(async (req) => {
@@ -46,7 +53,9 @@ Deno.serve(async (req) => {
       pagina = 1,
       registros_por_pagina = 100,
       apenas_faturar = false,
-      incluir_cancelados = false
+      incluir_cancelados = false,
+      buscar_todas_paginas = false,
+      max_paginas = 10
     } = body;
 
     // Doc Omie: máx 100 registros/página
@@ -62,12 +71,26 @@ Deno.serve(async (req) => {
 
     const t0 = Date.now();
     let data;
+    let todosPedidosOmie = [];
     try {
       data = await omieCall('ListarPedidos', param);
+      todosPedidosOmie = data.pedido_venda_produto || [];
+
+      if (buscar_todas_paginas) {
+        const totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas || 10));
+        for (let pag = 2; pag <= totalPaginas; pag++) {
+          await delay(900);
+          const paginaData = await omieCall('ListarPedidos', { ...param, pagina: pag });
+          todosPedidosOmie.push(...(paginaData.pedido_venda_produto || []));
+        }
+      }
     } catch (e) {
       // Omie retorna erro quando não há registros — tratar como lista vazia
       if (/n[ãa]o existem registros/i.test(e.message)) {
         return Response.json({ sucesso: true, pedidos: [], pagina: pagina, total_de_paginas: 0, total_de_registros: 0, registros: 0 });
+      }
+      if (/bloqueada por consumo indevido|consumo redundante|aguarde/i.test(e.message)) {
+        return Response.json({ sucesso: false, pedidos: [], error: e.message, bloqueado_omie: true }, { status: 429 });
       }
       throw e;
     }
@@ -82,7 +105,7 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const pedidos = (data.pedido_venda_produto || [])
+    const pedidos = todosPedidosOmie
       .filter(p => incluir_cancelados || !pedidoCancelado(p))
       .map(p => {
         const cancelado = pedidoCancelado(p);
@@ -115,7 +138,7 @@ Deno.serve(async (req) => {
       pagina: data.pagina,
       total_de_paginas: data.total_de_paginas,
       total_de_registros: data.total_de_registros,
-      registros: data.registros
+      registros: pedidos.length
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

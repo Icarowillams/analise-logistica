@@ -26,7 +26,7 @@ export default function useDadosMontagem() {
 
       // Paralelo: pedidos Omie etapa 20 + pedidos de troca aprovados (em cargas ainda não atribuídas)
       const [vendasRes, trocasAprovadas] = await Promise.all([
-        base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 200 }),
+        base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 100, buscar_todas_paginas: true, max_paginas: 8 }),
         base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
       ]);
 
@@ -97,7 +97,8 @@ export default function useDadosMontagem() {
 
       setPedidos([...vendasEnriquecidas, ...trocasComItens]);
     } catch (e) {
-      toast.error('Erro ao carregar dados: ' + e.message);
+    const msg = e?.response?.data?.error || e.message;
+    toast.error('Erro ao carregar dados: ' + msg);
     }
     setLoading(false);
   }, []);
