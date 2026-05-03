@@ -129,7 +129,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Pré-validar CSV
           </Button>
-          <Button onClick={() => executar(false)} disabled={loading || !resultado || resultado.atualizacoes === 0} className="bg-cyan-600 hover:bg-cyan-700">
+          <Button onClick={() => executar(false)} disabled={loading || !resultado || resultado.atualizacoes === 0 || resultado.ambiguos > 0 || resultado.nao_encontrados > 0} className="bg-cyan-600 hover:bg-cyan-700">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Route className="w-4 h-4" />}
             Atualizar clientes
           </Button>

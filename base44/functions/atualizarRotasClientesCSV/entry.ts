@@ -75,9 +75,56 @@ const addToMap = (map, key, cliente) => {
   map.get(key).push(cliente);
 };
 
-const firstUnique = (map, key) => {
-  const found = map.get(key);
-  return found?.length === 1 ? found[0] : null;
+const uniqueById = (items) => {
+  const seen = new Map();
+  items.filter(Boolean).forEach(item => seen.set(item.id, item));
+  return [...seen.values()];
+};
+
+const getClienteCodes = (cliente) => [
+  onlyDigits(cliente.codigo_interno),
+  onlyDigits(cliente.codigo_integracao),
+  onlyDigits(cliente.codigo_omie)
+].filter(Boolean);
+
+const scoreCliente = (cliente, entrada) => {
+  const codes = getClienteCodes(cliente);
+  const doc = onlyDigits(cliente.cnpj_cpf);
+  const fantasia = normalizeText(cliente.nome_fantasia);
+  const razao = normalizeText(cliente.razao_social);
+
+  let score = 0;
+  if (entrada.codigoDigits && codes.includes(entrada.codigoDigits)) score += 100;
+  if (entrada.documentoDigits && doc === entrada.documentoDigits) score += 120;
+  if (entrada.nomeNorm && fantasia === entrada.nomeNorm) score += 35;
+  if (entrada.razaoNorm && razao === entrada.razaoNorm) score += 35;
+  if (entrada.nomeNorm && razao === entrada.nomeNorm) score += 20;
+  if (entrada.razaoNorm && fantasia === entrada.razaoNorm) score += 20;
+  return score;
+};
+
+const resolverCliente = ({ porCodigo, porDocumento, porNome, entrada }) => {
+  const candidatos = uniqueById([
+    ...(porCodigo.get(entrada.codigoDigits) || []),
+    ...(porDocumento.get(entrada.documentoDigits) || []),
+    ...(porDocumento.get(entrada.codigoDigits) || []),
+    ...(porNome.get(entrada.nomeNorm) || []),
+    ...(porNome.get(entrada.razaoNorm) || [])
+  ]);
+
+  if (candidatos.length === 0) return { cliente: null, candidatos: [] };
+
+  const ranqueados = candidatos
+    .map(cliente => ({ cliente, score: scoreCliente(cliente, entrada) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranqueados.length === 0) return { cliente: null, candidatos };
+  if (ranqueados.length === 1 || ranqueados[0].score > ranqueados[1].score) {
+    return { cliente: ranqueados[0].cliente, candidatos: [] };
+  }
+
+  return { cliente: null, candidatos: ranqueados.filter(item => item.score === ranqueados[0].score).map(item => item.cliente) };
 };
 
 Deno.serve(async (req) => {
@@ -134,24 +181,29 @@ Deno.serve(async (req) => {
       const documento = linha.cnpj_cpf || linha.cpf_cnpj || linha.cnpjcpf || linha.cpfcnpj || '';
       const rotaNome = String(linha.rota || '').trim();
       const status = normalizeStatus(linha.status);
-      const codigoDigits = onlyDigits(codigo);
-      const documentoDigits = onlyDigits(documento);
+      const entrada = {
+        codigoDigits: onlyDigits(codigo),
+        documentoDigits: onlyDigits(documento),
+        nomeNorm: normalizeText(nome),
+        razaoNorm: normalizeText(razaoSocial)
+      };
 
-      let cliente = firstUnique(porCodigo, codigoDigits) || firstUnique(porDocumento, documentoDigits) || firstUnique(porDocumento, codigoDigits) || firstUnique(porNome, normalizeText(nome)) || firstUnique(porNome, normalizeText(razaoSocial));
+      const resolucao = resolverCliente({ porCodigo, porDocumento, porNome, entrada });
+      const cliente = resolucao.cliente;
 
       if (!cliente) {
-        const candidatos = [
-          ...(porCodigo.get(codigoDigits) || []),
-          ...(porDocumento.get(documentoDigits) || []),
-          ...(porDocumento.get(codigoDigits) || []),
-          ...(porNome.get(normalizeText(nome)) || []),
-          ...(porNome.get(normalizeText(razaoSocial)) || [])
-        ];
-
-        if (candidatos.length > 1) {
-          ambiguos.push({ linha: linha.linha, codigo, nome, rota: rotaNome, candidatos: candidatos.map(c => c.id) });
+        if (resolucao.candidatos.length > 1) {
+          ambiguos.push({
+            linha: linha.linha,
+            codigo,
+            cnpj_cpf: documento,
+            nome,
+            razao_social: razaoSocial,
+            rota: rotaNome,
+            candidatos: resolucao.candidatos.map(c => ({ id: c.id, codigo: c.codigo_interno || c.codigo_integracao || c.codigo_omie || '', cnpj_cpf: c.cnpj_cpf || '', nome: c.nome_fantasia || c.razao_social || '' }))
+          });
         } else {
-          naoEncontrados.push({ linha: linha.linha, codigo, nome, rota: rotaNome, status: linha.status });
+          naoEncontrados.push({ linha: linha.linha, codigo, cnpj_cpf: documento, nome, razao_social: razaoSocial, rota: rotaNome, status: linha.status });
         }
         continue;
       }
@@ -187,7 +239,7 @@ Deno.serve(async (req) => {
     }
 
     if (!dryRun) {
-      const lote = 10;
+      const lote = 25;
       for (let i = 0; i < atualizacoes.length; i += lote) {
         await Promise.all(atualizacoes.slice(i, i + lote).map(item => base44.asServiceRole.entities.Cliente.update(item.id, item.patch)));
       }
