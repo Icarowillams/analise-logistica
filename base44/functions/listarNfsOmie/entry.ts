@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       cRazao: nf.nfDestInt?.cRazao || nf.cRazao,
       cCPFCNPJDest: nf.nfDestInt?.cnpj_cpf || nf.cCPFCNPJDest,
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
-      cStatus: nf.ide?.cStat || nf.cStatus,
+      cStatus: nf.ide?.cStat || nf.cStatus || (nf.ide?.nNF || nf.cNumero ? 'F' : ''),
       cOperacao: nf.ide?.cNatOp || nf.cOperacao,
       itens: nf.det || [],
       total: nf.total || null,

@@ -85,8 +85,9 @@ export default function NotasOmie() {
       label: 'Status',
       width: '100px',
       render: (v) => {
-        const cor = v === 'A' ? 'bg-green-100 text-green-800' : v === 'C' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
-        return <Badge className={cor}>{v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v}</Badge>;
+        const status = !v || v === 'F' ? 'Faturado' : v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v;
+        const cor = status === 'Faturado' || status === 'Autorizada' ? 'bg-green-100 text-green-800' : status === 'Cancelada' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+        return <Badge className={cor}>{status}</Badge>;
       }
     },
     {
