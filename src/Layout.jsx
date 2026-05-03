@@ -127,8 +127,6 @@ export default function Layout({ children, currentPageName }) {
         title: 'Logística',
         icon: Warehouse,
         submenu: [
-          { title: 'Pedidos de Venda', path: 'ControlePedidosVenda' },
-          { title: 'Pedidos de Troca', path: 'ControlePedidosTroca' },
           { title: 'Notas Fiscais Omie', path: 'NotasOmie' },
           { title: 'Montagem de Carga', path: 'MontagemCarga' },
           { title: 'Cargas', path: 'Cargas' },
