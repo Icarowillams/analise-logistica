@@ -37,47 +37,55 @@ export default function PedidosOmieConsulta() {
   const [tipo, setTipo] = useState('todos');
   const [detalhe, setDetalhe] = useState(null);
 
-  const { data: vendas = [], isLoading: carregandoVendas } = useQuery({
-    queryKey: ['pedidosVenda'],
-    queryFn: () => base44.entities.PedidoVenda.list('-data_pedido', 1000),
+  const buscarPedidosOmiePorEtapas = async () => {
+    const etapas = ['10', '20', '50', '60'];
+    const respostas = await Promise.all(
+      etapas.map((etapa) => base44.functions.invoke('buscarPedidosOmie', {
+        etapa,
+        registros_por_pagina: 100,
+        incluir_cancelados: true,
+      }))
+    );
+    return respostas.flatMap((res) => res.data?.pedidos || []);
+  };
+
+  const { data: pedidosOmie = [], isLoading: carregandoPedidos } = useQuery({
+    queryKey: ['pedidosOmieConsultaDireta'],
+    queryFn: buscarPedidosOmiePorEtapas,
+    refetchOnWindowFocus: true,
   });
 
-  const { data: trocas = [], isLoading: carregandoTrocas } = useQuery({
-    queryKey: ['pedidosTroca'],
-    queryFn: () => base44.entities.PedidoTroca.list('-data_troca', 1000),
-  });
+  const vendas = pedidosOmie.filter((p) => !String(p.tipo_pedido || p.tipo || p.natureza_operacao || '').toLowerCase().includes('troca'));
+  const trocas = pedidosOmie.filter((p) => String(p.tipo_pedido || p.tipo || p.natureza_operacao || p.status_pedido || '').toLowerCase().includes('troca'));
 
-  const { data: itensVenda = [] } = useQuery({
-    queryKey: ['itensPedidoVenda', detalhe?.id],
-    queryFn: () => base44.entities.ItemPedidoVenda.filter({ pedido_venda_id: detalhe.id }),
-    enabled: detalhe?.tipo_origem === 'venda',
-  });
-
-  const { data: itensTroca = [] } = useQuery({
-    queryKey: ['itensTroca', detalhe?.id],
-    queryFn: () => base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: detalhe.id }),
-    enabled: detalhe?.tipo_origem === 'troca',
-  });
+  const itensVenda = detalhe?.produtos || [];
+  const itensTroca = detalhe?.produtos || [];
 
   const pedidos = useMemo(() => {
     const vendasMapeadas = vendas.map((p) => ({
       ...p,
       tipo_origem: 'venda',
-      numero: p.numero_pedido,
-      data: p.data_pedido,
-      status_info: statusVenda[p.status] || statusVenda.rascunho,
+      numero: p.numero_pedido || p.codigo_pedido,
+      data: p.data_pedido || p.data_previsao,
+      status_info: statusVenda[p.status] || statusVenda[p.etapa] || statusVenda.rascunho,
       descricao_tipo: 'Venda',
-      busca_extra: p.numero_nota_fiscal || '',
+      cliente_nome: p.cliente_nome || p.nome_cliente || p.codigo_cliente || '-',
+      vendedor_nome: p.vendedor_nome || '-',
+      valor_total: p.valor_total || p.valor_total_pedido || 0,
+      busca_extra: p.numero_nota_fiscal || p.status_pedido || p.etapa || '',
     }));
 
     const trocasMapeadas = trocas.map((p) => ({
       ...p,
       tipo_origem: 'troca',
-      numero: p.numero_troca,
-      data: p.data_troca,
+      numero: p.numero_pedido || p.codigo_pedido,
+      data: p.data_troca || p.data_previsao,
       status_info: statusTroca[p.status] || statusTroca.aberto,
       descricao_tipo: tiposTroca[p.tipo] || p.tipo || 'Troca',
-      busca_extra: p.motivo_descricao || '',
+      cliente_nome: p.cliente_nome || p.nome_cliente || p.codigo_cliente || '-',
+      vendedor_nome: p.vendedor_nome || '-',
+      valor_total: p.valor_total || p.valor_total_pedido || 0,
+      busca_extra: p.motivo_descricao || p.status_pedido || p.etapa || '',
     }));
 
     return [...vendasMapeadas, ...trocasMapeadas].sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
@@ -91,7 +99,7 @@ export default function PedidosOmieConsulta() {
       .some((valor) => String(valor || '').toLowerCase().includes(termo));
   });
 
-  const carregando = carregandoVendas || carregandoTrocas;
+  const carregando = carregandoPedidos;
   const itensDetalhe = detalhe?.tipo_origem === 'venda' ? itensVenda : itensTroca;
 
   return (
