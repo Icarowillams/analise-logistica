@@ -66,7 +66,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
       const num = parseInt(String(p.numero_pedido).replace(/\D/g, ''), 10);
       if (!isNaN(num) && num > maxNum) maxNum = num;
     });
-    return String(maxNum + 1).padStart(4, '0') + 'T';
+    return String(maxNum + 1).padStart(5, '0') + 'T';
   };
 
   const enviarPedido = async (pedido) => {

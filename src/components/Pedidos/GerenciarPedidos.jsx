@@ -62,7 +62,7 @@ const formatNumeroPedidoBusca = (pedido) => {
   if (!pedido?.numero_pedido) return '';
   if (pedido.tipo !== 'troca') return String(pedido.numero_pedido);
   const digits = String(pedido.numero_pedido).replace(/\D/g, '');
-  return `${digits.padStart(4, '0')}T`;
+  return `${digits.padStart(5, '0')}T`;
 };
 
 export default function GerenciarPedidos({ onEditPedido }) {
