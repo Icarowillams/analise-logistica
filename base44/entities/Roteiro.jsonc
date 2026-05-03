@@ -1,0 +1,81 @@
+{
+  "name": "Roteiro",
+  "type": "object",
+  "description": "Roteiro semanal de atendimento/venda por funcion\u00e1rio, usado para organizar clientes por dia da semana",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor/funcion\u00e1rio respons\u00e1vel pelo roteiro"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "dia_semana": {
+      "type": "string",
+      "enum": [
+        "segunda-feira",
+        "terca-feira",
+        "quarta-feira",
+        "quinta-feira",
+        "sexta-feira",
+        "sabado",
+        "domingo",
+        "segunda",
+        "terca",
+        "quarta",
+        "quinta",
+        "sexta"
+      ],
+      "description": "Dia da semana do roteiro"
+    },
+    "clientes_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "IDs dos clientes no roteiro"
+    },
+    "clientes_detalhes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cliente_id": {
+            "type": "string"
+          },
+          "cliente_nome": {
+            "type": "string"
+          },
+          "cliente_codigo": {
+            "type": "string"
+          },
+          "cliente_cidade": {
+            "type": "string"
+          },
+          "ordem": {
+            "type": "number"
+          }
+        }
+      },
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planejado",
+        "ativo",
+        "inativo",
+        "concluido"
+      ],
+      "default": "planejado"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "vendedor_id",
+    "dia_semana"
+  ]
+}
