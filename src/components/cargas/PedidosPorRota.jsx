@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +40,10 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
     });
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtrados]);
+
+  useEffect(() => {
+    setColapsadas(new Set(grupos.map(([rota]) => rota)));
+  }, [filtroRota, filtroTexto, pedidos.length]);
 
   const selSet = new Set(selecionados);
   const toggle = (cod) => {
@@ -104,8 +108,8 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
           const selecRota = rotaPedidos.filter(p => selSet.has(p.codigo_pedido)).length;
           return (
             <div key={rota} className="border-t">
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 sticky top-0 z-10">
-                <button onClick={() => toggleColapso(rota)}>
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 sticky top-0 z-10 cursor-pointer hover:bg-amber-50" onClick={() => toggleColapso(rota)}>
+                <button onClick={(e) => { e.stopPropagation(); toggleColapso(rota); }}>
                   {colapsada ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
                 <div className="flex-1">
@@ -114,7 +118,7 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                     {rotaPedidos.length} pedidos • {selecRota} selecionados • R$ {totalRota.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => toggleRota(rotaPedidos)}>
+                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); toggleRota(rotaPedidos); }}>
                   {selecRota === rotaPedidos.length ? 'Desmarcar Rota' : 'Selecionar Rota'}
                 </Button>
               </div>

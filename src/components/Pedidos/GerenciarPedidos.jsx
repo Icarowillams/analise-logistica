@@ -397,7 +397,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   };
 
   // Drag-select: selecionar arrastando o mouse pelas linhas
-  const { onRowMouseDown, onRowMouseEnter, onMouseUp } = useDragSelect(
+  const { onRowMouseDown, onRowMouseEnter, onMouseMove, onMouseUp } = useDragSelect(
     filtered.map(p => p.id),
     setSelectedIds
   );
@@ -717,7 +717,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-auto bg-white" style={{ height: 'calc(100vh - 320px)', minHeight: '250px' }}>
+        <div className="border rounded-lg overflow-auto bg-white cursor-default select-none" style={{ height: 'calc(100vh - 320px)', minHeight: '250px' }} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
           <table className="text-[11px] border-collapse table-fixed" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
@@ -782,6 +782,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                 filtered.map(p => (
                   <tr
                     key={p.id}
+                    data-drag-select-id={p.id}
                     className={`border-t hover:bg-slate-50 ${selectedIds.includes(p.id) ? 'bg-amber-50' : ''}`}
                     style={{ userSelect: 'none' }}
                     onMouseDown={(e) => onRowMouseDown(e, p.id, selectedIds.includes(p.id))}
