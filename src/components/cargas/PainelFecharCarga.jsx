@@ -131,15 +131,12 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   };
 
   return (
-    <Card className="sticky top-4 border-slate-200 bg-white shadow-sm">
-      <CardHeader className="pb-3 border-b border-slate-100">
-        <CardTitle className="text-sm flex items-center gap-2 text-slate-900">
-          <LockKeyhole className="w-4 h-4 text-slate-700" />
-          Fechamento da carga
-        </CardTitle>
+    <Card className="sticky top-4 border-0 bg-white shadow-sm rounded-xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-900">Fechar carga</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 border border-slate-100 text-sm">
+        <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-3 text-sm">
           <div><div className="text-xs text-slate-500">Pedidos</div><div className="font-bold text-slate-900">{pedidosSel.length}</div></div>
           <div><div className="text-xs text-slate-500">Pacotes</div><div className="font-bold text-slate-900">{qtdPacotesTotal.toLocaleString('pt-BR')}</div></div>
           <div><div className="text-xs text-slate-500">Produtos</div><div className="font-bold text-slate-900">{produtosDistintos}</div></div>
@@ -174,7 +171,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span className="font-medium">{trocas.length}</span></div>
         </div>
 
-        <Button className="w-full bg-slate-900 hover:bg-slate-800" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
+        <Button className="w-full bg-amber-500 text-slate-950 hover:bg-amber-400" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
           {salvando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
           Fechar carga ({pedidosSel.length})
         </Button>

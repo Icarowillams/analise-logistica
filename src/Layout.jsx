@@ -172,7 +172,7 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 honeycomb-bg" translate="no" lang="pt-BR">
+    <div className="min-h-screen bg-[#f4f1ea]" translate="no" lang="pt-BR">
       <style>{`
         :root {
           --primary: 45 100% 51%;
@@ -180,22 +180,17 @@ export default function Layout({ children, currentPageName }) {
           --accent: 0 72% 51%;
         }
         
-        .honeycomb-bg {
-          background-color: #fefce8;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23f59e0b' fill-opacity='0.08'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-        }
-        
         .sidebar-gradient {
-          background: linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 50%, #3d3d3d 100%);
+          background: #231f20;
         }
         
         .menu-item-active {
-          background: linear-gradient(90deg, rgba(250,204,21,0.25) 0%, rgba(250,204,21,0.1) 100%);
-          border-left: 3px solid #facc15;
+          background: rgba(245, 158, 11, 0.14);
+          color: #fbbf24;
         }
         
         .menu-item-hover:hover {
-          background: linear-gradient(90deg, rgba(250,204,21,0.15) 0%, rgba(250,204,21,0.05) 100%);
+          background: rgba(255, 255, 255, 0.07);
         }
         
         @keyframes fadeIn {
@@ -217,18 +212,20 @@ export default function Layout({ children, currentPageName }) {
         }
         
         .hexagon-icon {
-          clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+          border-radius: 10px;
         }
       `}</style>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-neutral-900 z-50 flex items-center justify-between px-3 shadow-xl">
-        <div className="flex items-center gap-2">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#231f20] z-50 flex items-center justify-between px-3 shadow-xl">
+        <div className="flex items-center gap-2 text-white font-semibold">
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
             alt="Pão & Mel" 
             className="h-8 w-auto"
           />
+          <span className="text-amber-300">+</span>
+          <span className="text-sky-300">Omie</span>
         </div>
         <Button
           variant="ghost"
@@ -248,12 +245,16 @@ export default function Layout({ children, currentPageName }) {
         shadow-2xl
       `}>
         {/* Logo */}
-        <div className="h-40 flex items-center justify-center px-6 border-b border-neutral-700/50 bg-white/5">
-          <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
-            alt="Pão & Mel" 
-            className="h-28 w-auto"
-          />
+        <div className="h-32 flex items-center justify-center px-5 border-b border-white/10 bg-white/[0.03]">
+          <div className="flex items-center gap-3">
+            <img 
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
+              alt="Pão & Mel" 
+              className="h-16 w-auto"
+            />
+            <div className="text-xl font-light text-white">+</div>
+            <div className="rounded-lg bg-sky-50 px-3 py-2 text-lg font-bold text-sky-600 leading-none">Omie</div>
+          </div>
         </div>
 
         {/* User Info & Logout */}
@@ -365,7 +366,7 @@ export default function Layout({ children, currentPageName }) {
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 h-[calc(100%-13rem)] overflow-y-auto">
+        <nav className="p-3 h-[calc(100%-11rem)] overflow-y-auto">
           <ul className="space-y-1">
             {menuItems.map((item) => (
               <li key={item.title}>
@@ -374,7 +375,7 @@ export default function Layout({ children, currentPageName }) {
                     to={createPageUrl(item.path)}
                     onClick={() => setSidebarOpen(false)}
                     className={`
-                      flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
+                      flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                       transition-all duration-200 menu-item-hover
                       ${isActiveRoute(item.path)
                         ? 'menu-item-active text-yellow-400'
@@ -394,7 +395,7 @@ export default function Layout({ children, currentPageName }) {
                       className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-neutral-300 hover:text-yellow-300 menu-item-hover transition-all duration-200"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 flex items-center justify-center bg-neutral-700/50 hexagon-icon">
+                        <div className="w-8 h-8 flex items-center justify-center bg-white/10 hexagon-icon">
                           <item.icon className="w-4 h-4" />
                         </div>
                         {item.title}

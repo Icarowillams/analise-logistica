@@ -52,22 +52,17 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
   const fecharTodas = () => setColapsadas(new Set(grupos.map(([rota]) => rota)));
 
   return (
-    <Card className="border-slate-200 bg-white shadow-sm">
+    <Card className="border-0 bg-white shadow-sm rounded-xl">
       <CardContent className="p-0">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Pedidos por rota</h2>
-              <p className="text-xs text-slate-500">Clique na rota para abrir. Selecione pedidos individualmente ou por rota.</p>
-            </div>
+        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Pedidos por rota</h2>
+            <p className="text-xs text-slate-500">Abra uma rota e clique nos pedidos para selecionar.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={abrirTodas}>Abrir rotas</Button>
-            <Button size="sm" variant="outline" onClick={fecharTodas}>Fechar rotas</Button>
-            <Button size="sm" className="bg-slate-900 hover:bg-slate-800" onClick={selecionarTodos} disabled={pedidos.length === 0}>
+            <Button size="sm" variant="ghost" onClick={abrirTodas}>Abrir</Button>
+            <Button size="sm" variant="ghost" onClick={fecharTodas}>Fechar</Button>
+            <Button size="sm" className="bg-amber-500 text-slate-950 hover:bg-amber-400" onClick={selecionarTodos} disabled={pedidos.length === 0}>
               {pedidos.length > 0 && pedidos.every(p => selSet.has(p.codigo_pedido)) ? 'Desmarcar filtrados' : 'Selecionar filtrados'}
             </Button>
           </div>
@@ -86,9 +81,9 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
             const selecRota = rotaPedidos.filter(p => selSet.has(p.codigo_pedido)).length;
 
             return (
-              <div key={rota} className="border-b border-slate-200 last:border-b-0">
-                <div className="sticky top-0 z-10 flex items-center gap-3 bg-slate-50/95 px-4 py-3 backdrop-blur cursor-pointer hover:bg-slate-100" onClick={() => toggleColapso(rota)}>
-                  <button className="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-600" onClick={(e) => { e.stopPropagation(); toggleColapso(rota); }}>
+              <div key={rota} className="border-t border-slate-100 first:border-t-0">
+                <div className="sticky top-0 z-10 flex items-center gap-3 bg-white px-4 py-3 cursor-pointer hover:bg-amber-50" onClick={() => toggleColapso(rota)}>
+                  <button className="h-8 w-8 rounded-md bg-slate-100 flex items-center justify-center text-slate-600" onClick={(e) => { e.stopPropagation(); toggleColapso(rota); }}>
                     {colapsada ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                   <div className="min-w-0 flex-1">
