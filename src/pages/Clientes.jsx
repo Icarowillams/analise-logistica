@@ -24,6 +24,7 @@ import SincronizarOmieClientesModal from '@/components/clientes/SincronizarOmieC
 import VincularOmieModal from '@/components/clientes/VincularOmieModal';
 import LimparIEsInvalidasModal from '@/components/clientes/LimparIEsInvalidasModal';
 import AuditoriaOmieModal from '@/components/clientes/AuditoriaOmieModal';
+import AtualizarRotasClientesCSVModal from '@/components/clientes/AtualizarRotasClientesCSVModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
@@ -41,6 +42,7 @@ export default function Clientes() {
   const [corrigirErrosOpen, setCorrigirErrosOpen] = useState(false);
   const [limparIesOpen, setLimparIesOpen] = useState(false);
   const [auditoriaOpen, setAuditoriaOpen] = useState(false);
+  const [atualizarRotasOpen, setAtualizarRotasOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: 'nfe@paoemel.com.br',
@@ -965,6 +967,10 @@ export default function Clientes() {
                   Sincronizar CSV
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAtualizarRotasOpen(true)}>
+                <Map className="w-4 h-4 mr-2" />
+                Atualizar Rotas por CSV
+              </DropdownMenuItem>
               {podeOmie && (
                 <>
                   <DropdownMenuSeparator />
@@ -1501,6 +1507,12 @@ export default function Clientes() {
       <AuditoriaOmieModal
         open={auditoriaOpen}
         onOpenChange={setAuditoriaOpen}
+      />
+
+      <AtualizarRotasClientesCSVModal
+        open={atualizarRotasOpen}
+        onOpenChange={setAtualizarRotasOpen}
+        onSuccess={() => queryClient.invalidateQueries(['clientes'])}
       />
     </div>
   );
