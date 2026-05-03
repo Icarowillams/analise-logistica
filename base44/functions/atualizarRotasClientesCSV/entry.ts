@@ -100,6 +100,7 @@ const scoreCliente = (cliente, entrada) => {
   if (entrada.razaoNorm && razao === entrada.razaoNorm) score += 35;
   if (entrada.nomeNorm && razao === entrada.nomeNorm) score += 20;
   if (entrada.razaoNorm && fantasia === entrada.razaoNorm) score += 20;
+  if (entrada.status && cliente.status === entrada.status) score += 25;
   return score;
 };
 
@@ -185,7 +186,8 @@ Deno.serve(async (req) => {
         codigoDigits: onlyDigits(codigo),
         documentoDigits: onlyDigits(documento),
         nomeNorm: normalizeText(nome),
-        razaoNorm: normalizeText(razaoSocial)
+        razaoNorm: normalizeText(razaoSocial),
+        status
       };
 
       const resolucao = resolverCliente({ porCodigo, porDocumento, porNome, entrada });
@@ -200,7 +202,7 @@ Deno.serve(async (req) => {
             nome,
             razao_social: razaoSocial,
             rota: rotaNome,
-            candidatos: resolucao.candidatos.map(c => ({ id: c.id, codigo: c.codigo_interno || c.codigo_integracao || c.codigo_omie || '', cnpj_cpf: c.cnpj_cpf || '', nome: c.nome_fantasia || c.razao_social || '' }))
+            candidatos: resolucao.candidatos.map(c => ({ id: c.id, codigo: c.codigo_interno || c.codigo_integracao || c.codigo_omie || '', cnpj_cpf: c.cnpj_cpf || '', nome: c.nome_fantasia || c.razao_social || '', status: c.status || '', rota_id: c.rota_id || '', updated_date: c.updated_date || '' }))
           });
         } else {
           naoEncontrados.push({ linha: linha.linha, codigo, cnpj_cpf: documento, nome, razao_social: razaoSocial, rota: rotaNome, status: linha.status });
@@ -255,9 +257,9 @@ Deno.serve(async (req) => {
       ambiguos: ambiguos.length,
       rotas_criadas: rotasCriadas.length,
       amostras: {
-        atualizacoes: atualizacoes.slice(0, 20),
-        nao_encontrados: naoEncontrados.slice(0, 20),
         ambiguos: ambiguos.slice(0, 10),
+        nao_encontrados: naoEncontrados.slice(0, 20),
+        atualizacoes: atualizacoes.slice(0, 20),
         rotas_criadas: rotasCriadas.slice(0, 20)
       }
     });
