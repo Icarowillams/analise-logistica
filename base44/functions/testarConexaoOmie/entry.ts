@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Redeploy trigger: força releitura dos secrets do ambiente
+// Redeploy trigger: força releitura dos secrets do ambiente - 2026-05-03
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 
 Deno.serve(async (req) => {
