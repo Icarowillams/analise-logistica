@@ -171,7 +171,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span className="font-medium">{trocas.length}</span></div>
         </div>
 
-        <Button className="w-full bg-amber-500 text-slate-950 hover:bg-amber-400" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
+        <Button className="w-full bg-cyan-500 text-white hover:bg-cyan-600" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
           {salvando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
           Fechar carga ({pedidosSel.length})
         </Button>

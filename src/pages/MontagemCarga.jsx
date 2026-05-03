@@ -19,7 +19,7 @@ export default function MontagemCarga() {
   const pedidosSelecionados = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
 
   return (
-    <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-[#f4f1ea] p-4 md:p-6">
+    <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-[#eefcff] p-4 md:p-6">
       <div className="space-y-3 max-w-[1760px] mx-auto">
         <MontagemHeader loading={loading} onRefresh={recarregar} />
         <StatsCardsMontagem pedidos={pedidosFiltrados} selecionados={selecionados} />

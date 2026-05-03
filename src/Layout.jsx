@@ -172,21 +172,21 @@ export default function Layout({ children, currentPageName }) {
   const isActiveRoute = (path) => currentPageName === path;
 
   return (
-    <div className="min-h-screen bg-[#f4f1ea]" translate="no" lang="pt-BR">
+    <div className="min-h-screen bg-[#eefcff]" translate="no" lang="pt-BR">
       <style>{`
         :root {
-          --primary: 45 100% 51%;
-          --primary-foreground: 0 0% 0%;
-          --accent: 0 72% 51%;
+          --primary: 185 88% 45%;
+          --primary-foreground: 0 0% 100%;
+          --accent: 188 86% 92%;
         }
         
         .sidebar-gradient {
-          background: #231f20;
+          background: linear-gradient(180deg, #063746 0%, #052c39 55%, #041f2b 100%);
         }
         
         .menu-item-active {
-          background: rgba(245, 158, 11, 0.14);
-          color: #fbbf24;
+          background: rgba(20, 203, 219, 0.16);
+          color: #67e8f9;
         }
         
         .menu-item-hover:hover {
@@ -217,15 +217,15 @@ export default function Layout({ children, currentPageName }) {
       `}</style>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#231f20] z-50 flex items-center justify-between px-3 shadow-xl">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#063746] z-50 flex items-center justify-between px-3 shadow-xl">
         <div className="flex items-center gap-2 text-white font-semibold">
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png" 
             alt="Pão & Mel" 
             className="h-8 w-auto"
           />
-          <span className="text-amber-300">+</span>
-          <span className="text-sky-300">Omie</span>
+          <span className="text-cyan-200">+</span>
+          <img src="https://media.base44.com/images/public/69cec8f0ff370a0c3a2d6d78/7be826633_image.png" alt="Omie" className="h-7 w-7 rounded-full bg-white" />
         </div>
         <Button
           variant="ghost"
@@ -252,8 +252,11 @@ export default function Layout({ children, currentPageName }) {
               alt="Pão & Mel" 
               className="h-16 w-auto"
             />
-            <div className="text-xl font-light text-white">+</div>
-            <div className="rounded-lg bg-sky-50 px-3 py-2 text-lg font-bold text-sky-600 leading-none">Omie</div>
+            <div className="text-xl font-light text-cyan-100">+</div>
+            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-cyan-600 leading-none">
+              <img src="https://media.base44.com/images/public/69cec8f0ff370a0c3a2d6d78/7be826633_image.png" alt="Omie" className="h-8 w-8" />
+              Omie
+            </div>
           </div>
         </div>
 

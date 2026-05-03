@@ -62,7 +62,7 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={abrirTodas}>Abrir</Button>
             <Button size="sm" variant="ghost" onClick={fecharTodas}>Fechar</Button>
-            <Button size="sm" className="bg-amber-500 text-slate-950 hover:bg-amber-400" onClick={selecionarTodos} disabled={pedidos.length === 0}>
+            <Button size="sm" className="bg-cyan-500 text-white hover:bg-cyan-600" onClick={selecionarTodos} disabled={pedidos.length === 0}>
               {pedidos.length > 0 && pedidos.every(p => selSet.has(p.codigo_pedido)) ? 'Desmarcar filtrados' : 'Selecionar filtrados'}
             </Button>
           </div>
@@ -82,7 +82,7 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
 
             return (
               <div key={rota} className="border-t border-slate-100 first:border-t-0">
-                <div className="sticky top-0 z-10 flex items-center gap-3 bg-white px-4 py-3 cursor-pointer hover:bg-amber-50" onClick={() => toggleColapso(rota)}>
+                <div className="sticky top-0 z-10 flex items-center gap-3 bg-white px-4 py-3 cursor-pointer hover:bg-cyan-50" onClick={() => toggleColapso(rota)}>
                   <button className="h-8 w-8 rounded-md bg-slate-100 flex items-center justify-center text-slate-600" onClick={(e) => { e.stopPropagation(); toggleColapso(rota); }}>
                     {colapsada ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
@@ -118,7 +118,7 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                         {rotaPedidos.map(p => {
                           const selecionado = selSet.has(p.codigo_pedido);
                           return (
-                            <tr key={p.codigo_pedido} onClick={() => toggle(p.codigo_pedido)} className={`border-b border-slate-100 transition-colors cursor-pointer ${selecionado ? 'bg-amber-50/80' : 'hover:bg-slate-50'}`}>
+                            <tr key={p.codigo_pedido} onClick={() => toggle(p.codigo_pedido)} className={`border-b border-slate-100 transition-colors cursor-pointer ${selecionado ? 'bg-cyan-50/90' : 'hover:bg-slate-50'}`}>
                               <td className="p-3" onClick={(e) => e.stopPropagation()}>
                                 <Checkbox checked={selecionado} onCheckedChange={() => toggle(p.codigo_pedido)} />
                               </td>
