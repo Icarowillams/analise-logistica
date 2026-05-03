@@ -1,106 +1,29 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import React from 'react';
 import { ShoppingCart } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import DigitarPedido from '@/components/Pedidos/DigitarPedido';
-import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
-import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos.jsx';
+import { Card, CardContent } from '@/components/ui/card';
+import { Info } from 'lucide-react';
+import PedidosOmieConsulta from '@/components/pedidosOmie/PedidosOmieConsulta';
 
 export default function Pedidos() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [vendedorAtual, setVendedorAtual] = useState(null);
-  const [activeTab, setActiveTab] = useState(null);
-  const [editingPedidoId, setEditingPedidoId] = useState(null);
-
-  const { data: vendedores = [] } = useQuery({
-    queryKey: ['vendedores'],
-    queryFn: () => base44.entities.Vendedor.list()
-  });
-
-  useEffect(() => {
-    base44.auth.me().then(user => {
-      setCurrentUser(user);
-      const vendedor = vendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
-      setVendedorAtual(vendedor);
-      if (!activeTab) {
-        setActiveTab(vendedor ? 'digitar' : 'gerenciar');
-      }
-    }).catch(() => {});
-  }, [vendedores]);
-
-  const handleEditPedido = async (pedidoId) => {
-    setEditingPedidoId(pedidoId);
-    // Se admin sem vendedor vinculado, precisa de um vendedor temporário para o formulário
-    if (!vendedorAtual && isAdmin) {
-      try {
-        const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
-        const pedido = allPedidos.find(p => p.id === pedidoId);
-        if (pedido) {
-          const vend = vendedores.find(v => v.id === pedido.vendedor_id);
-          if (vend) setVendedorAtual(vend);
-        }
-      } catch (e) {}
-    }
-    setActiveTab('digitar');
-  };
-
-  const isAdmin = currentUser?.role === 'admin';
-
-  if (!currentUser) {
-    return (
-      <div>
-        <PageHeader title="Pedidos" icon={ShoppingCart} />
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!vendedorAtual && !isAdmin) {
-    return (
-      <div>
-        <PageHeader title="Pedidos" icon={ShoppingCart} />
-        <Alert>
-          <AlertDescription>
-            Você não está cadastrado como funcionário no sistema. Entre em contato com o administrador.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <PageHeader title="Pedidos" subtitle={vendedorAtual ? `Vendedor: ${vendedorAtual.nome}` : 'Gestão de Pedidos'} icon={ShoppingCart} />
-      
-      <Tabs value={activeTab || 'gerenciar'} onValueChange={(v) => { setActiveTab(v); if (v !== 'digitar') setEditingPedidoId(null); }}>
-        <TabsList className={`grid w-full mb-6 ${vendedorAtual ? 'grid-cols-3' : (isAdmin ? 'grid-cols-2' : 'grid-cols-1')}`}>
-          {vendedorAtual && <TabsTrigger value="digitar">Digitar Pedidos</TabsTrigger>}
-          {vendedorAtual && <TabsTrigger value="envio">Envio de Pedidos</TabsTrigger>}
-          {!vendedorAtual && isAdmin && editingPedidoId && <TabsTrigger value="digitar">Editar Pedido</TabsTrigger>}
-          <TabsTrigger value="gerenciar">Gerenciar Pedidos</TabsTrigger>
-        </TabsList>
+    <div className="space-y-4">
+      <PageHeader
+        title="Pedidos"
+        subtitle="Consulta unificada de pedidos de venda e pedidos de troca efetuados no Omie"
+        icon={ShoppingCart}
+      />
 
-        {vendedorAtual && (
-          <TabsContent value="digitar">
-            <DigitarPedido vendedor={vendedorAtual} editingPedidoId={editingPedidoId} onClearEdit={() => { setEditingPedidoId(null); if (!vendedores.find(v => v.email?.toLowerCase() === currentUser?.email?.toLowerCase())) { setVendedorAtual(null); setActiveTab('gerenciar'); } }} />
-          </TabsContent>
-        )}
+      <Card className="border-0 shadow-sm bg-blue-50/50">
+        <CardContent className="p-3 flex items-start gap-2 text-sm">
+          <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+          <p className="text-blue-900">
+            <strong>Pedidos vindos do Omie.</strong> Vendas e trocas continuam separados em seus cadastros, mas agora aparecem juntos nesta consulta.
+          </p>
+        </CardContent>
+      </Card>
 
-        {vendedorAtual && (
-          <TabsContent value="envio">
-            <EnvioPedidos vendedor={vendedorAtual} onEditPedido={handleEditPedido} />
-          </TabsContent>
-        )}
-
-        <TabsContent value="gerenciar">
-          <GerenciarPedidos onEditPedido={handleEditPedido} />
-        </TabsContent>
-      </Tabs>
+      <PedidosOmieConsulta />
     </div>
   );
 }

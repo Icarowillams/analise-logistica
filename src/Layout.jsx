@@ -112,6 +112,7 @@ export default function Layout({ children, currentPageName }) {
         title: 'Pedidos',
         icon: CreditCard,
         submenu: [
+          { title: 'Consultar Pedidos', path: 'Pedidos' },
           { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
           { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
