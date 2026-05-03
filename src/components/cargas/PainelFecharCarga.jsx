@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Truck, Loader2 } from 'lucide-react';
+import { Loader2, LockKeyhole, Truck } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
 
 function gerarNumeroCarga(cargas) {
   const numeros = cargas
@@ -27,20 +28,12 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   const [obs, setObs] = useState('');
   const [salvando, setSalvando] = useState(false);
 
-  const pedidosSel = useMemo(
-    () => pedidos.filter(p => selecionados.includes(p.codigo_pedido)),
-    [pedidos, selecionados]
-  );
-
+  const pedidosSel = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
   const vendas = pedidosSel.filter(p => p.tipo !== 'troca');
   const trocas = pedidosSel.filter(p => p.tipo === 'troca');
   const valorTotal = pedidosSel.reduce((s, p) => s + (p.valor_total_pedido || 0), 0);
-  const qtdPacotesTotal = pedidosSel.reduce((s, p) =>
-    s + (p.produtos || []).reduce((sp, pr) => sp + (Number(pr.quantidade) || 0), 0), 0
-  );
-  const produtosDistintos = new Set(
-    pedidosSel.flatMap(p => (p.produtos || []).map(pr => pr.codigo_produto || pr.descricao))
-  ).size;
+  const qtdPacotesTotal = pedidosSel.reduce((s, p) => s + qtdPacotesPedido(p), 0);
+  const produtosDistintos = new Set(pedidosSel.flatMap(p => (p.produtos || []).map(pr => pr.codigo_produto || pr.descricao))).size;
 
   const fecharCarga = async () => {
     if (pedidosSel.length === 0) { toast.error('Selecione ao menos 1 pedido'); return; }
@@ -55,7 +48,6 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
-      // Formatar pedidos para persistência
       const pedidosOmieFmt = vendas.map(v => ({
         codigo_pedido: v.codigo_pedido,
         codigo_pedido_integracao: v.codigo_pedido_integracao || '',
@@ -86,33 +78,22 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         produtos: t.produtos || []
       }));
 
-      // 1) Atualizar previsão no Omie (só vendas) — fire-and-continue (não aborta se falhar)
       if (vendas.length > 0) {
         try {
           await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
-            pedidos: vendas.map(v => ({
-              codigo_pedido: v.codigo_pedido,
-              codigo_pedido_integracao: v.codigo_pedido_integracao,
-              numero_pedido: v.numero_pedido
-            })),
+            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
             data_previsao: dataSaida
           });
         } catch (e) { console.warn('Falha previsão Omie:', e.message); }
 
-        // 2) Trocar etapa 20 → 50 no Omie
         try {
           await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
-            pedidos: vendas.map(v => ({
-              codigo_pedido: v.codigo_pedido,
-              codigo_pedido_integracao: v.codigo_pedido_integracao,
-              numero_pedido: v.numero_pedido
-            })),
+            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
             etapa_destino: '50'
           });
         } catch (e) { console.warn('Falha trocar etapa:', e.message); }
       }
 
-      // 3) Criar Carga local
       const clientesUnicos = new Set(pedidosSel.map(p => p.cliente_id || p.codigo_cliente));
       const carga = await base44.entities.Carga.create({
         numero_carga: numero,
@@ -134,13 +115,9 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         observacoes: obs
       });
 
-      // 4) Atualizar PedidoTroca local com carga_id
       for (const t of trocas) {
         try {
-          await base44.entities.PedidoTroca.update(t.pedido_troca_id, {
-            carga_id: carga.id,
-            motorista_id: motoristaId
-          });
+          await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: carga.id, motorista_id: motoristaId });
         } catch (e) { console.warn('Falha vincular troca:', e.message); }
       }
 
@@ -154,52 +131,52 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   };
 
   return (
-    <Card className="sticky top-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Truck className="w-5 h-5 text-amber-500" />
-          Fechar Carga
+    <Card className="sticky top-4 border-slate-200 bg-white shadow-sm">
+      <CardHeader className="pb-3 border-b border-slate-100">
+        <CardTitle className="text-sm flex items-center gap-2 text-slate-900">
+          <LockKeyhole className="w-4 h-4 text-slate-700" />
+          Fechamento da carga
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4 p-4">
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 border border-slate-100 text-sm">
+          <div><div className="text-xs text-slate-500">Pedidos</div><div className="font-bold text-slate-900">{pedidosSel.length}</div></div>
+          <div><div className="text-xs text-slate-500">Pacotes</div><div className="font-bold text-slate-900">{qtdPacotesTotal.toLocaleString('pt-BR')}</div></div>
+          <div><div className="text-xs text-slate-500">Produtos</div><div className="font-bold text-slate-900">{produtosDistintos}</div></div>
+          <div><div className="text-xs text-slate-500">Valor</div><div className="font-bold text-slate-900">{formatCurrency(valorTotal)}</div></div>
+        </div>
+
         <div>
           <Label>Motorista *</Label>
           <Select value={motoristaId} onValueChange={setMotoristaId}>
-            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>
-              {motoristas.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
-            </SelectContent>
+            <SelectTrigger className="border-slate-200 bg-slate-50"><SelectValue placeholder="Selecione o motorista" /></SelectTrigger>
+            <SelectContent>{motoristas.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div>
           <Label>Veículo *</Label>
           <Select value={veiculoId} onValueChange={setVeiculoId}>
-            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>
-              {veiculos.map(v => <SelectItem key={v.id} value={v.id}>{v.placa} — {v.descricao || v.modelo || ''}</SelectItem>)}
-            </SelectContent>
+            <SelectTrigger className="border-slate-200 bg-slate-50"><SelectValue placeholder="Selecione o veículo" /></SelectTrigger>
+            <SelectContent>{veiculos.map(v => <SelectItem key={v.id} value={v.id}>{v.placa} — {v.descricao || v.modelo || ''}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div>
-          <Label>Data de Saída *</Label>
-          <Input type="date" value={dataSaida} onChange={(e) => setDataSaida(e.target.value)} />
+          <Label>Data de saída *</Label>
+          <Input className="border-slate-200 bg-slate-50" type="date" value={dataSaida} onChange={(e) => setDataSaida(e.target.value)} />
         </div>
         <div>
           <Label>Observações</Label>
-          <Textarea rows={2} value={obs} onChange={(e) => setObs(e.target.value)} />
+          <Textarea className="border-slate-200 bg-slate-50" rows={3} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Instruções da carga, conferência ou rota" />
         </div>
 
-        <div className="border-t pt-3 space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Vendas</span><span>{vendas.length}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span>{trocas.length}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Produtos distintos</span><span>{produtosDistintos}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Pacotes total</span><span>{qtdPacotesTotal}</span></div>
-          <div className="flex justify-between font-semibold border-t pt-1"><span>Valor total</span><span>R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+        <div className="border-t border-slate-100 pt-3 space-y-2 text-sm">
+          <div className="flex justify-between"><span className="text-slate-500">Vendas</span><span className="font-medium">{vendas.length}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span className="font-medium">{trocas.length}</span></div>
         </div>
 
-        <Button className="w-full" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
+        <Button className="w-full bg-slate-900 hover:bg-slate-800" disabled={salvando || pedidosSel.length === 0} onClick={fecharCarga}>
           {salvando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
-          Fechar Carga ({pedidosSel.length} pedidos)
+          Fechar carga ({pedidosSel.length})
         </Button>
       </CardContent>
     </Card>

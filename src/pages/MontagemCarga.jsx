@@ -1,59 +1,59 @@
-import React, { useState } from 'react';
-import { Truck, Loader2, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React, { useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import useDadosMontagem from '@/components/cargas/useDadosMontagem';
 import StatsCardsMontagem from '@/components/cargas/StatsCardsMontagem';
 import PedidosPorRota from '@/components/cargas/PedidosPorRota';
 import ProdutosConsolidados from '@/components/cargas/ProdutosConsolidados';
 import PainelFecharCarga from '@/components/cargas/PainelFecharCarga';
+import MontagemHeader from '@/components/cargas/MontagemHeader';
+import MontagemFiltros, { filtrosIniciaisMontagem } from '@/components/cargas/MontagemFiltros';
+import { filtrarPedidosMontagem, getOpcoesMontagem } from '@/components/cargas/montagemUtils';
 
 export default function MontagemCarga() {
   const { loading, pedidos, motoristas, veiculos, cargas, recarregar } = useDadosMontagem();
   const [selecionados, setSelecionados] = useState([]);
+  const [filtros, setFiltros] = useState(filtrosIniciaisMontagem);
 
-  const pedidosSelecionados = pedidos.filter(p => selecionados.includes(p.codigo_pedido));
+  const opcoes = useMemo(() => getOpcoesMontagem(pedidos), [pedidos]);
+  const pedidosFiltrados = useMemo(() => filtrarPedidosMontagem(pedidos, filtros, selecionados), [pedidos, filtros, selecionados]);
+  const pedidosSelecionados = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
 
   return (
-    <div className="space-y-4 max-w-[1600px] mx-auto">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <Truck className="w-8 h-8 text-amber-500" />
-          <div>
-            <h1 className="text-2xl font-bold">Montagem de Carga</h1>
-            <p className="text-sm text-slate-500">Pedidos Omie na etapa 20 (Aprovação) + Pedidos de Troca aprovados</p>
+    <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-slate-100/80 p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="space-y-4 max-w-[1800px] mx-auto">
+        <MontagemHeader loading={loading} onRefresh={recarregar} />
+        <StatsCardsMontagem pedidos={pedidosFiltrados} selecionados={selecionados} />
+        <MontagemFiltros
+          filtros={filtros}
+          setFiltros={setFiltros}
+          opcoes={opcoes}
+          total={pedidos.length}
+          filtrados={pedidosFiltrados.length}
+          selecionados={selecionados.length}
+        />
+
+        {loading ? (
+          <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
+            <Loader2 className="w-8 h-8 animate-spin inline text-slate-700" />
+            <div className="mt-3 text-sm font-medium">Carregando pedidos Omie e trocas aprovadas...</div>
           </div>
-        </div>
-        <Button variant="outline" onClick={recarregar} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
+            <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} />
+            <div className="space-y-4">
+              <PainelFecharCarga
+                pedidos={pedidos}
+                selecionados={selecionados}
+                motoristas={motoristas}
+                veiculos={veiculos}
+                cargas={cargas}
+                onSuccess={() => setSelecionados([])}
+              />
+              <ProdutosConsolidados pedidosSelecionados={pedidosSelecionados} />
+            </div>
+          </div>
+        )}
       </div>
-
-      <StatsCardsMontagem pedidos={pedidos} selecionados={selecionados} />
-
-      {loading ? (
-        <div className="py-12 text-center text-slate-500">
-          <Loader2 className="w-8 h-8 animate-spin inline" />
-          <div className="mt-2">Carregando pedidos Omie + trocas...</div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
-            <PedidosPorRota pedidos={pedidos} selecionados={selecionados} setSelecionados={setSelecionados} />
-          </div>
-          <div className="space-y-4">
-            <PainelFecharCarga
-              pedidos={pedidos}
-              selecionados={selecionados}
-              motoristas={motoristas}
-              veiculos={veiculos}
-              cargas={cargas}
-              onSuccess={() => setSelecionados([])}
-            />
-            <ProdutosConsolidados pedidosSelecionados={pedidosSelecionados} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
