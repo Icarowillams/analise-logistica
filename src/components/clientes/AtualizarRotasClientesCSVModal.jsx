@@ -32,6 +32,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
     executandoRef.current = true;
     setLoading(true);
     try {
+      const csvText = file ? await file.text() : '';
       let url = fileUrl;
       if (!url && file) {
         const upload = await base44.integrations.Core.UploadFile({ file });
@@ -41,6 +42,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
 
       const res = await base44.functions.invoke('atualizarRotasClientesCSV', {
         file_url: url,
+        csv_text: csvText,
         dryRun,
       });
 

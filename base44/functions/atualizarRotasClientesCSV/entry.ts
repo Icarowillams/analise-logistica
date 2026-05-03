@@ -155,18 +155,20 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { file_url, dryRun = true } = body;
+    const { file_url, csv_text, dryRun = true } = body;
 
-    if (!file_url) {
+    if (!file_url && !csv_text) {
       return Response.json({ error: 'Envie um arquivo CSV.' }, { status: 400 });
     }
 
-    const fileRes = await fetch(file_url);
-    if (!fileRes.ok) {
-      return Response.json({ error: 'Não foi possível ler o CSV enviado.' }, { status: 400 });
+    let csvText = csv_text || '';
+    if (!csvText && file_url) {
+      const fileRes = await fetch(file_url);
+      if (!fileRes.ok) {
+        return Response.json({ error: 'Não foi possível ler o CSV enviado.' }, { status: 400 });
+      }
+      csvText = await fileRes.text();
     }
-
-    const csvText = await fileRes.text();
     const linhas = parseCsv(csvText);
 
     const clientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
