@@ -15,13 +15,15 @@ const isRateLimitError = (error) => {
   return message.includes('rate limit') || message.includes('429');
 };
 
-async function atualizarClienteComRetry(base44, id, patch) {
-  for (let tentativa = 1; tentativa <= 8; tentativa++) {
+async function bulkAtualizarClientesComRetry(base44, itens) {
+  const updates = itens.map(item => ({ id: item.id, ...item.patch }));
+
+  for (let tentativa = 1; tentativa <= 5; tentativa++) {
     try {
-      return await base44.asServiceRole.entities.Cliente.update(id, patch);
+      return await base44.asServiceRole.entities.Cliente.bulkUpdate(updates);
     } catch (error) {
-      if (!isRateLimitError(error) || tentativa === 8) throw error;
-      await delay(3000 * tentativa);
+      if (!isRateLimitError(error) || tentativa === 5) throw error;
+      await delay(2500 * tentativa);
     }
   }
 }
@@ -155,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { file_url, csv_text, dryRun = true, updateOffset = 0, updateLimit = 10 } = body;
+    const { file_url, csv_text, dryRun = true, updateOffset = 0, updateLimit = 200 } = body;
 
     if (!file_url && !csv_text) {
       return Response.json({ error: 'Envie um arquivo CSV.' }, { status: 400 });
@@ -261,11 +263,8 @@ Deno.serve(async (req) => {
 
     const loteAtualizacoes = dryRun ? [] : atualizacoes.slice(updateOffset, updateOffset + updateLimit);
 
-    if (!dryRun) {
-      for (const item of loteAtualizacoes) {
-        await atualizarClienteComRetry(base44, item.id, item.patch);
-        await delay(700);
-      }
+    if (!dryRun && loteAtualizacoes.length > 0) {
+      await bulkAtualizarClientesComRetry(base44, loteAtualizacoes);
     }
 
     const processadoAte = dryRun ? 0 : Math.min(updateOffset + loteAtualizacoes.length, atualizacoes.length);

@@ -61,7 +61,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
             csv_text: csvText,
             dryRun: false,
             updateOffset: offset,
-            updateLimit: 10,
+            updateLimit: 200,
           });
 
           ultimoResultado = res.data;
@@ -70,7 +70,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
           setProgresso({ processado: offset, total: res.data.atualizacoes || 0 });
 
           if (res.data.concluido) break;
-          await new Promise(resolve => setTimeout(resolve, 1200));
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
 
         toast.success(`${ultimoResultado?.atualizacoes || 0} cliente(s) atualizados com sucesso.`);
@@ -131,7 +131,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
 
           {progresso && (
             <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">
-              Atualizando em lotes: <strong>{progresso.processado}</strong> de <strong>{progresso.total}</strong> clientes.
+              Atualizando em lotes otimizados: <strong>{progresso.processado}</strong> de <strong>{progresso.total}</strong> clientes.
             </div>
           )}
 
