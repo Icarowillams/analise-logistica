@@ -20,6 +20,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const body = await req.json().catch(() => ({}));
+    const textoBusca = String(body.texto || '').trim().toLowerCase();
+
     const [clientes, rotas, roteiros] = await Promise.all([
       base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
       base44.asServiceRole.entities.Rota.list('-created_date', 1000),
@@ -34,6 +37,26 @@ Deno.serve(async (req) => {
     const semRotaId = clientes.filter(c => !c.rota_id);
     const comTagRota = clientes.filter(c => !!getRotaTag(c));
     const semRotaMasComTag = semRotaId.filter(c => !!getRotaTag(c));
+
+    const clientesEncontrados = textoBusca ? clientes.filter(c => {
+      const alvo = [getCodigo(c), getNome(c), c.razao_social || '', c.cnpj_cpf || '', c.cidade || ''].join(' ').toLowerCase();
+      return alvo.includes(textoBusca);
+    }).map(c => {
+      const rota = c.rota_id ? rotaPorId.get(c.rota_id) : null;
+      return {
+        id: c.id,
+        codigo: getCodigo(c),
+        nome: getNome(c),
+        razao_social: c.razao_social || '',
+        cnpj_cpf: c.cnpj_cpf || '',
+        cidade: c.cidade || '',
+        status: c.status || '',
+        rota_id: c.rota_id || null,
+        rota_nome: rota?.nome || null,
+        rota_valida: !!rota,
+        rota_tag: getRotaTag(c) || null
+      };
+    }) : [];
 
     const clientesPorRota = rotas.map(r => {
       const porCampo = clientes.filter(c => c.rota_id === r.id);
@@ -53,6 +76,14 @@ Deno.serve(async (req) => {
       const rota = getRotaTag(c) || 'Sem tag';
       tagsRotas[rota] = (tagsRotas[rota] || 0) + 1;
     });
+
+    if (textoBusca) {
+      return Response.json({
+        busca: body.texto,
+        encontrados: clientesEncontrados,
+        total_encontrados: clientesEncontrados.length
+      });
+    }
 
     return Response.json({
       totais: {
