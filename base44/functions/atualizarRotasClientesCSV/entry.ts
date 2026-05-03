@@ -116,7 +116,8 @@ Deno.serve(async (req) => {
       addToMap(porCodigo, onlyDigits(cliente.codigo_integracao), cliente);
       addToMap(porCodigo, onlyDigits(cliente.codigo_omie), cliente);
       addToMap(porDocumento, onlyDigits(cliente.cnpj_cpf), cliente);
-      addToMap(porNome, normalizeText(cliente.nome_fantasia || cliente.razao_social), cliente);
+      addToMap(porNome, normalizeText(cliente.nome_fantasia), cliente);
+      addToMap(porNome, normalizeText(cliente.razao_social), cliente);
     });
 
     const rotaPorNome = new Map(rotas.map(rota => [normalizeRouteName(rota.nome), rota]));
@@ -129,17 +130,22 @@ Deno.serve(async (req) => {
     for (const linha of linhas) {
       const codigo = linha.codigo || linha.cod || linha.codigocliente || '';
       const nome = linha.nome_fantasia || linha.nomefantasia || linha.nome || '';
+      const razaoSocial = linha.razao_social || linha.razaosocial || '';
+      const documento = linha.cnpj_cpf || linha.cpf_cnpj || linha.cnpjcpf || linha.cpfcnpj || '';
       const rotaNome = String(linha.rota || '').trim();
       const status = normalizeStatus(linha.status);
       const codigoDigits = onlyDigits(codigo);
+      const documentoDigits = onlyDigits(documento);
 
-      let cliente = firstUnique(porCodigo, codigoDigits) || firstUnique(porDocumento, codigoDigits) || firstUnique(porNome, normalizeText(nome));
+      let cliente = firstUnique(porCodigo, codigoDigits) || firstUnique(porDocumento, documentoDigits) || firstUnique(porDocumento, codigoDigits) || firstUnique(porNome, normalizeText(nome)) || firstUnique(porNome, normalizeText(razaoSocial));
 
       if (!cliente) {
         const candidatos = [
           ...(porCodigo.get(codigoDigits) || []),
+          ...(porDocumento.get(documentoDigits) || []),
           ...(porDocumento.get(codigoDigits) || []),
-          ...(porNome.get(normalizeText(nome)) || [])
+          ...(porNome.get(normalizeText(nome)) || []),
+          ...(porNome.get(normalizeText(razaoSocial)) || [])
         ];
 
         if (candidatos.length > 1) {

@@ -73,7 +73,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
             Atualizar rotas por CSV
           </DialogTitle>
           <DialogDescription>
-            Envie um CSV com as colunas codigo, nome_fantasia, rota e status para cruzar com os clientes já cadastrados.
+            Envie um CSV com codigo, CNPJ/CPF, nome fantasia, razão social, rota e status para cruzar com os clientes já cadastrados.
           </DialogDescription>
         </DialogHeader>
 
