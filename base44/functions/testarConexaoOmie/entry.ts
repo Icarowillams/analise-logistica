@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Redeploy trigger: força releitura dos secrets do ambiente - 2026-05-03
+// Redeploy trigger: usando OMIE_API_KEY e OMIE_API_SECRET - 2026-05-03
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 
 Deno.serve(async (req) => {
@@ -12,13 +12,13 @@ Deno.serve(async (req) => {
     }
 
     // Ler secrets dentro do handler (sempre atualizado)
-    const appKey = Deno.env.get('OMIE_APP_KEY');
-    const appSecret = Deno.env.get('OMIE_APP_SECRET');
+    const appKey = Deno.env.get('OMIE_API_KEY');
+    const appSecret = Deno.env.get('OMIE_API_SECRET');
 
     if (!appKey || !appSecret) {
       return Response.json({
         ok: false,
-        error: 'OMIE_APP_KEY ou OMIE_APP_SECRET não configurados nos secrets.',
+        error: 'OMIE_API_KEY ou OMIE_API_SECRET não configurados nos secrets.',
         debug: {
           has_key: !!appKey,
           has_secret: !!appSecret

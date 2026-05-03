@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_API_KEY');
+const APP_SECRET = Deno.env.get('OMIE_API_SECRET');
 
 // Doc Omie: backoff em rate limit (425), erros transientes (520) e 429
 async function omieCall(call, param, tentativa = 1) {

@@ -24,8 +24,8 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1500;
 
 async function omieCall(base44, { endpoint, call, param, operacao, entidade_tipo, entidade_id, userEmail }) {
-  const appKey = Deno.env.get('OMIE_APP_KEY');
-  const appSecret = Deno.env.get('OMIE_APP_SECRET');
+  const appKey = Deno.env.get('OMIE_API_KEY');
+  const appSecret = Deno.env.get('OMIE_API_SECRET');
   if (!appKey || !appSecret) throw new Error('OMIE_APP_KEY/OMIE_APP_SECRET ausentes');
 
   const url = OMIE_BASE_URL + endpoint + '/';
