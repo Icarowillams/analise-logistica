@@ -19,6 +19,7 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
   const [fileUrl, setFileUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [progresso, setProgresso] = useState(null);
   const executandoRef = useRef(false);
 
   const executar = async (dryRun) => {
@@ -40,30 +41,54 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
         setFileUrl(url);
       }
 
-      const res = await base44.functions.invoke('atualizarRotasClientesCSV', {
-        file_url: url,
-        csv_text: csvText,
-        dryRun,
-      });
-
-      setResultado(res.data);
       if (dryRun) {
+        const res = await base44.functions.invoke('atualizarRotasClientesCSV', {
+          file_url: url,
+          csv_text: csvText,
+          dryRun: true,
+        });
+        setResultado(res.data);
+        setProgresso(null);
         toast.success('Pré-validação concluída. Confira o resumo antes de atualizar.');
       } else {
-        toast.success(`${res.data.atualizacoes} cliente(s) atualizados com sucesso.`);
+        let offset = 0;
+        let ultimoResultado = null;
+        setProgresso({ processado: 0, total: resultado?.atualizacoes || 0 });
+
+        while (true) {
+          const res = await base44.functions.invoke('atualizarRotasClientesCSV', {
+            file_url: url,
+            csv_text: csvText,
+            dryRun: false,
+            updateOffset: offset,
+            updateLimit: 10,
+          });
+
+          ultimoResultado = res.data;
+          offset = res.data.processado_ate || offset;
+          setResultado(res.data);
+          setProgresso({ processado: offset, total: res.data.atualizacoes || 0 });
+
+          if (res.data.concluido) break;
+          await new Promise(resolve => setTimeout(resolve, 1200));
+        }
+
+        toast.success(`${ultimoResultado?.atualizacoes || 0} cliente(s) atualizados com sucesso.`);
         onSuccess?.();
       }
     } catch (error) {
       toast.error(error?.response?.data?.error || error.message);
+    } finally {
+      executandoRef.current = false;
+      setLoading(false);
     }
-    executandoRef.current = false;
-    setLoading(false);
   };
 
   const limpar = () => {
     setFile(null);
     setFileUrl('');
     setResultado(null);
+    setProgresso(null);
   };
 
   const fechar = (value) => {
@@ -100,8 +125,15 @@ export default function AtualizarRotasClientesCSVModal({ open, onOpenChange, onS
               setFile(e.target.files?.[0] || null);
               setFileUrl('');
               setResultado(null);
+              setProgresso(null);
             }}
           />
+
+          {progresso && (
+            <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">
+              Atualizando em lotes: <strong>{progresso.processado}</strong> de <strong>{progresso.total}</strong> clientes.
+            </div>
+          )}
 
           {resultado && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
