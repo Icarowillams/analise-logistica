@@ -100,7 +100,7 @@ function mapearClienteOmie(clienteOriginal) {
         .map(tag => ({ tag: texto(tag, 60) }))
     : [];
   const codigoCliente = cliente.codigo || cliente.codigo_interno || cliente.codigo_integracao;
-  const rotaCliente = cliente.rota_nome || cliente.rota || cliente.rota_id;
+  const rotaCliente = cliente.rota_nome || cliente.rota || '';
   const tagsUnicas = Array.from(new Map(tags.filter(t => t.tag).map(t => [String(t.tag).toUpperCase(), t])).values());
 
   const caracteristicas = [
@@ -271,11 +271,19 @@ Deno.serve(async (req) => {
 
     console.log(`[exportarClientesOmie] Novo exportador em lote: ${clientes.length} clientes`);
 
+    const rotas = await base44.asServiceRole.entities.Rota.list('nome', 10000).catch(() => []);
+    const rotaPorId = new Map(rotas.map(rota => [rota.id, rota.nome]));
+
     const resultados = [];
     const validos = [];
     const clientePorCodigo = new Map();
 
-    for (const cliente of clientes) {
+    for (const clienteOriginal of clientes) {
+      const cliente = { ...(clienteOriginal.data || {}), ...clienteOriginal, id: clienteOriginal.id };
+      if (!cliente.rota_nome && cliente.rota_id && rotaPorId.has(cliente.rota_id)) {
+        cliente.rota_nome = rotaPorId.get(cliente.rota_id);
+      }
+
       if (cliente.tipo_nota === 'D1') {
         resultados.push(montarErro(cliente, 'Cliente D1 não é enviado ao Omie'));
         continue;
@@ -287,7 +295,7 @@ Deno.serve(async (req) => {
       }
       const payload = mapearClienteOmie(cliente);
       validos.push(payload);
-      clientePorCodigo.set(payload.codigo_cliente_integracao, { ...(cliente.data || {}), ...cliente, id: cliente.id });
+      clientePorCodigo.set(payload.codigo_cliente_integracao, cliente);
     }
 
     for (let i = 0; i < validos.length; i += TAMANHO_LOTE_OMIE) {
