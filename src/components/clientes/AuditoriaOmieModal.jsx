@@ -199,43 +199,14 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
     setResultadoExport(null);
 
     const ids = Array.from(selecionados);
-    setProgressoExport({ atual: 0, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
-
-    // Carrega clientes com concorrência controlada para não estourar limite do Base44
-    const completos = [];
-    let cursorLoad = 0;
-    let loaded = 0;
-    const loadWorker = async () => {
-      while (true) {
-        const i = cursorLoad++;
-        if (i >= ids.length) break;
-        try {
-          const c = await base44.entities.Cliente.get(ids[i]);
-          if (c) completos.push(c);
-        } catch (_) {}
-        loaded++;
-        if (loaded % 25 === 0 || loaded === ids.length) {
-          setProgressoExport({ atual: loaded, total: ids.length, lote: 0, totalLotes: 0, fase: 'carregando' });
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: 3 }, () => loadWorker()));
-
-    if (completos.length === 0) {
-      setExportando(false);
-      setProgressoExport(null);
-      toast.error('Não foi possível carregar dados dos clientes');
-      return;
-    }
+    setProgressoExport({ atual: 0, total: ids.length, lote: 1, totalLotes: 1, fase: 'exportando' });
 
     let totalOk = 0, totalErro = 0;
     const erros = [];
 
-    setProgressoExport({ atual: completos.length, total: completos.length, lote: 1, totalLotes: 1 });
-
     try {
       const res = await base44.functions.invoke('exportarClientesOmie', {
-        clientes_data: completos,
+        cliente_ids: ids,
       });
       const r = res.data?.resumo;
       if (r) { totalOk = r.sucessos || 0; totalErro = r.erros || 0; }
@@ -243,8 +214,8 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
         erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
       });
     } catch (e) {
-      totalErro = completos.length;
-      completos.forEach(c => erros.push({ razao_social: c.razao_social, mensagem: e.message }));
+      totalErro = ids.length;
+      erros.push({ razao_social: 'Exportação', mensagem: e.message });
     }
 
     setProgressoExport(null);

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY');
+const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET');
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 const TAMANHO_LOTE_OMIE = 50;
 
@@ -244,7 +244,15 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
-    const clientes = Array.isArray(body.clientes_data) ? body.clientes_data : [];
+    const clienteIds = Array.isArray(body.cliente_ids) ? body.cliente_ids : [];
+    let clientes = Array.isArray(body.clientes_data) ? body.clientes_data : [];
+
+    if (clienteIds.length > 0) {
+      const idsSet = new Set(clienteIds);
+      const todosClientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
+      clientes = todosClientes.filter(cliente => idsSet.has(cliente.id));
+    }
+
     if (clientes.length === 0) return Response.json({ error: 'Nenhum cliente recebido' }, { status: 400 });
 
     console.log(`[exportarClientesOmie] Novo exportador em lote: ${clientes.length} clientes`);
