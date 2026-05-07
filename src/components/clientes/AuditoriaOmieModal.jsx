@@ -191,30 +191,51 @@ export default function AuditoriaOmieModal({ open, onOpenChange }) {
   };
 
   const exportarSelecionados = async () => {
+    if (exportando) return;
     if (selecionados.size === 0) {
       toast.warning('Selecione ao menos um cliente');
       return;
     }
+
     setExportando(true);
     setResultadoExport(null);
 
     const ids = Array.from(selecionados);
-    setProgressoExport({ atual: 0, total: ids.length, lote: 1, totalLotes: 1, fase: 'exportando' });
-
-    let totalOk = 0, totalErro = 0;
+    const idsSet = new Set(ids);
+    const tamanhoLote = 25;
+    const totalLotes = Math.ceil(ids.length / tamanhoLote);
+    let totalOk = 0;
+    let totalErro = 0;
     const erros = [];
 
     try {
-      const res = await base44.functions.invoke('exportarClientesOmie', {
-        cliente_ids: ids,
-      });
-      const r = res.data?.resumo;
-      if (r) { totalOk = r.sucessos || 0; totalErro = r.erros || 0; }
-      (res.data?.resultados || []).filter(x => !x.sucesso).forEach(x => {
-        erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
-      });
+      setProgressoExport({ atual: 0, total: ids.length, lote: 0, totalLotes, fase: 'carregando' });
+      const todosClientes = await base44.entities.Cliente.list('-created_date', 10000);
+      const clientesPorId = new Map(todosClientes.filter(c => idsSet.has(c.id)).map(c => [c.id, c]));
+
+      for (let i = 0; i < ids.length; i += tamanhoLote) {
+        const loteIds = ids.slice(i, i + tamanhoLote);
+        const loteClientes = loteIds.map(id => clientesPorId.get(id)).filter(Boolean);
+        const loteAtual = Math.floor(i / tamanhoLote) + 1;
+
+        setProgressoExport({ atual: i, total: ids.length, lote: loteAtual, totalLotes, fase: 'exportando' });
+
+        const res = await base44.functions.invoke('exportarClientesOmie', {
+          clientes_data: loteClientes,
+        });
+
+        const r = res.data?.resumo;
+        totalOk += r?.sucessos || 0;
+        totalErro += r?.erros || 0;
+        (res.data?.resultados || []).filter(x => !x.sucesso).forEach(x => {
+          erros.push({ razao_social: x.razao_social, mensagem: x.mensagem });
+        });
+
+        setProgressoExport({ atual: Math.min(i + loteIds.length, ids.length), total: ids.length, lote: loteAtual, totalLotes, fase: 'exportando' });
+        if (i + tamanhoLote < ids.length) await new Promise(resolve => setTimeout(resolve, 1200));
+      }
     } catch (e) {
-      totalErro = ids.length;
+      totalErro += Math.max(ids.length - totalOk - totalErro, 0);
       erros.push({ razao_social: 'Exportação', mensagem: e.message });
     }
 

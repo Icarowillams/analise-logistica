@@ -148,22 +148,36 @@ function mapearClienteOmie(clienteOriginal) {
 }
 
 async function chamarOmie(call, param, tentativa = 0) {
-  const response = await fetch(OMIE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
-  });
-  const data = await response.json();
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
-    const code = String(data.faultcode || '');
-    const rate = response.status === 429 || code.includes('425') || code.includes('520') || msg.includes('too many') || msg.includes('limite') || msg.includes('cota') || msg.includes('aguarde');
-    if (rate && tentativa < 4) {
-      await sleep(2500 * (tentativa + 1));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const response = await fetch(OMIE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+    });
+    const data = await response.json();
+    if (data.faultstring) {
+      const msg = String(data.faultstring).toLowerCase();
+      const code = String(data.faultcode || '');
+      const rate = response.status === 429 || code.includes('425') || code.includes('520') || msg.includes('too many') || msg.includes('limite') || msg.includes('cota') || msg.includes('aguarde') || msg.includes('timeout');
+      if (rate && tentativa < 4) {
+        await sleep(3000 * (tentativa + 1));
+        return chamarOmie(call, param, tentativa + 1);
+      }
+    }
+    return data;
+  } catch (error) {
+    if (tentativa < 4) {
+      await sleep(3000 * (tentativa + 1));
       return chamarOmie(call, param, tentativa + 1);
     }
+    return { faultstring: `Falha/timeout ao comunicar com Omie: ${error.message}` };
+  } finally {
+    clearTimeout(timeout);
   }
-  return data;
 }
 
 async function incluirIndividual(payload, cliente) {
