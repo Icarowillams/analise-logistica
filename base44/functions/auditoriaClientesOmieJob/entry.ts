@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 // Doc Omie: máximo 100 registros/página, 240 req/min (4/s), 4 simultâneas
