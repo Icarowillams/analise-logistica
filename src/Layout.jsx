@@ -147,7 +147,7 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Roteiros',
+        title: 'Roteiros de Campo',
         icon: ClipboardList,
         submenu: [
           { title: 'Meus Roteiros', path: 'MeusRoteiros' },
