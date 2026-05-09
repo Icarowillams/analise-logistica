@@ -10,6 +10,10 @@
     "vendedor_nome": {
       "type": "string"
     },
+    "supervisor_id": {
+      "type": "string",
+      "description": "ID do supervisor respons\u00e1vel pelo acompanhamento"
+    },
     "dia_semana": {
       "type": "string",
       "enum": [
@@ -53,6 +57,12 @@
           "cliente_cidade": {
             "type": "string"
           },
+          "cliente_endereco": {
+            "type": "string"
+          },
+          "cliente_telefone": {
+            "type": "string"
+          },
           "ordem": {
             "type": "number"
           }
@@ -65,10 +75,15 @@
       "enum": [
         "planejado",
         "ativo",
+        "pausado",
         "inativo",
         "concluido"
       ],
       "default": "planejado"
+    },
+    "feedback_supervisor": {
+      "type": "string",
+      "description": "Orienta\u00e7\u00f5es do supervisor para o vendedor"
     },
     "observacoes": {
       "type": "string"

@@ -30,7 +30,8 @@ import {
   MonitorSpeaker,
   AlertTriangle,
   FileOutput,
-  Workflow
+  Workflow,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
@@ -117,6 +118,16 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
           { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
         ]
+      },
+      {
+        title: 'Roteiros',
+        icon: ClipboardList,
+        path: 'Roteiros'
+      },
+      {
+        title: 'Análises Comercial',
+        icon: BarChart3,
+        path: 'AnalisesComercial'
       },
       {
         title: 'Operação Completa',

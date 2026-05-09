@@ -1,0 +1,87 @@
+{
+  "name": "VisitaRoteiro",
+  "type": "object",
+  "description": "Execu\u00e7\u00e3o de visitas em campo vinculadas aos roteiros comerciais",
+  "properties": {
+    "roteiro_id": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "dia_semana": {
+      "type": "string"
+    },
+    "data_visita": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planejada",
+        "em_andamento",
+        "visitado",
+        "nao_visitado",
+        "reagendado"
+      ],
+      "default": "planejada"
+    },
+    "inicio_visita": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fim_visita": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "motivo_nao_visita": {
+      "type": "string",
+      "enum": [
+        "cliente_fechado",
+        "horario_nao_comercial",
+        "cliente_ausente",
+        "endereco_nao_localizado",
+        "sem_tempo",
+        "outro"
+      ]
+    },
+    "nova_data": {
+      "type": "string",
+      "format": "date"
+    },
+    "atendimento": {
+      "type": "string"
+    },
+    "estoque_disponivel": {
+      "type": "string"
+    },
+    "trocas": {
+      "type": "string"
+    },
+    "observacoes": {
+      "type": "string"
+    },
+    "fotos_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "roteiro_id",
+    "vendedor_id",
+    "cliente_id"
+  ]
+}
