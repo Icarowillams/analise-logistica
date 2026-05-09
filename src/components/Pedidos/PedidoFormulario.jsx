@@ -51,6 +51,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   // Product tab fields
   const [itensLocal, setItensLocal] = useState([]);
+  // Cenário Fiscal Local — sempre usado (D1 ou 55). Para 55, contém o cenário Omie vinculado.
+  const [cenarioLocalId, setCenarioLocalId] = useState('');
   const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
   const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
 
@@ -84,7 +86,6 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     return getAcoesAtivasParaCliente(acoesPromocionais, cliente.id, tabelaPrecoId);
   }, [acoesPromocionais, cliente.id, tabelaPrecoId]);
 
-  const isTroca = cenarioFiscalCodigo === 'troca';
   const isNotaD1 = modeloNota === 'd1' || tipo === 'troca' || cliente.tipo_nota === 'D1';
 
   const { data: motivosTroca = [] } = useQuery({
@@ -92,36 +93,37 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => base44.entities.MotivoTroca.list()
   });
 
-  // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
-  // Nota D1 NÃO usa Omie — opera totalmente interno
-  const mostrarCenarioFiscal = !!permissaoCenariosFiscais && !isNotaD1;
-
-  const { data: cenariosData, isLoading: loadingCenarios, isError: erroCenarios } = useQuery({
-    queryKey: ['cenariosFiscaisOmie'],
-    queryFn: async () => {
-      const resp = await base44.functions.invoke('listarCenariosOmie', {});
-      if (resp.data?.sucesso && resp.data?.cenarios) {
-        return resp.data.cenarios;
-      }
-      throw new Error(resp.data?.erro || 'Erro ao carregar cenários');
-    },
-    enabled: mostrarCenarioFiscal,
-    staleTime: 5 * 60 * 1000,
-    retry: 2,
+  // Cenários Fiscais Locais — usados em ambos os fluxos (D1 e 55).
+  // Para Nota 55: o cenário Omie vinculado (cenario_omie_codigo) é enviado ao Omie.
+  // Para Nota D1: opera totalmente interno (não envia ao Omie).
+  const { data: cenariosLocais = [], isLoading: loadingCenarios } = useQuery({
+    queryKey: ['cenariosFiscaisLocais'],
+    queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' })
   });
 
-  const cenarios = cenariosData || [];
+  // Cenários disponíveis: para troca, só tipo "troca"; senão exclui troca
+  const cenariosDisponiveis = useMemo(() => {
+    if (tipo === 'troca') return cenariosLocais.filter(c => c.tipo_operacao === 'troca');
+    return cenariosLocais.filter(c => c.tipo_operacao !== 'troca');
+  }, [cenariosLocais, tipo]);
 
-  // Pré-selecionar cenário padrão quando os dados carregam (apenas para pedidos novos)
+  const cenarioLocalAtual = cenariosLocais.find(c => c.id === cenarioLocalId);
+  const isTroca = cenarioLocalAtual?.tipo_operacao === 'troca' || tipo === 'troca';
+
+  // Pré-selecionar cenário padrão (apenas pedidos novos)
   useEffect(() => {
-    if (cenarios.length > 0 && !cenarioFiscalCodigo && !editingPedidoId) {
-      const padrao = cenarios.find(c => c.padrao);
+    if (cenariosDisponiveis.length > 0 && !cenarioLocalId && !editingPedidoId) {
+      const padrao = cenariosDisponiveis.find(c => c.padrao) || cenariosDisponiveis[0];
       if (padrao) {
-        setCenarioFiscalCodigo(String(padrao.codigo));
-        setCenarioFiscalNome(padrao.nome);
+        setCenarioLocalId(padrao.id);
+        // Para Nota 55, popula o código Omie vinculado
+        if (!isNotaD1 && padrao.cenario_omie_codigo) {
+          setCenarioFiscalCodigo(String(padrao.cenario_omie_codigo));
+          setCenarioFiscalNome(padrao.cenario_omie_nome || padrao.nome);
+        }
       }
     }
-  }, [cenarios.length]);
+  }, [cenariosDisponiveis.length, isNotaD1]);
 
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
@@ -156,6 +158,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         setObservacoesAdicionaisNf(rawDados.slice(match[0].length).trim());
       } else {
         setObservacoesAdicionaisNf(rawDados);
+      }
+      if (existingPedido.cenario_local_id) {
+        setCenarioLocalId(existingPedido.cenario_local_id);
       }
       if (existingPedido.cenario_fiscal_codigo) {
         setCenarioFiscalCodigo(String(existingPedido.cenario_fiscal_codigo));
@@ -336,8 +341,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       tabela_preco_id: tabelaPrecoId,
       tabela_preco_nome: tabelaObj?.nome || '',
       modelo_nota: (tipoFinal === 'troca' || cliente.tipo_nota === 'D1') ? 'd1' : modeloNota,
-      cenario_fiscal_codigo: (cenarioFiscalCodigo && cenarioFiscalCodigo !== 'troca' && !isNaN(Number(cenarioFiscalCodigo)) && Number(cenarioFiscalCodigo) > 0) ? Number(cenarioFiscalCodigo) : null,
-      cenario_fiscal_nome: (cenarioFiscalCodigo && cenarioFiscalCodigo !== 'troca') ? cenarioFiscalNome || null : null,
+      cenario_local_id: cenarioLocalId || null,
+      cenario_local_nome: cenarioLocalAtual?.nome || null,
+      cenario_local_tipo: cenarioLocalAtual?.tipo_operacao || null,
+      // Cenário Omie só vai para Nota 55 (D1 não envia ao Omie)
+      cenario_fiscal_codigo: (!isNotaD1 && cenarioFiscalCodigo && !isNaN(Number(cenarioFiscalCodigo)) && Number(cenarioFiscalCodigo) > 0) ? Number(cenarioFiscalCodigo) : null,
+      cenario_fiscal_nome: (!isNotaD1 && cenarioFiscalCodigo) ? cenarioFiscalNome || null : null,
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
       dados_adicionais_nf: buildDadosAdicionaisNf(),
@@ -460,45 +469,55 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   {!dataPrevisaoEntrega && <p className="text-xs text-red-500 mt-1">Obrigatório</p>}
                 </div>
               </div>
-              {mostrarCenarioFiscal && (
-                <div>
-                  <Label className="text-xs text-slate-500">Cenário Fiscal (Omie)</Label>
-                  {loadingCenarios ? (
-                    <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Carregando cenários...
-                    </div>
-                  ) : erroCenarios ? (
-                    <div className="text-sm text-red-500 py-2">
-                      Erro ao carregar cenários fiscais. Verifique a conexão com o Omie.
-                    </div>
+              <div>
+                <Label className="text-xs text-slate-500">
+                  Cenário Fiscal Local
+                  {isNotaD1 ? (
+                    <span className="ml-2 text-[10px] text-orange-600 font-medium">(D1 — operação interna)</span>
                   ) : (
-                    <Select
-                      value={cenarioFiscalCodigo}
-                      onValueChange={(val) => {
-                        setCenarioFiscalCodigo(val);
-                        if (val === 'troca') {
-                          setCenarioFiscalNome('Troca (sem Omie)');
-                        } else {
-                          const found = cenarios.find(c => String(c.codigo) === val);
-                          setCenarioFiscalNome(found?.nome || '');
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o cenário fiscal..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="troca">Troca (sem Omie)</SelectItem>
-                        {cenarios.map(c => (
-                          <SelectItem key={c.codigo} value={String(c.codigo)}>
-                            {c.nome} {c.padrao ? '(Padrão)' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <span className="ml-2 text-[10px] text-blue-600 font-medium">(55 — envia ao Omie)</span>
                   )}
-                </div>
-              )}
+                </Label>
+                {loadingCenarios ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Carregando cenários...
+                  </div>
+                ) : (
+                  <Select
+                    value={cenarioLocalId}
+                    onValueChange={(val) => {
+                      setCenarioLocalId(val);
+                      const found = cenariosLocais.find(c => c.id === val);
+                      if (found) {
+                        if (!isNotaD1 && found.cenario_omie_codigo) {
+                          setCenarioFiscalCodigo(String(found.cenario_omie_codigo));
+                          setCenarioFiscalNome(found.cenario_omie_nome || found.nome);
+                        } else {
+                          setCenarioFiscalCodigo('');
+                          setCenarioFiscalNome('');
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o cenário fiscal local..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cenariosDisponiveis.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome} {c.padrao ? '(Padrão)' : ''}
+                          {!isNotaD1 && c.cenario_omie_nome ? ` → Omie: ${c.cenario_omie_nome}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {!isNotaD1 && cenarioLocalAtual && !cenarioLocalAtual.cenario_omie_codigo && (
+                  <p className="text-[10px] text-amber-600 mt-1">
+                    ⚠ Este cenário local não tem um cenário Omie vinculado. Vincule em Cadastros → Cenários Fiscais Locais.
+                  </p>
+                )}
+              </div>
               <div>
                 <Label>Nº Pedido Compra</Label>
                 <Input value={numeroPedidoCompra} onChange={(e) => setNumeroPedidoCompra(e.target.value)} placeholder="Número do pedido de compra do cliente" />
