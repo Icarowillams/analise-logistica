@@ -12,8 +12,8 @@ Deno.serve(async (req) => {
     }
 
     // Ler secrets dentro do handler (sempre atualizado)
-    const appKey = Deno.env.get('OMIE_API_KEY');
-    const appSecret = Deno.env.get('OMIE_API_SECRET');
+    const appKey = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+    const appSecret = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
     if (!appKey || !appSecret) {
       return Response.json({

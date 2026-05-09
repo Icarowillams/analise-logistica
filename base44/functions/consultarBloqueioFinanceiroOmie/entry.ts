@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 
 // Consulta consolidada de bloqueio financeiro do cliente DIRETO no Omie.
 // Retorna: títulos atrasados, em aberto, total débitos, limite de crédito, saldo disponível e se deve bloquear.
