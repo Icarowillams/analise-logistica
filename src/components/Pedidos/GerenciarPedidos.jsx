@@ -118,10 +118,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Vendedor.list(),
   });
 
-  const { data: clientes = [] } = useQuery({
+  const { data: clientesBase = [] } = useQuery({
     queryKey: ['clientes-gerenciar'],
-    queryFn: () => base44.entities.Cliente.list(),
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
   });
+
+  const pedidoClienteIds = useMemo(() => [...new Set(pedidos.map(p => p.cliente_id).filter(Boolean))], [pedidos]);
+
+  const { data: clientesDosPedidos = [] } = useQuery({
+    queryKey: ['clientes-dos-pedidos-gerenciar', pedidoClienteIds.join('|')],
+    queryFn: () => pedidoClienteIds.length ? base44.entities.Cliente.filter({ id: { $in: pedidoClienteIds } }, '-created_date', 5000) : [],
+    enabled: pedidoClienteIds.length > 0,
+  });
+
+  const clientes = useMemo(() => {
+    const mapa = new Map();
+    [...clientesBase, ...clientesDosPedidos].forEach(c => mapa.set(c.id, c));
+    return Array.from(mapa.values());
+  }, [clientesBase, clientesDosPedidos]);
 
   const { data: redes = [] } = useQuery({
     queryKey: ['redes-gerenciar'],

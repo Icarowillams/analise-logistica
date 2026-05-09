@@ -18,7 +18,7 @@ export default function GerenciarPedidosPage() {
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes-gerenciar-page'],
-    queryFn: () => base44.entities.Cliente.list()
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
   });
 
   useEffect(() => {

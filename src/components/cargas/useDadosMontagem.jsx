@@ -32,12 +32,15 @@ export default function useDadosMontagem() {
         toast.warning('Pedidos Omie não carregaram, mas os pedidos D1 internos serão exibidos.');
       }
 
-      const [todosPedidosLocais, trocasAprovadas, clientes, rotas] = await Promise.all([
+      const [todosPedidosLocais, trocasAprovadas, clientesBase, rotas] = await Promise.all([
         base44.entities.Pedido.list('-created_date', 1000),
         base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500),
         base44.entities.Cliente.list('-created_date', 5000),
         base44.entities.Rota.list('-created_date', 500)
       ]);
+      const clienteIdsPedidos = [...new Set([...(todosPedidosLocais || []).map(p => p.cliente_id), ...(trocasAprovadas || []).map(t => t.cliente_id)].filter(Boolean))];
+      const clientesExatos = clienteIdsPedidos.length ? await base44.entities.Cliente.filter({ id: { $in: clienteIdsPedidos } }, '-created_date', 5000) : [];
+      const clientes = Array.from(new Map([...(clientesBase || []), ...(clientesExatos || [])].map(c => [c.id, c])).values());
       const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 

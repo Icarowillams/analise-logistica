@@ -25,7 +25,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
   });
 
   // If editing, load pedido and jump to form
