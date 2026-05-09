@@ -18,7 +18,7 @@ const KpiPainel = ({ titulo, valor, sub, icon: Icon, cor }) => (
 export default function PainelRoteiros({ vendedores, supervisores }) {
   const [filtros, setFiltros] = useState({ dia: '', vendedor_id: '', funcao: '', supervisor_id: '', inicio: '', fim: '', busca: '' });
   const { data: roteiros = [] } = useQuery({ queryKey: ['roteiros'], queryFn: () => base44.entities.Roteiro.list('-updated_date', 5000) });
-  const { data: visitas = [] } = useQuery({ queryKey: ['visitasRoteiro'], queryFn: () => base44.entities.VisitaRoteiro.list('-updated_date', 10000) });
+  const { data: visitas = [] } = useQuery({ queryKey: ['visitasNova'], queryFn: () => base44.entities.Visita.list('-data_visita', 10000) });
 
   const filtrados = useMemo(() => roteiros.filter(r => {
     if (filtros.dia && diaParaKey(r.dia_semana) !== filtros.dia) return false;
@@ -35,8 +35,8 @@ export default function PainelRoteiros({ vendedores, supervisores }) {
     const clientesUnicos = new Set();
     roteiros.forEach(r => (r.clientes_ids || []).forEach(id => clientesUnicos.add(id)));
     const realizadas = visitas.filter(v => v.status === 'concluida').length;
-    const naoAtendidas = visitas.filter(v => v.status === 'nao_atendimento').length;
-    const comPedido = visitas.filter(v => v.gerou_pedido).length;
+    const naoAtendidas = visitas.filter(v => v.status === 'nao_atendido').length;
+    const comPedido = visitas.filter(v => v.pedido_solicitado).length;
     const semPedido = realizadas - comPedido;
     return { totalRoteiros: roteiros.length, vendedoresAtivos: new Set(roteiros.map(r => r.vendedor_id)).size, clientes: clientesUnicos.size, realizadas, comPedido: Math.max(comPedido, 0), semPedido: Math.max(semPedido, 0) };
   }, [roteiros, visitas]);
@@ -57,7 +57,7 @@ export default function PainelRoteiros({ vendedores, supervisores }) {
         grupo[v.id].clientes++;
         const visita = visitas.find(x => x.roteiro_id === r.id && x.cliente_id === c.cliente_id);
         if (visita?.status === 'concluida') grupo[v.id].atendidos++;
-        else if (visita?.status === 'nao_atendimento') grupo[v.id].naoAtendidos++;
+        else if (visita?.status === 'nao_atendido') grupo[v.id].naoAtendidos++;
         else grupo[v.id].pendentes++;
       });
     });
@@ -127,7 +127,7 @@ export default function PainelRoteiros({ vendedores, supervisores }) {
           <Card><CardContent className="p-4 overflow-auto">
             <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-left">Vendedor</th><th className="p-2 text-left">Cliente</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Início</th><th className="p-2 text-right">Duração</th></tr></thead>
               <tbody>{visitas.filter(v => v.data_visita === new Date().toISOString().slice(0,10)).slice(0, 100).map(v => (
-                <tr key={v.id} className="border-t"><td className="p-2">{v.vendedor_nome}</td><td className="p-2">{v.cliente_nome}</td><td className="p-2">{v.status}</td><td className="p-2 text-xs">{v.checkin_em ? new Date(v.checkin_em).toLocaleTimeString('pt-BR') : '-'}</td><td className="p-2 text-right">{v.duracao_min || 0} min</td></tr>
+                <tr key={v.id} className="border-t"><td className="p-2">{v.vendedor_nome}</td><td className="p-2">{v.cliente_nome}</td><td className="p-2">{v.status}</td><td className="p-2 text-xs">{v.hora_checkin ? new Date(v.hora_checkin).toLocaleTimeString('pt-BR') : '-'}</td><td className="p-2 text-right">-</td></tr>
               ))}</tbody></table>
           </CardContent></Card>
         </TabsContent>

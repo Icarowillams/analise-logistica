@@ -25,6 +25,8 @@ import Operacao from './pages/Operacao.jsx';
 import TestesOmie from './pages/TestesOmie.jsx';
 import Roteiros from './pages/Roteiros.jsx';
 import GestaoRoteiros from './pages/GestaoRoteiros.jsx';
+import MeusRoteirosPage from './pages/MeusRoteiros.jsx';
+import RotaSupervisoresPage from './pages/RotaSupervisores.jsx';
 import AnalisesComercial from './pages/AnalisesComercial.jsx';
 import RelatoriosVisitas from './pages/RelatoriosVisitas.jsx';
 import Metas from './pages/Metas.jsx';
@@ -98,8 +100,8 @@ const AuthenticatedApp = () => {
       <Route path="/Operacao" element={<LayoutWrapper currentPageName="Operacao"><Operacao /></LayoutWrapper>} />
       <Route path="/TestesOmie" element={<LayoutWrapper currentPageName="TestesOmie"><TestesOmie /></LayoutWrapper>} />
       <Route path="/Roteiros" element={<LayoutWrapper currentPageName="Roteiros"><GestaoRoteiros /></LayoutWrapper>} />
-      <Route path="/MeusRoteiros" element={<LayoutWrapper currentPageName="MeusRoteiros"><Roteiros /></LayoutWrapper>} />
-      <Route path="/RotaSupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><Roteiros /></LayoutWrapper>} />
+      <Route path="/MeusRoteiros" element={<LayoutWrapper currentPageName="MeusRoteiros"><MeusRoteirosPage /></LayoutWrapper>} />
+      <Route path="/RotaSupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><RotaSupervisoresPage /></LayoutWrapper>} />
       <Route path="/PainelRoteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
       <Route path="/AnalisesComercial" element={<LayoutWrapper currentPageName="AnalisesComercial"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardVendedor" element={<LayoutWrapper currentPageName="DashboardVendedor"><AnalisesComercial /></LayoutWrapper>} />

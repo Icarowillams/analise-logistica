@@ -1,0 +1,168 @@
+{
+  "name": "VisitaSupervisor",
+  "type": "object",
+  "description": "Visita realizada pelo supervisor a um cliente \u2014 pode ter v\u00e1rios tipos (acompanhamento, prospec\u00e7\u00e3o, negocia\u00e7\u00e3o, resolu\u00e7\u00e3o)",
+  "properties": {
+    "rota_supervisor_id": {
+      "type": "string"
+    },
+    "supervisor_id": {
+      "type": "string"
+    },
+    "supervisor_nome": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_codigo": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "cliente_cidade": {
+      "type": "string"
+    },
+    "data_visita": {
+      "type": "string",
+      "format": "date"
+    },
+    "checkin_time": {
+      "type": "string"
+    },
+    "checkin_latitude": {
+      "type": "number"
+    },
+    "checkin_longitude": {
+      "type": "number"
+    },
+    "checkout_time": {
+      "type": "string"
+    },
+    "checkout_latitude": {
+      "type": "number"
+    },
+    "checkout_longitude": {
+      "type": "number"
+    },
+    "tempo_loja_minutos": {
+      "type": "number"
+    },
+    "tipos_visita": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "observacao_geral": {
+      "type": "string"
+    },
+    "obs_acompanhamento": {
+      "type": "string"
+    },
+    "prospeccao_nome_fantasia": {
+      "type": "string"
+    },
+    "obs_prospeccao": {
+      "type": "string"
+    },
+    "negociacao_venda": {
+      "type": "boolean",
+      "default": false
+    },
+    "negociacao_exposicao": {
+      "type": "boolean",
+      "default": false
+    },
+    "acoes_venda": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "prazo_de": {
+            "type": "string"
+          },
+          "prazo_ate": {
+            "type": "string"
+          },
+          "produto": {
+            "type": "string"
+          },
+          "valor_acao": {
+            "type": "number"
+          },
+          "valor_investimento": {
+            "type": "number"
+          }
+        }
+      },
+      "default": []
+    },
+    "exposicao_prazo_de": {
+      "type": "string",
+      "format": "date"
+    },
+    "exposicao_prazo_ate": {
+      "type": "string",
+      "format": "date"
+    },
+    "tipo_exposicao": {
+      "type": "string",
+      "enum": [
+        "ponto_extra",
+        "gondola",
+        "os_dois"
+      ]
+    },
+    "ponto_extra_prazo": {
+      "type": "string",
+      "format": "date"
+    },
+    "ponto_extra_permanente": {
+      "type": "boolean",
+      "default": false
+    },
+    "gondola_prazo": {
+      "type": "string",
+      "format": "date"
+    },
+    "gondola_permanente": {
+      "type": "boolean",
+      "default": false
+    },
+    "tipo_problema": {
+      "type": "string",
+      "enum": [
+        "logistica",
+        "atendimento"
+      ]
+    },
+    "descricao_problema": {
+      "type": "string"
+    },
+    "atitude_tomada": {
+      "type": "string"
+    },
+    "como_finalizado": {
+      "type": "string"
+    },
+    "resumo_visita": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "checkin_realizado",
+        "concluida"
+      ],
+      "default": "checkin_realizado"
+    }
+  },
+  "required": [
+    "supervisor_id",
+    "cliente_id",
+    "data_visita"
+  ]
+}
