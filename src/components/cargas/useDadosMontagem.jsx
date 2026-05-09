@@ -24,16 +24,27 @@ export default function useDadosMontagem() {
       setVeiculos(veiP.filter(v => v.ativo !== false));
       setCargas(carP);
 
-      // Paralelo: pedidos Omie etapa 20 + pedidos D1 locais liberados + pedidos de troca aprovados
-      const [vendasRes, pedidosD1Locais, trocasAprovadas] = await Promise.all([
-        base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 100, buscar_todas_paginas: true, max_paginas: 8 }),
-        base44.entities.Pedido.filter({ modelo_nota: 'd1', status: 'liberado' }, '-created_date', 500),
+      // Pedidos Omie não podem bloquear os pedidos D1 locais se a integração falhar
+      let vendasRes = null;
+      try {
+        vendasRes = await base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 100, buscar_todas_paginas: true, max_paginas: 8 });
+      } catch (omieError) {
+        toast.warning('Pedidos Omie não carregaram, mas os pedidos D1 internos serão exibidos.');
+      }
+
+      const [todosPedidosLocais, trocasAprovadas] = await Promise.all([
+        base44.entities.Pedido.list('-created_date', 1000),
         base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
       ]);
 
+      const pedidosD1Locais = (todosPedidosLocais || []).filter(p => {
+        const modelo = String(p.modelo_nota || '').toLowerCase();
+        return modelo === 'd1' && p.status === 'liberado';
+      });
+
       // Enriquecer vendas
       let vendasEnriquecidas = [];
-      if (vendasRes?.data?.sucesso && vendasRes.data.pedidos.length > 0) {
+      if (vendasRes?.data?.sucesso && vendasRes.data.pedidos?.length > 0) {
         const { data: enriq } = await base44.functions.invoke('enriquecerPedidosCarga', {
           pedidos: vendasRes.data.pedidos
         });
