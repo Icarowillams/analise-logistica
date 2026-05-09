@@ -130,6 +130,11 @@ export default function Layout({ children, currentPageName }) {
         path: 'AnalisesComercial'
       },
       {
+        title: 'Relatórios Visitas',
+        icon: FileOutput,
+        path: 'RelatoriosVisitas'
+      },
+      {
         title: 'Operação Completa',
         icon: Workflow,
         path: 'Operacao'
