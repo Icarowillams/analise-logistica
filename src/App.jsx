@@ -26,6 +26,7 @@ import TestesOmie from './pages/TestesOmie.jsx';
 import Roteiros from './pages/Roteiros.jsx';
 import AnalisesComercial from './pages/AnalisesComercial.jsx';
 import RelatoriosVisitas from './pages/RelatoriosVisitas.jsx';
+import Metas from './pages/Metas.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -96,8 +97,22 @@ const AuthenticatedApp = () => {
       <Route path="/Operacao" element={<LayoutWrapper currentPageName="Operacao"><Operacao /></LayoutWrapper>} />
       <Route path="/TestesOmie" element={<LayoutWrapper currentPageName="TestesOmie"><TestesOmie /></LayoutWrapper>} />
       <Route path="/Roteiros" element={<LayoutWrapper currentPageName="Roteiros"><Roteiros /></LayoutWrapper>} />
+      <Route path="/MeusRoteiros" element={<LayoutWrapper currentPageName="MeusRoteiros"><Roteiros /></LayoutWrapper>} />
+      <Route path="/RotaSupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><Roteiros /></LayoutWrapper>} />
+      <Route path="/PainelRoteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
       <Route path="/AnalisesComercial" element={<LayoutWrapper currentPageName="AnalisesComercial"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/DashboardVendedor" element={<LayoutWrapper currentPageName="DashboardVendedor"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/DashboardTrocas" element={<LayoutWrapper currentPageName="DashboardTrocas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/DashboardVendas" element={<LayoutWrapper currentPageName="DashboardVendas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/DashboardClientes" element={<LayoutWrapper currentPageName="DashboardClientes"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/AnaliseDeVisitas" element={<LayoutWrapper currentPageName="AnaliseDeVisitas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/MapaDeVisitas" element={<LayoutWrapper currentPageName="MapaDeVisitas"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/RelatoriosVisitas" element={<LayoutWrapper currentPageName="RelatoriosVisitas"><RelatoriosVisitas /></LayoutWrapper>} />
+      <Route path="/RoteirosVisitas" element={<LayoutWrapper currentPageName="RoteirosVisitas"><RelatoriosVisitas /></LayoutWrapper>} />
+      <Route path="/Estoque" element={<LayoutWrapper currentPageName="Estoque"><RelatoriosVisitas /></LayoutWrapper>} />
+      <Route path="/Trocas" element={<LayoutWrapper currentPageName="Trocas"><RelatoriosVisitas /></LayoutWrapper>} />
+      <Route path="/RotinaSupervisores" element={<LayoutWrapper currentPageName="RotinaSupervisores"><RelatoriosVisitas /></LayoutWrapper>} />
+      <Route path="/Metas" element={<LayoutWrapper currentPageName="Metas"><Metas /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

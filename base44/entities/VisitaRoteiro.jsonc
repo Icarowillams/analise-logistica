@@ -1,7 +1,7 @@
 {
   "name": "VisitaRoteiro",
   "type": "object",
-  "description": "Execu\u00e7\u00e3o de visitas em campo vinculadas aos roteiros comerciais",
+  "description": "Execu\u00e7\u00e3o de visitas em campo: check-in GPS, atendimento, estoque coletado e trocas",
   "properties": {
     "roteiro_id": {
       "type": "string"
@@ -12,10 +12,37 @@
     "vendedor_nome": {
       "type": "string"
     },
+    "vendedor_email": {
+      "type": "string"
+    },
+    "supervisor_id": {
+      "type": "string"
+    },
+    "supervisor_nome": {
+      "type": "string"
+    },
     "cliente_id": {
       "type": "string"
     },
+    "cliente_codigo": {
+      "type": "string"
+    },
     "cliente_nome": {
+      "type": "string"
+    },
+    "cliente_cidade": {
+      "type": "string"
+    },
+    "cliente_endereco": {
+      "type": "string"
+    },
+    "cliente_rede": {
+      "type": "string"
+    },
+    "cliente_segmento": {
+      "type": "string"
+    },
+    "cliente_rota": {
       "type": "string"
     },
     "dia_semana": {
@@ -25,48 +52,123 @@
       "type": "string",
       "format": "date"
     },
+    "tipo_visita": {
+      "type": "string",
+      "enum": [
+        "acompanhamento",
+        "venda",
+        "abertura",
+        "cobranca",
+        "treinamento",
+        "outros"
+      ],
+      "default": "acompanhamento"
+    },
     "status": {
       "type": "string",
       "enum": [
         "planejada",
+        "pendente",
         "em_andamento",
-        "visitado",
-        "nao_visitado",
-        "reagendado"
+        "concluida",
+        "nao_atendimento",
+        "reagendada"
       ],
-      "default": "planejada"
+      "default": "pendente"
     },
-    "inicio_visita": {
+    "checkin_em": {
       "type": "string",
       "format": "date-time"
     },
-    "fim_visita": {
+    "checkin_lat": {
+      "type": "number"
+    },
+    "checkin_lng": {
+      "type": "number"
+    },
+    "checkout_em": {
       "type": "string",
       "format": "date-time"
     },
-    "motivo_nao_visita": {
-      "type": "string",
-      "enum": [
-        "cliente_fechado",
-        "horario_nao_comercial",
-        "cliente_ausente",
-        "endereco_nao_localizado",
-        "sem_tempo",
-        "outro"
-      ]
+    "duracao_min": {
+      "type": "number"
     },
-    "nova_data": {
+    "motivo_nao_atendimento": {
+      "type": "string"
+    },
+    "data_reagendamento": {
       "type": "string",
       "format": "date"
     },
     "atendimento": {
       "type": "string"
     },
-    "estoque_disponivel": {
+    "estoque_itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_codigo": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "validade": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "trocas_itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_id": {
+            "type": "string"
+          },
+          "produto_codigo": {
+            "type": "string"
+          },
+          "produto_nome": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "valor": {
+            "type": "number"
+          },
+          "motivo_id": {
+            "type": "string"
+          },
+          "motivo_descricao": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "gerou_pedido": {
+      "type": "boolean",
+      "default": false
+    },
+    "pedido_id": {
       "type": "string"
     },
-    "trocas": {
+    "pedido_numero": {
       "type": "string"
+    },
+    "valor_pedido": {
+      "type": "number"
     },
     "observacoes": {
       "type": "string"
@@ -80,7 +182,6 @@
     }
   },
   "required": [
-    "roteiro_id",
     "vendedor_id",
     "cliente_id"
   ]

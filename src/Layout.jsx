@@ -120,19 +120,40 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Roteiros',
-        icon: ClipboardList,
-        path: 'Roteiros'
+        title: 'Metas',
+        icon: Target,
+        path: 'Metas'
       },
       {
         title: 'Análises Comercial',
         icon: BarChart3,
-        path: 'AnalisesComercial'
+        submenu: [
+          { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
+          { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
+          { title: 'Dashboard Vendas', path: 'DashboardVendas' },
+          { title: 'Dashboard Clientes', path: 'DashboardClientes' },
+          { title: 'Análise de Visitas', path: 'AnaliseDeVisitas' },
+          { title: 'Mapa de Visitas', path: 'MapaDeVisitas' }
+        ]
       },
       {
         title: 'Relatórios Visitas',
         icon: FileOutput,
-        path: 'RelatoriosVisitas'
+        submenu: [
+          { title: 'Roteiros/Visitas', path: 'RoteirosVisitas' },
+          { title: 'Estoque', path: 'Estoque' },
+          { title: 'Trocas', path: 'Trocas' },
+          { title: 'Rotina Supervisores', path: 'RotinaSupervisores' }
+        ]
+      },
+      {
+        title: 'Roteiros',
+        icon: ClipboardList,
+        submenu: [
+          { title: 'Meus Roteiros', path: 'MeusRoteiros' },
+          { title: 'Rota Supervisores', path: 'RotaSupervisores' },
+          { title: 'Painel de Roteiros', path: 'PainelRoteiros' }
+        ]
       },
       {
         title: 'Operação Completa',
