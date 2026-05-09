@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 import AbaNaturezasOmie from '@/components/cenariosFiscais/AbaNaturezasOmie';
 import AbaEtapasOmie from '@/components/cenariosFiscais/AbaEtapasOmie';
+import AbaCenariosLocais from '@/components/cenariosFiscais/AbaCenariosLocais';
 
 export default function CenariosFiscais() {
   const qc = useQueryClient();
@@ -76,9 +77,14 @@ export default function CenariosFiscais() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
+          <TabsTrigger value="locais">Cenários Locais</TabsTrigger>
           <TabsTrigger value="naturezas">Naturezas Omie ({naturezas.length})</TabsTrigger>
           <TabsTrigger value="etapas">Etapas Omie ({etapas.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="locais" className="mt-4">
+          <AbaCenariosLocais naturezasOmie={naturezas} />
+        </TabsContent>
 
         <TabsContent value="naturezas" className="mt-4">
           <AbaNaturezasOmie naturezas={naturezas} />

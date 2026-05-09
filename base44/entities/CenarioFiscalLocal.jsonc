@@ -1,0 +1,59 @@
+{
+  "name": "CenarioFiscalLocal",
+  "type": "object",
+  "description": "Cen\u00e1rio fiscal local cadastrado no Base (ex: Venda, Bonifica\u00e7\u00e3o, Troca). Quando o cliente \u00e9 Nota 55, este cen\u00e1rio pode ser vinculado a um CenarioFiscal do Omie via cenario_omie_id. Para Nota D1, nunca usa Omie \u2014 opera\u00e7\u00e3o totalmente interna.",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome do cen\u00e1rio local (ex: Venda, Bonifica\u00e7\u00e3o, Troca)"
+    },
+    "tipo_operacao": {
+      "type": "string",
+      "enum": [
+        "venda",
+        "bonificacao",
+        "troca",
+        "devolucao",
+        "remessa",
+        "transferencia",
+        "outros"
+      ],
+      "default": "venda"
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "cenario_omie_id": {
+      "type": "string",
+      "description": "ID do registro CenarioFiscal (Omie) vinculado \u2014 usado apenas quando cliente \u00e9 Nota 55"
+    },
+    "cenario_omie_nome": {
+      "type": "string",
+      "description": "Nome do cen\u00e1rio Omie vinculado (cache para exibi\u00e7\u00e3o)"
+    },
+    "cenario_omie_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo (nCodigo) do cen\u00e1rio Omie vinculado"
+    },
+    "padrao": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 o cen\u00e1rio padr\u00e3o para este tipo de opera\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "nome",
+    "tipo_operacao"
+  ]
+}
