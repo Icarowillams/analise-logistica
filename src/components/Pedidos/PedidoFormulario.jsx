@@ -310,6 +310,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       toast.error('Informe a Data de Previsão de Entrega');
       return;
     }
+    if (!cenarioLocalId || !cenarioLocalAtual) {
+      toast.error('Selecione o Cenário Fiscal Local (Venda, Bonificação ou Troca)');
+      setActiveTab('pedido');
+      return;
+    }
     if (itensLocal.length === 0) {
       toast.error('Adicione pelo menos um item ao pedido');
       return;
@@ -471,7 +476,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               </div>
               <div>
                 <Label className="text-xs text-slate-500">
-                  Cenário Fiscal Local
+                  Cenário Fiscal Local <span className="text-red-500">*</span>
                   {isNotaD1 ? (
                     <span className="ml-2 text-[10px] text-orange-600 font-medium">(D1 — operação interna)</span>
                   ) : (
