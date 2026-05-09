@@ -58,27 +58,32 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const pendentesFiltrados = filtrarPedidos(pendentes);
   const enviadosFiltrados = filtrarPedidos(enviados);
 
-  const getNextNumeroTroca = async () => {
+  const getNextNumeroLocal = async (sufixo) => {
     const allPedidos = await base44.entities.Pedido.list();
-    const trocas = allPedidos.filter(p => p.tipo === 'troca' && p.numero_pedido);
+    const dosTipo = allPedidos.filter(p => p.numero_pedido && String(p.numero_pedido).endsWith(sufixo));
     let maxNum = 0;
-    trocas.forEach(p => {
+    dosTipo.forEach(p => {
       const num = parseInt(String(p.numero_pedido).replace(/\D/g, ''), 10);
       if (!isNaN(num) && num > maxNum) maxNum = num;
     });
-    return String(maxNum + 1).padStart(5, '0') + 'T';
+    return String(maxNum + 1).padStart(5, '0') + sufixo;
   };
 
+  // Pedido é tratado internamente (sem Omie) se for troca OU se modelo da nota for D1
+  const isInterno = (pedido) => pedido.tipo === 'troca' || pedido.modelo_nota === 'd1';
+  const sufixoLocal = (pedido) => pedido.tipo === 'troca' ? 'T' : 'D';
+
   const enviarPedido = async (pedido) => {
-    if (!pedido.data_previsao_entrega && pedido.tipo !== 'troca') {
+    if (!pedido.data_previsao_entrega && !isInterno(pedido)) {
       toast.error(`Pedido de ${pedido.cliente_nome} não tem Data de Previsão de Entrega. Edite o pedido para informar.`);
       return;
     }
     setEnviandoId(pedido.id);
     try {
-      if (pedido.tipo === 'troca') {
-        // Trocas: gerar número sequencial local com sufixo T
-        const numero = await getNextNumeroTroca();
+      if (isInterno(pedido)) {
+        // Trocas e D1: gerar número sequencial local (sem Omie)
+        const sufixo = sufixoLocal(pedido);
+        const numero = await getNextNumeroLocal(sufixo);
         await base44.entities.Pedido.update(pedido.id, {
           status: 'enviado',
           numero_pedido: numero,
@@ -86,12 +91,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           omie_erro: null
         });
 
-        // Enviar ao backend (trocas não vão para Omie, mas registra envio)
-        try {
-          await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
-        } catch (_) { /* trocas não precisam do Omie */ }
-
-        toast.success(`Troca #${numero} enviada com sucesso!`);
+        const tipoLabel = pedido.tipo === 'troca' ? 'Troca' : 'Pedido D1';
+        toast.success(`${tipoLabel} #${numero} registrado com sucesso!`);
       } else {
         // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
         let omieOk = false;
@@ -139,23 +140,21 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     const erroMsgs = [];
     
     for (const pedido of pendentes) {
-      if (!pedido.data_previsao_entrega && pedido.tipo !== 'troca') {
+      if (!pedido.data_previsao_entrega && !isInterno(pedido)) {
         erroCount++;
         erroMsgs.push(`${pedido.cliente_nome}: Sem Data de Previsão de Entrega`);
         continue;
       }
-      if (pedido.tipo === 'troca') {
-        // Trocas: gerar número sequencial local com sufixo T
-        const numero = await getNextNumeroTroca();
+      if (isInterno(pedido)) {
+        // Trocas e D1: gerar número sequencial local (sem Omie)
+        const sufixo = sufixoLocal(pedido);
+        const numero = await getNextNumeroLocal(sufixo);
         await base44.entities.Pedido.update(pedido.id, {
           status: 'enviado',
           numero_pedido: numero,
           data_envio: new Date().toISOString(),
           omie_erro: null
         });
-        try {
-          await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
-        } catch (_) { /* trocas não precisam do Omie */ }
         sucessoCount++;
       } else {
         // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
@@ -302,7 +301,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           )}
           
           <div className="text-xs text-slate-600 space-y-0.5">
-            {!pedido.data_previsao_entrega && pedido.tipo !== 'troca' && (
+            {!pedido.data_previsao_entrega && !isInterno(pedido) && (
               <p className="text-red-600 font-semibold">⚠ Sem data de previsão de entrega</p>
             )}
             <p>Pgto: {pedido.plano_pagamento_nome || '-'}</p>
@@ -313,6 +312,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline" className="text-[10px]">{pedido.tipo === 'troca' ? 'Troca' : 'Pré-venda'}</Badge>
             {pedido.tipo === 'troca' && <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-700">Troca</Badge>}
+            {pedido.modelo_nota === 'd1' && pedido.tipo !== 'troca' && (
+              <Badge variant="outline" className="text-[10px] border-purple-300 text-purple-700">D1 — Interno (sem Omie)</Badge>
+            )}
           </div>
           <div className="flex gap-2 pt-2">
             {showEnviar && (
