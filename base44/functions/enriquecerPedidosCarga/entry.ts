@@ -14,62 +14,121 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, pedidos: [] });
     }
 
-    const codigosOmie = [...new Set(pedidos.map(p => String(p.codigo_cliente)).filter(Boolean))];
+    const normalizar = (valor) => String(valor || '').trim().toLowerCase();
+    const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
+    const valorValido = (valor) => valor !== undefined && valor !== null && String(valor).trim() !== '';
 
-    // Busca clientes em blocos para não estourar filtro
-    const clientes = [];
-    const bloco = 200;
-    for (let i = 0; i < codigosOmie.length; i += bloco) {
-      const slice = codigosOmie.slice(i, i + bloco);
-      const res = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: { $in: slice } }, '-created_date', 1000);
-      clientes.push(...res);
-    }
+    const chavesPedido = (p) => [
+      p.codigo_cliente,
+      p.codigo_cliente_integracao,
+      p.codigo_cliente_cod,
+      p.cliente_codigo,
+      p.cnpj_cpf_cliente,
+      p.cnpj_cpf,
+      p.documento_cliente
+    ].filter(valorValido);
 
-    const mapaCliente = new Map();
-    clientes.forEach(c => mapaCliente.set(String(c.codigo_omie), c));
+    const codigosBusca = [...new Set(pedidos.flatMap(chavesPedido).map(String))];
 
-    // Busca rotas para resolver nome
-    const rotas = await base44.asServiceRole.entities.Rota.list('-created_date', 500);
-    const mapaRota = new Map(rotas.map(r => [r.id, r.nome]));
+    const [clientesBase, rotas, vendedores] = await Promise.all([
+      base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
+      base44.asServiceRole.entities.Rota.list('-created_date', 1000),
+      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
+    ]);
 
-    // Extrai código COD das tags do cliente (regex ^COD[:\-\s]?(\d+)$)
-    const extrairCodigoCod = (tags) => {
-      if (!Array.isArray(tags)) return '';
-      for (const t of tags) {
-        const m = String(t).match(/^COD[:\-\s]?(\d+)$/i);
-        if (m) return m[1];
+    const clientesExatos = codigosBusca.length
+      ? (await Promise.all(codigosBusca.map(async (codigo) => {
+          const digitos = somenteDigitos(codigo);
+          const buscas = await Promise.all([
+            base44.asServiceRole.entities.Cliente.filter({ id: codigo }, '-created_date', 1).catch(() => []),
+            base44.asServiceRole.entities.Cliente.filter({ codigo_omie: codigo }, '-created_date', 5).catch(() => []),
+            base44.asServiceRole.entities.Cliente.filter({ codigo: codigo }, '-created_date', 5).catch(() => []),
+            base44.asServiceRole.entities.Cliente.filter({ codigo_interno: codigo }, '-created_date', 5).catch(() => []),
+            base44.asServiceRole.entities.Cliente.filter({ codigo_integracao: codigo }, '-created_date', 5).catch(() => []),
+            digitos ? base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: digitos }, '-created_date', 5).catch(() => []) : []
+          ]);
+          return buscas.flat();
+        }))).flat()
+      : [];
+
+    const clientes = Array.from(new Map([...(clientesBase || []), ...(clientesExatos || [])].map(c => [c.id, c])).values());
+    const mapaRota = new Map((rotas || []).map(r => [r.id, r.nome]));
+    const mapaVendedor = new Map((vendedores || []).map(v => [v.id, v.nome]));
+
+    const clienteIndexes = {
+      id: new Map(),
+      codigo: new Map(),
+      documento: new Map(),
+      nome: new Map()
+    };
+
+    const indexarCliente = (cliente, chave) => {
+      if (valorValido(chave)) clienteIndexes.codigo.set(normalizar(chave), cliente);
+    };
+
+    clientes.forEach(c => {
+      clienteIndexes.id.set(c.id, c);
+      [c.codigo_omie, c.codigo, c.codigo_interno, c.codigo_integracao].forEach(chave => indexarCliente(c, chave));
+      const doc = somenteDigitos(c.cnpj_cpf || c.cpf_cnpj);
+      if (doc) clienteIndexes.documento.set(doc, c);
+      [c.razao_social, c.nome_fantasia].filter(valorValido).forEach(nome => clienteIndexes.nome.set(normalizar(nome), c));
+    });
+
+    const resolverCliente = (p) => {
+      for (const chave of chavesPedido(p)) {
+        const texto = normalizar(chave);
+        const digitos = somenteDigitos(chave);
+        const encontrado = clienteIndexes.id.get(String(chave)) || clienteIndexes.codigo.get(texto) || clienteIndexes.documento.get(digitos);
+        if (encontrado) return encontrado;
+      }
+      return clienteIndexes.nome.get(normalizar(p.nome_cliente)) || clienteIndexes.nome.get(normalizar(p.nome_fantasia)) || null;
+    };
+
+    const extrairCodigoCod = (cliente) => {
+      if (!cliente) return '';
+      const direto = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || cliente.codigo_omie;
+      if (direto) return String(direto);
+      if (!Array.isArray(cliente.tags)) return '';
+      for (const t of cliente.tags) {
+        const m = String(t).match(/^(COD|CODIGO|CÓDIGO|CODIGO_CLIENTE)[:\-\s]?(\d+)$/i);
+        if (m) return m[2];
       }
       return '';
     };
 
-    // Resolve rota em cascata: característica Omie "ROTA" > caracteristicas_cliente > cliente.rota_id > "Sem Rota"
     const resolverRota = (pedidoOmie, cliente) => {
       if (pedidoOmie.rota_caracteristica) return pedidoOmie.rota_caracteristica;
+      if (pedidoOmie.rota_cliente && pedidoOmie.rota_cliente !== 'Sem Rota') return pedidoOmie.rota_cliente;
       const caracs = pedidoOmie.caracteristicas_cliente || [];
       const rotaCarac = caracs.find(c => /rota/i.test(c?.caracteristica || c?.campo || ''));
       if (rotaCarac) return rotaCarac.conteudo || rotaCarac.valor || '';
+      if (cliente?.rota_nome) return cliente.rota_nome;
       if (cliente?.rota_id && mapaRota.get(cliente.rota_id)) return mapaRota.get(cliente.rota_id);
       return 'Sem Rota';
     };
 
     const enriquecidos = pedidos.map(p => {
-      const c = mapaCliente.get(String(p.codigo_cliente));
+      const c = resolverCliente(p);
       const rotaNome = resolverRota(p, c);
+      const vendedorNome = c?.vendedor_id ? mapaVendedor.get(c.vendedor_id) : '';
+      const nomeCliente = c?.razao_social || p.nome_cliente || `Cliente ${p.codigo_cliente || p.codigo_cliente_integracao || ''}`;
       return {
         ...p,
-        cliente_id: c?.id || null,
-        nome_cliente: c?.razao_social || `Cliente ${p.codigo_cliente}`,
-        nome_fantasia: c?.nome_fantasia || c?.razao_social || `Cliente ${p.codigo_cliente}`,
-        cnpj_cpf_cliente: c?.cnpj_cpf || '',
-        codigo_cliente_cod: extrairCodigoCod(c?.tags),
-        codigo_cliente_integracao: c?.codigo || p.codigo_cliente_integracao || '',
-        cidade: c?.cidade || '',
-        rota_id: c?.rota_id || null,
+        cliente_id: c?.id || p.cliente_id || null,
+        nome_cliente: nomeCliente,
+        nome_fantasia: c?.nome_fantasia || p.nome_fantasia || nomeCliente,
+        cnpj_cpf_cliente: c?.cnpj_cpf || p.cnpj_cpf_cliente || '',
+        codigo_cliente_cod: extrairCodigoCod(c) || p.codigo_cliente_cod || p.codigo_cliente_integracao || p.codigo_cliente || '',
+        codigo_cliente_integracao: c?.codigo_integracao || c?.codigo || p.codigo_cliente_integracao || '',
+        cidade: c?.cidade || p.cidade || '',
+        vendedor_id: c?.vendedor_id || p.vendedor_id || null,
+        vendedor_nome: vendedorNome || p.vendedor_nome || '',
+        rota_id: c?.rota_id || p.rota_id || null,
         rota_nome: rotaNome || 'Sem Rota',
         rota_cliente: rotaNome || 'Sem Rota',
-        tags_cliente: c?.tags || [],
+        tags_cliente: c?.tags || p.tags_cliente || [],
         motorista_padrao_id: c?.motorista_id || null,
-        tipo_nota: c?.tipo_nota || '55',
+        tipo_nota: c?.tipo_nota || p.tipo_nota || '55',
         tipo: 'venda'
       };
     });
