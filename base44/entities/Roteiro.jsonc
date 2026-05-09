@@ -5,7 +5,7 @@
   "properties": {
     "vendedor_id": {
       "type": "string",
-      "description": "ID do vendedor/funcion\u00e1rio respons\u00e1vel pelo roteiro"
+      "description": "ID do funcion\u00e1rio respons\u00e1vel pelo roteiro"
     },
     "vendedor_nome": {
       "type": "string"
@@ -23,12 +23,7 @@
         "quinta-feira",
         "sexta-feira",
         "sabado",
-        "domingo",
-        "segunda",
-        "terca",
-        "quarta",
-        "quinta",
-        "sexta"
+        "domingo"
       ],
       "description": "Dia da semana do roteiro"
     },
@@ -38,7 +33,7 @@
         "type": "string"
       },
       "default": [],
-      "description": "IDs dos clientes no roteiro"
+      "description": "Lista de IDs dos clientes na ordem de visita"
     },
     "clientes_detalhes": {
       "type": "array",
@@ -51,10 +46,16 @@
           "cliente_nome": {
             "type": "string"
           },
+          "nome_fantasia": {
+            "type": "string"
+          },
           "cliente_codigo": {
             "type": "string"
           },
           "cliente_cidade": {
+            "type": "string"
+          },
+          "cliente_bairro": {
             "type": "string"
           },
           "cliente_endereco": {
@@ -76,10 +77,14 @@
         "planejado",
         "ativo",
         "pausado",
-        "inativo",
         "concluido"
       ],
       "default": "planejado"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Indica se o roteiro est\u00e1 ativo"
     },
     "feedback_supervisor": {
       "type": "string",
