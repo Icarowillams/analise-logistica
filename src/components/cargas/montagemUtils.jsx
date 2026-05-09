@@ -24,7 +24,7 @@ export const filtrarPedidosMontagem = (pedidos, filtros, selecionados) => {
   return pedidos.filter(p => {
     if (filtros.apenasSelecionados && !selecionados.includes(p.codigo_pedido)) return false;
     if (filtros.tipo !== '__all__') {
-      const tipo = p.tipo === 'troca' ? 'troca' : 'venda';
+      const tipo = p.tipo === 'troca' ? 'troca' : p.tipo === 'd1' ? 'd1' : 'venda';
       if (tipo !== filtros.tipo) return false;
     }
     if (filtros.rota !== '__all__' && (p.rota_nome || 'Sem Rota') !== filtros.rota) return false;

@@ -24,9 +24,10 @@ export default function useDadosMontagem() {
       setVeiculos(veiP.filter(v => v.ativo !== false));
       setCargas(carP);
 
-      // Paralelo: pedidos Omie etapa 20 + pedidos de troca aprovados (em cargas ainda não atribuídas)
-      const [vendasRes, trocasAprovadas] = await Promise.all([
+      // Paralelo: pedidos Omie etapa 20 + pedidos D1 locais liberados + pedidos de troca aprovados
+      const [vendasRes, pedidosD1Locais, trocasAprovadas] = await Promise.all([
         base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 100, buscar_todas_paginas: true, max_paginas: 8 }),
+        base44.entities.Pedido.filter({ modelo_nota: 'd1', status: 'liberado' }, '-created_date', 500),
         base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
       ]);
 
@@ -38,6 +39,43 @@ export default function useDadosMontagem() {
         });
         vendasEnriquecidas = enriq?.pedidos || [];
       }
+
+      // Filtrar pedidos internos D1 que ainda não foram alocados em carga
+      const d1Disponiveis = (pedidosD1Locais || []).filter(p => !p.carga_id);
+
+      const d1ComItens = await Promise.all(
+        d1Disponiveis.map(async (p) => {
+          const itens = await base44.entities.PedidoItem.filter({ pedido_id: p.id });
+          return {
+            codigo_pedido: `D1-${p.id}`,
+            pedido_id: p.id,
+            numero_pedido: p.numero_pedido,
+            codigo_cliente: p.cliente_id,
+            cliente_id: p.cliente_id,
+            nome_cliente: p.cliente_nome || '',
+            nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
+            cidade: p.cliente_cidade || '',
+            rota_nome: p.rota_nome || 'Sem Rota',
+            rota_cliente: p.rota_nome || 'Sem Rota',
+            quantidade_itens: itens.length,
+            valor_total_pedido: p.valor_total || 0,
+            vendedor_nome: p.vendedor_nome || '',
+            observacoes: p.observacoes || '',
+            tipo: 'd1',
+            tipo_nota: 'D1',
+            modelo_nota: 'd1',
+            cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
+            produtos: itens.map(i => ({
+              codigo_produto: i.produto_codigo || '',
+              descricao: i.produto_nome || '',
+              quantidade: i.quantidade || 0,
+              valor_unitario: i.valor_unitario || 0,
+              valor_total: i.valor_total || 0,
+              unidade: i.unidade_medida || 'UN'
+            }))
+          };
+        })
+      );
 
       // Filtrar trocas que ainda não foram alocadas em carga
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
@@ -95,7 +133,7 @@ export default function useDadosMontagem() {
         });
       }
 
-      setPedidos([...vendasEnriquecidas, ...trocasComItens]);
+      setPedidos([...vendasEnriquecidas, ...d1ComItens, ...trocasComItens]);
     } catch (e) {
     const msg = e?.response?.data?.error || e.message;
     toast.error('Erro ao carregar dados: ' + msg);

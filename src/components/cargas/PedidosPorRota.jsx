@@ -123,8 +123,8 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                                 <Checkbox checked={selecionado} onCheckedChange={() => toggle(p.codigo_pedido)} />
                               </td>
                               <td className="p-3">
-                                <Badge className={p.tipo === 'troca' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
-                                  {p.tipo === 'troca' ? 'Troca' : 'Venda'}
+                                <Badge className={p.tipo === 'troca' ? 'border-orange-200 bg-orange-50 text-orange-700' : p.tipo === 'd1' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
+                                  {p.tipo === 'troca' ? 'Troca' : p.tipo === 'd1' ? 'D1 Interno' : 'Venda Omie'}
                                 </Badge>
                               </td>
                               <td className="p-3 font-mono text-xs text-slate-700">{p.numero_pedido || '-'}</td>

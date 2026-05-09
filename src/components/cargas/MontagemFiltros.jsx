@@ -43,7 +43,8 @@ export default function MontagemFiltros({ filtros, setFiltros, opcoes, total, fi
           <SelectTrigger className="border-0 bg-slate-100"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Tipo: todos</SelectItem>
-            <SelectItem value="venda">Venda</SelectItem>
+            <SelectItem value="venda">Venda Omie</SelectItem>
+            <SelectItem value="d1">D1 Interno</SelectItem>
             <SelectItem value="troca">Troca</SelectItem>
           </SelectContent>
         </Select>

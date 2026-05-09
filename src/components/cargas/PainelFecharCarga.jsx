@@ -29,7 +29,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   const [salvando, setSalvando] = useState(false);
 
   const pedidosSel = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
-  const vendas = pedidosSel.filter(p => p.tipo !== 'troca');
+  const vendas = pedidosSel.filter(p => p.tipo !== 'troca' && p.tipo !== 'd1');
+  const pedidosD1 = pedidosSel.filter(p => p.tipo === 'd1');
   const trocas = pedidosSel.filter(p => p.tipo === 'troca');
   const valorTotal = pedidosSel.reduce((s, p) => s + (p.valor_total_pedido || 0), 0);
   const qtdPacotesTotal = pedidosSel.reduce((s, p) => s + qtdPacotesPedido(p), 0);
@@ -63,6 +64,22 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         quantidade_itens: v.quantidade_itens || 0,
         tags_cliente: v.tags_cliente || [],
         produtos: v.produtos || []
+      }));
+
+      const pedidosD1Fmt = pedidosD1.map(p => ({
+        pedido_id: p.pedido_id,
+        numero_pedido: p.numero_pedido,
+        modelo_nota: 'd1',
+        cenario_fiscal_nome: p.cenario_fiscal_nome || '',
+        cliente_id: p.cliente_id,
+        nome_cliente: p.nome_cliente,
+        nome_fantasia: p.nome_fantasia,
+        cidade: p.cidade,
+        rota_cliente: p.rota_nome,
+        vendedor_nome: p.vendedor_nome || '',
+        valor_total_pedido: p.valor_total_pedido || 0,
+        quantidade_itens: p.quantidade_itens || 0,
+        produtos: p.produtos || []
       }));
 
       const pedidosTrocaFmt = trocas.map(t => ({
@@ -110,10 +127,17 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         quantidade_total_pacotes: qtdPacotesTotal,
         notas_fiscais: pedidosSel.map(p => p.numero_pedido).filter(Boolean),
         pedidos_omie: pedidosOmieFmt,
+        pedidos_internos: pedidosD1Fmt,
         pedidos_troca: pedidosTrocaFmt,
         observacao: obs,
         observacoes: obs
       });
+
+      for (const p of pedidosD1) {
+        try {
+          await base44.entities.Pedido.update(p.pedido_id, { carga_id: carga.id, status_logistico: 'em_carga' });
+        } catch (e) { console.warn('Falha vincular D1:', e.message); }
+      }
 
       for (const t of trocas) {
         try {
@@ -167,7 +191,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         </div>
 
         <div className="border-t border-slate-100 pt-3 space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500">Vendas</span><span className="font-medium">{vendas.length}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Vendas Omie</span><span className="font-medium">{vendas.length}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">D1 Interno</span><span className="font-medium">{pedidosD1.length}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Trocas</span><span className="font-medium">{trocas.length}</span></div>
         </div>
 
