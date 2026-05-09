@@ -29,38 +29,23 @@ Deno.serve(async (req) => {
     ].filter(valorValido);
 
     const codigosBusca = [...new Set(pedidos.flatMap(chavesPedido).map(String))];
-    const pedidoCodigosOmie = [...new Set(pedidos.map(p => String(p.codigo_pedido || '')).filter(Boolean))];
-    const pedidoCodigosIntegracao = [...new Set(pedidos.map(p => String(p.codigo_pedido_integracao || '')).filter(Boolean))];
 
-    const [clientesBase, rotas, vendedores, pedidosLocaisBase] = await Promise.all([
+    const [clientesBase, rotas, vendedores] = await Promise.all([
       base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
       base44.asServiceRole.entities.Rota.list('-created_date', 1000),
-      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000),
-      base44.asServiceRole.entities.Pedido.list('-created_date', 5000)
+      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
     ]);
 
-    const pedidosLocais = pedidosLocaisBase.filter(p =>
-      pedidoCodigosOmie.includes(String(p.omie_codigo_pedido || '')) ||
-      pedidoCodigosIntegracao.includes(String(p.id || '')) ||
-      pedidoCodigosIntegracao.includes(String(p.codigo_pedido_integracao || ''))
-    );
-
-    const clienteIdsLocais = [...new Set(pedidosLocais.map(p => p.cliente_id).filter(Boolean))];
-    const codigosBuscaComPedidoLocal = [...new Set([
-      ...codigosBusca,
-      ...pedidosLocais.flatMap(p => [p.cliente_id, p.cliente_codigo, p.cliente_cpf_cnpj, p.cliente_nome, p.cliente_nome_fantasia].filter(valorValido))
-    ].map(String))];
-
-    const clientesExatos = codigosBuscaComPedidoLocal.length
-      ? (await Promise.all(codigosBuscaComPedidoLocal.map(async (codigo) => {
+    const clientesExatos = codigosBusca.length
+      ? (await Promise.all(codigosBusca.map(async (codigo) => {
           const digitos = somenteDigitos(codigo);
           const buscas = await Promise.all([
-            clienteIdsLocais.includes(codigo) ? base44.asServiceRole.entities.Cliente.filter({ id: codigo }, '-created_date', 1).catch(() => []) : [],
+            base44.asServiceRole.entities.Cliente.filter({ id: codigo }, '-created_date', 1).catch(() => []),
             base44.asServiceRole.entities.Cliente.filter({ codigo_omie: codigo }, '-created_date', 5).catch(() => []),
             base44.asServiceRole.entities.Cliente.filter({ codigo: codigo }, '-created_date', 5).catch(() => []),
             base44.asServiceRole.entities.Cliente.filter({ codigo_interno: codigo }, '-created_date', 5).catch(() => []),
             base44.asServiceRole.entities.Cliente.filter({ codigo_integracao: codigo }, '-created_date', 5).catch(() => []),
-            digitos && digitos.length >= 11 ? base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: digitos }, '-created_date', 5).catch(() => []) : []
+            digitos ? base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: digitos }, '-created_date', 5).catch(() => []) : []
           ]);
           return buscas.flat();
         }))).flat()
@@ -89,29 +74,14 @@ Deno.serve(async (req) => {
       [c.razao_social, c.nome_fantasia].filter(valorValido).forEach(nome => clienteIndexes.nome.set(normalizar(nome), c));
     });
 
-    const mapaPedidoLocalPorOmie = new Map();
-    const mapaPedidoLocalPorIntegracao = new Map();
-    pedidosLocais.forEach(p => {
-      if (p.omie_codigo_pedido) mapaPedidoLocalPorOmie.set(String(p.omie_codigo_pedido), p);
-      if (p.id) mapaPedidoLocalPorIntegracao.set(String(p.id), p);
-      if (p.codigo_pedido_integracao) mapaPedidoLocalPorIntegracao.set(String(p.codigo_pedido_integracao), p);
-    });
-
-    const resolverPedidoLocal = (p) =>
-      mapaPedidoLocalPorOmie.get(String(p.codigo_pedido || '')) ||
-      mapaPedidoLocalPorIntegracao.get(String(p.codigo_pedido_integracao || '')) ||
-      null;
-
-    const resolverCliente = (p, pedidoLocal) => {
-      if (pedidoLocal?.cliente_id && clienteIndexes.id.get(pedidoLocal.cliente_id)) return clienteIndexes.id.get(pedidoLocal.cliente_id);
-      const chaves = [...chavesPedido(p), pedidoLocal?.cliente_codigo, pedidoLocal?.cliente_cpf_cnpj, pedidoLocal?.cliente_nome, pedidoLocal?.cliente_nome_fantasia].filter(valorValido);
-      for (const chave of chaves) {
+    const resolverCliente = (p) => {
+      for (const chave of chavesPedido(p)) {
         const texto = normalizar(chave);
         const digitos = somenteDigitos(chave);
-        const encontrado = clienteIndexes.codigo.get(texto) || (digitos.length >= 11 ? clienteIndexes.documento.get(digitos) : null);
+        const encontrado = clienteIndexes.id.get(String(chave)) || clienteIndexes.codigo.get(texto) || clienteIndexes.documento.get(digitos);
         if (encontrado) return encontrado;
       }
-      return clienteIndexes.nome.get(normalizar(pedidoLocal?.cliente_nome)) || clienteIndexes.nome.get(normalizar(pedidoLocal?.cliente_nome_fantasia)) || clienteIndexes.nome.get(normalizar(p.nome_cliente)) || clienteIndexes.nome.get(normalizar(p.nome_fantasia)) || null;
+      return clienteIndexes.nome.get(normalizar(p.nome_cliente)) || clienteIndexes.nome.get(normalizar(p.nome_fantasia)) || null;
     };
 
     const extrairCodigoCod = (cliente) => {
@@ -138,28 +108,27 @@ Deno.serve(async (req) => {
     };
 
     const enriquecidos = pedidos.map(p => {
-      const pedidoLocal = resolverPedidoLocal(p);
-      const c = resolverCliente(p, pedidoLocal);
-      const rotaNome = resolverRota(p, c) || pedidoLocal?.rota_nome;
+      const c = resolverCliente(p);
+      const rotaNome = resolverRota(p, c);
       const vendedorNome = c?.vendedor_id ? mapaVendedor.get(c.vendedor_id) : '';
-      const nomeCliente = c?.razao_social || pedidoLocal?.cliente_nome || p.nome_cliente || `Cliente ${p.codigo_cliente || p.codigo_cliente_integracao || ''}`;
+      const nomeCliente = c?.razao_social || p.nome_cliente || `Cliente ${p.codigo_cliente || p.codigo_cliente_integracao || ''}`;
       return {
         ...p,
-        cliente_id: c?.id || pedidoLocal?.cliente_id || p.cliente_id || null,
+        cliente_id: c?.id || p.cliente_id || null,
         nome_cliente: nomeCliente,
-        nome_fantasia: c?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || p.nome_fantasia || nomeCliente,
-        cnpj_cpf_cliente: c?.cnpj_cpf || pedidoLocal?.cliente_cpf_cnpj || p.cnpj_cpf_cliente || '',
-        codigo_cliente_cod: extrairCodigoCod(c) || pedidoLocal?.cliente_codigo || p.codigo_cliente_cod || p.codigo_cliente_integracao || p.codigo_cliente || '',
-        codigo_cliente_integracao: c?.codigo_integracao || c?.codigo || pedidoLocal?.cliente_codigo || p.codigo_cliente_integracao || '',
-        cidade: c?.cidade || pedidoLocal?.cliente_cidade || p.cidade || '',
-        vendedor_id: c?.vendedor_id || pedidoLocal?.vendedor_id || p.vendedor_id || null,
-        vendedor_nome: vendedorNome || pedidoLocal?.vendedor_nome || p.vendedor_nome || '',
-        rota_id: c?.rota_id || pedidoLocal?.rota_id || p.rota_id || null,
+        nome_fantasia: c?.nome_fantasia || p.nome_fantasia || nomeCliente,
+        cnpj_cpf_cliente: c?.cnpj_cpf || p.cnpj_cpf_cliente || '',
+        codigo_cliente_cod: extrairCodigoCod(c) || p.codigo_cliente_cod || p.codigo_cliente_integracao || p.codigo_cliente || '',
+        codigo_cliente_integracao: c?.codigo_integracao || c?.codigo || p.codigo_cliente_integracao || '',
+        cidade: c?.cidade || p.cidade || '',
+        vendedor_id: c?.vendedor_id || p.vendedor_id || null,
+        vendedor_nome: vendedorNome || p.vendedor_nome || '',
+        rota_id: c?.rota_id || p.rota_id || null,
         rota_nome: rotaNome || 'Sem Rota',
         rota_cliente: rotaNome || 'Sem Rota',
         tags_cliente: c?.tags || p.tags_cliente || [],
         motorista_padrao_id: c?.motorista_id || null,
-        tipo_nota: c?.tipo_nota || pedidoLocal?.modelo_nota || p.tipo_nota || '55',
+        tipo_nota: c?.tipo_nota || p.tipo_nota || '55',
         tipo: 'venda'
       };
     });
