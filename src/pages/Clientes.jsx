@@ -535,6 +535,8 @@ export default function Clientes() {
       }
 
       const vendedorId = findId(vendedores, item.vendedor);
+      const tipoNotaRaw = String(item.tipo_nota || item.modalidade || '').trim().toUpperCase();
+      const normalizedTipoNota = tipoNotaRaw === 'D1' ? 'D1' : '55';
       let supervisorId = null;
       
       // Buscar supervisor do vendedor
@@ -625,7 +627,8 @@ export default function Clientes() {
         vendedor_id: vendedorId,
         supervisor_id: supervisorId,
         rota_id: findId(rotas, item.rota),
-        status: normalizedStatus
+        status: normalizedStatus,
+        tipo_nota: normalizedTipoNota
       };
 
       // Renomear cpf_cnpj → cnpj_cpf (nome real da entidade Cliente) e usar versão limpa
@@ -640,6 +643,7 @@ export default function Clientes() {
       delete clienteData.vendedor;
       delete clienteData.rota;
       delete clienteData.codigo;
+      delete clienteData.modalidade;
 
       return clienteData;
     });
@@ -873,12 +877,13 @@ export default function Clientes() {
     { key: 'cep', label: 'CEP' },
     { key: 'latitude', label: 'Latitude', type: 'number' },
     { key: 'longitude', label: 'Longitude', type: 'number' },
-    { key: 'status', label: 'Status' }
+    { key: 'status', label: 'Status' },
+    { key: 'tipo_nota', label: 'Modalidade / Tipo Nota' }
   ];
 
   const bulkExampleData = [
-    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', inscricao_estadual: '123456789', tabela_preco: 'Tabela 1', vendedor: 'João Silva', cidade: 'São Paulo', estado: 'SP', latitude: '-23.5505', longitude: '-46.6333', status: 'ativo' },
-    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', inscricao_estadual: '987654321', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo' }
+    { codigo: 'C001', razao_social: 'Empresa ABC Ltda', nome_fantasia: 'ABC Store', cpf_cnpj: '12.345.678/0001-90', inscricao_estadual: '123456789', tabela_preco: 'Tabela 1', vendedor: 'João Silva', cidade: 'São Paulo', estado: 'SP', latitude: '-23.5505', longitude: '-46.6333', status: 'ativo', tipo_nota: '55' },
+    { codigo: 'C002', razao_social: 'Comércio XYZ', nome_fantasia: 'XYZ Shop', cpf_cnpj: '98.765.432/0001-10', inscricao_estadual: '987654321', segmento: 'Varejo', rede: 'Rede A', cidade: 'Campinas', estado: 'SP', latitude: '-22.9056', longitude: '-47.0608', status: 'ativo', tipo_nota: 'D1' }
   ];
 
   const handleExport = async (clientesFiltrados = null) => {
@@ -891,7 +896,7 @@ export default function Clientes() {
       'codigo', 'razao_social', 'nome_fantasia', 'cpf_cnpj', 'inscricao_estadual',
       'plano_pagamento', 'tabela_preco', 'segmento', 'rede', 'vendedor', 'rota',
       'endereco', 'numero', 'bairro', 'cidade', 'estado', 'cep',
-      'latitude', 'longitude', 'status'
+      'latitude', 'longitude', 'status', 'tipo_nota'
     ];
 
     const getName = (list, id) => {
@@ -920,7 +925,8 @@ export default function Clientes() {
       c.cep || '',
       c.latitude || '',
       c.longitude || '',
-      c.status || ''
+      c.status || '',
+      c.tipo_nota || '55'
     ]);
 
     const csvContent = [

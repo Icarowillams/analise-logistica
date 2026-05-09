@@ -159,6 +159,14 @@ export default function BulkImportModal({
       'email': 'email',
       'data_primeiro_contato': 'data_primeiro_contato',
       'data primeiro contato': 'data_primeiro_contato',
+      'tipo_nota': 'tipo_nota',
+      'tipo nota': 'tipo_nota',
+      'tiponota': 'tipo_nota',
+      'tipo_da_nota': 'tipo_nota',
+      'tipo da nota': 'tipo_nota',
+      'modalidade': 'tipo_nota',
+      'modelo_nota': 'tipo_nota',
+      'modelo nota': 'tipo_nota',
     };
     const headers = headerValues.map(h => {
       // Remove BOM (\ufeff) que aparece no início de CSVs salvos pelo Excel/sistemas Windows
