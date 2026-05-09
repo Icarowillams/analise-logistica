@@ -1,7 +1,123 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Recebe lista de pedidos do Omie (saída do buscarPedidosOmie)
-// e enriquece cada pedido com dados do cliente Base44 (nome, cidade, rota, tags)
+const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const normalizar = (valor) => String(valor || '').trim().toLowerCase();
+const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
+const valorValido = (valor) => valor !== undefined && valor !== null && String(valor).trim() !== '';
+
+async function consultarClienteOmie(codigoClienteOmie) {
+  if (!OMIE_APP_KEY || !OMIE_APP_SECRET || !codigoClienteOmie) return null;
+
+  const response = await fetch(OMIE_CLIENTES_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      call: 'ConsultarCliente',
+      app_key: OMIE_APP_KEY,
+      app_secret: OMIE_APP_SECRET,
+      param: [{ codigo_cliente_omie: Number(codigoClienteOmie) }]
+    })
+  });
+
+  const data = await response.json();
+  if (data.faultstring) return null;
+  return data;
+}
+
+function criarIndicesClientes(clientes) {
+  const indices = {
+    porId: new Map(),
+    porCodigo: new Map(),
+    porDocumento: new Map(),
+    porNome: new Map()
+  };
+
+  const indexarCodigo = (cliente, codigo) => {
+    if (valorValido(codigo)) indices.porCodigo.set(normalizar(codigo), cliente);
+  };
+
+  clientes.forEach(cliente => {
+    indices.porId.set(cliente.id, cliente);
+    [cliente.codigo_omie, cliente.codigo, cliente.codigo_interno, cliente.codigo_integracao].forEach(codigo => indexarCodigo(cliente, codigo));
+
+    const documento = somenteDigitos(cliente.cnpj_cpf || cliente.cpf_cnpj);
+    if (documento) indices.porDocumento.set(documento, cliente);
+
+    [cliente.razao_social, cliente.nome_fantasia].filter(valorValido).forEach(nome => {
+      indices.porNome.set(normalizar(nome), cliente);
+    });
+  });
+
+  return indices;
+}
+
+function buscarClienteLocal(pedidoOmie, pedidoLocal, clienteOmie, indices) {
+  if (pedidoLocal?.cliente_id && indices.porId.has(pedidoLocal.cliente_id)) {
+    return indices.porId.get(pedidoLocal.cliente_id);
+  }
+
+  const codigos = [
+    pedidoLocal?.cliente_codigo,
+    pedidoOmie.codigo_cliente_integracao,
+    pedidoOmie.codigo_cliente_cod,
+    clienteOmie?.codigo_cliente_integracao,
+    clienteOmie?.codigo_cliente_omie,
+    pedidoOmie.codigo_cliente,
+    clienteOmie?.codigo
+  ].filter(valorValido);
+
+  for (const codigo of codigos) {
+    const cliente = indices.porCodigo.get(normalizar(codigo));
+    if (cliente) return cliente;
+  }
+
+  const documentos = [
+    pedidoLocal?.cliente_cpf_cnpj,
+    pedidoOmie.cnpj_cpf_cliente,
+    clienteOmie?.cnpj_cpf,
+    clienteOmie?.cpf_cnpj
+  ].map(somenteDigitos).filter(doc => doc.length >= 11);
+
+  for (const documento of documentos) {
+    const cliente = indices.porDocumento.get(documento);
+    if (cliente) return cliente;
+  }
+
+  const nomes = [
+    pedidoLocal?.cliente_nome_fantasia,
+    pedidoLocal?.cliente_nome,
+    pedidoOmie.nome_fantasia,
+    pedidoOmie.nome_cliente,
+    clienteOmie?.nome_fantasia,
+    clienteOmie?.razao_social
+  ].filter(valorValido);
+
+  for (const nome of nomes) {
+    const cliente = indices.porNome.get(normalizar(nome));
+    if (cliente) return cliente;
+  }
+
+  return null;
+}
+
+function extrairCodigoCliente(cliente, pedidoLocal, pedidoOmie, clienteOmie) {
+  return String(
+    cliente?.codigo_interno ||
+    cliente?.codigo ||
+    cliente?.codigo_integracao ||
+    pedidoLocal?.cliente_codigo ||
+    clienteOmie?.codigo_cliente_integracao ||
+    pedidoOmie.codigo_cliente_cod ||
+    pedidoOmie.codigo_cliente_integracao ||
+    pedidoOmie.codigo_cliente ||
+    ''
+  );
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -14,121 +130,61 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, pedidos: [] });
     }
 
-    const normalizar = (valor) => String(valor || '').trim().toLowerCase();
-    const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
-    const valorValido = (valor) => valor !== undefined && valor !== null && String(valor).trim() !== '';
-
-    const chavesPedido = (p) => [
-      p.codigo_cliente,
-      p.codigo_cliente_integracao,
-      p.codigo_cliente_cod,
-      p.cliente_codigo,
-      p.cnpj_cpf_cliente,
-      p.cnpj_cpf,
-      p.documento_cliente
-    ].filter(valorValido);
-
-    const codigosBusca = [...new Set(pedidos.flatMap(chavesPedido).map(String))];
-
-    const [clientesBase, rotas, vendedores] = await Promise.all([
+    const [clientes, rotas, vendedores, pedidosLocais] = await Promise.all([
       base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
       base44.asServiceRole.entities.Rota.list('-created_date', 1000),
-      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
+      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000),
+      base44.asServiceRole.entities.Pedido.list('-created_date', 5000)
     ]);
 
-    const clientesExatos = codigosBusca.length
-      ? (await Promise.all(codigosBusca.map(async (codigo) => {
-          const digitos = somenteDigitos(codigo);
-          const buscas = await Promise.all([
-            base44.asServiceRole.entities.Cliente.filter({ id: codigo }, '-created_date', 1).catch(() => []),
-            base44.asServiceRole.entities.Cliente.filter({ codigo_omie: codigo }, '-created_date', 5).catch(() => []),
-            base44.asServiceRole.entities.Cliente.filter({ codigo: codigo }, '-created_date', 5).catch(() => []),
-            base44.asServiceRole.entities.Cliente.filter({ codigo_interno: codigo }, '-created_date', 5).catch(() => []),
-            base44.asServiceRole.entities.Cliente.filter({ codigo_integracao: codigo }, '-created_date', 5).catch(() => []),
-            digitos ? base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: digitos }, '-created_date', 5).catch(() => []) : []
-          ]);
-          return buscas.flat();
-        }))).flat()
-      : [];
+    const indices = criarIndicesClientes(clientes || []);
+    const mapaRota = new Map((rotas || []).map(rota => [rota.id, rota.nome]));
+    const mapaVendedor = new Map((vendedores || []).map(vendedor => [vendedor.id, vendedor.nome]));
 
-    const clientes = Array.from(new Map([...(clientesBase || []), ...(clientesExatos || [])].map(c => [c.id, c])).values());
-    const mapaRota = new Map((rotas || []).map(r => [r.id, r.nome]));
-    const mapaVendedor = new Map((vendedores || []).map(v => [v.id, v.nome]));
-
-    const clienteIndexes = {
-      id: new Map(),
-      codigo: new Map(),
-      documento: new Map(),
-      nome: new Map()
-    };
-
-    const indexarCliente = (cliente, chave) => {
-      if (valorValido(chave)) clienteIndexes.codigo.set(normalizar(chave), cliente);
-    };
-
-    clientes.forEach(c => {
-      clienteIndexes.id.set(c.id, c);
-      [c.codigo_omie, c.codigo, c.codigo_interno, c.codigo_integracao].forEach(chave => indexarCliente(c, chave));
-      const doc = somenteDigitos(c.cnpj_cpf || c.cpf_cnpj);
-      if (doc) clienteIndexes.documento.set(doc, c);
-      [c.razao_social, c.nome_fantasia].filter(valorValido).forEach(nome => clienteIndexes.nome.set(normalizar(nome), c));
+    const pedidosLocaisPorOmie = new Map();
+    const pedidosLocaisPorIntegracao = new Map();
+    (pedidosLocais || []).forEach(pedido => {
+      if (pedido.omie_codigo_pedido) pedidosLocaisPorOmie.set(String(pedido.omie_codigo_pedido), pedido);
+      if (pedido.id) pedidosLocaisPorIntegracao.set(String(pedido.id), pedido);
+      if (pedido.codigo_pedido_integracao) pedidosLocaisPorIntegracao.set(String(pedido.codigo_pedido_integracao), pedido);
     });
 
-    const resolverCliente = (p) => {
-      for (const chave of chavesPedido(p)) {
-        const texto = normalizar(chave);
-        const digitos = somenteDigitos(chave);
-        const encontrado = clienteIndexes.id.get(String(chave)) || clienteIndexes.codigo.get(texto) || clienteIndexes.documento.get(digitos);
-        if (encontrado) return encontrado;
-      }
-      return clienteIndexes.nome.get(normalizar(p.nome_cliente)) || clienteIndexes.nome.get(normalizar(p.nome_fantasia)) || null;
-    };
+    const codigosClientesOmie = [...new Set(pedidos.map(p => String(p.codigo_cliente || '')).filter(Boolean))];
+    const clientesOmie = new Map();
+    for (const codigo of codigosClientesOmie) {
+      const clienteOmie = await consultarClienteOmie(codigo);
+      if (clienteOmie) clientesOmie.set(String(codigo), clienteOmie);
+      await delay(250);
+    }
 
-    const extrairCodigoCod = (cliente) => {
-      if (!cliente) return '';
-      const direto = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || cliente.codigo_omie;
-      if (direto) return String(direto);
-      if (!Array.isArray(cliente.tags)) return '';
-      for (const t of cliente.tags) {
-        const m = String(t).match(/^(COD|CODIGO|CÓDIGO|CODIGO_CLIENTE)[:\-\s]?(\d+)$/i);
-        if (m) return m[2];
-      }
-      return '';
-    };
+    const enriquecidos = pedidos.map(pedidoOmie => {
+      const pedidoLocal = pedidosLocaisPorOmie.get(String(pedidoOmie.codigo_pedido || '')) ||
+        pedidosLocaisPorIntegracao.get(String(pedidoOmie.codigo_pedido_integracao || '')) || null;
+      const clienteOmie = clientesOmie.get(String(pedidoOmie.codigo_cliente || '')) || null;
+      const cliente = buscarClienteLocal(pedidoOmie, pedidoLocal, clienteOmie, indices);
 
-    const resolverRota = (pedidoOmie, cliente) => {
-      if (pedidoOmie.rota_caracteristica) return pedidoOmie.rota_caracteristica;
-      if (pedidoOmie.rota_cliente && pedidoOmie.rota_cliente !== 'Sem Rota') return pedidoOmie.rota_cliente;
-      const caracs = pedidoOmie.caracteristicas_cliente || [];
-      const rotaCarac = caracs.find(c => /rota/i.test(c?.caracteristica || c?.campo || ''));
-      if (rotaCarac) return rotaCarac.conteudo || rotaCarac.valor || '';
-      if (cliente?.rota_nome) return cliente.rota_nome;
-      if (cliente?.rota_id && mapaRota.get(cliente.rota_id)) return mapaRota.get(cliente.rota_id);
-      return 'Sem Rota';
-    };
+      const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || pedidoOmie.rota_cliente || '');
+      const vendedorNome = cliente?.vendedor_id ? (mapaVendedor.get(cliente.vendedor_id) || '') : (pedidoLocal?.vendedor_nome || pedidoOmie.vendedor_nome || '');
+      const nomeCliente = cliente?.razao_social || pedidoLocal?.cliente_nome || clienteOmie?.razao_social || pedidoOmie.nome_cliente || `Cliente ${pedidoOmie.codigo_cliente || ''}`;
+      const fantasia = cliente?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || clienteOmie?.nome_fantasia || pedidoOmie.nome_fantasia || nomeCliente;
 
-    const enriquecidos = pedidos.map(p => {
-      const c = resolverCliente(p);
-      const rotaNome = resolverRota(p, c);
-      const vendedorNome = c?.vendedor_id ? mapaVendedor.get(c.vendedor_id) : '';
-      const nomeCliente = c?.razao_social || p.nome_cliente || `Cliente ${p.codigo_cliente || p.codigo_cliente_integracao || ''}`;
       return {
-        ...p,
-        cliente_id: c?.id || p.cliente_id || null,
+        ...pedidoOmie,
+        cliente_id: cliente?.id || pedidoLocal?.cliente_id || null,
         nome_cliente: nomeCliente,
-        nome_fantasia: c?.nome_fantasia || p.nome_fantasia || nomeCliente,
-        cnpj_cpf_cliente: c?.cnpj_cpf || p.cnpj_cpf_cliente || '',
-        codigo_cliente_cod: extrairCodigoCod(c) || p.codigo_cliente_cod || p.codigo_cliente_integracao || p.codigo_cliente || '',
-        codigo_cliente_integracao: c?.codigo_integracao || c?.codigo || p.codigo_cliente_integracao || '',
-        cidade: c?.cidade || p.cidade || '',
-        vendedor_id: c?.vendedor_id || p.vendedor_id || null,
-        vendedor_nome: vendedorNome || p.vendedor_nome || '',
-        rota_id: c?.rota_id || p.rota_id || null,
+        nome_fantasia: fantasia,
+        cnpj_cpf_cliente: cliente?.cnpj_cpf || pedidoLocal?.cliente_cpf_cnpj || clienteOmie?.cnpj_cpf || pedidoOmie.cnpj_cpf_cliente || '',
+        codigo_cliente_cod: extrairCodigoCliente(cliente, pedidoLocal, pedidoOmie, clienteOmie),
+        codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || clienteOmie?.codigo_cliente_integracao || pedidoOmie.codigo_cliente_integracao || '',
+        cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || pedidoOmie.cidade || '',
+        vendedor_id: cliente?.vendedor_id || pedidoLocal?.vendedor_id || pedidoOmie.vendedor_id || null,
+        vendedor_nome: vendedorNome,
+        rota_id: cliente?.rota_id || pedidoLocal?.rota_id || pedidoOmie.rota_id || null,
         rota_nome: rotaNome || 'Sem Rota',
         rota_cliente: rotaNome || 'Sem Rota',
-        tags_cliente: c?.tags || p.tags_cliente || [],
-        motorista_padrao_id: c?.motorista_id || null,
-        tipo_nota: c?.tipo_nota || p.tipo_nota || '55',
+        tags_cliente: cliente?.tags || pedidoOmie.tags_cliente || [],
+        motorista_padrao_id: cliente?.motorista_id || null,
+        tipo_nota: cliente?.tipo_nota || pedidoLocal?.modelo_nota || pedidoOmie.tipo_nota || '55',
         tipo: 'venda'
       };
     });
