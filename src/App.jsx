@@ -15,6 +15,7 @@ import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
 import Veiculos from './pages/Veiculos.jsx';
 import Motoristas from './pages/Motoristas.jsx';
 import CenariosFiscais from './pages/CenariosFiscais.jsx';
+import CenariosFiscaisLocais from './pages/CenariosFiscaisLocais.jsx';
 import IntegracaoOmieDashboard from './pages/IntegracaoOmieDashboard.jsx';
 import NotasOmie from './pages/NotasOmie.jsx';
 import MontagemCarga from './pages/MontagemCarga.jsx';
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
       <Route path="/Veiculos" element={<LayoutWrapper currentPageName="Veiculos"><Veiculos /></LayoutWrapper>} />
       <Route path="/Motoristas" element={<LayoutWrapper currentPageName="Motoristas"><Motoristas /></LayoutWrapper>} />
       <Route path="/CenariosFiscais" element={<LayoutWrapper currentPageName="CenariosFiscais"><CenariosFiscais /></LayoutWrapper>} />
+      <Route path="/CenariosFiscaisLocais" element={<LayoutWrapper currentPageName="CenariosFiscaisLocais"><CenariosFiscaisLocais /></LayoutWrapper>} />
       <Route path="/IntegracaoOmieDashboard" element={<LayoutWrapper currentPageName="IntegracaoOmieDashboard"><IntegracaoOmieDashboard /></LayoutWrapper>} />
       <Route path="/sincronizarclientescsv" element={<LayoutWrapper currentPageName="SincronizarClientesCSV"><SincronizarClientesCSVPage /></LayoutWrapper>} />
       <Route path="/ControlePedidosVenda" element={<LayoutWrapper currentPageName="ControlePedidosVenda"><ControlePedidosVenda /></LayoutWrapper>} />

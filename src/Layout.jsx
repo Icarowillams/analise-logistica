@@ -108,7 +108,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Pré-Cadastros', path: 'PreCadastros' },
           { title: 'Veículos', path: 'Veiculos' },
           { title: 'Motoristas', path: 'Motoristas' },
-          { title: 'Cenários Fiscais', path: 'CenariosFiscais' }
+          { title: 'Cenários Fiscais', path: 'CenariosFiscais' },
+          { title: 'Cenários Fiscais Locais', path: 'CenariosFiscaisLocais' }
         ]
       },
       {
