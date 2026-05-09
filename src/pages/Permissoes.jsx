@@ -49,6 +49,7 @@ const ABAS_SISTEMA = [
   { id: 'GerenciarPedidosPage', nome: 'Gerenciar Pedidos', grupo: 'pedidos' },
   { id: 'MapaVendas', nome: 'Mapa de Vendas', grupo: 'analises' },
   { id: 'Empresa', nome: 'Empresa', grupo: 'cadastros' },
+  { id: 'CenariosFiscais', nome: 'Cenários Fiscais', grupo: 'cadastros' },
   { id: 'PreCadastros', nome: 'Pré-Cadastros', grupo: 'cadastros' },
   { id: 'SincronizarClientesOmie', nome: 'Sincronizar Clientes Omie', grupo: 'cadastros' },
   { id: 'EnviarRotasOmie', nome: 'Enviar Rotas Omie', grupo: 'pedidos' },
