@@ -126,6 +126,18 @@
       "default": "55",
       "description": "55 = NF-e, nfce = NFC-e, d1 = Troca (sem NF)"
     },
+    "cenario_local_id": {
+      "type": "string",
+      "description": "ID do cen\u00e1rio fiscal local selecionado no pedido"
+    },
+    "cenario_local_nome": {
+      "type": "string",
+      "description": "Nome do cen\u00e1rio fiscal local selecionado"
+    },
+    "cenario_local_tipo": {
+      "type": "string",
+      "description": "Tipo de opera\u00e7\u00e3o do cen\u00e1rio fiscal local"
+    },
     "cenario_fiscal_codigo": {
       "type": "number",
       "description": "C\u00f3digo do cen\u00e1rio fiscal (Omie)"

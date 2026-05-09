@@ -349,9 +349,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       cenario_local_id: cenarioLocalId || null,
       cenario_local_nome: cenarioLocalAtual?.nome || null,
       cenario_local_tipo: cenarioLocalAtual?.tipo_operacao || null,
-      // Cenário Omie só vai para Nota 55 (D1 não envia ao Omie)
+      // Código Omie só vai para Nota 55; o nome é sempre preenchido para aparecer em relatórios/PDF.
       cenario_fiscal_codigo: (!isNotaD1 && cenarioFiscalCodigo && !isNaN(Number(cenarioFiscalCodigo)) && Number(cenarioFiscalCodigo) > 0) ? Number(cenarioFiscalCodigo) : null,
-      cenario_fiscal_nome: (!isNotaD1 && cenarioFiscalCodigo) ? cenarioFiscalNome || null : null,
+      cenario_fiscal_nome: (!isNotaD1 && cenarioFiscalNome) ? cenarioFiscalNome : (cenarioLocalAtual?.nome || null),
       data_previsao_entrega: dataPrevisaoEntrega,
       numero_pedido_compra: numeroPedidoCompra,
       dados_adicionais_nf: buildDadosAdicionaisNf(),
