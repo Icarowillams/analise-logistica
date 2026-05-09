@@ -32,10 +32,14 @@ export default function useDadosMontagem() {
         toast.warning('Pedidos Omie não carregaram, mas os pedidos D1 internos serão exibidos.');
       }
 
-      const [todosPedidosLocais, trocasAprovadas] = await Promise.all([
+      const [todosPedidosLocais, trocasAprovadas, clientes, rotas] = await Promise.all([
         base44.entities.Pedido.list('-created_date', 1000),
-        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
+        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500),
+        base44.entities.Cliente.list('-created_date', 5000),
+        base44.entities.Rota.list('-created_date', 500)
       ]);
+      const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
+      const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 
       const pedidosD1Locais = (todosPedidosLocais || []).filter(p => {
         const modelo = String(p.modelo_nota || '').toLowerCase();
@@ -57,17 +61,21 @@ export default function useDadosMontagem() {
       const d1ComItens = await Promise.all(
         d1Disponiveis.map(async (p) => {
           const itens = await base44.entities.PedidoItem.filter({ pedido_id: p.id });
+          const cliente = clientesMap.get(p.cliente_id);
+          const codigoCliente = p.cliente_codigo || cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || '';
+          const rotaNome = p.rota_nome || (cliente?.rota_id ? rotasMap.get(cliente.rota_id) : '') || 'Sem Rota';
           return {
             codigo_pedido: `D1-${p.id}`,
             pedido_id: p.id,
             numero_pedido: p.numero_pedido,
             codigo_cliente: p.cliente_id,
+            codigo_cliente_cod: codigoCliente,
             cliente_id: p.cliente_id,
-            nome_cliente: p.cliente_nome || '',
-            nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
-            cidade: p.cliente_cidade || '',
-            rota_nome: p.rota_nome || 'Sem Rota',
-            rota_cliente: p.rota_nome || 'Sem Rota',
+            nome_cliente: p.cliente_nome || cliente?.razao_social || '',
+            nome_fantasia: p.cliente_nome_fantasia || cliente?.nome_fantasia || p.cliente_nome || cliente?.razao_social || '',
+            cidade: p.cliente_cidade || cliente?.cidade || '',
+            rota_nome: rotaNome,
+            rota_cliente: rotaNome,
             quantidade_itens: itens.length,
             valor_total_pedido: p.valor_total || 0,
             vendedor_nome: p.vendedor_nome || '',
@@ -129,10 +137,8 @@ export default function useDadosMontagem() {
       // Enriquecer trocas com dados do cliente (cidade, rota, fantasia)
       const clienteIds = [...new Set(trocasComItens.map(t => t.cliente_id).filter(Boolean))];
       if (clienteIds.length > 0) {
-        const clientes = await base44.entities.Cliente.filter({ id: { $in: clienteIds } }, '-created_date', 500);
-        const mapaCli = new Map(clientes.map(c => [c.id, c]));
-        const rotas = await base44.entities.Rota.list('-created_date', 500);
-        const mapaRota = new Map(rotas.map(r => [r.id, r.nome]));
+        const mapaCli = new Map(clientes.filter(c => clienteIds.includes(c.id)).map(c => [c.id, c]));
+        const mapaRota = rotasMap;
         trocasComItens.forEach(t => {
           const c = mapaCli.get(t.cliente_id);
           if (c) {

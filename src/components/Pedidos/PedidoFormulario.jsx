@@ -323,13 +323,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
     const planoObj = planosPagamento.find(p => p.id === planoPagamentoId);
     const tabelaObj = tabelasPreco.find(t => t.id === tabelaPrecoId);
+    const codigoCliente = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || '';
 
     const tipoFinal = isTroca ? 'troca' : tipo;
 
     const pedidoData = {
       tipo: tipoFinal,
       cliente_id: cliente.id,
-      cliente_codigo: cliente.codigo || '',
+      cliente_codigo: codigoCliente,
       cliente_nome: cliente.razao_social || '',
       cliente_nome_fantasia: cliente.nome_fantasia || '',
       cliente_endereco: cliente.endereco || '',
@@ -341,6 +342,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       cliente_cpf_cnpj: cliente.cpf_cnpj || '',
       vendedor_id: vendedor.id,
       vendedor_nome: vendedor.nome,
+      rota_id: cliente.rota_id || null,
+      rota_nome: cliente.rota_nome || '',
       plano_pagamento_id: planoPagamentoId,
       plano_pagamento_nome: planoObj?.nome || '',
       tabela_preco_id: tabelaPrecoId,
@@ -428,7 +431,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
-              {isTroca ? 'Troca' : 'Venda'} - {cliente.codigo} - {cliente.nome_fantasia || cliente.razao_social}
+              {isTroca ? 'Troca' : 'Venda'} - {cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || '-'} - {cliente.nome_fantasia || cliente.razao_social}
             </CardTitle>
             <Badge className={isTroca ? 'bg-orange-500' : 'bg-green-500'}>{isTroca ? 'Troca' : 'Venda'}</Badge>
           </div>
@@ -447,7 +450,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
             <CardContent className="pt-4 space-y-4">
               <div>
                 <Label className="text-xs text-slate-500">Cliente</Label>
-                <p className="text-sm font-medium">{cliente.codigo} - {cliente.razao_social}</p>
+                <p className="text-sm font-medium">{cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || '-'} - {cliente.razao_social}</p>
               </div>
               <div>
                 <Label className="text-xs text-slate-500">Endereço</Label>
