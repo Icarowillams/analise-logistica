@@ -277,6 +277,16 @@ export default function PedidoPdf({ pedidoId }) {
                 <span style={{ fontSize:'10px', fontWeight:500 }}>{pedido.numero_pedido_compra || '-'}</span>
               </td>
             </tr>
+            <tr>
+              <td colSpan="4" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CENÁRIO FISCAL</span>
+                <span style={{ fontSize:'10px', fontWeight:600 }}>
+                  {pedido.cenario_local_nome
+                    ? `${pedido.cenario_local_nome}${pedido.cenario_local_tipo ? ' — ' + pedido.cenario_local_tipo.toUpperCase() : ''}`
+                    : (pedido.tipo === 'troca' ? 'TROCA' : '-')}
+                </span>
+              </td>
+            </tr>
           </tbody>
         </table>
 
