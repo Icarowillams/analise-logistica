@@ -101,8 +101,11 @@ const AuthenticatedApp = () => {
       <Route path="/TestesOmie" element={<LayoutWrapper currentPageName="TestesOmie"><TestesOmie /></LayoutWrapper>} />
       <Route path="/Roteiros" element={<LayoutWrapper currentPageName="Roteiros"><GestaoRoteiros /></LayoutWrapper>} />
       <Route path="/MeusRoteiros" element={<LayoutWrapper currentPageName="MeusRoteiros"><MeusRoteirosPage /></LayoutWrapper>} />
+      <Route path="/meusroteiros" element={<LayoutWrapper currentPageName="MeusRoteiros"><MeusRoteirosPage /></LayoutWrapper>} />
       <Route path="/RotaSupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><RotaSupervisoresPage /></LayoutWrapper>} />
+      <Route path="/rotasupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><RotaSupervisoresPage /></LayoutWrapper>} />
       <Route path="/PainelRoteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
+      <Route path="/painelroteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
       <Route path="/AnalisesComercial" element={<LayoutWrapper currentPageName="AnalisesComercial"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardVendedor" element={<LayoutWrapper currentPageName="DashboardVendedor"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardTrocas" element={<LayoutWrapper currentPageName="DashboardTrocas"><AnalisesComercial /></LayoutWrapper>} />
