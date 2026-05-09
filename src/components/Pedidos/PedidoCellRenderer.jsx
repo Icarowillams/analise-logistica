@@ -130,7 +130,8 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'cliente_codigo') {
-    return <span className={truncClass} title={p.cliente_codigo || ''}>{p.cliente_codigo || '-'}</span>;
+    const codigo = p.cliente_codigo_base || p.cliente_codigo;
+    return <span className={truncClass} title={codigo || ''}>{codigo || '-'}</span>;
   }
 
   if (col.id === 'cliente_nome') {

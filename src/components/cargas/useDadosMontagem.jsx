@@ -39,7 +39,9 @@ export default function useDadosMontagem() {
         base44.entities.Rota.list('-created_date', 500)
       ]);
       const clienteIdsPedidos = [...new Set([...(todosPedidosLocais || []).map(p => p.cliente_id), ...(trocasAprovadas || []).map(t => t.cliente_id)].filter(Boolean))];
-      const clientesExatos = clienteIdsPedidos.length ? await base44.entities.Cliente.filter({ id: { $in: clienteIdsPedidos } }, '-created_date', 5000) : [];
+      const clientesExatos = clienteIdsPedidos.length
+        ? (await Promise.all(clienteIdsPedidos.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1)))).flat()
+        : [];
       const clientes = Array.from(new Map([...(clientesBase || []), ...(clientesExatos || [])].map(c => [c.id, c])).values());
       const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));

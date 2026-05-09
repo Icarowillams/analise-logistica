@@ -65,6 +65,10 @@ const formatNumeroPedidoBusca = (pedido) => {
   return `${digits.padStart(5, '0')}T`;
 };
 
+const normalizeKey = (value) => String(value || '').trim().toLowerCase();
+const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
+const getClienteCodigo = (cliente) => cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || cliente?.codigo_omie || '';
+
 export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
@@ -127,7 +131,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const { data: clientesDosPedidos = [] } = useQuery({
     queryKey: ['clientes-dos-pedidos-gerenciar', pedidoClienteIds.join('|')],
-    queryFn: () => pedidoClienteIds.length ? base44.entities.Cliente.filter({ id: { $in: pedidoClienteIds } }, '-created_date', 5000) : [],
+    queryFn: async () => {
+      if (pedidoClienteIds.length === 0) return [];
+      const listas = await Promise.all(pedidoClienteIds.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1)));
+      return listas.flat();
+    },
     enabled: pedidoClienteIds.length > 0,
   });
 
@@ -191,15 +199,51 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return m;
   }, [vendedores]);
 
-  const clientesByCodigoMap = useMemo(() => {
-    const m = {};
-    clientes.forEach(c => { if (c.codigo) m[c.codigo] = c; });
-    return m;
+  const clientesLookup = useMemo(() => {
+    const byId = new Map();
+    const byCodigo = new Map();
+    const byCpfCnpj = new Map();
+    const byNome = new Map();
+
+    clientes.forEach(c => {
+      byId.set(c.id, c);
+      [c.codigo, c.codigo_interno, c.codigo_integracao, c.codigo_omie, getClienteCodigo(c)].filter(Boolean).forEach(codigo => {
+        byCodigo.set(normalizeKey(codigo), c);
+      });
+      const cpfCnpj = onlyDigits(c.cnpj_cpf);
+      if (cpfCnpj) byCpfCnpj.set(cpfCnpj, c);
+      [c.razao_social, c.nome_fantasia].filter(Boolean).forEach(nome => byNome.set(normalizeKey(nome), c));
+    });
+
+    return { byId, byCodigo, byCpfCnpj, byNome };
   }, [clientes]);
+
+  useEffect(() => {
+    if (!pedidos.length || !clientes.length) return;
+    const updates = pedidos.map(p => {
+      const cliente = clientesLookup.byId.get(p.cliente_id)
+        || clientesLookup.byCodigo.get(normalizeKey(p.cliente_codigo))
+        || clientesLookup.byCpfCnpj.get(onlyDigits(p.cliente_cpf_cnpj))
+        || clientesLookup.byNome.get(normalizeKey(p.cliente_nome))
+        || clientesLookup.byNome.get(normalizeKey(p.cliente_nome_fantasia));
+      const codigo = p.cliente_codigo || getClienteCodigo(cliente);
+      return (!p.cliente_codigo && codigo) ? { id: p.id, codigo } : null;
+    }).filter(Boolean).slice(0, 100);
+
+    if (updates.length === 0) return;
+    Promise.all(updates.map(u => base44.entities.Pedido.update(u.id, { cliente_codigo: u.codigo })))
+      .then(() => queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }))
+      .catch(() => {});
+  }, [pedidos, clientes, clientesLookup, queryClient]);
 
   const pedidosComVendedorCliente = useMemo(() => {
     return pedidos.map((pedido) => {
-      const cliente = pedido.cliente_codigo ? clientesByCodigoMap[pedido.cliente_codigo] : null;
+      const cliente = clientesLookup.byId.get(pedido.cliente_id)
+        || clientesLookup.byCodigo.get(normalizeKey(pedido.cliente_codigo))
+        || clientesLookup.byCpfCnpj.get(onlyDigits(pedido.cliente_cpf_cnpj))
+        || clientesLookup.byNome.get(normalizeKey(pedido.cliente_nome))
+        || clientesLookup.byNome.get(normalizeKey(pedido.cliente_nome_fantasia));
+      const codigoCliente = pedido.cliente_codigo || getClienteCodigo(cliente);
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
       const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
 
@@ -210,13 +254,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
       return {
         ...pedido,
-        cliente_codigo: cliente?.codigo || pedido.cliente_codigo,
-        cliente_codigo_base: cliente?.codigo || pedido.cliente_codigo,
+        cliente_codigo: codigoCliente,
+        cliente_codigo_base: codigoCliente,
         cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
         rede_id: cliente?.rede_id || '',
-        vendedor_id: cliente?.vendedor_id || '',
-        vendedor_nome: vendedorCliente?.nome || '-',
+        vendedor_id: cliente?.vendedor_id || pedido.vendedor_id || '',
+        vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome || '-',
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
         omie_etapa_real: omieInfo?.etapa || null,
         omie_numero_nf: omieInfo?.numero_nf || null,
@@ -224,7 +268,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         omie_status_label: omieInfo?.status_label || null,
       };
     });
-  }, [pedidos, clientesByCodigoMap, vendedoresMap, vendedores, omieMap]);
+  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
@@ -455,7 +499,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const analise = getAnaliseStatus(p);
       if (analise === 'Pendente') {
         // Verificar bloqueio financeiro antes de liberar
-        const codigoCliente = p.cliente_codigo || clientesByCodigoMap[p.cliente_codigo]?.codigo;
+        const codigoCliente = p.cliente_codigo_base || p.cliente_codigo;
         if (codigoCliente) {
           const bloqueio = await consultarBloqueio(codigoCliente);
           if (bloqueio && bloqueio.bloqueado === true) {
