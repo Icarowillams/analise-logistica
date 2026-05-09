@@ -79,6 +79,11 @@ Deno.serve(async (req) => {
     
     try {
         base44 = createClientFromRequest(req);
+        const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
+        const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+        if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
+            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas.' }, { status: 500 });
+        }
         const user = await base44.auth.me();
 
         if (!user) {
