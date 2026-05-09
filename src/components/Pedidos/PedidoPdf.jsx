@@ -67,14 +67,27 @@ export default function PedidoPdf({ pedidoId }) {
     queryKey: ['empresa-pdf'],
     queryFn: () => base44.entities.Empresa.list()
   });
+
+  const { data: cenariosLocais = [] } = useQuery({
+    queryKey: ['cenarios-fiscais-locais-pdf'],
+    queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' })
+  });
+
   const empresa = empresas[0];
 
   if (!pedido) return <p className="text-center py-8 text-slate-500">Carregando...</p>;
 
   const modeloLabel = pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === 'nfce' ? 'NFCe' : '55';
-  const cenarioFiscalLabel = pedido.cenario_local_nome || pedido.cenario_fiscal_nome || (pedido.tipo === 'troca' ? 'Troca' : '-');
-  const cenarioFiscalTipo = pedido.cenario_local_tipo ? ` — ${pedido.cenario_local_tipo.toUpperCase()}` : '';
-  const cenarioOmieLabel = pedido.cenario_fiscal_nome && pedido.cenario_fiscal_nome !== pedido.cenario_local_nome ? ` / Omie: ${pedido.cenario_fiscal_nome}` : '';
+  const tipoCenarioEsperado = pedido.tipo === 'troca' ? 'troca' : (pedido.tipo || 'venda');
+  const cenarioPadrao = cenariosLocais.find(c => c.tipo_operacao === tipoCenarioEsperado && c.padrao) ||
+    cenariosLocais.find(c => c.tipo_operacao === tipoCenarioEsperado) ||
+    cenariosLocais.find(c => c.padrao) ||
+    cenariosLocais[0];
+  const cenarioFiscalLabel = pedido.cenario_local_nome || pedido.cenario_fiscal_nome || cenarioPadrao?.nome || (pedido.tipo === 'troca' ? 'Troca' : '-');
+  const cenarioFiscalTipoBase = pedido.cenario_local_tipo || cenarioPadrao?.tipo_operacao;
+  const cenarioFiscalTipo = cenarioFiscalTipoBase ? ` — ${cenarioFiscalTipoBase.toUpperCase()}` : '';
+  const cenarioOmieNome = pedido.cenario_fiscal_nome || cenarioPadrao?.cenario_omie_nome;
+  const cenarioOmieLabel = cenarioOmieNome && cenarioOmieNome !== cenarioFiscalLabel ? ` / Omie: ${cenarioOmieNome}` : '';
   const totalProdutos = items.reduce((s, i) => s + (i.valor_total || 0), 0);
   const totalQtd = items.reduce((s, i) => s + (i.quantidade || 0), 0);
   const dataEmissao = pedido.created_date ? new Date(pedido.created_date).toLocaleDateString('pt-BR') : '';
