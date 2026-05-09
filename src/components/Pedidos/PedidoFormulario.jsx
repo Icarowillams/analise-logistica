@@ -41,7 +41,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Pedido fields
   const [planoPagamentoId, setPlanoPagamentoId] = useState(cliente.plano_pagamento_id || '');
   const [tabelaPrecoId, setTabelaPrecoId] = useState(cliente.tabela_id || '');
-  const [modeloNota, setModeloNota] = useState(tipo === 'troca' ? 'd1' : '55');
+  const [modeloNota, setModeloNota] = useState(
+    tipo === 'troca' ? 'd1' : (cliente.tipo_nota === 'D1' ? 'd1' : '55')
+  );
   const [dataPrevisaoEntrega, setDataPrevisaoEntrega] = useState('');
   const [numeroPedidoCompra, setNumeroPedidoCompra] = useState('');
   const [dadosAdicionaisNf, setDadosAdicionaisNf] = useState('');
@@ -83,6 +85,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   }, [acoesPromocionais, cliente.id, tabelaPrecoId]);
 
   const isTroca = cenarioFiscalCodigo === 'troca';
+  const isNotaD1 = modeloNota === 'd1' || tipo === 'troca' || cliente.tipo_nota === 'D1';
 
   const { data: motivosTroca = [] } = useQuery({
     queryKey: ['motivosTroca'],
@@ -90,7 +93,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   });
 
   // Carrega cenários fiscais do Omie (com permissão, inclui opção Troca)
-  const mostrarCenarioFiscal = !!permissaoCenariosFiscais;
+  // Nota D1 NÃO usa Omie — opera totalmente interno
+  const mostrarCenarioFiscal = !!permissaoCenariosFiscais && !isNotaD1;
 
   const { data: cenariosData, isLoading: loadingCenarios, isError: erroCenarios } = useQuery({
     queryKey: ['cenariosFiscaisOmie'],
@@ -140,7 +144,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     if (existingPedido) {
       setPlanoPagamentoId(existingPedido.plano_pagamento_id || '');
       setTabelaPrecoId(existingPedido.tabela_preco_id || '');
-      setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : '55'));
+      setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : (cliente.tipo_nota === 'D1' ? 'd1' : '55')));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
       // Separar observações livres do texto automático (prefixo "Pedido Nº: ...")
@@ -331,7 +335,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       plano_pagamento_nome: planoObj?.nome || '',
       tabela_preco_id: tabelaPrecoId,
       tabela_preco_nome: tabelaObj?.nome || '',
-      modelo_nota: tipoFinal === 'troca' ? 'd1' : modeloNota,
+      modelo_nota: (tipoFinal === 'troca' || cliente.tipo_nota === 'D1') ? 'd1' : modeloNota,
       cenario_fiscal_codigo: (cenarioFiscalCodigo && cenarioFiscalCodigo !== 'troca' && !isNaN(Number(cenarioFiscalCodigo)) && Number(cenarioFiscalCodigo) > 0) ? Number(cenarioFiscalCodigo) : null,
       cenario_fiscal_nome: (cenarioFiscalCodigo && cenarioFiscalCodigo !== 'troca') ? cenarioFiscalNome || null : null,
       data_previsao_entrega: dataPrevisaoEntrega,
@@ -448,7 +452,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs text-slate-500">Modelo da Nota</Label>
-                  <p className="text-sm font-medium">{tipo === 'troca' ? 'D1' : modeloNota === 'nfce' ? 'NFCe' : '55'}</p>
+                  <p className="text-sm font-medium">{isNotaD1 ? 'D1' : modeloNota === 'nfce' ? 'NFCe' : '55'}</p>
                 </div>
                 <div>
                   <Label>Data Previsão de Entrega <span className="text-red-500">*</span></Label>
