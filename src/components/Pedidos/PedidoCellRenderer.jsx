@@ -136,9 +136,10 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'preco_medio') {
-    const totalItens = p.total_itens || 0;
+    // Preço médio = valor total do pedido ÷ quantidade total dos itens (soma das quantidades)
+    const qtdTotal = p.qtd_total_itens || p.total_itens || 0;
     const valorTotal = p.valor_total || 0;
-    const precoMedio = totalItens > 0 ? valorTotal / totalItens : 0;
+    const precoMedio = qtdTotal > 0 ? valorTotal / qtdTotal : 0;
     return <span className={`${truncClass} text-right`}>{formatCurrency(precoMedio)}</span>;
   }
 

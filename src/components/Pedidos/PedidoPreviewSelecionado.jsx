@@ -11,6 +11,10 @@ export default function PedidoPreviewSelecionado({ pedidoId }) {
     enabled: !!pedidoId,
   });
 
+  const totalQtd = itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0);
+  const totalValor = itens.reduce((s, i) => s + (Number(i.valor_total) || 0), 0);
+  const precoMedio = totalQtd > 0 ? totalValor / totalQtd : 0;
+
   return (
     <div className="border border-amber-200 bg-amber-50/40 rounded-lg overflow-hidden flex flex-col" style={{ height: 160 }}>
       <div className="px-3 py-1.5 border-b border-amber-200 shrink-0">
@@ -44,6 +48,16 @@ export default function PedidoPreviewSelecionado({ pedidoId }) {
               </tr>
             ))}
           </tbody>
+          {itens.length > 0 && (
+            <tfoot className="sticky bottom-0 bg-amber-100/80 border-t-2 border-amber-300">
+              <tr>
+                <td className="px-2 py-1 font-bold text-amber-900" colSpan="2">TOTAL</td>
+                <td className="px-2 py-1 text-right font-bold text-amber-900">{totalQtd}</td>
+                <td className="px-2 py-1 text-right font-bold text-amber-900" title="Preço médio (Total ÷ Qtd)">{formatCurrency(precoMedio)}</td>
+                <td className="px-2 py-1 text-right font-bold text-amber-900">{formatCurrency(totalValor)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

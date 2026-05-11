@@ -194,9 +194,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const { data: pedidoItems = [] } = useQuery({
     queryKey: ['pedidoItems-gerenciar'],
-    queryFn: () => base44.entities.PedidoItem.list(),
-    enabled: produtoIds.length > 0,
+    queryFn: () => base44.entities.PedidoItem.list('-created_date', 20000),
   });
+
+  // Soma das quantidades de itens por pedido — usado para cálculo correto do preço médio
+  const qtdItensPorPedido = useMemo(() => {
+    const m = {};
+    pedidoItems.forEach(item => {
+      const qtd = Number(item.quantidade) || 0;
+      m[item.pedido_id] = (m[item.pedido_id] || 0) + qtd;
+    });
+    return m;
+  }, [pedidoItems]);
 
   const vendedoresMap = useMemo(() => {
     const m = {};
@@ -271,9 +280,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
         omie_numero_nf: omieInfo?.numero_nf || null,
         omie_status_nf: omieInfo?.status_real || null,
         omie_status_label: omieInfo?.status_label || null,
+        qtd_total_itens: qtdItensPorPedido[pedido.id] || 0,
       };
     });
-  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
+  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap, qtdItensPorPedido]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
