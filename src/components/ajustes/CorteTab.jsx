@@ -31,7 +31,11 @@ export default function CorteTab() {
 
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-corte'],
-    queryFn: () => base44.entities.Carga.list('-data_carga', 200)
+    queryFn: () => base44.entities.Carga.filter(
+      { status_carga: { $in: ['montagem', 'fechada', 'conferindo', 'pronta', 'faturada'] } },
+      '-data_carga',
+      200
+    )
   });
 
   const cargaSelecionada = useMemo(
