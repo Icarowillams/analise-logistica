@@ -229,9 +229,12 @@ export default function Cargas() {
           <Button size="sm" variant="outline" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
             <MapPinned className="w-4 h-4" /> Romaneio
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setExcluindo(row)}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
+          {/* Excluir só é permitido em cargas ainda não faturadas */}
+          {['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga) && (
+            <Button size="sm" variant="outline" onClick={() => setExcluindo(row)} title="Desfazer carga (apenas se não faturada)">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       )
     }
