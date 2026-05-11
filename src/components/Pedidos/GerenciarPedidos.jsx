@@ -74,6 +74,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
+  const [clienteSearch, setClienteSearch] = useState('');
   const [envioInicio, setEnvioInicio] = useState(() => getTodayFilterDate());
   const [envioFim, setEnvioFim] = useState(() => getTodayFilterDate());
   const [vendedorSearch, setVendedorSearch] = useState('');
@@ -82,7 +83,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [produtoSearch, setProdutoSearch] = useState('');
   const [produtoIds, setProdutoIds] = useState([]);
   const [produtoModalOpen, setProdutoModalOpen] = useState(false);
-  const [clienteSearch, setClienteSearch] = useState('');
   const [redeFilter, setRedeFilter] = useState('todas');
   const [cidadeSearch, setCidadeSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
