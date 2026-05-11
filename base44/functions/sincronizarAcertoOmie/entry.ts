@@ -67,13 +67,27 @@ Deno.serve(async (req) => {
     const valor_total_recebido = notas.reduce((s, n) => s + Number(n.valor_recebido || 0), 0);
     const valor_total_diferenca = notas.reduce((s, n) => s + Number(n.diferenca || 0), 0);
 
-    await base44.asServiceRole.entities.AcertoCaixa.update(acerto_id, {
+    const updates = {
       notas,
       valor_total_recebido,
       valor_total_diferenca
-    });
+    };
 
-    return Response.json({ sucesso: true, alteradas, total: notas.length });
+    // Se a carga foi cancelada no Omie, finaliza o acerto automaticamente
+    let autoFinalizado = false;
+    if (acerto.status_acerto === 'em_andamento' && acerto.carga_id) {
+      const carga = await base44.asServiceRole.entities.Carga.get(acerto.carga_id).catch(() => null);
+      if (carga?.status_carga === 'cancelada') {
+        updates.status_acerto = 'finalizado';
+        updates.finalizado_em = new Date().toISOString();
+        updates.finalizado_por = 'auto-sync (carga cancelada no Omie)';
+        autoFinalizado = true;
+      }
+    }
+
+    await base44.asServiceRole.entities.AcertoCaixa.update(acerto_id, updates);
+
+    return Response.json({ sucesso: true, alteradas, total: notas.length, autoFinalizado });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
