@@ -88,6 +88,10 @@ function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedi
     codigo_pedido_integracao: pedidoOmie.codigo_pedido_integracao || '',
     numero_pedido: String(pedidoOmie.numero_pedido || ''),
     etapa: String(pedidoOmie.etapa || '20'),
+    status_real: pedidoOmie.status_real || null,
+    status_label: pedidoOmie.status_label || null,
+    numero_nf: pedidoOmie.numero_nf || '',
+    data_faturamento: pedidoOmie.data_faturamento || null,
     codigo_cliente: String(pedidoOmie.codigo_cliente || ''),
     codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || pedidoOmie.codigo_cliente_integracao || '',
     codigo_cliente_cod: codigoCliente,
@@ -121,51 +125,72 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { max_paginas = 10, origem = 'bootstrap' } = body;
+    const { max_paginas = 10, origem = 'bootstrap', etapas = ['10', '20', '50', '60'] } = body;
 
     const t0 = Date.now();
 
-    // 1. Buscar TODOS os pedidos etapa=20 do Omie (paginado)
+    // Helper: status NF
+    const calcularStatusNF = (cab, infoNfe) => {
+      if (infoNfe?.cStatus === 'CANCELADA' || cab?.cancelado === 'S') return { status_real: 'cancelada', status_label: 'NF Cancelada' };
+      if (infoNfe?.cStatus === 'DENEGADA') return { status_real: 'denegada', status_label: 'NF Denegada' };
+      if (infoNfe?.cStatus === 'REJEITADA') return { status_real: 'rejeitada', status_label: 'NF Rejeitada' };
+      if (infoNfe?.cStatus === 'AUTORIZADA' || infoNfe?.nNF) return { status_real: 'emitida', status_label: 'Faturado' };
+      return { status_real: 'aguardando_nf', status_label: 'Aguardando NF' };
+    };
+
+    // 1. Buscar TODOS os pedidos das etapas operacionais do Omie (paginado)
     const todosOmie = [];
-    let pagina = 1;
-    let totalPaginas = 1;
-    do {
-      const data = await omieCall('ListarPedidos', {
-        pagina,
-        registros_por_pagina: 100,
-        apenas_importado_api: 'N',
-        etapa: '20'
-      }).catch((e) => {
-        if (/n[ãa]o existem registros/i.test(e.message)) return null;
-        throw e;
-      });
-      if (!data) break;
-      totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas));
-      const lote = (data.pedido_venda_produto || [])
-        .filter((p) => !pedidoCancelado(p))
-        .map((p) => ({
-          codigo_pedido: String(p.cabecalho?.codigo_pedido || ''),
-          codigo_pedido_integracao: p.cabecalho?.codigo_pedido_integracao || '',
-          numero_pedido: p.cabecalho?.numero_pedido || '',
-          codigo_cliente: String(p.cabecalho?.codigo_cliente || ''),
-          data_previsao: p.cabecalho?.data_previsao || '',
-          etapa: p.cabecalho?.etapa || '20',
-          valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
-          quantidade_itens: (p.det || []).length,
-          produtos: (p.det || []).map((d) => ({
-            codigo_produto: String(d.produto?.codigo_produto || ''),
-            codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
-            descricao: d.produto?.descricao || '',
-            quantidade: d.produto?.quantidade || 0,
-            valor_unitario: d.produto?.valor_unitario || 0,
-            valor_total: d.produto?.valor_total || 0,
-            unidade: d.produto?.unidade || ''
-          }))
-        }));
-      todosOmie.push(...lote);
-      pagina += 1;
-      if (pagina <= totalPaginas) await delay(900);
-    } while (pagina <= totalPaginas);
+    for (const etapaAtual of etapas) {
+      let pagina = 1;
+      let totalPaginas = 1;
+      do {
+        const data = await omieCall('ListarPedidos', {
+          pagina,
+          registros_por_pagina: 100,
+          apenas_importado_api: 'N',
+          etapa: etapaAtual
+        }).catch((e) => {
+          if (/n[ãa]o existem registros/i.test(e.message)) return null;
+          throw e;
+        });
+        if (!data) break;
+        totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas));
+        const lote = (data.pedido_venda_produto || [])
+          .filter((p) => !pedidoCancelado(p))
+          .map((p) => {
+            const cab = p.cabecalho || {};
+            const infoNfe = p.infoNfe || p.info_nf || null;
+            const etapa = String(cab.etapa || etapaAtual);
+            const statusNf = etapa === '60' ? calcularStatusNF(cab, infoNfe) : { status_real: null, status_label: null };
+            return {
+              codigo_pedido: String(cab.codigo_pedido || ''),
+              codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
+              numero_pedido: cab.numero_pedido || '',
+              codigo_cliente: String(cab.codigo_cliente || ''),
+              data_previsao: cab.data_previsao || '',
+              etapa,
+              status_real: statusNf.status_real,
+              status_label: statusNf.status_label,
+              numero_nf: String(infoNfe?.nNF || infoNfe?.numero_nf || cab.numero_nfe || ''),
+              data_faturamento: etapa === '60' ? (infoNfe?.dEmiNFe || null) : null,
+              valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
+              quantidade_itens: (p.det || []).length,
+              produtos: (p.det || []).map((d) => ({
+                codigo_produto: String(d.produto?.codigo_produto || ''),
+                codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
+                descricao: d.produto?.descricao || '',
+                quantidade: d.produto?.quantidade || 0,
+                valor_unitario: d.produto?.valor_unitario || 0,
+                valor_total: d.produto?.valor_total || 0,
+                unidade: d.produto?.unidade || ''
+              }))
+            };
+          });
+        todosOmie.push(...lote);
+        pagina += 1;
+        if (pagina <= totalPaginas) await delay(900);
+      } while (pagina <= totalPaginas);
+    }
 
     // 2. Carregar cadastros locais (mesma lógica do enriquecerPedidosCarga)
     const [clientes, rotas, vendedores, pedidosLocais, espelhoAtual] = await Promise.all([

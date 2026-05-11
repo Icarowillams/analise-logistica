@@ -2,91 +2,85 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 
-// Hook único que orquestra TUDO da Operação:
-// - busca todas as etapas em paralelo (10/20/50/60)
-// - enriquece cada lista com cliente/vendedor/rota
-// - retorna lastUpdate para mostrar "atualizado há Xs"
-// - auto-refresh opcional
+// 🔄 Hook 100% WEBHOOK-DRIVEN da Operação
+// - Lê do espelho local PedidoLiberadoOmie (atualizado em tempo real pelos webhooks Omie)
+// - ZERO chamadas Omie no fluxo normal
+// - Real-time via base44.entities.PedidoLiberadoOmie.subscribe()
+// - refetchAll() dispara reconciliação backend (bootstrapPedidosLiberadosOmie) — uso manual apenas
 
-const STALE = 15000;
-const REFRESH_AUTO = 30000;
+const ETAPAS = ['10', '20', '50', '60'];
 
-async function fetchEtapa(etapa) {
-  const { data } = await base44.functions.invoke('buscarPedidosOmie', {
-    etapa,
-    registros_por_pagina: 100,
-    buscar_todas_paginas: true,
-    incluir_cancelados: false
-  });
-  return data?.pedidos || [];
+async function listarEspelho() {
+  // Carrega todo o espelho local — paginado se passar do limite
+  return await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
 }
 
-async function fetchFaturados() {
-  const { data } = await base44.functions.invoke('consultarStatusFaturamentoOmie', {
-    registros_por_pagina: 100,
-    buscar_todas_paginas: true,
-    incluir_cancelados: false
-  });
-  return data?.pedidos || [];
-}
-
-async function enriquecer(pedidos) {
-  if (!pedidos || pedidos.length === 0) return [];
-  const { data } = await base44.functions.invoke('enriquecerPedidosOperacao', { pedidos });
-  return data?.pedidos || pedidos;
-}
-
-function buildQuery(etapa) {
-  return {
-    queryKey: ['operacaoOmie', etapa],
-    queryFn: async () => {
-      const crus = etapa === '60' ? await fetchFaturados() : await fetchEtapa(etapa);
-      return enriquecer(crus);
-    },
-    staleTime: STALE,
-    refetchOnWindowFocus: true
-  };
-}
-
-export function useOperacaoOmie({ autoRefresh = true } = {}) {
+export function useOperacaoOmie() {
   const queryClient = useQueryClient();
   const [lastFullUpdate, setLastFullUpdate] = useState(Date.now());
 
-  const q10 = useQuery(buildQuery('10'));
-  const q20 = useQuery(buildQuery('20'));
-  const q50 = useQuery(buildQuery('50'));
-  const q60 = useQuery(buildQuery('60'));
+  const espelhoQuery = useQuery({
+    queryKey: ['operacaoEspelho'],
+    queryFn: listarEspelho,
+    staleTime: 60000,
+    refetchOnWindowFocus: false
+  });
+
+  // Atualização em tempo real via subscribe
+  useEffect(() => {
+    const unsubscribe = base44.entities.PedidoLiberadoOmie.subscribe((event) => {
+      queryClient.setQueryData(['operacaoEspelho'], (old) => {
+        const lista = Array.isArray(old) ? old : [];
+        if (event.type === 'create') {
+          if (lista.some(p => p.id === event.data.id)) return lista;
+          return [event.data, ...lista];
+        }
+        if (event.type === 'update') {
+          return lista.map(p => p.id === event.id ? { ...p, ...event.data } : p);
+        }
+        if (event.type === 'delete') {
+          return lista.filter(p => p.id !== event.id);
+        }
+        return lista;
+      });
+      setLastFullUpdate(Date.now());
+    });
+    return () => { try { unsubscribe?.(); } catch {} };
+  }, [queryClient]);
 
   useEffect(() => {
-    if (q10.dataUpdatedAt && q20.dataUpdatedAt && q50.dataUpdatedAt && q60.dataUpdatedAt) {
-      const max = Math.max(q10.dataUpdatedAt, q20.dataUpdatedAt, q50.dataUpdatedAt, q60.dataUpdatedAt);
-      setLastFullUpdate(max);
-    }
-  }, [q10.dataUpdatedAt, q20.dataUpdatedAt, q50.dataUpdatedAt, q60.dataUpdatedAt]);
+    if (espelhoQuery.dataUpdatedAt) setLastFullUpdate(espelhoQuery.dataUpdatedAt);
+  }, [espelhoQuery.dataUpdatedAt]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['operacaoOmie'] });
-    }, REFRESH_AUTO);
-    return () => clearInterval(interval);
-  }, [autoRefresh, queryClient]);
-
-  const refetchAll = () => queryClient.refetchQueries({ queryKey: ['operacaoOmie'] });
-
-  const queries = {
-    '10': q10,
-    '20': q20,
-    '50': q50,
-    '60': q60
+  // Agrupar por etapa
+  const espelho = espelhoQuery.data || [];
+  const porEtapa = {
+    '10': espelho.filter(p => String(p.etapa) === '10'),
+    '20': espelho.filter(p => String(p.etapa) === '20'),
+    '50': espelho.filter(p => String(p.etapa) === '50'),
+    '60': espelho.filter(p => String(p.etapa) === '60')
   };
 
-  const totalGeral = ['10', '20', '50', '60'].reduce((s, e) => s + (queries[e].data?.length || 0), 0);
-  const valorGeral = ['10', '20', '50', '60'].reduce((s, e) => {
-    return s + (queries[e].data || []).reduce((acc, p) => acc + (Number(p.valor_total_pedido) || 0), 0);
-  }, 0);
+  // Dispara reconciliação backend (busca tudo do Omie e atualiza o espelho)
+  const refetchAll = async () => {
+    try {
+      await base44.functions.invoke('bootstrapPedidosLiberadosOmie', { origem: 'reconciliacao', etapas: ETAPAS });
+    } catch (e) {
+      console.error('[useOperacaoOmie] reconciliação falhou:', e?.message);
+    }
+    return queryClient.refetchQueries({ queryKey: ['operacaoEspelho'] });
+  };
 
-  const isAnyLoading = q10.isFetching || q20.isFetching || q50.isFetching || q60.isFetching;
+  const queries = {
+    '10': { data: porEtapa['10'], isLoading: espelhoQuery.isLoading, isFetching: espelhoQuery.isFetching },
+    '20': { data: porEtapa['20'], isLoading: espelhoQuery.isLoading, isFetching: espelhoQuery.isFetching },
+    '50': { data: porEtapa['50'], isLoading: espelhoQuery.isLoading, isFetching: espelhoQuery.isFetching },
+    '60': { data: porEtapa['60'], isLoading: espelhoQuery.isLoading, isFetching: espelhoQuery.isFetching }
+  };
+
+  const totalGeral = espelho.length;
+  const valorGeral = espelho.reduce((s, p) => s + (Number(p.valor_total_pedido) || 0), 0);
+  const isAnyLoading = espelhoQuery.isFetching;
 
   return {
     queries,

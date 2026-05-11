@@ -2,10 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Workflow, RefreshCw, Search, Plus, FileBarChart, Truck, ExternalLink, Activity, Wifi } from 'lucide-react';
+import { Workflow, RefreshCw, Search, Plus, FileBarChart, Truck, ExternalLink, Wifi } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import KanbanColumn from '@/components/operacao/KanbanColumn';
 import CardPedidoKanban from '@/components/operacao/CardPedidoKanban';
@@ -56,7 +55,6 @@ export default function Operacao() {
   const [busca, setBusca] = useState('');
   const [acaoPendente, setAcaoPendente] = useState(null);
   const [executando, setExecutando] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [tick, setTick] = useState(0);
 
   // Tick a cada segundo só pra atualizar o "atualizado há Xs"
@@ -65,7 +63,7 @@ export default function Operacao() {
     return () => clearInterval(i);
   }, []);
 
-  const { queries, refetchAll, lastFullUpdate, isAnyLoading, totalGeral, valorGeral } = useOperacaoOmie({ autoRefresh });
+  const { queries, refetchAll, lastFullUpdate, isAnyLoading, totalGeral, valorGeral } = useOperacaoOmie();
 
   const { data: cargas = [], isLoading: loadingCargas, refetch: refetchCargas } = useQuery({
     queryKey: ['cargasOperacao'],
@@ -148,9 +146,7 @@ export default function Operacao() {
 
         const data = resp?.data;
         if (!data?.sucesso) throw new Error(data?.error || data?.resposta?.cDescStatus || 'Omie rejeitou a mudança de etapa');
-        toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`);
-        await new Promise(r => setTimeout(r, 2500));
-        await refetchAll();
+        toast.success(`Pedido ${acaoPendente.pedido.numero_pedido} movido para ${acaoPendente.para}`, { description: 'Webhook Omie atualizará em segundos.' });
       }
 
       if (acaoPendente.tipo === 'emitir_nf') {
@@ -173,11 +169,9 @@ export default function Operacao() {
         const data = resp?.data;
         if (!data?.sucesso) throw new Error(data?.error || 'Omie rejeitou a emissão da NF');
         toast.success(`NF do pedido ${acaoPendente.pedido.numero_pedido} enviada para emissão`, {
-          description: data.cDescStatus || 'Aguarde alguns minutos para a SEFAZ processar.',
+          description: data.cDescStatus || 'Webhook NFe atualizará quando SEFAZ processar.',
           duration: 8000
         });
-        await new Promise(r => setTimeout(r, 3000));
-        await refetchAll();
       }
       setAcaoPendente(null);
     } catch (e) {
@@ -245,10 +239,11 @@ export default function Operacao() {
       )
     : cargasEntrega;
 
-  const recarregarTudo = () => {
-    refetchAll();
+  const recarregarTudo = async () => {
+    toast.info('Reconciliando espelho com Omie...', { description: 'Uso apenas se algum webhook falhou.' });
+    await refetchAll();
     refetchCargas();
-    toast.info('Atualizando dados do Omie...');
+    toast.success('Espelho reconciliado.');
   };
 
   const segundosDesdeUpdate = Math.floor((Date.now() - lastFullUpdate) / 1000);
@@ -272,19 +267,12 @@ export default function Operacao() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Status sync */}
-          <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
-            <Activity className={`w-3.5 h-3.5 ${isAnyLoading ? 'text-amber-500 animate-pulse' : 'text-emerald-500'}`} />
-            <span className="text-xs text-slate-600 font-medium">
-              {isAnyLoading ? 'Sincronizando...' : `Atualizado há ${tempoDecorrido(lastFullUpdate)}`}
+          {/* Status sync — sempre real-time via webhook */}
+          <div className="flex items-center gap-2 bg-emerald-50 rounded-lg px-3 py-1.5 border border-emerald-200">
+            <Wifi className={`w-3.5 h-3.5 ${isAnyLoading ? 'text-amber-500 animate-pulse' : 'text-emerald-600'}`} />
+            <span className="text-xs text-emerald-700 font-semibold">
+              {isAnyLoading ? 'Sincronizando...' : `Real-time · atualizado há ${tempoDecorrido(lastFullUpdate)}`}
             </span>
-          </div>
-
-          {/* Auto refresh toggle */}
-          <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
-            <Wifi className={`w-3.5 h-3.5 ${autoRefresh ? 'text-blue-500' : 'text-slate-400'}`} />
-            <span className="text-xs text-slate-600 font-medium">Auto</span>
-            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
           </div>
 
           <div className="relative w-56">

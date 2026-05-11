@@ -27,8 +27,20 @@ function recalcularStatusCarga(pedidosOmie, statusAtual) {
   return statusAtual || 'conferindo';
 }
 
-// Remove pedido do espelho PedidoLiberadoOmie (sai da etapa 20)
-async function removerDoEspelhoLiberado(base44, omieCodigoPedido) {
+// Etapas operacionais que devem estar no espelho
+const ETAPAS_ESPELHO = new Set(['10', '20', '50', '60']);
+
+// Status NF baseado em campos do Omie / NFe
+function calcularStatusNF(cabecalho, infoNfe) {
+  if (infoNfe?.cStatus === 'CANCELADA' || cabecalho?.cancelado === 'S') return { status_real: 'cancelada', status_label: 'NF Cancelada' };
+  if (infoNfe?.cStatus === 'DENEGADA') return { status_real: 'denegada', status_label: 'NF Denegada' };
+  if (infoNfe?.cStatus === 'REJEITADA') return { status_real: 'rejeitada', status_label: 'NF Rejeitada' };
+  if (infoNfe?.cStatus === 'AUTORIZADA' || infoNfe?.nNF) return { status_real: 'emitida', status_label: 'Faturado' };
+  return { status_real: 'aguardando_nf', status_label: 'Aguardando NF' };
+}
+
+// Remove pedido do espelho PedidoLiberadoOmie
+async function removerDoEspelho(base44, omieCodigoPedido) {
   if (!omieCodigoPedido) return;
   const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(omieCodigoPedido) });
   for (const e of existentes) {
@@ -36,9 +48,9 @@ async function removerDoEspelhoLiberado(base44, omieCodigoPedido) {
   }
 }
 
-// Insere/atualiza pedido no espelho PedidoLiberadoOmie quando entra na etapa 20.
-// Chama bootstrap em modo "incremental" — busca só esse pedido via ConsultarPedido e faz o upsert.
-async function upsertEspelhoLiberado(base44, omieCodigoPedido) {
+// Insere/atualiza pedido no espelho PedidoLiberadoOmie em qualquer etapa operacional (10/20/50/60).
+// Busca dados frescos via ConsultarPedido e faz o upsert.
+async function upsertEspelho(base44, omieCodigoPedido) {
   if (!omieCodigoPedido) return;
 
   const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
@@ -66,13 +78,14 @@ async function upsertEspelhoLiberado(base44, omieCodigoPedido) {
   const pedidoBruto = await consultar();
   if (!pedidoBruto?.cabecalho) return;
   const etapa = String(pedidoBruto.cabecalho.etapa || '');
-  if (etapa !== '20') {
-    // Mudou de etapa antes de processarmos — garantir que não fica no espelho
-    await removerDoEspelhoLiberado(base44, omieCodigoPedido);
+
+  // Se etapa não é operacional (ex: 70/80 = cancelado), remove do espelho
+  if (!ETAPAS_ESPELHO.has(etapa)) {
+    await removerDoEspelho(base44, omieCodigoPedido);
     return;
   }
 
-  // Enriquecer com cliente local (mesma lógica do bootstrap, versão mínima)
+  // Enriquecer com cliente local
   const codigoClienteOmie = String(pedidoBruto.cabecalho.codigo_cliente || '');
   const [clientes, pedidosLocais, rotas, vendedores] = await Promise.all([
     base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
@@ -92,11 +105,20 @@ async function upsertEspelhoLiberado(base44, omieCodigoPedido) {
   const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || '');
   const vendedorNome = cliente?.vendedor_id ? (mapaVendedor.get(cliente.vendedor_id) || '') : (pedidoLocal?.vendedor_nome || '');
 
+  // Status NF apenas pra etapa 60
+  const infoNfe = pedidoBruto.infoNfe || pedidoBruto.info_nf || null;
+  const statusNf = etapa === '60' ? calcularStatusNF(pedidoBruto.cabecalho, infoNfe) : { status_real: null, status_label: null };
+  const numeroNf = String(infoNfe?.nNF || infoNfe?.numero_nf || pedidoBruto.cabecalho?.numero_nfe || '');
+
   const registro = {
     codigo_pedido: String(omieCodigoPedido),
     codigo_pedido_integracao: pedidoBruto.cabecalho.codigo_pedido_integracao || '',
     numero_pedido: String(pedidoBruto.cabecalho.numero_pedido || ''),
-    etapa: '20',
+    etapa,
+    status_real: statusNf.status_real,
+    status_label: statusNf.status_label,
+    numero_nf: numeroNf,
+    data_faturamento: etapa === '60' ? (infoNfe?.dEmiNFe || new Date().toISOString()) : null,
     codigo_cliente: codigoClienteOmie,
     codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || '',
     codigo_cliente_cod: String(cliente?.codigo_interno || cliente?.codigo || cliente?.codigo_integracao || pedidoLocal?.cliente_codigo || ''),
@@ -167,26 +189,26 @@ async function handlePedido(base44, topic, evt) {
   const codigoPedido = String(evt?.idPedido || evt?.codigo_pedido || '');
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
-  // 🔄 ESPELHO MONTAGEM: manter PedidoLiberadoOmie em tempo real
-  // Qualquer evento que tire o pedido da etapa 20 → remove do espelho
-  // EtapaAlterada para 20 → adiciona/atualiza no espelho
+  // 🔄 ESPELHO OPERAÇÃO: manter PedidoLiberadoOmie em tempo real (etapas 10/20/50/60)
+  // - Cancelamento/exclusão/devolução → remove
+  // - Faturada → upsert (vai pra etapa 60)
+  // - EtapaAlterada / Incluida / Alterada → upsert (decide etapa via ConsultarPedido)
   let espelhoAcao = null;
   try {
-    if (topic === 'VendaProduto.Faturada' || topic === 'VendaProduto.Cancelada' || topic === 'VendaProduto.Excluida' || topic === 'VendaProduto.Devolvida') {
-      await removerDoEspelhoLiberado(base44, codigoPedido);
+    if (topic === 'VendaProduto.Cancelada' || topic === 'VendaProduto.Excluida' || topic === 'VendaProduto.Devolvida') {
+      await removerDoEspelho(base44, codigoPedido);
       espelhoAcao = 'removido';
-    } else if (topic === 'VendaProduto.EtapaAlterada' || topic === 'VendaProduto.Incluida' || topic === 'VendaProduto.Alterada') {
-      const novaEtapa = String(evt?.etapa || '');
-      if (novaEtapa === '20' || topic === 'VendaProduto.Alterada' || topic === 'VendaProduto.Incluida') {
-        await upsertEspelhoLiberado(base44, codigoPedido);
-        espelhoAcao = 'upsert';
-      } else if (novaEtapa && novaEtapa !== '20') {
-        await removerDoEspelhoLiberado(base44, codigoPedido);
-        espelhoAcao = 'removido';
-      }
+    } else if (
+      topic === 'VendaProduto.Faturada' ||
+      topic === 'VendaProduto.EtapaAlterada' ||
+      topic === 'VendaProduto.Incluida' ||
+      topic === 'VendaProduto.Alterada'
+    ) {
+      await upsertEspelho(base44, codigoPedido);
+      espelhoAcao = 'upsert';
     }
   } catch (e) {
-    console.error(`[espelhoLiberado] erro ao sincronizar ${codigoPedido}:`, e.message);
+    console.error(`[espelhoOperacao] erro ao sincronizar ${codigoPedido}:`, e.message);
   }
 
   const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigoPedido });
@@ -239,6 +261,18 @@ async function handlePedido(base44, topic, evt) {
 async function handleNFe(base44, topic, evt) {
   const codigoPedido = String(evt?.idPedido || evt?.codigo_pedido || '');
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
+
+  // 🔄 ESPELHO OPERAÇÃO: atualizar status NF do pedido (etapa 60)
+  try {
+    if (topic === 'NFe.NotaCancelada') {
+      // NF cancelada → upsert pra refletir status_real=cancelada
+      await upsertEspelho(base44, codigoPedido);
+    } else if (topic === 'NFe.NotaAutorizada' || topic === 'NFe.NotaDevolucaoAutorizada') {
+      await upsertEspelho(base44, codigoPedido);
+    }
+  } catch (e) {
+    console.error(`[espelhoOperacao NFe] erro ao sincronizar ${codigoPedido}:`, e.message);
+  }
 
   const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigoPedido });
   if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'pedido não encontrado' };

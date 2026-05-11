@@ -1,7 +1,7 @@
 {
   "name": "PedidoLiberadoOmie",
   "type": "object",
-  "description": "Espelho local em tempo real dos pedidos Omie liberados (etapa 20) \u2014 mantido por webhook + reconcilia\u00e7\u00e3o backup. Substitui consultas ao vivo na tela de Montagem de Carga.",
+  "description": "Espelho local em tempo real dos pedidos Omie de todas as etapas operacionais (10/20/50/60) \u2014 mantido por webhook + reconcilia\u00e7\u00e3o backup. Substitui consultas ao vivo nas telas de Montagem de Carga e Opera\u00e7\u00e3o Completa.",
   "properties": {
     "codigo_pedido": {
       "type": "string",
@@ -15,7 +15,23 @@
     },
     "etapa": {
       "type": "string",
-      "description": "Etapa atual no Omie (ex: 20)"
+      "description": "Etapa atual no Omie (10/20/50/60)"
+    },
+    "status_real": {
+      "type": "string",
+      "description": "Status NF (etapa 60): emitida, rejeitada, cancelada, denegada, aguardando_nf"
+    },
+    "status_label": {
+      "type": "string",
+      "description": "Label leg\u00edvel do status (ex: Faturado, Aguardando NF...)"
+    },
+    "numero_nf": {
+      "type": "string",
+      "description": "N\u00famero da NF emitida (etapa 60)"
+    },
+    "data_faturamento": {
+      "type": "string",
+      "format": "date-time"
     },
     "codigo_cliente": {
       "type": "string",
