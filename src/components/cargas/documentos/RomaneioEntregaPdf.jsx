@@ -188,42 +188,42 @@ export default function RomaneioEntregaPdf({ carga }) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr style={{ fontWeight: 700 }}>
+                  <tr style={{ fontWeight: 700, background: '#fafafa' }}>
                     <td colSpan="10" style={{ padding: '3px 4px' }}>
                       {grupo.codigo_cliente_display} - {grupo.nome_cliente}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan="10" style={{ padding: '0 4px', fontSize: '8.5px' }}>
-                      Fantasia: {grupo.nome_fantasia || '-'}
+                      {grupo.nome_fantasia ? <span style={{ fontWeight: 400, fontSize: '8.5px', color: '#555' }}> &nbsp;|&nbsp; Fantasia: {grupo.nome_fantasia}</span> : null}
                     </td>
                   </tr>
                   {grupo.pedidos.map((l, i) => {
                     const dtEmissao = l.data_previsao || carga.data_carga;
                     const dtVenc = l.data_vencimento || dtEmissao;
                     return (
-                      <tr key={i}>
-                        <td style={{ padding: '2px 4px' }}></td>
-                        <td style={{ padding: '2px 4px' }}>{l.numero_pedido || '-'}</td>
-                        <td style={{ padding: '2px 4px' }}>{l.numero_nf || '-'}</td>
-                        <td style={{ padding: '2px 4px', fontWeight: 700 }}>{l._tipo}</td>
-                        <td style={{ padding: '2px 4px' }}>1</td>
-                        <td style={{ padding: '2px 4px' }}>{(l.cobranca || '').toString().slice(0, 4) || '-'}</td>
-                        <td style={{ padding: '2px 4px' }}>{dtEmissao || '-'}</td>
-                        <td style={{ padding: '2px 4px' }}>{dtVenc || '-'}</td>
-                        <td style={{ padding: '2px 4px', textAlign: 'right' }}>{fmtMoney(l.valor_total_pedido)}</td>
-                        <td style={{ padding: '2px 4px' }}>{l.vendedor_nome || '-'}</td>
-                      </tr>
+                      <React.Fragment key={i}>
+                        <tr>
+                          <td style={{ padding: '2px 4px' }}></td>
+                          <td style={{ padding: '2px 4px' }}>{l.numero_pedido || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{l.numero_nf || '-'}</td>
+                          <td style={{ padding: '2px 4px', fontWeight: 700 }}>{l._tipo}</td>
+                          <td style={{ padding: '2px 4px' }}>1</td>
+                          <td style={{ padding: '2px 4px' }}>{(l.cobranca || '').toString().slice(0, 4) || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{dtEmissao || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{dtVenc || '-'}</td>
+                          <td style={{ padding: '2px 4px', textAlign: 'right' }}>{fmtMoney(l.valor_total_pedido)}</td>
+                          <td style={{ padding: '2px 4px' }}>{l.vendedor_nome || '-'}</td>
+                        </tr>
+                        <tr>
+                          <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
+                            <strong>Ped. {l.numero_pedido || '-'}:</strong>
+                            <span style={{ marginLeft: '20px' }}>Ass.:_______________________</span>
+                            <span style={{ marginLeft: '14px' }}>RG.:_______________</span>
+                            <span style={{ marginLeft: '14px' }}>Data:___/___/____</span>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
-              <div style={{ fontSize: '8.5px', marginTop: '4px', paddingLeft: '4px' }}>
-                <strong>OBSERVAÇÃO:</strong>
-                <span style={{ marginLeft: '40px' }}>Ass.:_______________________</span>
-                <span style={{ marginLeft: '20px' }}>RG.:_______________</span>
-                <span style={{ marginLeft: '20px' }}>Data:___/___/____</span>
-              </div>
             </div>
           ))}
         </div>
