@@ -29,16 +29,23 @@ function extrairPedido(consulta, pedidoOriginal) {
   const pedido = consulta?.pedido_venda_produto || consulta || {};
   const cab = pedido.cabecalho || {};
   const info = pedido.informacoes_adicionais || {};
-  const texto = JSON.stringify(consulta || {}).toLowerCase();
   const etapa = String(cab.etapa || pedidoOriginal.etapa || '');
   const numeroNf = cab.numero_nf || cab.numero_nota_fiscal || info.numero_nf || info.numero_nota_fiscal || pedidoOriginal.numero_nf || '';
+
+  // Cancelamento real do Omie vem em cab.cancelado === 'S' ou info.cancelada === 'S'.
+  // NUNCA inferir cancelamento por busca textual no JSON — palavras como "cancelar_pedido"
+  // aparecem em campos de configuração e davam falso-positivo.
+  const cancelado =
+    String(cab.cancelado || '').toUpperCase() === 'S' ||
+    String(info.cancelada || '').toUpperCase() === 'S' ||
+    String(cab.status_pedido || cab.status || '').toLowerCase().includes('cancel');
 
   return {
     etapa,
     status_pedido: cab.status_pedido || cab.status || pedidoOriginal.status_pedido || '',
     numero_nf: numeroNf,
     faturado: etapa === '60' || !!numeroNf,
-    cancelado: texto.includes('cancelado') || texto.includes('cancelada')
+    cancelado
   };
 }
 
