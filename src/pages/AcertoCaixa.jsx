@@ -39,9 +39,10 @@ export default function AcertoCaixa() {
     return m;
   }, [acertos]);
 
-  // Cargas elegíveis (sem acerto finalizado)
+  // Cargas elegíveis (sem acerto finalizado e carga não cancelada)
   const cargasElegiveis = useMemo(() => {
     return cargas.filter(c => {
+      if (c.status_carga === 'cancelada') return false;
       const a = acertosPorCarga.get(c.id);
       if (a?.status_acerto === 'finalizado') return false;
       if (filtroIni && c.data_carga < filtroIni) return false;
