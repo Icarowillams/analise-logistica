@@ -168,7 +168,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   };
 
   return (
-    <Card className="sticky top-4 border-0 bg-white shadow-sm rounded-xl">
+    <Card className="2xl:sticky 2xl:top-4 border-0 bg-white shadow-sm rounded-xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm text-slate-900">Fechar carga</CardTitle>
       </CardHeader>

@@ -99,19 +99,19 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
 
                 {!colapsada && (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] text-sm">
+                    <table className="w-full min-w-[820px] text-xs">
                       <thead className="bg-white text-[11px] uppercase tracking-wide text-slate-500">
                         <tr className="border-b border-slate-200">
                           <th className="p-3 w-10"></th>
-                          <th className="p-3 text-left">Tipo</th>
-                          <th className="p-3 text-left">Pedido</th>
-                          <th className="p-3 text-left">Código</th>
-                          <th className="p-3 text-left">Cliente</th>
-                          <th className="p-3 text-left">Cidade</th>
-                          <th className="p-3 text-left">Vendedor</th>
-                          <th className="p-3 text-right">Itens</th>
-                          <th className="p-3 text-right">Pacotes</th>
-                          <th className="p-3 text-right">Valor</th>
+                          <th className="p-2 text-left w-24">Tipo</th>
+                          <th className="p-2 text-left w-20">Pedido</th>
+                          <th className="p-2 text-left w-28">Código</th>
+                          <th className="p-2 text-left min-w-48">Cliente</th>
+                          <th className="p-2 text-left w-24">Cidade</th>
+                          <th className="p-2 text-left w-28">Vendedor</th>
+                          <th className="p-2 text-right w-14">Itens</th>
+                          <th className="p-2 text-right w-16">Pacotes</th>
+                          <th className="p-2 text-right w-24">Valor</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -122,22 +122,22 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                               <td className="p-3" onClick={(e) => e.stopPropagation()}>
                                 <Checkbox checked={selecionado} onCheckedChange={() => toggle(p.codigo_pedido)} />
                               </td>
-                              <td className="p-3">
+                              <td className="p-2">
                                 <Badge className={p.tipo === 'troca' ? 'border-orange-200 bg-orange-50 text-orange-700' : p.tipo === 'd1' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
-                                  {p.tipo === 'troca' ? 'Troca' : p.tipo === 'd1' ? 'D1 Interno' : 'Venda Omie'}
+                                  {p.tipo === 'troca' ? 'Troca' : p.tipo === 'd1' ? 'D1' : 'Venda'}
                                 </Badge>
                               </td>
-                              <td className="p-3 font-mono text-xs text-slate-700">{p.numero_pedido || '-'}</td>
-                              <td className="p-3 font-mono text-xs text-slate-500">{p.codigo_cliente_cod || '-'}</td>
-                              <td className="p-3">
-                                <div className="font-medium text-slate-900">{p.nome_fantasia || p.nome_cliente || '-'}</div>
-                                {p.nome_fantasia && p.nome_cliente && p.nome_fantasia !== p.nome_cliente && <div className="text-xs text-slate-500">{p.nome_cliente}</div>}
+                              <td className="p-2 font-mono text-xs text-slate-700">{p.numero_pedido || '-'}</td>
+                              <td className="p-2 font-mono text-xs text-slate-500">{p.codigo_cliente_cod || '-'}</td>
+                              <td className="p-2">
+                                <div className="font-medium text-slate-900 truncate" title={p.nome_fantasia || p.nome_cliente || ''}>{p.nome_fantasia || p.nome_cliente || '-'}</div>
+                                {p.nome_fantasia && p.nome_cliente && p.nome_fantasia !== p.nome_cliente && <div className="text-xs text-slate-500 truncate" title={p.nome_cliente}>{p.nome_cliente}</div>}
                               </td>
-                              <td className="p-3 text-slate-600">{p.cidade || '-'}</td>
-                              <td className="p-3 text-slate-600">{p.vendedor_nome || '-'}</td>
-                              <td className="p-3 text-right text-slate-700">{p.quantidade_itens || 0}</td>
-                              <td className="p-3 text-right font-semibold text-slate-900">{qtdPacotesPedido(p).toLocaleString('pt-BR')}</td>
-                              <td className="p-3 text-right font-semibold text-slate-900">{formatCurrency(p.valor_total_pedido)}</td>
+                              <td className="p-2 text-slate-600 truncate">{p.cidade || '-'}</td>
+                              <td className="p-2 text-slate-600 truncate">{p.vendedor_nome || '-'}</td>
+                              <td className="p-2 text-right text-slate-700">{p.quantidade_itens || 0}</td>
+                              <td className="p-2 text-right font-semibold text-slate-900">{qtdPacotesPedido(p).toLocaleString('pt-BR')}</td>
+                              <td className="p-2 text-right font-semibold text-slate-900">{formatCurrency(p.valor_total_pedido)}</td>
                             </tr>
                           );
                         })}

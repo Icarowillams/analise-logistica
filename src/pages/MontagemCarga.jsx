@@ -19,8 +19,8 @@ export default function MontagemCarga() {
   const pedidosSelecionados = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
 
   return (
-    <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-[#eefcff] p-4 md:p-6">
-      <div className="space-y-3 max-w-[1760px] mx-auto">
+    <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-[#eefcff] p-3 md:p-5">
+      <div className="space-y-3 w-full max-w-none mx-auto">
         <MontagemHeader loading={loading} onRefresh={recarregar} />
         <StatsCardsMontagem pedidos={pedidosFiltrados} selecionados={selecionados} />
         <MontagemFiltros
@@ -38,9 +38,9 @@ export default function MontagemCarga() {
             <div className="mt-3 text-sm font-medium">Carregando pedidos Omie e trocas aprovadas...</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
+          <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
             <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} />
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-1 gap-4">
               <PainelFecharCarga
                 pedidos={pedidos}
                 selecionados={selecionados}
