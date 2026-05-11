@@ -208,7 +208,13 @@ export default function Operacao() {
       return (
         <CardPedidoKanban
           key={p.codigo_pedido}
-          pedido={{ ...p, data_previsao: formatarData(p.data_previsao) }}
+          pedido={{
+            ...p,
+            data_previsao: formatarData(p.data_previsao),
+            cliente_nome: p.nome_fantasia || p.nome_cliente,
+            cliente_cidade: p.cidade,
+            rota_nome: p.rota_nome || p.rota_cliente
+          }}
           borderColor={borderColor}
           origemLabel={origemLabel}
           draggable
