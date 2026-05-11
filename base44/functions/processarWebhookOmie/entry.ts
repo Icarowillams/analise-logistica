@@ -85,25 +85,43 @@ async function upsertEspelho(base44, omieCodigoPedido) {
     return;
   }
 
-  // Enriquecer com cliente local
+  // Enriquecer com cliente local — busca DETERMINÍSTICA por código (sem depender de paginação)
   const codigoClienteOmie = String(pedidoBruto.cabecalho.codigo_cliente || '');
-  const [clientes, pedidosLocais, rotas, vendedores] = await Promise.all([
-    base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
-    base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(omieCodigoPedido) }),
-    base44.asServiceRole.entities.Rota.list('-created_date', 1000),
-    base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
+  const [
+    clientesPorIntegracao,
+    clientesPorInterno,
+    clientesPorOmie,
+    pedidosLocais
+  ] = await Promise.all([
+    base44.asServiceRole.entities.Cliente.filter({ codigo_integracao: codigoClienteOmie }, '-created_date', 5),
+    base44.asServiceRole.entities.Cliente.filter({ codigo_interno: codigoClienteOmie }, '-created_date', 5),
+    base44.asServiceRole.entities.Cliente.filter({ codigo_omie: codigoClienteOmie }, '-created_date', 5),
+    base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(omieCodigoPedido) })
   ]);
 
-  const norm = (v) => String(v || '').trim().toLowerCase();
-  const cliente = clientes.find(c =>
-    [c.codigo_omie, c.codigo, c.codigo_interno, c.codigo_integracao].some(x => norm(x) === norm(codigoClienteOmie))
-  ) || null;
+  const cliente =
+    clientesPorIntegracao[0] ||
+    clientesPorInterno[0] ||
+    clientesPorOmie[0] ||
+    null;
 
   const pedidoLocal = pedidosLocais[0] || null;
-  const mapaRota = new Map(rotas.map(r => [r.id, r.nome]));
-  const mapaVendedor = new Map(vendedores.map(v => [v.id, v.nome]));
-  const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || '');
-  const vendedorNome = cliente?.vendedor_id ? (mapaVendedor.get(cliente.vendedor_id) || '') : (pedidoLocal?.vendedor_nome || '');
+
+  // Resolve rota e vendedor pelo ID — busca direta (1 registro), sem paginação
+  const rotaIdEfetivo = cliente?.rota_id || pedidoLocal?.rota_id || null;
+  const vendedorIdEfetivo = cliente?.vendedor_id || pedidoLocal?.vendedor_id || null;
+
+  const [rotaRec, vendedorRec] = await Promise.all([
+    rotaIdEfetivo
+      ? base44.asServiceRole.entities.Rota.filter({ id: rotaIdEfetivo }, '-created_date', 1).catch(() => [])
+      : Promise.resolve([]),
+    vendedorIdEfetivo
+      ? base44.asServiceRole.entities.Vendedor.filter({ id: vendedorIdEfetivo }, '-created_date', 1).catch(() => [])
+      : Promise.resolve([])
+  ]);
+
+  const rotaNome = rotaRec[0]?.nome || pedidoLocal?.rota_nome || '';
+  const vendedorNome = vendedorRec[0]?.nome || pedidoLocal?.vendedor_nome || '';
 
   // Status NF apenas pra etapa 60
   const infoNfe = pedidoBruto.infoNfe || pedidoBruto.info_nf || null;
