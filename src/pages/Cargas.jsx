@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2 } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -150,6 +150,18 @@ export default function Cargas() {
     setExcluindo(null);
   };
 
+  const abrirNotas = (carga) => {
+    navigate(`/NotasOmie?carga_id=${carga.id}`);
+  };
+
+  const abrirBoletos = (carga) => {
+    navigate(`/BoletosOmie?carga_id=${carga.id}`);
+  };
+
+  const recursoEmBreve = () => {
+    toast.info('Funcionalidade será configurada após o envio dos detalhes.');
+  };
+
   const faturaveisIds = cargas.filter(c => FATURAVEL.includes(c.status_carga)).map(c => c.id);
   const todasSelecionadas = faturaveisIds.length > 0 && selecionadas.length === faturaveisIds.length;
 
@@ -197,14 +209,26 @@ export default function Cargas() {
     {
       key: 'acoes',
       label: 'Ações',
-      width: '200px',
+      width: '460px',
       render: (_, row) => (
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga) && (
             <Button size="sm" onClick={() => faturar(row)} disabled={faturando === row.id}>
               {faturando === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Faturar'}
             </Button>
           )}
+          <Button size="sm" variant="outline" onClick={() => abrirNotas(row)} title="Abrir NFe da carga">
+            <FileText className="w-4 h-4" /> NFe
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => abrirBoletos(row)} title="Abrir boletos da carga">
+            <Receipt className="w-4 h-4" /> Boleto
+          </Button>
+          <Button size="sm" variant="outline" onClick={recursoEmBreve} title="Listagem de carregamento">
+            <ClipboardList className="w-4 h-4" /> Listagem
+          </Button>
+          <Button size="sm" variant="outline" onClick={recursoEmBreve} title="Romaneio">
+            <MapPinned className="w-4 h-4" /> Romaneio
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setExcluindo(row)}>
             <Trash2 className="w-4 h-4" />
           </Button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,17 +29,30 @@ export default function NotasOmie() {
   const [resultado, setResultado] = useState(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(null);
   const [detalheCompleto, setDetalheCompleto] = useState(null);
+  const [cargaFiltro, setCargaFiltro] = useState(null);
 
-  const buscar = async (pg = 1) => {
+  const getNotasCarga = (carga) => new Set([
+    ...(carga?.notas_fiscais || []),
+    ...(carga?.pedidos_omie || []).flatMap(p => [p.numero_nf, p.numero_nota_fiscal, p.nf, p.nota_fiscal])
+  ].filter(Boolean).map(n => String(n).replace(/\D/g, '')));
+
+  const filtrarNfsPorCarga = (nfs, carga) => {
+    const notasCarga = getNotasCarga(carga);
+    if (!carga || notasCarga.size === 0) return nfs;
+    return (nfs || []).filter(nf => notasCarga.has(String(nf.cNumero || '').replace(/\D/g, '')));
+  };
+
+  const buscar = async (pg = 1, carga = cargaFiltro, filtrosBusca = filtros) => {
     setLoading(true);
     try {
       const { data } = await base44.functions.invoke('listarNfsOmie', {
-        ...filtros,
+        ...filtrosBusca,
         pagina: pg,
         registros_por_pagina: 50
       });
       if (data?.sucesso) {
-        setResultado(data);
+        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], carga);
+        setResultado(carga ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
         setPagina(pg);
       } else {
         toast.error(data?.error || 'Erro ao consultar NFs');
@@ -66,6 +79,27 @@ export default function NotasOmie() {
     }
     setLoadingDetalhe(null);
   };
+
+  useEffect(() => {
+    const cargaId = new URLSearchParams(window.location.search).get('carga_id');
+    if (!cargaId) return;
+
+    const carregarCarga = async () => {
+      const cargas = await base44.entities.Carga.filter({ id: cargaId }, '-created_date', 1);
+      const carga = cargas?.[0];
+      if (!carga) return;
+      setCargaFiltro(carga);
+      let filtrosCarga = filtros;
+      if (carga.data_carga) {
+        const [y, m, d] = carga.data_carga.split('-');
+        filtrosCarga = { ...filtros, data_inicial: `${d}/${m}/${y}`, data_final: `${d}/${m}/${y}` };
+        setFiltros(filtrosCarga);
+      }
+      setTimeout(() => buscar(1, carga, filtrosCarga), 0);
+    };
+
+    carregarCarga();
+  }, []);
 
   const columns = [
     { key: 'cNumero', label: 'Nº NF', width: '100px', sortable: true },
@@ -117,6 +151,14 @@ export default function NotasOmie() {
           <p className="text-sm text-slate-500">Consulta, DANFE, XML, itens, impostos, pedido e JSON bruto completo</p>
         </div>
       </div>
+
+      {cargaFiltro && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="py-3 text-sm text-blue-800">
+            Exibindo NFe filtrada pela carga <b>{cargaFiltro.numero_carga}</b>.
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
