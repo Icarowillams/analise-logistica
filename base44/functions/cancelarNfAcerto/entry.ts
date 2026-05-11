@@ -37,7 +37,6 @@ async function omieCall(endpoint, call, param, tentativa = 1) {
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 function dataBR(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }
-function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
 
 Deno.serve(async (req) => {
   try {
@@ -63,36 +62,29 @@ Deno.serve(async (req) => {
     const ped = consulta.pedido_venda_produto;
     if (!ped) return Response.json({ error: 'Pedido não retornado pelo Omie' }, { status: 400 });
 
-    const codigoCliente = ped?.cabecalho?.codigo_cliente;
+    const codigoCliente = Number(ped?.cabecalho?.codigo_cliente || 0);
     const valorPedido = Number(ped?.total_pedido?.valor_total_pedido || 0);
     const dataPrev = ped?.cabecalho?.data_previsao || '';
 
-    // Pega CNPJ do cliente via API de clientes (doc: /geral/clientes/ ConsultarCliente)
-    let cnpjCliente = '';
-    if (codigoCliente) {
-      const cli = await omieCall('geral/clientes', 'ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) });
-      cnpjCliente = soDigitos(cli?.cnpj_cpf);
-    }
-
     // ───────────────────────────────────────────────────────────
-    // 2) ListarNF — procura NF pelo CNPJ + valor, últimos 2 meses
-    //    (doc: /produtos/nfconsultar/ ListarNF)
+    // 2) ListarNF — procura NF pelo nCodCli + valor, últimos 2 meses
+    //    Match composto: nfDestInt.nCodCli == codigoCliente E |vNF - valor| < 0.05
+    //    Ignora NF de entrada (tpNF != "1")
     // ───────────────────────────────────────────────────────────
     let numeroNf = '';
     let nfJaCancelada = false;
 
-    if (cnpjCliente) {
+    if (codigoCliente) {
       const hoje = new Date();
       const ini = new Date(); ini.setMonth(ini.getMonth() - 2);
 
-      // Filtra pelo CNPJ — reduz muito o resultado, normalmente cabe em 1 página
       const param = {
         pagina: 1,
         registros_por_pagina: 100,
         ordenar_por: 'CODIGO',
-        dEmiInicial: dataBR(ini),
-        dEmiFinal: dataBR(hoje),
-        cCPFCNPJDest: cnpjCliente
+        ordem_decrescente: 'S',
+        filtrar_por_data_de: dataBR(ini),
+        filtrar_por_data_ate: dataBR(hoje)
       };
 
       for (let pagina = 1; pagina <= 5; pagina++) {
@@ -102,6 +94,11 @@ Deno.serve(async (req) => {
         if (lista.length === 0) break;
 
         const match = lista.find(nf => {
+          // Ignora NF de entrada
+          const tpNF = String(nf?.ide?.tpNF ?? '');
+          if (tpNF && tpNF !== '1') return false;
+          const nCodCli = Number(nf?.nfDestInt?.nCodCli || 0);
+          if (nCodCli !== codigoCliente) return false;
           const vNF = Number(nf?.total?.ICMSTot?.vNF || 0);
           return Math.abs(vNF - valorPedido) < 0.05;
         });

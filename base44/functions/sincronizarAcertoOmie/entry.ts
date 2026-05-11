@@ -3,6 +3,27 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const OMIE_KEY = Deno.env.get('OMIE_API_KEY');
 const OMIE_SECRET = Deno.env.get('OMIE_API_SECRET');
 
+async function consultarPedido(codigoPedido, tentativa = 1) {
+  const res = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      call: 'ConsultarPedido',
+      app_key: OMIE_KEY,
+      app_secret: OMIE_SECRET,
+      param: [{ codigo_pedido: Number(codigoPedido) }]
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  const fs = String(data?.faultstring || '').toLowerCase();
+  const transient = fs.includes('cota') || fs.includes('aguarde') || fs.includes('limite de requisi') || res.status === 429;
+  if (transient && tentativa < 4) {
+    await new Promise(r => setTimeout(r, 3000 * tentativa));
+    return consultarPedido(codigoPedido, tentativa + 1);
+  }
+  return data;
+}
+
 // Sincroniza notas do AcertoCaixa com o status atual no Omie.
 // Para cada nota, chama ConsultarPedido. Se etapa indicar cancelamento,
 // marca a nota como nao_entregue com valor_recebido = 0.
@@ -25,27 +46,19 @@ Deno.serve(async (req) => {
       if (!nota.codigo_pedido) continue;
       if (nota.status_entrega === 'nao_entregue' && (nota.motivo_cancelamento || '').toLowerCase().includes('cancelada no omie')) continue;
 
-      const res = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          call: 'ConsultarPedido',
-          app_key: OMIE_KEY,
-          app_secret: OMIE_SECRET,
-          param: [{ codigo_pedido: Number(nota.codigo_pedido) }]
-        })
-      });
-      const data = await res.json().catch(() => ({}));
+      const data = await consultarPedido(nota.codigo_pedido);
       const fs = (data?.faultstring || '').toLowerCase();
       const ped = data?.pedido_venda_produto || {};
       const etapa = ped?.cabecalho?.etapa || '';
-      const isCancelado = fs.includes('cancelad') || etapa === '99' || etapa === 'cancelado';
+      const numeroNfRet = ped?.informacoes_adicionais?.numero_pedido_cliente || '';
+      const isCancelado = fs.includes('cancelad') || fs.includes('excluíd') || fs.includes('excluid') || etapa === '99' || etapa === 'cancelado';
 
       if (isCancelado) {
         nota.status_entrega = 'nao_entregue';
         nota.valor_recebido = 0;
         nota.diferenca = -Number(nota.valor_original || 0);
         nota.motivo_cancelamento = 'Cancelada no Omie';
+        if (!nota.numero_nfe && numeroNfRet) nota.numero_nfe = String(numeroNfRet);
         alteradas++;
       }
     }
