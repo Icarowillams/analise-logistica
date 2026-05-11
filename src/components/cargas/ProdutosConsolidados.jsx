@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Package, Printer } from 'lucide-react';
+import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 
 export default function ProdutosConsolidados({ pedidosSelecionados }) {
+  const [abrirLista, setAbrirLista] = useState(false);
   const consolidado = useMemo(() => {
     const map = new Map();
     pedidosSelecionados.forEach(p => {
@@ -24,11 +27,20 @@ export default function ProdutosConsolidados({ pedidosSelecionados }) {
 
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
-      <CardHeader className="pb-3 border-b border-slate-100">
+      <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm flex items-center gap-2 text-slate-900">
           <Package className="w-4 h-4 text-slate-700" />
           Produtos consolidados ({consolidado.length})
         </CardTitle>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pedidosSelecionados.length === 0}
+          onClick={() => setAbrirLista(true)}
+          className="h-7 text-xs"
+        >
+          <Printer className="w-3.5 h-3.5 mr-1" /> Lista
+        </Button>
       </CardHeader>
       <CardContent className="p-0 max-h-80 overflow-auto">
         {consolidado.length === 0 ? (
@@ -54,6 +66,14 @@ export default function ProdutosConsolidados({ pedidosSelecionados }) {
           </table>
         )}
       </CardContent>
+
+      <DocumentosCargaModal
+        open={abrirLista}
+        onOpenChange={() => setAbrirLista(false)}
+        tipo="lista"
+        pedidosManuais={pedidosSelecionados}
+        meta={{ numero_carga: 'Prévia (montagem)' }}
+      />
     </Card>
   );
 }

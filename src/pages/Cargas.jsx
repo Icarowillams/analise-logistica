@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import { toast } from 'sonner';
 
 const FATURAVEL = ['montagem', 'montando', 'fechada', 'conferindo', 'pronta'];
@@ -40,6 +41,7 @@ export default function Cargas() {
   const [excluindo, setExcluindo] = useState(null);
   const [selecionadas, setSelecionadas] = useState([]);
   const [faturandoLote, setFaturandoLote] = useState(false);
+  const [documento, setDocumento] = useState(null); // { tipo: 'lista' | 'romaneio', carga }
 
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
@@ -158,9 +160,7 @@ export default function Cargas() {
     navigate(`/BoletosOmie?carga_id=${carga.id}`);
   };
 
-  const recursoEmBreve = () => {
-    toast.info('Funcionalidade será configurada após o envio dos detalhes.');
-  };
+  const abrirDocumento = (tipo, carga) => setDocumento({ tipo, carga });
 
   const faturaveisIds = cargas.filter(c => FATURAVEL.includes(c.status_carga)).map(c => c.id);
   const todasSelecionadas = faturaveisIds.length > 0 && selecionadas.length === faturaveisIds.length;
@@ -223,10 +223,10 @@ export default function Cargas() {
           <Button size="sm" variant="outline" onClick={() => abrirBoletos(row)} title="Abrir boletos da carga">
             <Receipt className="w-4 h-4" /> Boleto
           </Button>
-          <Button size="sm" variant="outline" onClick={recursoEmBreve} title="Listagem de carregamento">
+          <Button size="sm" variant="outline" onClick={() => abrirDocumento('lista', row)} title="Listagem de carregamento">
             <ClipboardList className="w-4 h-4" /> Listagem
           </Button>
-          <Button size="sm" variant="outline" onClick={recursoEmBreve} title="Romaneio">
+          <Button size="sm" variant="outline" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
             <MapPinned className="w-4 h-4" /> Romaneio
           </Button>
           <Button size="sm" variant="outline" onClick={() => setExcluindo(row)}>
@@ -280,6 +280,13 @@ export default function Cargas() {
         onConfirm={excluir}
         title="Excluir carga"
         description={`Excluir carga ${excluindo?.numero_carga}? Os pedidos no Omie NÃO serão alterados.`}
+      />
+
+      <DocumentosCargaModal
+        open={!!documento}
+        onOpenChange={() => setDocumento(null)}
+        tipo={documento?.tipo}
+        carga={documento?.carga}
       />
     </div>
   );
