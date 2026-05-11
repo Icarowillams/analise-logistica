@@ -23,21 +23,24 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4)
     return data;
 }
 
-// Formata data DD/MM/YYYY
+// Formata data DD/MM/YYYY — SEMPRE extrai a parte de data como string,
+// NUNCA usa new Date() pra não sofrer deslocamento de timezone.
+// A data salva no Base44 é EXATAMENTE a que vai pro Omie.
 function formatDateOmie(dateStr) {
     if (!dateStr) {
-        const now = new Date();
-        const d = String(now.getDate()).padStart(2, '0');
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const y = now.getFullYear();
+        // Hoje em America/Recife (UTC-3) — usa toLocaleDateString pra evitar deslocamento
+        const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
+        return hoje; // já vem como DD/MM/YYYY
+    }
+    const s = String(dateStr).trim();
+    // Já está em DD/MM/YYYY?
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    // ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm...) — pega só a parte de data, SEM converter pra Date
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        const [y, m, d] = s.split('T')[0].split('-');
         return `${d}/${m}/${y}`;
     }
-    // Aceita ISO (YYYY-MM-DD) ou DD/MM/YYYY
-    if (dateStr.includes('-')) {
-        const [y, m, d] = dateStr.split('T')[0].split('-');
-        return `${d}/${m}/${y}`;
-    }
-    return dateStr;
+    return s;
 }
 
 // Gera parcelas baseado no plano de pagamento
