@@ -1,7 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Transfere um pedido de uma carga para outra (operação LOCAL, não chama Omie)
-// body: { pedido_codigo_omie, carga_origem_id, carga_destino_id, motivo }
+// Transfere um ou mais pedidos de uma carga para outra (operação LOCAL, não chama Omie)
+// body: {
+//   pedidos_codigos_omie: string[],   // novo (vários)
+//   pedido_codigo_omie: string,        // legacy (um só) — mantido pra compatibilidade
+//   carga_origem_id, carga_destino_id, motivo
+// }
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -9,34 +13,54 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { pedido_codigo_omie, carga_origem_id, carga_destino_id, motivo = '' } = body;
-    if (!pedido_codigo_omie || !carga_origem_id || !carga_destino_id) {
-      return Response.json({ error: 'pedido_codigo_omie, carga_origem_id e carga_destino_id obrigatórios' }, { status: 400 });
+    const {
+      pedidos_codigos_omie,
+      pedido_codigo_omie,
+      carga_origem_id,
+      carga_destino_id,
+      motivo = ''
+    } = body;
+
+    // Normaliza para sempre trabalhar com array
+    const codigos = Array.isArray(pedidos_codigos_omie) && pedidos_codigos_omie.length
+      ? pedidos_codigos_omie.map(String)
+      : (pedido_codigo_omie ? [String(pedido_codigo_omie)] : []);
+
+    if (codigos.length === 0 || !carga_origem_id || !carga_destino_id) {
+      return Response.json({ error: 'pedidos_codigos_omie (ou pedido_codigo_omie), carga_origem_id e carga_destino_id obrigatórios' }, { status: 400 });
+    }
+    if (carga_origem_id === carga_destino_id) {
+      return Response.json({ error: 'Carga origem e destino devem ser diferentes' }, { status: 400 });
     }
 
     const origem = await base44.asServiceRole.entities.Carga.get(carga_origem_id);
     const destino = await base44.asServiceRole.entities.Carga.get(carga_destino_id);
     if (!origem || !destino) return Response.json({ error: 'Carga origem ou destino não encontrada' }, { status: 404 });
 
-    const pedido = (origem.pedidos_omie || []).find(p => String(p.codigo_pedido) === String(pedido_codigo_omie));
-    if (!pedido) return Response.json({ error: 'Pedido não está na carga origem' }, { status: 404 });
-    if (JSON.stringify(pedido).toLowerCase().includes('cancelado') || JSON.stringify(pedido).toLowerCase().includes('cancelada')) {
-      return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
+    const pedidosOrigem = origem.pedidos_omie || [];
+    const pedidosMover = pedidosOrigem.filter(p => codigos.includes(String(p.codigo_pedido)));
+
+    if (pedidosMover.length === 0) {
+      return Response.json({ error: 'Nenhum dos pedidos informados está na carga origem' }, { status: 404 });
+    }
+
+    // Bloqueia pedidos cancelados
+    const cancelado = pedidosMover.find(p => JSON.stringify(p).toLowerCase().match(/cancelad[oa]/));
+    if (cancelado) {
+      return Response.json({ error: `Pedido ${cancelado.numero_pedido} está cancelado: não pode ser transferido.` }, { status: 400 });
     }
 
     // Remove da origem
-    const novosPedidosOrigem = (origem.pedidos_omie || []).filter(p => String(p.codigo_pedido) !== String(pedido_codigo_omie));
-
+    const novosPedidosOrigem = pedidosOrigem.filter(p => !codigos.includes(String(p.codigo_pedido)));
     // Adiciona no destino
-    const novosPedidosDestino = [...(destino.pedidos_omie || []), pedido];
+    const novosPedidosDestino = [...(destino.pedidos_omie || []), ...pedidosMover];
 
-    // Recalcula totais (valor, pedidos, clientes únicos, peso, volume e produtos consolidados)
+    // Recalcula totais + consolida produtos (entram na Listagem da carga destino)
     const recalcularCarga = async (pedidos, pedidosTroca = []) => {
       const todos = [...pedidos, ...pedidosTroca];
       const valor_total = todos.reduce((s, p) => s + (Number(p.valor_total_pedido) || 0), 0);
       const clientesUnicos = new Set(todos.map(p => p.codigo_cliente || p.cliente_id).filter(Boolean));
 
-      // Consolida produtos por código (somando quantidades)
       const produtosMap = new Map();
       let peso_total_kg = 0;
       let volume_total_m3 = 0;
@@ -57,7 +81,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Busca produtos no Base44 (uma vez só) para obter peso/volume reais
       if (codigosOmie.size > 0) {
         const codArr = Array.from(codigosOmie);
         const produtosBase = await base44.asServiceRole.entities.Produto.filter({ codigo_omie: { $in: codArr } }, '-created_date', 1000);
@@ -92,21 +115,40 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.Carga.update(carga_origem_id, novaOrigem);
     await base44.asServiceRole.entities.Carga.update(carga_destino_id, novoDestino);
 
-    const registro = await base44.asServiceRole.entities.Transferencia.create({
-      pedido_codigo_omie: String(pedido_codigo_omie),
-      numero_pedido: String(pedido.numero_pedido || ''),
-      cliente_nome: pedido.nome_cliente || '',
-      carga_origem_id,
-      carga_origem_numero: origem.numero_carga,
-      carga_destino_id,
-      carga_destino_numero: destino.numero_carga,
-      motivo,
-      valor_nf: pedido.valor_total_pedido || 0,
-      funcionario_nome: user.full_name || user.email,
-      status: 'concluida'
-    });
+    // Atualiza Pedido (Base44) — coluna N. Carga em Gerenciar Pedidos puxa daí
+    const registros = [];
+    for (const ped of pedidosMover) {
+      try {
+        const lista = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(ped.codigo_pedido) }, '-created_date', 1);
+        if (lista && lista[0]) {
+          await base44.asServiceRole.entities.Pedido.update(lista[0].id, {
+            carga_id: carga_destino_id,
+            numero_carga: destino.numero_carga
+          });
+        }
+      } catch (_) { /* ignora — atualização opcional */ }
 
-    return Response.json({ sucesso: true, registro_id: registro.id });
+      const reg = await base44.asServiceRole.entities.Transferencia.create({
+        pedido_codigo_omie: String(ped.codigo_pedido),
+        numero_pedido: String(ped.numero_pedido || ''),
+        cliente_nome: ped.nome_cliente || '',
+        carga_origem_id,
+        carga_origem_numero: origem.numero_carga,
+        carga_destino_id,
+        carga_destino_numero: destino.numero_carga,
+        motivo,
+        valor_nf: ped.valor_total_pedido || 0,
+        funcionario_nome: user.full_name || user.email,
+        status: 'concluida'
+      });
+      registros.push(reg.id);
+    }
+
+    return Response.json({
+      sucesso: true,
+      transferidos: pedidosMover.length,
+      registros_ids: registros
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
