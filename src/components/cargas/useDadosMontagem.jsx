@@ -1,67 +1,82 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
-// Hook central da tela de Montagem de Carga.
-// Carrega em paralelo: pedidos Omie (etapa 20), trocas aprovadas, motoristas, veículos, cargas.
+// Hook central da tela de Montagem de Carga (otimizado via espelho local em tempo real).
+//
+// Arquitetura:
+//   - Vendas Omie (etapa 20) → lidas de PedidoLiberadoOmie (espelho mantido por webhook + backup 1h)
+//   - Pedidos D1 internos    → Pedido (modelo_nota=d1, status=liberado, sem carga_id)
+//   - Trocas                 → PedidoTroca (status=aprovado, sem carga_id)
+//   - Tempo real             → subscribe em PedidoLiberadoOmie, Pedido e PedidoTroca
+//
+// Mantém EXATAMENTE a mesma forma final de cada pedido (compatível com PedidosPorRota, ProdutosConsolidados, etc).
+
 export default function useDadosMontagem() {
   const [loading, setLoading] = useState(true);
   const [pedidos, setPedidos] = useState([]);
   const [motoristas, setMotoristas] = useState([]);
   const [veiculos, setVeiculos] = useState([]);
   const [cargas, setCargas] = useState([]);
+  const refreshTimer = useRef(null);
 
+  // Função única que reconstrói todos os pedidos a partir das fontes locais
   const carregar = useCallback(async () => {
-    setLoading(true);
     try {
-      // Paralelo: cadastros locais
-      const [motP, veiP, carP] = await Promise.all([
+      const [motP, veiP, carP, espelhoOmie, todosPedidosLocais, trocasAprovadas, clientes, rotas] = await Promise.all([
         base44.entities.Motorista.list('-created_date', 500),
         base44.entities.Veiculo.list('-created_date', 500),
-        base44.entities.Carga.list('-created_date', 500)
-      ]);
-      setMotoristas(motP.filter(m => m.status === 'ativo'));
-      setVeiculos(veiP.filter(v => v.ativo !== false));
-      setCargas(carP);
-
-      // Pedidos Omie não podem bloquear os pedidos D1 locais se a integração falhar
-      let vendasRes = null;
-      try {
-        vendasRes = await base44.functions.invoke('buscarPedidosOmie', { etapa: '20', registros_por_pagina: 100, buscar_todas_paginas: true, max_paginas: 8 });
-      } catch (omieError) {
-        toast.warning('Pedidos Omie não carregaram, mas os pedidos D1 internos serão exibidos.');
-      }
-
-      const [todosPedidosLocais, trocasAprovadas, clientesBase, rotas] = await Promise.all([
+        base44.entities.Carga.list('-created_date', 500),
+        base44.entities.PedidoLiberadoOmie.list('-created_date', 5000),
         base44.entities.Pedido.list('-created_date', 1000),
         base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500),
         base44.entities.Cliente.list('-created_date', 5000),
         base44.entities.Rota.list('-created_date', 500)
       ]);
-      const clienteIdsPedidos = [...new Set([...(todosPedidosLocais || []).map(p => p.cliente_id), ...(trocasAprovadas || []).map(t => t.cliente_id)].filter(Boolean))];
-      const clientesExatos = clienteIdsPedidos.length
-        ? (await Promise.all(clienteIdsPedidos.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1)))).flat()
-        : [];
-      const clientes = Array.from(new Map([...(clientesBase || []), ...(clientesExatos || [])].map(c => [c.id, c])).values());
+
+      setMotoristas(motP.filter(m => m.status === 'ativo'));
+      setVeiculos(veiP.filter(v => v.ativo !== false));
+      setCargas(carP);
+
       const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 
+      // 1. Vendas Omie já vêm enriquecidas no espelho — só formatamos pro shape esperado
+      const vendasEnriquecidas = (espelhoOmie || []).map(e => ({
+        codigo_pedido: e.codigo_pedido,
+        codigo_pedido_integracao: e.codigo_pedido_integracao || '',
+        numero_pedido: e.numero_pedido || '',
+        codigo_cliente: e.codigo_cliente || '',
+        codigo_cliente_integracao: e.codigo_cliente_integracao || '',
+        codigo_cliente_cod: e.codigo_cliente_cod || '',
+        cnpj_cpf_cliente: e.cnpj_cpf_cliente || '',
+        cliente_id: e.cliente_id || null,
+        pedido_id: e.pedido_id || null,
+        nome_cliente: e.nome_cliente || '',
+        nome_fantasia: e.nome_fantasia || '',
+        cidade: e.cidade || '',
+        tipo_nota: e.tipo_nota || '55',
+        tags_cliente: e.tags_cliente || [],
+        motorista_padrao_id: e.motorista_padrao_id || null,
+        rota_id: e.rota_id || null,
+        rota_nome: e.rota_nome || 'Sem Rota',
+        rota_cliente: e.rota_cliente || e.rota_nome || 'Sem Rota',
+        vendedor_id: e.vendedor_id || null,
+        vendedor_nome: e.vendedor_nome || '',
+        data_previsao: e.data_previsao || '',
+        etapa: e.etapa || '20',
+        quantidade_itens: e.quantidade_itens || 0,
+        valor_total_pedido: e.valor_total_pedido || 0,
+        produtos: e.produtos || [],
+        tipo: 'venda'
+      }));
+
+      // 2. Pedidos D1 internos (mesma lógica de antes)
       const pedidosD1Locais = (todosPedidosLocais || []).filter(p => {
         const modelo = String(p.modelo_nota || '').toLowerCase();
         return modelo === 'd1' && p.status === 'liberado';
       });
-
-      // Enriquecer vendas
-      let vendasEnriquecidas = [];
-      if (vendasRes?.data?.sucesso && vendasRes.data.pedidos?.length > 0) {
-        const { data: enriq } = await base44.functions.invoke('enriquecerPedidosCarga', {
-          pedidos: vendasRes.data.pedidos
-        });
-        vendasEnriquecidas = enriq?.pedidos || [];
-      }
-
-      // Filtrar pedidos internos D1 que ainda não foram alocados em carga
-      const d1Disponiveis = (pedidosD1Locais || []).filter(p => !p.carga_id);
+      const d1Disponiveis = pedidosD1Locais.filter(p => !p.carga_id);
 
       const d1ComItens = await Promise.all(
         d1Disponiveis.map(async (p) => {
@@ -101,10 +116,8 @@ export default function useDadosMontagem() {
         })
       );
 
-      // Filtrar trocas que ainda não foram alocadas em carga
+      // 3. Trocas (mesma lógica de antes)
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
-
-      // Buscar itens das trocas em paralelo
       const trocasComItens = await Promise.all(
         trocasDisponiveis.map(async (t) => {
           const itens = await base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: t.id });
@@ -139,17 +152,15 @@ export default function useDadosMontagem() {
         })
       );
 
-      // Enriquecer trocas com dados do cliente (cidade, rota, fantasia)
+      // Enriquecer trocas com cliente (mesma lógica)
       const clienteIds = [...new Set(trocasComItens.map(t => t.cliente_id).filter(Boolean))];
       if (clienteIds.length > 0) {
-        const mapaCli = new Map(clientes.filter(c => clienteIds.includes(c.id)).map(c => [c.id, c]));
-        const mapaRota = rotasMap;
         trocasComItens.forEach(t => {
-          const c = mapaCli.get(t.cliente_id);
+          const c = clientesMap.get(t.cliente_id);
           if (c) {
             t.nome_fantasia = c.nome_fantasia || c.razao_social || t.nome_cliente;
             t.cidade = c.cidade || '';
-            t.rota_nome = c.rota_id ? (mapaRota.get(c.rota_id) || 'Sem Rota') : 'Sem Rota';
+            t.rota_nome = c.rota_id ? (rotasMap.get(c.rota_id) || 'Sem Rota') : 'Sem Rota';
             t.rota_cliente = t.rota_nome;
           }
         });
@@ -157,13 +168,46 @@ export default function useDadosMontagem() {
 
       setPedidos([...vendasEnriquecidas, ...d1ComItens, ...trocasComItens]);
     } catch (e) {
-    const msg = e?.response?.data?.error || e.message;
-    toast.error('Erro ao carregar dados: ' + msg);
+      const msg = e?.response?.data?.error || e.message;
+      toast.error('Erro ao carregar dados: ' + msg);
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  // Debounce de refresh — várias mudanças em sequência → 1 reload
+  const agendarRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => { carregar(); }, 600);
+  }, [carregar]);
 
-  return { loading, pedidos, motoristas, veiculos, cargas, recarregar: carregar };
+  // Trigger manual: força reconciliação no backend + reload
+  const recarregar = useCallback(async () => {
+    setLoading(true);
+    // Dispara reconciliação assíncrona (não bloqueia a UI)
+    base44.functions.invoke('bootstrapPedidosLiberadosOmie', { origem: 'reconciliacao' }).catch((e) => {
+      const msg = e?.response?.data?.error || e.message;
+      toast.warning('Reconciliação Omie falhou (usando cache local): ' + msg);
+    });
+    await carregar();
+  }, [carregar]);
+
+  useEffect(() => {
+    carregar();
+
+    // Subscribe em tempo real — qualquer mudança nas 3 fontes reagenda refresh
+    const unsubEspelho = base44.entities.PedidoLiberadoOmie.subscribe(() => agendarRefresh());
+    const unsubPedido = base44.entities.Pedido.subscribe(() => agendarRefresh());
+    const unsubTroca = base44.entities.PedidoTroca.subscribe(() => agendarRefresh());
+    const unsubCarga = base44.entities.Carga.subscribe(() => agendarRefresh());
+
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      unsubEspelho?.();
+      unsubPedido?.();
+      unsubTroca?.();
+      unsubCarga?.();
+    };
+  }, [carregar, agendarRefresh]);
+
+  return { loading, pedidos, motoristas, veiculos, cargas, recarregar };
 }

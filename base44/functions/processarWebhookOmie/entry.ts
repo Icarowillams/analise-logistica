@@ -27,6 +27,117 @@ function recalcularStatusCarga(pedidosOmie, statusAtual) {
   return statusAtual || 'conferindo';
 }
 
+// Remove pedido do espelho PedidoLiberadoOmie (sai da etapa 20)
+async function removerDoEspelhoLiberado(base44, omieCodigoPedido) {
+  if (!omieCodigoPedido) return;
+  const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(omieCodigoPedido) });
+  for (const e of existentes) {
+    await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(e.id);
+  }
+}
+
+// Insere/atualiza pedido no espelho PedidoLiberadoOmie quando entra na etapa 20.
+// Chama bootstrap em modo "incremental" — busca só esse pedido via ConsultarPedido e faz o upsert.
+async function upsertEspelhoLiberado(base44, omieCodigoPedido) {
+  if (!omieCodigoPedido) return;
+
+  const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+  const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+  const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+
+  const consultar = async (tentativa = 1) => {
+    const res = await fetch(OMIE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call: 'ConsultarPedido', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ codigo_pedido: Number(omieCodigoPedido) }] })
+    });
+    const data = await res.json();
+    if (data.faultstring) {
+      const msg = String(data.faultstring).toLowerCase();
+      if ((msg.includes('cota') || msg.includes('aguarde')) && tentativa < 3) {
+        await new Promise(r => setTimeout(r, 2500 * tentativa));
+        return consultar(tentativa + 1);
+      }
+      throw new Error(data.faultstring);
+    }
+    return data.pedido_venda_produto;
+  };
+
+  const pedidoBruto = await consultar();
+  if (!pedidoBruto?.cabecalho) return;
+  const etapa = String(pedidoBruto.cabecalho.etapa || '');
+  if (etapa !== '20') {
+    // Mudou de etapa antes de processarmos — garantir que não fica no espelho
+    await removerDoEspelhoLiberado(base44, omieCodigoPedido);
+    return;
+  }
+
+  // Enriquecer com cliente local (mesma lógica do bootstrap, versão mínima)
+  const codigoClienteOmie = String(pedidoBruto.cabecalho.codigo_cliente || '');
+  const [clientes, pedidosLocais, rotas, vendedores] = await Promise.all([
+    base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
+    base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(omieCodigoPedido) }),
+    base44.asServiceRole.entities.Rota.list('-created_date', 1000),
+    base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
+  ]);
+
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  const cliente = clientes.find(c =>
+    [c.codigo_omie, c.codigo, c.codigo_interno, c.codigo_integracao].some(x => norm(x) === norm(codigoClienteOmie))
+  ) || null;
+
+  const pedidoLocal = pedidosLocais[0] || null;
+  const mapaRota = new Map(rotas.map(r => [r.id, r.nome]));
+  const mapaVendedor = new Map(vendedores.map(v => [v.id, v.nome]));
+  const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || '');
+  const vendedorNome = cliente?.vendedor_id ? (mapaVendedor.get(cliente.vendedor_id) || '') : (pedidoLocal?.vendedor_nome || '');
+
+  const registro = {
+    codigo_pedido: String(omieCodigoPedido),
+    codigo_pedido_integracao: pedidoBruto.cabecalho.codigo_pedido_integracao || '',
+    numero_pedido: String(pedidoBruto.cabecalho.numero_pedido || ''),
+    etapa: '20',
+    codigo_cliente: codigoClienteOmie,
+    codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || '',
+    codigo_cliente_cod: String(cliente?.codigo_interno || cliente?.codigo || cliente?.codigo_integracao || pedidoLocal?.cliente_codigo || ''),
+    cnpj_cpf_cliente: cliente?.cnpj_cpf || pedidoLocal?.cliente_cpf_cnpj || '',
+    cliente_id: cliente?.id || pedidoLocal?.cliente_id || null,
+    nome_cliente: cliente?.razao_social || pedidoLocal?.cliente_nome || `Cliente ${codigoClienteOmie}`,
+    nome_fantasia: cliente?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || cliente?.razao_social || '',
+    cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || '',
+    tipo_nota: cliente?.tipo_nota || pedidoLocal?.modelo_nota || '55',
+    tags_cliente: cliente?.tags || [],
+    motorista_padrao_id: cliente?.motorista_id || null,
+    rota_id: cliente?.rota_id || pedidoLocal?.rota_id || null,
+    rota_nome: rotaNome || 'Sem Rota',
+    rota_cliente: rotaNome || 'Sem Rota',
+    vendedor_id: cliente?.vendedor_id || pedidoLocal?.vendedor_id || null,
+    vendedor_nome: vendedorNome,
+    data_previsao: pedidoBruto.cabecalho.data_previsao || '',
+    quantidade_itens: (pedidoBruto.det || []).length,
+    valor_total_pedido: pedidoBruto.total_pedido?.valor_total_pedido || 0,
+    pedido_id: pedidoLocal?.id || null,
+    produtos: (pedidoBruto.det || []).map(d => ({
+      codigo_produto: String(d.produto?.codigo_produto || ''),
+      codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
+      descricao: d.produto?.descricao || '',
+      quantidade: d.produto?.quantidade || 0,
+      valor_unitario: d.produto?.valor_unitario || 0,
+      valor_total: d.produto?.valor_total || 0,
+      unidade: d.produto?.unidade || ''
+    })),
+    sincronizado_em: new Date().toISOString(),
+    origem_sync: 'webhook'
+  };
+
+  const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(omieCodigoPedido) });
+  if (existentes.length > 0) {
+    await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existentes[0].id, registro);
+  } else {
+    await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
+  }
+}
+
 // Atualiza pedido dentro da carga e recalcula status da carga
 async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados) {
   if (!omieCodigoPedido) return;
@@ -56,8 +167,30 @@ async function handlePedido(base44, topic, evt) {
   const codigoPedido = String(evt?.idPedido || evt?.codigo_pedido || '');
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
+  // 🔄 ESPELHO MONTAGEM: manter PedidoLiberadoOmie em tempo real
+  // Qualquer evento que tire o pedido da etapa 20 → remove do espelho
+  // EtapaAlterada para 20 → adiciona/atualiza no espelho
+  let espelhoAcao = null;
+  try {
+    if (topic === 'VendaProduto.Faturada' || topic === 'VendaProduto.Cancelada' || topic === 'VendaProduto.Excluida' || topic === 'VendaProduto.Devolvida') {
+      await removerDoEspelhoLiberado(base44, codigoPedido);
+      espelhoAcao = 'removido';
+    } else if (topic === 'VendaProduto.EtapaAlterada' || topic === 'VendaProduto.Incluida' || topic === 'VendaProduto.Alterada') {
+      const novaEtapa = String(evt?.etapa || '');
+      if (novaEtapa === '20' || topic === 'VendaProduto.Alterada' || topic === 'VendaProduto.Incluida') {
+        await upsertEspelhoLiberado(base44, codigoPedido);
+        espelhoAcao = 'upsert';
+      } else if (novaEtapa && novaEtapa !== '20') {
+        await removerDoEspelhoLiberado(base44, codigoPedido);
+        espelhoAcao = 'removido';
+      }
+    }
+  } catch (e) {
+    console.error(`[espelhoLiberado] erro ao sincronizar ${codigoPedido}:`, e.message);
+  }
+
   const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigoPedido });
-  if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'pedido não encontrado no Base44' };
+  if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'pedido não encontrado no Base44', espelho: espelhoAcao };
 
   const pedido = pedidos[0];
   const updates = {};
@@ -100,7 +233,7 @@ async function handlePedido(base44, topic, evt) {
     await atualizarPedidoNaCarga(base44, codigoPedido, dadosCarga);
   }
 
-  return { acao: 'atualizado', pedido_id: pedido.id, updates };
+  return { acao: 'atualizado', pedido_id: pedido.id, updates, espelho: espelhoAcao };
 }
 
 async function handleNFe(base44, topic, evt) {
