@@ -1,30 +1,43 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_KEY = Deno.env.get('OMIE_API_KEY');
-const OMIE_SECRET = Deno.env.get('OMIE_API_SECRET');
-const OMIE_BASE = 'https://app.omie.com.br/api/v1';
+// ENDPOINTS (doc oficial Omie):
+// - /produtos/pedido/        → ConsultarPedido     (param: { codigo_pedido })
+// - /produtos/nfconsultar/   → ListarNF            (param: { pagina, registros_por_pagina, ordenar_por, dEmiInicial, dEmiFinal, cCPFCNPJDest })
+// - /produtos/pedidovendafat/→ CancelarPedidoVenda (param: { nCodPed })
+//
+// RETORNO ListarNF → array nfCadastro, onde cada item tem:
+//   ide.nNF              → número da NF
+//   ide.dCan             → data de cancelamento (se preenchido = cancelada)
+//   nfDestInt.cnpj_cpf   → CNPJ/CPF do destinatário
+//   total.ICMSTot.vNF    → valor total da NF
 
-async function omieCall(path, call, param, retries = 3) {
-  const body = { call, app_key: OMIE_KEY, app_secret: OMIE_SECRET, param: [param] };
-  for (let attempt = 0; attempt < retries; attempt++) {
-    const res = await fetch(`${OMIE_BASE}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({}));
-    const fault = (data?.faultstring || '').toLowerCase();
-    if (res.status === 429 || fault.includes('cota')) {
-      await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
-      continue;
+const APP_KEY = Deno.env.get('OMIE_API_KEY');
+const APP_SECRET = Deno.env.get('OMIE_API_SECRET');
+
+async function omieCall(endpoint, call, param, tentativa = 1) {
+  const res = await fetch(`https://app.omie.com.br/api/v1/${endpoint}/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.faultstring) {
+    const msg = String(data.faultstring).toLowerCase();
+    const fc = String(data.faultcode || '');
+    const transient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
+      || msg.includes('limite de requisi') || msg.includes('timeout') || msg.includes('indispon')
+      || fc.includes('425') || fc.includes('520') || res.status === 429;
+    if (transient && tentativa < 4) {
+      await new Promise(r => setTimeout(r, 2000 * tentativa));
+      return omieCall(endpoint, call, param, tentativa + 1);
     }
-    return { status: res.status, data };
   }
-  return { status: 429, data: { faultstring: 'Cota excedida no Omie' } };
+  return data;
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
-function fmtDateBR(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }
+function dataBR(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }
+function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
 
 Deno.serve(async (req) => {
   try {
@@ -35,82 +48,124 @@ Deno.serve(async (req) => {
     const { codigo_pedido, motivo = 'Cancelado no acerto de caixa' } = await req.json().catch(() => ({}));
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
 
-    // 1) ConsultarPedido para pegar codigo_cliente e valor
-    const consulta = await omieCall('/produtos/pedido/', 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
-    if (consulta.status !== 200 || consulta.data?.faultstring) {
-      const fs = (consulta.data?.faultstring || '').toLowerCase();
-      if (fs.includes('cancelad') || fs.includes('já foi')) {
-        return Response.json({ sucesso: true, ja_cancelada: true, mensagem: 'Pedido já cancelado no Omie' });
+    // ───────────────────────────────────────────────────────────
+    // 1) ConsultarPedido — pega CNPJ do cliente e valor total
+    //    (doc: /produtos/pedido/ ConsultarPedido { codigo_pedido })
+    // ───────────────────────────────────────────────────────────
+    const consulta = await omieCall('produtos/pedido', 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
+    if (consulta.faultstring) {
+      const fs = consulta.faultstring.toLowerCase();
+      if (fs.includes('cancelad') || fs.includes('excluíd') || fs.includes('excluid') || fs.includes('não encontrad') || fs.includes('nao encontrad')) {
+        return Response.json({ sucesso: true, ja_cancelada: true, mensagem: 'Pedido já cancelado/excluído no Omie' });
       }
-      return Response.json({ error: consulta.data?.faultstring || 'Erro ao consultar pedido' }, { status: 400 });
+      return Response.json({ error: consulta.faultstring }, { status: 400 });
     }
-    const ped = consulta.data?.pedido_venda_produto || consulta.data;
-    const nCodCli = ped?.cabecalho?.codigo_cliente;
+    const ped = consulta.pedido_venda_produto;
+    if (!ped) return Response.json({ error: 'Pedido não retornado pelo Omie' }, { status: 400 });
+
+    const codigoCliente = ped?.cabecalho?.codigo_cliente;
     const valorPedido = Number(ped?.total_pedido?.valor_total_pedido || 0);
+    const dataPrev = ped?.cabecalho?.data_previsao || '';
 
-    // 2) Listar NFs últimos 2 meses, paginado, ordem decrescente
-    const hoje = new Date();
-    const inicio = new Date(); inicio.setMonth(inicio.getMonth() - 2);
+    // Pega CNPJ do cliente via API de clientes (doc: /geral/clientes/ ConsultarCliente)
+    let cnpjCliente = '';
+    if (codigoCliente) {
+      const cli = await omieCall('geral/clientes', 'ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) });
+      cnpjCliente = soDigitos(cli?.cnpj_cpf);
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 2) ListarNF — procura NF pelo CNPJ + valor, últimos 2 meses
+    //    (doc: /produtos/nfconsultar/ ListarNF)
+    // ───────────────────────────────────────────────────────────
     let numeroNf = '';
-    let nfCancelada = false;
+    let nfJaCancelada = false;
 
-    for (let pagina = 1; pagina <= 5; pagina++) {
-      const nfRes = await omieCall('/produtos/nfconsultar/', 'ListarNF', {
-        pagina,
-        registros_por_pagina: 50,
-        apenas_importado_api: 'N',
+    if (cnpjCliente) {
+      const hoje = new Date();
+      const ini = new Date(); ini.setMonth(ini.getMonth() - 2);
+
+      // Filtra pelo CNPJ — reduz muito o resultado, normalmente cabe em 1 página
+      const param = {
+        pagina: 1,
+        registros_por_pagina: 100,
         ordenar_por: 'CODIGO',
-        ordem_decrescente: 'S',
-        dEmiInicial: fmtDateBR(inicio),
-        dEmiFinal: fmtDateBR(hoje),
-        tpNF: '1',
-        tpEmis: '1'
-      });
-      const lista = nfRes.data?.nfCadastro || [];
-      if (lista.length === 0) break;
+        dEmiInicial: dataBR(ini),
+        dEmiFinal: dataBR(hoje),
+        cCPFCNPJDest: cnpjCliente
+      };
 
-      const match = lista.find(nf => {
-        const dest = nf?.nfDestInt || {};
-        const ide = nf?.compl || {};
-        const vNF = Number(ide?.vNF || nf?.total?.ICMSTot?.vNF || 0);
-        const cli = Number(dest?.nCodCli || nf?.identificacao?.nCodCli || 0);
-        return cli === Number(nCodCli) && Math.abs(vNF - valorPedido) < 0.05;
-      });
+      for (let pagina = 1; pagina <= 5; pagina++) {
+        param.pagina = pagina;
+        const resp = await omieCall('produtos/nfconsultar', 'ListarNF', param);
+        const lista = resp?.nfCadastro || [];
+        if (lista.length === 0) break;
 
-      if (match) {
-        numeroNf = match?.compl?.nNF || match?.identificacao?.nNF || '';
-        const dCan = match?.compl?.dCan || match?.identificacao?.dCan;
-        if (dCan) { nfCancelada = true; break; }
-        break;
-      }
-    }
-
-    if (nfCancelada) {
-      return Response.json({ sucesso: true, ja_cancelada: true, numero_nf: numeroNf, mensagem: 'NF já cancelada' });
-    }
-
-    // 3) Cancelar o pedido no Omie
-    const cancel = await omieCall('/produtos/pedidovendafat/', 'CancelarPedidoVenda', { nCodPed: Number(codigo_pedido) });
-    const fs = (cancel.data?.faultstring || '').toLowerCase();
-    if (cancel.status !== 200 && !fs.includes('cancelad') && !fs.includes('já foi')) {
-      return Response.json({ error: cancel.data?.faultstring || 'Erro ao cancelar' }, { status: 400 });
-    }
-
-    // 4) Atualiza Pedido local (comercial + logística no mesmo app)
-    try {
-      const lista = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigo_pedido) }, '-created_date', 1);
-      if (lista?.[0]) {
-        await base44.asServiceRole.entities.Pedido.update(lista[0].id, {
-          status: 'cancelado',
-          motivo_cancelamento: motivo,
-          cancelado_por_nome: user.full_name || user.email,
-          data_cancelamento: new Date().toISOString()
+        const match = lista.find(nf => {
+          const vNF = Number(nf?.total?.ICMSTot?.vNF || 0);
+          return Math.abs(vNF - valorPedido) < 0.05;
         });
-      }
-    } catch (_) {}
 
-    return Response.json({ sucesso: true, numero_nf: numeroNf, mensagem: 'Pedido/NF cancelado(a) no Omie' });
+        if (match) {
+          numeroNf = match?.ide?.nNF || '';
+          if (match?.ide?.dCan) nfJaCancelada = true;
+          break;
+        }
+
+        const totalPag = Number(resp?.nTotPaginas || resp?.total_de_paginas || 1);
+        if (pagina >= totalPag) break;
+      }
+    }
+
+    if (nfJaCancelada) {
+      // NF já cancelada no Omie → só atualiza local e retorna
+      await atualizarPedidoLocal(base44, codigo_pedido, motivo, user);
+      return Response.json({ sucesso: true, ja_cancelada: true, numero_nf: numeroNf, mensagem: 'NF já estava cancelada no Omie' });
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 3) CancelarPedidoVenda
+    //    (doc: /produtos/pedidovendafat/ CancelarPedidoVenda { nCodPed })
+    // ───────────────────────────────────────────────────────────
+    const cancel = await omieCall('produtos/pedidovendafat', 'CancelarPedidoVenda', { nCodPed: Number(codigo_pedido) });
+    if (cancel.faultstring) {
+      const fs = cancel.faultstring.toLowerCase();
+      if (fs.includes('cancelad') || fs.includes('já foi') || fs.includes('ja foi')) {
+        await atualizarPedidoLocal(base44, codigo_pedido, motivo, user);
+        return Response.json({ sucesso: true, ja_cancelada: true, numero_nf: numeroNf, mensagem: 'Já cancelado no Omie' });
+      }
+      return Response.json({ error: cancel.faultstring, numero_nf: numeroNf }, { status: 400 });
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 4) Atualiza Pedido local (comercial + logística mesmo app)
+    // ───────────────────────────────────────────────────────────
+    await atualizarPedidoLocal(base44, codigo_pedido, motivo, user);
+
+    return Response.json({
+      sucesso: true,
+      numero_nf: numeroNf,
+      data_previsao: dataPrev,
+      mensagem: 'Pedido cancelado no Omie' + (numeroNf ? ` (NF ${numeroNf})` : '')
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+async function atualizarPedidoLocal(base44, codigoPedido, motivo, user) {
+  try {
+    const lista = await base44.asServiceRole.entities.Pedido.filter(
+      { omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1
+    );
+    if (lista?.[0]) {
+      await base44.asServiceRole.entities.Pedido.update(lista[0].id, {
+        status: 'cancelado',
+        motivo_cancelamento: motivo,
+        cancelado_por: user.email,
+        cancelado_por_nome: user.full_name || user.email,
+        data_cancelamento: new Date().toISOString()
+      });
+    }
+  } catch (_) {}
+}
