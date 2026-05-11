@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import SaudeIntegracaoOmie from '@/components/integracao/SaudeIntegracaoOmie';
 
 export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
@@ -132,6 +133,8 @@ export default function IntegracaoOmieDashboard() {
           </CardContent>
         </Card>
       )}
+
+      <SaudeIntegracaoOmie />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
