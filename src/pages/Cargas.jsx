@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -229,6 +229,11 @@ export default function Cargas() {
           <Button size="sm" variant="outline" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
             <MapPinned className="w-4 h-4" /> Romaneio
           </Button>
+          {(row.pedidos_internos || []).length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => abrirDocumento('notad1', row)} title="Imprimir Notas D1 (venda interna)" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+              <FileSignature className="w-4 h-4" /> Nota D1
+            </Button>
+          )}
           {/* Excluir só é permitido em cargas ainda não faturadas */}
           {['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga) && (
             <Button size="sm" variant="outline" onClick={() => setExcluindo(row)} title="Desfazer carga (apenas se não faturada)">
