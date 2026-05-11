@@ -24,6 +24,18 @@ const formatDate = (d) => {
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
 };
 
+const formatDateTime = (d) => {
+  if (!d) return '-';
+  return new Date(d).toLocaleString('pt-BR', {
+    timeZone: 'America/Fortaleza',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 const formatCurrency = (v) => {
   if (v == null) return '-';
   return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -92,16 +104,17 @@ export default function PedidoCellRenderer({ col, p }) {
     return <span className="block truncate font-medium text-[10px] text-green-700">{p.omie_numero_nf}</span>;
   }
 
-  // Nº Carregamento — usa campo numero_carga salvo no banco
-  if (col.id === 'numero_carregamento') {
-    const mostra = ['montagem', 'faturado'].includes(p.status);
-    if (!mostra) return <span className="block truncate whitespace-nowrap overflow-hidden text-slate-300">-</span>;
-    return <span className="block truncate whitespace-nowrap overflow-hidden font-medium text-blue-700">{p.numero_carga || '-'}</span>;
-  }
-
   const truncClass = "block truncate whitespace-nowrap overflow-hidden";
 
-  if (['data_previsao_entrega', 'data_liberacao', 'data_cancelamento', 'data_envio', 'created_date'].includes(col.id)) {
+  if (col.id === 'numero_carga') {
+    return <span className={`${truncClass} font-medium text-blue-700`}>{p.numero_carga || '-'}</span>;
+  }
+
+  if (['data_liberacao', 'data_cancelamento'].includes(col.id)) {
+    return <span className={truncClass}>{formatDateTime(p[col.field])}</span>;
+  }
+
+  if (['data_previsao_entrega', 'data_envio', 'created_date'].includes(col.id)) {
     return <span className={truncClass}>{formatDate(p[col.field])}</span>;
   }
 

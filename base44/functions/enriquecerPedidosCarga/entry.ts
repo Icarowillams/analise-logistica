@@ -170,6 +170,7 @@ Deno.serve(async (req) => {
 
       return {
         ...pedidoOmie,
+        pedido_id: pedidoLocal?.id || null,
         cliente_id: cliente?.id || pedidoLocal?.cliente_id || null,
         nome_cliente: nomeCliente,
         nome_fantasia: fantasia,

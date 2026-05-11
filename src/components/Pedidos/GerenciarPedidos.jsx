@@ -122,6 +122,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: () => base44.entities.Vendedor.list(),
   });
 
+  const currentUserName = useMemo(() => {
+    const funcionario = vendedores.find(v => v.email?.toLowerCase() === currentUser?.email?.toLowerCase());
+    return funcionario?.nome || currentUser?.full_name || currentUser?.email || '';
+  }, [vendedores, currentUser]);
+
   const { data: clientesBase = [] } = useQuery({
     queryKey: ['clientes-gerenciar'],
     queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
@@ -532,7 +537,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         const updateData = {
           status: 'liberado',
           liberado_por: currentUser?.email,
-          liberado_por_nome: currentUser?.full_name,
+          liberado_por_nome: currentUserName,
           data_liberacao: new Date().toISOString(),
         };
         await base44.entities.Pedido.update(p.id, updateData);
@@ -626,7 +631,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       await base44.entities.Pedido.update(pedido.id, {
         status: 'cancelado',
         cancelado_por: currentUser?.email,
-        cancelado_por_nome: currentUser?.full_name,
+        cancelado_por_nome: currentUserName,
         data_cancelamento: new Date().toISOString(),
         motivo_cancelamento: motivo,
       });

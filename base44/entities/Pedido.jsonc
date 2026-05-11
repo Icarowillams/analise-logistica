@@ -35,6 +35,7 @@
         "pendente",
         "enviado",
         "liberado",
+        "montagem",
         "faturado",
         "cancelado"
       ],
@@ -181,6 +182,10 @@
     "carga_id": {
       "type": "string"
     },
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero da carga/carregamento em que o pedido foi fechado"
+    },
     "rota_id": {
       "type": "string"
     },
@@ -216,6 +221,29 @@
     "faturado": {
       "type": "boolean",
       "default": false
+    },
+    "liberado_por": {
+      "type": "string"
+    },
+    "liberado_por_nome": {
+      "type": "string"
+    },
+    "data_liberacao": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cancelado_por": {
+      "type": "string"
+    },
+    "cancelado_por_nome": {
+      "type": "string"
+    },
+    "data_cancelamento": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "motivo_cancelamento": {
+      "type": "string"
     },
     "pedido_origem_id": {
       "type": "string",

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'gerenciar-pedidos-column-order-v4';
+const STORAGE_KEY = 'gerenciar-pedidos-column-order-v5';
 
 export const DEFAULT_COLUMNS = [
   { id: 'numero_pedido', label: 'Nº Pedido', field: 'numero_pedido' },
@@ -14,14 +14,12 @@ export const DEFAULT_COLUMNS = [
   { id: 'tipo', label: 'Tipo', field: 'tipo' },
   { id: 'status', label: 'Status', field: 'status', custom: true },
   { id: 'etapa_omie', label: 'Etapa Omie', field: 'omie_etapa_real', custom: true },
-  { id: 'numero_nf', label: 'Nº NF', field: 'omie_numero_nf', custom: true },
   { id: 'vendedor_nome', label: 'Vendedor', field: 'vendedor_nome' },
   { id: 'cliente_cidade', label: 'Cidade', field: 'cliente_cidade' },
   { id: 'plano_pagamento_nome', label: 'Plano Pgto', field: 'plano_pagamento_nome' },
   { id: 'tabela_preco_nome', label: 'Tab. Preço', field: 'tabela_preco_nome' },
   { id: 'data_previsao_entrega', label: 'Prev. Entrega', field: 'data_previsao_entrega' },
-  { id: 'numero_carga', label: 'Nº Carga', field: 'numero_carga' },
-  { id: 'numero_carregamento', label: 'Nº Carreg.', field: 'numero_carregamento', custom: true },
+  { id: 'numero_carga', label: 'N Carga', field: 'numero_carga' },
   { id: 'usuario_envio', label: 'Usuário Envio', field: 'created_by' },
   { id: 'liberado_por_nome', label: 'Liberado por', field: 'liberado_por_nome' },
   { id: 'data_liberacao', label: 'Dt. Liberação', field: 'data_liberacao' },

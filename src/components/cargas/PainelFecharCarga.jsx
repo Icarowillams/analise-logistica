@@ -50,6 +50,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
       const pedidosOmieFmt = vendas.map(v => ({
+        pedido_id: v.pedido_id || '',
         codigo_pedido: v.codigo_pedido,
         codigo_pedido_integracao: v.codigo_pedido_integracao || '',
         numero_pedido: v.numero_pedido,
@@ -133,10 +134,22 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         observacoes: obs
       });
 
-      for (const p of pedidosD1) {
+      for (const p of [...vendas, ...pedidosD1]) {
         try {
-          await base44.entities.Pedido.update(p.pedido_id, { carga_id: carga.id, status_logistico: 'em_carga' });
-        } catch (e) { console.warn('Falha vincular D1:', e.message); }
+          let pedidoId = p.pedido_id;
+          if (!pedidoId && p.codigo_pedido) {
+            const locais = await base44.entities.Pedido.filter({ omie_codigo_pedido: String(p.codigo_pedido) }, '-created_date', 1);
+            pedidoId = locais?.[0]?.id;
+          }
+          if (!pedidoId) continue;
+          await base44.entities.Pedido.update(pedidoId, {
+            carga_id: carga.id,
+            numero_carga: numero,
+            status: 'montagem',
+            status_logistico: 'em_carga',
+            etapa: 'logistica'
+          });
+        } catch (e) { console.warn('Falha vincular pedido à carga:', e.message); }
       }
 
       for (const t of trocas) {
