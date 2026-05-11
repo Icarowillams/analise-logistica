@@ -83,6 +83,12 @@ async function handlePedido(base44, topic, evt) {
     const novoStatus = mapEtapaParaStatus(evt?.etapa);
     if (novoStatus) updates.status = novoStatus;
     if (evt?.etapa) dadosCarga.etapa = String(evt.etapa);
+  } else if (topic === 'VendaProduto.Devolvida') {
+    updates.status = 'cancelado';
+    updates.data_cancelamento = new Date().toISOString();
+    updates.motivo_cancelamento = 'Pedido devolvido no Omie';
+    dadosCarga.etapa = '80';
+    dadosCarga.status_pedido = 'devolvido';
   } else {
     return { acao: 'ignorado', motivo: `topic ${topic} sem handler` };
   }
@@ -125,6 +131,11 @@ async function handleNFe(base44, topic, evt) {
     updates.motivo_cancelamento = 'NF-e cancelada no Omie';
     dadosCarga.etapa = '80';
     dadosCarga.status_pedido = 'cancelado';
+  } else if (topic === 'NFe.NotaDevolucaoAutorizada') {
+    updates.motivo_cancelamento = 'NF-e de devolução autorizada no Omie';
+    const numNf = evt?.numero_nf || evt?.numero_nota;
+    if (numNf) updates.numero_nota_fiscal = String(numNf);
+    dadosCarga.status_pedido = 'devolvido';
   }
 
   if (Object.keys(updates).length > 0) {
