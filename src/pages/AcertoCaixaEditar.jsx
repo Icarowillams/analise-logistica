@@ -157,6 +157,54 @@ export default function AcertoCaixaEditar() {
     setSincronizando(false);
   };
 
+  const recarregarNotasDaCarga = async () => {
+    if (!acerto?.carga_id) return;
+    if (notas.length > 0 && !confirm('Isto vai SOBRESCREVER as notas atuais com os pedidos da carga. Continuar?')) return;
+    setSincronizando(true);
+    try {
+      const carga = await base44.entities.Carga.get(acerto.carga_id);
+      const notasOmie = (carga.pedidos_omie || []).map(p => ({
+        codigo_pedido: String(p.codigo_pedido || ''),
+        numero_pedido: String(p.numero_pedido || ''),
+        numero_nfe: String(p.numero_nf || ''),
+        nome_cliente: p.nome_fantasia || p.nome_cliente || '',
+        razao_social: p.nome_cliente || '',
+        codigo_cliente: String(p.codigo_cliente || ''),
+        codigo_cliente_cod: String(p.codigo_cliente_cod || ''),
+        valor_original: Number(p.valor_total_pedido || 0),
+        valor_recebido: Number(p.valor_total_pedido || 0),
+        diferenca: 0, status_entrega: 'pendente', forma_pagamento: 'boleto',
+        data_recebimento: '', motivo_cancelamento: '', observacao: ''
+      }));
+      const notasInternas = (carga.pedidos_internos || []).map(p => ({
+        codigo_pedido: '', numero_pedido: String(p.numero_pedido || ''), numero_nfe: '',
+        nome_cliente: p.nome_fantasia || p.nome_cliente || '', razao_social: p.nome_cliente || '',
+        codigo_cliente: String(p.cliente_id || ''), codigo_cliente_cod: '',
+        valor_original: Number(p.valor_total_pedido || 0),
+        valor_recebido: Number(p.valor_total_pedido || 0),
+        diferenca: 0, status_entrega: 'pendente', forma_pagamento: 'dinheiro',
+        data_recebimento: '', motivo_cancelamento: '', observacao: 'D1 (interno)'
+      }));
+      const notasTroca = (carga.pedidos_troca || []).map(p => ({
+        codigo_pedido: '', numero_pedido: String(p.numero_pedido || ''), numero_nfe: '',
+        nome_cliente: p.nome_fantasia || p.nome_cliente || '', razao_social: p.nome_cliente || '',
+        codigo_cliente: String(p.cliente_id || ''), codigo_cliente_cod: '',
+        valor_original: Number(p.valor_total_pedido || 0), valor_recebido: 0,
+        diferenca: 0, status_entrega: 'pendente', forma_pagamento: 'boleto',
+        data_recebimento: '', motivo_cancelamento: '', observacao: 'Troca'
+      }));
+      const novas = [...notasOmie, ...notasInternas, ...notasTroca];
+      const valor_total_original = novas.reduce((s, n) => s + n.valor_original, 0);
+      await base44.entities.AcertoCaixa.update(acertoId, {
+        notas: novas, valor_total_original,
+        valor_total_recebido: valor_total_original, valor_total_diferenca: 0
+      });
+      setNotas(novas);
+      toast.success(`${novas.length} nota(s) carregada(s) da carga`);
+    } catch (e) { toast.error(e.message); }
+    setSincronizando(false);
+  };
+
   const finalizar = async () => {
     if (!confirm('Finalizar acerto? Notas pendentes serão marcadas como ENTREGUES.')) return;
     setFinalizando(true);
@@ -210,6 +258,12 @@ export default function AcertoCaixaEditar() {
           </div>
         </div>
         <div className="flex gap-2">
+          {!finalizado && notas.length === 0 && (
+            <Button variant="outline" onClick={recarregarNotasDaCarga} disabled={sincronizando} className="border-amber-300 text-amber-700">
+              {sincronizando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              Carregar notas da carga
+            </Button>
+          )}
           <Button variant="outline" onClick={sincronizarManual} disabled={sincronizando || finalizado}>
             {sincronizando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Sincronizar Omie

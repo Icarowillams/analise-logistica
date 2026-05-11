@@ -76,8 +76,8 @@ export default function AcertoCaixa() {
         navigate(`/AcertoCaixaEditar?id=${existente.id}`);
         return;
       }
-      // Cria snapshot
-      const notas = (carga.pedidos_omie || []).map(p => ({
+      // Cria snapshot — inclui pedidos Omie, Internos (D1) e Trocas
+      const notasOmie = (carga.pedidos_omie || []).map(p => ({
         codigo_pedido: String(p.codigo_pedido || ''),
         numero_pedido: String(p.numero_pedido || ''),
         numero_nfe: String(p.numero_nf || ''),
@@ -94,6 +94,41 @@ export default function AcertoCaixa() {
         motivo_cancelamento: '',
         observacao: ''
       }));
+      const notasInternas = (carga.pedidos_internos || []).map(p => ({
+        codigo_pedido: '',
+        numero_pedido: String(p.numero_pedido || ''),
+        numero_nfe: '',
+        nome_cliente: p.nome_fantasia || p.nome_cliente || '',
+        razao_social: p.nome_cliente || '',
+        codigo_cliente: String(p.cliente_id || ''),
+        codigo_cliente_cod: '',
+        valor_original: Number(p.valor_total_pedido || 0),
+        valor_recebido: Number(p.valor_total_pedido || 0),
+        diferenca: 0,
+        status_entrega: 'pendente',
+        forma_pagamento: 'dinheiro',
+        data_recebimento: '',
+        motivo_cancelamento: '',
+        observacao: 'D1 (interno)'
+      }));
+      const notasTroca = (carga.pedidos_troca || []).map(p => ({
+        codigo_pedido: '',
+        numero_pedido: String(p.numero_pedido || ''),
+        numero_nfe: '',
+        nome_cliente: p.nome_fantasia || p.nome_cliente || '',
+        razao_social: p.nome_cliente || '',
+        codigo_cliente: String(p.cliente_id || ''),
+        codigo_cliente_cod: '',
+        valor_original: Number(p.valor_total_pedido || 0),
+        valor_recebido: 0,
+        diferenca: 0,
+        status_entrega: 'pendente',
+        forma_pagamento: 'boleto',
+        data_recebimento: '',
+        motivo_cancelamento: '',
+        observacao: 'Troca'
+      }));
+      const notas = [...notasOmie, ...notasInternas, ...notasTroca];
       const valor_total_original = notas.reduce((s, n) => s + n.valor_original, 0);
       const novo = await base44.entities.AcertoCaixa.create({
         carga_id: carga.id,
