@@ -671,11 +671,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
   }
 
   return (
-    <div className="space-y-1.5">
-      <div>
-        <div className="space-y-1.5">
-      {/* Filters - compact */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-10 gap-1.5 p-2 bg-white border rounded-lg">
+    <div className="flex flex-col h-[calc(100vh-100px)] gap-1.5">
+      {/* Filters - compact (FIXO no topo) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-10 gap-1.5 p-2 bg-white border rounded-lg shrink-0">
         {/* Buscar geral */}
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
           <div className="relative">
@@ -748,8 +746,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Input placeholder="Cidade..." value={cidadeSearch} onChange={e => setCidadeSearch(e.target.value)} className="h-6 text-[10px]" />
         </div>
       </div>
-      {/* Row 2: Produto + actions */}
-      <div className="flex flex-wrap gap-1.5 items-center">
+      {/* Row 2: Produto + actions (FIXO) */}
+      <div className="flex flex-wrap gap-1.5 items-center shrink-0">
         <div className="flex gap-0.5">
           <Input placeholder="Produto..." value={produtoSearch} onChange={e => { setProdutoSearch(e.target.value); setProdutoIds([]); }} className="h-6 text-[10px] w-32" />
           <Button variant="outline" size="sm" className="h-6 w-6 p-0 shrink-0" title="Selecionar" onClick={() => setProdutoModalOpen(true)}>
@@ -774,13 +772,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </Button>
       </div>
 
-      {/* Table */}
+      {/* Table — área rolável que ocupa o espaço restante */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
+        <div className="flex justify-center py-12 flex-1">
           <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
-        <div className="border rounded-lg overflow-auto bg-white cursor-default select-none" style={{ height: 'calc(100vh - 320px)', minHeight: '250px' }} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+        <div className="border rounded-lg overflow-auto bg-white cursor-default select-none flex-1 min-h-0" onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
           <table className="text-[11px] border-collapse table-fixed" style={{ minWidth: '100%' }}>
             <DragDropContext onDragEnd={(result) => {
               if (!result.destination) return;
@@ -881,68 +879,69 @@ export default function GerenciarPedidos({ onEditPedido }) {
         </div>
       )}
 
-      <div className="text-xs text-slate-500 pb-20 xl:pb-0">
+      {/* Contagem (FIXO) */}
+      <div className="text-xs text-slate-500 shrink-0">
         {filtered.length} pedido(s) • Valor total: {formatCurrency(filtered.reduce((s, p) => s + (p.valor_total || 0), 0))}
       </div>
-        </div>
 
-        {selectedIds.length === 1 && (
-          <PedidoPreviewSelecionado pedidoId={selectedIds[0]} />
-        )}
+      {/* Pré-visualização dos produtos — SEMPRE VISÍVEL, altura fixa */}
+      <div className="shrink-0">
+        <PedidoPreviewSelecionado pedidoId={selectedIds.length === 1 ? selectedIds[0] : null} />
       </div>
 
-      {/* Batch actions - fixed bottom */}
-      {selectedIds.length > 0 && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-30 flex flex-wrap items-center gap-2 px-4 py-3 bg-amber-50 border-t border-amber-300 shadow-lg">
-          <span className="text-sm font-medium text-amber-800">{selectedIds.length} selecionado(s)</span>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction}>
-            {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
-            Liberar
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction}>
-            {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-            Bloquear
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)}>
-            <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
-          </Button>
-          <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => {
-            if (selectedIds.length === 1) {
-              setViewPedidoAnaliticoId(selectedIds[0]);
-            } else if (selectedIds.length > 1) {
-              setViewPedidoAnaliticoIds([...selectedIds]);
-            }
-          }}>
-            <Printer className="w-3 h-3 mr-1" /> Analítico ({selectedIds.length})
-          </Button>
-          {(() => {
-            const canEdit = selectedIds.length === 1;
-            const selectedPedido = canEdit ? pedidos.find(p => p.id === selectedIds[0]) : null;
-            const analise = selectedPedido ? getAnaliseStatus(selectedPedido) : null;
-            const editavel = canEdit && selectedPedido && ['Pendente', 'Liberados'].includes(analise);
-            return (
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!editavel || !!batchAction} onClick={() => { if (editavel) onEditPedido(selectedIds[0]); }}>
-                <Pencil className="w-3 h-3 mr-1" /> Editar
-              </Button>
-            );
-          })()}
-          <Button size="sm" variant="destructive" disabled={!!batchAction} onClick={() => {
-            const selectedPedidos = pedidos.filter(p => selectedIds.includes(p.id));
-            const cancelavel = selectedPedidos.find(p => !['cancelado', 'faturado', 'montagem'].includes(p.status));
-            if (selectedIds.length === 1 && cancelavel) {
-              setCancelPedido(cancelavel);
-              setCancelModalOpen(true);
-            } else if (selectedIds.length > 1) {
-              // Para múltiplos, cancelar o primeiro cancelável como referência
-              if (cancelavel) { setCancelPedido(cancelavel); setCancelModalOpen(true); }
-              else toast.warning('Nenhum dos pedidos selecionados pode ser cancelado');
-            }
-          }}>
-            <XCircle className="w-3 h-3 mr-1" /> Cancelar
-          </Button>
+      {/* Barra de ações — SEMPRE VISÍVEL no rodapé */}
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg shadow-sm">
+        <span className="text-sm font-medium text-amber-800">
+          {selectedIds.length > 0 ? `${selectedIds.length} selecionado(s)` : 'Nenhum selecionado'}
+        </span>
+        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleBatchLiberar} disabled={!!batchAction || selectedIds.length === 0}>
+          {batchAction === 'liberando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
+          Liberar
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleBatchBloquear} disabled={!!batchAction || selectedIds.length === 0}>
+          {batchAction === 'bloqueando' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
+          Bloquear
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowAgrupado(true)} disabled={selectedIds.length === 0}>
+          <Printer className="w-3 h-3 mr-1" /> Imprimir Agrupado
+        </Button>
+        <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" disabled={selectedIds.length === 0} onClick={() => {
+          if (selectedIds.length === 1) {
+            setViewPedidoAnaliticoId(selectedIds[0]);
+          } else if (selectedIds.length > 1) {
+            setViewPedidoAnaliticoIds([...selectedIds]);
+          }
+        }}>
+          <Printer className="w-3 h-3 mr-1" /> Analítico ({selectedIds.length})
+        </Button>
+        {(() => {
+          const canEdit = selectedIds.length === 1;
+          const selectedPedido = canEdit ? pedidos.find(p => p.id === selectedIds[0]) : null;
+          const analise = selectedPedido ? getAnaliseStatus(selectedPedido) : null;
+          const editavel = canEdit && selectedPedido && ['Pendente', 'Liberados'].includes(analise);
+          return (
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!editavel || !!batchAction} onClick={() => { if (editavel) onEditPedido(selectedIds[0]); }}>
+              <Pencil className="w-3 h-3 mr-1" /> Editar
+            </Button>
+          );
+        })()}
+        <Button size="sm" variant="destructive" disabled={!!batchAction || selectedIds.length === 0} onClick={() => {
+          const selectedPedidos = pedidos.filter(p => selectedIds.includes(p.id));
+          const cancelavel = selectedPedidos.find(p => !['cancelado', 'faturado', 'montagem'].includes(p.status));
+          if (selectedIds.length === 1 && cancelavel) {
+            setCancelPedido(cancelavel);
+            setCancelModalOpen(true);
+          } else if (selectedIds.length > 1) {
+            if (cancelavel) { setCancelPedido(cancelavel); setCancelModalOpen(true); }
+            else toast.warning('Nenhum dos pedidos selecionados pode ser cancelado');
+          }
+        }}>
+          <XCircle className="w-3 h-3 mr-1" /> Cancelar
+        </Button>
+        {selectedIds.length > 0 && (
           <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Limpar</Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Batch result toast */}
       {batchResult && (
