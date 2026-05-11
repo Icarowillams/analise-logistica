@@ -55,11 +55,13 @@ Deno.serve(async (req) => {
                         break;
                     }
                     
+                    // Só considera "excluído/inexistente" — NUNCA inferir cancelamento por texto frouxo.
+                    // Cancelamento real vem da etapa/cabecalho.cancelado quando o pedido existe.
                     const isExcluido = faultMsg.includes('não encontrad') || faultMsg.includes('nao encontrad') ||
                                        faultMsg.includes('não cadastrad') || faultMsg.includes('nao cadastrad') ||
                                        faultMsg.includes('excluíd') || faultMsg.includes('excluid') ||
-                                       faultMsg.includes('cancelad') ||
-                                       faultMsg.includes('não existe') || faultMsg.includes('nao existe');
+                                       faultMsg.includes('não existe') || faultMsg.includes('nao existe') ||
+                                       faultMsg.includes('inexistente');
 
                     if (isExcluido) {
                         console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} (Omie: ${pedido.omie_codigo_pedido}) cancelado/excluído no Omie.`);
