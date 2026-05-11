@@ -172,6 +172,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Cargas', path: 'Cargas' },
           { title: 'Ajustes de Pedidos', path: 'AjustesPedidos' },
           { title: 'Boletos Omie', path: 'BoletosOmie' },
+          { title: 'Acerto de Caixa', path: 'AcertoCaixa' },
         ]
       }
     ];
