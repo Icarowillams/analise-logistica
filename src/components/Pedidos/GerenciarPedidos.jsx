@@ -26,6 +26,7 @@ import useColumnOrder from './useColumnOrder';
 import useColumnResize from './useColumnResize';
 import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
 import BatchResultToast from './BatchResultToast';
+import BuscarClienteModal from './BuscarClienteModal';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
@@ -73,8 +74,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
-  const [tipoFilter, setTipoFilter] = useState('todos');
-  const [clienteSearch, setClienteSearch] = useState('');
+  const [cenarioFiscalFilter, setCenarioFiscalFilter] = useState('todos');
   const [envioInicio, setEnvioInicio] = useState(() => getTodayFilterDate());
   const [envioFim, setEnvioFim] = useState(() => getTodayFilterDate());
   const [vendedorSearch, setVendedorSearch] = useState('');
@@ -83,7 +83,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [produtoSearch, setProdutoSearch] = useState('');
   const [produtoIds, setProdutoIds] = useState([]);
   const [produtoModalOpen, setProdutoModalOpen] = useState(false);
+  const [clienteCodigo, setClienteCodigo] = useState('');
+  const [buscarClienteOpen, setBuscarClienteOpen] = useState(false);
   const [redeFilter, setRedeFilter] = useState('todas');
+  const [segmentoFilter, setSegmentoFilter] = useState('todos');
+  const [rotaFilter, setRotaFilter] = useState('todas');
   const [cidadeSearch, setCidadeSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [sortField, setSortField] = useState('created_date');
@@ -153,6 +157,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: redes = [] } = useQuery({
     queryKey: ['redes-gerenciar'],
     queryFn: () => base44.entities.Rede.list(),
+  });
+
+  const { data: segmentos = [] } = useQuery({
+    queryKey: ['segmentos-gerenciar'],
+    queryFn: () => base44.entities.Segmento.list(),
+  });
+
+  const { data: rotas = [] } = useQuery({
+    queryKey: ['rotas-gerenciar'],
+    queryFn: () => base44.entities.Rota.list(),
+  });
+
+  const { data: cenariosFiscaisLocais = [] } = useQuery({
+    queryKey: ['cenarios-fiscais-locais-gerenciar'],
+    queryFn: () => base44.entities.CenarioFiscalLocal.list(),
   });
 
   const { data: produtos = [] } = useQuery({
@@ -273,6 +292,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
         cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
         rede_id: cliente?.rede_id || '',
+        segmento_id: cliente?.segmento_id || '',
+        cliente_rota_id: cliente?.rota_id || '',
         vendedor_id: cliente?.vendedor_id || pedido.vendedor_id || '',
         vendedor_nome: vendedorCliente?.nome || pedido.vendedor_nome || '-',
         usuario_envio: funcionarioEnvio?.nome || pedido.created_by || '-',
@@ -300,18 +321,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
     if (envioInicio || envioFim) c++;
     if (vendedorSearch.trim() || vendedorIds.length) c++;
     if (produtoSearch.trim() || produtoIds.length) c++;
-    if (clienteSearch.trim()) c++;
+    if (clienteCodigo.trim()) c++;
     if (redeFilter !== 'todas') c++;
+    if (segmentoFilter !== 'todos') c++;
+    if (rotaFilter !== 'todas') c++;
+    if (cenarioFiscalFilter !== 'todos') c++;
     if (cidadeSearch.trim()) c++;
     return c;
-  }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteSearch, redeFilter, cidadeSearch]);
+  }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cenarioFiscalFilter, cidadeSearch]);
 
   const clearAllFilters = () => {
-    setSearch(''); setStatusFilter('todos'); setTipoFilter('todos');
+    setSearch(''); setStatusFilter('todos'); setCenarioFiscalFilter('todos');
     setEnvioInicio(''); setEnvioFim('');
     setVendedorSearch(''); setVendedorIds([]);
     setProdutoSearch(''); setProdutoIds([]);
-    setClienteSearch(''); setRedeFilter('todas'); setCidadeSearch('');
+    setClienteCodigo(''); setRedeFilter('todas'); setSegmentoFilter('todos'); setRotaFilter('todas'); setCidadeSearch('');
   };
 
   // Filter and sort
@@ -335,8 +359,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
         list = list.filter(p => targetStatuses.includes(p.status));
       }
     }
-    if (tipoFilter !== 'todos') {
-      list = list.filter(p => p.tipo === tipoFilter);
+    if (cenarioFiscalFilter !== 'todos') {
+      list = list.filter(p => p.cenario_local_id === cenarioFiscalFilter);
     }
     if (search.trim()) {
       const s = search.toLowerCase();
@@ -387,18 +411,22 @@ export default function GerenciarPedidos({ onEditPedido }) {
         list = list.filter(p => matchingPedidoIds.has(p.id));
       }
     }
-    // Cliente (texto)
-    if (clienteSearch.trim()) {
-      const cs = clienteSearch.toLowerCase();
-      list = list.filter(p =>
-        (p.cliente_nome_base || '').toLowerCase().includes(cs) ||
-        (p.cliente_fantasia_base || '').toLowerCase().includes(cs) ||
-        (p.cliente_codigo_base || '').includes(cs)
-      );
+    // Cliente (código exato)
+    if (clienteCodigo.trim()) {
+      const codigo = clienteCodigo.trim().toLowerCase();
+      list = list.filter(p => (p.cliente_codigo_base || '').toLowerCase() === codigo);
     }
     // Rede
     if (redeFilter !== 'todas') {
       list = list.filter(p => p.rede_id === redeFilter);
+    }
+    // Segmento
+    if (segmentoFilter !== 'todos') {
+      list = list.filter(p => p.segmento_id === segmentoFilter);
+    }
+    // Rota (do cliente)
+    if (rotaFilter !== 'todas') {
+      list = list.filter(p => p.cliente_rota_id === rotaFilter);
     }
     // Cidade (texto)
     if (cidadeSearch.trim()) {
@@ -420,7 +448,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     });
 
     return list;
-  }, [pedidosComVendedorCliente, statusFilter, tipoFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteSearch, redeFilter, cidadeSearch, pedidoItems]);
+  }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
   // Verificar cancelamentos de pedidos faturados no Omie
   const syncFaturadosOmie = async () => {
@@ -683,7 +711,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] gap-1.5">
       {/* Filters - compact (FIXO no topo) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-10 gap-1.5 p-2 bg-white border rounded-lg shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-12 gap-1.5 p-2 bg-white border rounded-lg shrink-0">
         {/* Buscar geral */}
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
           <div className="relative">
@@ -706,15 +734,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </SelectContent>
           </Select>
         </div>
-        {/* Tipo */}
+        {/* Cenário Fiscal (independente 55/D1) */}
         <div>
-          <Select value={tipoFilter} onValueChange={setTipoFilter}>
-            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+          <Select value={cenarioFiscalFilter} onValueChange={setCenarioFiscalFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Cenário Fiscal" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos Tipos</SelectItem>
-              <SelectItem value="venda">Venda</SelectItem>
-              <SelectItem value="troca">Troca</SelectItem>
-              <SelectItem value="bonificacao">Bonificação</SelectItem>
+              <SelectItem value="todos">Todos Cenários</SelectItem>
+              {cenariosFiscaisLocais.filter(c => c.status === 'ativo').map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -735,9 +763,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </Button>
           </div>
         </div>
-        {/* Cliente */}
+        {/* Cliente — busca EXATA por código + lupa para busca detalhada */}
         <div>
-          <Input placeholder="Cliente..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="h-6 text-[10px]" />
+          <div className="flex gap-0.5">
+            <Input
+              placeholder="Cód. cliente..."
+              value={clienteCodigo}
+              onChange={e => setClienteCodigo(e.target.value)}
+              className="h-6 text-[10px] flex-1 font-mono"
+              title="Código exato do cliente"
+            />
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0 shrink-0" title="Busca detalhada de cliente" onClick={() => setBuscarClienteOpen(true)}>
+              <Search className="w-2.5 h-2.5" />
+            </Button>
+          </div>
         </div>
         {/* Rede */}
         <div>
@@ -747,6 +786,30 @@ export default function GerenciarPedidos({ onEditPedido }) {
               <SelectItem value="todas">Todas Redes</SelectItem>
               {redes.filter(r => r.status === 'ativo').map(rede => (
                 <SelectItem key={rede.id} value={rede.id}>{rede.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Segmento */}
+        <div>
+          <Select value={segmentoFilter} onValueChange={setSegmentoFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Segmento" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos Segmentos</SelectItem>
+              {segmentos.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Rota */}
+        <div>
+          <Select value={rotaFilter} onValueChange={setRotaFilter}>
+            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Rota" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas Rotas</SelectItem>
+              {rotas.filter(r => r.status !== 'inativo').map(r => (
+                <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -995,6 +1058,11 @@ export default function GerenciarPedidos({ onEditPedido }) {
           { field: 'codigo', label: 'Código' },
           { field: 'nome', label: 'Nome' },
         ]}
+      />
+      <BuscarClienteModal
+        open={buscarClienteOpen}
+        onOpenChange={setBuscarClienteOpen}
+        onConfirm={(codigo) => setClienteCodigo(codigo)}
       />
     </div>
   );
