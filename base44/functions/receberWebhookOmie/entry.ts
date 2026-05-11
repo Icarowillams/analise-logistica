@@ -45,7 +45,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Webhook não configurado' }, { status: 500 });
     }
     if (tokenRecebido !== tokenEsperado) {
-      console.warn('[receberWebhookOmie] Token inválido');
+      console.warn('[receberWebhookOmie] Token inválido', {
+        recebido_len: tokenRecebido?.length,
+        esperado_len: tokenEsperado?.length,
+        recebido_prefix: tokenRecebido?.slice(0, 8),
+        esperado_prefix: tokenEsperado?.slice(0, 8),
+        recebido_suffix: tokenRecebido?.slice(-8),
+        esperado_suffix: tokenEsperado?.slice(-8),
+        url_completa: req.url
+      });
       return Response.json({ error: 'Token inválido' }, { status: 401 });
     }
 
