@@ -118,22 +118,19 @@ export default function CorteTab() {
     setSalvando(true);
     let ok = 0; let fail = 0;
     for (const it of aplicar) {
-      if (it.ped._origem !== 'omie') {
-        // Pedido D1/interno: sem integração Omie. (Por enquanto pulamos e avisamos.)
-        toast.info(`Pedido ${it.ped.numero_pedido || ''} é interno (D1) — corte interno ainda não suportado.`);
-        fail++;
-        continue;
-      }
       try {
-        const { data } = await base44.functions.invoke('cortarPedidoOmie', {
-          codigo_pedido: it.ped.codigo_pedido,
-          cortes: [{
-            codigo_produto: produtoCod,
-            nova_quantidade: it.qSep,
-            motivo: it.motivo || motivoGeral
-          }],
-          motivo_geral: motivoGeral
-        });
+        const payload = it.ped._origem === 'omie'
+          ? {
+              codigo_pedido: it.ped.codigo_pedido,
+              cortes: [{ codigo_produto: produtoCod, nova_quantidade: it.qSep, motivo: it.motivo || motivoGeral }],
+              motivo_geral: motivoGeral
+            }
+          : {
+              pedido_id_interno: it.ped.pedido_id,
+              cortes: [{ codigo_produto: produtoCod, nova_quantidade: it.qSep, motivo: it.motivo || motivoGeral }],
+              motivo_geral: motivoGeral
+            };
+        const { data } = await base44.functions.invoke('cortarPedidoOmie', payload);
         if (data?.sucesso) ok++; else { fail++; toast.error(`Pedido ${it.ped.numero_pedido}: ${data?.error || 'erro'}`); }
       } catch (e) {
         fail++;

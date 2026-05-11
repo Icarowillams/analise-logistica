@@ -23,9 +23,125 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
-// Corta itens de um pedido Omie:
-// - cortes = [{ codigo_produto, nova_quantidade, motivo }]
-// Para cada item: consulta pedido, altera qtd (ou remove se 0), registra LogCorte, sincroniza
+// Atualiza Carga.pedidos_omie / pedidos_internos local: aplica novas quantidades
+async function refletirCorteNaCargaLocal(base44, codigoPedidoOmie, cortes, isInterno, pedidoIdInterno) {
+  try {
+    const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
+    for (const carga of cargas) {
+      let modificou = false;
+      let pedidosArray = isInterno ? (carga.pedidos_internos || []) : (carga.pedidos_omie || []);
+      const novos = pedidosArray.map(ped => {
+        const match = isInterno
+          ? String(ped.pedido_id) === String(pedidoIdInterno)
+          : String(ped.codigo_pedido) === String(codigoPedidoOmie);
+        if (!match) return ped;
+
+        const novosProdutos = (ped.produtos || []).map(pr => {
+          const cod = String(pr.codigo_produto || pr.codigo_produto_integracao || '');
+          const corte = cortes.find(c => String(c.codigo_produto) === cod);
+          if (!corte) return pr;
+          modificou = true;
+          const novaQtd = Number(corte.nova_quantidade);
+          if (novaQtd === 0) return null; // remover item
+          return {
+            ...pr,
+            quantidade: novaQtd,
+            valor_total: novaQtd * Number(pr.valor_unitario || 0)
+          };
+        }).filter(Boolean);
+
+        // Recalcular totais do pedido
+        const valorTotal = novosProdutos.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+        const qtdItens = novosProdutos.length;
+        return { ...ped, produtos: novosProdutos, valor_total_pedido: valorTotal, quantidade_itens: qtdItens };
+      });
+
+      if (modificou) {
+        // Recalcular totais da carga
+        const todosProds = [
+          ...(isInterno ? (carga.pedidos_omie || []) : novos),
+          ...(isInterno ? novos : (carga.pedidos_internos || [])),
+          ...(carga.pedidos_troca || [])
+        ];
+        const valorTotalCarga = todosProds.reduce((s, p) => s + Number(p.valor_total_pedido || 0), 0);
+
+        const updateData = isInterno
+          ? { pedidos_internos: novos, valor_total: valorTotalCarga, valor_total_carga: valorTotalCarga }
+          : { pedidos_omie: novos, valor_total: valorTotalCarga, valor_total_carga: valorTotalCarga };
+
+        await base44.asServiceRole.entities.Carga.update(carga.id, updateData);
+        return carga.id;
+      }
+    }
+  } catch (e) {
+    console.error('[cortarPedidoOmie] Falha ao refletir corte na Carga local:', e.message);
+  }
+  return null;
+}
+
+// Corte em pedido D1 interno (sem Omie): atualiza apenas o Pedido + Carga local
+async function cortarPedidoInterno(base44, pedido_id, cortes, motivo_geral, user) {
+  const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+  if (!pedido) throw new Error('Pedido interno não encontrado');
+  if (pedido.status === 'cancelado') throw new Error('Pedido cancelado: não permite corte');
+
+  // Atualizar valor total do pedido — itens reais ficam no PedidoItem
+  const itens = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
+  const logs = [];
+  let novoTotal = 0;
+
+  for (const item of itens) {
+    const corte = cortes.find(c => String(c.codigo_produto) === String(item.produto_codigo || item.codigo_produto));
+    if (!corte) {
+      novoTotal += Number(item.valor_total || 0);
+      continue;
+    }
+    const qOrig = Number(item.quantidade || 0);
+    const qNova = Number(corte.nova_quantidade);
+    const valUnit = Number(item.valor_unitario || 0);
+
+    logs.push({
+      pedido_codigo_omie: '',
+      numero_pedido: pedido.numero_pedido || '',
+      produto_codigo: String(item.produto_codigo || ''),
+      produto_descricao: item.produto_descricao || item.descricao || '',
+      quantidade_anterior: qOrig,
+      quantidade_nova: qNova,
+      quantidade_cortada: qOrig - qNova,
+      valor_unitario: valUnit,
+      valor_anterior: qOrig * valUnit,
+      valor_novo: qNova * valUnit,
+      valor_cortado: (qOrig - qNova) * valUnit,
+      motivo: corte.motivo || motivo_geral,
+      tipo_operacao: qNova === 0 ? 'remocao_item' : 'corte_quantidade',
+      funcionario_nome: user.full_name || user.email,
+      sincronizado_omie: false,
+      origem_pedido: 'interno_d1'
+    });
+
+    if (qNova === 0) {
+      await base44.asServiceRole.entities.PedidoItem.delete(item.id);
+    } else {
+      await base44.asServiceRole.entities.PedidoItem.update(item.id, {
+        quantidade: qNova,
+        valor_total: qNova * valUnit
+      });
+      novoTotal += qNova * valUnit;
+    }
+  }
+
+  await base44.asServiceRole.entities.Pedido.update(pedido_id, { valor_total: novoTotal });
+
+  // Refletir na Carga local também
+  await refletirCorteNaCargaLocal(base44, null, cortes, true, pedido_id);
+
+  for (const log of logs) {
+    await base44.asServiceRole.entities.LogCorte.create(log).catch(() => {});
+  }
+
+  return logs;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -33,11 +149,18 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { codigo_pedido, cortes = [], motivo_geral = '' } = body;
-    if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
+    const { codigo_pedido, pedido_id_interno, cortes = [], motivo_geral = '' } = body;
     if (cortes.length === 0) return Response.json({ error: 'cortes vazio' }, { status: 400 });
 
-    // 1. Consulta pedido atual
+    // === FLUXO PEDIDO INTERNO (D1) ===
+    if (pedido_id_interno && !codigo_pedido) {
+      const logs = await cortarPedidoInterno(base44, pedido_id_interno, cortes, motivo_geral, user);
+      return Response.json({ sucesso: true, itens_alterados: logs.length, logs, origem: 'interno' });
+    }
+
+    // === FLUXO PEDIDO OMIE ===
+    if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
+
     const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
     const pedido = consulta.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
@@ -48,7 +171,6 @@ Deno.serve(async (req) => {
     const itensAtuais = pedido.det || [];
     const logs = [];
 
-    // 2. Monta nova lista de itens com cortes aplicados
     const novosItens = [];
     for (const item of itensAtuais) {
       const codProdInt = item.produto?.codigo_produto_integracao;
@@ -94,7 +216,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Envia alteração ao Omie
     let erroOmie = null;
     try {
       await omieCall('AlterarPedidoVenda', {
@@ -108,7 +229,6 @@ Deno.serve(async (req) => {
       erroOmie = err.message;
     }
 
-    // 4. Registra logs de corte
     for (const log of logs) {
       await base44.asServiceRole.entities.LogCorte.create({
         ...log,
@@ -129,7 +249,11 @@ Deno.serve(async (req) => {
     }).catch(() => {});
 
     if (erroOmie) return Response.json({ error: erroOmie }, { status: 500 });
-    return Response.json({ sucesso: true, itens_alterados: logs.length, logs });
+
+    // Refletir corte na Carga local (espelho!)
+    const cargaAtualizada = await refletirCorteNaCargaLocal(base44, codigo_pedido, cortes, false, null);
+
+    return Response.json({ sucesso: true, itens_alterados: logs.length, logs, carga_atualizada: cargaAtualizada });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
