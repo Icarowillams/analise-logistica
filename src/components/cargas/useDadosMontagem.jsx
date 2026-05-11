@@ -41,8 +41,10 @@ export default function useDadosMontagem() {
       const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 
-      // 1. Vendas Omie já vêm enriquecidas no espelho — só formatamos pro shape esperado
-      const vendasEnriquecidas = (espelhoOmie || []).map(e => ({
+      // 1. Vendas Omie já vêm enriquecidas no espelho — Montagem só monta a partir da ETAPA 20 (Liberados)
+      const vendasEnriquecidas = (espelhoOmie || [])
+        .filter(e => String(e.etapa) === '20')
+        .map(e => ({
         codigo_pedido: e.codigo_pedido,
         codigo_pedido_integracao: e.codigo_pedido_integracao || '',
         numero_pedido: e.numero_pedido || '',
@@ -180,14 +182,10 @@ export default function useDadosMontagem() {
     refreshTimer.current = setTimeout(() => { carregar(); }, 600);
   }, [carregar]);
 
-  // Trigger manual: força reconciliação no backend + reload
+  // Trigger manual: apenas recarrega o espelho local (webhook mantém sync em tempo real)
+  // Reconciliação Omie é manual/scheduled — não dispara aqui pra evitar rate-limit (REDUNDANT)
   const recarregar = useCallback(async () => {
     setLoading(true);
-    // Dispara reconciliação assíncrona (não bloqueia a UI)
-    base44.functions.invoke('bootstrapPedidosLiberadosOmie', { origem: 'reconciliacao' }).catch((e) => {
-      const msg = e?.response?.data?.error || e.message;
-      toast.warning('Reconciliação Omie falhou (usando cache local): ' + msg);
-    });
     await carregar();
   }, [carregar]);
 
