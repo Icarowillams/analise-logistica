@@ -42,6 +42,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
     }
 
+    // Regra: só pode devolver/ajustar pedidos nas etapas 10/20/50 (antes do faturamento).
+    const ETAPAS_AJUSTAVEIS = ['10', '20', '50'];
+    const ETAPA_NOMES_MAP = { '10': 'Pedido de Venda', '20': 'Liberados (Pendente)', '50': 'Faturar (Montagem)', '60': 'Faturado' };
+    const etapaAtual = String(consulta?.pedido_venda_produto?.cabecalho?.etapa || '');
+    if (!ETAPAS_AJUSTAVEIS.includes(etapaAtual)) {
+      const nome = ETAPA_NOMES_MAP[etapaAtual] || `Etapa ${etapaAtual}`;
+      return Response.json({
+        error: `Não é possível devolver/ajustar este pedido. Está na etapa "${nome}" (${etapaAtual}). Apenas pedidos Pendentes, Liberados ou em Montagem podem ser ajustados.`,
+        etapa_atual: etapaAtual, etapa_nome: nome
+      }, { status: 400 });
+    }
+
     const produtosDevolver = produtos.map(p => ({
       nCodProd: Number(p.nCodProd || p.codigo_produto),
       nQtde: Number(p.quantidade)

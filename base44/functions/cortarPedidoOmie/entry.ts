@@ -168,6 +168,20 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
     }
 
+    // Regra de negócio: só pode cortar pedidos nas etapas 10 (Pedido), 20 (Liberados) ou 50 (Faturar / Montagem).
+    // Etapa 60 (Faturado) já gerou NF — não pode mais ajustar.
+    const ETAPAS_AJUSTAVEIS = ['10', '20', '50'];
+    const ETAPA_NOMES_MAP = { '10': 'Pedido de Venda', '20': 'Liberados (Pendente)', '50': 'Faturar (Montagem)', '60': 'Faturado' };
+    const etapaAtual = String(pedido?.cabecalho?.etapa || '');
+    if (!ETAPAS_AJUSTAVEIS.includes(etapaAtual)) {
+      const nome = ETAPA_NOMES_MAP[etapaAtual] || `Etapa ${etapaAtual}`;
+      return Response.json({
+        error: `Não é possível cortar este pedido. Está na etapa "${nome}" (${etapaAtual}). Apenas pedidos Pendentes, Liberados ou em Montagem podem ser cortados.`,
+        etapa_atual: etapaAtual,
+        etapa_nome: nome
+      }, { status: 400 });
+    }
+
     const itensAtuais = pedido.det || [];
     const logs = [];
 

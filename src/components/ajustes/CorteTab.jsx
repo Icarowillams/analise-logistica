@@ -29,10 +29,13 @@ export default function CorteTab() {
   const [motivoGeral, setMotivoGeral] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // REGRA: só permite ajuste em cargas onde pedidos ainda podem ser cortados.
+  // Etapas Omie aceitas: 10 (Pedido), 20 (Liberados/Pendente), 50 (Faturar/Montagem).
+  // Cargas já 'faturada' / 'em_rota' / 'entregue' / 'finalizada' / 'cancelada' têm pedidos em etapa 60 ou indisponíveis.
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-corte'],
     queryFn: () => base44.entities.Carga.filter(
-      { status_carga: { $in: ['montagem', 'fechada', 'conferindo', 'pronta', 'faturada'] } },
+      { status_carga: { $in: ['montagem', 'fechada', 'conferindo', 'pronta'] } },
       '-data_carga',
       200
     )
