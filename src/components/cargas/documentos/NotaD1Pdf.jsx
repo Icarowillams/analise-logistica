@@ -3,15 +3,33 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
-import { fmtMoney, fmtDateTime, abrirImpressao } from './printHelper';
+import { abrirImpressao } from './printHelper';
+
+const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png";
+
+const fmtMoney = (v) => Number(v || 0).toFixed(2);
+const fmtMoney3 = (v) => Number(v || 0).toFixed(3);
+const fmtDate = (v) => {
+  if (!v) return '';
+  try {
+    const d = typeof v === 'string' && v.length === 10 ? new Date(v + 'T12:00:00') : new Date(v);
+    return d.toLocaleDateString('pt-BR');
+  } catch { return ''; }
+};
+
+const printStyles = `
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #000; padding: 20px; }
+.page { width: 100%; page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+`;
 
 /**
  * Impressão de Notas D1 (vendas internas SEM NF-e do Omie).
- * Gera uma "via interna" por pedido D1 da carga, em formato compacto A4.
- * Cada nota tem cabeçalho da empresa, dados do cliente, lista de itens,
- * totais e linha de assinatura/recebimento.
+ * Replica o modelo analítico do "Gerenciar Pedidos" (PedidoPdf).
+ * Recebe `carga` (usa pedidos_internos D1) OU `pedidos` (lista direta de pedidos D1).
  */
-export default function NotaD1Pdf({ carga }) {
+export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
   const printRef = useRef();
 
   const { data: empresas = [] } = useQuery({
@@ -31,40 +49,36 @@ export default function NotaD1Pdf({ carga }) {
     return m;
   }, [clientes]);
 
-  // Apenas pedidos D1 (internos) da carga
+  // Pedidos D1 (internos): preferir prop, senão extrair da carga
   const notasD1 = useMemo(() => {
-    if (!carga) return [];
-    return (carga.pedidos_internos || []).filter(p => {
-      const modelo = (p.modelo_nota || '').toString().toLowerCase();
-      return modelo === 'd1' || modelo === '';
-    }).map(p => ({
-      ...p,
-      cliente: clientesMap.get(p.cliente_id) || {}
-    }));
-  }, [carga, clientesMap]);
+    const fonte = pedidosProp && pedidosProp.length > 0
+      ? pedidosProp
+      : (carga?.pedidos_internos || []);
+    return fonte
+      .filter(p => {
+        const modelo = (p.modelo_nota || '').toString().toLowerCase();
+        return modelo === 'd1' || modelo === '';
+      })
+      .map(p => ({
+        ...p,
+        cliente: clientesMap.get(p.cliente_id) || {}
+      }));
+  }, [carga, pedidosProp, clientesMap]);
 
   const handlePrint = () => {
     if (!printRef.current) return;
-    const styles = `
-      <style>
-        @page { size: A4; margin: 10mm; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        body { font-family: Arial, sans-serif; font-size: 10px; color: #1e293b; margin: 0; padding: 0; }
-        .nota-d1 { page-break-after: always; padding: 8px 0; }
-        .nota-d1:last-child { page-break-after: auto; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { padding: 4px 6px; }
-      </style>
-    `;
-    abrirImpressao(styles + printRef.current.innerHTML, `Notas_D1_${carga?.numero_carga || ''}`);
+    const html = `<html><head><title>Notas_D1_${carga?.numero_carga || ''}</title><meta charset="utf-8" /><style>${printStyles}</style></head><body>${printRef.current.innerHTML}</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups para imprimir o documento.'); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); }, 300);
   };
-
-  if (!carga) return null;
 
   if (notasD1.length === 0) {
     return (
       <div className="p-8 text-center text-slate-500">
-        Nenhuma nota D1 (venda interna) nesta carga.
+        Nenhuma nota D1 (venda interna) encontrada.
       </div>
     );
   }
@@ -80,111 +94,222 @@ export default function NotaD1Pdf({ carga }) {
         </Button>
       </div>
 
-      <div ref={printRef} className="bg-white mx-auto" style={{ maxWidth: '800px', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#1e293b' }}>
+      <div ref={printRef}>
         {notasD1.map((nota, idx) => {
           const cli = nota.cliente || {};
-          const totalItens = (nota.produtos || []).reduce((s, p) => s + Number(p.quantidade || 0), 0);
-          const totalValor = Number(nota.valor_total_pedido || 0);
+          const produtos = nota.produtos || [];
+          const totalProdutos = produtos.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+          const totalQtd = produtos.reduce((s, p) => s + Number(p.quantidade || 0), 0);
+          const dataEmissao = fmtDate(nota.created_date || nota.data_emissao || new Date());
+          const dataEntrega = fmtDate(nota.data_previsao_entrega || carga?.data_carga);
+          const cenarioFiscalLabel = nota.cenario_local_nome || nota.cenario_fiscal_nome || 'Venda Interna D1';
 
           return (
-            <div key={idx} className="nota-d1" style={{ padding: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', marginBottom: '12px' }}>
-              {/* CABEÇALHO */}
-              <div style={{ background: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)', color: '#fff', padding: '8px 12px', borderRadius: '4px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '13px' }}>📄 NOTA D1 — Venda Interna</div>
-                  <div style={{ fontSize: '9px', opacity: 0.9 }}>Documento interno — Sem valor fiscal</div>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '10px' }}>
-                  <div><b>Pedido:</b> {nota.numero_pedido || '-'}</div>
-                  <div><b>Carga:</b> {carga.numero_carga || '-'}</div>
-                </div>
-              </div>
-
-              {/* EMPRESA */}
-              <div style={{ background: '#f8fafc', padding: '6px 10px', borderRadius: '4px', marginBottom: '6px', fontSize: '9.5px' }}>
-                <b>{empresa.razao_social || empresa.nome || 'PAO E MEL'}</b>
-                {empresa.cnpj && <> • CNPJ: {empresa.cnpj || empresa.cnpj_cpf}</>}
-                {empresa.inscricao_estadual && <> • IE: {empresa.inscricao_estadual}</>}
-                {empresa.telefone && <> • Tel: {empresa.telefone}</>}
-              </div>
-
-              {/* CLIENTE */}
-              <table style={{ width: '100%', fontSize: '10px', marginBottom: '6px' }}>
+            <div
+              key={idx}
+              className="page bg-white border rounded-xl shadow-sm max-w-4xl mx-auto mb-6"
+              style={{ padding: '20px', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#000' }}
+            >
+              {/* ===== HEADER ===== */}
+              <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
                 <tbody>
                   <tr>
-                    <td style={{ paddingBottom: '2px' }}>
-                      <span style={{ color: '#64748b' }}>Cliente:</span> <b>{cli.razao_social || nota.nome_cliente || '-'}</b>
-                      {cli.nome_fantasia && <span style={{ color: '#64748b' }}> • Fantasia: <b style={{ color: '#0f172a' }}>{cli.nome_fantasia}</b></span>}
+                    <td style={{ width:'90px', textAlign:'center', borderRight:'1.5px solid #000', padding:'6px' }}>
+                      <img src={LOGO_URL} alt="Logo" style={{ height:'60px' }} />
                     </td>
-                  </tr>
-                  <tr>
-                    <td style={{ paddingBottom: '2px' }}>
-                      <span style={{ color: '#64748b' }}>CPF/CNPJ:</span> {cli.cnpj_cpf || '-'} •
-                      <span style={{ color: '#64748b' }}> Endereço:</span> {[cli.endereco, cli.numero, cli.bairro, cli.cidade, cli.estado].filter(Boolean).join(', ') || '-'}
+                    <td style={{ textAlign:'center', padding:'6px' }}>
+                      <div style={{ fontSize:'13px', fontWeight:700 }}>{empresa?.razao_social || 'PAO E MEL INDUSTRIA DE PANIFICACAO LTDA ME'}</div>
+                      <div style={{ fontSize:'9px', color:'#555' }}>{empresa?.nome_fantasia || 'PAO E MEL'}</div>
+                      <div style={{ fontSize:'8px', color:'#555', marginTop:'2px' }}>
+                        CNPJ: {empresa?.cnpj || '-'} — IE: {empresa?.inscricao_estadual || '-'} — Tel: {empresa?.telefone || '-'}
+                      </div>
                     </td>
-                  </tr>
-                  <tr>
-                    <td>
-                      <span style={{ color: '#64748b' }}>Vendedor:</span> {nota.vendedor_nome || '-'} •
-                      <span style={{ color: '#64748b' }}> Data:</span> {fmtDateTime(new Date())}
+                    <td style={{ width:'140px', borderLeft:'1.5px solid #000', padding:'6px', fontSize:'10px' }}>
+                      <div><span style={{ fontWeight:700 }}>Nota D1</span></div>
+                      <div style={{ fontSize:'14px', fontWeight:700 }}>{nota.numero_pedido || '-'}</div>
+                      <div style={{ marginTop:'4px' }}>{dataEmissao}</div>
+                      <div>Folha 1/1</div>
                     </td>
                   </tr>
                 </tbody>
               </table>
 
-              {/* ITENS */}
-              <table style={{ border: '1px solid #cbd5e1', marginBottom: '6px' }}>
+              {/* ===== AVISO D1 ===== */}
+              <div style={{ background:'#FEF3C7', border:'2px solid #D97706', marginTop:'6px', padding:'6px 10px', textAlign:'center' }}>
+                <span style={{ fontSize:'12px', fontWeight:700, color:'#92400E', textTransform:'uppercase', letterSpacing:'1px' }}>
+                  📄 NOTA D1 — VENDA INTERNA (SEM VALOR FISCAL)
+                </span>
+              </div>
+
+              {/* ===== CLIENTE ===== */}
+              <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
+                CLIENTE
+              </div>
+              <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px', width:'80px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CÓDIGO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.codigo_interno || cli.codigo_omie || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>NOME/RAZÃO SOCIAL</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.razao_social || nota.nome_cliente || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px', width:'140px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CPF/CNPJ</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.cnpj_cpf || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan="3" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>FANTASIA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.nome_fantasia || nota.nome_fantasia || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan="2" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>ENDEREÇO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.endereco || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>NÚMERO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.numero || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>BAIRRO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.bairro || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CIDADE</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.cidade || nota.cidade || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>UF / CEP</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.estado || '-'} / {cli.cep || '-'}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* ===== OUTRAS INFORMAÇÕES ===== */}
+              <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
+                OUTRAS INFORMAÇÕES
+              </div>
+              <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>MODELO NOTA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>D1</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>Nº CARGA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{carga?.numero_carga || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>ROTA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{nota.rota_cliente || carga?.rota_nome || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>VENDEDOR</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{nota.vendedor_nome || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>DATA EMISSÃO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{dataEmissao}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>PREVISÃO ENTREGA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{dataEntrega || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>MOTORISTA</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{carga?.motorista_nome || '-'}</span>
+                    </td>
+                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>VEÍCULO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{carga?.veiculo_placa || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CENÁRIO FISCAL</span>
+                      <span style={{ fontSize:'10px', fontWeight:600 }}>{cenarioFiscalLabel}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* ===== OBSERVAÇÃO ===== */}
+              <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
+                OBSERVAÇÃO
+              </div>
+              <div style={{ border:'1.5px solid #000', borderTop:'none', padding:'6px', minHeight:'25px', fontSize:'9px' }}>
+                {nota.observacoes || ''}
+              </div>
+
+              {/* ===== DADOS DOS PRODUTOS ===== */}
+              <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
+                DADOS DOS PRODUTOS
+              </div>
+              <table style={{ width:'100%', borderCollapse:'collapse', border:'1.5px solid #000' }}>
                 <thead>
-                  <tr style={{ background: '#1e293b', color: '#fff' }}>
-                    <th style={{ textAlign: 'left' }}>Cód.</th>
-                    <th style={{ textAlign: 'left' }}>Descrição</th>
-                    <th style={{ textAlign: 'center', width: '50px' }}>UN</th>
-                    <th style={{ textAlign: 'right', width: '70px' }}>Qtd</th>
-                    <th style={{ textAlign: 'right', width: '90px' }}>Vl. Unit.</th>
-                    <th style={{ textAlign: 'right', width: '100px' }}>Vl. Total</th>
+                  <tr>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'50px' }}>CÓD.</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'left' }}>DESCRIÇÃO DO PRODUTO</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'45px' }}>UN</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'55px' }}>QTD.</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'right', width:'80px' }}>VL. UNIT.</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'right', width:'90px' }}>VL. TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(nota.produtos || []).length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: '12px', textAlign: 'center', color: '#94a3b8' }}>Sem itens</td></tr>
-                  ) : (nota.produtos || []).map((p, i) => (
-                    <tr key={i} style={{ background: i % 2 ? '#f8fafc' : '#fff', borderBottom: '1px solid #e2e8f0' }}>
-                      <td>{p.codigo_produto}</td>
-                      <td>{p.descricao}</td>
-                      <td style={{ textAlign: 'center' }}>{p.unidade || 'UN'}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(p.quantidade || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtMoney(p.valor_unitario)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMoney(p.valor_total)}</td>
+                  {produtos.map((item, i) => (
+                    <tr key={i}>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.codigo_produto}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.descricao}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.unidade || 'UN'}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{Number(item.quantidade || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_unitario)}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_total)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#fef3c7', fontWeight: 700 }}>
-                    <td colSpan="3" style={{ textAlign: 'right' }}>TOTAL:</td>
-                    <td style={{ textAlign: 'right' }}>{totalItens}</td>
-                    <td></td>
-                    <td style={{ textAlign: 'right', color: '#92400e' }}>{fmtMoney(totalValor)}</td>
+                  <tr>
+                    <td colSpan="3" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>TOTAL GERAL</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'11px', fontWeight:700, background:'#e5e5e5', textAlign:'center' }}>{Number(totalQtd).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>{produtos.length} ite{produtos.length === 1 ? 'm' : 'ns'}</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'13px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>R$ {fmtMoney(totalProdutos)}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan="5" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney3(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
                   </tr>
                 </tfoot>
               </table>
 
-              {/* OBSERVAÇÃO + RECEBIMENTO */}
-              {nota.observacoes && (
-                <div style={{ background: '#eff6ff', borderLeft: '3px solid #3b82f6', padding: '4px 8px', fontSize: '9.5px', marginBottom: '8px' }}>
-                  <b>Obs.:</b> {nota.observacoes}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '20px', fontSize: '9.5px' }}>
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '4px', minWidth: '260px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>
+              {/* ===== RECEBIMENTO ===== */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginTop:'20px', fontSize:'9.5px' }}>
+                <div style={{ borderTop:'1px solid #1e293b', paddingTop:'4px', minWidth:'260px', textAlign:'center', fontWeight:600, color:'#475569' }}>
                   Recebedor (Ass. / RG)
                 </div>
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '4px', minWidth: '180px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>
+                <div style={{ borderTop:'1px solid #1e293b', paddingTop:'4px', minWidth:'180px', textAlign:'center', fontWeight:600, color:'#475569' }}>
                   Data: ___/___/______
                 </div>
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '4px', minWidth: '200px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>
+                <div style={{ borderTop:'1px solid #1e293b', paddingTop:'4px', minWidth:'200px', textAlign:'center', fontWeight:600, color:'#475569' }}>
                   Entregador
                 </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ textAlign:'center', marginTop:'10px', fontSize:'8px', color:'#888' }}>
+                Pão e Mel — Documento interno gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
               </div>
             </div>
           );
