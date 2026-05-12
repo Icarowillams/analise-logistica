@@ -36,11 +36,18 @@ export default function TransferenciaTab() {
   const [transferindo, setTransferindo] = useState(false);
 
   // REGRA: transferência só após faturamento (etapa Omie 60).
-  // Cargas elegíveis: status 'faturada' / 'em_rota' (ainda dá pra transferir entre cargas que saíram juntas)
-  // E que tenham pelo menos 1 pedido em etapa 60.
-  const { data: cargas = [] } = useQuery({
+  // Cargas elegíveis: status 'faturada' / 'em_rota' com pelo menos 1 pedido em etapa 60.
+  // Sincroniza com Omie pra garantir que numero_nf/etapa estão atualizados.
+  const { data: cargas = [], isFetching: sincronizandoCargas } = useQuery({
     queryKey: ['cargas', 'transferencia'],
     queryFn: async () => {
+      // 1) Atualiza status + numero_nf direto no Omie (cargas faturadas/em_rota)
+      try {
+        await base44.functions.invoke('sincronizarStatusCargasOmie', { list_limit: 200, sync_limit: 50 });
+      } catch (e) {
+        console.warn('Falha ao sincronizar status das cargas:', e.message);
+      }
+      // 2) Lê o estado atualizado
       const todas = await base44.entities.Carga.filter(
         { status_carga: { $in: ['faturada', 'em_rota'] } },
         '-data_carga',
@@ -48,10 +55,11 @@ export default function TransferenciaTab() {
       );
       return todas.filter(c => {
         const pedidos = c.pedidos_omie || [];
-        if (pedidos.length === 0) return false; // transferência só faz sentido com pedidos Omie faturados
+        if (pedidos.length === 0) return false;
         return pedidos.some(p => String(p.etapa || '').trim() === '60');
       });
-    }
+    },
+    staleTime: 60_000
   });
 
   const cargaOrigem = useMemo(() => cargas.find(c => c.id === cargaOrigemId), [cargas, cargaOrigemId]);
@@ -151,9 +159,17 @@ export default function TransferenciaTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ArrowLeftRight className="w-5 h-5 text-indigo-500" />
-            Transferência entre Cargas
+          <CardTitle className="text-base flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <ArrowLeftRight className="w-5 h-5 text-indigo-500" />
+              Transferência entre Cargas
+            </span>
+            {sincronizandoCargas && (
+              <span className="text-xs font-normal text-slate-500 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Sincronizando NFs com Omie...
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
