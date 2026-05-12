@@ -72,58 +72,87 @@ Deno.serve(async (req) => {
 
     const t0 = Date.now();
 
-    // 1. Buscar etapa 20 do Omie (1 página, até 100 pedidos)
-    const data = await omieCall('ListarPedidos', {
-      pagina: 1,
-      registros_por_pagina: 100,
-      apenas_importado_api: 'N',
-      etapa: '20'
-    }).catch((e) => {
-      if (/n[ãa]o existem registros/i.test(e.message)) return null;
-      throw e;
-    });
-
-    const pedidosOmie = (data?.pedido_venda_produto || [])
-      .filter((p) => p.cabecalho?.cancelado !== 'S')
-      .map((p) => {
-        const cab = p.cabecalho || {};
-        return {
-          codigo_pedido: String(cab.codigo_pedido || ''),
-          codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
-          numero_pedido: String(cab.numero_pedido || ''),
-          codigo_cliente: String(cab.codigo_cliente || ''),
-          codigo_cliente_integracao: cab.codigo_cliente_integracao || '',
-          cnpj_cpf_cliente: cab.cnpj_cpf_cliente || '',
-          nome_cliente: cab.nome_cliente || '',
-          nome_fantasia: cab.nome_fantasia || '',
-          cidade: cab.cidade || '',
-          data_previsao: cab.data_previsao || '',
-          etapa: '20',
-          valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
-          quantidade_itens: (p.det || []).length,
-          produtos: (p.det || []).map((d) => ({
-            codigo_produto: String(d.produto?.codigo_produto || ''),
-            codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
-            descricao: d.produto?.descricao || '',
-            quantidade: d.produto?.quantidade || 0,
-            valor_unitario: d.produto?.valor_unitario || 0,
-            valor_total: d.produto?.valor_total || 0,
-            unidade: d.produto?.unidade || ''
-          }))
-        };
+    // 1. Buscar TODAS as páginas da etapa 20 do Omie
+    //    (necessário para garantir que pedidos fora do top-100 também sejam sincronizados)
+    const pedidosOmie = [];
+    let pagina = 1;
+    const MAX_PAGINAS = 20; // proteção: até 2000 pedidos liberados (20 × 100)
+    while (pagina <= MAX_PAGINAS) {
+      const data = await omieCall('ListarPedidos', {
+        pagina,
+        registros_por_pagina: 100,
+        apenas_importado_api: 'N',
+        etapa: '20'
+      }).catch((e) => {
+        if (/n[ãa]o existem registros/i.test(e.message)) return null;
+        throw e;
       });
+
+      if (!data) break;
+      const lote = data.pedido_venda_produto || [];
+      if (lote.length === 0) break;
+
+      lote
+        .filter((p) => p.cabecalho?.cancelado !== 'S')
+        .forEach((p) => {
+          const cab = p.cabecalho || {};
+          pedidosOmie.push({
+            codigo_pedido: String(cab.codigo_pedido || ''),
+            codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
+            numero_pedido: String(cab.numero_pedido || ''),
+            codigo_cliente: String(cab.codigo_cliente || ''),
+            codigo_cliente_integracao: cab.codigo_cliente_integracao || '',
+            cnpj_cpf_cliente: cab.cnpj_cpf_cliente || '',
+            nome_cliente: cab.nome_cliente || '',
+            nome_fantasia: cab.nome_fantasia || '',
+            cidade: cab.cidade || '',
+            data_previsao: cab.data_previsao || '',
+            etapa: '20',
+            valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
+            quantidade_itens: (p.det || []).length,
+            produtos: (p.det || []).map((d) => ({
+              codigo_produto: String(d.produto?.codigo_produto || ''),
+              codigo_produto_integracao: d.produto?.codigo_produto_integracao || '',
+              descricao: d.produto?.descricao || '',
+              quantidade: d.produto?.quantidade || 0,
+              valor_unitario: d.produto?.valor_unitario || 0,
+              valor_total: d.produto?.valor_total || 0,
+              unidade: d.produto?.unidade || ''
+            }))
+          });
+        });
+
+      const totalPaginas = Number(data.total_de_paginas || 1);
+      if (pagina >= totalPaginas) break;
+      pagina += 1;
+    }
 
     if (pedidosOmie.length === 0) {
       return Response.json({ sucesso: true, total: 0, criados: 0, atualizados: 0, duracao_ms: Date.now() - t0 });
     }
 
+    // 1.b. CORREÇÃO ANTI-ESPELHO-DESATUALIZADO:
+    //      Espelho pode ter pedido com etapa '10' (gravado pela reconciliação ou bootstrap)
+    //      que agora está em etapa '20' no Omie. O upsert por codigo_pedido vai corrigir,
+    //      MAS apenas se o ID já existir. Aqui garantimos isso buscando todos esses códigos
+    //      mesmo que estejam com etapa ≠ '20' no espelho.
+    const codigosOmieAtuais = pedidosOmie.map((p) => p.codigo_pedido);
+
     // 2. Cadastros locais (leves)
-    const [clientes, rotas, vendedores, pedidosLocais, espelhoAtual] = await Promise.all([
+    //    OBS: espelhoAtual busca por codigo_pedido individualmente para todos os pedidos da etapa 20
+    //    do Omie — inclusive os que no espelho local estão com etapa errada (ex: '10').
+    //    Isso garante que o upsert atualize o registro existente em vez de criar duplicata.
+    const [clientes, rotas, vendedores, pedidosLocais, espelhoLotes] = await Promise.all([
       base44.asServiceRole.entities.Cliente.list('-created_date', 10000),
       base44.asServiceRole.entities.Rota.list('-created_date', 1000),
       base44.asServiceRole.entities.Vendedor.list('-created_date', 1000),
       base44.asServiceRole.entities.Pedido.list('-created_date', 5000),
-      base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ etapa: '20' }, '-created_date', 5000)
+      Promise.all(
+        codigosOmieAtuais.map((cod) =>
+          base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(cod) }, '-created_date', 1)
+            .catch(() => [])
+        )
+      )
     ]);
 
     const indices = criarIndicesClientes(clientes || []);
@@ -131,7 +160,11 @@ Deno.serve(async (req) => {
     const mapaVendedor = new Map((vendedores || []).map((v) => [v.id, v.nome]));
     const pedidoLocalPorOmie = new Map();
     (pedidosLocais || []).forEach((p) => { if (p.omie_codigo_pedido) pedidoLocalPorOmie.set(String(p.omie_codigo_pedido), p); });
-    const espelhoPorCodigo = new Map((espelhoAtual || []).map((e) => [String(e.codigo_pedido), e]));
+    const espelhoPorCodigo = new Map();
+    (espelhoLotes || []).forEach((lote) => {
+      const reg = lote?.[0];
+      if (reg?.codigo_pedido) espelhoPorCodigo.set(String(reg.codigo_pedido), reg);
+    });
 
     // 3. Upsert
     let criados = 0;
