@@ -114,13 +114,7 @@ export default function PedidoPdf({ pedidoId }) {
       files: [file]
     };
 
-    if (navigator.canShare && navigator.canShare(shareData)) {
-      await navigator.share(shareData);
-    } else if (navigator.share) {
-      // Fallback sem arquivo (compartilha só texto)
-      await navigator.share({ title: shareData.title, text: shareData.text });
-    } else {
-      // Fallback: download direto
+    const downloadFallback = () => {
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -130,6 +124,21 @@ export default function PedidoPdf({ pedidoId }) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    };
+
+    try {
+      if (navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else if (navigator.share) {
+        await navigator.share({ title: shareData.title, text: shareData.text });
+      } else {
+        downloadFallback();
+      }
+    } catch (err) {
+      // Usuário cancelou (AbortError) — silenciar.
+      // Outros erros (NotAllowedError, permissão negada) → fallback de download.
+      if (err?.name === 'AbortError') return;
+      downloadFallback();
     }
   };
 
