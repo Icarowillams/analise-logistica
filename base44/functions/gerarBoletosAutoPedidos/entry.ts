@@ -65,6 +65,25 @@ async function gerarBoletosParaPedidos(base44, codigosPedido, usuarioEmail) {
         const cod = t.codigo_lancamento_omie;
         const liquidado = t.status_titulo && t.status_titulo !== 'ABERTO';
         const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
+
+        // 🏷️ Filtra apenas títulos com modalidade BOLETO.
+        // Omie identifica via tipo_documento ('BOL') OU id_origem (boleto).
+        // Aceita também quando o título tem id_conta_corrente vinculada a conta de boleto (heurística).
+        const tipoDoc = String(t.tipo_documento || t.cCodTpDoc || '').toUpperCase();
+        const idOrigem = String(t.id_origem || '').toUpperCase();
+        const ehBoleto = tipoDoc.includes('BOL') || tipoDoc === 'BOL' || idOrigem.includes('BOL');
+
+        if (!ehBoleto) {
+          resultados.push({
+            codigo_pedido: codPedido,
+            codigo_lancamento: cod,
+            sucesso: false,
+            skip: true,
+            motivo: `Modalidade ${tipoDoc || 'não-boleto'} — não gera boleto`
+          });
+          continue;
+        }
+
         if (liquidado || jaTemBoleto) {
           resultados.push({
             codigo_pedido: codPedido,
