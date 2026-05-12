@@ -29,16 +29,24 @@ export default function CorteTab() {
   const [motivoGeral, setMotivoGeral] = useState('');
   const [salvando, setSalvando] = useState(false);
 
-  // REGRA: só permite ajuste em cargas onde pedidos ainda podem ser cortados.
-  // Etapas Omie aceitas: 10 (Pedido), 20 (Liberados/Pendente), 50 (Faturar/Montagem).
-  // Cargas já 'faturada' / 'em_rota' / 'entregue' / 'finalizada' / 'cancelada' têm pedidos em etapa 60 ou indisponíveis.
+  // REGRA: só permite ajuste em cargas onde TODOS os pedidos ainda estão em etapa Omie 10/20/50.
+  // Cargas com pedidos já faturados (etapa 60) ou cargas finalizadas/canceladas/em_rota/entregue NÃO aparecem.
+  // Status_carga aceitos: montagem, fechada, conferindo, pronta — mas só se pedidos_omie todos estão em 10/20/50.
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-corte'],
-    queryFn: () => base44.entities.Carga.filter(
-      { status_carga: { $in: ['montagem', 'fechada', 'conferindo', 'pronta'] } },
-      '-data_carga',
-      200
-    )
+    queryFn: async () => {
+      const todas = await base44.entities.Carga.filter(
+        { status_carga: { $in: ['montagem', 'fechada', 'conferindo', 'pronta'] } },
+        '-data_carga',
+        200
+      );
+      // Filtra: só cargas onde pedidos_omie estão TODOS em 10/20/50 (ou carga sem pedidos_omie/só internos)
+      return todas.filter(c => {
+        const pedidos = c.pedidos_omie || [];
+        if (pedidos.length === 0) return true; // só internos/trocas — pode cortar
+        return pedidos.every(p => ['10', '20', '50'].includes(String(p.etapa || '').trim()));
+      });
+    }
   });
 
   const cargaSelecionada = useMemo(

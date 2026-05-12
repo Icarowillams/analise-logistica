@@ -12,10 +12,10 @@ import { toast } from 'sonner';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-// Status válidos pra acerto (carga já saiu pra rota OU já voltou)
-// 'faturada' = NF emitida e pronta pra sair / saindo
-// 'em_rota'  = motorista em rota
-// 'entregue' = motorista voltou (ideal pra acerto)
+// Status válidos pra acerto: APENAS cargas com pedidos faturados (etapa Omie 60).
+// REGRA: o acerto só pode acontecer DEPOIS que a NF foi emitida (etapa 60).
+// Cargas elegíveis: faturada / em_rota / entregue — e dentro dessas, filtramos
+// no front pra mostrar apenas as que têm pedidos_omie com etapa === '60'.
 const STATUS_ACERTO = ['faturada', 'em_rota', 'entregue'];
 
 const STATUS_BADGE = {
@@ -68,12 +68,20 @@ export default function AcertoCaixa() {
     return m;
   }, [acertos]);
 
-  // Cargas elegíveis (sem acerto finalizado e carga não cancelada)
+  // Cargas elegíveis (sem acerto finalizado, carga não cancelada,
+  // e com PELO MENOS 1 pedido Omie em etapa 60 — ou só pedidos internos/trocas)
   const cargasElegiveis = useMemo(() => {
     return cargas.filter(c => {
       if (c.status_carga === 'cancelada') return false;
       const a = acertosPorCarga.get(c.id);
       if (a?.status_acerto === 'finalizado') return false;
+      // REGRA: só mostrar cargas cujos pedidos Omie já estão faturados (etapa 60).
+      // Se a carga só tem pedidos internos/trocas (sem omie), também aparece.
+      const pedidosOmie = c.pedidos_omie || [];
+      if (pedidosOmie.length > 0) {
+        const algumFaturado = pedidosOmie.some(p => String(p.etapa || '').trim() === '60');
+        if (!algumFaturado) return false;
+      }
       if (filtroIni && c.data_carga < filtroIni) return false;
       if (filtroFim && c.data_carga > filtroFim) return false;
       if (filtroData && c.data_carga !== filtroData) return false;

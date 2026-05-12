@@ -114,6 +114,7 @@ module.exports = {
     'bg-indigo-600', 'hover:bg-indigo-700', 'text-indigo-600',
     'bg-blue-600', 'hover:bg-blue-700', 'text-blue-600',
     'bg-fuchsia-600', 'hover:bg-fuchsia-700', 'text-fuchsia-600',
+    'bg-red-600', 'hover:bg-red-700', 'text-red-600',
   ],
   plugins: [require("tailwindcss-animate")],
 }
