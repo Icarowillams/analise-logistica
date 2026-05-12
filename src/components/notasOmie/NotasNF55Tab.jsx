@@ -25,7 +25,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     data_inicial: formatarData(primeiroDia),
     data_final: formatarData(hoje),
     nome_cliente: '',
-    cnpj_cliente: ''
+    cnpj_cliente: '',
+    numero_carga: ''
   });
   const [pagina, setPagina] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -47,14 +48,28 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const buscar = async (pg = 1, carga = cargaFiltro, filtrosBusca = filtros) => {
     setLoading(true);
     try {
+      // Se usuário digitou um nº de carga, busca a Carga local pra filtrar as NFs por ela
+      let cargaParaFiltrar = carga;
+      if (!cargaParaFiltrar && filtrosBusca.numero_carga?.trim()) {
+        const numeroBusca = filtrosBusca.numero_carga.trim();
+        const cargas = await base44.entities.Carga.filter({ numero_carga: numeroBusca });
+        if (cargas?.length > 0) {
+          cargaParaFiltrar = cargas[0];
+        } else {
+          toast.warning(`Carga "${numeroBusca}" não encontrada`);
+          setResultado({ nfs: [], total_de_registros: 0, total_de_paginas: 1 });
+          setLoading(false);
+          return;
+        }
+      }
       const { data } = await base44.functions.invoke('listarNfsOmie', {
         ...filtrosBusca,
         pagina: pg,
         registros_por_pagina: 50
       });
       if (data?.sucesso) {
-        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], carga);
-        setResultado(carga ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
+        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
+        setResultado(cargaParaFiltrar ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
         setPagina(pg);
       } else {
         toast.error(data?.error || 'Erro ao consultar NFs');
@@ -145,7 +160,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           <CardTitle className="text-base">Filtros — Nota 55 (NF-e Omie)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
             <div>
               <Label>Data inicial (DD/MM/AAAA)</Label>
               <Input
@@ -174,6 +189,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
               <Input
                 value={filtros.cnpj_cliente}
                 onChange={(e) => setFiltros({ ...filtros, cnpj_cliente: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Nº Carga</Label>
+              <Input
+                placeholder="Ex: 009"
+                value={filtros.numero_carga}
+                onChange={(e) => setFiltros({ ...filtros, numero_carga: e.target.value })}
               />
             </div>
             <div className="flex items-end">
