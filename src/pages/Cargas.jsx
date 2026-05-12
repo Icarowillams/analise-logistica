@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -43,17 +43,24 @@ export default function Cargas() {
   const [faturandoLote, setFaturandoLote] = useState(false);
   const [documento, setDocumento] = useState(null); // { tipo: 'lista' | 'romaneio', carga }
 
+  // 1️⃣ Carrega cargas direto do banco — RÁPIDO (sem chamada ao Omie)
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
-    queryFn: async () => {
-      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
-        list_limit: 500,
-        sync_limit: 50
-      });
-      return data?.cargas || [];
-    },
+    queryFn: () => base44.entities.Carga.list('-created_date', 500),
     refetchOnWindowFocus: true
   });
+
+  // 2️⃣ Sincroniza status com Omie em BACKGROUND (não bloqueia a UI)
+  useEffect(() => {
+    let cancelado = false;
+    base44.functions.invoke('sincronizarStatusCargasOmie', { list_limit: 500, sync_limit: 50 })
+      .then(() => {
+        if (!cancelado) queryClient.invalidateQueries({ queryKey: ['cargas'] });
+      })
+      .catch((e) => console.warn('[Cargas] sync Omie em background falhou:', e?.message));
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
   const cargas = cargasTodas;
