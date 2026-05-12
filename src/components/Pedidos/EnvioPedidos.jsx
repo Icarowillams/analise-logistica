@@ -61,20 +61,21 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const pendentesFiltrados = filtrarPedidos(pendentes);
   const enviadosFiltrados = filtrarPedidos(enviados);
 
-  const getNextNumeroLocal = async (sufixo) => {
+  // Sequência única para TODOS os pedidos D1 (venda, bonificação, troca) — sempre sufixo "D"
+  const getNextNumeroLocal = async () => {
     const allPedidos = await base44.entities.Pedido.list();
-    const dosTipo = allPedidos.filter(p => p.numero_pedido && String(p.numero_pedido).endsWith(sufixo));
+    // Considera qualquer pedido com numero terminando em D ou T (legado) para não repetir histórico
+    const internos = allPedidos.filter(p => p.numero_pedido && /[DT]$/i.test(String(p.numero_pedido)));
     let maxNum = 0;
-    dosTipo.forEach(p => {
+    internos.forEach(p => {
       const num = parseInt(String(p.numero_pedido).replace(/\D/g, ''), 10);
       if (!isNaN(num) && num > maxNum) maxNum = num;
     });
-    return String(maxNum + 1).padStart(5, '0') + sufixo;
+    return String(maxNum + 1).padStart(5, '0') + 'D';
   };
 
   // Pedido é tratado internamente (sem Omie) se for troca OU se modelo da nota for D1
   const isInterno = (pedido) => pedido.tipo === 'troca' || pedido.modelo_nota === 'd1';
-  const sufixoLocal = (pedido) => pedido.tipo === 'troca' ? 'T' : 'D';
 
   const enviarPedido = async (pedido) => {
     if (!pedido.data_previsao_entrega && !isInterno(pedido)) {
@@ -85,9 +86,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     setEnviandoIds(prev => new Set(prev).add(pedido.id));
     try {
       if (isInterno(pedido)) {
-        // Trocas e D1: gerar número sequencial local (sem Omie)
-        const sufixo = sufixoLocal(pedido);
-        const numero = await getNextNumeroLocal(sufixo);
+        // Trocas e D1: gerar número sequencial local único (sufixo "D")
+        const numero = await getNextNumeroLocal();
         await base44.entities.Pedido.update(pedido.id, {
           status: 'enviado',
           numero_pedido: numero,
@@ -154,10 +154,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
     setProgressoLote({ total: pendentes.length, processados: 0, sucessos: 0, erros: erroCount });
 
-    // 1. Internos (rápido, local)
+    // 1. Internos (rápido, local) — sequência única "D" para todos
     for (const pedido of internos) {
-      const sufixo = sufixoLocal(pedido);
-      const numero = await getNextNumeroLocal(sufixo);
+      const numero = await getNextNumeroLocal();
       await base44.entities.Pedido.update(pedido.id, {
         status: 'enviado',
         numero_pedido: numero,
