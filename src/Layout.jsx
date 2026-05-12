@@ -31,7 +31,8 @@ import {
   AlertTriangle,
   FileOutput,
   Workflow,
-  ClipboardList
+  ClipboardList,
+  ScrollText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
@@ -192,6 +193,11 @@ export default function Layout({ children, currentPageName }) {
         title: 'Permissões',
         icon: Shield,
         path: 'Permissoes'
+      });
+      allMenuItems.push({
+        title: 'Log Gerencial',
+        icon: ScrollText,
+        path: 'LogGerencial'
       });
     }
 

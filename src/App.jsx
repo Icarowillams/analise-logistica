@@ -35,6 +35,7 @@ import Metas from './pages/Metas.jsx';
 import AcertoCaixaPage from './pages/AcertoCaixa.jsx';
 import AcertoCaixaEditar from './pages/AcertoCaixaEditar.jsx';
 import AcertoResumoPDF from './pages/AcertoResumoPDF.jsx';
+import LogGerencial from './pages/LogGerencial.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -130,6 +131,7 @@ const AuthenticatedApp = () => {
       <Route path="/AcertoCaixa" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixaPage /></LayoutWrapper>} />
       <Route path="/AcertoCaixaEditar" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixaEditar /></LayoutWrapper>} />
       <Route path="/AcertoResumoPDF" element={<AcertoResumoPDF />} />
+      <Route path="/LogGerencial" element={<LayoutWrapper currentPageName="LogGerencial"><LogGerencial /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

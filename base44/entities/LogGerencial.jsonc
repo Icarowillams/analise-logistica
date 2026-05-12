@@ -1,0 +1,86 @@
+{
+  "name": "LogGerencial",
+  "type": "object",
+  "description": "Log gerencial de TODAS as a\u00e7\u00f5es relevantes feitas no sistema \u2014 quem, quando, o que mudou, valor antigo e novo. Auditoria completa.",
+  "properties": {
+    "tipo_acao": {
+      "type": "string",
+      "enum": [
+        "envio",
+        "exclusao",
+        "edicao",
+        "criacao",
+        "permissao",
+        "faturamento",
+        "transferencia",
+        "corte",
+        "cancelamento",
+        "liberacao",
+        "login",
+        "outro"
+      ],
+      "description": "Tipo da a\u00e7\u00e3o registrada"
+    },
+    "entidade_tipo": {
+      "type": "string",
+      "description": "Nome da entidade afetada (Pedido, Cliente, Carga, Permissao...)"
+    },
+    "entidade_id": {
+      "type": "string",
+      "description": "ID do registro afetado"
+    },
+    "entidade_descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o leg\u00edvel do registro (ex: 'Pedido 00005D', 'Cliente Jo\u00e3o Silva')"
+    },
+    "usuario_email": {
+      "type": "string",
+      "description": "Email do usu\u00e1rio que executou a a\u00e7\u00e3o"
+    },
+    "usuario_nome": {
+      "type": "string",
+      "description": "Nome do usu\u00e1rio que executou a a\u00e7\u00e3o"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o completa e leg\u00edvel da a\u00e7\u00e3o (ex: 'Enviou pedido 00005D para Omie')"
+    },
+    "alteracoes": {
+      "type": "array",
+      "default": [],
+      "description": "Lista de campos alterados (apenas em edi\u00e7\u00f5es)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "campo": {
+            "type": "string"
+          },
+          "valor_anterior": {
+            "type": "string"
+          },
+          "valor_novo": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "origem": {
+      "type": "string",
+      "enum": [
+        "frontend",
+        "backend",
+        "automation",
+        "webhook"
+      ],
+      "default": "frontend"
+    },
+    "observacao": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tipo_acao",
+    "entidade_tipo",
+    "usuario_email"
+  ]
+}
