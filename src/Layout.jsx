@@ -124,14 +124,10 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Metas',
-        icon: Target,
-        path: 'Metas'
-      },
-      {
         title: 'Análises Comercial',
         icon: BarChart3,
         submenu: [
+          { title: 'Metas', path: 'Metas' },
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
           { title: 'Dashboard Vendas', path: 'DashboardVendas' },
