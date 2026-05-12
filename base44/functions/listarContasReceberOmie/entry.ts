@@ -46,17 +46,25 @@ Deno.serve(async (req) => {
       apenas_pendentes = true
     } = body;
 
-    // Doc Omie: máx 100 registros/página. Enviar filtros NATIVOS pra economizar quota.
-    // filtrar_por_data: 'V' = vencimento, 'E' = emissão
+    // Doc Omie ListarContasReceber (lcrListarRequest):
+    // - Vencimento: filtrar_por_data_de / filtrar_por_data_ate
+    // - Emissão:    filtrar_por_emissao_de / filtrar_por_emissao_ate
+    // - CNPJ:       filtrar_por_cpf_cnpj
+    // - Em aberto:  filtrar_apenas_titulos_em_aberto = 'S'
     const param = {
       pagina,
       registros_por_pagina: Math.min(registros_por_pagina, 100),
       apenas_importado_api: 'N'
     };
-    if (data_de) param.data_de = data_de;
-    if (data_ate) param.data_ate = data_ate;
-    if (data_de || data_ate) param.filtrar_por_data = filtrar_por_data;
-    if (apenas_pendentes) param.status_titulo = 'ABERTO';
+    if (filtrar_por_data === 'E') {
+      if (data_de) param.filtrar_por_emissao_de = data_de;
+      if (data_ate) param.filtrar_por_emissao_ate = data_ate;
+    } else {
+      if (data_de) param.filtrar_por_data_de = data_de;
+      if (data_ate) param.filtrar_por_data_ate = data_ate;
+    }
+    if (cnpj_cpf) param.filtrar_por_cpf_cnpj = cnpj_cpf;
+    if (apenas_pendentes) param.filtrar_apenas_titulos_em_aberto = 'S';
 
     const t0 = Date.now();
     const data = await omieCall('ListarContasReceber', param);
