@@ -1,0 +1,20 @@
+{
+  "name": "ContadorCarga",
+  "type": "object",
+  "description": "Sequ\u00eancia persistente de numera\u00e7\u00e3o de cargas. Nunca decrementa \u2014 independe de cancelamento/exclus\u00e3o de cargas.",
+  "properties": {
+    "chave": {
+      "type": "string",
+      "default": "global",
+      "description": "Identificador da sequ\u00eancia (sempre 'global' nesta app)"
+    },
+    "ultimo_numero": {
+      "type": "number",
+      "default": 0,
+      "description": "\u00daltimo n\u00famero de carga emitido"
+    }
+  },
+  "required": [
+    "chave"
+  ]
+}

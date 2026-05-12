@@ -11,12 +11,24 @@ import { Loader2, LockKeyhole, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
 
-function gerarNumeroCarga(cargas) {
-  const numeros = cargas
-    .map(c => parseInt((c.numero_carga || '').replace(/\D/g, ''), 10))
-    .filter(n => !isNaN(n) && n < 10000);
-  const maior = numeros.length ? Math.max(...numeros) : 0;
-  return String(maior + 1).padStart(3, '0');
+// Gera o próximo número de carga a partir de uma sequência PERSISTENTE (ContadorCarga).
+// Importante: nunca decrementa, mesmo se a última carga for cancelada ou excluída.
+// Fallback: se o contador ainda não existir, inicializa a partir do maior número já usado nas cargas.
+async function gerarNumeroCarga(cargas) {
+  const contadores = await base44.entities.ContadorCarga.filter({ chave: 'global' }, '-created_date', 1);
+  let contador = contadores?.[0];
+
+  if (!contador) {
+    const numeros = (cargas || [])
+      .map(c => parseInt((c.numero_carga || '').replace(/\D/g, ''), 10))
+      .filter(n => !isNaN(n) && n < 10000);
+    const base = numeros.length ? Math.max(...numeros) : 0;
+    contador = await base44.entities.ContadorCarga.create({ chave: 'global', ultimo_numero: base });
+  }
+
+  const proximo = (contador.ultimo_numero || 0) + 1;
+  await base44.entities.ContadorCarga.update(contador.id, { ultimo_numero: proximo });
+  return String(proximo).padStart(3, '0');
 }
 
 export default function PainelFecharCarga({ pedidos, selecionados, motoristas, veiculos, cargas, onSuccess }) {
@@ -45,7 +57,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
     setSalvando(true);
     try {
-      const numero = gerarNumeroCarga(cargas);
+      const numero = await gerarNumeroCarga(cargas);
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
