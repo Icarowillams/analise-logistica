@@ -58,15 +58,17 @@ Deno.serve(async (req) => {
         const todos = consultaData?.conta_receber_cadastro || [];
         const mapa = new Map(todos.map(t => [String(t.codigo_lancamento_omie), t]));
 
+        // Status do Omie considerados "em aberto" e elegíveis para gerar boleto:
+        const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
         titulosValidos = [];
         for (const cod of titulos) {
           const t = mapa.get(String(cod));
           if (!t) {
-            // não achou na listagem → manda mesmo assim, deixa o Omie validar
             titulosValidos.push(cod);
             continue;
           }
-          const liquidado = t.status_titulo && t.status_titulo !== 'ABERTO';
+          const status = String(t.status_titulo || '').toUpperCase();
+          const liquidado = status && !STATUS_ABERTOS.has(status);
           const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
           if (liquidado || jaTemBoleto) {
             preSkips.push({

@@ -1,16 +1,18 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// 🤖 Geração AUTOMÁTICA de boletos a partir de uma lista de códigos de pedido Omie.
+// 🤖 Geração AUTOMÁTICA de boletos para uma lista de códigos de pedido Omie.
 // Fluxo:
-//   1. Para cada pedido, busca os títulos (ContasReceber) vinculados via ListarContasReceber filtrando por nCodPed.
-//   2. Para cada título em ABERTO e SEM boleto, chama GerarBoleto.
-// Pode ser chamada:
-//   - pelo frontend (createClientFromRequest com usuário autenticado)
-//   - por outras backend functions / webhooks (createClient + token de serviço)
+//   1. Para cada pedido, busca os títulos (ContasReceber) vinculados via ListarContasReceber.
+//   2. Para títulos em ABERTO/A VENCER e SEM boleto ainda gerado, chama GerarBoleto.
+// Importante: o Omie aceita GerarBoleto para qualquer título — a decisão de gerar
+// boleto vem do cadastro do cliente, não do tipo_documento do título.
 
 const OMIE_CR_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+
+// Status considerados "em aberto" pelo Omie
+const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
 
 async function omieCall(call, param, tentativa = 1) {
   const res = await fetch(OMIE_CR_URL, {
@@ -21,8 +23,8 @@ async function omieCall(call, param, tentativa = 1) {
   const data = await res.json();
   if (data.faultstring) {
     const msg = String(data.faultstring).toLowerCase();
-    const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRate && tentativa < 4) {
+    const isTransient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
+    if (isTransient && tentativa < 4) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
       return omieCall(call, param, tentativa + 1);
     }
@@ -31,25 +33,30 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
-// Lista títulos em aberto vinculados a um pedido Omie (nCodPed)
+// Lista TODOS os títulos do Omie do período recente e filtra por nCodPedido.
+// O Omie NÃO oferece filtro nativo por pedido em ListarContasReceber,
+// mas o título tem o campo nCodPedido vinculado.
 async function listarTitulosDoPedido(codigoPedido) {
-  // O Omie aceita filtro por nCodPed em ListarContasReceber
-  const data = await omieCall('ListarContasReceber', {
-    pagina: 1,
-    registros_por_pagina: 50,
-    apenas_importado_api: 'N',
-    filtrar_por_nCodPed: Number(codigoPedido)
-  }).catch(async () => {
-    // Fallback: se o param filtrar_por_nCodPed não for aceito, lista geral e filtra em memória
-    const todos = await omieCall('ListarContasReceber', {
-      pagina: 1,
-      registros_por_pagina: 500,
-      apenas_importado_api: 'N'
+  const titulos = [];
+  let pagina = 1;
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - 60 * 86400000); // últimos 60 dias de emissão
+  const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+  while (pagina <= 10) {
+    const data = await omieCall('ListarContasReceber', {
+      pagina,
+      registros_por_pagina: 100,
+      apenas_importado_api: 'N',
+      filtrar_por_emissao_de: fmt(inicio),
+      filtrar_por_emissao_ate: fmt(hoje)
     });
-    return todos;
-  });
-  const lista = data?.conta_receber_cadastro || [];
-  return lista.filter(t => String(t.nCodPed || t.codigo_pedido_omie || '') === String(codigoPedido));
+    const lista = data?.conta_receber_cadastro || [];
+    titulos.push(...lista.filter(t => String(t.nCodPedido || '') === String(codigoPedido)));
+    if (titulos.length > 0 || pagina >= (data?.total_de_paginas || 1)) break;
+    pagina++;
+  }
+  return titulos;
 }
 
 async function gerarBoletosParaPedidos(base44, codigosPedido, usuarioEmail) {
@@ -63,47 +70,23 @@ async function gerarBoletosParaPedidos(base44, codigosPedido, usuarioEmail) {
       }
       for (const t of titulos) {
         const cod = t.codigo_lancamento_omie;
-        const liquidado = t.status_titulo && t.status_titulo !== 'ABERTO';
-        const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
+        const status = String(t.status_titulo || '').toUpperCase();
+        const aberto = STATUS_ABERTOS.has(status);
+        const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim())
+          || !!(t.boleto?.cNumBoleto && String(t.boleto.cNumBoleto).trim())
+          || t.boleto?.cGerado === 'S';
 
-        // 🏷️ Filtra apenas títulos com modalidade BOLETO.
-        // Omie identifica via tipo_documento ('BOL') OU id_origem (boleto).
-        // Aceita também quando o título tem id_conta_corrente vinculada a conta de boleto (heurística).
-        const tipoDoc = String(t.tipo_documento || t.cCodTpDoc || '').toUpperCase();
-        const idOrigem = String(t.id_origem || '').toUpperCase();
-        const ehBoleto = tipoDoc.includes('BOL') || tipoDoc === 'BOL' || idOrigem.includes('BOL');
-
-        if (!ehBoleto) {
-          resultados.push({
-            codigo_pedido: codPedido,
-            codigo_lancamento: cod,
-            sucesso: false,
-            skip: true,
-            motivo: `Modalidade ${tipoDoc || 'não-boleto'} — não gera boleto`
-          });
+        if (!aberto) {
+          resultados.push({ codigo_pedido: codPedido, codigo_lancamento: cod, sucesso: false, skip: true, motivo: `Título ${status}` });
           continue;
         }
-
-        if (liquidado || jaTemBoleto) {
-          resultados.push({
-            codigo_pedido: codPedido,
-            codigo_lancamento: cod,
-            sucesso: false,
-            skip: true,
-            motivo: liquidado ? `Título ${t.status_titulo}` : `Boleto já gerado: ${t.numero_boleto}`
-          });
+        if (jaTemBoleto) {
+          resultados.push({ codigo_pedido: codPedido, codigo_lancamento: cod, sucesso: false, skip: true, motivo: 'Boleto já gerado' });
           continue;
         }
         try {
-          const data = await omieCall('GerarBoleto', { codigo_lancamento: Number(cod) });
-          resultados.push({
-            codigo_pedido: codPedido,
-            codigo_lancamento: cod,
-            sucesso: true,
-            numero_boleto: data.numero_boleto || data.nNumBoleto || '',
-            linha_digitavel: data.linha_digitavel || data.cLinDig || '',
-            link_boleto: data.link_boleto || data.cLinkBoleto || ''
-          });
+          await omieCall('GerarBoleto', { codigo_lancamento: Number(cod) });
+          resultados.push({ codigo_pedido: codPedido, codigo_lancamento: cod, sucesso: true });
         } catch (err) {
           resultados.push({ codigo_pedido: codPedido, codigo_lancamento: cod, sucesso: false, motivo: err.message });
         }
@@ -134,7 +117,6 @@ async function gerarBoletosParaPedidos(base44, codigosPedido, usuarioEmail) {
   return { sucesso: true, total_pedidos: codigosPedido.length, sucessos, erros, skips, resultados };
 }
 
-// Endpoint HTTP — permite chamada manual via frontend
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
