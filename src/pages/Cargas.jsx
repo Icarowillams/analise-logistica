@@ -150,8 +150,57 @@ export default function Cargas() {
   const excluir = async () => {
     if (!excluindo) return;
     try {
-      await base44.entities.Carga.delete(excluindo.id);
-      toast.success('Carga excluída');
+      const carga = excluindo;
+      const pedidosOmie = carga.pedidos_omie || [];
+      const pedidosInternos = carga.pedidos_internos || [];
+      const trocas = carga.pedidos_troca || [];
+
+      // 1) Reverter etapa no Omie: 50 → 20 (Pedido Liberado)
+      if (pedidosOmie.length > 0) {
+        try {
+          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
+            pedidos: pedidosOmie.map(p => ({
+              codigo_pedido: p.codigo_pedido,
+              codigo_pedido_integracao: p.codigo_pedido_integracao,
+              numero_pedido: p.numero_pedido
+            })),
+            etapa_destino: '20'
+          });
+        } catch (e) { console.warn('Falha reverter etapa Omie:', e.message); }
+      }
+
+      // 2) Reverter pedidos locais (vendas Omie + D1 internos): voltar para liberado/pendente, sem carga
+      for (const p of [...pedidosOmie, ...pedidosInternos]) {
+        try {
+          let pedidoId = p.pedido_id;
+          if (!pedidoId && p.codigo_pedido) {
+            const locais = await base44.entities.Pedido.filter({ omie_codigo_pedido: String(p.codigo_pedido) }, '-created_date', 1);
+            pedidoId = locais?.[0]?.id;
+          }
+          if (!pedidoId) continue;
+          const isD1 = !p.codigo_pedido;
+          await base44.entities.Pedido.update(pedidoId, {
+            carga_id: null,
+            numero_carga: null,
+            status: isD1 ? 'pendente' : 'liberado',
+            status_logistico: 'aguardando',
+            etapa: isD1 ? 'comercial' : 'faturamento'
+          });
+        } catch (e) { console.warn('Falha reverter pedido:', e.message); }
+      }
+
+      // 3) Reverter trocas (desvincular carga/motorista)
+      for (const t of trocas) {
+        try {
+          if (t.pedido_troca_id) {
+            await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: null, motorista_id: null });
+          }
+        } catch (e) { console.warn('Falha reverter troca:', e.message); }
+      }
+
+      // 4) Excluir carga
+      await base44.entities.Carga.delete(carga.id);
+      toast.success(`Carga ${carga.numero_carga} desfeita — pedidos voltaram para Liberado`);
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
     } catch (e) {
       toast.error(e.message);
