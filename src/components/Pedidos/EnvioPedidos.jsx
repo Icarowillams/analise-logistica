@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
+import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X, CheckCircle2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import PedidoPdf from './PedidoPdf';
@@ -19,8 +20,10 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const [filtroPeriodoFim, setFiltroPeriodoFim] = useState('');
   const [filtroCodCliente, setFiltroCodCliente] = useState('');
   const [enviandoTodos, setEnviandoTodos] = useState(false);
-  const [enviandoId, setEnviandoId] = useState(null);
+  const [enviandoIds, setEnviandoIds] = useState(new Set()); // dedup: múltiplos pedidos podem estar enviando
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
+  const [progressoLote, setProgressoLote] = useState(null); // { total, processados, sucessos, erros }
+  const [erroLoteDetalhes, setErroLoteDetalhes] = useState([]); // lista de erros do último lote
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
@@ -78,7 +81,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
       toast.error(`Pedido de ${pedido.cliente_nome} não tem Data de Previsão de Entrega. Edite o pedido para informar.`);
       return;
     }
-    setEnviandoId(pedido.id);
+    if (enviandoIds.has(pedido.id)) return; // dedup: já está enviando
+    setEnviandoIds(prev => new Set(prev).add(pedido.id));
     try {
       if (isInterno(pedido)) {
         // Trocas e D1: gerar número sequencial local (sem Omie)
@@ -128,74 +132,90 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     } catch (err) {
       toast.error('Erro ao enviar pedido: ' + err.message);
     } finally {
-      setEnviandoId(null);
+      setEnviandoIds(prev => { const n = new Set(prev); n.delete(pedido.id); return n; });
     }
   };
+
+  const CHUNK_SIZE = 50; // processa de 50 em 50 (uma chamada de lote por chunk)
 
   const enviarTodos = async () => {
     if (pendentes.length === 0) return;
     setEnviandoTodos(true);
-    let sucessoCount = 0;
-    let erroCount = 0;
-    const erroMsgs = [];
-    
-    for (const pedido of pendentes) {
-      if (!pedido.data_previsao_entrega && !isInterno(pedido)) {
-        erroCount++;
-        erroMsgs.push(`${pedido.cliente_nome}: Sem Data de Previsão de Entrega`);
-        continue;
-      }
-      if (isInterno(pedido)) {
-        // Trocas e D1: gerar número sequencial local (sem Omie)
-        const sufixo = sufixoLocal(pedido);
-        const numero = await getNextNumeroLocal(sufixo);
-        await base44.entities.Pedido.update(pedido.id, {
-          status: 'enviado',
-          numero_pedido: numero,
-          data_envio: new Date().toISOString(),
-          omie_erro: null
-        });
-        sucessoCount++;
-      } else {
-        // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
-        let omieOk = false;
-        let erroMsg = '';
-        try {
-          const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
-          if (response.data.sucesso) {
-            omieOk = true;
-          } else {
-            erroMsg = response.data.erro || 'Erro desconhecido no Omie';
-          }
-        } catch (omieErr) {
-          // Axios lança exceção em status 4xx — extrair mensagem do corpo
-          const errData = omieErr?.response?.data;
-          erroMsg = errData?.erro || errData?.error || omieErr.message || 'Falha na comunicação com o Omie';
-        }
+    setErroLoteDetalhes([]);
 
-        if (omieOk) {
-          // Backend já atualiza o pedido, apenas contar
-          sucessoCount++;
-        } else {
-          await base44.entities.Pedido.update(pedido.id, {
-            omie_erro: erroMsg
+    // Separar internos (D1/Troca) dos que vão pro Omie
+    const internos = pendentes.filter(p => isInterno(p));
+    const externos = pendentes.filter(p => !isInterno(p) && p.data_previsao_entrega);
+    const semData = pendentes.filter(p => !isInterno(p) && !p.data_previsao_entrega);
+
+    let sucessoCount = 0;
+    let erroCount = semData.length;
+    const erroDetalhes = semData.map(p => ({ cliente: p.cliente_nome, erro: 'Sem Data de Previsão de Entrega' }));
+
+    setProgressoLote({ total: pendentes.length, processados: 0, sucessos: 0, erros: erroCount });
+
+    // 1. Internos (rápido, local)
+    for (const pedido of internos) {
+      const sufixo = sufixoLocal(pedido);
+      const numero = await getNextNumeroLocal(sufixo);
+      await base44.entities.Pedido.update(pedido.id, {
+        status: 'enviado',
+        numero_pedido: numero,
+        data_envio: new Date().toISOString(),
+        omie_erro: null
+      });
+      sucessoCount++;
+      setProgressoLote(prev => ({ ...prev, processados: prev.processados + 1, sucessos: prev.sucessos + 1 }));
+    }
+
+    // 2. Externos em lotes paralelos (workers no backend)
+    for (let i = 0; i < externos.length; i += CHUNK_SIZE) {
+      const chunk = externos.slice(i, i + CHUNK_SIZE);
+      try {
+        const response = await base44.functions.invoke('enviarPedidosOmieLote', {
+          pedido_ids: chunk.map(p => p.id)
+        });
+        const data = response.data;
+        if (data?.sucesso) {
+          sucessoCount += data.sucessos;
+          erroCount += data.erros;
+          (data.resultados || []).forEach(r => {
+            if (!r.sucesso) {
+              const ped = chunk.find(p => p.id === r.pedido_id);
+              erroDetalhes.push({ cliente: ped?.cliente_nome || r.pedido_id, erro: r.erro });
+            }
           });
-          erroCount++;
-          erroMsgs.push(`${pedido.cliente_nome}: ${erroMsg}`);
+          setProgressoLote(prev => ({
+            total: pendentes.length,
+            processados: prev.processados + chunk.length,
+            sucessos: prev.sucessos + data.sucessos,
+            erros: prev.erros + data.erros
+          }));
+        } else {
+          erroCount += chunk.length;
+          chunk.forEach(p => erroDetalhes.push({ cliente: p.cliente_nome, erro: data?.erro || 'Falha no lote' }));
+          setProgressoLote(prev => ({ ...prev, processados: prev.processados + chunk.length, erros: prev.erros + chunk.length }));
         }
+      } catch (err) {
+        erroCount += chunk.length;
+        const msg = err?.response?.data?.erro || err.message || 'Falha no lote';
+        chunk.forEach(p => erroDetalhes.push({ cliente: p.cliente_nome, erro: msg }));
+        setProgressoLote(prev => ({ ...prev, processados: prev.processados + chunk.length, erros: prev.erros + chunk.length }));
       }
     }
-    
+
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    
+    setErroLoteDetalhes(erroDetalhes);
+
     if (erroCount > 0 && sucessoCount > 0) {
-      toast.warning(`${sucessoCount} enviados, ${erroCount} com erro no Omie`);
+      toast.warning(`${sucessoCount} enviados, ${erroCount} com erro`);
     } else if (erroCount > 0 && sucessoCount === 0) {
-      toast.error(`Nenhum pedido enviado. ${erroCount} com erro no Omie`);
+      toast.error(`Nenhum pedido enviado. ${erroCount} com erro`);
     } else {
       toast.success(`${sucessoCount} pedidos enviados com sucesso!`);
     }
     setEnviandoTodos(false);
+    setTimeout(() => setProgressoLote(null), 4000);
   };
 
   const excluirPedido = async (pedido) => {
@@ -322,8 +342,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
                 <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
                   <Pencil className="w-3 h-3 mr-1" /> Editar
                 </Button>
-                <Button size="sm" onClick={() => enviarPedido(pedido)} disabled={enviandoId === pedido.id} className="text-xs bg-green-600 hover:bg-green-700">
-                  <Send className="w-3 h-3 mr-1" /> {enviandoId === pedido.id ? 'Enviando...' : 'Enviar'}
+                <Button size="sm" onClick={() => enviarPedido(pedido)} disabled={enviandoIds.has(pedido.id) || enviandoTodos} className="text-xs bg-green-600 hover:bg-green-700">
+                  <Send className="w-3 h-3 mr-1" /> {enviandoIds.has(pedido.id) ? 'Enviando...' : 'Enviar'}
                 </Button>
                 <Button size="sm" variant="ghost" className="text-xs text-red-500" onClick={() => excluirPedido(pedido)}>
                   <Trash2 className="w-3 h-3" />
@@ -371,8 +391,38 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           {pendentes.length > 0 && (
             <Button onClick={enviarTodos} disabled={enviandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
               <Send className="w-4 h-4 mr-2" />
-              {enviandoTodos ? 'Enviando...' : `Enviar Todos (${pendentes.length})`}
+              {enviandoTodos ? 'Enviando lote...' : `Enviar Todos (${pendentes.length})`}
             </Button>
+          )}
+          {progressoLote && (
+            <div className="mb-4 p-3 bg-slate-50 border rounded-lg space-y-2">
+              <div className="flex justify-between text-xs font-medium">
+                <span>{progressoLote.processados}/{progressoLote.total} processados</span>
+                <span>
+                  <CheckCircle2 className="w-3 h-3 inline text-green-600" /> {progressoLote.sucessos} ·{' '}
+                  <AlertCircle className="w-3 h-3 inline text-red-600" /> {progressoLote.erros}
+                </span>
+              </div>
+              <Progress value={(progressoLote.processados / Math.max(1, progressoLote.total)) * 100} className="h-2" />
+            </div>
+          )}
+          {erroLoteDetalhes.length > 0 && !enviandoTodos && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="w-4 h-4" />
+              <AlertDescription>
+                <details>
+                  <summary className="cursor-pointer font-semibold text-sm">
+                    {erroLoteDetalhes.length} pedido(s) com erro — clique para ver
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs max-h-40 overflow-y-auto">
+                    {erroLoteDetalhes.map((e, i) => (
+                      <li key={i}><strong>{e.cliente}:</strong> {e.erro}</li>
+                    ))}
+                  </ul>
+                  <button onClick={() => setErroLoteDetalhes([])} className="text-xs underline mt-2">Limpar</button>
+                </details>
+              </AlertDescription>
+            </Alert>
           )}
           {pendentesFiltrados.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
