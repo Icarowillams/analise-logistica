@@ -16,8 +16,8 @@ const normalizar = (v) => String(v || '').trim().toLowerCase();
 const somenteDigitos = (v) => String(v || '').replace(/\D/g, '');
 const valorValido = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 
-async function omieCall(call, param, tentativa = 1) {
-  const res = await fetch(OMIE_URL, {
+async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
@@ -28,11 +28,30 @@ async function omieCall(call, param, tentativa = 1) {
     const isTransient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || res.status === 429;
     if (isTransient && tentativa < 3) {
       await delay(2500 * tentativa);
-      return omieCall(call, param, tentativa + 1);
+      return omieCall(call, param, tentativa + 1, url);
     }
     throw new Error(data.faultstring);
   }
   return data;
+}
+
+// Consulta dados básicos de um cliente direto no Omie (fallback p/ exibição quando cliente não existe local)
+const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
+async function consultarClienteOmie(codigoCliente) {
+  try {
+    const data = await omieCall('ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) }, 1, OMIE_CLIENTES_URL);
+    return {
+      codigo_omie: String(data.codigo_cliente_omie || codigoCliente),
+      codigo_integracao: data.codigo_cliente_integracao || '',
+      razao_social: data.razao_social || '',
+      nome_fantasia: data.nome_fantasia || data.razao_social || '',
+      cnpj_cpf: data.cnpj_cpf || '',
+      cidade: data.cidade || '',
+      estado: data.estado || ''
+    };
+  } catch {
+    return null;
+  }
 }
 
 function pedidoCancelado(pedido) {
@@ -74,14 +93,14 @@ function buscarClienteLocal(pedidoOmie, pedidoLocal, indices) {
   return null;
 }
 
-function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem) {
+function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem, clienteOmieFallback = null) {
   const pedidoLocal = pedidoLocalPorOmie.get(String(pedidoOmie.codigo_pedido)) || null;
   const cliente = buscarClienteLocal(pedidoOmie, pedidoLocal, indices);
   const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || '');
   const vendedorNome = cliente?.vendedor_id ? (mapaVendedor.get(cliente.vendedor_id) || '') : (pedidoLocal?.vendedor_nome || '');
-  const nomeCliente = cliente?.razao_social || pedidoLocal?.cliente_nome || pedidoOmie.nome_cliente || `Cliente ${pedidoOmie.codigo_cliente || ''}`;
-  const fantasia = cliente?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || pedidoOmie.nome_fantasia || nomeCliente;
-  const codigoCliente = String(cliente?.codigo_interno || cliente?.codigo || cliente?.codigo_integracao || pedidoLocal?.cliente_codigo || pedidoOmie.codigo_cliente_cod || pedidoOmie.codigo_cliente_integracao || pedidoOmie.codigo_cliente || '');
+  const nomeCliente = cliente?.razao_social || pedidoLocal?.cliente_nome || clienteOmieFallback?.razao_social || pedidoOmie.nome_cliente || `Cliente ${pedidoOmie.codigo_cliente || ''}`;
+  const fantasia = cliente?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || clienteOmieFallback?.nome_fantasia || pedidoOmie.nome_fantasia || nomeCliente;
+  const codigoCliente = String(cliente?.codigo_interno || cliente?.codigo || cliente?.codigo_integracao || pedidoLocal?.cliente_codigo || clienteOmieFallback?.codigo_integracao || pedidoOmie.codigo_cliente_cod || pedidoOmie.codigo_cliente_integracao || pedidoOmie.codigo_cliente || '');
 
   return {
     codigo_pedido: String(pedidoOmie.codigo_pedido),
@@ -93,13 +112,13 @@ function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedi
     numero_nf: pedidoOmie.numero_nf || '',
     data_faturamento: pedidoOmie.data_faturamento || null,
     codigo_cliente: String(pedidoOmie.codigo_cliente || ''),
-    codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || pedidoOmie.codigo_cliente_integracao || '',
+    codigo_cliente_integracao: cliente?.codigo_integracao || cliente?.codigo || pedidoLocal?.cliente_codigo || clienteOmieFallback?.codigo_integracao || pedidoOmie.codigo_cliente_integracao || '',
     codigo_cliente_cod: codigoCliente,
-    cnpj_cpf_cliente: cliente?.cnpj_cpf || pedidoLocal?.cliente_cpf_cnpj || pedidoOmie.cnpj_cpf_cliente || '',
+    cnpj_cpf_cliente: cliente?.cnpj_cpf || pedidoLocal?.cliente_cpf_cnpj || clienteOmieFallback?.cnpj_cpf || pedidoOmie.cnpj_cpf_cliente || '',
     cliente_id: cliente?.id || pedidoLocal?.cliente_id || null,
     nome_cliente: nomeCliente,
     nome_fantasia: fantasia,
-    cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || pedidoOmie.cidade || '',
+    cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || clienteOmieFallback?.cidade || pedidoOmie.cidade || '',
     tipo_nota: cliente?.tipo_nota || pedidoLocal?.modelo_nota || '55',
     tags_cliente: cliente?.tags || [],
     motorista_padrao_id: cliente?.motorista_id || null,
@@ -212,11 +231,28 @@ Deno.serve(async (req) => {
     const espelhoPorCodigo = new Map((espelhoAtual || []).map((e) => [String(e.codigo_pedido), e]));
     const codigosOmieAtuais = new Set(todosOmie.map((p) => String(p.codigo_pedido)));
 
+    // 2.5. Identificar pedidos cujo cliente NÃO existe localmente → buscar no Omie p/ exibição
+    const codigosClienteFaltantes = new Set();
+    for (const p of todosOmie) {
+      const fakePedidoLocal = pedidoLocalPorOmie.get(String(p.codigo_pedido)) || null;
+      const cli = buscarClienteLocal(p, fakePedidoLocal, indices);
+      if (!cli && p.codigo_cliente) codigosClienteFaltantes.add(String(p.codigo_cliente));
+    }
+    const mapaClienteOmieFallback = new Map();
+    let consultasFallback = 0;
+    for (const codigo of codigosClienteFaltantes) {
+      const dados = await consultarClienteOmie(codigo);
+      if (dados) mapaClienteOmieFallback.set(codigo, dados);
+      consultasFallback += 1;
+      await delay(350); // respeitar limite Omie
+    }
+
     // 3. UPSERT (criar/atualizar) — sequencial para não estourar limite
     let criados = 0;
     let atualizados = 0;
     for (const pedidoOmie of todosOmie) {
-      const registro = montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem);
+      const fallback = mapaClienteOmieFallback.get(String(pedidoOmie.codigo_cliente)) || null;
+      const registro = montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem, fallback);
       const existente = espelhoPorCodigo.get(registro.codigo_pedido);
       if (existente) {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registro);
@@ -249,9 +285,11 @@ Deno.serve(async (req) => {
     return Response.json({
       sucesso: true,
       total_omie: todosOmie.length,
+      total: todosOmie.length,
       criados,
       atualizados,
       removidos,
+      consultas_fallback_cliente: consultasFallback,
       duracao_ms: duracao
     });
   } catch (error) {
