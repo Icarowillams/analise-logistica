@@ -580,19 +580,17 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         <TabsContent value="produto">
           <Card>
             <CardContent className="pt-4 space-y-4">
-              {/* Resumo do pedido */}
-              {itensLocal.length > 0 && (
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="text-sm">
-                    <span className="font-semibold text-green-800">{itensLocal.length} item(ns)</span>
-                    <span className="text-green-600 mx-2">•</span>
-                    <span className="text-green-600">{itensLocal.reduce((s, i) => s + i.quantidade, 0)} unid.</span>
-                  </div>
-                  <div className="text-lg font-bold text-green-800">
-                    R$ {totalPedido.toFixed(2).replace('.', ',')}
-                  </div>
+              {/* Resumo do pedido — sempre visível e fixo no topo da aba */}
+              <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg shadow-sm">
+                <div className="text-sm">
+                  <span className="font-semibold text-green-800">{itensLocal.length} item(ns)</span>
+                  <span className="text-green-600 mx-2">•</span>
+                  <span className="text-green-600">{itensLocal.reduce((s, i) => s + i.quantidade, 0)} unid.</span>
                 </div>
-              )}
+                <div className="text-lg font-bold text-green-800">
+                  R$ {totalPedido.toFixed(2).replace('.', ',')}
+                </div>
+              </div>
 
               <ProdutoCardList
                 produtos={produtos}

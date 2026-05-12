@@ -116,18 +116,6 @@ export default function ProdutoCardList({
         </div>
       ) : (
         <>
-          {/* Resumo de totais - sempre visível */}
-          {!isTroca && (
-            <div className="flex items-center justify-between p-3 rounded-lg border border-green-200 bg-green-50">
-              <span className="text-sm font-semibold text-green-800">
-                {totaisVenda.totalItens} item(ns) • {totaisVenda.totalUnidades} unid.
-              </span>
-              <span className="text-sm font-bold text-green-900">
-                R$ {totaisVenda.totalValor.toFixed(2).replace('.', ',')}
-              </span>
-            </div>
-          )}
-
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
