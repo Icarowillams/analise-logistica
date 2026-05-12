@@ -14,6 +14,7 @@ import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './uti
 export default function DashboardVendas() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', modelo_nota: '' });
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
+  const { data: clientes = [] } = useQuery({ queryKey: ['clientesDashboard'], queryFn: () => base44.entities.Cliente.list('-created_date', 20000) });
   // Apenas pedidos do tipo VENDA com status FATURADO (D1 ou 55, interno ou Omie)
   const { data: pedidos = [] } = useQuery({
     queryKey: ['pedidosVendaFaturados'],
@@ -21,13 +22,29 @@ export default function DashboardVendas() {
   });
   const { data: visitas = [] } = useQuery({ queryKey: ['visitasRoteiro'], queryFn: () => base44.entities.VisitaRoteiro.list('-created_date', 10000) });
 
-  const filtrados = useMemo(() => pedidos.filter(p => {
+  // Mapa cliente_id → vendedor do cadastro do cliente (fonte da verdade para os dashboards)
+  const vendedorPorCliente = useMemo(() => {
+    const map = new Map();
+    const nomesVend = new Map(vendedores.map(v => [v.id, v.nome]));
+    clientes.forEach(c => {
+      if (c.id && c.vendedor_id) map.set(c.id, { id: c.vendedor_id, nome: nomesVend.get(c.vendedor_id) || '-' });
+    });
+    return map;
+  }, [clientes, vendedores]);
+
+  // Enriquece cada pedido com o vendedor do cliente (não o de quem enviou)
+  const pedidosEnriquecidos = useMemo(() => pedidos.map(p => {
+    const v = vendedorPorCliente.get(p.cliente_id);
+    return { ...p, vendedor_id: v?.id || p.vendedor_id, vendedor_nome: v?.nome || p.vendedor_nome };
+  }), [pedidos, vendedorPorCliente]);
+
+  const filtrados = useMemo(() => pedidosEnriquecidos.filter(p => {
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.modelo_nota && p.modelo_nota !== filtros.modelo_nota) return false;
     const dataRef = p.data_faturamento || p.created_date;
     if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
-  }), [pedidos, filtros]);
+  }), [pedidosEnriquecidos, filtros]);
 
   const totais = useMemo(() => {
     const valor = filtrados.reduce((a, p) => a + (p.valor_total || 0), 0);

@@ -17,19 +17,36 @@ export default function DashboardTrocas() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', motivo_id: '' });
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
   const { data: motivos = [] } = useQuery({ queryKey: ['motivosTroca'], queryFn: () => base44.entities.MotivoTroca.list() });
+  const { data: clientes = [] } = useQuery({ queryKey: ['clientesDashboard'], queryFn: () => base44.entities.Cliente.list('-created_date', 20000) });
   // Apenas pedidos do tipo TROCA com status FATURADO (mesma fonte do Gerenciar Pedidos)
   const { data: trocas = [] } = useQuery({
     queryKey: ['pedidosTrocaFaturados'],
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
   });
 
-  const filtradas = useMemo(() => trocas.filter(t => {
+  // Mapa cliente_id → vendedor do cadastro do cliente (fonte da verdade para os dashboards)
+  const vendedorPorCliente = useMemo(() => {
+    const map = new Map();
+    const nomesVend = new Map(vendedores.map(v => [v.id, v.nome]));
+    clientes.forEach(c => {
+      if (c.id && c.vendedor_id) map.set(c.id, { id: c.vendedor_id, nome: nomesVend.get(c.vendedor_id) || '-' });
+    });
+    return map;
+  }, [clientes, vendedores]);
+
+  // Enriquece cada troca com o vendedor do cliente (não o de quem enviou)
+  const trocasEnriquecidas = useMemo(() => trocas.map(t => {
+    const v = vendedorPorCliente.get(t.cliente_id);
+    return { ...t, vendedor_id: v?.id || t.vendedor_id, vendedor_nome: v?.nome || t.vendedor_nome };
+  }), [trocas, vendedorPorCliente]);
+
+  const filtradas = useMemo(() => trocasEnriquecidas.filter(t => {
     if (filtros.vendedor_id && t.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.motivo_id && t.motivo_troca_id !== filtros.motivo_id) return false;
     const dataRef = t.data_faturamento || t.created_date;
     if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
-  }), [trocas, filtros]);
+  }), [trocasEnriquecidas, filtros]);
 
   const totais = useMemo(() => {
     const valor = filtradas.reduce((a, t) => a + (t.valor_total || 0), 0);
