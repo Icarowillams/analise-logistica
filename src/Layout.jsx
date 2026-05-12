@@ -156,11 +156,6 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
-        title: 'Operação Completa',
-        icon: Workflow,
-        path: 'Operacao'
-      },
-      {
         title: 'Logística',
         icon: Warehouse,
         submenu: [
@@ -175,16 +170,6 @@ export default function Layout({ children, currentPageName }) {
     ];
 
     if (isAdmin) {
-      allMenuItems.push({
-        title: 'Integração Omie',
-        icon: MonitorSpeaker,
-        path: 'IntegracaoOmieDashboard'
-      });
-      allMenuItems.push({
-        title: 'Testes Omie',
-        icon: AlertTriangle,
-        path: 'TestesOmie'
-      });
       allMenuItems.push({
         title: 'Permissões',
         icon: Shield,
