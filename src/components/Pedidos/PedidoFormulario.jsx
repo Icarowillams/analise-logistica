@@ -101,11 +101,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' })
   });
 
-  // Cenários disponíveis: para troca, só tipo "troca"; senão exclui troca
-  const cenariosDisponiveis = useMemo(() => {
-    if (tipo === 'troca') return cenariosLocais.filter(c => c.tipo_operacao === 'troca');
-    return cenariosLocais.filter(c => c.tipo_operacao !== 'troca');
-  }, [cenariosLocais, tipo]);
+  // Cenários disponíveis: mostra TODOS (venda, bonificação, troca, etc.)
+  // Se o usuário escolher um cenário tipo "troca", o pedido vira automaticamente Troca (D1, sem Omie).
+  const cenariosDisponiveis = useMemo(() => cenariosLocais, [cenariosLocais]);
 
   const cenarioLocalAtual = cenariosLocais.find(c => c.id === cenarioLocalId);
   const isTroca = cenarioLocalAtual?.tipo_operacao === 'troca' || tipo === 'troca';
