@@ -294,6 +294,18 @@ async function handlePedido(base44, topic, evt) {
   return { acao: 'atualizado', pedido_id: pedido.id, updates, espelho: espelhoAcao };
 }
 
+// 🤖 Dispara geração automática de boleto para um pedido (best-effort, não bloqueia)
+async function gerarBoletoAuto(base44, codigoPedido) {
+  if (!codigoPedido) return;
+  try {
+    await base44.functions.invoke('gerarBoletosAutoPedidos', {
+      codigos_pedido: [String(codigoPedido)]
+    });
+  } catch (e) {
+    console.error(`[gerarBoletoAuto] erro pedido ${codigoPedido}:`, e.message);
+  }
+}
+
 async function handleNFe(base44, topic, evt) {
   const codigoPedido = String(
     evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || ''
@@ -330,6 +342,8 @@ async function handleNFe(base44, topic, evt) {
     }
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
+    // 🤖 NF autorizada → geração automática de boleto
+    await gerarBoletoAuto(base44, codigoPedido);
   } else if (topic === 'NFe.NotaCancelada') {
     updates.status = 'cancelado';
     updates.data_cancelamento = new Date().toISOString();

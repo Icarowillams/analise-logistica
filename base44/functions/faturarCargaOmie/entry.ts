@@ -253,6 +253,25 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
+    // 🤖 GERAÇÃO AUTOMÁTICA DE BOLETOS
+    // Após faturamento, dispara boletos para os pedidos que chegaram em etapa 60.
+    // Roda em background — não bloqueia a resposta para o usuário.
+    const pedidosParaBoleto = resultados
+      .filter(r => r.sucesso === true && (r.etapa_atual === '60' || r.nf_emitida))
+      .map(r => r.codigo_pedido);
+
+    let boletosResultado = null;
+    if (pedidosParaBoleto.length > 0) {
+      try {
+        const inv = await base44.functions.invoke('gerarBoletosAutoPedidos', {
+          codigos_pedido: pedidosParaBoleto
+        });
+        boletosResultado = inv?.data || null;
+      } catch (e) {
+        console.error('[faturarCargaOmie] erro ao gerar boletos auto:', e.message);
+      }
+    }
+
     return Response.json({
       sucesso: true,
       total: pedidos.length,
@@ -261,7 +280,8 @@ Deno.serve(async (req) => {
       skips,
       nfs_emitidas: nfsEmitidas,
       aguardando_nf: aguardandoNf,
-      resultados
+      resultados,
+      boletos_auto: boletosResultado
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
