@@ -492,10 +492,23 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <Select
                     value={cenarioLocalId}
                     onValueChange={(val) => {
-                      setCenarioLocalId(val);
                       const found = cenariosLocais.find(c => c.id === val);
+                      const novoIsTroca = found?.tipo_operacao === 'troca';
+                      const tipoAtual = cenarioLocalAtual?.tipo_operacao;
+                      // Se mudou entre Venda <-> Troca e já tem itens, limpa (UIs são incompatíveis)
+                      if (itensLocal.length > 0 && tipoAtual && (novoIsTroca !== (tipoAtual === 'troca'))) {
+                        const ok = window.confirm(
+                          novoIsTroca
+                            ? 'Mudar para Troca vai limpar os itens já adicionados (a Troca exige motivo por item). Deseja continuar?'
+                            : 'Mudar para Venda vai limpar os itens da troca. Deseja continuar?'
+                        );
+                        if (!ok) return;
+                        setItensLocal([]);
+                      }
+                      setCenarioLocalId(val);
                       if (found) {
-                        if (!isNotaD1 && found.cenario_omie_codigo) {
+                        const ehD1 = novoIsTroca; // Troca sempre força D1
+                        if (!ehD1 && found.cenario_omie_codigo) {
                           setCenarioFiscalCodigo(String(found.cenario_omie_codigo));
                           setCenarioFiscalNome(found.cenario_omie_nome || found.nome);
                         } else {
