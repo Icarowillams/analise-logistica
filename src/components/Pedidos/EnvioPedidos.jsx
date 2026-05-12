@@ -344,6 +344,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
                 <Button size="sm" onClick={() => enviarPedido(pedido)} disabled={enviandoIds.has(pedido.id) || enviandoTodos} className="text-xs bg-green-600 hover:bg-green-700">
                   <Send className="w-3 h-3 mr-1" /> {enviandoIds.has(pedido.id) ? 'Enviando...' : 'Enviar'}
                 </Button>
+                <Button size="sm" variant="outline" onClick={() => setPdfPedidoId(pedido.id)} className="text-xs">
+                  <FileText className="w-3 h-3 mr-1" /> PDF
+                </Button>
                 <Button size="sm" variant="ghost" className="text-xs text-red-500" onClick={() => excluirPedido(pedido)}>
                   <Trash2 className="w-3 h-3" />
                 </Button>
