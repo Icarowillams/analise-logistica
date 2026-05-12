@@ -197,10 +197,11 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
         ]
     };
 
-    // Tabela de preço vinculada ao cliente
-    if (tabelaOmieId) {
-        clienteOmie.tabela_preco = Number(tabelaOmieId);
-    }
+    // NOTA: A tag `tabela_preco` NÃO faz parte da estrutura `clientes_cadastro` do Omie.
+    // O Omie rejeita o payload com erro: "Tag [TABELA_PRECO] não faz parte da estrutura do tipo complexo [clientes_cadastro]!"
+    // A tabela de preço deve ser informada apenas no pedido, não no cadastro do cliente.
+    // (Parâmetro `tabelaOmieId` mantido na assinatura para não quebrar chamadas existentes.)
+    void tabelaOmieId;
 
     // Remover campos vazios para não sobrescrever dados no Omie com strings vazias
     // Mantemos sempre: codigo_cliente_integracao, razao_social, pessoa_fisica, contribuinte, inativo
