@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Receipt, Loader2, FileDown } from 'lucide-react';
+import { Receipt, Loader2, FileDown, Printer, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import FiltrosBoletos from '@/components/boletos/FiltrosBoletos';
 import TabelaBoletos from '@/components/boletos/TabelaBoletos';
+import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
 import { toast } from 'sonner';
 
 export default function BoletosOmie() {
@@ -12,6 +13,20 @@ export default function BoletosOmie() {
   const [selecionados, setSelecionados] = useState([]);
   const [gerando, setGerando] = useState(false);
   const [resultadoLote, setResultadoLote] = useState(null);
+  const [imprimirOpen, setImprimirOpen] = useState(false);
+  const [modoImpressao, setModoImpressao] = useState('individual');
+
+  const titulosSelecionados = titulos.filter(t => selecionados.includes(t.codigo_lancamento));
+  const titulosComBoleto = titulosSelecionados.filter(t => t.numero_boleto || t.url_boleto);
+
+  const abrirImpressao = (modo) => {
+    if (titulosComBoleto.length === 0) {
+      toast.error('Selecione títulos que já possuem boleto emitido');
+      return;
+    }
+    setModoImpressao(modo);
+    setImprimirOpen(true);
+  };
 
   const gerarBoletos = async () => {
     if (selecionados.length === 0) return;
@@ -52,11 +67,28 @@ export default function BoletosOmie() {
             <p className="text-sm text-slate-500">Contas a receber em aberto e geração em lote</p>
           </div>
         </div>
-        <Button onClick={gerarBoletos} disabled={selecionados.length === 0 || gerando}>
-          {gerando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileDown className="w-4 h-4 mr-2" />}
-          Gerar {selecionados.length} boletos
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => abrirImpressao('individual')} disabled={titulosComBoleto.length === 0}>
+            <Printer className="w-4 h-4 mr-2" />
+            Imprimir
+          </Button>
+          <Button variant="outline" className="bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100" onClick={() => abrirImpressao('agrupado')} disabled={titulosComBoleto.length === 0}>
+            <Layers className="w-4 h-4 mr-2" />
+            Imprimir Agrupado
+          </Button>
+          <Button onClick={gerarBoletos} disabled={selecionados.length === 0 || gerando}>
+            {gerando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileDown className="w-4 h-4 mr-2" />}
+            Gerar {selecionados.length} boletos
+          </Button>
+        </div>
       </div>
+
+      <BoletosImpressaoDialog
+        open={imprimirOpen}
+        onOpenChange={setImprimirOpen}
+        titulos={titulosComBoleto}
+        modo={modoImpressao}
+      />
 
       <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); setResultadoLote(null); }} />
 

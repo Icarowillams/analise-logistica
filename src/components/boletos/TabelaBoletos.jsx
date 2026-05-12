@@ -17,10 +17,11 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
     );
   }, [titulos, filtro]);
 
-  // Título é elegível pra gerar boleto SOMENTE se: em aberto + sem boleto ainda
+  // Selecionável se: em aberto (para gerar boleto) OU já tem boleto emitido (para imprimir)
   const isElegivel = (t) => {
     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
-    return st === 'ABERTO' && !t.numero_boleto;
+    if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO' || st === 'RECEBIDO') return false;
+    return true;
   };
 
   const toggleAll = () => {
