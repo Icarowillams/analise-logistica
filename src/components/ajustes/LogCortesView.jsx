@@ -25,7 +25,7 @@ export default function LogCortesView() {
     return logs.filter(l => {
       if (termo) {
         const blob = [
-          l.carga_numero, l.numero_pedido, l.cliente_nome, l.produto_codigo,
+          l.carga_numero, l.numero_pedido, l.cliente_codigo, l.cliente_nome, l.produto_codigo,
           l.produto_descricao, l.motivo, l.funcionario_nome
         ].filter(Boolean).join(' ').toLowerCase();
         if (!blob.includes(termo)) return false;
@@ -83,6 +83,7 @@ export default function LogCortesView() {
                   <th className="p-2 text-left">Data/Hora</th>
                   <th className="p-2 text-left">Carga</th>
                   <th className="p-2 text-left">Pedido</th>
+                  <th className="p-2 text-left">Cód. Cliente</th>
                   <th className="p-2 text-left">Cliente</th>
                   <th className="p-2 text-left">Produto</th>
                   <th className="p-2 text-right">Qtd. Antes</th>
@@ -96,12 +97,13 @@ export default function LogCortesView() {
               </thead>
               <tbody>
                 {filtrados.length === 0 ? (
-                  <tr><td colSpan="12" className="p-6 text-center text-slate-400">Nenhum registro de corte.</td></tr>
+                  <tr><td colSpan="13" className="p-6 text-center text-slate-400">Nenhum registro de corte.</td></tr>
                 ) : filtrados.map(l => (
                   <tr key={l.id} className="border-t hover:bg-slate-50">
                     <td className="p-2 whitespace-nowrap">{fmtDataHora(l.created_date)}</td>
                     <td className="p-2">{l.carga_numero || <span className="text-slate-400">-</span>}</td>
                     <td className="p-2 font-medium">{l.numero_pedido || '-'}</td>
+                    <td className="p-2 font-mono text-xs">{l.cliente_codigo || '-'}</td>
                     <td className="p-2">{l.cliente_nome || '-'}</td>
                     <td className="p-2">
                       <div className="text-xs text-slate-500">{l.produto_codigo}</div>

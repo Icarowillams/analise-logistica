@@ -15,6 +15,10 @@
     "cliente_id": {
       "type": "string"
     },
+    "cliente_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo interno do cliente"
+    },
     "cliente_nome": {
       "type": "string"
     },
@@ -37,7 +41,8 @@
       "type": "number"
     },
     "quantidade_itens": {
-      "type": "number"
+      "type": "number",
+      "description": "Quantidade total de unidades transferidas (soma das quantidades dos produtos do pedido)"
     },
     "funcionario_id": {
       "type": "string"

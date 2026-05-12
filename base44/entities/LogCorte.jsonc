@@ -17,6 +17,10 @@
     "cliente_id": {
       "type": "string"
     },
+    "cliente_codigo": {
+      "type": "string",
+      "description": "C\u00f3digo interno do cliente (codigo_cliente_cod / codigo_interno)"
+    },
     "cliente_nome": {
       "type": "string"
     },

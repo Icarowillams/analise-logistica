@@ -128,18 +128,22 @@ Deno.serve(async (req) => {
         }
       } catch (_) { /* ignora — atualização opcional */ }
 
+      // Quantidade total de unidades transferidas (soma das quantidades dos produtos do pedido)
+      const qtdUnidades = (ped.produtos || []).reduce((s, p) => s + (Number(p.quantidade) || 0), 0);
+
       const reg = await base44.asServiceRole.entities.Transferencia.create({
         pedido_codigo_omie: String(ped.codigo_pedido),
         numero_pedido: String(ped.numero_pedido || ''),
         numero_nf: String(ped.numero_nf || ''),
-        cliente_nome: ped.nome_fantasia || ped.nome_cliente || '',
+        cliente_codigo: String(ped.codigo_cliente_cod || ped.codigo_cliente || ''),
+        cliente_nome: ped.nome_cliente || ped.nome_fantasia || '',
         carga_origem_id,
         carga_origem_numero: origem.numero_carga,
         carga_destino_id,
         carga_destino_numero: destino.numero_carga,
         motivo,
         valor_nf: ped.valor_total_pedido || 0,
-        quantidade_itens: Number(ped.quantidade_itens || 0),
+        quantidade_itens: qtdUnidades || Number(ped.quantidade_itens || 0),
         funcionario_nome: user.full_name || user.email,
         status: 'concluida'
       });

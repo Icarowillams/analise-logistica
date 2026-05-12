@@ -26,7 +26,7 @@ export default function LogTransferenciasView() {
       if (termo) {
         const blob = [
           l.carga_origem_numero, l.carga_destino_numero, l.numero_pedido, l.numero_nf,
-          l.cliente_nome, l.motivo, l.funcionario_nome
+          l.cliente_codigo, l.cliente_nome, l.motivo, l.funcionario_nome
         ].filter(Boolean).join(' ').toLowerCase();
         if (!blob.includes(termo)) return false;
       }
@@ -83,6 +83,7 @@ export default function LogTransferenciasView() {
                   <th className="p-2 text-left">Data/Hora</th>
                   <th className="p-2 text-left">Pedido</th>
                   <th className="p-2 text-left">NF</th>
+                  <th className="p-2 text-left">Cód. Cliente</th>
                   <th className="p-2 text-left">Cliente</th>
                   <th className="p-2 text-center">Carga Origem</th>
                   <th className="p-2 text-center"></th>
@@ -95,12 +96,13 @@ export default function LogTransferenciasView() {
               </thead>
               <tbody>
                 {filtrados.length === 0 ? (
-                  <tr><td colSpan="11" className="p-6 text-center text-slate-400">Nenhum registro de transferência.</td></tr>
+                  <tr><td colSpan="12" className="p-6 text-center text-slate-400">Nenhum registro de transferência.</td></tr>
                 ) : filtrados.map(l => (
                   <tr key={l.id} className="border-t hover:bg-slate-50">
                     <td className="p-2 whitespace-nowrap">{fmtDataHora(l.created_date)}</td>
                     <td className="p-2 font-medium">{l.numero_pedido || '-'}</td>
                     <td className="p-2">{l.numero_nf || '-'}</td>
+                    <td className="p-2 font-mono text-xs">{l.cliente_codigo || '-'}</td>
                     <td className="p-2">{l.cliente_nome || '-'}</td>
                     <td className="p-2 text-center">
                       <Badge variant="outline" className="border-slate-300">{l.carga_origem_numero || '-'}</Badge>

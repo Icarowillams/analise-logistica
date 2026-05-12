@@ -24,18 +24,19 @@ async function omieCall(call, param, tentativa = 1) {
 }
 
 // Localiza a Carga a que um pedido pertence (sem alterar) — usado para anexar ao LogCorte
+// Retorna { id, numero, pedidoNaCarga } para reaproveitar dados de cliente já carregados no snapshot
 async function localizarCargaDoPedido(base44, codigoPedidoOmie, isInterno, pedidoIdInterno) {
   try {
     const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
     for (const carga of cargas) {
       const arr = isInterno ? (carga.pedidos_internos || []) : (carga.pedidos_omie || []);
-      const achou = arr.some(p => isInterno
+      const pedidoNaCarga = arr.find(p => isInterno
         ? String(p.pedido_id) === String(pedidoIdInterno)
         : String(p.codigo_pedido) === String(codigoPedidoOmie));
-      if (achou) return { id: carga.id, numero: carga.numero_carga };
+      if (pedidoNaCarga) return { id: carga.id, numero: carga.numero_carga, pedidoNaCarga };
     }
   } catch (_) {}
-  return { id: null, numero: null };
+  return { id: null, numero: null, pedidoNaCarga: null };
 }
 
 // Atualiza Carga.pedidos_omie / pedidos_internos local: aplica novas quantidades
@@ -121,6 +122,7 @@ async function cortarPedidoInterno(base44, pedido_id, cortes, motivo_geral, user
       pedido_codigo_omie: '',
       numero_pedido: pedido.numero_pedido || '',
       cliente_id: pedido.cliente_id || '',
+      cliente_codigo: String(pedido.cliente_codigo || ''),
       cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia || '',
       cnpj_cpf_cliente: pedido.cliente_cpf_cnpj || '',
       carga_id: cargaInfo.id || pedido.carga_id || null,
@@ -240,12 +242,14 @@ Deno.serve(async (req) => {
       const qtdNova = Number(corte.nova_quantidade);
       const valorUnit = item.produto?.valor_unitario || 0;
 
+      const pedNaCarga = cargaInfo.pedidoNaCarga;
       logs.push({
         pedido_codigo_omie: String(codigo_pedido),
         numero_pedido: String(pedido.cabecalho?.numero_pedido || ''),
         cliente_id: clienteLocal?.id || '',
-        cliente_nome: clienteLocal?.razao_social || pedido.cliente?.nome_cliente || '',
-        cnpj_cpf_cliente: String(pedido.cliente?.cnpj_cpf || ''),
+        cliente_codigo: String(clienteLocal?.codigo_interno || pedNaCarga?.codigo_cliente_cod || pedNaCarga?.codigo_cliente || pedido.cliente?.codigo_cliente_omie || ''),
+        cliente_nome: clienteLocal?.razao_social || pedNaCarga?.nome_cliente || pedNaCarga?.nome_fantasia || pedido.cliente?.nome_cliente || '',
+        cnpj_cpf_cliente: String(pedNaCarga?.cnpj_cpf_cliente || pedido.cliente?.cnpj_cpf || ''),
         carga_id: cargaInfo.id || null,
         carga_numero: cargaInfo.numero || null,
         produto_codigo: String(codProd || ''),
