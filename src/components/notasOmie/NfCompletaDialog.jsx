@@ -19,10 +19,13 @@ function abrirUrl(url) {
 }
 
 function Linha({ label, value }) {
+  const vazio = value === null || value === undefined || value === '' || value === 0 || value === '0';
   return (
     <div className="rounded-lg border bg-white p-3">
       <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-medium text-slate-800">{value || '-'}</p>
+      <p className={`mt-1 break-words text-sm font-medium ${vazio ? 'text-slate-400 italic' : 'text-slate-800'}`}>
+        {vazio ? 'Não consta' : value}
+      </p>
     </div>
   );
 }
@@ -52,7 +55,7 @@ export default function NfCompletaDialog({ open, onOpenChange, detalhe }) {
               <Linha label="Número" value={resumo.numero} />
               <Linha label="Emissão" value={resumo.emissao} />
               <Linha label="Cliente" value={resumo.cliente} />
-              <Linha label="Valor" value={resumo.valor ? `R$ ${Number(resumo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'} />
+              <Linha label="Valor" value={resumo.valor ? `R$ ${Number(resumo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''} />
             </div>
 
             <Linha label="Chave NF-e" value={resumo.chave} />
@@ -112,14 +115,17 @@ export default function NfCompletaDialog({ open, onOpenChange, detalhe }) {
                   <tbody>
                     {itens.map((item, index) => {
                       const prod = item.prod || {};
+                      const naoConsta = <span className="text-slate-400 italic">Não consta</span>;
+                      const ncm = prod.NCM || prod.ncm;
+                      const cfop = prod.CFOP || prod.cfop;
                       return (
                         <tr key={index} className="border-t">
-                          <td className="p-2 font-mono">{prod.cProd || prod.codigo_produto || '-'}</td>
-                          <td className="p-2">{prod.xProd || prod.descricao || '-'}</td>
-                          <td className="p-2 text-right">{prod.qCom || prod.quantidade || '-'}</td>
-                          <td className="p-2 text-right">{prod.vUnCom || prod.valor_unitario || '-'}</td>
-                          <td className="p-2 text-right">{prod.vProd || prod.valor_total || '-'}</td>
-                          <td className="p-2">{prod.NCM || prod.ncm || '-'} / {prod.CFOP || prod.cfop || '-'}</td>
+                          <td className="p-2 font-mono">{prod.cProd || prod.codigo_produto || naoConsta}</td>
+                          <td className="p-2">{prod.xProd || prod.descricao || naoConsta}</td>
+                          <td className="p-2 text-right">{prod.qCom || prod.quantidade || naoConsta}</td>
+                          <td className="p-2 text-right">{prod.vUnCom || prod.valor_unitario || naoConsta}</td>
+                          <td className="p-2 text-right">{prod.vProd || prod.valor_total || naoConsta}</td>
+                          <td className="p-2">{ncm || cfop ? `${ncm || 'Não consta'} / ${cfop || 'Não consta'}` : naoConsta}</td>
                         </tr>
                       );
                     })}
