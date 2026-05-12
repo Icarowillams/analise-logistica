@@ -6,14 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { History, Search, Scissors, Loader2 } from 'lucide-react';
+import { fmtDataHora } from '@/lib/dateFormat';
 
 const fmtMoney = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-const fmtDataHora = (iso) => {
-  if (!iso) return '-';
-  try {
-    return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-  } catch { return '-'; }
-};
 
 export default function LogCortesView() {
   const [busca, setBusca] = useState('');
