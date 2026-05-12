@@ -171,14 +171,12 @@ export default function Layout({ children, currentPageName }) {
 
     if (isAdmin) {
       allMenuItems.push({
-        title: 'Permissões',
+        title: 'Gerenciamento',
         icon: Shield,
-        path: 'Permissoes'
-      });
-      allMenuItems.push({
-        title: 'Log Gerencial',
-        icon: ScrollText,
-        path: 'LogGerencial'
+        submenu: [
+          { title: 'Permissões', path: 'Permissoes' },
+          { title: 'Log Gerencial', path: 'LogGerencial' }
+        ]
       });
     }
 
