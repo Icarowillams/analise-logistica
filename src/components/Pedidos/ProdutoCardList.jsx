@@ -175,12 +175,12 @@ export default function ProdutoCardList({
                     R$ {preco.toFixed(2).replace('.', ',')}
                   </span>
                   {isPrecoAcao(produto.id) && <span className="text-[9px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded font-medium">AÇÃO</span>}
+                  {qty > 0 && (
+                    <span className="text-[11px] font-semibold text-green-700">
+                      • Total: R$ {(qty * preco).toFixed(2).replace('.', ',')}
+                    </span>
+                  )}
                 </div>
-                {qty > 0 && (
-                  <p className="text-[11px] font-semibold text-green-700 mt-0.5">
-                    Total: R$ {(qty * preco).toFixed(2).replace('.', ',')}
-                  </p>
-                )}
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
