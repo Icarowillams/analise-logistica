@@ -12,18 +12,12 @@ import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import { toast } from 'sonner';
 
-const FATURAVEL = ['montagem', 'montando', 'fechada', 'conferindo', 'pronta'];
+// Status simplificado: apenas montagem / faturada / cancelada
+const FATURAVEL = ['montagem'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
-  fechada: 'bg-slate-300 text-slate-700',
-  montando: 'bg-slate-200 text-slate-700',
-  conferindo: 'bg-amber-100 text-amber-800',
-  pronta: 'bg-blue-100 text-blue-800',
   faturada: 'bg-green-100 text-green-800',
-  em_rota: 'bg-indigo-100 text-indigo-800',
-  entregue: 'bg-emerald-100 text-emerald-800',
-  finalizada: 'bg-emerald-100 text-emerald-800',
   cancelada: 'bg-red-100 text-red-800',
   excluida: 'bg-red-100 text-red-800'
 };
@@ -267,8 +261,8 @@ export default function Cargas() {
       label: 'Ações',
       width: '200px',
       render: (_, row) => {
-        const emMontagem = ['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga);
-        const jaFaturada = ['faturada', 'em_rota', 'entregue', 'finalizada'].includes(row.status_carga);
+        const emMontagem = row.status_carga === 'montagem';
+        const jaFaturada = row.status_carga === 'faturada';
         return (
           <div className="flex items-center gap-1">
             {emMontagem && (

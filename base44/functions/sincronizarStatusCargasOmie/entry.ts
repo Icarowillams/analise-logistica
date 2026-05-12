@@ -79,21 +79,22 @@ function erroPedidoExcluido(mensagem) {
   return texto.includes('não existem registros') || texto.includes('nao existem registros') || texto.includes('não encontrado') || texto.includes('nao encontrado') || texto.includes('não cadastrado') || texto.includes('nao cadastrado') || texto.includes('excluído') || texto.includes('excluido') || texto.includes('inexistente');
 }
 
+// Status simplificado: apenas montagem / faturada / cancelada.
+// - Todos cancelados/excluídos no Omie → cancelada
+// - Carga foi faturada pelo sistema (data_faturamento preenchida) E todos pedidos em etapa 60 → faturada
+// - Caso contrário → mantém status atual (em geral montagem)
 function definirStatusCarga(pedidosStatus, statusAtual, cargaFoiFaturadaPeloSistema) {
   if (pedidosStatus.length === 0) return statusAtual || 'montagem';
-  if (pedidosStatus.every(p => p.excluido)) return 'cancelada';
   if (pedidosStatus.every(p => p.cancelado || p.excluido)) return 'cancelada';
 
-  // CRÍTICO: só promovemos a carga para "faturada" se o usuário clicou em Faturar
-  // (data_faturamento preenchida). Caso contrário, mesmo que os pedidos estejam em
-  // etapa 60 no Omie (faturados por outro caminho), a CARGA permanece em montagem.
-  // Isso evita que pedidos já faturados no Omie "puxem" a carga para faturada sozinhos.
   if (cargaFoiFaturadaPeloSistema) {
-    if (pedidosStatus.every(p => p.faturado)) return 'faturada';
-    if (pedidosStatus.some(p => p.etapa === '60')) return 'faturada';
+    // Considera "pronta no Omie" qualquer pedido em etapa 60 ou já com NF emitida
+    const ativos = pedidosStatus.filter(p => !p.excluido && !p.cancelado);
+    if (ativos.length > 0 && ativos.every(p => p.etapa === '60' || p.faturado)) {
+      return 'faturada';
+    }
   }
 
-  if (pedidosStatus.some(p => p.etapa === '50')) return statusAtual === 'montagem' ? 'montagem' : 'pronta';
   return statusAtual || 'montagem';
 }
 

@@ -171,29 +171,26 @@ Deno.serve(async (req) => {
     const nfsEmitidas = resultados.filter(r => r.nf_emitida).length;
     const aguardandoNf = resultados.filter(r => r.sucesso === true && !r.nf_emitida).length;
 
-    // STATUS DINÂMICO baseado no resultado real de cada pedido — NUNCA assumir 'faturada' às cegas.
-    // Regras:
-    // - Se todos pedidos foram skip (ex: todos D1) → mantém status atual (não faturou nada de fato)
-    // - Se todos os processados emitiram NF → 'faturada'
-    // - Se houver pedidos na etapa 60 mas sem NF ainda → 'pronta' (aguardando SEFAZ)
-    // - Se houver erros → 'conferindo'
+    // STATUS SIMPLIFICADO — apenas 3 estados possíveis para a carga:
+    //   montagem → faturada → cancelada
+    // Regra: se TODOS os pedidos processados chegaram na etapa 60 (faturado no Omie),
+    // a carga vira FATURADA — independente de a NF já ter número (o sincronizador puxa depois).
+    // Pedido D1 (sem NF) é considerado faturado para fins de status da carga.
     const processados = resultados.length - skips;
     let novoStatus = carga.status_carga;
     let novaDataFat = carga.data_faturamento;
 
-    if (processados === 0) {
-      // Só havia D1 — nada foi enviado ao Omie, mantém status atual
-      novoStatus = carga.status_carga;
-    } else if (erros > 0) {
-      novoStatus = 'conferindo';
-    } else if (nfsEmitidas === processados) {
+    if (processados === 0 && skips === resultados.length && resultados.length > 0) {
+      // Só havia D1 — considera faturada (não há nada para emitir no Omie)
       novoStatus = 'faturada';
       novaDataFat = new Date().toISOString();
-    } else if (sucessos === processados) {
-      // Todos foram aceitos (etapa 60) mas NF ainda processando — fica 'pronta' até webhook NFe.NotaAutorizada
-      novoStatus = 'pronta';
+    } else if (processados > 0 && sucessos === processados) {
+      // Todos os pedidos Omie foram aceitos (etapa 60) → carga faturada
+      novoStatus = 'faturada';
+      novaDataFat = new Date().toISOString();
     } else {
-      novoStatus = 'conferindo';
+      // Manteve em montagem para o usuário reprocessar — não criamos status intermediário
+      novoStatus = 'montagem';
     }
 
     // Persistir números de NF retornados nos pedidos_omie da carga + montar notas_fiscais[]
