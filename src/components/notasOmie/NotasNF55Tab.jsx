@@ -13,7 +13,7 @@ import NfCompletaDialog from '@/components/notasOmie/NfCompletaDialog';
 /**
  * Aba de Notas Fiscais Nota 55 (NF-e Omie) — conteúdo histórico da página NotasOmie.
  */
-export default function NotasNF55Tab({ cargaFiltro }) {
+export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const primeiroDia = hoje.slice(0, 8) + '01';
   const formatarData = (d) => {
@@ -82,18 +82,20 @@ export default function NotasNF55Tab({ cargaFiltro }) {
     setLoadingDetalhe(null);
   };
 
-  // Ao receber cargaFiltro pela URL, ajusta datas e dispara busca
+  // Ao receber cargaFiltro pela URL, ajusta datas e dispara busca (só se a aba estiver ativa)
   useEffect(() => {
-    if (!cargaFiltro) return;
+    if (!cargaFiltro || !ativa) return;
     let filtrosCarga = filtros;
     if (cargaFiltro.data_carga) {
       const [y, m, d] = cargaFiltro.data_carga.split('-');
       filtrosCarga = { ...filtros, data_inicial: `${d}/${m}/${y}`, data_final: `${d}/${m}/${y}` };
       setFiltros(filtrosCarga);
     }
-    setTimeout(() => buscar(1, cargaFiltro, filtrosCarga), 0);
+    // Delay para evitar competir com outras queries no carregamento (evita 429)
+    const timer = setTimeout(() => buscar(1, cargaFiltro, filtrosCarga), 800);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cargaFiltro]);
+  }, [cargaFiltro, ativa]);
 
   const columns = [
     { key: 'cNumero', label: 'Nº NF', width: '100px', sortable: true },

@@ -15,7 +15,7 @@ import NotaD1Pdf from '@/components/cargas/documentos/NotaD1Pdf';
  * Aba de listagem das Notas D1 — vendas internas (sem NF-e Omie).
  * Lê pedidos_internos D1 de todas as Cargas e exibe em tabela com filtros.
  */
-export default function NotasD1Tab({ cargaFiltroId }) {
+export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
   const [filtros, setFiltros] = useState({
     data_inicial: '',
     data_final: '',
@@ -24,9 +24,12 @@ export default function NotasD1Tab({ cargaFiltroId }) {
   });
   const [notaSelecionada, setNotaSelecionada] = useState(null);
 
+  // Só busca quando a aba estiver ativa — evita competir por rate-limit com NF-55
   const { data: cargas = [], isLoading } = useQuery({
     queryKey: ['cargas-notasd1'],
-    queryFn: () => base44.entities.Carga.list('-data_carga', 2000)
+    queryFn: () => base44.entities.Carga.list('-data_carga', 2000),
+    enabled: ativa,
+    staleTime: 60000
   });
 
   const linhas = useMemo(() => {

@@ -19,11 +19,16 @@ export default function NotasOmie() {
     if (!cargaId) return;
 
     setCargaFiltroId(cargaId);
-    (async () => {
-      const cargas = await base44.entities.Carga.filter({ id: cargaId }, '-created_date', 1);
-      const carga = cargas?.[0];
-      if (carga) setCargaFiltro(carga);
-    })();
+    // Delay pequeno para não competir com queries do Layout/Cargas que acabaram de disparar (evita 429)
+    const timer = setTimeout(async () => {
+      try {
+        const carga = await base44.entities.Carga.get(cargaId);
+        if (carga) setCargaFiltro(carga);
+      } catch (e) {
+        console.warn('Falha ao carregar carga', e);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -55,11 +60,11 @@ export default function NotasOmie() {
         </TabsList>
 
         <TabsContent value="nf55" className="mt-4">
-          <NotasNF55Tab cargaFiltro={cargaFiltro} />
+          <NotasNF55Tab cargaFiltro={cargaFiltro} ativa={tab === 'nf55'} />
         </TabsContent>
 
         <TabsContent value="d1" className="mt-4">
-          <NotasD1Tab cargaFiltroId={cargaFiltroId} />
+          <NotasD1Tab cargaFiltroId={cargaFiltroId} ativa={tab === 'd1'} />
         </TabsContent>
       </Tabs>
     </div>
