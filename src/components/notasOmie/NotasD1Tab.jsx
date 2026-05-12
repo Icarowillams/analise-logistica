@@ -20,7 +20,8 @@ export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
     data_inicial: '',
     data_final: '',
     nome_cliente: '',
-    cnpj_cliente: ''
+    cnpj_cliente: '',
+    numero_carga: ''
   });
   const [notaSelecionada, setNotaSelecionada] = useState(null);
 
@@ -76,6 +77,10 @@ export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
       if (filtros.nome_cliente) {
         const t = filtros.nome_cliente.toLowerCase();
         if (!`${l.nome_cliente || ''} ${l.nome_fantasia || ''}`.toLowerCase().includes(t)) return false;
+      }
+      if (filtros.numero_carga) {
+        const t = filtros.numero_carga.toLowerCase().trim();
+        if (!(l.numero_carga || '').toString().toLowerCase().includes(t)) return false;
       }
       return true;
     });
@@ -143,7 +148,7 @@ export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
           <CardTitle className="text-base">Filtros — Notas D1</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <Label>Data inicial</Label>
               <Input type="date" value={filtros.data_inicial} onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })} />
@@ -156,8 +161,12 @@ export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
               <Label>Cliente (nome/fantasia)</Label>
               <Input value={filtros.nome_cliente} onChange={(e) => setFiltros({ ...filtros, nome_cliente: e.target.value })} />
             </div>
+            <div>
+              <Label>Nº Carga</Label>
+              <Input placeholder="Ex: 009" value={filtros.numero_carga} onChange={(e) => setFiltros({ ...filtros, numero_carga: e.target.value })} />
+            </div>
             <div className="flex items-end">
-              <Button variant="outline" className="w-full" onClick={() => setFiltros({ data_inicial: '', data_final: '', nome_cliente: '', cnpj_cliente: '' })}>
+              <Button variant="outline" className="w-full" onClick={() => setFiltros({ data_inicial: '', data_final: '', nome_cliente: '', cnpj_cliente: '', numero_carga: '' })}>
                 Limpar
               </Button>
             </div>
