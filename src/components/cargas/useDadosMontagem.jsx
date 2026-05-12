@@ -116,7 +116,7 @@ export default function useDadosMontagem() {
             valor_total_pedido: p.valor_total || 0,
             vendedor_nome: p.vendedor_nome || '',
             observacoes: p.observacoes || '',
-            tipo: 'd1',
+            tipo: p.tipo || 'd1',
             tipo_nota: 'D1',
             modelo_nota: 'd1',
             cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
