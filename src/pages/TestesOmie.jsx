@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Play, RefreshCw, FlaskConical, Globe, AlertTriangle, Database, ShieldCheck, Truck, UserCheck, Rocket, GitCompare } from 'lucide-react';
+import { Play, RefreshCw, FlaskConical, Globe, AlertTriangle, Database, ShieldCheck, Truck, UserCheck, Rocket, GitCompare, Wrench } from 'lucide-react';
 import TestResultsList from '@/components/testes/TestResultsList';
 import TestSummary from '@/components/testes/TestSummary';
 import { buildSuiteLogicaPura } from '@/components/testes/suites/suiteLogicaPura';
@@ -13,12 +13,14 @@ import { buildSuiteValidacaoCadastros } from '@/components/testes/suites/suiteVa
 import { buildSuiteCargasETransferencia } from '@/components/testes/suites/suiteCargasETransferencia';
 import { buildSuitePermissoesEUI } from '@/components/testes/suites/suitePermissoesEUI';
 import { buildSuiteParidadeMontagem } from '@/components/testes/suites/suiteParidadeMontagem';
+import { buildSuiteAjustesEAcerto } from '@/components/testes/suites/suiteAjustesEAcerto';
 
 const SUITES = [
   { key: 'pura', label: 'Lógica Pura', icon: FlaskConical, color: 'violet', build: buildSuiteLogicaPura, desc: 'Validações, normalizações e regras puras de negócio. Sem chamadas externas.' },
   { key: 'cadastros', label: 'Validação de Cadastros', icon: ShieldCheck, color: 'cyan', build: buildSuiteValidacaoCadastros, desc: 'CPF, CNPJ, CEP, UF, datas, truncamentos — o que o usuário digita errado.' },
   { key: 'fluxos', label: 'Fluxos do Usuário', icon: UserCheck, color: 'emerald', build: buildSuiteFluxosUsuario, desc: 'Jornadas ponta-a-ponta: vender, faturar, bloquear, montar carga, etc.' },
   { key: 'cargas', label: 'Cargas & Logística', icon: Truck, color: 'orange', build: buildSuiteCargasETransferencia, desc: 'Montagem, transferência, capacidade do veículo, fechamento.' },
+  { key: 'ajustes', label: 'Ajustes + Acerto (Omie real)', icon: Wrench, color: 'amber', build: buildSuiteAjustesEAcerto, desc: 'Testa corte, devolução, cancelamento e acerto de caixa contra o Omie REAL com timers e diff antes/depois.', requireBackend: true },
   { key: 'paridade', label: 'Paridade Montagem', icon: GitCompare, color: 'fuchsia', build: buildSuiteParidadeMontagem, desc: 'Compara output do espelho NOVO vs fluxo ANTIGO. Garante zero regressão.', requireBackend: true },
   { key: 'entidades', label: 'Integridade de Dados', icon: Database, color: 'amber', build: buildSuiteEntidades, desc: 'Lê o banco e detecta órfãos, duplicatas e inconsistências reais.', requireBackend: true },
   { key: 'permissoes', label: 'Permissões & UI', icon: ShieldCheck, color: 'indigo', build: buildSuitePermissoesEUI, desc: 'Auth, roles, listagens e navegação.', requireBackend: true },
@@ -144,7 +146,7 @@ export default function TestesOmie() {
       )}
 
       <Tabs defaultValue="pura" className="space-y-4">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 w-full h-auto">
+        <TabsList className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 w-full h-auto">
           {SUITES.map(s => {
             const Icon = s.icon;
             const total = totals.find(t => t.key === s.key)?.count || 0;
