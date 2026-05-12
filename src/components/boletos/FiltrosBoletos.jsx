@@ -11,12 +11,14 @@ import { toast } from 'sonner';
 export default function FiltrosBoletos({ onResultado }) {
   const hoje = new Date();
   const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-  const daqui30 = new Date(hoje.getTime() + 30 * 86400000);
+  const ha30 = new Date(hoje.getTime() - 30 * 86400000);
+  const daqui60 = new Date(hoje.getTime() + 60 * 86400000);
 
-  const [dataDe, setDataDe] = useState(fmt(hoje));
-  const [dataAte, setDataAte] = useState(fmt(daqui30));
-  const [filtrarPor, setFiltrarPor] = useState('V');
+  const [dataDe, setDataDe] = useState(fmt(ha30));
+  const [dataAte, setDataAte] = useState(fmt(daqui60));
+  const [filtrarPor, setFiltrarPor] = useState('E');
   const [cnpj, setCnpj] = useState('');
+  const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
   const [cargaFiltro, setCargaFiltro] = useState(null);
 
@@ -40,13 +42,16 @@ export default function FiltrosBoletos({ onResultado }) {
         data_ate: filtrosBusca.dataAte || dataAte,
         filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
         cnpj_cpf: cnpj || undefined,
-        apenas_pendentes: true,
+        apenas_pendentes: false,
         registros_por_pagina: 200
       });
       if (data?.sucesso) {
-        const titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
+        let titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
+        if (apenasComBoleto) {
+          titulosFiltrados = titulosFiltrados.filter(t => t.numero_boleto || t.url_boleto || t.codigo_barras);
+        }
         onResultado(titulosFiltrados);
-        toast.success(`${titulosFiltrados.length} títulos em aberto`);
+        toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
       } else {
         toast.error(data?.error || 'Erro ao buscar');
       }
@@ -97,8 +102,8 @@ export default function FiltrosBoletos({ onResultado }) {
             <Select value={filtrarPor} onValueChange={setFiltrarPor}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="V">Vencimento</SelectItem>
                 <SelectItem value="E">Emissão</SelectItem>
+                <SelectItem value="V">Vencimento</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -120,6 +125,18 @@ export default function FiltrosBoletos({ onResultado }) {
               Buscar
             </Button>
           </div>
+        </div>
+        <div className="flex items-center gap-2 mt-3 text-sm">
+          <input
+            type="checkbox"
+            id="apenas-com-boleto"
+            checked={apenasComBoleto}
+            onChange={(e) => setApenasComBoleto(e.target.checked)}
+            className="w-4 h-4"
+          />
+          <label htmlFor="apenas-com-boleto" className="cursor-pointer">
+            Mostrar apenas títulos com boleto emitido
+          </label>
         </div>
       </CardContent>
       </Card>
