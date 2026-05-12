@@ -196,10 +196,48 @@ Deno.serve(async (req) => {
       novoStatus = 'conferindo';
     }
 
+    // Persistir números de NF retornados nos pedidos_omie da carga + montar notas_fiscais[]
+    // Sem isso o Romaneio, Boletos e impressão das NFs ficam sem número.
+    const mapaNfPorPedido = new Map();
+    for (const r of resultados) {
+      if (r.numero_nf) mapaNfPorPedido.set(String(r.codigo_pedido), String(r.numero_nf));
+    }
+    const pedidosOmieAtualizados = (carga.pedidos_omie || []).map(p => {
+      const nfNova = mapaNfPorPedido.get(String(p.codigo_pedido));
+      if (nfNova) {
+        return { ...p, numero_nf: nfNova };
+      }
+      return p;
+    });
+    // notas_fiscais[] apenas com valores reais (sem mesclar com lixo anterior)
+    const notasFiscaisAtualizadas = Array.from(new Set(
+      pedidosOmieAtualizados.map(p => p.numero_nf).filter(Boolean).map(String)
+    ));
+
     await base44.asServiceRole.entities.Carga.update(carga_id, {
       status_carga: novoStatus,
-      data_faturamento: novaDataFat
+      data_faturamento: novaDataFat,
+      pedidos_omie: pedidosOmieAtualizados,
+      notas_fiscais: notasFiscaisAtualizadas
     });
+
+    // Atualiza também a entidade Pedido local (se houver match por omie_codigo_pedido)
+    for (const r of resultados) {
+      if (!r.numero_nf || !r.codigo_pedido) continue;
+      try {
+        const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({
+          omie_codigo_pedido: String(r.codigo_pedido)
+        });
+        for (const pl of pedidosLocais) {
+          await base44.asServiceRole.entities.Pedido.update(pl.id, {
+            numero_nota_fiscal: String(r.numero_nf),
+            faturado: true,
+            data_faturamento: new Date().toISOString(),
+            status: 'faturado'
+          });
+        }
+      } catch { /* não bloqueia o fluxo */ }
+    }
 
     const errosDetalhados = resultados
       .filter(r => r.sucesso === false)
