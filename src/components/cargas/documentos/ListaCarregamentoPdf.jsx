@@ -37,6 +37,19 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
     return m;
   }, [produtosBase]);
 
+  // Mapa: qualquer código (omie/integracao/interno) -> código interno do app (Produto.codigo)
+  const codigoInternoMap = useMemo(() => {
+    const m = new Map();
+    produtosBase.forEach(p => {
+      const interno = p.codigo || '';
+      if (!interno) return;
+      [p.codigo, p.codigo_omie, p.codigo_integracao].filter(Boolean).forEach(c => {
+        m.set(String(c).trim(), String(interno));
+      });
+    });
+    return m;
+  }, [produtosBase]);
+
   const { listaPedidos, info } = useMemo(() => {
     if (carga) {
       const lista = [
@@ -210,7 +223,7 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
                   <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'right', fontWeight: 700 }}>{p.qtde_caixas}</td>
                   <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'right' }}>{p.qtde_unidades}</td>
                   <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px' }}>{p.descricao}</td>
-                  <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'center' }}>{p.codigo_produto}</td>
+                  <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'center' }}>{codigoInternoMap.get(String(p.codigo_produto).trim()) || p.codigo_produto}</td>
                   <td style={{ borderBottom: '1px solid #ccc', borderRight: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'center' }}>{p.unidade || 'UN'}</td>
                   <td style={{ borderBottom: '1px solid #ccc', padding: '5px 8px', fontSize: '10px', textAlign: 'center' }}>{p.codigo_barra || '-'}</td>
                 </tr>

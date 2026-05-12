@@ -166,7 +166,24 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
       for (const t of trocas) {
         try {
-          await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: carga.id, motorista_id: motoristaId });
+          if (t.pedido_troca_id) {
+            await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: carga.id, motorista_id: motoristaId });
+          }
+          // Trocas criadas via emissão de pedidos (tipo='troca' em Pedido) também precisam ir para montagem
+          let pedidoTrocaId = t.pedido_id;
+          if (!pedidoTrocaId && t.numero_pedido) {
+            const locais = await base44.entities.Pedido.filter({ numero_pedido: t.numero_pedido, tipo: 'troca' }, '-created_date', 1);
+            pedidoTrocaId = locais?.[0]?.id;
+          }
+          if (pedidoTrocaId) {
+            await base44.entities.Pedido.update(pedidoTrocaId, {
+              carga_id: carga.id,
+              numero_carga: numero,
+              status: 'montagem',
+              status_logistico: 'em_carga',
+              etapa: 'logistica'
+            });
+          }
         } catch (e) { console.warn('Falha vincular troca:', e.message); }
       }
 
