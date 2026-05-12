@@ -6,13 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeftRight, Loader2, Truck, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
+import SeletorCargaBusca from './SeletorCargaBusca';
 
 export default function TransferenciaTab() {
   const queryClient = useQueryClient();
@@ -35,25 +35,35 @@ export default function TransferenciaTab() {
   const [periodoDestinoFim, setPeriodoDestinoFim] = useState('');
   const [transferindo, setTransferindo] = useState(false);
 
+  // REGRA: transferência só após faturamento (etapa Omie 60).
+  // Cargas elegíveis: status 'faturada' / 'em_rota' (ainda dá pra transferir entre cargas que saíram juntas)
+  // E que tenham pelo menos 1 pedido em etapa 60.
   const { data: cargas = [] } = useQuery({
     queryKey: ['cargas', 'transferencia'],
-    queryFn: () => base44.entities.Carga.filter(
-      { status_carga: { $in: ['montando', 'montagem', 'conferindo', 'pronta', 'fechada'] } },
-      '-data_carga',
-      500
-    )
+    queryFn: async () => {
+      const todas = await base44.entities.Carga.filter(
+        { status_carga: { $in: ['faturada', 'em_rota'] } },
+        '-data_carga',
+        500
+      );
+      return todas.filter(c => {
+        const pedidos = c.pedidos_omie || [];
+        if (pedidos.length === 0) return false; // transferência só faz sentido com pedidos Omie faturados
+        return pedidos.some(p => String(p.etapa || '').trim() === '60');
+      });
+    }
   });
 
   const cargaOrigem = useMemo(() => cargas.find(c => c.id === cargaOrigemId), [cargas, cargaOrigemId]);
 
-  // Pedidos da carga origem (filtrados)
+  // Pedidos da carga origem — APENAS faturados (etapa 60), filtrados pela busca
   const pedidosOrigem = useMemo(() => {
     if (!cargaOrigem) return [];
-    const lista = cargaOrigem.pedidos_omie || [];
+    const lista = (cargaOrigem.pedidos_omie || []).filter(p => String(p.etapa || '').trim() === '60');
     const termo = filtroPedido.trim().toLowerCase();
     return lista.filter(p => {
       if (termo) {
-        const blob = [p.numero_pedido, p.nome_cliente, p.nome_fantasia, p.codigo_pedido]
+        const blob = [p.numero_pedido, p.numero_nf, p.nome_cliente, p.nome_fantasia, p.codigo_pedido, p.cidade]
           .filter(Boolean).join(' ').toLowerCase();
         if (!blob.includes(termo)) return false;
       }
@@ -149,26 +159,13 @@ export default function TransferenciaTab() {
         <CardContent className="space-y-4">
           {/* FILTROS */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div>
-              <Label className="flex items-center gap-1.5"><Truck className="w-4 h-4" /> Carga de Origem</Label>
-              <Select value={cargaOrigemId} onValueChange={setCargaOrigemId}>
-                <SelectTrigger><SelectValue placeholder="Selecione a carga" /></SelectTrigger>
-                <SelectContent>
-                  {cargasOrigemFiltradas.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      Carga {c.numero_carga} • {c.data_carga} • {c.motorista_nome || '-'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="flex items-center gap-1.5"><Search className="w-4 h-4" /> Filtrar Pedido</Label>
-              <Input
-                placeholder="Nº pedido, cliente..."
-                value={filtroPedido}
-                onChange={(e) => setFiltroPedido(e.target.value)}
-                disabled={!cargaOrigemId}
+            <div className="md:col-span-2">
+              <SeletorCargaBusca
+                cargas={cargasOrigemFiltradas}
+                cargaSelecionadaId={cargaOrigemId}
+                onChange={(c) => setCargaOrigemId(c?.id || '')}
+                label="Carga de Origem (Faturada)"
+                placeholder="Digite nº carga, motorista, rota, cliente ou nº pedido..."
               />
             </div>
             <div>
@@ -178,6 +175,15 @@ export default function TransferenciaTab() {
             <div>
               <Label>Saída até</Label>
               <Input type="date" value={periodoFim} onChange={(e) => setPeriodoFim(e.target.value)} />
+            </div>
+            <div className="md:col-span-4">
+              <Label className="flex items-center gap-1.5"><Search className="w-4 h-4" /> Filtrar Pedido (dentro da carga selecionada)</Label>
+              <Input
+                placeholder="Nº pedido, NF, cliente, cidade..."
+                value={filtroPedido}
+                onChange={(e) => setFiltroPedido(e.target.value)}
+                disabled={!cargaOrigemId}
+              />
             </div>
           </div>
 

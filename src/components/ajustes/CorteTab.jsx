@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Scissors, Truck, Package } from 'lucide-react';
+import { Loader2, Scissors, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import SeletorCargaBusca from './SeletorCargaBusca';
 
 /**
  * Corte por Carga + Produto.
@@ -164,19 +165,13 @@ export default function CorteTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label className="flex items-center gap-1.5"><Truck className="w-4 h-4" /> Carga</Label>
-              <Select value={cargaId} onValueChange={setCargaId} disabled={loadingCargas}>
-                <SelectTrigger><SelectValue placeholder="Selecione a carga" /></SelectTrigger>
-                <SelectContent>
-                  {cargas.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      Carga {c.numero_carga || '-'} • {c.data_carga} • {c.motorista_nome || 'sem motorista'} • {c.status_carga}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <SeletorCargaBusca
+              cargas={cargas}
+              cargaSelecionadaId={cargaId}
+              onChange={(c) => setCargaId(c?.id || '')}
+              label="Carga (em Montagem)"
+              placeholder={loadingCargas ? 'Carregando cargas...' : 'Digite nº carga, motorista, rota ou pedido...'}
+            />
             <div>
               <Label className="flex items-center gap-1.5"><Package className="w-4 h-4" /> Produto</Label>
               <Select value={produtoCod} onValueChange={setProdutoCod} disabled={!cargaSelecionada}>
