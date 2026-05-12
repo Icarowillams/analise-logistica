@@ -74,7 +74,24 @@ function formatarValor(v) {
   return String(v).slice(0, 300);
 }
 
-function calcularDiff(oldData, newData) {
+// Mapeia valores internos para rótulos amigáveis ao usuário no log
+function rotuloCampo(entidade, campo, valor) {
+  if (valor === null || valor === undefined || valor === '') return '(vazio)';
+  if (entidade === 'Pedido' && campo === 'status') {
+    const mapa = {
+      pendente: 'pendente',
+      enviado: 'pendente',   // pós-envio o pedido segue "pendente" no Gerenciar Pedidos
+      liberado: 'liberado',
+      montagem: 'em montagem',
+      faturado: 'faturado',
+      cancelado: 'cancelado'
+    };
+    return mapa[valor] || valor;
+  }
+  return formatarValor(valor);
+}
+
+function calcularDiff(entidade, oldData, newData) {
   const diffs = [];
   if (!oldData || !newData) return diffs;
   const keys = new Set([...Object.keys(oldData), ...Object.keys(newData)]);
@@ -85,7 +102,11 @@ function calcularDiff(oldData, newData) {
     const aStr = formatarValor(a);
     const bStr = formatarValor(b);
     if (aStr !== bStr) {
-      diffs.push({ campo: k, valor_anterior: aStr, valor_novo: bStr });
+      diffs.push({
+        campo: k,
+        valor_anterior: rotuloCampo(entidade, k, a),
+        valor_novo: rotuloCampo(entidade, k, b)
+      });
     }
   }
   return diffs.slice(0, 50);
@@ -117,7 +138,7 @@ Deno.serve(async (req) => {
       || (MAPA_TIPO[entidade]?.[tipoEvento])
       || 'outro';
 
-    const alteracoes = tipoEvento === 'update' ? calcularDiff(old_data, data) : [];
+    const alteracoes = tipoEvento === 'update' ? calcularDiff(entidade, old_data, data) : [];
 
     const descEntidade = descricaoEntidade(entidade, dadosAtuais);
     const usuarioEmail = dadosAtuais.created_by || 'sistema';
