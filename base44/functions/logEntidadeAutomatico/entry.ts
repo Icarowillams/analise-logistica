@@ -28,13 +28,28 @@ const MAPA_TIPO = {
 // Detecção especial de eventos a partir de campos alterados
 function detectarTipoEspecial(entidade, oldData, data, changed) {
   if (entidade === 'Pedido') {
-    if (changed.includes('status') && data?.status === 'faturado') return 'faturamento';
-    if (changed.includes('status') && data?.status === 'cancelado') return 'cancelamento';
-    if (changed.includes('status') && data?.status === 'liberado') return 'liberacao';
+    const statusNovo = data?.status;
+    const statusAntigo = oldData?.status;
+    const statusMudou = changed.includes('status') && statusAntigo !== statusNovo;
+
+    // Faturamento: só conta quando ENTRA no status faturado (não quando volta dele)
+    if (statusMudou && statusNovo === 'faturado' && statusAntigo !== 'faturado') return 'faturamento';
+    // Cancelamento: só ao entrar em cancelado
+    if (statusMudou && statusNovo === 'cancelado' && statusAntigo !== 'cancelado') return 'cancelamento';
+    // Liberação: só ao entrar em liberado vindo de pendente/enviado
+    if (statusMudou && statusNovo === 'liberado' && (statusAntigo === 'pendente' || statusAntigo === 'enviado')) return 'liberacao';
+    // Envio: só ao entrar em enviado vindo de pendente
+    if (statusMudou && statusNovo === 'enviado' && statusAntigo === 'pendente') return 'envio';
+    // Tornar pendente (reverter): qualquer status -> pendente
+    if (statusMudou && statusNovo === 'pendente' && statusAntigo && statusAntigo !== 'pendente') return 'edicao';
+
+    // Flag omie_enviado: só conta a primeira ativação
     if (changed.includes('omie_enviado') && !oldData?.omie_enviado && data?.omie_enviado) return 'envio';
-    if (changed.includes('numero_nota_fiscal') && data?.numero_nota_fiscal) return 'faturamento';
+    // NF emitida pela primeira vez
+    if (changed.includes('numero_nota_fiscal') && !oldData?.numero_nota_fiscal && data?.numero_nota_fiscal) return 'faturamento';
   }
-  if (entidade === 'Carga' && changed.includes('status_carga') && data?.status_carga === 'faturada') return 'faturamento';
+  if (entidade === 'Carga' && changed.includes('status_carga')
+      && data?.status_carga === 'faturada' && oldData?.status_carga !== 'faturada') return 'faturamento';
   return null;
 }
 
