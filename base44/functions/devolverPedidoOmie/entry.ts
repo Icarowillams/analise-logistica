@@ -38,14 +38,19 @@ Deno.serve(async (req) => {
     if (produtos.length === 0) return Response.json({ error: 'produtos vazio' }, { status: 400 });
 
     const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
-    if (JSON.stringify(consulta?.pedido_venda_produto || {}).toLowerCase().includes('cancelado') || JSON.stringify(consulta?.pedido_venda_produto || {}).toLowerCase().includes('cancelada')) {
+    const pedido = consulta?.pedido_venda_produto;
+    if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
+
+    // Detecção precisa de cancelamento
+    const flagCancelado = pedido?.infoCadastro?.cancelado;
+    const etapaAtual = String(pedido?.cabecalho?.etapa || '');
+    if (flagCancelado === 'S' || etapaAtual === '99') {
       return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
     }
 
     // Regra: só pode devolver/ajustar pedidos nas etapas 10/20/50 (antes do faturamento).
     const ETAPAS_AJUSTAVEIS = ['10', '20', '50'];
-    const ETAPA_NOMES_MAP = { '10': 'Pedido de Venda', '20': 'Liberados (Pendente)', '50': 'Faturar (Montagem)', '60': 'Faturado' };
-    const etapaAtual = String(consulta?.pedido_venda_produto?.cabecalho?.etapa || '');
+    const ETAPA_NOMES_MAP = { '10': 'Pedido de Venda', '20': 'Liberados (Pendente)', '50': 'Faturar (Montagem)', '60': 'Faturado', '70': 'Entrega' };
     if (!ETAPAS_AJUSTAVEIS.includes(etapaAtual)) {
       const nome = ETAPA_NOMES_MAP[etapaAtual] || `Etapa ${etapaAtual}`;
       return Response.json({
