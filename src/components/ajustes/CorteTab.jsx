@@ -4,13 +4,13 @@ import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Scissors, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import SeletorCargaBusca from './SeletorCargaBusca';
+import MotivoComboBox from './MotivoComboBox';
 
 /**
  * Corte por Carga + Produto.
@@ -29,6 +29,12 @@ export default function CorteTab() {
   const [selecao, setSelecao] = useState({}); // { pedidoKey: { selecionado, qtde_separada, motivo } }
   const [motivoGeral, setMotivoGeral] = useState('');
   const [salvando, setSalvando] = useState(false);
+
+  // Motivos de corte cadastrados (para busca + lista suspensa)
+  const { data: motivosCorte = [] } = useQuery({
+    queryKey: ['motivosCorte'],
+    queryFn: () => base44.entities.MotivoCorte.list()
+  });
 
   // REGRA: só permite ajuste em cargas onde TODOS os pedidos ainda estão em etapa Omie 10/20/50.
   // Cargas com pedidos já faturados (etapa 60) ou cargas finalizadas/canceladas/em_rota/entregue NÃO aparecem.
@@ -124,6 +130,13 @@ export default function CorteTab() {
 
     if (aplicar.length === 0) {
       toast.warning('Selecione ao menos um pedido com quantidade separada menor que a quantidade do pedido.');
+      return;
+    }
+
+    // Motivo obrigatório: cada pedido precisa de um motivo específico OU um motivo geral.
+    const semMotivo = aplicar.filter(it => !((it.motivo || motivoGeral).trim()));
+    if (semMotivo.length > 0) {
+      toast.error('Informe o motivo do corte (específico no pedido ou no campo "Motivo geral").');
       return;
     }
 
@@ -246,12 +259,13 @@ export default function CorteTab() {
                           </td>
                           <td className={`p-2 text-right font-medium ${qCort > 0 ? 'text-red-600' : 'text-slate-400'}`}>{qCort}</td>
                           <td className="p-2">
-                            <Input
-                              disabled={!sel.selecionado}
+                            <MotivoComboBox
                               value={sel.motivo || ''}
-                              onChange={(e) => atualizarSel(key, { motivo: e.target.value })}
+                              onChange={(v) => atualizarSel(key, { motivo: v })}
+                              options={motivosCorte}
+                              disabled={!sel.selecionado}
                               placeholder="Motivo específico"
-                              className="h-8"
+                              size="sm"
                             />
                           </td>
                         </tr>
@@ -261,11 +275,21 @@ export default function CorteTab() {
                 </table>
               </div>
 
-              <Textarea
-                placeholder="Motivo geral do corte (aplicado a todos os pedidos sem motivo específico)"
-                value={motivoGeral}
-                onChange={(e) => setMotivoGeral(e.target.value)}
-              />
+              <div>
+                <Label className="text-sm">
+                  Motivo geral do corte <span className="text-red-500">*</span>
+                  <span className="text-xs text-slate-500 font-normal ml-1">
+                    (aplicado a todos os pedidos sem motivo específico — obrigatório)
+                  </span>
+                </Label>
+                <MotivoComboBox
+                  value={motivoGeral}
+                  onChange={setMotivoGeral}
+                  options={motivosCorte}
+                  placeholder="Digite ou selecione o motivo do corte..."
+                  required
+                />
+              </div>
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => { setSelecao({}); setMotivoGeral(''); }}>Limpar</Button>

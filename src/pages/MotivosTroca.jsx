@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Upload, List, Save, Ban, ShoppingCart, UserX, AlertCircle } from 'lucide-react';
+import { ArrowLeftRight, Upload, List, Save, Ban, ShoppingCart, UserX, AlertCircle, Scissors } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
@@ -43,11 +43,18 @@ export default function MotivosTroca() {
     queryFn: () => base44.entities.MotivoNaoAtendimento.list()
   });
 
+  // Dados de Motivo Corte
+  const { data: motivosCorte = [], isLoading: loadingCorte } = useQuery({
+    queryKey: ['motivosCorte'],
+    queryFn: () => base44.entities.MotivoCorte.list()
+  });
+
   const getEntityName = () => {
     switch (mainTab) {
       case 'troca': return 'MotivoTroca';
       case 'naoPedido': return 'MotivoNaoSolicitacao';
       case 'naoAtendimento': return 'MotivoNaoAtendimento';
+      case 'corte': return 'MotivoCorte';
       default: return 'MotivoTroca';
     }
   };
@@ -57,6 +64,7 @@ export default function MotivosTroca() {
       case 'troca': return ['motivosTroca'];
       case 'naoPedido': return ['motivosNaoSolicitacao'];
       case 'naoAtendimento': return ['motivosNaoAtendimento'];
+      case 'corte': return ['motivosCorte'];
       default: return ['motivosTroca'];
     }
   };
@@ -66,6 +74,7 @@ export default function MotivosTroca() {
       case 'troca': return motivosTroca;
       case 'naoPedido': return motivosNaoPedido;
       case 'naoAtendimento': return motivosNaoAtendimento;
+      case 'corte': return motivosCorte;
       default: return [];
     }
   };
@@ -75,6 +84,7 @@ export default function MotivosTroca() {
       case 'troca': return loadingTroca;
       case 'naoPedido': return loadingNaoPedido;
       case 'naoAtendimento': return loadingNaoAtendimento;
+      case 'corte': return loadingCorte;
       default: return false;
     }
   };
@@ -84,6 +94,7 @@ export default function MotivosTroca() {
       case 'troca': return 'Ocorrência de Troca';
       case 'naoPedido': return 'Motivo Não Pedido';
       case 'naoAtendimento': return 'Motivo Não Atendimento';
+      case 'corte': return 'Motivo Corte';
       default: return 'Ocorrência';
     }
   };
@@ -208,7 +219,7 @@ export default function MotivosTroca() {
 
       {/* Abas principais */}
       <Tabs value={mainTab} onValueChange={handleMainTabChange} className="w-full mb-6">
-        <TabsList className="grid w-full max-w-[600px] grid-cols-3">
+        <TabsList className="grid w-full max-w-[800px] grid-cols-4">
           <TabsTrigger value="troca" className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4" />
             Troca
@@ -221,6 +232,10 @@ export default function MotivosTroca() {
             <UserX className="w-4 h-4" />
             Não Atendimento
           </TabsTrigger>
+          <TabsTrigger value="corte" className="flex items-center gap-2">
+            <Scissors className="w-4 h-4" />
+            Motivo Corte
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -231,6 +246,7 @@ export default function MotivosTroca() {
           {mainTab === 'troca' && 'Motivos utilizados para justificar trocas de produtos.'}
           {mainTab === 'naoPedido' && 'Motivos que os vendedores devem informar quando o cliente não solicita pedido.'}
           {mainTab === 'naoAtendimento' && 'Motivos que devem ser informados quando um cliente não é atendido na visita.'}
+          {mainTab === 'corte' && 'Motivos utilizados para justificar cortes de produtos em pedidos/cargas.'}
         </p>
       </div>
 
