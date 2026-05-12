@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown, Send, Link2 } from 'lucide-react';
+import { Building2, CheckCircle, XCircle, Clock, Upload, Download, Users, List, Save, Ban, Map, AlertCircle, RefreshCw, FileSpreadsheet, ChevronDown, Send, Link2, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import PageHeader from '@/components/ui/PageHeader';
@@ -25,6 +25,7 @@ import VincularOmieModal from '@/components/clientes/VincularOmieModal';
 import LimparIEsInvalidasModal from '@/components/clientes/LimparIEsInvalidasModal';
 import AuditoriaOmieModal from '@/components/clientes/AuditoriaOmieModal';
 import AtualizarRotasClientesCSVModal from '@/components/clientes/AtualizarRotasClientesCSVModal';
+import AtualizarModalidadeClientesModal from '@/components/clientes/AtualizarModalidadeClientesModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
 
 export default function Clientes() {
@@ -43,6 +44,7 @@ export default function Clientes() {
   const [limparIesOpen, setLimparIesOpen] = useState(false);
   const [auditoriaOpen, setAuditoriaOpen] = useState(false);
   const [atualizarRotasOpen, setAtualizarRotasOpen] = useState(false);
+  const [atualizarModalidadeOpen, setAtualizarModalidadeOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '', razao_social: '', nome_fantasia: '', cpf_cnpj: '', email: 'nfe@paoemel.com.br',
@@ -535,8 +537,18 @@ export default function Clientes() {
       }
 
       const vendedorId = findId(vendedores, item.vendedor);
-      const tipoNotaRaw = String(item.tipo_nota || item.modalidade || '').trim().toUpperCase();
+      const tipoNotaRaw = String(item.tipo_nota || '').trim().toUpperCase();
       const normalizedTipoNota = tipoNotaRaw === 'D1' ? 'D1' : '55';
+
+      // Resolver modalidade de pagamento por nome (case/acento insensitive)
+      const normNome = (s) => String(s || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const modalidadeNomeCsv = normNome(item.modalidade_pagamento || item.modalidade);
+      const modalidadeEncontrada = modalidadeNomeCsv
+        ? modalidadesPagamento.find(m => normNome(m.nome) === modalidadeNomeCsv)
+        : null;
+      const modalidadePagamentoId = modalidadeEncontrada ? modalidadeEncontrada.id : null;
+
       let supervisorId = null;
       
       // Buscar supervisor do vendedor
@@ -621,6 +633,7 @@ export default function Clientes() {
         estado: estadoFinal,
         inscricao_estadual: item.inscricao_estadual != null ? String(item.inscricao_estadual).trim() : '',
         plano_pagamento_id: findId(planosPagamento, item.plano_pagamento),
+        modalidade_pagamento_id: modalidadePagamentoId,
         tabela_id: findId(tabelas, item.tabela_preco),
         segmento_id: findId(segmentos, item.segmento),
         rede_id: findId(redes, item.rede),
@@ -644,6 +657,12 @@ export default function Clientes() {
       delete clienteData.rota;
       delete clienteData.codigo;
       delete clienteData.modalidade;
+      delete clienteData.modalidade_pagamento;
+
+      // Em modo atualização, se não veio modalidade no CSV, NÃO sobrescrever
+      if (modoImportacao === 'atualizacao' && !modalidadePagamentoId) {
+        delete clienteData.modalidade_pagamento_id;
+      }
 
       return clienteData;
     });
@@ -869,6 +888,7 @@ export default function Clientes() {
     { key: 'rede', label: 'Rede' },
     { key: 'vendedor', label: 'Vendedor' },
     { key: 'rota', label: 'Rota' },
+    { key: 'modalidade_pagamento', label: 'Modalidade Pagamento' },
     { key: 'endereco', label: 'Endereço' },
     { key: 'numero', label: 'Número' },
     { key: 'bairro', label: 'Bairro' },
@@ -976,6 +996,10 @@ export default function Clientes() {
               <DropdownMenuItem onClick={() => setAtualizarRotasOpen(true)}>
                 <Map className="w-4 h-4 mr-2" />
                 Atualizar Rotas por CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAtualizarModalidadeOpen(true)}>
+                <CreditCard className="w-4 h-4 mr-2" />
+                Atualizar Modalidade Pagamento
               </DropdownMenuItem>
               {podeOmie && (
                 <>
@@ -1519,6 +1543,11 @@ export default function Clientes() {
         open={atualizarRotasOpen}
         onOpenChange={setAtualizarRotasOpen}
         onSuccess={() => queryClient.invalidateQueries(['clientes'])}
+      />
+
+      <AtualizarModalidadeClientesModal
+        open={atualizarModalidadeOpen}
+        onOpenChange={setAtualizarModalidadeOpen}
       />
     </div>
   );
