@@ -14,11 +14,10 @@ export default function BoletosOmie() {
   const [modoImpressao, setModoImpressao] = useState('individual');
 
   const titulosSelecionados = titulos.filter(t => selecionados.includes(t.codigo_lancamento));
-  const titulosComBoleto = titulosSelecionados.filter(t => t.numero_boleto || t.url_boleto);
 
   const abrirImpressao = (modo) => {
-    if (titulosComBoleto.length === 0) {
-      toast.error('Selecione títulos que já possuem boleto emitido');
+    if (titulosSelecionados.length === 0) {
+      toast.error('Selecione ao menos um título');
       return;
     }
     setModoImpressao(modo);
@@ -36,11 +35,11 @@ export default function BoletosOmie() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => abrirImpressao('individual')} disabled={titulosComBoleto.length === 0}>
+          <Button variant="outline" onClick={() => abrirImpressao('individual')} disabled={titulosSelecionados.length === 0}>
             <Printer className="w-4 h-4 mr-2" />
             Imprimir
           </Button>
-          <Button variant="outline" className="bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100" onClick={() => abrirImpressao('agrupado')} disabled={titulosComBoleto.length === 0}>
+          <Button variant="outline" className="bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100" onClick={() => abrirImpressao('agrupado')} disabled={titulosSelecionados.length === 0}>
             <Layers className="w-4 h-4 mr-2" />
             Imprimir Agrupado
           </Button>
@@ -57,7 +56,7 @@ export default function BoletosOmie() {
       <BoletosImpressaoDialog
         open={imprimirOpen}
         onOpenChange={setImprimirOpen}
-        titulos={titulosComBoleto}
+        titulos={titulosSelecionados}
         modo={modoImpressao}
       />
 

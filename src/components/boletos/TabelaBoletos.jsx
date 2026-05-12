@@ -3,9 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Eye, Loader2 } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
+
+const base64ToUint8Array = (b64) => {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+};
 
 export default function TabelaBoletos({ titulos, selecionados, setSelecionados }) {
   const [filtro, setFiltro] = useState('');
+  const [verLoading, setVerLoading] = useState(null);
 
   const filtrados = useMemo(() => {
     if (!filtro) return titulos;
@@ -32,6 +44,27 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
 
   const toggle = (cod) => {
     setSelecionados(prev => prev.includes(cod) ? prev.filter(c => c !== cod) : [...prev, cod]);
+  };
+
+  const verBoleto = async (t) => {
+    setVerLoading(t.codigo_lancamento);
+    try {
+      const { data } = await base44.functions.invoke('baixarPdfBoletoOmie', {
+        codigo_lancamento: t.codigo_lancamento,
+        url_boleto: t.url_boleto || undefined
+      });
+      if (!data?.sucesso) {
+        throw new Error(data?.error || 'Não foi possível obter o boleto');
+      }
+      const bytes = base64ToUint8Array(data.pdf_base64);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setVerLoading(null);
   };
 
   const totalValor = filtrados
@@ -61,7 +94,8 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
               <th className="p-2 text-left">Parcela</th>
               <th className="p-2 text-left">Vencimento</th>
               <th className="p-2 text-right">Valor</th>
-              <th className="p-2 text-center">Boleto</th>
+              <th className="p-2 text-center">Status</th>
+              <th className="p-2 text-center">Ver</th>
             </tr>
           </thead>
           <tbody>
@@ -81,7 +115,6 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                 <td className="p-2 text-right">R$ {Number(t.valor_documento || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td className="p-2 text-center">
                   {(() => {
-                    // Status DINÂMICO do Omie: status_titulo (ABERTO/PAGO/LIQUIDADO/CANCELADO/PARCIAL) + boleto emitido
                     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
                     if (st === 'PAGO' || st === 'LIQUIDADO' || st === 'RECEBIDO') return <Badge className="bg-emerald-100 text-emerald-800">Liquidado</Badge>;
                     if (st === 'CANCELADO') return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>;
@@ -90,10 +123,23 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                     return <Badge variant="outline">Em Aberto</Badge>;
                   })()}
                 </td>
+                <td className="p-2 text-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => verBoleto(t)}
+                    disabled={verLoading === t.codigo_lancamento || !isElegivel(t)}
+                    title="Abrir boleto em nova aba"
+                  >
+                    {verLoading === t.codigo_lancamento
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <><Eye className="w-4 h-4 mr-1" />Ver</>}
+                  </Button>
+                </td>
               </tr>
             ))}
             {filtrados.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
             )}
           </tbody>
         </table>
