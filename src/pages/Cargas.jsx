@@ -265,44 +265,41 @@ export default function Cargas() {
     {
       key: 'acoes',
       label: 'Ações',
-      width: '460px',
+      width: '200px',
       render: (_, row) => {
         const emMontagem = ['montagem', 'montando', 'fechada', 'conferindo', 'pronta'].includes(row.status_carga);
         const jaFaturada = ['faturada', 'em_rota', 'entregue', 'finalizada'].includes(row.status_carga);
         return (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex items-center gap-1">
             {emMontagem && (
-              <Button size="sm" onClick={() => faturar(row)} disabled={faturando === row.id}>
-                {faturando === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Faturar'}
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => faturar(row)} disabled={faturando === row.id}>
+                {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Faturar'}
               </Button>
             )}
-            {/* NFe, Boleto e Romaneio só após carga faturada */}
             {jaFaturada && (
               <>
-                <Button size="sm" variant="outline" onClick={() => abrirNotas(row)} title="Abrir NFe da carga">
-                  <FileText className="w-4 h-4" /> NFe
+                <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => abrirNotas(row)} title="Abrir NFe da carga">
+                  <FileText className="w-3.5 h-3.5" />
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => abrirBoletos(row)} title="Abrir boletos da carga">
-                  <Receipt className="w-4 h-4" /> Boleto
+                <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => abrirBoletos(row)} title="Abrir boletos da carga">
+                  <Receipt className="w-3.5 h-3.5" />
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
-                  <MapPinned className="w-4 h-4" /> Romaneio
+                <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
+                  <MapPinned className="w-3.5 h-3.5" />
                 </Button>
               </>
             )}
-            {/* Listagem disponível em qualquer status */}
-            <Button size="sm" variant="outline" onClick={() => abrirDocumento('lista', row)} title="Listagem de carregamento">
-              <ClipboardList className="w-4 h-4" /> Listagem
+            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => abrirDocumento('lista', row)} title="Listagem de carregamento">
+              <ClipboardList className="w-3.5 h-3.5" />
             </Button>
             {jaFaturada && (row.pedidos_internos || []).length > 0 && (
-              <Button size="sm" variant="outline" onClick={() => abrirDocumento('notad1', row)} title="Imprimir Notas D1 (venda interna)" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-                <FileSignature className="w-4 h-4" /> Nota D1
+              <Button size="icon" variant="outline" onClick={() => abrirDocumento('notad1', row)} title="Imprimir Notas D1 (venda interna)" className="h-7 w-7 border-amber-300 text-amber-700 hover:bg-amber-50">
+                <FileSignature className="w-3.5 h-3.5" />
               </Button>
             )}
-            {/* Excluir só em cargas ainda não faturadas */}
             {emMontagem && (
-              <Button size="sm" variant="outline" onClick={() => setExcluindo(row)} title="Desfazer carga (apenas se não faturada)">
-                <Trash2 className="w-4 h-4" />
+              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setExcluindo(row)} title="Desfazer carga (apenas se não faturada)">
+                <Trash2 className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>
