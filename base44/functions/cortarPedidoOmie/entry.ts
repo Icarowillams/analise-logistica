@@ -23,6 +23,21 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
+// Localiza a Carga a que um pedido pertence (sem alterar) — usado para anexar ao LogCorte
+async function localizarCargaDoPedido(base44, codigoPedidoOmie, isInterno, pedidoIdInterno) {
+  try {
+    const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
+    for (const carga of cargas) {
+      const arr = isInterno ? (carga.pedidos_internos || []) : (carga.pedidos_omie || []);
+      const achou = arr.some(p => isInterno
+        ? String(p.pedido_id) === String(pedidoIdInterno)
+        : String(p.codigo_pedido) === String(codigoPedidoOmie));
+      if (achou) return { id: carga.id, numero: carga.numero_carga };
+    }
+  } catch (_) {}
+  return { id: null, numero: null };
+}
+
 // Atualiza Carga.pedidos_omie / pedidos_internos local: aplica novas quantidades
 async function refletirCorteNaCargaLocal(base44, codigoPedidoOmie, cortes, isInterno, pedidoIdInterno) {
   try {
@@ -85,6 +100,8 @@ async function cortarPedidoInterno(base44, pedido_id, cortes, motivo_geral, user
   if (!pedido) throw new Error('Pedido interno não encontrado');
   if (pedido.status === 'cancelado') throw new Error('Pedido cancelado: não permite corte');
 
+  const cargaInfo = await localizarCargaDoPedido(base44, null, true, pedido_id);
+
   // Atualizar valor total do pedido — itens reais ficam no PedidoItem
   const itens = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
   const logs = [];
@@ -103,6 +120,11 @@ async function cortarPedidoInterno(base44, pedido_id, cortes, motivo_geral, user
     logs.push({
       pedido_codigo_omie: '',
       numero_pedido: pedido.numero_pedido || '',
+      cliente_id: pedido.cliente_id || '',
+      cliente_nome: pedido.cliente_nome || pedido.cliente_nome_fantasia || '',
+      cnpj_cpf_cliente: pedido.cliente_cpf_cnpj || '',
+      carga_id: cargaInfo.id || pedido.carga_id || null,
+      carga_numero: cargaInfo.numero || pedido.numero_carga || null,
       produto_codigo: String(item.produto_codigo || ''),
       produto_descricao: item.produto_descricao || item.descricao || '',
       quantidade_anterior: qOrig,
@@ -165,6 +187,18 @@ Deno.serve(async (req) => {
     const pedido = consulta.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
 
+    const cargaInfo = await localizarCargaDoPedido(base44, codigo_pedido, false, null);
+
+    // Tenta resolver o cliente local pelo CNPJ/CPF para enriquecer o log
+    let clienteLocal = null;
+    try {
+      const cnpj = String(pedido.cliente?.cnpj_cpf || '').replace(/\D/g, '');
+      if (cnpj) {
+        const lista = await base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: cnpj }, '-created_date', 1);
+        clienteLocal = lista?.[0] || null;
+      }
+    } catch (_) {}
+
     // Detecção precisa de cancelamento (NÃO usa JSON.stringify — pegaria histórico)
     const flagCancelado = pedido?.infoCadastro?.cancelado;
     const etapaAtual = String(pedido?.cabecalho?.etapa || '');
@@ -209,6 +243,11 @@ Deno.serve(async (req) => {
       logs.push({
         pedido_codigo_omie: String(codigo_pedido),
         numero_pedido: String(pedido.cabecalho?.numero_pedido || ''),
+        cliente_id: clienteLocal?.id || '',
+        cliente_nome: clienteLocal?.razao_social || pedido.cliente?.nome_cliente || '',
+        cnpj_cpf_cliente: String(pedido.cliente?.cnpj_cpf || ''),
+        carga_id: cargaInfo.id || null,
+        carga_numero: cargaInfo.numero || null,
         produto_codigo: String(codProd || ''),
         produto_codigo_integracao: String(codProdInt || ''),
         produto_descricao: item.produto?.descricao || '',
@@ -222,6 +261,7 @@ Deno.serve(async (req) => {
         motivo: corte.motivo || motivo_geral,
         tipo_operacao: qtdNova === 0 ? 'remocao_item' : 'corte_quantidade',
         funcionario_nome: user.full_name || user.email,
+        origem_pedido: 'omie',
         sincronizado_omie: false
       });
 

@@ -36,6 +36,9 @@
     "valor_nf": {
       "type": "number"
     },
+    "quantidade_itens": {
+      "type": "number"
+    },
     "funcionario_id": {
       "type": "string"
     },

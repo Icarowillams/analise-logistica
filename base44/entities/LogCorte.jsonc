@@ -27,6 +27,10 @@
       "type": "string",
       "description": "ID da Carga vinculada, se houver"
     },
+    "carga_numero": {
+      "type": "string",
+      "description": "N\u00famero da Carga (leg\u00edvel)"
+    },
     "produto_codigo": {
       "type": "string"
     },
@@ -78,6 +82,14 @@
     "funcionario_nome": {
       "type": "string"
     },
+    "origem_pedido": {
+      "type": "string",
+      "enum": [
+        "omie",
+        "interno_d1"
+      ],
+      "default": "omie"
+    },
     "sincronizado_omie": {
       "type": "boolean",
       "default": false,
@@ -88,7 +100,6 @@
     }
   },
   "required": [
-    "pedido_codigo_omie",
     "tipo_operacao"
   ]
 }

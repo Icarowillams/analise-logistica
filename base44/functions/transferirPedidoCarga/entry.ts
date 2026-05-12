@@ -131,13 +131,15 @@ Deno.serve(async (req) => {
       const reg = await base44.asServiceRole.entities.Transferencia.create({
         pedido_codigo_omie: String(ped.codigo_pedido),
         numero_pedido: String(ped.numero_pedido || ''),
-        cliente_nome: ped.nome_cliente || '',
+        numero_nf: String(ped.numero_nf || ''),
+        cliente_nome: ped.nome_fantasia || ped.nome_cliente || '',
         carga_origem_id,
         carga_origem_numero: origem.numero_carga,
         carga_destino_id,
         carga_destino_numero: destino.numero_carga,
         motivo,
         valor_nf: ped.valor_total_pedido || 0,
+        quantidade_itens: Number(ped.quantidade_itens || 0),
         funcionario_nome: user.full_name || user.email,
         status: 'concluida'
       });
