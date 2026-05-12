@@ -123,8 +123,12 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'tipo') {
-    const tipoLabel = p.cenario_fiscal_nome || (p[col.field] === 'troca' ? 'Troca' : p[col.field] === 'venda' ? 'Venda' : p[col.field] || '-');
-    return <span className={`${truncClass} capitalize`}>{tipoLabel}</span>;
+    // Tipo é normalizado por operação (venda/troca/bonificação/devolução), não pelo nome do cenário fiscal.
+    // Pedidos D1 e 55 com mesma operação devem mostrar o MESMO rótulo para filtros e análises consistentes.
+    const tipo = p[col.field];
+    const TIPO_LABELS = { venda: 'Venda', troca: 'Troca', bonificacao: 'Bonificação', devolucao: 'Devolução' };
+    const tipoLabel = TIPO_LABELS[tipo] || tipo || '-';
+    return <span className={truncClass}>{tipoLabel}</span>;
   }
 
   if (col.id === 'numero_pedido') {
