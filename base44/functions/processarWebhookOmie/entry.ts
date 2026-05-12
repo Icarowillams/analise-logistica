@@ -50,8 +50,24 @@ async function removerDoEspelho(base44, omieCodigoPedido) {
 
 // Insere/atualiza pedido no espelho PedidoLiberadoOmie em qualquer etapa operacional (10/20/50/60).
 // Busca dados frescos via ConsultarPedido e faz o upsert.
+// 🛡️ DEDUPE: pula se o mesmo pedido já foi sincronizado nos últimos 8s (evita "REDUNDANT" do Omie quando
+// webhooks VendaProduto.Faturada + NFe.NotaAutorizada chegam quase simultâneos).
 async function upsertEspelho(base44, omieCodigoPedido) {
   if (!omieCodigoPedido) return;
+
+  try {
+    const recentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+      codigo_pedido: String(omieCodigoPedido)
+    }, '-sincronizado_em', 1);
+    const ultimo = recentes[0];
+    if (ultimo?.sincronizado_em) {
+      const deltaMs = Date.now() - new Date(ultimo.sincronizado_em).getTime();
+      if (deltaMs < 8000) {
+        console.log(`[espelho] dedupe: ${omieCodigoPedido} sincronizado há ${deltaMs}ms — pulando`);
+        return;
+      }
+    }
+  } catch {}
 
   const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
   const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
@@ -204,7 +220,9 @@ async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados
 // === HANDLERS POR DOMÍNIO ===
 
 async function handlePedido(base44, topic, evt) {
-  const codigoPedido = String(evt?.idPedido || evt?.codigo_pedido || '');
+  const codigoPedido = String(
+    evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || ''
+  );
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
   // 🔄 ESPELHO OPERAÇÃO: manter PedidoLiberadoOmie em tempo real (etapas 10/20/50/60)
@@ -277,7 +295,9 @@ async function handlePedido(base44, topic, evt) {
 }
 
 async function handleNFe(base44, topic, evt) {
-  const codigoPedido = String(evt?.idPedido || evt?.codigo_pedido || '');
+  const codigoPedido = String(
+    evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || ''
+  );
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
   // 🔄 ESPELHO OPERAÇÃO: atualizar status NF do pedido (etapa 60)

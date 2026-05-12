@@ -1,10 +1,13 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClient } from 'npm:@base44/sdk@0.8.25';
 
 // ⚡ WEBHOOK RECEIVER — Ultra leve (< 200ms)
 // Apenas valida e enfileira. Processamento é feito async pelo processarWebhookOmie.
 //
 // URL a cadastrar no Omie:
 //   https://app.base44.com/api/apps/<APP_ID>/functions/receberWebhookOmie?token=<OMIE_WEBHOOK_TOKEN>
+//
+// 🛡️ NÃO USA createClientFromRequest porque o Omie chama sem cookie/token Base44 → 403.
+//    Usamos createClient + asServiceRole direto.
 
 Deno.serve(async (req) => {
   try {
@@ -28,7 +31,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'app_key inválida' }, { status: 401 });
     }
 
-    const base44 = createClientFromRequest(req);
+    const base44 = createClient({ appId: Deno.env.get('BASE44_APP_ID') });
 
     // Idempotência: se messageId já foi processado, retorna OK sem reprocessar
     if (messageId) {
