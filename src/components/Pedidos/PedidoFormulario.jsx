@@ -109,9 +109,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const isTroca = cenarioLocalAtual?.tipo_operacao === 'troca' || tipo === 'troca';
 
   // Pré-selecionar cenário padrão (apenas pedidos novos)
+  // Regra: sempre prioriza um cenário do tipo "venda" — independentemente do modelo (D1 ou 55) e da origem (interno ou Omie).
+  // Exceção: se o pedido for explicitamente uma "troca", começa com cenário de troca.
   useEffect(() => {
     if (cenariosDisponiveis.length > 0 && !cenarioLocalId && !editingPedidoId) {
-      const padrao = cenariosDisponiveis.find(c => c.padrao) || cenariosDisponiveis[0];
+      const tipoAlvo = tipo === 'troca' ? 'troca' : 'venda';
+      const padrao =
+        cenariosDisponiveis.find(c => c.tipo_operacao === tipoAlvo && c.padrao) ||
+        cenariosDisponiveis.find(c => c.tipo_operacao === tipoAlvo) ||
+        cenariosDisponiveis.find(c => c.padrao) ||
+        cenariosDisponiveis[0];
       if (padrao) {
         setCenarioLocalId(padrao.id);
         // Para Nota 55, popula o código Omie vinculado
@@ -121,7 +128,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         }
       }
     }
-  }, [cenariosDisponiveis.length, isNotaD1]);
+  }, [cenariosDisponiveis.length, isNotaD1, tipo]);
 
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
