@@ -46,12 +46,17 @@ Deno.serve(async (req) => {
       apenas_pendentes = true
     } = body;
 
-    // Doc Omie: máx 100 registros/página
+    // Doc Omie: máx 100 registros/página. Enviar filtros NATIVOS pra economizar quota.
+    // filtrar_por_data: 'V' = vencimento, 'E' = emissão
     const param = {
       pagina,
       registros_por_pagina: Math.min(registros_por_pagina, 100),
       apenas_importado_api: 'N'
     };
+    if (data_de) param.data_de = data_de;
+    if (data_ate) param.data_ate = data_ate;
+    if (data_de || data_ate) param.filtrar_por_data = filtrar_por_data;
+    if (apenas_pendentes) param.status_titulo = 'ABERTO';
 
     const t0 = Date.now();
     const data = await omieCall('ListarContasReceber', param);
@@ -67,8 +72,10 @@ Deno.serve(async (req) => {
     const dAte = parseBR(data_ate);
     const cnpjNorm = cnpj_cpf ? cnpj_cpf.replace(/\D/g, '') : null;
 
+    // Pós-filtro: CNPJ + fallback de data caso o Omie não tenha filtrado nativamente.
+    // Status já vem filtrado pela API quando apenas_pendentes=true.
     const titulosRaw = (data.conta_receber_cadastro || []).filter(t => {
-      if (apenas_pendentes && t.status_titulo !== 'ABERTO') return false;
+      if (apenas_pendentes && t.status_titulo && t.status_titulo !== 'ABERTO') return false;
       if (cnpjNorm && (t.cpf_cnpj_cliente || '').replace(/\D/g, '') !== cnpjNorm) return false;
       if (dDe && dAte) {
         const ref = filtrar_por_data === 'E' ? parseBR(t.data_emissao) : parseBR(t.data_vencimento);
@@ -86,15 +93,17 @@ Deno.serve(async (req) => {
       data_emissao: t.data_emissao,
       data_vencimento: t.data_vencimento,
       valor_documento: t.valor_documento,
-      status_titulo: t.status_titulo,
+      valor_pago: t.valor_pago || 0,
+      // Status REAL do Omie: ABERTO | PAGO | LIQUIDADO | CANCELADO | PARCIAL | RECEBIDO
+      status_titulo: t.status_titulo || 'ABERTO',
       cnpj_cpf: t.cpf_cnpj_cliente,
       nome_cliente: t.nome_cliente,
       id_conta_corrente: t.id_conta_corrente,
-      numero_boleto: t.numero_boleto,
+      numero_boleto: t.numero_boleto || t.boleto?.cNumBoleto || '',
       observacao: t.observacao,
-      codigo_barras: t.codigo_barras,
-      linha_digitavel: t.boleto?.dLinhaDig,
-      url_boleto: t.boleto?.cCodBarras ? null : null
+      codigo_barras: t.codigo_barras || t.boleto?.cCodBarras || '',
+      linha_digitavel: t.boleto?.dLinhaDig || '',
+      url_boleto: t.boleto?.cLinkBoleto || ''
     }));
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({

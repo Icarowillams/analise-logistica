@@ -17,9 +17,14 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
     );
   }, [titulos, filtro]);
 
+  // Título é elegível pra gerar boleto SOMENTE se: em aberto + sem boleto ainda
+  const isElegivel = (t) => {
+    const st = String(t.status_titulo || 'ABERTO').toUpperCase();
+    return st === 'ABERTO' && !t.numero_boleto;
+  };
+
   const toggleAll = () => {
-    // Exclui títulos que já têm boleto e os skippáveis
-    const elegiveis = filtrados.filter(t => !t.numero_boleto);
+    const elegiveis = filtrados.filter(isElegivel);
     if (selecionados.length === elegiveis.length) setSelecionados([]);
     else setSelecionados(elegiveis.map(t => t.codigo_lancamento));
   };
@@ -46,7 +51,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
             <tr>
               <th className="p-2 w-10">
                 <Checkbox
-                  checked={selecionados.length > 0 && selecionados.length === filtrados.filter(t => !t.numero_boleto).length}
+                  checked={selecionados.length > 0 && selecionados.length === filtrados.filter(isElegivel).length}
                   onCheckedChange={toggleAll}
                 />
               </th>
@@ -65,7 +70,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                   <Checkbox
                     checked={selecionados.includes(t.codigo_lancamento)}
                     onCheckedChange={() => toggle(t.codigo_lancamento)}
-                    disabled={!!t.numero_boleto}
+                    disabled={!isElegivel(t)}
                   />
                 </td>
                 <td className="p-2">{t.nome_cliente || '-'}</td>
@@ -74,9 +79,15 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                 <td className="p-2">{t.data_vencimento}</td>
                 <td className="p-2 text-right">R$ {Number(t.valor_documento || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td className="p-2 text-center">
-                  {t.numero_boleto
-                    ? <Badge className="bg-green-100 text-green-800">Emitido</Badge>
-                    : <Badge variant="outline">Pendente</Badge>}
+                  {(() => {
+                    // Status DINÂMICO do Omie: status_titulo (ABERTO/PAGO/LIQUIDADO/CANCELADO/PARCIAL) + boleto emitido
+                    const st = String(t.status_titulo || 'ABERTO').toUpperCase();
+                    if (st === 'PAGO' || st === 'LIQUIDADO' || st === 'RECEBIDO') return <Badge className="bg-emerald-100 text-emerald-800">Liquidado</Badge>;
+                    if (st === 'CANCELADO') return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>;
+                    if (st === 'PARCIAL') return <Badge className="bg-amber-100 text-amber-800">Parcial</Badge>;
+                    if (t.numero_boleto) return <Badge className="bg-blue-100 text-blue-800">Boleto Emitido</Badge>;
+                    return <Badge variant="outline">Em Aberto</Badge>;
+                  })()}
                 </td>
               </tr>
             ))}
