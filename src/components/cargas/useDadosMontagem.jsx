@@ -182,10 +182,21 @@ export default function useDadosMontagem() {
     refreshTimer.current = setTimeout(() => { carregar(); }, 600);
   }, [carregar]);
 
-  // Trigger manual: apenas recarrega o espelho local (webhook mantém sync em tempo real)
-  // Reconciliação Omie é manual/scheduled — não dispara aqui pra evitar rate-limit (REDUNDANT)
+  // Trigger manual: sincroniza espelho com Omie (etapa 20) ANTES de recarregar dados locais.
+  // Garante que pedidos recém-liberados no Omie apareçam imediatamente, mesmo se o webhook atrasar.
   const recarregar = useCallback(async () => {
     setLoading(true);
+    try {
+      const resp = await base44.functions.invoke('sincronizarLiberadosOmieRapido', {});
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        const novos = r.criados || 0;
+        if (novos > 0) toast.success(`${novos} pedido(s) novo(s) sincronizado(s) do Omie`);
+      }
+    } catch (e) {
+      // Não bloqueia o reload local em caso de falha na sincronização
+      console.warn('[useDadosMontagem] sincronização Omie falhou:', e?.message);
+    }
     await carregar();
   }, [carregar]);
 
