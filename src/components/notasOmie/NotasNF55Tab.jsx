@@ -1,17 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Search, Eye, Loader2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, Eye, Loader2, Printer, Layers } from 'lucide-react';
 import { toast } from 'sonner';
-import DataTable from '@/components/ui/DataTable';
 import NfCompletaDialog from '@/components/notasOmie/NfCompletaDialog';
+import NfsImpressaoDialog from '@/components/notasOmie/NfsImpressaoDialog';
 
 /**
- * Aba de Notas Fiscais Nota 55 (NF-e Omie) — conteúdo histórico da página NotasOmie.
+ * Aba de Notas Fiscais Nota 55 (NF-e Omie).
+ * - Seleção múltipla (checkbox por linha + "selecionar todas").
+ * - Botões: Imprimir (separado) | Imprimir Agrupado (PDF único mesclado).
+ * - Botão "Ver" continua extraindo o detalhe completo da NF.
  */
 export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const hoje = new Date().toISOString().slice(0, 10);
@@ -33,6 +37,13 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [resultado, setResultado] = useState(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(null);
   const [detalheCompleto, setDetalheCompleto] = useState(null);
+  const [busca, setBusca] = useState('');
+
+  // Seleção e impressão
+  const [selecionadas, setSelecionadas] = useState(new Set()); // chaves: nIdNF || nCodNF || cNumero
+  const [impressaoOpen, setImpressaoOpen] = useState(false);
+  const [impressaoModo, setImpressaoModo] = useState('individual'); // 'individual' | 'agrupado'
+  const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
 
   const getNotasCarga = (carga) => new Set([
     ...(carga?.notas_fiscais || []),
@@ -47,8 +58,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
 
   const buscar = async (pg = 1, carga = cargaFiltro, filtrosBusca = filtros) => {
     setLoading(true);
+    setSelecionadas(new Set());
     try {
-      // Se usuário digitou um nº de carga, busca a Carga local pra filtrar as NFs por ela
       let cargaParaFiltrar = carga;
       if (!cargaParaFiltrar && filtrosBusca.numero_carga?.trim()) {
         const numeroBusca = filtrosBusca.numero_carga.trim();
@@ -97,7 +108,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     setLoadingDetalhe(null);
   };
 
-  // Ao receber cargaFiltro pela URL, ajusta datas e dispara busca (só se a aba estiver ativa)
+  // Ao receber cargaFiltro pela URL, ajusta datas e dispara busca
   useEffect(() => {
     if (!cargaFiltro || !ativa) return;
     let filtrosCarga = filtros;
@@ -106,52 +117,62 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       filtrosCarga = { ...filtros, data_inicial: `${d}/${m}/${y}`, data_final: `${d}/${m}/${y}` };
       setFiltros(filtrosCarga);
     }
-    // Delay para evitar competir com outras queries no carregamento (evita 429)
     const timer = setTimeout(() => buscar(1, cargaFiltro, filtrosCarga), 800);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargaFiltro, ativa]);
 
-  const columns = [
-    { key: 'cNumero', label: 'Nº NF', width: '100px', sortable: true },
-    { key: 'cSerie', label: 'Série', width: '70px' },
-    { key: 'dEmiNF', label: 'Emissão', width: '110px', sortable: true },
-    { key: 'cRazao', label: 'Cliente' },
-    { key: 'cCPFCNPJDest', label: 'CNPJ/CPF', width: '160px' },
-    {
-      key: 'nValorNF',
-      label: 'Valor',
-      width: '120px',
-      sortable: true,
-      render: (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-    },
-    {
-      key: 'cStatus',
-      label: 'Status',
-      width: '100px',
-      render: (v) => {
-        const status = !v || v === 'F' ? 'Faturado' : v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v;
-        const cor = status === 'Faturado' || status === 'Autorizada' ? 'bg-green-100 text-green-800' : status === 'Cancelada' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
-        return <Badge className={cor}>{status}</Badge>;
-      }
-    },
-    {
-      key: 'acoes',
-      label: 'Extrair',
-      width: '110px',
-      render: (_, row) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => extrairCompleto(row)}
-          disabled={loadingDetalhe === (row.nIdNF || row.nCodNF || row.cNumero)}
-        >
-          {loadingDetalhe === (row.nIdNF || row.nCodNF || row.cNumero) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4 mr-1" />}
-          Ver
-        </Button>
-      )
+  const nfs = resultado?.nfs || [];
+  const keyOf = (nf) => String(nf.nIdNF || nf.nCodNF || nf.cNumero);
+
+  const nfsFiltradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return nfs;
+    return nfs.filter(nf =>
+      String(nf.cNumero || '').toLowerCase().includes(termo) ||
+      String(nf.cRazao || '').toLowerCase().includes(termo) ||
+      String(nf.cCPFCNPJDest || '').toLowerCase().includes(termo) ||
+      String(nf.cChaveNFe || '').toLowerCase().includes(termo)
+    );
+  }, [nfs, busca]);
+
+  const todasMarcadas = nfsFiltradas.length > 0 && nfsFiltradas.every(nf => selecionadas.has(keyOf(nf)));
+  const algumasMarcadas = nfsFiltradas.some(nf => selecionadas.has(keyOf(nf)));
+
+  const toggleTodas = () => {
+    const novo = new Set(selecionadas);
+    if (todasMarcadas) {
+      nfsFiltradas.forEach(nf => novo.delete(keyOf(nf)));
+    } else {
+      nfsFiltradas.forEach(nf => novo.add(keyOf(nf)));
     }
-  ];
+    setSelecionadas(novo);
+  };
+
+  const toggleLinha = (nf) => {
+    const novo = new Set(selecionadas);
+    const k = keyOf(nf);
+    if (novo.has(k)) novo.delete(k); else novo.add(k);
+    setSelecionadas(novo);
+  };
+
+  const abrirImpressao = (modo) => {
+    const sel = nfs.filter(nf => selecionadas.has(keyOf(nf)));
+    if (sel.length === 0) {
+      toast.warning('Selecione ao menos uma NF.');
+      return;
+    }
+    setNfsParaImprimir(sel);
+    setImpressaoModo(modo);
+    setImpressaoOpen(true);
+  };
+
+  const formatarValor = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  const statusBadge = (v) => {
+    const status = !v || v === 'F' ? 'Faturado' : v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v;
+    const cor = status === 'Faturado' || status === 'Autorizada' ? 'bg-green-100 text-green-800' : status === 'Cancelada' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+    return <Badge className={cor}>{status}</Badge>;
+  };
 
   return (
     <div className="space-y-4">
@@ -163,41 +184,23 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
             <div>
               <Label>Data inicial (DD/MM/AAAA)</Label>
-              <Input
-                value={filtros.data_inicial}
-                onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })}
-                placeholder="01/04/2026"
-              />
+              <Input value={filtros.data_inicial} onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })} placeholder="01/04/2026" />
             </div>
             <div>
               <Label>Data final (DD/MM/AAAA)</Label>
-              <Input
-                value={filtros.data_final}
-                onChange={(e) => setFiltros({ ...filtros, data_final: e.target.value })}
-                placeholder="20/04/2026"
-              />
+              <Input value={filtros.data_final} onChange={(e) => setFiltros({ ...filtros, data_final: e.target.value })} placeholder="20/04/2026" />
             </div>
             <div>
               <Label>Nome cliente</Label>
-              <Input
-                value={filtros.nome_cliente}
-                onChange={(e) => setFiltros({ ...filtros, nome_cliente: e.target.value })}
-              />
+              <Input value={filtros.nome_cliente} onChange={(e) => setFiltros({ ...filtros, nome_cliente: e.target.value })} />
             </div>
             <div>
               <Label>CNPJ/CPF</Label>
-              <Input
-                value={filtros.cnpj_cliente}
-                onChange={(e) => setFiltros({ ...filtros, cnpj_cliente: e.target.value })}
-              />
+              <Input value={filtros.cnpj_cliente} onChange={(e) => setFiltros({ ...filtros, cnpj_cliente: e.target.value })} />
             </div>
             <div>
               <Label>Nº Carga</Label>
-              <Input
-                placeholder="Ex: 009"
-                value={filtros.numero_carga}
-                onChange={(e) => setFiltros({ ...filtros, numero_carga: e.target.value })}
-              />
+              <Input placeholder="Ex: 009" value={filtros.numero_carga} onChange={(e) => setFiltros({ ...filtros, numero_carga: e.target.value })} />
             </div>
             <div className="flex items-end">
               <Button onClick={() => buscar(1)} disabled={loading} className="w-full">
@@ -212,30 +215,104 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       {resultado && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center justify-between">
-              <span>{resultado.total_de_registros || 0} NFs encontradas</span>
-              {resultado.total_de_paginas > 1 && (
-                <div className="flex gap-2 items-center text-sm">
-                  <Button size="sm" variant="outline" disabled={pagina <= 1 || loading} onClick={() => buscar(pagina - 1)}>
-                    Anterior
-                  </Button>
-                  <span>Página {pagina} / {resultado.total_de_paginas}</span>
-                  <Button size="sm" variant="outline" disabled={pagina >= resultado.total_de_paginas || loading} onClick={() => buscar(pagina + 1)}>
-                    Próxima
-                  </Button>
-                </div>
-              )}
+            <CardTitle className="text-base flex flex-wrap items-center justify-between gap-3">
+              <span>
+                {resultado.total_de_registros || 0} NFs encontradas
+                {selecionadas.size > 0 && (
+                  <span className="ml-2 text-sm font-normal text-cyan-700">({selecionadas.size} selecionada{selecionadas.size > 1 ? 's' : ''})</span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => abrirImpressao('individual')}
+                  disabled={selecionadas.size === 0}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Imprimir
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                  onClick={() => abrirImpressao('agrupado')}
+                  disabled={selecionadas.size === 0}
+                >
+                  <Layers className="w-4 h-4 mr-2" />
+                  Imprimir Agrupado
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTable
-              data={resultado.nfs || []}
-              columns={columns}
-              searchable
-              searchFields={['cNumero', 'cRazao', 'cCPFCNPJDest', 'cChaveNFe']}
-              pageSize={50}
-              emptyMessage="Nenhuma NF encontrada"
-            />
+            <div className="relative max-w-sm mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input placeholder="Buscar..." value={busca} onChange={(e) => setBusca(e.target.value)} className="pl-9" />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50/80 text-slate-700">
+                  <tr>
+                    <th className="p-2 w-10 text-center">
+                      <Checkbox checked={todasMarcadas} onCheckedChange={toggleTodas} aria-label="Selecionar todas" />
+                    </th>
+                    <th className="p-2 text-left font-semibold">Nº NF</th>
+                    <th className="p-2 text-left font-semibold">Série</th>
+                    <th className="p-2 text-left font-semibold">Emissão</th>
+                    <th className="p-2 text-left font-semibold">Cliente</th>
+                    <th className="p-2 text-left font-semibold">CNPJ/CPF</th>
+                    <th className="p-2 text-right font-semibold">Valor</th>
+                    <th className="p-2 text-left font-semibold">Status</th>
+                    <th className="p-2 text-left font-semibold">Extrair</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nfsFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" className="text-center py-12 text-slate-500">Nenhuma NF encontrada</td>
+                    </tr>
+                  ) : nfsFiltradas.map((nf) => {
+                    const k = keyOf(nf);
+                    const marcada = selecionadas.has(k);
+                    return (
+                      <tr key={k} className={`border-t hover:bg-slate-50/50 transition-colors ${marcada ? 'bg-cyan-50/40' : ''}`}>
+                        <td className="p-2 text-center">
+                          <Checkbox checked={marcada} onCheckedChange={() => toggleLinha(nf)} aria-label={`Selecionar NF ${nf.cNumero}`} />
+                        </td>
+                        <td className="p-2">{nf.cNumero}</td>
+                        <td className="p-2">{nf.cSerie}</td>
+                        <td className="p-2">{nf.dEmiNF}</td>
+                        <td className="p-2">{nf.cRazao}</td>
+                        <td className="p-2">{nf.cCPFCNPJDest}</td>
+                        <td className="p-2 text-right">{formatarValor(nf.nValorNF)}</td>
+                        <td className="p-2">{statusBadge(nf.cStatus)}</td>
+                        <td className="p-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => extrairCompleto(nf)}
+                            disabled={loadingDetalhe === (nf.nIdNF || nf.nCodNF || nf.cNumero)}
+                          >
+                            {loadingDetalhe === (nf.nIdNF || nf.nCodNF || nf.cNumero)
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <><Eye className="w-4 h-4 mr-1" />Ver</>}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {resultado.total_de_paginas > 1 && (
+              <div className="flex justify-end gap-2 items-center text-sm mt-3">
+                <Button size="sm" variant="outline" disabled={pagina <= 1 || loading} onClick={() => buscar(pagina - 1)}>Anterior</Button>
+                <span>Página {pagina} / {resultado.total_de_paginas}</span>
+                <Button size="sm" variant="outline" disabled={pagina >= resultado.total_de_paginas || loading} onClick={() => buscar(pagina + 1)}>Próxima</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -244,6 +321,13 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         open={!!detalheCompleto}
         onOpenChange={(open) => !open && setDetalheCompleto(null)}
         detalhe={detalheCompleto}
+      />
+
+      <NfsImpressaoDialog
+        open={impressaoOpen}
+        onOpenChange={setImpressaoOpen}
+        nfs={nfsParaImprimir}
+        modo={impressaoModo}
       />
     </div>
   );
