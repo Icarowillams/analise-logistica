@@ -41,9 +41,23 @@ export default function useDadosMontagem() {
       const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 
+      // Conjunto de códigos de pedido Omie já vinculados a alguma carga ATIVA (não cancelada)
+      // Protege contra duplicidade: um pedido já em outra carga nunca pode reaparecer na montagem,
+      // mesmo se o espelho ainda estiver com etapa desatualizada (timing do Omie x webhook).
+      const codigosEmCarga = new Set();
+      (carP || [])
+        .filter(c => c.status_carga !== 'cancelada')
+        .forEach(c => {
+          (c.pedidos_omie || []).forEach(p => {
+            if (p?.codigo_pedido) codigosEmCarga.add(String(p.codigo_pedido));
+          });
+        });
+
       // 1. Vendas Omie já vêm enriquecidas no espelho — Montagem só monta a partir da ETAPA 20 (Liberados)
+      //    + exclui pedidos já vinculados a outra carga ativa
       const vendasEnriquecidas = (espelhoOmie || [])
         .filter(e => String(e.etapa) === '20')
+        .filter(e => !codigosEmCarga.has(String(e.codigo_pedido)))
         .map(e => ({
         codigo_pedido: e.codigo_pedido,
         codigo_pedido_integracao: e.codigo_pedido_integracao || '',
