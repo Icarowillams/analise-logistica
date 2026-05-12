@@ -12,15 +12,20 @@ import FiltrosBase from './FiltrosBase';
 import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './utilsAnalises';
 
 export default function DashboardVendas() {
-  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', tipo: '' });
+  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', modelo_nota: '' });
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: pedidos = [] } = useQuery({ queryKey: ['pedidos'], queryFn: () => base44.entities.Pedido.list('-created_date', 10000) });
+  // Apenas pedidos do tipo VENDA com status FATURADO (D1 ou 55, interno ou Omie)
+  const { data: pedidos = [] } = useQuery({
+    queryKey: ['pedidosVendaFaturados'],
+    queryFn: () => base44.entities.Pedido.filter({ tipo: 'venda', status: 'faturado' }, '-data_faturamento', 10000)
+  });
   const { data: visitas = [] } = useQuery({ queryKey: ['visitasRoteiro'], queryFn: () => base44.entities.VisitaRoteiro.list('-created_date', 10000) });
 
   const filtrados = useMemo(() => pedidos.filter(p => {
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;
-    if (filtros.tipo && p.tipo !== filtros.tipo) return false;
-    if ((filtros.inicio || filtros.fim) && !dentroPeriodo(p.created_date, filtros.inicio, filtros.fim)) return false;
+    if (filtros.modelo_nota && p.modelo_nota !== filtros.modelo_nota) return false;
+    const dataRef = p.data_faturamento || p.created_date;
+    if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
   }), [pedidos, filtros]);
 
@@ -36,7 +41,7 @@ export default function DashboardVendas() {
   const porMes = useMemo(() => {
     const grupo = {};
     filtrados.forEach(p => {
-      const k = String(p.created_date || '').slice(0, 7);
+      const k = String(p.data_faturamento || p.created_date || '').slice(0, 7);
       if (!k) return;
       if (!grupo[k]) grupo[k] = { mes: k, valor: 0, qtd: 0 };
       grupo[k].valor += p.valor_total || 0;
@@ -68,23 +73,22 @@ export default function DashboardVendas() {
   }, [filtrados]);
 
   const exportar = () => exportarCSV('dashboard_vendas',
-    ['Data', 'Pedido', 'Cliente', 'Vendedor', 'Tipo', 'Itens', 'Valor', 'Status'],
-    filtrados.map(p => [p.created_date?.slice(0,10), p.numero_pedido, p.cliente_nome, p.vendedor_nome, p.tipo, p.total_itens, p.valor_total, p.status])
+    ['Data Faturamento', 'Pedido', 'Cliente', 'Vendedor', 'Modelo NF', 'Origem', 'Itens', 'Valor', 'Status'],
+    filtrados.map(p => [(p.data_faturamento || p.created_date)?.slice(0,10), p.numero_pedido, p.cliente_nome, p.vendedor_nome, p.modelo_nota, p.origem, p.total_itens, p.valor_total, p.status])
   );
 
   return (
     <div className="space-y-4">
-      <FiltrosBase filtros={filtros} setFiltros={setFiltros} vendedores={vendedores} onLimpar={() => setFiltros({ inicio: '', fim: '', vendedor_id: '', tipo: '' })} onExportar={exportar}>
+      <FiltrosBase filtros={filtros} setFiltros={setFiltros} vendedores={vendedores} onLimpar={() => setFiltros({ inicio: '', fim: '', vendedor_id: '', modelo_nota: '' })} onExportar={exportar}>
         <div>
-          <Label className="text-xs">Tipo</Label>
-          <Select value={filtros.tipo || '_todos_'} onValueChange={(v) => setFiltros({ ...filtros, tipo: v === '_todos_' ? '' : v })}>
+          <Label className="text-xs">Modelo de Nota</Label>
+          <Select value={filtros.modelo_nota || '_todos_'} onValueChange={(v) => setFiltros({ ...filtros, modelo_nota: v === '_todos_' ? '' : v })}>
             <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="_todos_">Todos</SelectItem>
-              <SelectItem value="venda">Venda</SelectItem>
-              <SelectItem value="bonificacao">Bonificação</SelectItem>
-              <SelectItem value="troca">Troca</SelectItem>
-              <SelectItem value="devolucao">Devolução</SelectItem>
+              <SelectItem value="_todos_">Todos (D1 + 55)</SelectItem>
+              <SelectItem value="55">NF-e (55)</SelectItem>
+              <SelectItem value="d1">D1 (interno)</SelectItem>
+              <SelectItem value="nfce">NFC-e</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -131,14 +135,15 @@ export default function DashboardVendas() {
         <CardHeader><CardTitle className="text-base">Pedidos detalhados</CardTitle></CardHeader>
         <CardContent className="overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 sticky top-0"><tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Nº</th><th className="p-2 text-left">Cliente</th><th className="p-2 text-left">Vendedor</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-right">Itens</th><th className="p-2 text-right">Valor</th><th className="p-2 text-left">Status</th></tr></thead>
+            <thead className="bg-slate-50 sticky top-0"><tr><th className="p-2 text-left">Faturamento</th><th className="p-2 text-left">Nº</th><th className="p-2 text-left">Cliente</th><th className="p-2 text-left">Vendedor</th><th className="p-2 text-left">Modelo</th><th className="p-2 text-left">Origem</th><th className="p-2 text-right">Itens</th><th className="p-2 text-right">Valor</th><th className="p-2 text-left">Status</th></tr></thead>
             <tbody>{filtrados.slice(0, 200).map(p => (
               <tr key={p.id} className="border-t hover:bg-slate-50">
-                <td className="p-2">{(p.created_date || '').slice(0,10)}</td>
+                <td className="p-2">{(p.data_faturamento || p.created_date || '').slice(0,10)}</td>
                 <td className="p-2 font-mono">{p.numero_pedido || '-'}</td>
                 <td className="p-2">{p.cliente_nome || '-'}</td>
                 <td className="p-2">{p.vendedor_nome || '-'}</td>
-                <td className="p-2"><Badge variant="outline">{p.tipo}</Badge></td>
+                <td className="p-2"><Badge variant="outline">{p.modelo_nota || '-'}</Badge></td>
+                <td className="p-2 text-xs text-slate-600">{p.origem || '-'}</td>
                 <td className="p-2 text-right">{p.total_itens || 0}</td>
                 <td className="p-2 text-right">{formatarMoeda(p.valor_total)}</td>
                 <td className="p-2"><Badge>{p.status}</Badge></td>

@@ -17,25 +17,29 @@ export default function DashboardTrocas() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', motivo_id: '' });
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
   const { data: motivos = [] } = useQuery({ queryKey: ['motivosTroca'], queryFn: () => base44.entities.MotivoTroca.list() });
-  const { data: trocas = [] } = useQuery({ queryKey: ['pedidosTroca'], queryFn: () => base44.entities.PedidoTroca.list('-data_troca', 5000) });
+  // Apenas pedidos do tipo TROCA com status FATURADO (mesma fonte do Gerenciar Pedidos)
+  const { data: trocas = [] } = useQuery({
+    queryKey: ['pedidosTrocaFaturados'],
+    queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
+  });
 
   const filtradas = useMemo(() => trocas.filter(t => {
     if (filtros.vendedor_id && t.vendedor_id !== filtros.vendedor_id) return false;
-    if (filtros.motivo_id && t.motivo_id !== filtros.motivo_id) return false;
-    if ((filtros.inicio || filtros.fim) && !dentroPeriodo(t.data_troca, filtros.inicio, filtros.fim)) return false;
+    if (filtros.motivo_id && t.motivo_troca_id !== filtros.motivo_id) return false;
+    const dataRef = t.data_faturamento || t.created_date;
+    if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
   }), [trocas, filtros]);
 
   const totais = useMemo(() => {
     const valor = filtradas.reduce((a, t) => a + (t.valor_total || 0), 0);
-    const aprovadas = filtradas.filter(t => t.status === 'aprovado' || t.status === 'finalizado').length;
-    return { total: filtradas.length, valor, aprovadas, ticket: filtradas.length ? valor / filtradas.length : 0 };
+    return { total: filtradas.length, valor, aprovadas: filtradas.length, ticket: filtradas.length ? valor / filtradas.length : 0 };
   }, [filtradas]);
 
   const porMotivo = useMemo(() => {
     const m = {};
     filtradas.forEach(t => {
-      const k = t.motivo_descricao || motivos.find(x => x.id === t.motivo_id)?.descricao || 'Sem motivo';
+      const k = t.motivo_troca_descricao || motivos.find(x => x.id === t.motivo_troca_id)?.descricao || 'Sem motivo';
       m[k] = (m[k] || 0) + 1;
     });
     return Object.entries(m).map(([motivo, qtd]) => ({ motivo, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 8);
@@ -52,8 +56,8 @@ export default function DashboardTrocas() {
   }, [filtradas, vendedores]);
 
   const exportar = () => exportarCSV('dashboard_trocas',
-    ['Data', 'Cliente', 'Vendedor', 'Tipo', 'Origem', 'Motivo', 'Valor', 'Status'],
-    filtradas.map(t => [t.data_troca, t.cliente_nome, t.vendedor_nome, t.tipo, t.origem, t.motivo_descricao, t.valor_total, t.status])
+    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Origem', 'Motivo', 'Valor', 'Status'],
+    filtradas.map(t => [(t.data_faturamento || t.created_date)?.slice(0,10), t.numero_pedido, t.cliente_nome, t.vendedor_nome, t.origem, t.motivo_troca_descricao, t.valor_total, t.status])
   );
 
   return (
@@ -71,10 +75,9 @@ export default function DashboardTrocas() {
         </div>
       </FiltrosBase>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard titulo="Total de trocas" valor={formatarNumero(totais.total)} icon={ArrowLeftRight} cor="red" />
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <KpiCard titulo="Trocas faturadas" valor={formatarNumero(totais.total)} icon={ArrowLeftRight} cor="red" />
         <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} icon={DollarSign} cor="amber" />
-        <KpiCard titulo="Aprovadas/finalizadas" valor={formatarNumero(totais.aprovadas)} icon={Package} cor="emerald" />
         <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} icon={AlertTriangle} cor="indigo" />
       </div>
 
@@ -103,15 +106,15 @@ export default function DashboardTrocas() {
         <CardHeader><CardTitle className="text-base">Detalhe das trocas</CardTitle></CardHeader>
         <CardContent className="overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 sticky top-0"><tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Nº</th><th className="p-2 text-left">Cliente</th><th className="p-2 text-left">Vendedor</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Motivo</th><th className="p-2 text-right">Valor</th><th className="p-2 text-left">Status</th></tr></thead>
+            <thead className="bg-slate-50 sticky top-0"><tr><th className="p-2 text-left">Faturamento</th><th className="p-2 text-left">Nº</th><th className="p-2 text-left">Cliente</th><th className="p-2 text-left">Vendedor</th><th className="p-2 text-left">Origem</th><th className="p-2 text-left">Motivo</th><th className="p-2 text-right">Valor</th><th className="p-2 text-left">Status</th></tr></thead>
             <tbody>{filtradas.slice(0, 200).map(t => (
               <tr key={t.id} className="border-t hover:bg-slate-50">
-                <td className="p-2">{t.data_troca || '-'}</td>
-                <td className="p-2 font-mono">{t.numero_troca || '-'}</td>
+                <td className="p-2">{(t.data_faturamento || t.created_date || '').slice(0,10)}</td>
+                <td className="p-2 font-mono">{t.numero_pedido || '-'}</td>
                 <td className="p-2">{t.cliente_nome || '-'}</td>
                 <td className="p-2">{t.vendedor_nome || '-'}</td>
-                <td className="p-2"><Badge variant="outline">{t.tipo}</Badge></td>
-                <td className="p-2 text-slate-600 text-xs">{t.motivo_descricao || '-'}</td>
+                <td className="p-2"><Badge variant="outline">{t.origem || '-'}</Badge></td>
+                <td className="p-2 text-slate-600 text-xs">{t.motivo_troca_descricao || '-'}</td>
                 <td className="p-2 text-right">{formatarMoeda(t.valor_total)}</td>
                 <td className="p-2"><Badge>{t.status}</Badge></td>
               </tr>
