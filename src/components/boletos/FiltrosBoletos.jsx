@@ -9,13 +9,8 @@ import { Search, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function FiltrosBoletos({ onResultado }) {
-  const hoje = new Date();
-  const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-  const ha30 = new Date(hoje.getTime() - 30 * 86400000);
-  const daqui60 = new Date(hoje.getTime() + 60 * 86400000);
-
-  const [dataDe, setDataDe] = useState(fmt(ha30));
-  const [dataAte, setDataAte] = useState(fmt(daqui60));
+  const [dataDe, setDataDe] = useState('');
+  const [dataAte, setDataAte] = useState('');
   const [filtrarPor, setFiltrarPor] = useState('E');
   const [cnpj, setCnpj] = useState('');
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
@@ -38,8 +33,8 @@ export default function FiltrosBoletos({ onResultado }) {
     setLoading(true);
     try {
       const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-        data_de: filtrosBusca.dataDe || dataDe,
-        data_ate: filtrosBusca.dataAte || dataAte,
+        data_de: filtrosBusca.dataDe || dataDe || undefined,
+        data_ate: filtrosBusca.dataAte || dataAte || undefined,
         filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
         cnpj_cpf: cnpj || undefined,
         apenas_pendentes: false,
