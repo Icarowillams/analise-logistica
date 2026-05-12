@@ -7,10 +7,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, Play, FileText, Loader2 } from 'lucide-react';
+import { Wallet, Play, FileText, Loader2, RefreshCw, AlertTriangle, CheckCircle2, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+// Status válidos pra acerto (carga já saiu pra rota OU já voltou)
+// 'faturada' = NF emitida e pronta pra sair / saindo
+// 'em_rota'  = motorista em rota
+// 'entregue' = motorista voltou (ideal pra acerto)
+const STATUS_ACERTO = ['faturada', 'em_rota', 'entregue'];
+
+const STATUS_BADGE = {
+  faturada: { label: 'Faturada', cls: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
+  em_rota: { label: 'Em Rota', cls: 'bg-amber-100 text-amber-800', icon: Truck },
+  entregue: { label: 'Entregue', cls: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+  pronta: { label: 'Pronta (sem NF ainda)', cls: 'bg-slate-100 text-slate-800', icon: AlertTriangle },
+  conferindo: { label: 'Conferindo', cls: 'bg-orange-100 text-orange-800', icon: AlertTriangle }
+};
 
 export default function AcertoCaixa() {
   const navigate = useNavigate();
@@ -20,13 +34,28 @@ export default function AcertoCaixa() {
   const [filtroData, setFiltroData] = useState('');
   const [busca, setBusca] = useState('');
   const [iniciando, setIniciando] = useState(null);
+  const [sincronizando, setSincronizando] = useState(false);
 
-  const { data: cargas = [] } = useQuery({
+  const { data: cargas = [], refetch: refetchCargas } = useQuery({
     queryKey: ['cargas-acerto'],
     queryFn: () => base44.entities.Carga.filter(
-      { status_carga: { $in: ['faturada', 'em_rota', 'entregue'] } }, '-data_carga', 500
+      { status_carga: { $in: STATUS_ACERTO } }, '-data_carga', 500
     )
   });
+
+  // Sincroniza status real das cargas com o Omie (consulta NFs)
+  const sincronizarStatus = async () => {
+    setSincronizando(true);
+    try {
+      const res = await base44.functions.invoke('sincronizarStatusCargasOmie', { list_limit: 200, sync_limit: 50 });
+      const sincronizadas = res?.data?.sincronizadas ?? 0;
+      toast.success(`${sincronizadas} cargas verificadas no Omie`);
+      await refetchCargas();
+    } catch (e) {
+      toast.error(`Falha ao sincronizar: ${e.message}`);
+    }
+    setSincronizando(false);
+  };
 
   const { data: acertos = [] } = useQuery({
     queryKey: ['acertos'],
@@ -153,12 +182,18 @@ export default function AcertoCaixa() {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Wallet className="w-8 h-8 text-emerald-500" />
-        <div>
-          <h1 className="text-2xl font-bold">Acerto de Caixa</h1>
-          <p className="text-sm text-slate-500">Acerto de notas e recebimentos por carga</p>
+      <div className="flex items-center gap-3 justify-between flex-wrap">
+        <div className="flex items-center gap-3">
+          <Wallet className="w-8 h-8 text-emerald-500" />
+          <div>
+            <h1 className="text-2xl font-bold">Acerto de Caixa</h1>
+            <p className="text-sm text-slate-500">Acerto de notas e recebimentos por carga</p>
+          </div>
         </div>
+        <Button onClick={sincronizarStatus} disabled={sincronizando} variant="outline" className="gap-2">
+          {sincronizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Sincronizar status com Omie
+        </Button>
       </div>
 
       <Card>
@@ -179,11 +214,28 @@ export default function AcertoCaixa() {
             <div className="space-y-2">
               {cargasElegiveis.map(c => {
                 const a = acertosPorCarga.get(c.id);
+                const badge = STATUS_BADGE[c.status_carga] || STATUS_BADGE.conferindo;
+                const BadgeIcon = badge.icon;
+                // Quantas NFs realmente emitidas? (validação dinâmica do Omie)
+                const pedidosOmie = c.pedidos_omie || [];
+                const comNf = pedidosOmie.filter(p => p.numero_nf || p.etapa === '60').length;
+                const totalOmie = pedidosOmie.length;
+                const nfFaltando = totalOmie > 0 && comNf < totalOmie;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold">Carga {c.numero_carga} • {c.data_carga}</div>
-                      <div className="text-xs text-slate-500">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-semibold">Carga {c.numero_carga} • {c.data_carga}</div>
+                        <Badge className={`${badge.cls} gap-1`}>
+                          <BadgeIcon className="w-3 h-3" />{badge.label}
+                        </Badge>
+                        {nfFaltando && (
+                          <Badge className="bg-red-100 text-red-800 gap-1">
+                            <AlertTriangle className="w-3 h-3" /> {comNf}/{totalOmie} NFs emitidas
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
                         {c.motorista_nome || '-'} • {c.rota_nome || '-'} • {c.quantidade_pedidos || 0} pedidos • {fmt(c.valor_total)}
                       </div>
                     </div>
