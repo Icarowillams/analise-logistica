@@ -117,9 +117,25 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
   let pedidoLocalId = null;
   try {
     const cab = pedidoOriginal.cabecalho || {};
-    // Tenta resolver o Cliente local pelo codigo_omie ou codigo_integracao
+
+    // Tenta primeiro pegar do espelho PedidoLiberadoOmie (já tem cliente_id resolvido)
     let clienteLocal = null;
-    if (cab.codigo_cliente) {
+    let vendedorLocal = null;
+    try {
+      const espelho = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigo_pedido) });
+      if (espelho?.length) {
+        const esp = espelho[0];
+        if (esp.cliente_id) {
+          clienteLocal = await base44.asServiceRole.entities.Cliente.get(esp.cliente_id).catch(() => null);
+        }
+        if (esp.vendedor_id) {
+          vendedorLocal = await base44.asServiceRole.entities.Vendedor.get(esp.vendedor_id).catch(() => null);
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Fallback: resolver pelo codigo_omie do cliente
+    if (!clienteLocal && cab.codigo_cliente) {
       const found = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: String(cab.codigo_cliente) });
       if (found?.length) clienteLocal = found[0];
     }
@@ -142,6 +158,14 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
       cliente_nome: clienteLocal?.razao_social || '',
       cliente_nome_fantasia: clienteLocal?.nome_fantasia || '',
       cliente_cpf_cnpj: clienteLocal?.cnpj_cpf || '',
+      cliente_endereco: clienteLocal?.endereco || '',
+      cliente_numero: clienteLocal?.numero || '',
+      cliente_bairro: clienteLocal?.bairro || '',
+      cliente_cidade: clienteLocal?.cidade || '',
+      cliente_estado: clienteLocal?.estado || '',
+      cliente_cep: clienteLocal?.cep || '',
+      vendedor_id: vendedorLocal?.id || clienteLocal?.vendedor_id || '',
+      vendedor_nome: vendedorLocal?.nome || '',
       modelo_nota: '55',
       total_itens: totalItens,
       valor_total: valorTotal,
