@@ -25,6 +25,25 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
     queryFn: () => base44.entities.Produto.list('-created_date', 5000)
   });
 
+  // Pedidos cancelados desta carga (NF rejeitada) → EXCLUIR seus produtos da lista
+  const { data: pedidosCanceladosCarga = [] } = useQuery({
+    queryKey: ['pedidos-cancelados-lista', carga?.id],
+    queryFn: () => carga?.id
+      ? base44.entities.Pedido.filter({ carga_id: carga.id, status: 'cancelado' })
+      : Promise.resolve([]),
+    enabled: !!carga?.id
+  });
+
+  const cancelados = useMemo(() => {
+    const omieSet = new Set();
+    const idSet = new Set();
+    pedidosCanceladosCarga.forEach(p => {
+      if (p.omie_codigo_pedido) omieSet.add(String(p.omie_codigo_pedido));
+      if (p.id) idSet.add(String(p.id));
+    });
+    return { omieSet, idSet };
+  }, [pedidosCanceladosCarga]);
+
   // Mapa de fator_caixa por código de produto
   const fatorCaixaMap = useMemo(() => {
     const m = new Map();
@@ -53,9 +72,9 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
   const { listaPedidos, info } = useMemo(() => {
     if (carga) {
       const lista = [
-        ...(carga.pedidos_omie || []),
-        ...(carga.pedidos_internos || []),
-        ...(carga.pedidos_troca || [])
+        ...(carga.pedidos_omie || []).filter(p => !cancelados.omieSet.has(String(p.codigo_pedido))),
+        ...(carga.pedidos_internos || []).filter(p => !cancelados.idSet.has(String(p.pedido_id))),
+        ...(carga.pedidos_troca || []).filter(p => !cancelados.idSet.has(String(p.pedido_troca_id)))
       ];
       return {
         listaPedidos: lista,
@@ -78,7 +97,7 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
         observacao: meta.observacao || ''
       }
     };
-  }, [carga, pedidosManuais, meta]);
+  }, [carga, pedidosManuais, meta, cancelados]);
 
   const produtos = useMemo(() => consolidarProdutos(listaPedidos), [listaPedidos]);
 

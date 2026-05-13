@@ -47,6 +47,25 @@ export default function RomaneioEntregaPdf({ carga }) {
     queryFn: () => base44.entities.ModalidadePagamento.list()
   });
 
+  // Carrega pedidos cancelados desta carga (NF rejeitada → cancelado) para EXCLUIR
+  const { data: pedidosCanceladosCarga = [] } = useQuery({
+    queryKey: ['pedidos-cancelados-romaneio', carga?.id],
+    queryFn: () => carga?.id
+      ? base44.entities.Pedido.filter({ carga_id: carga.id, status: 'cancelado' })
+      : Promise.resolve([]),
+    enabled: !!carga?.id
+  });
+
+  const cancelados = useMemo(() => {
+    const omieSet = new Set();
+    const idSet = new Set();
+    pedidosCanceladosCarga.forEach(p => {
+      if (p.omie_codigo_pedido) omieSet.add(String(p.omie_codigo_pedido));
+      if (p.id) idSet.add(String(p.id));
+    });
+    return { omieSet, idSet };
+  }, [pedidosCanceladosCarga]);
+
   const clientesMap = useMemo(() => {
     const m = new Map();
     clientes.forEach(c => m.set(c.id, c));
@@ -70,6 +89,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       };
     };
     (carga.pedidos_omie || []).forEach(p => {
+      if (cancelados.omieSet.has(String(p.codigo_pedido))) return;
       const cliente = clientesMap.get(p.cliente_id);
       out.push({
         ...p,
@@ -80,6 +100,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     (carga.pedidos_internos || []).forEach(p => {
+      if (cancelados.idSet.has(String(p.pedido_id))) return;
       const cliente = clientesMap.get(p.cliente_id);
       out.push({
         ...p,
@@ -90,6 +111,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     (carga.pedidos_troca || []).forEach(p => {
+      if (cancelados.idSet.has(String(p.pedido_troca_id))) return;
       const cliente = clientesMap.get(p.cliente_id);
       out.push({
         ...p,
@@ -100,7 +122,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     return out;
-  }, [carga, clientesMap, modalidadesMap]);
+  }, [carga, clientesMap, modalidadesMap, cancelados]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
   const gruposCliente = useMemo(() => {
