@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { FileText, FileWarning, Printer, FileSignature } from 'lucide-react';
+import { FileText, FileWarning, Printer, FileSignature, ScrollText } from 'lucide-react';
 import NotasNF55Tab from '@/components/notasOmie/NotasNF55Tab';
 import NotasD1Tab from '@/components/notasOmie/NotasD1Tab';
 import EmissaoNFTab from '@/components/notasOmie/EmissaoNFTab';
+import LogEmissaoNFTab from '@/components/notasOmie/LogEmissaoNFTab';
 
 export default function NotasOmie() {
   // Abas:
@@ -24,6 +25,7 @@ export default function NotasOmie() {
     if (tabParam === 'd1' || tabParam === 'impressao_d1') setTab('impressao_d1');
     else if (tabParam === 'nf55' || tabParam === 'impressao_nf55') setTab('impressao_nf55');
     else if (tabParam === 'emissao') setTab('emissao');
+    else if (tabParam === 'log' || tabParam === 'log_emissao') setTab('log_emissao');
 
     if (!cargaId) return;
 
@@ -59,9 +61,12 @@ export default function NotasOmie() {
       )}
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-4 max-w-3xl">
           <TabsTrigger value="emissao" className="flex items-center gap-2">
             <FileSignature className="w-4 h-4" /> Emissão
+          </TabsTrigger>
+          <TabsTrigger value="log_emissao" className="flex items-center gap-2">
+            <ScrollText className="w-4 h-4" /> Log de Emissão
           </TabsTrigger>
           <TabsTrigger value="impressao_nf55" className="flex items-center gap-2">
             <Printer className="w-4 h-4" /> Impressão NF 55
@@ -73,6 +78,10 @@ export default function NotasOmie() {
 
         <TabsContent value="emissao" className="mt-4">
           <EmissaoNFTab cargaFiltro={cargaFiltro} ativa={tab === 'emissao'} />
+        </TabsContent>
+
+        <TabsContent value="log_emissao" className="mt-4">
+          <LogEmissaoNFTab ativa={tab === 'log_emissao'} />
         </TabsContent>
 
         <TabsContent value="impressao_nf55" className="mt-4">
