@@ -480,6 +480,48 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             </div>
           )}
 
+          {preview.length > 0 && errorCount > 0 && (
+            <div className="border border-red-300 rounded-lg overflow-hidden">
+              <div className="p-3 bg-red-50 border-b border-red-200 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <span className="font-medium text-red-800">
+                    Pré-visualização de erros ({errorCount} {errorCount === 1 ? 'linha' : 'linhas'})
+                  </span>
+                </div>
+                <span className="text-xs text-red-600">Estes registros NÃO serão importados</span>
+              </div>
+              <div className="max-h-56 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-red-100 sticky top-0">
+                    <tr>
+                      <th className="p-2 text-left">Linha</th>
+                      <th className="p-2 text-left">Tabela</th>
+                      <th className="p-2 text-left">Cód. Produto</th>
+                      <th className="p-2 text-right">Valor</th>
+                      <th className="p-2 text-left">Motivo do erro</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.filter(r => r.erro).map((row, idx) => (
+                      <tr key={`err-${idx}`} className="border-b border-red-100 hover:bg-red-50">
+                        <td className="p-2 text-slate-500">{row.linha}</td>
+                        <td className="p-2 font-medium">{row.tabela_nome || '-'}</td>
+                        <td className="p-2 font-mono">{row.cod_produto || '-'}</td>
+                        <td className="p-2 text-right">
+                          {isNaN(row.valor_unitario) ? '-' : `R$ ${row.valor_unitario?.toFixed(2)}`}
+                        </td>
+                        <td className="p-2">
+                          <span className="text-red-700 text-xs bg-red-100 px-2 py-1 rounded">{row.erro}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {preview.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
               <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
