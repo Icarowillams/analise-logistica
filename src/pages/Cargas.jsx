@@ -257,32 +257,32 @@ export default function Cargas() {
         />
       ) : null
     },
-    { key: 'numero_carga', label: 'Nº Carga', sortable: true, width: '140px' },
-    { key: 'data_carga', label: 'Data', sortable: true, width: '120px' },
-    { key: 'motorista_nome', label: 'Motorista' },
-    { key: 'veiculo_placa', label: 'Veículo', width: '110px' },
-    { key: 'rota_nome', label: 'Rota' },
-    { key: 'quantidade_pedidos', label: 'Pedidos', width: '80px', sortable: true },
+    { key: 'numero_carga', label: 'Nº', sortable: true, width: '70px' },
+    { key: 'data_carga', label: 'Data', sortable: true, width: '100px' },
+    { key: 'motorista_nome', label: 'Motorista', width: '160px' },
+    { key: 'veiculo_placa', label: 'Veículo', width: '95px' },
+    { key: 'rota_nome', label: 'Rota', width: '120px' },
+    { key: 'quantidade_pedidos', label: 'Ped.', width: '60px', sortable: true },
     {
       key: 'valor_total',
       label: 'Valor',
-      width: '140px',
+      width: '110px',
       sortable: true,
       render: (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
     },
     {
       key: 'status_carga',
       label: 'Status',
-      width: '120px',
+      width: '110px',
       render: (_, row) => {
         const status = statusExibido(row);
-        return <Badge className={STATUS_COLORS[status] || ''}>{status === 'excluida' ? 'excluída no Omie' : status}</Badge>;
+        return <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{status === 'excluida' ? 'excluída' : status}</Badge>;
       }
     },
     {
       key: 'acoes',
       label: 'Ações',
-      width: '200px',
+      width: '180px',
       render: (_, row) => {
         const emMontagem = row.status_carga === 'montagem';
         const jaFaturada = row.status_carga === 'faturada';
@@ -401,7 +401,7 @@ export default function Cargas() {
           {isLoading ? (
             <div className="py-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
           ) : (
-            <div className="[&_table]:w-full [&_table]:table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_th]:whitespace-normal [&_.relative.w-full.overflow-auto]:overflow-visible">
+            <div className="text-sm [&_th]:px-2 [&_td]:px-2 [&_td]:py-2 [&_.relative.w-full.overflow-auto]:overflow-x-hidden">
               <DataTable data={cargas} columns={columns} searchable={false} pageSize={50} emptyMessage="Nenhuma carga criada ainda" />
             </div>
           )}
