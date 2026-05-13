@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
@@ -36,6 +38,9 @@ export default function Cargas() {
   const [selecionadas, setSelecionadas] = useState([]);
   const [faturandoLote, setFaturandoLote] = useState(false);
   const [documento, setDocumento] = useState(null); // { tipo: 'lista' | 'romaneio', carga }
+  const [filtroNumero, setFiltroNumero] = useState('');
+  const [filtroDataInicial, setFiltroDataInicial] = useState('');
+  const [filtroDataFinal, setFiltroDataFinal] = useState('');
 
   // 1️⃣ Carrega cargas direto do banco — RÁPIDO (sem chamada ao Omie)
   const { data: cargasTodas = [], isLoading } = useQuery({
@@ -57,7 +62,25 @@ export default function Cargas() {
   }, []);
 
   // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
-  const cargas = cargasTodas;
+  // Aplica filtros locais por número e período de saída (data_carga).
+  const cargas = useMemo(() => {
+    return cargasTodas.filter(c => {
+      if (filtroNumero.trim()) {
+        const termo = filtroNumero.trim().toLowerCase();
+        if (!String(c.numero_carga || '').toLowerCase().includes(termo)) return false;
+      }
+      if (filtroDataInicial && (c.data_carga || '') < filtroDataInicial) return false;
+      if (filtroDataFinal && (c.data_carga || '') > filtroDataFinal) return false;
+      return true;
+    });
+  }, [cargasTodas, filtroNumero, filtroDataInicial, filtroDataFinal]);
+
+  const limparFiltros = () => {
+    setFiltroNumero('');
+    setFiltroDataInicial('');
+    setFiltroDataFinal('');
+  };
+  const temFiltro = !!(filtroNumero || filtroDataInicial || filtroDataFinal);
 
   const faturar = async (carga) => {
     if (!confirm(`Faturar carga ${carga.numero_carga} (${carga.quantidade_pedidos} pedidos)?`)) return;
@@ -303,7 +326,7 @@ export default function Cargas() {
   ];
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto">
+    <div className="space-y-4 w-full">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Truck className="w-8 h-8 text-amber-500" />
@@ -328,7 +351,51 @@ export default function Cargas() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{cargas.length} cargas registradas</CardTitle>
+          <CardTitle className="text-base">Filtros</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+            <div>
+              <Label>Nº Carga</Label>
+              <Input
+                placeholder="Ex: 019"
+                value={filtroNumero}
+                onChange={(e) => setFiltroNumero(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Saída de</Label>
+              <Input
+                type="date"
+                value={filtroDataInicial}
+                onChange={(e) => setFiltroDataInicial(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Saída até</Label>
+              <Input
+                type="date"
+                value={filtroDataFinal}
+                onChange={(e) => setFiltroDataFinal(e.target.value)}
+              />
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                onClick={limparFiltros}
+                disabled={!temFiltro}
+                className="w-full"
+              >
+                <X className="w-4 h-4 mr-2" /> Limpar filtros
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{cargas.length} cargas registradas{temFiltro ? ` (de ${cargasTodas.length})` : ''}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
