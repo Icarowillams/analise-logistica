@@ -41,22 +41,42 @@ export default function RomaneioEntregaPdf({ carga }) {
     queryFn: () => base44.entities.Cliente.list('-created_date', 10000)
   });
 
+  // Carrega modalidades de pagamento para resolver a cobrança a partir do cliente
+  const { data: modalidades = [] } = useQuery({
+    queryKey: ['modalidades-romaneio'],
+    queryFn: () => base44.entities.ModalidadePagamento.list()
+  });
+
   const clientesMap = useMemo(() => {
     const m = new Map();
     clientes.forEach(c => m.set(c.id, c));
     return m;
   }, [clientes]);
 
+  const modalidadesMap = useMemo(() => {
+    const m = new Map();
+    modalidades.forEach(mp => m.set(mp.id, mp));
+    return m;
+  }, [modalidades]);
+
   const linhas = useMemo(() => {
     if (!carga) return [];
     const out = [];
+    const resolverExtras = (p, cliente) => {
+      const modalidade = cliente?.modalidade_pagamento_id ? modalidadesMap.get(cliente.modalidade_pagamento_id) : null;
+      return {
+        cidade_cliente: cliente?.cidade || p.cidade || '',
+        cobranca_nome: modalidade?.nome || p.cobranca || ''
+      };
+    };
     (carga.pedidos_omie || []).forEach(p => {
       const cliente = clientesMap.get(p.cliente_id);
       out.push({
         ...p,
         _origem: 'omie',
         _tipo: tipoNotaLabel(p, 'omie'),
-        codigo_cliente_display: getCodigoClienteBase(p, cliente)
+        codigo_cliente_display: getCodigoClienteBase(p, cliente),
+        ...resolverExtras(p, cliente)
       });
     });
     (carga.pedidos_internos || []).forEach(p => {
@@ -65,7 +85,8 @@ export default function RomaneioEntregaPdf({ carga }) {
         ...p,
         _origem: 'interno',
         _tipo: tipoNotaLabel(p, 'interno'),
-        codigo_cliente_display: getCodigoClienteBase(p, cliente)
+        codigo_cliente_display: getCodigoClienteBase(p, cliente),
+        ...resolverExtras(p, cliente)
       });
     });
     (carga.pedidos_troca || []).forEach(p => {
@@ -74,11 +95,12 @@ export default function RomaneioEntregaPdf({ carga }) {
         ...p,
         _origem: 'troca',
         _tipo: 'TROCA',
-        codigo_cliente_display: getCodigoClienteBase(p, cliente)
+        codigo_cliente_display: getCodigoClienteBase(p, cliente),
+        ...resolverExtras(p, cliente)
       });
     });
     return out;
-  }, [carga, clientesMap]);
+  }, [carga, clientesMap, modalidadesMap]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
   const gruposCliente = useMemo(() => {
@@ -92,6 +114,7 @@ export default function RomaneioEntregaPdf({ carga }) {
           codigo_cliente_display: l.codigo_cliente_display,
           nome_cliente: l.nome_cliente || '',
           nome_fantasia: l.nome_fantasia || '',
+          cidade_cliente: l.cidade_cliente || '',
           pedidos: []
         });
       }
@@ -192,6 +215,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                     <td colSpan="10" style={{ padding: '3px 4px' }}>
                       {grupo.codigo_cliente_display} - {grupo.nome_cliente}
                       {grupo.nome_fantasia ? <span style={{ fontWeight: 400, fontSize: '8.5px', color: '#555' }}> &nbsp;|&nbsp; Fantasia: {grupo.nome_fantasia}</span> : null}
+                      {grupo.cidade_cliente ? <span style={{ fontWeight: 400, fontSize: '8.5px', color: '#555' }}> &nbsp;|&nbsp; Cidade: {grupo.cidade_cliente}</span> : null}
                     </td>
                   </tr>
                   {grupo.pedidos.map((l, i) => {
@@ -205,7 +229,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                           <td style={{ padding: '2px 4px' }}>{l.numero_nf || '-'}</td>
                           <td style={{ padding: '2px 4px', fontWeight: 700 }}>{l._tipo}</td>
                           <td style={{ padding: '2px 4px' }}>1</td>
-                          <td style={{ padding: '2px 4px' }}>{(l.cobranca || '').toString().slice(0, 4) || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{l.cobranca_nome || l.cobranca || '-'}</td>
                           <td style={{ padding: '2px 4px' }}>{dtEmissao || '-'}</td>
                           <td style={{ padding: '2px 4px' }}>{dtVenc || '-'}</td>
                           <td style={{ padding: '2px 4px', textAlign: 'right' }}>{fmtMoney(l.valor_total_pedido)}</td>
