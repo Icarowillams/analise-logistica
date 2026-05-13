@@ -205,12 +205,35 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
 
       setProgress(60);
 
-      const updateBatchSize = 20;
+      // Helper: tenta update com retry/backoff quando bate rate limit
+      const updateComRetry = async ({ id, data }, maxRetries = 5) => {
+        let tentativa = 0;
+        while (true) {
+          try {
+            await base44.entities.PrecoProduto.update(id, data);
+            return;
+          } catch (e) {
+            const msg = String(e?.message || '').toLowerCase();
+            const isRate = msg.includes('rate limit') || msg.includes('429') || msg.includes('too many');
+            if (isRate && tentativa < maxRetries) {
+              tentativa++;
+              // Backoff exponencial: 1s, 2s, 4s, 8s, 16s
+              await new Promise(r => setTimeout(r, 1000 * Math.pow(2, tentativa - 1)));
+              continue;
+            }
+            throw e;
+          }
+        }
+      };
+
+      // Reduz paralelismo: 5 por vez + pausa entre batches para respeitar o rate limit
+      const updateBatchSize = 5;
+      const delayEntreBatches = 250; // ms
       for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
         const batch = toUpdate.slice(i, i + updateBatchSize);
         await Promise.all(batch.map(async ({ id, data, row }) => {
           try {
-            await base44.entities.PrecoProduto.update(id, data);
+            await updateComRetry({ id, data });
             updated++;
           } catch (e) {
             errorsCount++;
@@ -221,6 +244,9 @@ export default function ImportarPrecosMassa({ open, onOpenChange, tabelas, produ
             });
           }
         }));
+        if (i + updateBatchSize < toUpdate.length) {
+          await new Promise(r => setTimeout(r, delayEntreBatches));
+        }
         setProgress(60 + Math.round((i / Math.max(toUpdate.length, 1)) * 35));
       }
 
