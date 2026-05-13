@@ -154,10 +154,13 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
       });
       setResultado(data);
       if (data?.sucessos > 0) {
-        toast.success(`${data.sucessos} NF(s) enviadas para emissão${data.clientes_boleto > 0 ? ` — ${data.clientes_boleto} boleto(s) sendo gerados` : ''}`);
+        toast.success(`${data.sucessos} NF(s) autorizada(s)${data.clientes_boleto > 0 ? ` — ${data.clientes_boleto} boleto(s) sendo gerados` : ''}`);
       }
-      if (data?.erros > 0) {
-        toast.error(`${data.erros} pedido(s) falharam na emissão`);
+      if (data?.rejeitadas > 0) {
+        toast.error(`${data.rejeitadas} NF(s) rejeitada(s) pela SEFAZ — veja o detalhe`);
+      }
+      if (data?.pendentes > 0) {
+        toast.warning(`${data.pendentes} NF(s) ainda em processamento — atualize a lista em alguns segundos`);
       }
       setSelecionados(new Set());
       // Aguarda alguns segundos e atualiza a lista (etapa pode ter mudado)
@@ -300,14 +303,18 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
           </DialogHeader>
           {resultado && (
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="rounded-lg bg-green-50 p-3 text-center">
                   <div className="text-2xl font-bold text-green-700">{resultado.sucessos || 0}</div>
-                  <div className="text-xs text-green-600">Sucesso</div>
+                  <div className="text-xs text-green-600">Autorizadas</div>
                 </div>
                 <div className="rounded-lg bg-red-50 p-3 text-center">
-                  <div className="text-2xl font-bold text-red-700">{resultado.erros || 0}</div>
-                  <div className="text-xs text-red-600">Erro</div>
+                  <div className="text-2xl font-bold text-red-700">{resultado.rejeitadas || resultado.erros || 0}</div>
+                  <div className="text-xs text-red-600">Rejeitadas</div>
+                </div>
+                <div className="rounded-lg bg-amber-50 p-3 text-center">
+                  <div className="text-2xl font-bold text-amber-700">{resultado.pendentes || 0}</div>
+                  <div className="text-xs text-amber-600">Em processamento</div>
                 </div>
                 <div className="rounded-lg bg-blue-50 p-3 text-center">
                   <div className="text-2xl font-bold text-blue-700">{resultado.clientes_boleto || 0}</div>
@@ -325,18 +332,27 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {(resultado.resultados || []).map((r, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="p-2 font-mono text-xs">{r.codigo_pedido}</td>
-                        <td className="p-2">
-                          {r.sucesso
-                            ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                            : <XCircle className="w-4 h-4 text-red-600" />
-                          }
-                        </td>
-                        <td className="p-2 text-xs">{r.mensagem}</td>
-                      </tr>
-                    ))}
+                    {(resultado.resultados || []).map((r, idx) => {
+                      const corLinha = r.sucesso ? '' : r.rejeitada ? 'bg-red-50' : r.pendente ? 'bg-amber-50' : 'bg-red-50';
+                      const corTexto = r.sucesso ? 'text-slate-700' : r.rejeitada ? 'text-red-700 font-medium' : r.pendente ? 'text-amber-700' : 'text-red-700';
+                      return (
+                        <tr key={idx} className={`border-t ${corLinha}`}>
+                          <td className="p-2 font-mono text-xs align-top">
+                            {r.codigo_pedido}
+                            {r.numero_nf && <div className="text-green-700 font-semibold">NF {r.numero_nf}</div>}
+                          </td>
+                          <td className="p-2 align-top">
+                            {r.sucesso
+                              ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+                              : r.pendente
+                                ? <AlertCircle className="w-4 h-4 text-amber-600" />
+                                : <XCircle className="w-4 h-4 text-red-600" />
+                            }
+                          </td>
+                          <td className={`p-2 text-xs ${corTexto}`}>{r.mensagem}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
