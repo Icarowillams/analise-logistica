@@ -32,9 +32,7 @@ async function omieCall(url, call, param, tentativa = 1) {
   return data;
 }
 
-// Consulta o pedido no Omie para descobrir o status REAL da NF emitida.
-// Retorna: { status, numero_nf, mensagem }
-//   status: 'emitida' | 'rejeitada' | 'aguardando'
+// Consulta o pedido DIRETO no Omie (ConsultarPedido) — fallback se o webhook ainda não chegou.
 async function consultarStatusRealNF(codigoPedido) {
   try {
     const data = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
@@ -48,27 +46,50 @@ async function consultarStatusRealNF(codigoPedido) {
     const xMotivo = info.xMotivo || info.motivo_status || info.cMotivo || '';
     const numNf = info.nNF || info.numero_nf || cab.numero_nfe || null;
 
-    // Códigos SEFAZ
-    if (cStat === '100' || cStat === '150') {
-      return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} autorizada` };
-    }
-    if (cStat && Number(cStat) >= 200 && Number(cStat) < 300) {
-      return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF rejeitada'}` };
-    }
-    if (['110', '301', '302', '205'].includes(cStat)) {
-      return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF denegada'}` };
-    }
-    // Sem cStat ainda — verifica se há nº NF (emitida) ou se etapa voltou (rejeição sem cStat)
-    if (numNf && etapa === '60') {
-      return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} emitida` };
-    }
-    if (etapa === '50') {
-      // Voltou para etapa 50 → rejeição
-      return { status: 'rejeitada', mensagem: xMotivo || 'NF rejeitada pelo Omie (pedido voltou para etapa Faturar)' };
-    }
+    if (cStat === '100' || cStat === '150') return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} autorizada` };
+    if (cStat && Number(cStat) >= 200 && Number(cStat) < 300) return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF rejeitada'}` };
+    if (['110', '301', '302', '205'].includes(cStat)) return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF denegada'}` };
+    if (numNf && etapa === '60') return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} emitida` };
+    if (etapa === '50') return { status: 'rejeitada', mensagem: xMotivo || 'NF rejeitada pelo Omie (pedido voltou para etapa Faturar)' };
     return { status: 'aguardando', mensagem: xMotivo || 'NF ainda em processamento' };
   } catch (e) {
     return { status: 'aguardando', mensagem: `Não foi possível consultar status: ${e.message}` };
+  }
+}
+
+// 🎯 PRIMEIRA FONTE DE VERDADE: o espelho PedidoLiberadoOmie é atualizado em tempo real
+// pelos webhooks NFe.NotaAutorizada / VendaProduto.Faturada / NFe.NotaCancelada.
+// Sempre que possível, lemos daqui antes de bater na API Omie.
+async function lerStatusDoEspelho(base44, codigoPedido) {
+  try {
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+      { codigo_pedido: String(codigoPedido) },
+      '-sincronizado_em',
+      1
+    );
+    const esp = espelhos[0];
+    if (!esp) return null;
+
+    const etapa = String(esp.etapa || '');
+    const statusReal = String(esp.status_real || '');
+    const numNf = esp.numero_nf || null;
+
+    if (statusReal === 'emitida' || (etapa === '60' && numNf)) {
+      return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} autorizada` };
+    }
+    if (statusReal === 'rejeitada') {
+      return { status: 'rejeitada', mensagem: esp.status_label || 'NF rejeitada' };
+    }
+    if (statusReal === 'cancelada' || statusReal === 'denegada') {
+      return { status: 'rejeitada', mensagem: esp.status_label || `NF ${statusReal}` };
+    }
+    // Pedido voltou para etapa 50 (rejeição implícita)
+    if (etapa === '50') {
+      return { status: 'rejeitada', mensagem: 'NF rejeitada pelo Omie (pedido voltou para etapa Faturar)' };
+    }
+    return null; // ainda aguardando
+  } catch {
+    return null;
   }
 }
 
@@ -228,16 +249,24 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // FASE 2 — Aguarda o Omie processar e consulta o status real de cada NF
-    // (cStat da SEFAZ). Só assim sabemos se a NF foi REALMENTE autorizada ou rejeitada.
-    // Faz POLLING: consulta várias vezes até obter status final (emitida/rejeitada) ou esgotar tentativas.
-    const consultarComPolling = async (codPed, maxTentativas = 8, intervaloMs = 5000) => {
+    // FASE 2 — Aguarda webhook chegar (espelho PedidoLiberadoOmie) ou consulta o Omie direto.
+    // O webhook NFe.NotaAutorizada / VendaProduto.Faturada já atualiza o espelho em tempo real.
+    // Estratégia: a cada ciclo, primeiro lê do ESPELHO (instantâneo); se não tiver status final,
+    // consulta a API Omie direto como fallback.
+    const consultarComPolling = async (codPed, maxTentativas = 12, intervaloMs = 4000) => {
       let ultimoResultado = { status: 'aguardando', mensagem: 'NF ainda em processamento' };
       for (let i = 0; i < maxTentativas; i++) {
         await new Promise(r => setTimeout(r, intervaloMs));
+
+        // 1) Primeiro: lê o espelho (atualizado por webhook em tempo real)
+        const doEspelho = await lerStatusDoEspelho(base44, codPed);
+        if (doEspelho && (doEspelho.status === 'emitida' || doEspelho.status === 'rejeitada')) {
+          return doEspelho;
+        }
+
+        // 2) Fallback: consulta direto na API Omie
         const r = await consultarStatusRealNF(codPed);
         ultimoResultado = r;
-        // Status final → para de consultar
         if (r.status === 'emitida' || r.status === 'rejeitada') return r;
       }
       return ultimoResultado;
@@ -245,7 +274,7 @@ Deno.serve(async (req) => {
 
     if (pedidosEnviados.length > 0) {
       // Aguarda inicial: Omie precisa colocar na fila + SEFAZ responder
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 4000));
       for (const { codigo_pedido: codPed } of pedidosEnviados) {
         const statusReal = await consultarComPolling(codPed);
         // extrai cStat da mensagem se houver (formato "[SEFAZ NNN] ...")
