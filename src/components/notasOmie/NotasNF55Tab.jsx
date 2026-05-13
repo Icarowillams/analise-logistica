@@ -108,15 +108,11 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     setLoadingDetalhe(null);
   };
 
-  // Ao receber cargaFiltro pela URL, ajusta datas e dispara busca
+  // Ao receber cargaFiltro pela URL, zera o período e dispara busca pela carga
   useEffect(() => {
     if (!cargaFiltro || !ativa) return;
-    let filtrosCarga = filtros;
-    if (cargaFiltro.data_carga) {
-      const [y, m, d] = cargaFiltro.data_carga.split('-');
-      filtrosCarga = { ...filtros, data_inicial: `${d}/${m}/${y}`, data_final: `${d}/${m}/${y}` };
-      setFiltros(filtrosCarga);
-    }
+    const filtrosCarga = { ...filtros, data_inicial: '', data_final: '' };
+    setFiltros(filtrosCarga);
     const timer = setTimeout(() => buscar(1, cargaFiltro, filtrosCarga), 800);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
