@@ -43,7 +43,7 @@ export default function FiltrosBoletos({ onResultado }) {
       if (data?.sucesso) {
         let titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
         if (apenasComBoleto) {
-          titulosFiltrados = titulosFiltrados.filter(t => t.numero_boleto || t.url_boleto || t.codigo_barras);
+          titulosFiltrados = titulosFiltrados.filter(t => t.boleto_gerado || t.numero_boleto || t.url_boleto || t.codigo_barras);
         }
         onResultado(titulosFiltrados);
         toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);

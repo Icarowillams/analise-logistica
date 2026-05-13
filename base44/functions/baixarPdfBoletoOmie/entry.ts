@@ -6,6 +6,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 const CR_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
+const BOLETO_URL = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
 
 async function omieCall(url, call, param, tentativa = 1) {
   const res = await fetch(url, {
@@ -43,10 +44,19 @@ Deno.serve(async (req) => {
       if (!codigo_lancamento) {
         return Response.json({ error: 'Informe codigo_lancamento ou url_boleto' }, { status: 400 });
       }
-      const data = await omieCall(CR_URL, 'ObterBoleto', { codigo_lancamento: Number(codigo_lancamento) });
-      link = data?.cLinkBoleto || data?.link_boleto || null;
+      // Endpoint correto: financas/contareceberboleto/ - call: ObterBoleto - param: nCodTitulo
+      let cDesStatus = null;
+      try {
+        const data = await omieCall(BOLETO_URL, 'ObterBoleto', { nCodTitulo: Number(codigo_lancamento) });
+        link = data?.cLinkBoleto || data?.link_boleto || null;
+        cDesStatus = data?.cDesStatus || null;
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 404 });
+      }
       if (!link) {
-        return Response.json({ error: 'Link do boleto indisponível no Omie' }, { status: 404 });
+        return Response.json({
+          error: cDesStatus || 'Boleto não disponível para este título no Omie.'
+        }, { status: 404 });
       }
     }
 

@@ -54,7 +54,8 @@ Deno.serve(async (req) => {
     const param = {
       pagina,
       registros_por_pagina: Math.min(registros_por_pagina, 100),
-      apenas_importado_api: 'N'
+      apenas_importado_api: 'N',
+      exibir_obs: 'S'
     };
     if (filtrar_por_data === 'E') {
       if (data_de) param.filtrar_por_emissao_de = data_de;
@@ -107,9 +108,11 @@ Deno.serve(async (req) => {
       cnpj_cpf: t.cpf_cnpj_cliente,
       nome_cliente: t.nome_cliente,
       id_conta_corrente: t.id_conta_corrente,
-      numero_boleto: t.numero_boleto || t.boleto?.cNumBoleto || '',
+      // boleto.cGerado === 'S' indica que o boleto foi efetivamente gerado no Omie
+      boleto_gerado: t.boleto?.cGerado === 'S',
+      numero_boleto: t.boleto?.cNumBoleto || t.numero_boleto || '',
       observacao: t.observacao,
-      codigo_barras: t.codigo_barras || t.boleto?.cCodBarras || '',
+      codigo_barras: t.boleto?.cCodBarras || t.codigo_barras || '',
       linha_digitavel: t.boleto?.dLinhaDig || '',
       url_boleto: t.boleto?.cLinkBoleto || ''
     }));
