@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select';
-import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 /**
@@ -22,6 +22,13 @@ import { format } from 'date-fns';
 export default function LogEmissaoNFTab({ ativa = true }) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [busca, setBusca] = useState('');
+  const [filtroCarga, setFiltroCarga] = useState('');
+  const [filtroCodCliente, setFiltroCodCliente] = useState('');
+  const [filtroFantasia, setFiltroFantasia] = useState('');
+  const [filtroPedido, setFiltroPedido] = useState('');
+  const [filtroNF, setFiltroNF] = useState('');
+  const [dataIni, setDataIni] = useState('');
+  const [dataFim, setDataFim] = useState('');
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -30,21 +37,83 @@ export default function LogEmissaoNFTab({ ativa = true }) {
     staleTime: 15000
   });
 
+  // Carrega Clientes para enriquecer com codigo_interno e nome_fantasia (join local)
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientesParaLogNF'],
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    enabled: ativa,
+    staleTime: 5 * 60 * 1000
+  });
+
+  const clientePorId = useMemo(() => {
+    const m = new Map();
+    clientes.forEach(c => m.set(c.id, c));
+    return m;
+  }, [clientes]);
+
+  // Enriquece cada log com dados do cliente
+  const logsEnriquecidos = useMemo(() => {
+    return logs.map(l => {
+      const c = l.cliente_id ? clientePorId.get(l.cliente_id) : null;
+      return {
+        ...l,
+        codigo_interno: c?.codigo_interno || '',
+        nome_fantasia: c?.nome_fantasia || ''
+      };
+    });
+  }, [logs, clientePorId]);
+
+  const limparFiltros = () => {
+    setFiltroStatus('todos');
+    setBusca('');
+    setFiltroCarga('');
+    setFiltroCodCliente('');
+    setFiltroFantasia('');
+    setFiltroPedido('');
+    setFiltroNF('');
+    setDataIni('');
+    setDataFim('');
+  };
+
   const logsFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return logs.filter(l => {
+    const cargaT = filtroCarga.trim().toLowerCase();
+    const codT = filtroCodCliente.trim().toLowerCase();
+    const fantT = filtroFantasia.trim().toLowerCase();
+    const pedT = filtroPedido.trim().toLowerCase();
+    const nfT = filtroNF.trim().toLowerCase();
+    const ini = dataIni ? new Date(dataIni + 'T00:00:00') : null;
+    const fim = dataFim ? new Date(dataFim + 'T23:59:59') : null;
+
+    return logsEnriquecidos.filter(l => {
       if (filtroStatus !== 'todos' && l.status !== filtroStatus) return false;
+
+      if (cargaT && !String(l.numero_carga || '').toLowerCase().includes(cargaT)) return false;
+      if (codT && String(l.codigo_interno || '').toLowerCase() !== codT) return false;
+      if (fantT && !String(l.nome_fantasia || '').toLowerCase().includes(fantT)) return false;
+      if (pedT && !String(l.numero_pedido || l.codigo_pedido || '').toLowerCase().includes(pedT)) return false;
+      if (nfT && !String(l.numero_nf || '').toLowerCase().includes(nfT)) return false;
+
+      if (ini || fim) {
+        if (!l.created_date) return false;
+        const d = new Date(l.created_date);
+        if (ini && d < ini) return false;
+        if (fim && d > fim) return false;
+      }
+
       if (!termo) return true;
       return (
         String(l.numero_pedido || '').toLowerCase().includes(termo) ||
         String(l.codigo_pedido || '').toLowerCase().includes(termo) ||
         String(l.numero_nf || '').toLowerCase().includes(termo) ||
         String(l.cliente_nome || '').toLowerCase().includes(termo) ||
+        String(l.nome_fantasia || '').toLowerCase().includes(termo) ||
+        String(l.codigo_interno || '').toLowerCase().includes(termo) ||
         String(l.numero_carga || '').toLowerCase().includes(termo) ||
         String(l.mensagem || '').toLowerCase().includes(termo)
       );
     });
-  }, [logs, filtroStatus, busca]);
+  }, [logsEnriquecidos, filtroStatus, busca, filtroCarga, filtroCodCliente, filtroFantasia, filtroPedido, filtroNF, dataIni, dataFim]);
 
   const stats = useMemo(() => {
     const s = { autorizada: 0, rejeitada: 0, pendente: 0, erro: 0 };
@@ -100,10 +169,10 @@ export default function LogEmissaoNFTab({ ativa = true }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            <div className="sm:col-span-2">
-              <Label>Buscar (pedido, cliente, NF, carga, mensagem)</Label>
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex: 12345, Cliente X, 539..." />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <div>
+              <Label>Buscar geral</Label>
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, mensagem, cStat..." />
             </div>
             <div>
               <Label>Status</Label>
@@ -118,6 +187,41 @@ export default function LogEmissaoNFTab({ ativa = true }) {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Nº Carga</Label>
+              <Input value={filtroCarga} onChange={(e) => setFiltroCarga(e.target.value)} placeholder="Ex: 009" />
+            </div>
+            <div>
+              <Label>Cód. cliente (exato)</Label>
+              <Input value={filtroCodCliente} onChange={(e) => setFiltroCodCliente(e.target.value)} placeholder="Ex: 1234" />
+            </div>
+            <div>
+              <Label>Nome fantasia</Label>
+              <Input value={filtroFantasia} onChange={(e) => setFiltroFantasia(e.target.value)} placeholder="Mercado X..." />
+            </div>
+            <div>
+              <Label>Nº Pedido</Label>
+              <Input value={filtroPedido} onChange={(e) => setFiltroPedido(e.target.value)} placeholder="Ex: 00005D" />
+            </div>
+            <div>
+              <Label>Nº NF</Label>
+              <Input value={filtroNF} onChange={(e) => setFiltroNF(e.target.value)} placeholder="Ex: 12345" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Emissão de</Label>
+                <Input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>até</Label>
+                <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end mb-4">
+            <Button size="sm" variant="ghost" onClick={limparFiltros}>
+              <X className="w-4 h-4 mr-1" /> Limpar filtros
+            </Button>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm overflow-x-auto">
@@ -158,7 +262,15 @@ export default function LogEmissaoNFTab({ ativa = true }) {
                       }
                       {l.boleto_gerado && <div className="text-xs text-blue-600 mt-0.5">+ boleto</div>}
                     </td>
-                    <td className="p-2">{l.cliente_nome || '-'}</td>
+                    <td className="p-2">
+                      <div className="font-medium">{l.nome_fantasia || l.cliente_nome || '-'}</div>
+                      {l.nome_fantasia && l.cliente_nome && (
+                        <div className="text-xs text-slate-500">{l.cliente_nome}</div>
+                      )}
+                      {l.codigo_interno && (
+                        <div className="text-xs text-slate-400 font-mono">cód {l.codigo_interno}</div>
+                      )}
+                    </td>
                     <td className="p-2">
                       {l.numero_carga ? <Badge variant="outline">{l.numero_carga}</Badge> : <span className="text-slate-400">—</span>}
                     </td>
