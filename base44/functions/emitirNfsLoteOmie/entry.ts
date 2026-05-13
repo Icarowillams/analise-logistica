@@ -93,6 +93,26 @@ async function clienteUsaBoleto(base44, codigoPedido) {
   }
 }
 
+// Busca dados do pedido local (cliente, carga, número) para enriquecer o log
+async function buscarContextoPedido(base44, codigoPedido) {
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({
+      omie_codigo_pedido: String(codigoPedido)
+    });
+    const p = pedidos?.[0];
+    if (!p) return {};
+    return {
+      numero_pedido: p.numero_pedido || '',
+      cliente_id: p.cliente_id || '',
+      cliente_nome: p.cliente_nome || '',
+      carga_id: p.carga_id || '',
+      numero_carga: p.numero_carga || ''
+    };
+  } catch {
+    return {};
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -104,6 +124,34 @@ Deno.serve(async (req) => {
     if (!Array.isArray(codigos_pedido) || codigos_pedido.length === 0) {
       return Response.json({ error: 'codigos_pedido vazio' }, { status: 400 });
     }
+
+    // ID único do lote — agrupa todos os pedidos emitidos juntos
+    const loteId = `LOTE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Helper para gravar log persistente de cada pedido
+    const gravarLog = async (dados) => {
+      try {
+        const ctx = await buscarContextoPedido(base44, dados.codigo_pedido);
+        await base44.asServiceRole.entities.LogEmissaoNF.create({
+          codigo_pedido: String(dados.codigo_pedido),
+          numero_pedido: ctx.numero_pedido,
+          numero_nf: dados.numero_nf || '',
+          cliente_id: ctx.cliente_id,
+          cliente_nome: ctx.cliente_nome,
+          carga_id: ctx.carga_id,
+          numero_carga: ctx.numero_carga,
+          lote_id: loteId,
+          status: dados.status,
+          codigo_sefaz: dados.codigo_sefaz || '',
+          mensagem: dados.mensagem || '',
+          boleto_gerado: !!dados.boleto_gerado,
+          usuario_email: user.email,
+          usuario_nome: user.full_name || ''
+        });
+      } catch (e) {
+        console.error('[emitirNfsLoteOmie] falha ao gravar LogEmissaoNF:', e.message);
+      }
+    };
 
     const resultados = [];
     const codigosParaBoleto = [];
@@ -144,6 +192,12 @@ Deno.serve(async (req) => {
           payload_enviado: JSON.stringify({ nCodPed: codPed }).slice(0, 800),
           usuario_email: user.email
         }).catch(() => {});
+        // Log persistente do erro (vem do Omie via faultstring)
+        await gravarLog({
+          codigo_pedido: codPed,
+          status: 'erro',
+          mensagem: `[OMIE] ${err.message}`
+        });
       }
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -154,15 +208,27 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 8000)); // dá tempo do Omie processar
       for (const { codigo_pedido: codPed } of pedidosEnviados) {
         const statusReal = await consultarStatusRealNF(codPed);
+        // extrai cStat da mensagem se houver (formato "[SEFAZ NNN] ...")
+        const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
+        const cStat = matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : '');
+
         if (statusReal.status === 'emitida') {
+          const usaBoleto = await clienteUsaBoleto(base44, codPed);
+          if (usaBoleto) codigosParaBoleto.push(codPed);
           resultados.push({
             codigo_pedido: codPed,
             sucesso: true,
             numero_nf: statusReal.numero_nf,
             mensagem: statusReal.mensagem
           });
-          const usaBoleto = await clienteUsaBoleto(base44, codPed);
-          if (usaBoleto) codigosParaBoleto.push(codPed);
+          await gravarLog({
+            codigo_pedido: codPed,
+            status: 'autorizada',
+            numero_nf: statusReal.numero_nf || '',
+            mensagem: statusReal.mensagem,
+            codigo_sefaz: cStat,
+            boleto_gerado: usaBoleto
+          });
         } else if (statusReal.status === 'rejeitada') {
           resultados.push({
             codigo_pedido: codPed,
@@ -170,12 +236,22 @@ Deno.serve(async (req) => {
             rejeitada: true,
             mensagem: statusReal.mensagem
           });
+          await gravarLog({
+            codigo_pedido: codPed,
+            status: 'rejeitada',
+            mensagem: statusReal.mensagem,
+            codigo_sefaz: cStat
+          });
         } else {
-          // Ainda processando — registra como pendente (não é sucesso nem erro definitivo)
           resultados.push({
             codigo_pedido: codPed,
             sucesso: false,
             pendente: true,
+            mensagem: statusReal.mensagem
+          });
+          await gravarLog({
+            codigo_pedido: codPed,
+            status: 'pendente',
             mensagem: statusReal.mensagem
           });
         }
@@ -206,6 +282,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       sucesso: true,
+      lote_id: loteId,
       total: codigos_pedido.length,
       sucessos,
       erros,
