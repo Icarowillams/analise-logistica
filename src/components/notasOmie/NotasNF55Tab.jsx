@@ -44,6 +44,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [impressaoOpen, setImpressaoOpen] = useState(false);
   const [impressaoModo, setImpressaoModo] = useState('individual'); // 'individual' | 'agrupado'
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
+  const [cargasPorNf, setCargasPorNf] = useState({}); // cNumero(normalizado) → numero_carga
 
   // Consolida números de NF da Carga + espelho PedidoLiberadoOmie + LogEmissaoNF
   // (cobre o caso de a carga não ter o numero_nf gravado nos pedidos_omie ainda)
@@ -51,19 +52,16 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     if (!carga) return new Set();
     const numeros = new Set();
 
-    // 1) da própria carga
     (carga.notas_fiscais || []).forEach(n => n && numeros.add(String(n)));
     (carga.pedidos_omie || []).forEach(p => {
       [p.numero_nf, p.numero_nota_fiscal, p.nf, p.nota_fiscal].forEach(n => n && numeros.add(String(n)));
     });
 
-    // 2) Coleta códigos de pedido da carga para buscar nos espelhos
     const codigosPedido = (carga.pedidos_omie || [])
       .map(p => p.codigo_pedido && String(p.codigo_pedido))
       .filter(Boolean);
 
     if (codigosPedido.length > 0) {
-      // Consulta em paralelo cada código nas 3 fontes (o SDK não aceita $in)
       const resultados = await Promise.all(
         codigosPedido.flatMap(cod => [
           base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }).catch(() => []),
@@ -77,7 +75,6 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       });
     }
 
-    // Normaliza (só dígitos)
     return new Set([...numeros].map(n => String(n).replace(/\D/g, '')).filter(Boolean));
   };
 
@@ -86,6 +83,47 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     const notasCarga = await getNotasCarga(carga);
     if (notasCarga.size === 0) return [];
     return (nfs || []).filter(nf => notasCarga.has(String(nf.cNumero || '').replace(/\D/g, '')));
+  };
+
+  // Mapeia NF (cNumero) → numero_carga consultando as 3 fontes para os pedidos exibidos
+  const buscarCargasDasNfs = async (nfs) => {
+    const mapa = {}; // cNumero(normalizado) → numero_carga
+    if (!nfs || nfs.length === 0) return mapa;
+
+    // Para cada NF, buscamos pedidos locais por numero_nota_fiscal e o espelho por numero_nf
+    const consultas = nfs.flatMap(nf => {
+      const num = String(nf.cNumero || '').replace(/\D/g, '');
+      if (!num) return [];
+      return [
+        base44.entities.Pedido.filter({ numero_nota_fiscal: nf.cNumero }).catch(() => []).then(arr => ({ num, arr, tipo: 'pedido' })),
+        base44.entities.PedidoLiberadoOmie.filter({ numero_nf: String(nf.cNumero) }).catch(() => []).then(arr => ({ num, arr, tipo: 'espelho' }))
+      ];
+    });
+
+    const resultados = await Promise.all(consultas);
+    const codigosPedidoParaCarga = []; // [{num, codigo_pedido}]
+
+    resultados.forEach(({ num, arr, tipo }) => {
+      arr.forEach(r => {
+        if (tipo === 'pedido' && r.numero_carga && !mapa[num]) mapa[num] = r.numero_carga;
+        if (tipo === 'espelho' && r.codigo_pedido) codigosPedidoParaCarga.push({ num, codigo_pedido: String(r.codigo_pedido) });
+      });
+    });
+
+    // Fallback: para NFs sem carga ainda, varre Cargas e procura o codigo_pedido em pedidos_omie
+    const semCarga = codigosPedidoParaCarga.filter(c => !mapa[c.num]);
+    if (semCarga.length > 0) {
+      try {
+        const cargas = await base44.entities.Carga.list('-created_date', 500);
+        semCarga.forEach(({ num, codigo_pedido }) => {
+          if (mapa[num]) return;
+          const c = cargas.find(cg => (cg.pedidos_omie || []).some(p => String(p.codigo_pedido) === codigo_pedido));
+          if (c?.numero_carga) mapa[num] = c.numero_carga;
+        });
+      } catch { /* segue */ }
+    }
+
+    return mapa;
   };
 
   const buscar = async (pg = 1, carga = cargaFiltro, filtrosBusca = filtros) => {
@@ -112,6 +150,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       });
       if (data?.sucesso) {
         const nfsFiltradas = await filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
+        const mapaCargas = await buscarCargasDasNfs(nfsFiltradas);
+        setCargasPorNf(mapaCargas);
         setResultado(cargaParaFiltrar ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
         setPagina(pg);
       } else {
@@ -290,6 +330,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                     <th className="p-2 text-left font-semibold">Emissão</th>
                     <th className="p-2 text-left font-semibold">Cliente</th>
                     <th className="p-2 text-left font-semibold">CNPJ/CPF</th>
+                    <th className="p-2 text-left font-semibold">Nº Carga</th>
                     <th className="p-2 text-right font-semibold">Valor</th>
                     <th className="p-2 text-left font-semibold">Status</th>
                     <th className="p-2 text-left font-semibold">Extrair</th>
@@ -298,7 +339,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                 <tbody>
                   {nfsFiltradas.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="text-center py-12 text-slate-500">Nenhuma NF encontrada</td>
+                      <td colSpan="10" className="text-center py-12 text-slate-500">Nenhuma NF encontrada</td>
                     </tr>
                   ) : nfsFiltradas.map((nf) => {
                     const k = keyOf(nf);
@@ -313,6 +354,13 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                         <td className="p-2">{nf.dEmiNF}</td>
                         <td className="p-2">{nf.cRazao}</td>
                         <td className="p-2">{nf.cCPFCNPJDest}</td>
+                        <td className="p-2">
+                          {cargasPorNf[String(nf.cNumero || '').replace(/\D/g, '')] ? (
+                            <Badge variant="outline" className="font-mono">{cargasPorNf[String(nf.cNumero || '').replace(/\D/g, '')]}</Badge>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
                         <td className="p-2 text-right">{formatarValor(nf.nValorNF)}</td>
                         <td className="p-2">{statusBadge(nf.cStatus)}</td>
                         <td className="p-2">
