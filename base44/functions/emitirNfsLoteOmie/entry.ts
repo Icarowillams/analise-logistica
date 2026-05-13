@@ -230,10 +230,24 @@ Deno.serve(async (req) => {
 
     // FASE 2 — Aguarda o Omie processar e consulta o status real de cada NF
     // (cStat da SEFAZ). Só assim sabemos se a NF foi REALMENTE autorizada ou rejeitada.
+    // Faz POLLING: consulta várias vezes até obter status final (emitida/rejeitada) ou esgotar tentativas.
+    const consultarComPolling = async (codPed, maxTentativas = 8, intervaloMs = 5000) => {
+      let ultimoResultado = { status: 'aguardando', mensagem: 'NF ainda em processamento' };
+      for (let i = 0; i < maxTentativas; i++) {
+        await new Promise(r => setTimeout(r, intervaloMs));
+        const r = await consultarStatusRealNF(codPed);
+        ultimoResultado = r;
+        // Status final → para de consultar
+        if (r.status === 'emitida' || r.status === 'rejeitada') return r;
+      }
+      return ultimoResultado;
+    };
+
     if (pedidosEnviados.length > 0) {
-      await new Promise(r => setTimeout(r, 8000)); // dá tempo do Omie processar
+      // Aguarda inicial: Omie precisa colocar na fila + SEFAZ responder
+      await new Promise(r => setTimeout(r, 5000));
       for (const { codigo_pedido: codPed } of pedidosEnviados) {
-        const statusReal = await consultarStatusRealNF(codPed);
+        const statusReal = await consultarComPolling(codPed);
         // extrai cStat da mensagem se houver (formato "[SEFAZ NNN] ...")
         const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
         const cStat = matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : '');
