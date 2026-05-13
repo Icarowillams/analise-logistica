@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import DuplicarPedidosButton from './DuplicarPedidosButton';
 
 // Mapa etapa Omie -> label/cor
 const etapaInfo = {
@@ -33,7 +35,18 @@ export default function PedidosOmieConsulta() {
   const [statusFiltro, setStatusFiltro] = useState('ativos');
   const [detalhe, setDetalhe] = useState(null);
   const [sincronizando, setSincronizando] = useState(false);
+  const [selecionados, setSelecionados] = useState(new Set());
   const queryClient = useQueryClient();
+
+  const toggleSelecionado = (codigoPedido) => {
+    setSelecionados(prev => {
+      const nova = new Set(prev);
+      if (nova.has(codigoPedido)) nova.delete(codigoPedido);
+      else nova.add(codigoPedido);
+      return nova;
+    });
+  };
+  const limparSelecao = () => setSelecionados(new Set());
 
   // Espelho local — alimentado por webhook + bootstrap. Sem chamadas Omie a cada render.
   const { data: pedidos = [], isLoading } = useQuery({
@@ -131,6 +144,40 @@ export default function PedidosOmieConsulta() {
         </Button>
       </div>
 
+      {/* Barra de seleção e ações em lote */}
+      {filtrados.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={filtrados.length > 0 && filtrados.every(p => selecionados.has(p.codigo_pedido))}
+              onCheckedChange={(checked) => {
+                if (checked) setSelecionados(new Set(filtrados.map(p => p.codigo_pedido)));
+                else limparSelecao();
+              }}
+            />
+            <span className="text-sm text-slate-700">
+              {selecionados.size > 0 ? `${selecionados.size} selecionado(s)` : 'Selecionar todos visíveis'}
+            </span>
+          </div>
+          {selecionados.size > 0 && (
+            <>
+              <Button variant="ghost" size="sm" onClick={limparSelecao} className="h-7 text-xs">Limpar seleção</Button>
+              <div className="ml-auto">
+                <DuplicarPedidosButton
+                  pedidosSelecionados={enriquecidos.filter(p => selecionados.has(p.codigo_pedido))}
+                  onSucesso={async () => {
+                    limparSelecao();
+                    // Aguarda o webhook/sincronização e dá refresh
+                    await new Promise(r => setTimeout(r, 1500));
+                    await queryClient.invalidateQueries({ queryKey: ['pedidos-liberados-omie-consulta'] });
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-center py-10 text-slate-500">Carregando pedidos...</p>
       ) : filtrados.length === 0 ? (
@@ -147,10 +194,15 @@ export default function PedidosOmieConsulta() {
           {filtrados.map((pedido) => {
             const Icone = ShoppingCart;
             return (
-              <Card key={pedido.id || pedido.codigo_pedido} className="border-0 shadow-sm hover:shadow-md transition-shadow">
+              <Card key={pedido.id || pedido.codigo_pedido} className={`border-0 shadow-sm hover:shadow-md transition-shadow ${selecionados.has(pedido.codigo_pedido) ? 'ring-2 ring-amber-400' : ''}`}>
                 <CardContent className="p-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
+                      <Checkbox
+                        checked={selecionados.has(pedido.codigo_pedido)}
+                        onCheckedChange={() => toggleSelecionado(pedido.codigo_pedido)}
+                        disabled={pedido.is_cancelado}
+                      />
                       <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-50">
                         <Icone className="w-5 h-5 text-amber-600" />
                       </div>
