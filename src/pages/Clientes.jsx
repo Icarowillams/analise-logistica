@@ -761,6 +761,9 @@ export default function Clientes() {
         const LOTE_SIZE = 50;
         let totalAtualizados = 0;
         let errosAcumulados = [];
+        let omieEnviadosTotal = 0;
+        let omiePuladosTotal = 0;
+        let omieErrosTotal = 0;
         const totalLotes = Math.ceil(toUpdate.length / LOTE_SIZE);
 
         for (let i = 0; i < toUpdate.length; i += LOTE_SIZE) {
@@ -796,6 +799,11 @@ export default function Clientes() {
           totalAtualizados += data.atualizados || 0;
           if (data.detalhesErros?.length > 0) {
             errosAcumulados = [...errosAcumulados, ...data.detalhesErros];
+          }
+          if (data.omie) {
+            omieEnviadosTotal += data.omie.enviados || 0;
+            omiePuladosTotal += data.omie.pulados || 0;
+            omieErrosTotal += data.omie.erros || 0;
           }
           
           // Delay entre lotes para não sobrecarregar
@@ -851,6 +859,19 @@ export default function Clientes() {
         if (errosAcumulados.length > 0) {
           console.error('Erros finais:', JSON.stringify(errosAcumulados));
           toast.error(`${errosAcumulados.length} clientes não puderam ser atualizados. IDs: ${errosAcumulados.slice(0, 5).map(e => e.id).join(', ')}${errosAcumulados.length > 5 ? '...' : ''}`);
+        }
+
+        // Feedback do envio ao Omie
+        if (omieEnviadosTotal > 0 || omiePuladosTotal > 0 || omieErrosTotal > 0) {
+          const partes = [];
+          if (omieEnviadosTotal > 0) partes.push(`${omieEnviadosTotal} enviado(s) ao Omie`);
+          if (omiePuladosTotal > 0) partes.push(`${omiePuladosTotal} D1 pulado(s)`);
+          if (omieErrosTotal > 0) partes.push(`${omieErrosTotal} erro(s) no Omie`);
+          if (omieErrosTotal > 0) {
+            toast.warning(`⚠️ Omie: ${partes.join(' | ')}`);
+          } else {
+            toast.success(`📡 Omie: ${partes.join(' | ')}`);
+          }
         }
       }
     } catch (error) {
