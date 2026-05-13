@@ -29,28 +29,58 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
   const [emitindo, setEmitindo] = useState(false);
   const [resultado, setResultado] = useState(null);
 
-  // Busca pedidos em etapa 50 DIRETO do Omie (em tempo real) — já filtra cancelados
-  // Não usamos o espelho local porque ele pode estar desatualizado e mostrar pedidos cancelados como etapa 50.
+  // Buscar cargas FATURADAS — pedidos só aparecem aqui se a carga já foi faturada (etapa 50 no Omie)
+  const { data: cargas = [] } = useQuery({
+    queryKey: ['cargasFaturadasEmissao'],
+    queryFn: () => base44.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200),
+    enabled: ativa,
+    staleTime: 60000
+  });
+
+  // Map: codigo_pedido (string) → numero_carga (somente cargas faturadas)
+  const cargaPorPedido = useMemo(() => {
+    const map = new Map();
+    cargas.forEach(c => {
+      (c.pedidos_omie || []).forEach(p => {
+        if (p.codigo_pedido) map.set(String(p.codigo_pedido), c.numero_carga || '');
+      });
+    });
+    return map;
+  }, [cargas]);
+
+  // Busca pedidos em etapa 50 DIRETO do Omie e filtra apenas os que estão em cargas faturadas e ainda sem NF
   const { data: espelho = [], isLoading, refetch } = useQuery({
-    queryKey: ['pedidosOmieEmissaoEtapa50'],
+    queryKey: ['pedidosOmieEmissaoEtapa50', cargas.length],
     queryFn: async () => {
+      if (cargas.length === 0) return [];
+
       const { data } = await base44.functions.invoke('buscarPedidosOmie', {
         etapa: '50',
         registros_por_pagina: 100,
         buscar_todas_paginas: true,
         max_paginas: 10,
-        incluir_cancelados: false  // CRÍTICO: garante que pedidos cancelados não venham
+        incluir_cancelados: false
       });
       if (!data?.sucesso) throw new Error(data?.error || 'Erro ao buscar pedidos Omie');
-      // Mapeia para os mesmos campos que o espelho fornecia (para o resto da UI não mudar)
-      // buscarPedidosOmie retorna pouca info do cliente — vamos enriquecer pelo PedidoLiberadoOmie
-      const pedidosOmie = data.pedidos || [];
+
+      // Só aceita pedidos que pertencem a uma carga FATURADA E que ainda não tenham NF emitida
+      const pedidosOmie = (data.pedidos || []).filter(p => {
+        const numCarga = cargaPorPedido.get(String(p.codigo_pedido));
+        if (!numCarga) return false; // pedido sem carga faturada — não exibe
+        // Localiza o pedido dentro da carga para checar se já tem NF
+        for (const c of cargas) {
+          const item = (c.pedidos_omie || []).find(x => String(x.codigo_pedido) === String(p.codigo_pedido));
+          if (item && item.numero_nf) return false; // já emitiu NF
+        }
+        return true;
+      });
+
       const codigos = pedidosOmie.map(p => String(p.codigo_pedido));
-      // Busca espelho para complementar cidade/nome/cliente_id (Omie só retorna codigo_cliente)
       const espelhoLocal = codigos.length > 0
         ? await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigos } }, '-sincronizado_em', 500)
         : [];
       const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
+
       return pedidosOmie.map(p => {
         const e = mapaEspelho.get(String(p.codigo_pedido)) || {};
         return {
@@ -65,28 +95,9 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         };
       });
     },
-    enabled: ativa,
+    enabled: ativa && cargas.length > 0,
     staleTime: 30000
   });
-
-  // Buscar cargas para filtro por número
-  const { data: cargas = [] } = useQuery({
-    queryKey: ['cargasParaEmissao'],
-    queryFn: () => base44.entities.Carga.list('-created_date', 200),
-    enabled: ativa,
-    staleTime: 60000
-  });
-
-  // Map: codigo_pedido (string) → numero_carga
-  const cargaPorPedido = useMemo(() => {
-    const map = new Map();
-    cargas.forEach(c => {
-      (c.pedidos_omie || []).forEach(p => {
-        if (p.codigo_pedido) map.set(String(p.codigo_pedido), c.numero_carga || '');
-      });
-    });
-    return map;
-  }, [cargas]);
 
   // Se veio cargaFiltro pela URL, pré-popula o filtro de carga
   useEffect(() => {
@@ -168,8 +179,9 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         <CardContent className="py-3 text-sm text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <b>Como funciona:</b> Esta lista mostra pedidos em etapa <b>50 (Faturar)</b> do Omie.
-            Selecione um ou vários e clique em "Emitir NF-e" para gerar a nota fiscal.
+            <b>Como funciona:</b> Lista apenas pedidos vinculados a <b>cargas faturadas</b> que ainda não tiveram NF emitida.
+            Pedidos de cargas em montagem ou cancelados <b>não aparecem</b>.
+            Selecione um ou vários e clique em "Emitir NF-e".
             Se o cliente tiver modalidade <b>BOLETO BANCÁRIO</b> no cadastro, o boleto será gerado automaticamente após a emissão.
           </div>
         </CardContent>
@@ -199,7 +211,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
 
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-slate-600">
-              {pedidosFiltrados.length} pedido(s) em etapa 50
+              {pedidosFiltrados.length} pedido(s) prontos para emissão
               {algumaMarcada && (
                 <span className="ml-2 text-cyan-700 font-medium">({selecionados.size} selecionado{selecionados.size > 1 ? 's' : ''})</span>
               )}
