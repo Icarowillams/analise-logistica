@@ -94,6 +94,7 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
   }, [produtos, fatorCaixaMap]);
 
   const totalCaixas = produtosCalculados.reduce((s, p) => s + (p.qtde_caixas || 0), 0);
+  const totalPacotes = produtosCalculados.reduce((s, p) => s + Number(p.quantidade || 0), 0);
   const dataRelatorio = fmtDateTime(new Date());
 
   const handlePrint = () => {
@@ -235,19 +236,23 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
           <table style={{ width: '100%', marginTop: '8px', border: '1px solid #000', borderCollapse: 'collapse', fontSize: '10px' }}>
             <tbody>
               <tr>
-                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '25%' }}>
+                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '20%' }}>
+                  <span style={{ color: '#555', fontSize: '8.5px', textTransform: 'uppercase' }}>Total de Pacotes</span><br />
+                  <strong style={{ fontSize: '12px' }}>{fmtInt(totalPacotes)}</strong>
+                </td>
+                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '20%' }}>
                   <span style={{ color: '#555', fontSize: '8.5px', textTransform: 'uppercase' }}>Total Caixas (aprox.)</span><br />
                   <strong style={{ fontSize: '12px' }}>{fmtInt(totalCaixas)}</strong>
                 </td>
-                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '25%' }}>
+                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '20%' }}>
                   <span style={{ color: '#555', fontSize: '8.5px', textTransform: 'uppercase' }}>Vl. Total Caixas Saída</span><br />
                   __________
                 </td>
-                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '25%' }}>
+                <td style={{ padding: '6px 10px', borderRight: '1px solid #000', borderBottom: '1px solid #000', width: '20%' }}>
                   <span style={{ color: '#555', fontSize: '8.5px', textTransform: 'uppercase' }}>Vl. Total Caixas Retorno</span><br />
                   __________
                 </td>
-                <td style={{ padding: '6px 10px', borderBottom: '1px solid #000', width: '25%' }}>
+                <td style={{ padding: '6px 10px', borderBottom: '1px solid #000', width: '20%' }}>
                   <span style={{ color: '#555', fontSize: '8.5px', textTransform: 'uppercase' }}>Valor Total de Caixas</span><br />
                   __________
                 </td>
