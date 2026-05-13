@@ -7,14 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, FileSignature, Send, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Search, Loader2, FileSignature, Send, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 
 /**
  * Aba "Emissão de NF-e".
@@ -27,7 +21,6 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
   const [emitindo, setEmitindo] = useState(false);
-  const [resultado, setResultado] = useState(null);
 
   // Buscar cargas FATURADAS — pedidos só aparecem aqui se a carga já foi faturada (etapa 50 no Omie)
   const { data: cargas = [] } = useQuery({
@@ -147,23 +140,31 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
       return;
     }
     setEmitindo(true);
-    setResultado(null);
     try {
       const { data } = await base44.functions.invoke('emitirNfsLoteOmie', {
         codigos_pedido: codigos
       });
-      setResultado(data);
-      if (data?.sucessos > 0) {
-        toast.success(`${data.sucessos} NF(s) autorizada(s)${data.clientes_boleto > 0 ? ` — ${data.clientes_boleto} boleto(s) sendo gerados` : ''}`);
+
+      // Apenas mostra toast quando há resultado final (autorizada ou rejeitada).
+      // Pendentes/processamento → silencioso, usuário acompanha pelo Log de Emissão.
+      const autorizadas = data?.sucessos || 0;
+      const rejeitadas = data?.rejeitadas || 0;
+
+      if (autorizadas > 0) {
+        toast.success(
+          `${autorizadas} NF(s) autorizada(s)${data?.clientes_boleto > 0 ? ` — ${data.clientes_boleto} boleto(s) gerado(s)` : ''}. Veja o Log de Emissão.`
+        );
       }
-      if (data?.rejeitadas > 0) {
-        toast.error(`${data.rejeitadas} NF(s) rejeitada(s) pela SEFAZ — veja o detalhe`);
+      if (rejeitadas > 0) {
+        toast.error(`${rejeitadas} NF(s) rejeitada(s). Veja o motivo no Log de Emissão.`);
       }
-      if (data?.pendentes > 0) {
-        toast.warning(`${data.pendentes} NF(s) ainda em processamento — atualize a lista em alguns segundos`);
+      if (autorizadas === 0 && rejeitadas === 0) {
+        // Tudo em processamento — sem popup, só uma nota discreta
+        toast.message('Emissão enviada. Acompanhe o resultado no Log de Emissão.');
       }
+
       setSelecionados(new Set());
-      // Aguarda alguns segundos e atualiza a lista (etapa pode ter mudado)
+      // Atualiza a lista após alguns segundos (etapa pode ter mudado)
       setTimeout(() => refetch(), 5000);
     } catch (e) {
       toast.error('Erro ao emitir NFs: ' + e.message);
@@ -295,81 +296,6 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         </CardContent>
       </Card>
 
-      {/* Dialog com o resultado da última emissão em lote */}
-      <Dialog open={!!resultado} onOpenChange={(open) => !open && setResultado(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Resultado da emissão</DialogTitle>
-          </DialogHeader>
-          {resultado && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-4 gap-3">
-                <div className="rounded-lg bg-green-50 p-3 text-center">
-                  <div className="text-2xl font-bold text-green-700">{resultado.sucessos || 0}</div>
-                  <div className="text-xs text-green-600">Autorizadas</div>
-                </div>
-                <div className="rounded-lg bg-red-50 p-3 text-center">
-                  <div className="text-2xl font-bold text-red-700">{resultado.rejeitadas || resultado.erros || 0}</div>
-                  <div className="text-xs text-red-600">Rejeitadas</div>
-                </div>
-                <div className="rounded-lg bg-amber-50 p-3 text-center">
-                  <div className="text-2xl font-bold text-amber-700">{resultado.pendentes || 0}</div>
-                  <div className="text-xs text-amber-600">Em processamento</div>
-                </div>
-                <div className="rounded-lg bg-blue-50 p-3 text-center">
-                  <div className="text-2xl font-bold text-blue-700">{resultado.clientes_boleto || 0}</div>
-                  <div className="text-xs text-blue-600">Boletos automáticos</div>
-                </div>
-              </div>
-
-              <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 sticky top-0">
-                    <tr>
-                      <th className="p-2 text-left">Pedido</th>
-                      <th className="p-2 text-left">Status</th>
-                      <th className="p-2 text-left">Mensagem</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(resultado.resultados || []).map((r, idx) => {
-                      const corLinha = r.sucesso ? '' : r.rejeitada ? 'bg-red-50' : r.pendente ? 'bg-amber-50' : 'bg-red-50';
-                      const corTexto = r.sucesso ? 'text-slate-700' : r.rejeitada ? 'text-red-700 font-medium' : r.pendente ? 'text-amber-700' : 'text-red-700';
-                      return (
-                        <tr key={idx} className={`border-t ${corLinha}`}>
-                          <td className="p-2 font-mono text-xs align-top">
-                            {r.codigo_pedido}
-                            {r.numero_nf && <div className="text-green-700 font-semibold">NF {r.numero_nf}</div>}
-                          </td>
-                          <td className="p-2 align-top">
-                            {r.sucesso
-                              ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                              : r.pendente
-                                ? <AlertCircle className="w-4 h-4 text-amber-600" />
-                                : <XCircle className="w-4 h-4 text-red-600" />
-                            }
-                          </td>
-                          <td className={`p-2 text-xs ${corTexto}`}>{r.mensagem}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {resultado.boletos_auto && (
-                <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
-                  <b>Boletos automáticos:</b>{' '}
-                  {resultado.boletos_auto.error
-                    ? `Erro: ${resultado.boletos_auto.error}`
-                    : `${resultado.boletos_auto.sucessos || 0} gerados, ${resultado.boletos_auto.erros || 0} erros, ${resultado.boletos_auto.skips || 0} ignorados.`
-                  }
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
