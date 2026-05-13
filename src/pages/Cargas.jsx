@@ -401,7 +401,9 @@ export default function Cargas() {
           {isLoading ? (
             <div className="py-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
           ) : (
-            <DataTable data={cargas} columns={columns} searchable pageSize={50} emptyMessage="Nenhuma carga criada ainda" />
+            <div className="[&_table]:w-full [&_table]:table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_th]:whitespace-normal [&_.relative.w-full.overflow-auto]:overflow-visible">
+              <DataTable data={cargas} columns={columns} searchable={false} pageSize={50} emptyMessage="Nenhuma carga criada ainda" />
+            </div>
           )}
         </CardContent>
       </Card>
