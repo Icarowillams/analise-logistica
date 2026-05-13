@@ -46,82 +46,41 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
   const [cargasPorNf, setCargasPorNf] = useState({}); // cNumero(normalizado) → numero_carga
 
-  // Consolida números de NF da Carga + espelho PedidoLiberadoOmie + LogEmissaoNF
-  // (cobre o caso de a carga não ter o numero_nf gravado nos pedidos_omie ainda)
-  const getNotasCarga = async (carga) => {
-    if (!carga) return new Set();
-    const numeros = new Set();
-
-    (carga.notas_fiscais || []).forEach(n => n && numeros.add(String(n)));
-    (carga.pedidos_omie || []).forEach(p => {
-      [p.numero_nf, p.numero_nota_fiscal, p.nf, p.nota_fiscal].forEach(n => n && numeros.add(String(n)));
-    });
-
-    const codigosPedido = (carga.pedidos_omie || [])
-      .map(p => p.codigo_pedido && String(p.codigo_pedido))
-      .filter(Boolean);
-
-    if (codigosPedido.length > 0) {
-      const resultados = await Promise.all(
-        codigosPedido.flatMap(cod => [
-          base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }).catch(() => []),
-          base44.entities.LogEmissaoNF.filter({ codigo_pedido: cod, status: 'autorizada' }).catch(() => []),
-          base44.entities.Pedido.filter({ omie_codigo_pedido: cod }).catch(() => [])
-        ])
-      );
-      resultados.flat().forEach(r => {
-        if (r?.numero_nf) numeros.add(String(r.numero_nf));
-        if (r?.numero_nota_fiscal) numeros.add(String(r.numero_nota_fiscal));
-      });
-    }
-
-    return new Set([...numeros].map(n => String(n).replace(/\D/g, '')).filter(Boolean));
-  };
-
-  const filtrarNfsPorCarga = async (nfs, carga) => {
+  // Filtra NFs pela carga usando nIdPedido (Omie) — cruza com Carga.pedidos_omie[].codigo_pedido
+  const filtrarNfsPorCarga = (nfs, carga) => {
     if (!carga) return nfs;
-    const notasCarga = await getNotasCarga(carga);
-    if (notasCarga.size === 0) return [];
-    return (nfs || []).filter(nf => notasCarga.has(String(nf.cNumero || '').replace(/\D/g, '')));
+    const codigosPedido = new Set(
+      (carga.pedidos_omie || [])
+        .map(p => p.codigo_pedido && String(p.codigo_pedido))
+        .filter(Boolean)
+    );
+    if (codigosPedido.size === 0) return [];
+    return (nfs || []).filter(nf => codigosPedido.has(String(nf.nIdPedido || '')));
   };
 
-  // Mapeia NF (cNumero) → numero_carga consultando as 3 fontes para os pedidos exibidos
+  // Mapeia NF (cNumero normalizado) → numero_carga usando nIdPedido (omie_codigo_pedido)
+  // Estratégia: varre TODAS as cargas e indexa codigo_pedido → numero_carga;
+  // depois para cada NF procura no índice pelo nIdPedido (que é o omie_codigo_pedido).
   const buscarCargasDasNfs = async (nfs) => {
     const mapa = {}; // cNumero(normalizado) → numero_carga
     if (!nfs || nfs.length === 0) return mapa;
 
-    // Para cada NF, buscamos pedidos locais por numero_nota_fiscal e o espelho por numero_nf
-    const consultas = nfs.flatMap(nf => {
-      const num = String(nf.cNumero || '').replace(/\D/g, '');
-      if (!num) return [];
-      return [
-        base44.entities.Pedido.filter({ numero_nota_fiscal: nf.cNumero }).catch(() => []).then(arr => ({ num, arr, tipo: 'pedido' })),
-        base44.entities.PedidoLiberadoOmie.filter({ numero_nf: String(nf.cNumero) }).catch(() => []).then(arr => ({ num, arr, tipo: 'espelho' }))
-      ];
-    });
-
-    const resultados = await Promise.all(consultas);
-    const codigosPedidoParaCarga = []; // [{num, codigo_pedido}]
-
-    resultados.forEach(({ num, arr, tipo }) => {
-      arr.forEach(r => {
-        if (tipo === 'pedido' && r.numero_carga && !mapa[num]) mapa[num] = r.numero_carga;
-        if (tipo === 'espelho' && r.codigo_pedido) codigosPedidoParaCarga.push({ num, codigo_pedido: String(r.codigo_pedido) });
-      });
-    });
-
-    // Fallback: para NFs sem carga ainda, varre Cargas e procura o codigo_pedido em pedidos_omie
-    const semCarga = codigosPedidoParaCarga.filter(c => !mapa[c.num]);
-    if (semCarga.length > 0) {
-      try {
-        const cargas = await base44.entities.Carga.list('-created_date', 500);
-        semCarga.forEach(({ num, codigo_pedido }) => {
-          if (mapa[num]) return;
-          const c = cargas.find(cg => (cg.pedidos_omie || []).some(p => String(p.codigo_pedido) === codigo_pedido));
-          if (c?.numero_carga) mapa[num] = c.numero_carga;
+    try {
+      const cargas = await base44.entities.Carga.list('-created_date', 1000);
+      const indice = {}; // codigo_pedido → numero_carga
+      cargas.forEach(c => {
+        (c.pedidos_omie || []).forEach(p => {
+          const cod = String(p.codigo_pedido || '');
+          if (cod && c.numero_carga && !indice[cod]) indice[cod] = c.numero_carga;
         });
-      } catch { /* segue */ }
-    }
+      });
+
+      nfs.forEach(nf => {
+        const num = String(nf.cNumero || '').replace(/\D/g, '');
+        const codPed = String(nf.nIdPedido || '');
+        if (num && codPed && indice[codPed]) mapa[num] = indice[codPed];
+      });
+    } catch { /* segue */ }
 
     return mapa;
   };
@@ -149,7 +108,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         registros_por_pagina: 50
       });
       if (data?.sucesso) {
-        const nfsFiltradas = await filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
+        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
         const mapaCargas = await buscarCargasDasNfs(nfsFiltradas);
         setCargasPorNf(mapaCargas);
         setResultado(cargaParaFiltrar ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
