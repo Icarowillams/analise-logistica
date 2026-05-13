@@ -54,7 +54,14 @@ const ABAS_SISTEMA = [
   { id: 'PreCadastros', nome: 'Pré-Cadastros', grupo: 'cadastros' },
   { id: 'SincronizarClientesOmie', nome: 'Sincronizar Clientes Omie', grupo: 'cadastros' },
   { id: 'EnviarRotasOmie', nome: 'Enviar Rotas Omie', grupo: 'pedidos' },
-  { id: 'RelatorioRotinaSupervisores', nome: 'Rotina Supervisores', grupo: 'relatorios' }
+  { id: 'RelatorioRotinaSupervisores', nome: 'Rotina Supervisores', grupo: 'relatorios' },
+  // Logística
+  { id: 'NotasOmie', nome: 'Notas Fiscais Omie', grupo: 'logistica' },
+  { id: 'MontagemCarga', nome: 'Montagem de Carga', grupo: 'logistica' },
+  { id: 'Cargas', nome: 'Cargas', grupo: 'logistica' },
+  { id: 'AjustesPedidos', nome: 'Ajustes de Pedidos', grupo: 'logistica' },
+  { id: 'BoletosOmie', nome: 'Boletos Omie', grupo: 'logistica' },
+  { id: 'AcertoCaixa', nome: 'Acerto de Caixa', grupo: 'logistica' }
 ];
 
 const RELATORIOS_PERMISSOES = [
@@ -721,6 +728,7 @@ export default function Permissoes() {
                       {grupo === 'visitas' && 'Visitas'}
                       {grupo === 'relatorios' && 'Relatórios'}
                       {grupo === 'pedidos' && 'Pedidos'}
+                      {grupo === 'logistica' && 'Logística'}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {abas.map(aba => (
