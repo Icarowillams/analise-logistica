@@ -55,6 +55,9 @@ Deno.serve(async (req) => {
     const pedidos = carga.pedidos_omie || [];
     const resultados = [];
 
+    // ATENÇÃO: Esta função APENAS move os pedidos para etapa "Faturar" (50) no Omie
+    // e marca a carga como faturada. A emissão da NF-e e geração de boleto agora
+    // ocorre na tela "Notas Omie → Emissão" de forma manual (individual ou em lote).
     for (const p of pedidos) {
       // Pula pedidos D1 (cliente não emite NF)
       if (p.tipo_nota === 'D1') {
@@ -63,32 +66,19 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // 1) Move pedido para etapa 50 (Faturar)
+        // Move pedido para etapa 50 (Faturar) — sem emitir NF
         await omieCall('TrocarEtapaPedido', {
           codigo_pedido: Number(p.codigo_pedido),
           etapa: String(etapa_destino)
         });
 
-        // 2) Dispara a emissão da NF-e via FaturarPedidoVenda (endpoint pedidovendafat)
-        // Sem esse passo o pedido fica parado em 50 esperando o scheduler interno do Omie.
-        let faturamentoErro = null;
-        try {
-          await omieCall('FaturarPedidoVenda', {
-            nCodPed: Number(p.codigo_pedido)
-          }, 1, OMIE_FAT_URL);
-        } catch (fatErr) {
-          faturamentoErro = fatErr.message;
-        }
-
         resultados.push({
           codigo_pedido: p.codigo_pedido,
-          sucesso: !faturamentoErro,
+          sucesso: true,
           etapa_atual: String(etapa_destino),
           nf_emitida: false,
           numero_nf: null,
-          mensagem: faturamentoErro
-            ? `Movido para etapa ${etapa_destino}, mas Omie rejeitou faturamento: ${faturamentoErro}`
-            : `Movido para etapa ${etapa_destino} e faturamento solicitado. Aguardando SEFAZ…`
+          mensagem: `Movido para etapa ${etapa_destino} (Faturar). Use "Notas Omie → Emissão" para gerar a NF.`
         });
       } catch (err) {
         resultados.push({
@@ -100,76 +90,11 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // Aguarda alguns segundos para o scheduler do Omie processar e consulta
-    // o status real de cada pedido que foi movido com sucesso.
-    const paraConsultar = resultados.filter(r => r.sucesso === true);
-    if (paraConsultar.length > 0) {
-      await new Promise(r => setTimeout(r, 8000));
-
-      for (const r of paraConsultar) {
-        try {
-          const consulta = await omieCall('ConsultarPedido', {
-            codigo_pedido: Number(r.codigo_pedido)
-          });
-          const cab = consulta?.pedido_venda_produto?.cabecalho || consulta?.cabecalho || {};
-          const infoNf = consulta?.pedido_venda_produto?.informacoes_adicionais || consulta?.informacoes_adicionais || {};
-          const totalNf = consulta?.pedido_venda_produto?.total_pedido || {};
-
-          const numeroNf = cab.numero_nf || infoNf.numero_nf || totalNf.numero_nf || null;
-          const etapaAtual = cab.etapa || null;
-          const nfEmitida = !!numeroNf;
-
-          r.etapa_atual = etapaAtual;
-          r.numero_nf = numeroNf;
-          r.nf_emitida = nfEmitida;
-
-          if (nfEmitida) {
-            r.mensagem = `NF ${numeroNf} emitida no Omie.`;
-          } else if (String(etapaAtual) === '60') {
-            // Etapa 60 significa que o faturamento foi aceito/processado no Omie.
-            // A NF pode aparecer alguns minutos depois; isso NÃO é erro da carga.
-            r.sucesso = true;
-            r.mensagem = 'Pedido faturado no Omie (etapa 60). NF ainda aguardando processamento/retorno da SEFAZ.';
-          } else {
-            // Só trata como erro quando o pedido NÃO chegou na etapa de faturado.
-            let motivoOmie = null;
-            try {
-              const status = await omieCall('StatusPedido', {
-                codigo_pedido: Number(r.codigo_pedido)
-              });
-              const pendencias = status?.pendencias || status?.lista_pendencias || [];
-              const pendenciasArr = Array.isArray(pendencias) ? pendencias : (pendencias?.pendencia || []);
-              if (pendenciasArr.length > 0) {
-                motivoOmie = pendenciasArr
-                  .map(p => p.cDescricao || p.descricao || p.cMensagem || p.mensagem)
-                  .filter(Boolean)
-                  .join(' | ');
-              }
-              if (!motivoOmie && status?.cDescStatus) {
-                motivoOmie = status.cDescStatus;
-              }
-            } catch (statusErr) {
-              motivoOmie = `Falha ao consultar status: ${statusErr.message}`;
-            }
-
-            r.motivo_omie = motivoOmie;
-            r.sucesso = false;
-            r.mensagem = motivoOmie
-              ? `NF NÃO emitida — Omie: ${motivoOmie}`
-              : `Pedido na etapa ${etapaAtual || '?'}. NF ainda não emitida — verifique pendências no Omie.`;
-          }
-        } catch (err) {
-          r.mensagem = `Movido, mas falha ao consultar status: ${err.message}`;
-        }
-        await new Promise(r2 => setTimeout(r2, 800));
-      }
-    }
-
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => r.sucesso === false).length;
     const skips = resultados.filter(r => r.skip).length;
-    const nfsEmitidas = resultados.filter(r => r.nf_emitida).length;
-    const aguardandoNf = resultados.filter(r => r.sucesso === true && !r.nf_emitida).length;
+    const nfsEmitidas = 0;
+    const aguardandoNf = sucessos;
 
     // STATUS SIMPLIFICADO — apenas 3 estados possíveis para a carga:
     //   montagem → faturada → cancelada
@@ -218,16 +143,16 @@ Deno.serve(async (req) => {
       notas_fiscais: notasFiscaisAtualizadas
     });
 
-    // Atualiza também a entidade Pedido local (se houver match por omie_codigo_pedido)
+    // Atualiza a entidade Pedido local — marca como faturado (mesmo sem NF emitida,
+    // pois "faturar carga" agora só move para etapa 50). A NF será gerada depois.
     for (const r of resultados) {
-      if (!r.numero_nf || !r.codigo_pedido) continue;
+      if (!r.sucesso || !r.codigo_pedido) continue;
       try {
         const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({
           omie_codigo_pedido: String(r.codigo_pedido)
         });
         for (const pl of pedidosLocais) {
           await base44.asServiceRole.entities.Pedido.update(pl.id, {
-            numero_nota_fiscal: String(r.numero_nf),
             faturado: true,
             data_faturamento: new Date().toISOString(),
             status: 'faturado'
@@ -253,25 +178,8 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    // 🤖 GERAÇÃO AUTOMÁTICA DE BOLETOS
-    // Após faturamento, dispara boletos para os pedidos que chegaram em etapa 60.
-    // Roda em background — não bloqueia a resposta para o usuário.
-    const pedidosParaBoleto = resultados
-      .filter(r => r.sucesso === true && (r.etapa_atual === '60' || r.nf_emitida))
-      .map(r => r.codigo_pedido);
-
-    let boletosResultado = null;
-    if (pedidosParaBoleto.length > 0) {
-      try {
-        const inv = await base44.functions.invoke('gerarBoletosAutoPedidos', {
-          codigos_pedido: pedidosParaBoleto
-        });
-        boletosResultado = inv?.data || null;
-      } catch (e) {
-        console.error('[faturarCargaOmie] erro ao gerar boletos auto:', e.message);
-      }
-    }
-
+    // NOTA: Geração de NF-e e boletos foi movida para a tela "Notas Omie → Emissão"
+    // (manual, individual ou em lote). Esta função NÃO emite NF nem boleto.
     return Response.json({
       sucesso: true,
       total: pedidos.length,
@@ -280,8 +188,7 @@ Deno.serve(async (req) => {
       skips,
       nfs_emitidas: nfsEmitidas,
       aguardando_nf: aguardandoNf,
-      resultados,
-      boletos_auto: boletosResultado
+      resultados
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

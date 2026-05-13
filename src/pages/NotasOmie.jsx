@@ -2,12 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { FileText, FileWarning } from 'lucide-react';
+import { FileText, FileWarning, Printer, FileSignature } from 'lucide-react';
 import NotasNF55Tab from '@/components/notasOmie/NotasNF55Tab';
 import NotasD1Tab from '@/components/notasOmie/NotasD1Tab';
+import EmissaoNFTab from '@/components/notasOmie/EmissaoNFTab';
 
 export default function NotasOmie() {
-  const [tab, setTab] = useState('nf55');
+  // Abas:
+  // - impressao_nf55  → consulta/impressão de NF-e (NF 55) já emitidas no Omie
+  // - impressao_d1    → consulta/impressão de notas internas D1
+  // - emissao         → emitir NF-e (individual ou em lote) para pedidos em etapa 50
+  const [tab, setTab] = useState('impressao_nf55');
   const [cargaFiltro, setCargaFiltro] = useState(null);
   const [cargaFiltroId, setCargaFiltroId] = useState(null);
 
@@ -15,7 +20,11 @@ export default function NotasOmie() {
     const params = new URLSearchParams(window.location.search);
     const cargaId = params.get('carga_id');
     const tabParam = params.get('tab');
-    if (tabParam === 'd1' || tabParam === 'nf55') setTab(tabParam);
+    // Aceita os valores legacy (nf55 / d1) e os novos (impressao_nf55 / impressao_d1 / emissao)
+    if (tabParam === 'd1' || tabParam === 'impressao_d1') setTab('impressao_d1');
+    else if (tabParam === 'nf55' || tabParam === 'impressao_nf55') setTab('impressao_nf55');
+    else if (tabParam === 'emissao') setTab('emissao');
+
     if (!cargaId) return;
 
     setCargaFiltroId(cargaId);
@@ -37,7 +46,7 @@ export default function NotasOmie() {
         <FileText className="w-8 h-8 text-amber-500" />
         <div>
           <h1 className="text-2xl font-bold">Notas Fiscais</h1>
-          <p className="text-sm text-slate-500">Consulta de NF-e (Omie) e Notas D1 (vendas internas)</p>
+          <p className="text-sm text-slate-500">Emissão, consulta e impressão de NF-e (Omie) e notas D1 internas</p>
         </div>
       </div>
 
@@ -50,21 +59,28 @@ export default function NotasOmie() {
       )}
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="nf55" className="flex items-center gap-2">
-            <FileText className="w-4 h-4" /> Nota 55 (NF-e)
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl">
+          <TabsTrigger value="emissao" className="flex items-center gap-2">
+            <FileSignature className="w-4 h-4" /> Emissão
           </TabsTrigger>
-          <TabsTrigger value="d1" className="flex items-center gap-2">
-            <FileWarning className="w-4 h-4" /> Nota D1 (Interna)
+          <TabsTrigger value="impressao_nf55" className="flex items-center gap-2">
+            <Printer className="w-4 h-4" /> Impressão NF 55
+          </TabsTrigger>
+          <TabsTrigger value="impressao_d1" className="flex items-center gap-2">
+            <FileWarning className="w-4 h-4" /> Impressão D1
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="nf55" className="mt-4">
-          <NotasNF55Tab cargaFiltro={cargaFiltro} ativa={tab === 'nf55'} />
+        <TabsContent value="emissao" className="mt-4">
+          <EmissaoNFTab cargaFiltro={cargaFiltro} ativa={tab === 'emissao'} />
         </TabsContent>
 
-        <TabsContent value="d1" className="mt-4">
-          <NotasD1Tab cargaFiltroId={cargaFiltroId} ativa={tab === 'd1'} />
+        <TabsContent value="impressao_nf55" className="mt-4">
+          <NotasNF55Tab cargaFiltro={cargaFiltro} ativa={tab === 'impressao_nf55'} />
+        </TabsContent>
+
+        <TabsContent value="impressao_d1" className="mt-4">
+          <NotasD1Tab cargaFiltroId={cargaFiltroId} ativa={tab === 'impressao_d1'} />
         </TabsContent>
       </Tabs>
     </div>
