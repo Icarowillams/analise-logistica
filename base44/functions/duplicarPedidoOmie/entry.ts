@@ -113,12 +113,55 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
   const novoCodigoPedido = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
   const novoNumeroPedido = resultado.numero_pedido || resultado.numero_pedido_omie || null;
 
-  // 4. Log gerencial
+  // 4. Criar registro local na entidade Pedido (status pendente) para aparecer no Gerenciar Pedidos
+  let pedidoLocalId = null;
+  try {
+    const cab = pedidoOriginal.cabecalho || {};
+    // Tenta resolver o Cliente local pelo codigo_omie ou codigo_integracao
+    let clienteLocal = null;
+    if (cab.codigo_cliente) {
+      const found = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: String(cab.codigo_cliente) });
+      if (found?.length) clienteLocal = found[0];
+    }
+    if (!clienteLocal && cab.codigo_cliente_integracao) {
+      const found = await base44.asServiceRole.entities.Cliente.filter({ codigo_integracao: String(cab.codigo_cliente_integracao) });
+      if (found?.length) clienteLocal = found[0];
+    }
+
+    const totalItens = (pedidoOriginal.det || []).length;
+    const valorTotal = (pedidoOriginal.det || []).reduce((s, d) => s + (Number(d.produto?.valor_total) || 0), 0);
+
+    const novoPedidoLocal = await base44.asServiceRole.entities.Pedido.create({
+      tipo: 'venda',
+      origem: 'omie',
+      numero_pedido: novoNumeroPedido ? String(novoNumeroPedido) : '',
+      status: 'pendente',
+      etapa: 'comercial',
+      cliente_id: clienteLocal?.id || '',
+      cliente_codigo: clienteLocal?.codigo_interno || clienteLocal?.codigo_omie || '',
+      cliente_nome: clienteLocal?.razao_social || '',
+      cliente_nome_fantasia: clienteLocal?.nome_fantasia || '',
+      cliente_cpf_cnpj: clienteLocal?.cnpj_cpf || '',
+      modelo_nota: '55',
+      total_itens: totalItens,
+      valor_total: valorTotal,
+      omie_enviado: true,
+      omie_codigo_pedido: String(novoCodigoPedido || ''),
+      data_envio: new Date().toISOString(),
+      pedido_origem_numero: cab.numero_pedido || '',
+      observacoes: `Pedido duplicado a partir do pedido Omie ${cab.numero_pedido || codigo_pedido}`
+    });
+    pedidoLocalId = novoPedidoLocal?.id;
+  } catch (e) {
+    console.error('[duplicarPedidoOmie] Falha ao criar Pedido local:', e.message);
+  }
+
+  // 5. Log gerencial
   try {
     await base44.asServiceRole.functions.invoke('registrarLogGerencial', {
       tipo_acao: 'criacao',
       entidade_tipo: 'Pedido',
-      entidade_id: String(novoCodigoPedido || ''),
+      entidade_id: String(pedidoLocalId || novoCodigoPedido || ''),
       entidade_descricao: `Pedido duplicado ${novoNumeroPedido || novoCodigoPedido} (origem: ${pedidoOriginal.cabecalho?.numero_pedido || codigo_pedido})`,
       usuario_email: userEmail,
       descricao: `Duplicou pedido ${pedidoOriginal.cabecalho?.numero_pedido || codigo_pedido} → novo pedido ${novoNumeroPedido || novoCodigoPedido}`,
@@ -132,6 +175,7 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
     origem_numero: pedidoOriginal.cabecalho?.numero_pedido,
     novo_codigo_pedido: novoCodigoPedido,
     novo_numero_pedido: novoNumeroPedido,
+    pedido_local_id: pedidoLocalId,
     codigo_pedido_integracao: codigoIntegracaoNovo
   };
 }
