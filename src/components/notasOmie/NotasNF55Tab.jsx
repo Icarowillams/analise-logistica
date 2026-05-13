@@ -63,23 +63,18 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       .filter(Boolean);
 
     if (codigosPedido.length > 0) {
-      // 2a) Espelho PedidoLiberadoOmie (atualizado por webhook)
-      try {
-        const espelhos = await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigosPedido } }, '-sincronizado_em', 500);
-        espelhos.forEach(e => e.numero_nf && numeros.add(String(e.numero_nf)));
-      } catch { /* segue */ }
-
-      // 2b) Log de Emissão NF (autorizadas)
-      try {
-        const logs = await base44.entities.LogEmissaoNF.filter({ codigo_pedido: { $in: codigosPedido }, status: 'autorizada' }, '-created_date', 500);
-        logs.forEach(l => l.numero_nf && numeros.add(String(l.numero_nf)));
-      } catch { /* segue */ }
-
-      // 2c) Carga.numero_carga → procura pedidos locais e pega numero_nota_fiscal
-      try {
-        const pedidosLocais = await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigosPedido } }, '-created_date', 500);
-        pedidosLocais.forEach(p => p.numero_nota_fiscal && numeros.add(String(p.numero_nota_fiscal)));
-      } catch { /* segue */ }
+      // Consulta em paralelo cada código nas 3 fontes (o SDK não aceita $in)
+      const resultados = await Promise.all(
+        codigosPedido.flatMap(cod => [
+          base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }).catch(() => []),
+          base44.entities.LogEmissaoNF.filter({ codigo_pedido: cod, status: 'autorizada' }).catch(() => []),
+          base44.entities.Pedido.filter({ omie_codigo_pedido: cod }).catch(() => [])
+        ])
+      );
+      resultados.flat().forEach(r => {
+        if (r?.numero_nf) numeros.add(String(r.numero_nf));
+        if (r?.numero_nota_fiscal) numeros.add(String(r.numero_nota_fiscal));
+      });
     }
 
     // Normaliza (só dígitos)
