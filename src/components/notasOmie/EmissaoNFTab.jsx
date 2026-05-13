@@ -29,10 +29,42 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
   const [emitindo, setEmitindo] = useState(false);
   const [resultado, setResultado] = useState(null);
 
-  // Espelho local dos pedidos Omie em todas as etapas — filtramos apenas etapa 50
+  // Busca pedidos em etapa 50 DIRETO do Omie (em tempo real) — já filtra cancelados
+  // Não usamos o espelho local porque ele pode estar desatualizado e mostrar pedidos cancelados como etapa 50.
   const { data: espelho = [], isLoading, refetch } = useQuery({
-    queryKey: ['pedidosLiberadosOmieEmissao'],
-    queryFn: () => base44.entities.PedidoLiberadoOmie.filter({ etapa: '50' }, '-sincronizado_em', 500),
+    queryKey: ['pedidosOmieEmissaoEtapa50'],
+    queryFn: async () => {
+      const { data } = await base44.functions.invoke('buscarPedidosOmie', {
+        etapa: '50',
+        registros_por_pagina: 100,
+        buscar_todas_paginas: true,
+        max_paginas: 10,
+        incluir_cancelados: false  // CRÍTICO: garante que pedidos cancelados não venham
+      });
+      if (!data?.sucesso) throw new Error(data?.error || 'Erro ao buscar pedidos Omie');
+      // Mapeia para os mesmos campos que o espelho fornecia (para o resto da UI não mudar)
+      // buscarPedidosOmie retorna pouca info do cliente — vamos enriquecer pelo PedidoLiberadoOmie
+      const pedidosOmie = data.pedidos || [];
+      const codigos = pedidosOmie.map(p => String(p.codigo_pedido));
+      // Busca espelho para complementar cidade/nome/cliente_id (Omie só retorna codigo_cliente)
+      const espelhoLocal = codigos.length > 0
+        ? await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigos } }, '-sincronizado_em', 500)
+        : [];
+      const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
+      return pedidosOmie.map(p => {
+        const e = mapaEspelho.get(String(p.codigo_pedido)) || {};
+        return {
+          codigo_pedido: String(p.codigo_pedido),
+          numero_pedido: p.numero_pedido,
+          valor_total_pedido: p.valor_total_pedido || e.valor_total_pedido || 0,
+          quantidade_itens: p.quantidade_itens || e.quantidade_itens || 0,
+          nome_cliente: e.nome_cliente || '',
+          nome_fantasia: e.nome_fantasia || '',
+          cidade: e.cidade || '',
+          cliente_id: e.cliente_id || ''
+        };
+      });
+    },
     enabled: ativa,
     staleTime: 30000
   });
