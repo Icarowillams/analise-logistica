@@ -45,14 +45,51 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [impressaoModo, setImpressaoModo] = useState('individual'); // 'individual' | 'agrupado'
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
 
-  const getNotasCarga = (carga) => new Set([
-    ...(carga?.notas_fiscais || []),
-    ...(carga?.pedidos_omie || []).flatMap(p => [p.numero_nf, p.numero_nota_fiscal, p.nf, p.nota_fiscal])
-  ].filter(Boolean).map(n => String(n).replace(/\D/g, '')));
+  // Consolida números de NF da Carga + espelho PedidoLiberadoOmie + LogEmissaoNF
+  // (cobre o caso de a carga não ter o numero_nf gravado nos pedidos_omie ainda)
+  const getNotasCarga = async (carga) => {
+    if (!carga) return new Set();
+    const numeros = new Set();
 
-  const filtrarNfsPorCarga = (nfs, carga) => {
-    const notasCarga = getNotasCarga(carga);
-    if (!carga || notasCarga.size === 0) return nfs;
+    // 1) da própria carga
+    (carga.notas_fiscais || []).forEach(n => n && numeros.add(String(n)));
+    (carga.pedidos_omie || []).forEach(p => {
+      [p.numero_nf, p.numero_nota_fiscal, p.nf, p.nota_fiscal].forEach(n => n && numeros.add(String(n)));
+    });
+
+    // 2) Coleta códigos de pedido da carga para buscar nos espelhos
+    const codigosPedido = (carga.pedidos_omie || [])
+      .map(p => p.codigo_pedido && String(p.codigo_pedido))
+      .filter(Boolean);
+
+    if (codigosPedido.length > 0) {
+      // 2a) Espelho PedidoLiberadoOmie (atualizado por webhook)
+      try {
+        const espelhos = await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigosPedido } }, '-sincronizado_em', 500);
+        espelhos.forEach(e => e.numero_nf && numeros.add(String(e.numero_nf)));
+      } catch { /* segue */ }
+
+      // 2b) Log de Emissão NF (autorizadas)
+      try {
+        const logs = await base44.entities.LogEmissaoNF.filter({ codigo_pedido: { $in: codigosPedido }, status: 'autorizada' }, '-created_date', 500);
+        logs.forEach(l => l.numero_nf && numeros.add(String(l.numero_nf)));
+      } catch { /* segue */ }
+
+      // 2c) Carga.numero_carga → procura pedidos locais e pega numero_nota_fiscal
+      try {
+        const pedidosLocais = await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigosPedido } }, '-created_date', 500);
+        pedidosLocais.forEach(p => p.numero_nota_fiscal && numeros.add(String(p.numero_nota_fiscal)));
+      } catch { /* segue */ }
+    }
+
+    // Normaliza (só dígitos)
+    return new Set([...numeros].map(n => String(n).replace(/\D/g, '')).filter(Boolean));
+  };
+
+  const filtrarNfsPorCarga = async (nfs, carga) => {
+    if (!carga) return nfs;
+    const notasCarga = await getNotasCarga(carga);
+    if (notasCarga.size === 0) return [];
     return (nfs || []).filter(nf => notasCarga.has(String(nf.cNumero || '').replace(/\D/g, '')));
   };
 
@@ -79,7 +116,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         registros_por_pagina: 50
       });
       if (data?.sucesso) {
-        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
+        const nfsFiltradas = await filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
         setResultado(cargaParaFiltrar ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
         setPagina(pg);
       } else {
