@@ -102,6 +102,7 @@ async function buscarContextoPedido(base44, codigoPedido) {
     const p = pedidos?.[0];
     if (!p) return {};
     return {
+      pedido_id: p.id,
       numero_pedido: p.numero_pedido || '',
       cliente_id: p.cliente_id || '',
       cliente_nome: p.cliente_nome || '',
@@ -110,6 +111,28 @@ async function buscarContextoPedido(base44, codigoPedido) {
     };
   } catch {
     return {};
+  }
+}
+
+// Cancela o pedido local (Gerenciar Pedidos) gravando o motivo da rejeição da SEFAZ.
+async function cancelarPedidoLocal(base44, codigoPedido, motivo, user) {
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({
+      omie_codigo_pedido: String(codigoPedido)
+    });
+    const p = pedidos?.[0];
+    if (!p) return false;
+    await base44.asServiceRole.entities.Pedido.update(p.id, {
+      status: 'cancelado',
+      motivo_cancelamento: motivo,
+      cancelado_por: user.email,
+      cancelado_por_nome: user.full_name || '',
+      data_cancelamento: new Date().toISOString()
+    });
+    return true;
+  } catch (e) {
+    console.error('[emitirNfsLoteOmie] falha ao cancelar pedido local:', e.message);
+    return false;
   }
 }
 
@@ -176,6 +199,7 @@ Deno.serve(async (req) => {
         }).catch(() => {});
       } catch (err) {
         // Falha imediata (faultstring) — já é erro definitivo
+        const motivoErro = `[OMIE] ${err.message}`;
         resultados.push({
           codigo_pedido: codPed,
           sucesso: false,
@@ -196,8 +220,10 @@ Deno.serve(async (req) => {
         await gravarLog({
           codigo_pedido: codPed,
           status: 'erro',
-          mensagem: `[OMIE] ${err.message}`
+          mensagem: motivoErro
         });
+        // Cancela pedido local com o motivo
+        await cancelarPedidoLocal(base44, codPed, motivoErro, user);
       }
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -242,6 +268,8 @@ Deno.serve(async (req) => {
             mensagem: statusReal.mensagem,
             codigo_sefaz: cStat
           });
+          // Cancela pedido local em "Gerenciar Pedidos" com o motivo SEFAZ
+          await cancelarPedidoLocal(base44, codPed, statusReal.mensagem, user);
         } else {
           resultados.push({
             codigo_pedido: codPed,
