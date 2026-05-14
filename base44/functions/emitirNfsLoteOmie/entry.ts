@@ -92,23 +92,41 @@ async function lerStatusDoEspelho(base44, codigoPedido) {
   }
 }
 
-// Verifica se o cliente do pedido usa BOLETO BANCARIO como modalidade padrão.
+// Verifica se o pedido deve gerar boleto automático:
+//   - precisa ser do tipo VENDA (não troca/bonificação/devolução)
+//   - cliente precisa ter modalidade BOLETO BANCARIO no cadastro
 async function clienteUsaBoleto(base44, codigoPedido) {
   try {
-    // Tenta achar o Pedido local com esse omie_codigo_pedido para pegar o cliente_id
+    // Tenta achar o Pedido local com esse omie_codigo_pedido para pegar tipo + cliente_id
     const pedidos = await base44.asServiceRole.entities.Pedido.filter({
       omie_codigo_pedido: String(codigoPedido)
     });
     const pedido = pedidos?.[0];
-    if (!pedido?.cliente_id) return false;
+    if (!pedido?.cliente_id) {
+      console.log(`[clienteUsaBoleto] pedido ${codigoPedido}: não encontrado localmente ou sem cliente_id`);
+      return false;
+    }
+
+    // 🚫 Apenas pedidos de VENDA geram boleto — troca/bonificação/devolução NÃO
+    const tipo = String(pedido.tipo || 'venda').toLowerCase();
+    if (tipo !== 'venda') {
+      console.log(`[clienteUsaBoleto] pedido ${codigoPedido}: tipo=${tipo} (não-venda) — sem boleto`);
+      return false;
+    }
 
     const cliente = await base44.asServiceRole.entities.Cliente.get(pedido.cliente_id);
-    if (!cliente?.modalidade_pagamento_id) return false;
+    if (!cliente?.modalidade_pagamento_id) {
+      console.log(`[clienteUsaBoleto] pedido ${codigoPedido}: cliente sem modalidade_pagamento_id`);
+      return false;
+    }
 
     const modalidade = await base44.asServiceRole.entities.ModalidadePagamento.get(cliente.modalidade_pagamento_id);
     const nome = String(modalidade?.nome || '').toUpperCase();
-    return nome.includes('BOLETO');
-  } catch {
+    const usa = nome.includes('BOLETO');
+    console.log(`[clienteUsaBoleto] pedido ${codigoPedido}: modalidade="${nome}" → boleto=${usa}`);
+    return usa;
+  } catch (e) {
+    console.error(`[clienteUsaBoleto] erro pedido ${codigoPedido}:`, e.message);
     return false;
   }
 }
