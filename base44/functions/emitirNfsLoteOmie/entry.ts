@@ -9,11 +9,16 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // Resposta: { sucesso, total, sucessos, erros, resultados[], boletos_auto }
 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
+// Flag global do lote: se Omie bloquear por consumo, paramos de bater pra evitar piorar.
+let omieRateLimitAtivo = false;
+
 async function omieCall(url, call, param, tentativa = 1) {
+  if (omieRateLimitAtivo) {
+    throw new Error('API Omie em rate limit — consulta abortada para preservar cota');
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -22,39 +27,20 @@ async function omieCall(url, call, param, tentativa = 1) {
   const data = await res.json();
   if (data.faultstring) {
     const msg = String(data.faultstring).toLowerCase();
+    const isBlock = msg.includes('bloqueada por consumo') || msg.includes('consumo indevido');
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRate && tentativa < 4) {
+    if (isBlock) {
+      // Não insiste — Omie pôs a chave em "timeout". Marca a flag e sai.
+      omieRateLimitAtivo = true;
+      throw new Error(data.faultstring);
+    }
+    if (isRate && tentativa < 3) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
       return omieCall(url, call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
   }
   return data;
-}
-
-// Consulta o pedido DIRETO no Omie (ConsultarPedido) — fallback se o webhook ainda não chegou.
-async function consultarStatusRealNF(codigoPedido) {
-  try {
-    const data = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
-    const pv = data?.pedido_venda_produto;
-    if (!pv) return { status: 'aguardando', mensagem: 'Pedido não encontrado na consulta' };
-
-    const cab = pv.cabecalho || {};
-    const info = pv.infoNfe || pv.info_nf || {};
-    const etapa = String(cab.etapa || '');
-    const cStat = String(info.cStat || info.codigo_status || '');
-    const xMotivo = info.xMotivo || info.motivo_status || info.cMotivo || '';
-    const numNf = info.nNF || info.numero_nf || cab.numero_nfe || null;
-
-    if (cStat === '100' || cStat === '150') return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} autorizada` };
-    if (cStat && Number(cStat) >= 200 && Number(cStat) < 300) return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF rejeitada'}` };
-    if (['110', '301', '302', '205'].includes(cStat)) return { status: 'rejeitada', mensagem: `[SEFAZ ${cStat}] ${xMotivo || 'NF denegada'}` };
-    if (numNf && etapa === '60') return { status: 'emitida', numero_nf: numNf, mensagem: `NF ${numNf} emitida` };
-    if (etapa === '50') return { status: 'rejeitada', mensagem: xMotivo || 'NF rejeitada pelo Omie (pedido voltou para etapa Faturar)' };
-    return { status: 'aguardando', mensagem: xMotivo || 'NF ainda em processamento' };
-  } catch (e) {
-    return { status: 'aguardando', mensagem: `Não foi possível consultar status: ${e.message}` };
-  }
 }
 
 // 🎯 PRIMEIRA FONTE DE VERDADE: o espelho PedidoLiberadoOmie é atualizado em tempo real
@@ -249,34 +235,28 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // FASE 2 — Aguarda webhook chegar (espelho PedidoLiberadoOmie) ou consulta o Omie direto.
-    // O webhook NFe.NotaAutorizada / VendaProduto.Faturada já atualiza o espelho em tempo real.
-    // Estratégia: a cada ciclo, primeiro lê do ESPELHO (instantâneo); se não tiver status final,
-    // consulta a API Omie direto como fallback.
-    const consultarComPolling = async (codPed, maxTentativas = 12, intervaloMs = 4000) => {
-      let ultimoResultado = { status: 'aguardando', mensagem: 'NF ainda em processamento' };
+    // FASE 2 — Aguarda webhook chegar (espelho PedidoLiberadoOmie).
+    // ESTRATÉGIA CORRETA: NÃO fazemos polling agressivo na API Omie (gera rate limit).
+    // O webhook NFe.NotaAutorizada / VendaProduto.Faturada / NFe.NotaRejeitada já atualiza
+    // o espelho PedidoLiberadoOmie em tempo real. Lemos APENAS do espelho.
+    // Pedidos que ficarem "pendente" são reconciliados automaticamente pela automação
+    // reconciliarLogEmissaoNF assim que o webhook chegar (pode levar alguns segundos a minutos).
+    const aguardarEspelho = async (codPed, maxTentativas = 10, intervaloMs = 3000) => {
       for (let i = 0; i < maxTentativas; i++) {
         await new Promise(r => setTimeout(r, intervaloMs));
-
-        // 1) Primeiro: lê o espelho (atualizado por webhook em tempo real)
         const doEspelho = await lerStatusDoEspelho(base44, codPed);
         if (doEspelho && (doEspelho.status === 'emitida' || doEspelho.status === 'rejeitada')) {
           return doEspelho;
         }
-
-        // 2) Fallback: consulta direto na API Omie
-        const r = await consultarStatusRealNF(codPed);
-        ultimoResultado = r;
-        if (r.status === 'emitida' || r.status === 'rejeitada') return r;
       }
-      return ultimoResultado;
+      return { status: 'aguardando', mensagem: 'NF ainda em processamento na SEFAZ — será atualizada automaticamente pelo webhook' };
     };
 
     if (pedidosEnviados.length > 0) {
-      // Aguarda inicial: Omie precisa colocar na fila + SEFAZ responder
-      await new Promise(r => setTimeout(r, 4000));
+      // Aguarda inicial: Omie precisa colocar na fila + SEFAZ responder + webhook chegar
+      await new Promise(r => setTimeout(r, 5000));
       for (const { codigo_pedido: codPed } of pedidosEnviados) {
-        const statusReal = await consultarComPolling(codPed);
+        const statusReal = await aguardarEspelho(codPed);
         // extrai cStat da mensagem se houver (formato "[SEFAZ NNN] ...")
         const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
         const cStat = matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : '');
