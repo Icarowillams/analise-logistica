@@ -36,6 +36,7 @@ function hojeBR() {
 // Constrói payload IncluirPedido a partir de um pedido_venda_produto consultado
 function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
   const cab = pedidoOriginal.cabecalho || {};
+  const infoAdic = pedidoOriginal.informacoes_adicionais || {};
   const det = (pedidoOriginal.det || []).map((d, idx) => {
     const novoIde = { codigo_item_integracao: `${codigoIntegracaoNovo}-${idx + 1}` };
     return {
@@ -44,6 +45,16 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
       produto: { ...(d.produto || {}) }
     };
   });
+
+  // Cenário fiscal pode estar em diferentes campos dependendo da resposta do Omie:
+  //  - cabecalho.codigo_cenario / codigo_cenario_impostos
+  //  - informacoes_adicionais.codigo_cenario
+  // Replicar TODOS para garantir que bonificação/troca/etc. seja preservada.
+  const cenarioFiscal =
+    cab.codigo_cenario ||
+    cab.codigo_cenario_impostos ||
+    infoAdic.codigo_cenario ||
+    null;
 
   const cabecalho = {
     codigo_pedido_integracao: codigoIntegracaoNovo,
@@ -54,7 +65,7 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
     etapa: '10',
     codigo_parcela: cab.codigo_parcela || '999',
     quantidade_itens: det.length,
-    ...(cab.codigo_cenario_impostos ? { codigo_cenario_impostos: String(cab.codigo_cenario_impostos) } : {})
+    ...(cenarioFiscal ? { codigo_cenario: String(cenarioFiscal) } : {})
   };
 
   const payload = {
@@ -62,7 +73,9 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
     det,
     frete: pedidoOriginal.frete || { modalidade: '9' },
     informacoes_adicionais: {
-      ...(pedidoOriginal.informacoes_adicionais || {}),
+      ...infoAdic,
+      // Replica o cenário fiscal aqui também (Omie aceita nos dois lugares)
+      ...(cenarioFiscal ? { codigo_cenario: String(cenarioFiscal) } : {}),
       // Limpa campos que não devem vir do pedido antigo
       numero_pedido_cliente: undefined,
     }
@@ -110,8 +123,23 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
     return { sucesso: false, erro: resultado.faultstring, origem_codigo: codigo_pedido };
   }
 
-  const novoCodigoPedido = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
-  const novoNumeroPedido = resultado.numero_pedido || resultado.numero_pedido_omie || null;
+  let novoCodigoPedido = resultado.codigo_pedido || resultado.codigo_pedido_omie || resultado.nCodPed || null;
+  let novoNumeroPedido = resultado.numero_pedido || resultado.numero_pedido_omie || null;
+
+  // Fallback: se IncluirPedido não retornou codigo_pedido, consulta pelo codigo_pedido_integracao
+  // que acabamos de criar — sem isso, perdemos o vínculo e Liberar Pedido falha.
+  if (!novoCodigoPedido) {
+    await sleep(800);
+    const confer = await omieCall('ConsultarPedido', { codigo_pedido_integracao: codigoIntegracaoNovo });
+    if (confer?.pedido_venda_produto?.cabecalho) {
+      novoCodigoPedido = confer.pedido_venda_produto.cabecalho.codigo_pedido || novoCodigoPedido;
+      novoNumeroPedido = confer.pedido_venda_produto.cabecalho.numero_pedido || novoNumeroPedido;
+    }
+  }
+
+  if (!novoCodigoPedido) {
+    return { sucesso: false, erro: 'Pedido criado no Omie mas não retornou codigo_pedido — verifique manualmente', origem_codigo: codigo_pedido, codigo_pedido_integracao: codigoIntegracaoNovo };
+  }
 
   // 4. Criar registro local na entidade Pedido (status pendente) para aparecer no Gerenciar Pedidos
   let pedidoLocalId = null;
@@ -147,9 +175,32 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
     const totalItens = (pedidoOriginal.det || []).length;
     const valorTotal = (pedidoOriginal.det || []).reduce((s, d) => s + (Number(d.produto?.valor_total) || 0), 0);
 
+    // Determina o tipo do pedido a partir do cenário fiscal (bonificação/troca/devolução/venda)
+    const cenarioCod = pedidoOriginal.cabecalho?.codigo_cenario
+      || pedidoOriginal.cabecalho?.codigo_cenario_impostos
+      || pedidoOriginal.informacoes_adicionais?.codigo_cenario
+      || null;
+
+    let tipoPedido = 'venda';
+    let cenarioNome = '';
+    if (cenarioCod) {
+      try {
+        const cenarios = await base44.asServiceRole.entities.CenarioFiscalLocal.filter({ cenario_omie_codigo: String(cenarioCod) });
+        const cen = cenarios?.[0];
+        if (cen) {
+          cenarioNome = cen.nome || '';
+          if (['bonificacao', 'troca', 'devolucao'].includes(cen.tipo_operacao)) {
+            tipoPedido = cen.tipo_operacao;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     const novoPedidoLocal = await base44.asServiceRole.entities.Pedido.create({
-      tipo: 'venda',
+      tipo: tipoPedido,
       origem: 'omie',
+      cenario_fiscal_codigo: cenarioCod ? Number(cenarioCod) : undefined,
+      cenario_fiscal_nome: cenarioNome,
       numero_pedido: novoNumeroPedido ? String(novoNumeroPedido) : '',
       status: 'pendente',
       etapa: 'comercial',
