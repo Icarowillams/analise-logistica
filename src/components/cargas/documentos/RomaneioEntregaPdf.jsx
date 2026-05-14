@@ -85,6 +85,23 @@ export default function RomaneioEntregaPdf({ carga }) {
     return m;
   }, [clientes]);
 
+  // Index adicional por código interno para resolver pedidos Omie sem cliente_id
+  const clientesPorCodigo = useMemo(() => {
+    const m = new Map();
+    clientes.forEach(c => {
+      const cod = String(c.codigo_interno || c.codigo || '').trim();
+      if (cod) m.set(cod, c);
+    });
+    return m;
+  }, [clientes]);
+
+  const resolverCliente = (p) => {
+    if (p.cliente_id && clientesMap.has(p.cliente_id)) return clientesMap.get(p.cliente_id);
+    const cod = String(p.codigo_cliente_cod || p.codigo_cliente_integracao || '').trim();
+    if (cod && clientesPorCodigo.has(cod)) return clientesPorCodigo.get(cod);
+    return null;
+  };
+
   const modalidadesMap = useMemo(() => {
     const m = new Map();
     modalidades.forEach(mp => m.set(mp.id, mp));
@@ -111,7 +128,7 @@ export default function RomaneioEntregaPdf({ carga }) {
     };
     (carga.pedidos_omie || []).forEach(p => {
       if (cancelados.omieSet.has(String(p.codigo_pedido))) return;
-      const cliente = clientesMap.get(p.cliente_id);
+      const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'omie',
@@ -122,7 +139,7 @@ export default function RomaneioEntregaPdf({ carga }) {
     });
     (carga.pedidos_internos || []).forEach(p => {
       if (cancelados.idSet.has(String(p.pedido_id))) return;
-      const cliente = clientesMap.get(p.cliente_id);
+      const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'interno',
@@ -133,7 +150,7 @@ export default function RomaneioEntregaPdf({ carga }) {
     });
     (carga.pedidos_troca || []).forEach(p => {
       if (cancelados.idSet.has(String(p.pedido_troca_id))) return;
-      const cliente = clientesMap.get(p.cliente_id);
+      const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'troca',
@@ -143,7 +160,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     return out;
-  }, [carga, clientesMap, modalidadesMap, vendedoresMap, cancelados]);
+  }, [carga, clientesMap, clientesPorCodigo, modalidadesMap, vendedoresMap, cancelados]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
   const gruposCliente = useMemo(() => {
