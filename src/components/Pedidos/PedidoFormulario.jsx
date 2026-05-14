@@ -330,7 +330,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     const tabelaObj = tabelasPreco.find(t => t.id === tabelaPrecoId);
     const codigoCliente = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || '';
 
-    const tipoFinal = isTroca ? 'troca' : tipo;
+    // O tipo do pedido (interno) reflete o tipo_operacao do cenário fiscal escolhido.
+    // Ex: cenário "Bonificações" (tipo_operacao=bonificacao) → pedido tipo "bonificacao".
+    // Fallback: se o cenário não tiver tipo_operacao mapeado, usa o tipo original.
+    const tipoOperacaoCenario = cenarioLocalAtual?.tipo_operacao;
+    const tiposValidos = ['venda', 'troca', 'bonificacao', 'devolucao'];
+    const tipoFinal = isTroca
+      ? 'troca'
+      : (tipoOperacaoCenario && tiposValidos.includes(tipoOperacaoCenario) ? tipoOperacaoCenario : tipo);
 
     const pedidoData = {
       tipo: tipoFinal,

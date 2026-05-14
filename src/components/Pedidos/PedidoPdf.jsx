@@ -272,6 +272,10 @@ export default function PedidoPdf({ pedidoId }) {
                 <span style={{ fontSize:'10px', fontWeight:500 }}>{modeloLabel}</span>
               </td>
               <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                <span style={{ fontSize:'8px', color:'#555', display:'block' }}>TIPO DE VENDA</span>
+                <span style={{ fontSize:'10px', fontWeight:600, textTransform:'uppercase' }}>{(pedido.tipo || 'venda').replace('_', ' ')}</span>
+              </td>
+              <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
                 <span style={{ fontSize:'8px', color:'#555', display:'block' }}>PLANO PAGAMENTO</span>
                 <span style={{ fontSize:'10px', fontWeight:500 }}>{pedido.plano_pagamento_nome || '-'}</span>
               </td>
