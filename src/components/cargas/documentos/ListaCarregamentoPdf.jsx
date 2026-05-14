@@ -25,11 +25,11 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
     queryFn: () => base44.entities.Produto.list('-created_date', 5000)
   });
 
-  // Pedidos cancelados desta carga (NF rejeitada) → EXCLUIR seus produtos da lista
-  const { data: pedidosCanceladosCarga = [] } = useQuery({
-    queryKey: ['pedidos-cancelados-lista', carga?.id],
+  // TODOS os pedidos vinculados a esta carga (para identificar cancelados E refrescar itens D1/troca)
+  const { data: pedidosCarga = [] } = useQuery({
+    queryKey: ['pedidos-carga-lista', carga?.id],
     queryFn: () => carga?.id
-      ? base44.entities.Pedido.filter({ carga_id: carga.id, status: 'cancelado' })
+      ? base44.entities.Pedido.filter({ carga_id: carga.id })
       : Promise.resolve([]),
     enabled: !!carga?.id
   });
@@ -37,12 +37,32 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
   const cancelados = useMemo(() => {
     const omieSet = new Set();
     const idSet = new Set();
-    pedidosCanceladosCarga.forEach(p => {
+    pedidosCarga.filter(p => p.status === 'cancelado').forEach(p => {
       if (p.omie_codigo_pedido) omieSet.add(String(p.omie_codigo_pedido));
       if (p.id) idSet.add(String(p.id));
     });
     return { omieSet, idSet };
-  }, [pedidosCanceladosCarga]);
+  }, [pedidosCarga]);
+
+  // IDs dos pedidos internos/troca NÃO cancelados → buscar itens atuais (snapshot pode estar desatualizado)
+  const idsInternosAtivos = useMemo(() =>
+    pedidosCarga
+      .filter(p => p.status !== 'cancelado' && (String(p.modelo_nota || '').toLowerCase() === 'd1' || p.tipo === 'troca'))
+      .map(p => p.id),
+    [pedidosCarga]
+  );
+
+  const { data: itensInternosAtuais = [] } = useQuery({
+    queryKey: ['pedido-itens-lista-carregamento', carga?.id, idsInternosAtivos.join(',')],
+    queryFn: async () => {
+      if (idsInternosAtivos.length === 0) return [];
+      const results = await Promise.all(
+        idsInternosAtivos.map(id => base44.entities.PedidoItem.filter({ pedido_id: id }))
+      );
+      return results.flat();
+    },
+    enabled: !!carga?.id && idsInternosAtivos.length > 0
+  });
 
   // Mapa de fator_caixa por código de produto
   const fatorCaixaMap = useMemo(() => {
@@ -71,11 +91,35 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
 
   const { listaPedidos, info } = useMemo(() => {
     if (carga) {
+      // Pedidos OMIE: usar snapshot da carga (fonte de verdade vem do Omie)
       const lista = [
-        ...(carga.pedidos_omie || []).filter(p => !cancelados.omieSet.has(String(p.codigo_pedido))),
-        ...(carga.pedidos_internos || []).filter(p => !cancelados.idSet.has(String(p.pedido_id))),
-        ...(carga.pedidos_troca || []).filter(p => !cancelados.idSet.has(String(p.pedido_troca_id)))
+        ...(carga.pedidos_omie || []).filter(p => !cancelados.omieSet.has(String(p.codigo_pedido)))
       ];
+
+      // Pedidos INTERNOS (D1) e TROCAS: reconstruir a partir dos PedidoItem ATUAIS
+      // (snapshot da carga pode estar desatualizado após cortes/edições)
+      const itensPorPedido = new Map();
+      itensInternosAtuais.forEach(item => {
+        if (!itensPorPedido.has(item.pedido_id)) itensPorPedido.set(item.pedido_id, []);
+        itensPorPedido.get(item.pedido_id).push(item);
+      });
+
+      pedidosCarga
+        .filter(p => p.status !== 'cancelado' && (String(p.modelo_nota || '').toLowerCase() === 'd1' || p.tipo === 'troca'))
+        .forEach(p => {
+          const itens = itensPorPedido.get(p.id) || [];
+          lista.push({
+            pedido_id: p.id,
+            numero_pedido: p.numero_pedido,
+            produtos: itens.map(i => ({
+              codigo_produto: i.produto_codigo || '',
+              descricao: i.produto_nome || '',
+              quantidade: Number(i.quantidade || 0),
+              unidade: i.unidade_medida || 'UN'
+            }))
+          });
+        });
+
       return {
         listaPedidos: lista,
         info: {
@@ -97,7 +141,7 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
         observacao: meta.observacao || ''
       }
     };
-  }, [carga, pedidosManuais, meta, cancelados]);
+  }, [carga, pedidosManuais, meta, cancelados, pedidosCarga, itensInternosAtuais]);
 
   const produtos = useMemo(() => consolidarProdutos(listaPedidos, codigoInternoMap), [listaPedidos, codigoInternoMap]);
 
