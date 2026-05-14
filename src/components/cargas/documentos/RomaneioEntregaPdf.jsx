@@ -54,6 +54,12 @@ export default function RomaneioEntregaPdf({ carga }) {
     queryFn: () => base44.entities.ModalidadePagamento.list()
   });
 
+  // Carrega vendedores para resolver o nome a partir do vendedor_id do cliente
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores-romaneio'],
+    queryFn: () => base44.entities.Vendedor.list('-created_date', 5000)
+  });
+
   // Carrega pedidos cancelados desta carga (NF rejeitada → cancelado) para EXCLUIR
   const { data: pedidosCanceladosCarga = [] } = useQuery({
     queryKey: ['pedidos-cancelados-romaneio', carga?.id],
@@ -85,14 +91,22 @@ export default function RomaneioEntregaPdf({ carga }) {
     return m;
   }, [modalidades]);
 
+  const vendedoresMap = useMemo(() => {
+    const m = new Map();
+    vendedores.forEach(v => m.set(v.id, v));
+    return m;
+  }, [vendedores]);
+
   const linhas = useMemo(() => {
     if (!carga) return [];
     const out = [];
     const resolverExtras = (p, cliente) => {
       const modalidade = cliente?.modalidade_pagamento_id ? modalidadesMap.get(cliente.modalidade_pagamento_id) : null;
+      const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
       return {
         cidade_cliente: cliente?.cidade || p.cidade || '',
-        cobranca_nome: modalidade?.nome || p.cobranca || ''
+        cobranca_nome: modalidade?.nome || p.cobranca || '',
+        vendedor_nome_cliente: vendedorCliente?.nome || ''
       };
     };
     (carga.pedidos_omie || []).forEach(p => {
@@ -129,7 +143,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     return out;
-  }, [carga, clientesMap, modalidadesMap, cancelados]);
+  }, [carga, clientesMap, modalidadesMap, vendedoresMap, cancelados]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
   const gruposCliente = useMemo(() => {
@@ -262,7 +276,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                           <td style={{ padding: '2px 4px' }}>{dtEmissao || '-'}</td>
                           <td style={{ padding: '2px 4px' }}>{dtVenc || '-'}</td>
                           <td style={{ padding: '2px 4px', textAlign: 'right' }}>{fmtMoney(l.valor_total_pedido)}</td>
-                          <td style={{ padding: '2px 4px' }}>{l.vendedor_nome || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{l.vendedor_nome_cliente || '-'}</td>
                         </tr>
                         <tr>
                           <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
