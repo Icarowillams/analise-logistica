@@ -63,6 +63,23 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
+    // Doc Omie nfconsultar: ListarNF NÃO retorna cStat SEFAZ.
+    // Status real é derivado de:
+    //   - ide.dCan preenchida  → Cancelada
+    //   - ide.cDeneg = 'S'     → Denegada
+    //   - ide.dInut preenchida → Inutilizada
+    //   - compl.cChaveNFe presente + sem dCan/dInut → Autorizada (faturada na SEFAZ)
+    //   - sem chave → Pendente (cadastrada, ainda não autorizada)
+    const derivarStatus = (nf) => {
+      const ide = nf.ide || {};
+      const compl = nf.compl || {};
+      if (ide.dCan && String(ide.dCan).trim()) return 'cancelada';
+      if (ide.cDeneg === 'S' || ide.cDeneg === 'D') return 'denegada';
+      if (ide.dInut && String(ide.dInut).trim()) return 'inutilizada';
+      if (compl.cChaveNFe && String(compl.cChaveNFe).length >= 40) return 'autorizada';
+      return 'pendente';
+    };
+
     const nfs = (data.nfCadastro || []).map(nf => ({
       nIdNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
       nCodNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
@@ -72,10 +89,13 @@ Deno.serve(async (req) => {
       cChaveNFe: nf.compl?.cChaveNFe || nf.cChaveNFe,
       dEmiNF: nf.ide?.dEmi || nf.dEmiNF,
       hEmiNF: nf.ide?.hEmi || nf.hEmiNF,
+      dCanNF: nf.ide?.dCan || null,
+      dInutNF: nf.ide?.dInut || null,
+      cDeneg: nf.ide?.cDeneg || null,
       cRazao: nf.nfDestInt?.cRazao || nf.cRazao,
       cCPFCNPJDest: nf.nfDestInt?.cnpj_cpf || nf.cCPFCNPJDest,
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
-      cStatus: nf.ide?.cStat || nf.cStatus || (nf.ide?.nNF || nf.cNumero ? 'F' : ''),
+      cStatus: derivarStatus(nf), // 'autorizada' | 'cancelada' | 'denegada' | 'inutilizada' | 'pendente'
       cOperacao: nf.ide?.cNatOp || nf.cOperacao,
       itens: nf.det || [],
       total: nf.total || null,

@@ -196,9 +196,15 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
 
   const formatarValor = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   const statusBadge = (v) => {
-    const status = !v || v === 'F' ? 'Faturado' : v === 'A' ? 'Autorizada' : v === 'C' ? 'Cancelada' : v;
-    const cor = status === 'Faturado' || status === 'Autorizada' ? 'bg-green-100 text-green-800' : status === 'Cancelada' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
-    return <Badge className={cor}>{status}</Badge>;
+    const mapa = {
+      autorizada: { label: 'Autorizada', cor: 'bg-green-100 text-green-800' },
+      cancelada:  { label: 'Cancelada',  cor: 'bg-red-100 text-red-800' },
+      denegada:   { label: 'Denegada',   cor: 'bg-orange-100 text-orange-800' },
+      inutilizada:{ label: 'Inutilizada',cor: 'bg-gray-200 text-gray-800' },
+      pendente:   { label: 'Pendente',   cor: 'bg-yellow-100 text-yellow-800' },
+    };
+    const info = mapa[v] || { label: v || 'Pendente', cor: 'bg-gray-100 text-gray-800' };
+    return <Badge className={info.cor}>{info.label}</Badge>;
   };
 
   return (
