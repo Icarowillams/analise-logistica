@@ -29,13 +29,26 @@ async function omieCall(url, call, param, tentativa = 1) {
     const msg = String(data.faultstring).toLowerCase();
     const isBlock = msg.includes('bloqueada por consumo') || msg.includes('consumo indevido');
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
+    // Erros TRANSITÓRIOS do servidor Omie/SEFAZ — vale a pena tentar de novo
+    // "SOAP-ERROR: Broken response from Application Server (BG)" = falha intermitente do BG (Background) do Omie
+    const isTransient =
+      msg.includes('soap-error') ||
+      msg.includes('broken response') ||
+      msg.includes('application server') ||
+      msg.includes('timeout') ||
+      msg.includes('temporariamente') ||
+      msg.includes('instavel') ||
+      msg.includes('instável');
     if (isBlock) {
       // Não insiste — Omie pôs a chave em "timeout". Marca a flag e sai.
       omieRateLimitAtivo = true;
       throw new Error(data.faultstring);
     }
-    if (isRate && tentativa < 3) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
+    if ((isRate || isTransient) && tentativa < 4) {
+      // backoff progressivo: 5s, 10s, 20s
+      const espera = 5000 * Math.pow(2, tentativa - 1);
+      console.warn(`[emitirNfsLoteOmie] erro transitório Omie (tent ${tentativa}/4): ${data.faultstring} — retry em ${espera}ms`);
+      await new Promise(r => setTimeout(r, espera));
       return omieCall(url, call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
