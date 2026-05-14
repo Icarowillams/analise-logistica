@@ -400,9 +400,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         valor_unitario: item.valor_unitario,
         valor_total: item.valor_total
       };
-      if (item.motivo_troca_id) {
-        itemData.motivo_troca_id = item.motivo_troca_id;
-        itemData.motivo_troca_descricao = item.motivo_troca_descricao;
+      // Persiste motivo da troca sempre que houver (id OU descrição) — é o que aparece
+      // na coluna "Motivo" da Nota D1 e nos relatórios.
+      if (item.motivo_troca_id || item.motivo_troca_descricao) {
+        itemData.motivo_troca_id = item.motivo_troca_id || '';
+        itemData.motivo_troca_descricao = item.motivo_troca_descricao || '';
       }
       await base44.entities.PedidoItem.create(itemData);
     }
