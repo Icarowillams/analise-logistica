@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    const titulos = titulosRaw.map(t => ({
+    let titulos = titulosRaw.map(t => ({
       codigo_lancamento: t.codigo_lancamento_omie,
       codigo_lancamento_integracao: t.codigo_lancamento_integracao,
       codigo_cliente: t.codigo_cliente_fornecedor,
@@ -114,8 +114,63 @@ Deno.serve(async (req) => {
       observacao: t.observacao,
       codigo_barras: t.boleto?.cCodBarras || t.codigo_barras || '',
       linha_digitavel: t.boleto?.dLinhaDig || '',
-      url_boleto: t.boleto?.cLinkBoleto || ''
+      url_boleto: t.boleto?.cLinkBoleto || '',
+      // alguns títulos trazem o nº do pedido vinculado, útil como fallback do documento
+      numero_pedido_vinculado:
+        t.numero_pedido ||
+        t.cNumPedido ||
+        t.pedido?.numero_pedido ||
+        t.pedido_venda?.numero_pedido ||
+        ''
     }));
+
+    // ENRIQUECIMENTO: alguns títulos vêm sem nome_cliente / numero_documento.
+    // Preenchemos a partir do cadastro local de Cliente (codigo_omie) e do Pedido (omie_codigo_pedido).
+    try {
+      const codigosClienteFaltando = [...new Set(titulos
+        .filter(t => !t.nome_cliente && t.codigo_cliente)
+        .map(t => String(t.codigo_cliente)))];
+
+      let clientesMap = new Map();
+      if (codigosClienteFaltando.length > 0) {
+        const clientes = await base44.asServiceRole.entities.Cliente.filter({
+          codigo_omie: { $in: codigosClienteFaltando }
+        });
+        clientesMap = new Map(clientes.map(c => [String(c.codigo_omie), c]));
+      }
+
+      // Tenta resolver documento/cliente também pelo CNPJ quando faltar
+      const cnpjsFaltando = [...new Set(titulos
+        .filter(t => !t.nome_cliente && !t.codigo_cliente && t.cnpj_cpf)
+        .map(t => String(t.cnpj_cpf).replace(/\D/g, '')))];
+      let clientesPorCnpj = new Map();
+      if (cnpjsFaltando.length > 0) {
+        const clientes2 = await base44.asServiceRole.entities.Cliente.list();
+        clientes2.forEach(c => {
+          const cn = String(c.cnpj_cpf || '').replace(/\D/g, '');
+          if (cn && cnpjsFaltando.includes(cn)) clientesPorCnpj.set(cn, c);
+        });
+      }
+
+      titulos = titulos.map(t => {
+        const enr = { ...t };
+        if (!enr.nome_cliente) {
+          const c = clientesMap.get(String(enr.codigo_cliente)) ||
+                    clientesPorCnpj.get(String(enr.cnpj_cpf || '').replace(/\D/g, ''));
+          if (c) {
+            enr.nome_cliente = c.nome_fantasia || c.razao_social || enr.nome_cliente;
+            if (!enr.cnpj_cpf) enr.cnpj_cpf = c.cnpj_cpf;
+          }
+        }
+        // Fallback do número do documento: usa numero_pedido_vinculado, depois codigo_lancamento
+        if (!enr.numero_documento) {
+          enr.numero_documento = enr.numero_pedido_vinculado || String(enr.codigo_lancamento || '');
+        }
+        return enr;
+      });
+    } catch (e) {
+      console.warn('[listarContasReceberOmie] enriquecimento falhou:', e.message);
+    }
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'financas/contareceber',
