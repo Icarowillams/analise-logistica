@@ -194,22 +194,31 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { codigos_pedido } = body;
+    const { codigos_pedido, status_filtros } = body;
 
-    // 1) Carrega logs pendentes (filtrados ou todos — limite 50 pra não estourar API)
-    let logs;
+    // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
+    // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
+    const statusReconsultar = Array.isArray(status_filtros) && status_filtros.length > 0
+      ? status_filtros
+      : ['pendente'];
+
+    // 1) Carrega logs (filtrados por código ou por status)
+    let logs = [];
     if (Array.isArray(codigos_pedido) && codigos_pedido.length > 0) {
-      logs = [];
+      // Reconsulta APENAS os códigos passados — independente do status atual.
+      // (O frontend já filtrou quais devem ser reconsultados.)
       for (const cod of codigos_pedido) {
         const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({
-          codigo_pedido: String(cod),
-          status: 'pendente'
-        });
+          codigo_pedido: String(cod)
+        }, '-created_date', 5);
         logs.push(...l);
       }
     } else {
-      // Limite reduzido para 20 — evita timeout (cada pedido = 1 ConsultarPedido + ~1.2s)
-      logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: 'pendente' }, '-created_date', 20);
+      // Sem códigos específicos: pega os mais recentes de cada status pedido
+      for (const st of statusReconsultar) {
+        const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', 20);
+        logs.push(...l);
+      }
     }
 
     if (logs.length === 0) {

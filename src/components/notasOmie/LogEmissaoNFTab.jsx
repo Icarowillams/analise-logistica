@@ -31,6 +31,7 @@ export default function LogEmissaoNFTab({ ativa = true }) {
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [resolvendo, setResolvendo] = useState(false);
+  const [atualizandoOmie, setAtualizandoOmie] = useState(false);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -150,6 +151,48 @@ export default function LogEmissaoNFTab({ ativa = true }) {
     setResolvendo(false);
   };
 
+  // "Atualizar": consulta ATIVAMENTE o Omie para todos os logs visíveis cujo status ainda
+  // não é final (pendente / erro). Isso garante 100% de precisão — o status real é puxado
+  // direto do Omie (ConsultarPedido + ListarNF) e gravado no log + espelho + pedido local.
+  const atualizarConsultandoOmie = async () => {
+    setAtualizandoOmie(true);
+    try {
+      // Códigos com status não-final dentro do que está sendo exibido
+      const codigosReconsultar = [...new Set(
+        logsFiltrados
+          .filter(l => l.status === 'pendente' || l.status === 'erro')
+          .map(l => String(l.codigo_pedido))
+          .filter(Boolean)
+      )];
+
+      if (codigosReconsultar.length === 0) {
+        // Nada a reconsultar — só recarrega
+        await refetch();
+        toast.info('Nada para reconsultar — exibindo dados atualizados.');
+        return;
+      }
+
+      toast.info(`Consultando ${codigosReconsultar.length} pedido(s) no Omie...`);
+      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
+        codigos_pedido: codigosReconsultar
+      });
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        const partes = [];
+        if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
+        if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
+        if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
+        toast.success(`✅ ${r.processados} reconsultado(s)${partes.length ? ': ' + partes.join(', ') : ''}`);
+      } else {
+        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
+      }
+      await refetch();
+    } catch (e) {
+      toast.error('Falha ao atualizar: ' + e.message);
+    }
+    setAtualizandoOmie(false);
+  };
+
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
@@ -203,8 +246,14 @@ export default function LogEmissaoNFTab({ ativa = true }) {
                   Resolver {stats.pendente} pendente(s)
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
-                {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={atualizarConsultandoOmie}
+                disabled={atualizandoOmie || isFetching}
+                title="Consulta o Omie em tempo real para atualizar o status de pendentes/erros"
+              >
+                {atualizandoOmie || isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                 Atualizar
               </Button>
             </div>
