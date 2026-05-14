@@ -108,10 +108,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         registros_por_pagina: 50
       });
       if (data?.sucesso) {
-        const nfsFiltradas = filtrarNfsPorCarga(data.nfs || [], cargaParaFiltrar);
+        // Mostra APENAS NFs autorizadas — canceladas/denegadas/inutilizadas/pendentes não devem aparecer aqui
+        const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
+        const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
         const mapaCargas = await buscarCargasDasNfs(nfsFiltradas);
         setCargasPorNf(mapaCargas);
-        setResultado(cargaParaFiltrar ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 } : data);
+        setResultado(cargaParaFiltrar
+          ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 }
+          : { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length });
         setPagina(pg);
       } else {
         toast.error(data?.error || 'Erro ao consultar NFs');
