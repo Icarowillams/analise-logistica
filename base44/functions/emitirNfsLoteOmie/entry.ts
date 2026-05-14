@@ -248,13 +248,12 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // FASE 2 — Aguarda webhook chegar (espelho PedidoLiberadoOmie).
-    // ESTRATÉGIA CORRETA: NÃO fazemos polling agressivo na API Omie (gera rate limit).
-    // O webhook NFe.NotaAutorizada / VendaProduto.Faturada / NFe.NotaRejeitada já atualiza
-    // o espelho PedidoLiberadoOmie em tempo real. Lemos APENAS do espelho.
-    // Pedidos que ficarem "pendente" são reconciliados automaticamente pela automação
-    // reconciliarLogEmissaoNF assim que o webhook chegar (pode levar alguns segundos a minutos).
-    const aguardarEspelho = async (codPed, maxTentativas = 10, intervaloMs = 10000) => {
+    // FASE 2 — Janela CURTA de espera pelo webhook (no máximo ~20s).
+    // Estratégia: NÃO travamos a UI esperando a SEFAZ. Os pedidos que o Omie aceitou
+    // são gravados como "pendente" e a automação reconciliarLogEmissaoNF atualiza
+    // automaticamente assim que o webhook chegar (autorizada / rejeitada).
+    // Boletos automáticos também são disparados por automação após reconciliação.
+    const aguardarEspelhoRapido = async (codPed, maxTentativas = 4, intervaloMs = 4000) => {
       for (let i = 0; i < maxTentativas; i++) {
         await new Promise(r => setTimeout(r, intervaloMs));
         const doEspelho = await lerStatusDoEspelho(base44, codPed);
@@ -262,15 +261,21 @@ Deno.serve(async (req) => {
           return doEspelho;
         }
       }
-      return { status: 'aguardando', mensagem: 'NF ainda em processamento na SEFAZ — será atualizada automaticamente pelo webhook' };
+      return { status: 'aguardando', mensagem: 'NF em processamento — será atualizada automaticamente quando o Omie/SEFAZ retornar' };
     };
 
     if (pedidosEnviados.length > 0) {
-      // Aguarda inicial: Omie precisa colocar na fila + SEFAZ responder + webhook chegar
-      await new Promise(r => setTimeout(r, 5000));
-      for (const { codigo_pedido: codPed } of pedidosEnviados) {
-        const statusReal = await aguardarEspelho(codPed);
-        // extrai cStat da mensagem se houver (formato "[SEFAZ NNN] ...")
+      // Aguarda inicial curta — só pra dar chance ao webhook chegar nos casos rápidos
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Roda as verificações em PARALELO — uma trava não atrasa a outra
+      const verificacoes = await Promise.all(
+        pedidosEnviados.map(({ codigo_pedido: codPed }) => aguardarEspelhoRapido(codPed))
+      );
+
+      for (let i = 0; i < pedidosEnviados.length; i++) {
+        const codPed = pedidosEnviados[i].codigo_pedido;
+        const statusReal = verificacoes[i];
         const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
         const cStat = matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : '');
 
@@ -304,9 +309,9 @@ Deno.serve(async (req) => {
             mensagem: statusReal.mensagem,
             codigo_sefaz: cStat
           });
-          // Cancela pedido local em "Gerenciar Pedidos" com o motivo SEFAZ
           await cancelarPedidoLocal(base44, codPed, statusReal.mensagem, user);
         } else {
+          // PENDENTE — usuário acompanha pelo Log de Emissão; webhook reconcilia depois
           resultados.push({
             codigo_pedido: codPed,
             sucesso: false,
@@ -319,16 +324,15 @@ Deno.serve(async (req) => {
             mensagem: statusReal.mensagem
           });
         }
-        await new Promise(r => setTimeout(r, 800));
       }
     }
 
-    // 🤖 Geração automática de boletos para clientes BOLETO BANCARIO
+    // 🤖 Geração automática de boletos APENAS para NFs já autorizadas dentro da janela
+    // (as autorizadas depois pelo webhook geram boletos via automação separada).
     let boletosAuto = null;
     if (codigosParaBoleto.length > 0) {
       try {
-        // Aguarda o Omie processar o faturamento antes de tentar gerar boleto
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise(r => setTimeout(r, 5000));
         const inv = await base44.functions.invoke('gerarBoletosAutoPedidos', {
           codigos_pedido: codigosParaBoleto
         });
