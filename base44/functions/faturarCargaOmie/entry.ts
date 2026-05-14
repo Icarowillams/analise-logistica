@@ -161,6 +161,44 @@ Deno.serve(async (req) => {
       } catch { /* não bloqueia o fluxo */ }
     }
 
+    // Pedidos internos (D1 / Troca / Bonificação) também viram "faturado" quando a carga é faturada.
+    // Eles não passam por NF no Omie, mas para fins gerenciais (Gerenciar Pedidos) precisam refletir o status.
+    if (novoStatus === 'faturada') {
+      const internosCarga = carga.pedidos_internos || [];
+      const trocasCarga = carga.pedidos_troca || [];
+      const idsInternos = [
+        ...internosCarga.map(p => p.pedido_id).filter(Boolean),
+        ...trocasCarga.map(t => t.pedido_id).filter(Boolean)
+      ];
+      for (const pedidoId of idsInternos) {
+        try {
+          await base44.asServiceRole.entities.Pedido.update(pedidoId, {
+            faturado: true,
+            data_faturamento: new Date().toISOString(),
+            status: 'faturado'
+          });
+        } catch { /* não bloqueia o fluxo */ }
+      }
+      // Trocas via entidade PedidoTroca também: buscar pedido local com mesmo numero_pedido e tipo='troca'
+      for (const t of trocasCarga) {
+        if (t.pedido_id) continue;
+        if (!t.numero_pedido) continue;
+        try {
+          const matches = await base44.asServiceRole.entities.Pedido.filter({
+            numero_pedido: t.numero_pedido,
+            tipo: 'troca'
+          });
+          for (const pl of matches) {
+            await base44.asServiceRole.entities.Pedido.update(pl.id, {
+              faturado: true,
+              data_faturamento: new Date().toISOString(),
+              status: 'faturado'
+            });
+          }
+        } catch { /* não bloqueia o fluxo */ }
+      }
+    }
+
     const errosDetalhados = resultados
       .filter(r => r.sucesso === false)
       .map(r => `Pedido ${r.codigo_pedido}: ${r.mensagem}`)

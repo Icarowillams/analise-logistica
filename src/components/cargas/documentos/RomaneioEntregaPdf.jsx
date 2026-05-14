@@ -22,6 +22,14 @@ function tipoNotaLabel(item, origem) {
   return 'VENDA';
 }
 
+// Formata número do pedido — para trocas, troca o sufixo "D" por "T" (mesma regra de Gerenciar Pedidos)
+function formatNumeroPedidoExibicao(numero, tipoLabel) {
+  if (!numero) return '-';
+  if (tipoLabel !== 'TROCA') return numero;
+  const digits = String(numero).replace(/\D/g, '');
+  return `${digits.padStart(5, '0')}T`;
+}
+
 // Extrai código do cliente do Base44 — preferindo o código interno (não o id de integração)
 function getCodigoClienteBase(item, clienteResolvido) {
   return (
@@ -285,7 +293,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                       <React.Fragment key={i}>
                         <tr>
                           <td style={{ padding: '2px 4px' }}></td>
-                          <td style={{ padding: '2px 4px' }}>{l.numero_pedido || '-'}</td>
+                          <td style={{ padding: '2px 4px' }}>{formatNumeroPedidoExibicao(l.numero_pedido, l._tipo)}</td>
                           <td style={{ padding: '2px 4px' }}>{l.numero_nf || '-'}</td>
                           <td style={{ padding: '2px 4px', fontWeight: 700 }}>{l._tipo}</td>
                           <td style={{ padding: '2px 4px' }}>1</td>
@@ -297,7 +305,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                         </tr>
                         <tr>
                           <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
-                            <strong>Ped. {l.numero_pedido || '-'}:</strong>
+                            <strong>Ped. {formatNumeroPedidoExibicao(l.numero_pedido, l._tipo)}:</strong>
                             <span style={{ marginLeft: '20px' }}>Ass.:_______________________</span>
                             <span style={{ marginLeft: '14px' }}>RG.:_______________</span>
                             <span style={{ marginLeft: '14px' }}>Data:___/___/____</span>
