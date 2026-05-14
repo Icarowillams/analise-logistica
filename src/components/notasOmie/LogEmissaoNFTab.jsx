@@ -9,8 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select';
-import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Wand2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 /**
  * Log de Emissão de NF-e — histórico persistente de TODAS as tentativas
@@ -29,6 +30,7 @@ export default function LogEmissaoNFTab({ ativa = true }) {
   const [filtroNF, setFiltroNF] = useState('');
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
+  const [resolvendo, setResolvendo] = useState(false);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -121,6 +123,33 @@ export default function LogEmissaoNFTab({ ativa = true }) {
     return s;
   }, [logs]);
 
+  // Consulta ATIVAMENTE o Omie para resolver os logs pendentes (fallback do webhook)
+  const resolverPendentes = async () => {
+    setResolvendo(true);
+    try {
+      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {});
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        const partes = [];
+        if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
+        if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
+        if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
+        if (r.boletos_disparados > 0) partes.push(`${r.boletos_disparados} boleto(s) disparado(s)`);
+        if (partes.length === 0) {
+          toast.info('Nenhuma pendência para atualizar');
+        } else {
+          toast.success(`Processados ${r.processados} pedido(s): ${partes.join(', ')}`);
+        }
+        refetch();
+      } else {
+        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
+      }
+    } catch (e) {
+      toast.error('Falha: ' + e.message);
+    }
+    setResolvendo(false);
+  };
+
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
@@ -162,10 +191,23 @@ export default function LogEmissaoNFTab({ ativa = true }) {
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
             <span>Histórico de emissões ({logsFiltrados.length})</span>
-            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
-              {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-              Atualizar
-            </Button>
+            <div className="flex gap-2">
+              {stats.pendente > 0 && (
+                <Button
+                  size="sm"
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                  onClick={resolverPendentes}
+                  disabled={resolvendo}
+                >
+                  {resolvendo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                  Resolver {stats.pendente} pendente(s)
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+                {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Atualizar
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
