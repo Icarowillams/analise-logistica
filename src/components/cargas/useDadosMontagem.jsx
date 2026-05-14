@@ -116,7 +116,11 @@ export default function useDadosMontagem() {
             valor_total_pedido: p.valor_total || 0,
             vendedor_nome: p.vendedor_nome || '',
             observacoes: p.observacoes || '',
-            tipo: p.tipo || 'd1',
+            // SEMPRE 'd1' quando modelo_nota=d1, independente do tipo da operação fiscal
+            // (venda, bonificação, troca, devolução). Isso garante que o pedido vá para
+            // pedidos_internos no fechamento da carga e apareça na aba "Impressão D1".
+            tipo: 'd1',
+            tipo_operacao_fiscal: p.tipo || 'venda',
             tipo_nota: 'D1',
             modelo_nota: 'd1',
             cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
