@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
     // o espelho PedidoLiberadoOmie em tempo real. Lemos APENAS do espelho.
     // Pedidos que ficarem "pendente" são reconciliados automaticamente pela automação
     // reconciliarLogEmissaoNF assim que o webhook chegar (pode levar alguns segundos a minutos).
-    const aguardarEspelho = async (codPed, maxTentativas = 10, intervaloMs = 3000) => {
+    const aguardarEspelho = async (codPed, maxTentativas = 10, intervaloMs = 10000) => {
       for (let i = 0; i < maxTentativas; i++) {
         await new Promise(r => setTimeout(r, intervaloMs));
         const doEspelho = await lerStatusDoEspelho(base44, codPed);
