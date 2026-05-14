@@ -130,7 +130,9 @@ export default function useDadosMontagem() {
               quantidade: i.quantidade || 0,
               valor_unitario: i.valor_unitario || 0,
               valor_total: i.valor_total || 0,
-              unidade: i.unidade_medida || 'UN'
+              unidade: i.unidade_medida || 'UN',
+              motivo_troca_id: i.motivo_troca_id || '',
+              motivo_troca_descricao: i.motivo_troca_descricao || ''
             }))
           };
         })
