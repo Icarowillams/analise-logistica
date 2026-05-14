@@ -99,7 +99,7 @@ export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} 
     };
   }, [carga, pedidosManuais, meta, cancelados]);
 
-  const produtos = useMemo(() => consolidarProdutos(listaPedidos), [listaPedidos]);
+  const produtos = useMemo(() => consolidarProdutos(listaPedidos, codigoInternoMap), [listaPedidos, codigoInternoMap]);
 
   // Calcular caixas usando fator_caixa do cadastro (fallback = 1)
   const produtosCalculados = useMemo(() => {

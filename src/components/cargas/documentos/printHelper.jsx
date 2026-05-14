@@ -30,14 +30,18 @@ export const fmtDateTime = (v) => {
   try { return new Date(v).toLocaleString('pt-BR'); } catch { return ''; }
 };
 
-// Consolida produtos de uma lista de pedidos (cada pedido tem array produtos[])
-export function consolidarProdutos(pedidos = []) {
+// Consolida produtos de uma lista de pedidos (cada pedido tem array produtos[]).
+// Aceita opcionalmente um Map(codigoQualquer -> codigoInterno) para unificar produtos
+// que aparecem com códigos diferentes (Omie vs D1 interno).
+export function consolidarProdutos(pedidos = [], codigoInternoMap = null) {
   const mapa = new Map();
   pedidos.forEach(p => {
     (p.produtos || []).forEach(prod => {
-      const key = prod.codigo_produto || prod.descricao || 'sem-codigo';
+      const codOriginal = String(prod.codigo_produto || '').trim();
+      const codInterno = codigoInternoMap?.get(codOriginal) || codOriginal;
+      const key = codInterno || prod.descricao || 'sem-codigo';
       const atual = mapa.get(key) || {
-        codigo_produto: prod.codigo_produto || '',
+        codigo_produto: codInterno || prod.codigo_produto || '',
         descricao: prod.descricao || '',
         unidade: prod.unidade || 'UN',
         quantidade: 0
