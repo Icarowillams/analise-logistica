@@ -6,11 +6,18 @@ import { Printer } from 'lucide-react';
 import { fmtMoney, fmtDateTime, fmtInt, imprimirElemento } from './printHelper';
 
 // Tipo de Nota: Venda / Bonificação / Troca / Devolução
+// Prioridade: tipo_operacao_fiscal (campo oficial do Pedido) > cenario_local_tipo > nome do cenário
 function tipoNotaLabel(item, origem) {
   if (origem === 'troca') return 'TROCA';
+  const tipoFiscal = String(item.tipo_operacao_fiscal || item.cenario_local_tipo || item.tipo || '').toLowerCase();
+  if (tipoFiscal === 'troca') return 'TROCA';
+  if (tipoFiscal === 'bonificacao' || tipoFiscal === 'bonificação') return 'BONIFICAÇÃO';
+  if (tipoFiscal === 'devolucao' || tipoFiscal === 'devolução') return 'DEVOLUÇÃO';
+  if (tipoFiscal === 'venda') return 'VENDA';
+  // Fallback: derivar do nome do cenário
   const cenario = (item.cenario_fiscal_nome || item.cenario_local_nome || '').toLowerCase();
-  if (cenario.includes('bonif')) return 'BONIFICAÇÃO';
   if (cenario.includes('troca')) return 'TROCA';
+  if (cenario.includes('bonif')) return 'BONIFICAÇÃO';
   if (cenario.includes('devol')) return 'DEVOLUÇÃO';
   return 'VENDA';
 }
