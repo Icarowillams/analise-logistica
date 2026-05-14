@@ -262,6 +262,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                   <tr>
                     <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'50px' }}>CÓD.</th>
                     <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'left' }}>DESCRIÇÃO DO PRODUTO</th>
+                    <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'left', width:'130px' }}>MOTIVO</th>
                     <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'45px' }}>UN</th>
                     <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'center', width:'55px' }}>QTD.</th>
                     <th style={{ background:'#e5e5e5', border:'1px solid #999', padding:'3px 5px', fontSize:'8px', fontWeight:700, textTransform:'uppercase', textAlign:'right', width:'80px' }}>VL. UNIT.</th>
@@ -273,6 +274,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                     <tr key={i}>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.codigo_produto}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.descricao}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.motivo_troca_descricao || '-'}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.unidade || 'UN'}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{Number(item.quantidade || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_unitario)}</td>
@@ -282,13 +284,13 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan="3" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>TOTAL GERAL</td>
+                    <td colSpan="4" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>TOTAL GERAL</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'11px', fontWeight:700, background:'#e5e5e5', textAlign:'center' }}>{Number(totalQtd).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>{produtos.length} ite{produtos.length === 1 ? 'm' : 'ns'}</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'13px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>R$ {fmtMoney(totalProdutos)}</td>
                   </tr>
                   <tr>
-                    <td colSpan="5" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
+                    <td colSpan="6" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney3(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
                   </tr>
                 </tfoot>
