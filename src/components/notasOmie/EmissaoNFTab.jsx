@@ -21,12 +21,14 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
   const [emitindo, setEmitindo] = useState(false);
+  // Só carrega após o usuário clicar em "Atualizar lista"
+  const [carregamentoIniciado, setCarregamentoIniciado] = useState(false);
 
   // Buscar cargas FATURADAS — pedidos só aparecem aqui se a carga já foi faturada (etapa 50 no Omie)
   const { data: cargas = [] } = useQuery({
     queryKey: ['cargasFaturadasEmissao'],
     queryFn: () => base44.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200),
-    enabled: ativa,
+    enabled: ativa && carregamentoIniciado,
     staleTime: 60000
   });
 
@@ -88,9 +90,17 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         };
       });
     },
-    enabled: ativa && cargas.length > 0,
+    enabled: ativa && carregamentoIniciado && cargas.length > 0,
     staleTime: 30000
   });
+
+  const handleAtualizarLista = () => {
+    if (!carregamentoIniciado) {
+      setCarregamentoIniciado(true);
+    } else {
+      refetch();
+    }
+  };
 
   // Se veio cargaFiltro pela URL, pré-popula o filtro de carga
   useEffect(() => {
@@ -206,7 +216,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
               <Input value={filtroCarga} onChange={(e) => setFiltroCarga(e.target.value)} placeholder="Ex: 009" />
             </div>
             <div className="flex items-end">
-              <Button onClick={() => refetch()} variant="outline" disabled={isLoading} className="w-full">
+              <Button onClick={handleAtualizarLista} variant="outline" disabled={isLoading} className="w-full">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
                 Atualizar lista
               </Button>
@@ -247,7 +257,12 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
                 </tr>
               </thead>
               <tbody>
-                {isLoading ? (
+                {!carregamentoIniciado ? (
+                  <tr><td colSpan="8" className="text-center py-12 text-slate-500">
+                    <Search className="w-6 h-6 mx-auto mb-2 text-slate-400" />
+                    Clique em <b>"Atualizar lista"</b> para carregar os pedidos prontos para emissão.
+                  </td></tr>
+                ) : isLoading ? (
                   <tr><td colSpan="8" className="text-center py-12 text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Carregando pedidos...
