@@ -77,6 +77,41 @@ export default function RomaneioEntregaPdf({ carga }) {
     enabled: !!carga?.id
   });
 
+  // Carrega TODOS os pedidos da carga (faturados) para pegar numero_nota_fiscal atualizado
+  const { data: pedidosCarga = [] } = useQuery({
+    queryKey: ['pedidos-carga-romaneio', carga?.id],
+    queryFn: () => carga?.id
+      ? base44.entities.Pedido.filter({ carga_id: carga.id })
+      : Promise.resolve([]),
+    enabled: !!carga?.id
+  });
+
+  // Espelho local de pedidos Omie — tem numero_nf real
+  const { data: liberadosOmie = [] } = useQuery({
+    queryKey: ['liberados-omie-romaneio', carga?.id],
+    queryFn: () => base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000),
+    enabled: !!carga?.id
+  });
+
+  // Index NF por codigo_pedido (Omie) e por id do Pedido interno
+  const nfPorCodigoOmie = useMemo(() => {
+    const m = new Map();
+    // 1) Espelho Omie (mais atualizado)
+    liberadosOmie.forEach(lo => {
+      if (lo.codigo_pedido && lo.numero_nf) {
+        m.set(String(lo.codigo_pedido), String(lo.numero_nf));
+      }
+    });
+    // 2) Pedidos locais com NF (sobrescreve se houver)
+    pedidosCarga.forEach(p => {
+      if (p.numero_nota_fiscal) {
+        if (p.omie_codigo_pedido) m.set(String(p.omie_codigo_pedido), String(p.numero_nota_fiscal));
+        if (p.id) m.set(String(p.id), String(p.numero_nota_fiscal));
+      }
+    });
+    return m;
+  }, [liberadosOmie, pedidosCarga]);
+
   const cancelados = useMemo(() => {
     const omieSet = new Set();
     const idSet = new Set();
@@ -134,6 +169,21 @@ export default function RomaneioEntregaPdf({ carga }) {
         vendedor_nome_cliente: vendedorCliente?.nome || ''
       };
     };
+    const resolverNF = (p, origem) => {
+      // 1) Pedido Omie: usa codigo_pedido
+      if (origem === 'omie' && p.codigo_pedido) {
+        const nf = nfPorCodigoOmie.get(String(p.codigo_pedido));
+        if (nf) return nf;
+      }
+      // 2) Pedido interno/troca: usa pedido_id ou pedido_troca_id
+      const localId = p.pedido_id || p.pedido_troca_id;
+      if (localId) {
+        const nf = nfPorCodigoOmie.get(String(localId));
+        if (nf) return nf;
+      }
+      // 3) Fallback: numero_nf que já vem no payload da carga
+      return p.numero_nf || '';
+    };
     (carga.pedidos_omie || []).forEach(p => {
       if (cancelados.omieSet.has(String(p.codigo_pedido))) return;
       const cliente = resolverCliente(p);
@@ -141,6 +191,7 @@ export default function RomaneioEntregaPdf({ carga }) {
         ...p,
         _origem: 'omie',
         _tipo: tipoNotaLabel(p, 'omie'),
+        numero_nf: resolverNF(p, 'omie'),
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
@@ -152,6 +203,7 @@ export default function RomaneioEntregaPdf({ carga }) {
         ...p,
         _origem: 'interno',
         _tipo: tipoNotaLabel(p, 'interno'),
+        numero_nf: resolverNF(p, 'interno'),
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
@@ -163,19 +215,25 @@ export default function RomaneioEntregaPdf({ carga }) {
         ...p,
         _origem: 'troca',
         _tipo: 'TROCA',
+        numero_nf: resolverNF(p, 'troca'),
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
     });
     return out;
-  }, [carga, clientesMap, clientesPorCodigo, modalidadesMap, vendedoresMap, cancelados]);
+  }, [carga, clientesMap, clientesPorCodigo, modalidadesMap, vendedoresMap, cancelados, nfPorCodigoOmie]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
+  // Chave priorizada: código do cliente (consistente entre Venda/Troca/Bonificação)
   const gruposCliente = useMemo(() => {
     const mapa = new Map();
     linhas.forEach(l => {
-      // Chave de agrupamento: prefere ID, senão código, senão nome
-      const key = l.cliente_id || l.codigo_cliente_display || l.nome_cliente || 'sem-cliente';
+      const codigoNorm = String(l.codigo_cliente_display || '').trim();
+      const cnpjNorm = String(l.cnpj_cpf_cliente || '').replace(/\D/g, '');
+      const key = (codigoNorm && codigoNorm !== '-' ? `cod:${codigoNorm}` : null)
+        || (cnpjNorm ? `doc:${cnpjNorm}` : null)
+        || (l.cliente_id ? `id:${l.cliente_id}` : null)
+        || `nome:${l.nome_cliente || 'sem-cliente'}`;
       if (!mapa.has(key)) {
         mapa.set(key, {
           chave: key,
@@ -187,6 +245,11 @@ export default function RomaneioEntregaPdf({ carga }) {
         });
       }
       mapa.get(key).pedidos.push(l);
+    });
+    // Ordena pedidos dentro de cada grupo: VENDA → BONIFICAÇÃO → TROCA → DEVOLUÇÃO
+    const ordemTipo = { 'VENDA': 1, 'BONIFICAÇÃO': 2, 'TROCA': 3, 'DEVOLUÇÃO': 4 };
+    mapa.forEach(g => {
+      g.pedidos.sort((a, b) => (ordemTipo[a._tipo] || 99) - (ordemTipo[b._tipo] || 99));
     });
     return Array.from(mapa.values());
   }, [linhas]);
