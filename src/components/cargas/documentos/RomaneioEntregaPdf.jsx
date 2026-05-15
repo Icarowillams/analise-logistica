@@ -93,10 +93,19 @@ export default function RomaneioEntregaPdf({ carga }) {
     enabled: !!carga?.id
   });
 
+  // Logs de emissão de NF — fonte autoritativa do número da NF emitida
+  const { data: logsEmissaoNF = [] } = useQuery({
+    queryKey: ['logs-emissao-nf-romaneio', carga?.id],
+    queryFn: () => carga?.id
+      ? base44.entities.LogEmissaoNF.filter({ carga_id: carga.id, status: 'autorizada' }, '-created_date', 1000)
+      : Promise.resolve([]),
+    enabled: !!carga?.id
+  });
+
   // Index NF por codigo_pedido (Omie) e por id do Pedido interno
   const nfPorCodigoOmie = useMemo(() => {
     const m = new Map();
-    // 1) Espelho Omie (mais atualizado)
+    // 1) Espelho Omie (pode estar vazio se ainda não sincronizou)
     liberadosOmie.forEach(lo => {
       if (lo.codigo_pedido && lo.numero_nf) {
         m.set(String(lo.codigo_pedido), String(lo.numero_nf));
@@ -109,8 +118,14 @@ export default function RomaneioEntregaPdf({ carga }) {
         if (p.id) m.set(String(p.id), String(p.numero_nota_fiscal));
       }
     });
+    // 3) LogEmissaoNF — fonte autoritativa (sobrescreve as anteriores se houver)
+    logsEmissaoNF.forEach(log => {
+      if (log.numero_nf) {
+        if (log.codigo_pedido) m.set(String(log.codigo_pedido), String(log.numero_nf));
+      }
+    });
     return m;
-  }, [liberadosOmie, pedidosCarga]);
+  }, [liberadosOmie, pedidosCarga, logsEmissaoNF]);
 
   const cancelados = useMemo(() => {
     const omieSet = new Set();

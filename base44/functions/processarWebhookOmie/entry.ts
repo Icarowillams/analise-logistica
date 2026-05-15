@@ -52,8 +52,35 @@ async function removerDoEspelho(base44, omieCodigoPedido) {
 // Busca dados frescos via ConsultarPedido e faz o upsert.
 // 🛡️ DEDUPE: pula se o mesmo pedido já foi sincronizado nos últimos 8s (evita "REDUNDANT" do Omie quando
 // webhooks VendaProduto.Faturada + NFe.NotaAutorizada chegam quase simultâneos).
-async function upsertEspelho(base44, omieCodigoPedido) {
+// 🆕 forceNumeroNf: quando passado (webhook NFe.NotaAutorizada com numero_nf), bypass do dedupe E
+//                  atualiza diretamente o numero_nf no espelho sem precisar da info_nfe do ConsultarPedido.
+async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
   if (!omieCodigoPedido) return;
+
+  // 🆕 Atalho: se o webhook NFe trouxe o número, atualiza direto SEM bater no Omie (evita rate limit + perda do número).
+  if (forceNumeroNf) {
+    try {
+      const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+        codigo_pedido: String(omieCodigoPedido)
+      }, '-sincronizado_em', 1);
+      const esp = espelhos[0];
+      if (esp) {
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+          etapa: '60',
+          status_real: 'emitida',
+          status_label: 'Faturado',
+          numero_nf: String(forceNumeroNf),
+          data_faturamento: esp.data_faturamento || new Date().toISOString(),
+          sincronizado_em: new Date().toISOString(),
+          origem_sync: 'webhook'
+        });
+        console.log(`[espelho] numero_nf=${forceNumeroNf} aplicado direto em ${omieCodigoPedido}`);
+        return;
+      }
+    } catch (e) {
+      console.error(`[espelho] erro ao aplicar forceNumeroNf:`, e.message);
+    }
+  }
 
   try {
     const recentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
@@ -313,12 +340,15 @@ async function handleNFe(base44, topic, evt) {
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
   // 🔄 ESPELHO OPERAÇÃO: atualizar status NF do pedido (etapa 60)
+  // Quando o webhook traz numero_nf, repassamos para forçar atualização direta — evita o caso em que
+  // o dedupe pula o webhook NFe (chega logo após VendaProduto.Faturada) e o número da NF se perde.
   try {
+    const numNfWebhook = evt?.numero_nf || evt?.numero_nota || null;
     if (topic === 'NFe.NotaCancelada') {
       // NF cancelada → upsert pra refletir status_real=cancelada
       await upsertEspelho(base44, codigoPedido);
     } else if (topic === 'NFe.NotaAutorizada' || topic === 'NFe.NotaDevolucaoAutorizada') {
-      await upsertEspelho(base44, codigoPedido);
+      await upsertEspelho(base44, codigoPedido, numNfWebhook);
     }
   } catch (e) {
     console.error(`[espelhoOperacao NFe] erro ao sincronizar ${codigoPedido}:`, e.message);
