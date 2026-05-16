@@ -88,29 +88,27 @@ export default function Cargas() {
     try {
       const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
       if (data?.sucesso) {
-        const nfsEmitidas = data.nfs_emitidas || 0;
-        const aguardando = data.aguardando_nf || 0;
         const erros = (data.resultados || []).filter(r => r.sucesso === false);
 
         if (erros.length > 0) {
           const msg = erros
-            .map(r => `Pedido ${r.codigo_pedido} (etapa ${r.etapa_atual || '?'}): ${r.motivo_omie || r.mensagem || 'erro desconhecido'}`)
+            .map(r => `Pedido ${r.codigo_pedido}: ${r.motivo_omie || r.mensagem || 'erro desconhecido'}`)
             .join('\n');
-          // Cabeçalho deixa claro: pedidos MUDARAM de etapa, mas a NF foi rejeitada
           toast.error(
-            `Carga movida para Faturar, mas ${erros.length} pedido(s) com erro de NF`,
+            `Carga preparada, mas ${erros.length} pedido(s) com erro`,
             {
-              description: `${nfsEmitidas} NF(s) emitida(s) · ${aguardando} aguardando SEFAZ · ${erros.length} rejeitada(s)\n\n${msg}`,
+              description: `${msg}\n\n⚠️ Próximo passo: vá em "Notas Omie → Emissão" para emitir as NFs dos pedidos que deram certo.`,
               duration: 20000
             }
           );
-        } else if (aguardando > 0 && nfsEmitidas === 0) {
-          toast.success(`Carga faturada no Omie — ${aguardando} NF(s) aguardando SEFAZ`, {
-            description: 'O pedido já foi para etapa 60. A NF pode aparecer em alguns minutos no Omie.',
-            duration: 8000
-          });
         } else {
-          toast.success(`${nfsEmitidas} NF(s) emitida(s) | ${aguardando} aguardando SEFAZ | ${data.skips} D1 ignorados`, { duration: 8000 });
+          toast.success(
+            `Carga ${carga.numero_carga} preparada para faturamento ✅`,
+            {
+              description: `Os pedidos foram movidos para a etapa "Faturar" no Omie.\n\n⚠️ ATENÇÃO: a NF AINDA NÃO FOI EMITIDA. Vá em "Notas Omie → Emissão" para emitir as NF-e desta carga.`,
+              duration: 15000
+            }
+          );
         }
         queryClient.invalidateQueries({ queryKey: ['cargas'] });
       } else {
@@ -131,16 +129,15 @@ export default function Cargas() {
     if (!confirm(`Faturar ${cargasFaturar.length} carga(s) selecionada(s)?`)) return;
 
     setFaturandoLote(true);
-    let totalNfs = 0, totalAguardando = 0, totalErros = 0, totalSkips = 0, cargasErro = 0;
+    let totalErros = 0, totalSkips = 0, cargasErro = 0, cargasOk = 0;
 
     for (const carga of cargasFaturar) {
       try {
         const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
         if (data?.sucesso) {
-          totalNfs += data.nfs_emitidas || 0;
-          totalAguardando += data.aguardando_nf || 0;
           totalErros += data.erros || 0;
           totalSkips += data.skips || 0;
+          cargasOk++;
         } else {
           cargasErro++;
         }
@@ -149,7 +146,13 @@ export default function Cargas() {
       }
     }
 
-    toast.success(`${cargasFaturar.length} carga(s): ${totalNfs} NFs emitidas | ${totalAguardando} aguardando | ${totalErros} erros | ${totalSkips} D1${cargasErro ? ` | ${cargasErro} cargas falharam` : ''}`, { duration: 10000 });
+    toast.success(
+      `${cargasOk} carga(s) preparada(s) para faturamento ✅`,
+      {
+        description: `${totalErros} pedido(s) com erro · ${totalSkips} D1 ignorados${cargasErro ? ` · ${cargasErro} cargas falharam` : ''}\n\n⚠️ ATENÇÃO: as NF-e AINDA NÃO FORAM EMITIDAS. Vá em "Notas Omie → Emissão" para emitir as notas.`,
+        duration: 15000
+      }
+    );
     queryClient.invalidateQueries({ queryKey: ['cargas'] });
     setSelecionadas([]);
     setFaturandoLote(false);
