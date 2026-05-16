@@ -205,6 +205,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       cancelada:  { label: 'Cancelada',  cor: 'bg-red-100 text-red-800' },
       denegada:   { label: 'Denegada',   cor: 'bg-orange-100 text-orange-800' },
       inutilizada:{ label: 'Inutilizada',cor: 'bg-gray-200 text-gray-800' },
+      rejeitada:  { label: 'Rejeitada',  cor: 'bg-red-100 text-red-800' },
       pendente:   { label: 'Pendente',   cor: 'bg-yellow-100 text-yellow-800' },
     };
     const info = mapa[v] || { label: v || 'Pendente', cor: 'bg-gray-100 text-gray-800' };

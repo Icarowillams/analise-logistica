@@ -84,7 +84,9 @@ export default function useDadosMontagem() {
         quantidade_itens: e.quantidade_itens || 0,
         valor_total_pedido: e.valor_total_pedido || 0,
         produtos: e.produtos || [],
-        tipo: 'venda'
+        tipo: 'venda',
+        // tipo_operacao do espelho (venda/bonificacao/troca/devolucao/remessa)
+        tipo_operacao: e.tipo_operacao || 'venda'
       }));
 
       // 2. Pedidos D1 internos (mesma lógica de antes)

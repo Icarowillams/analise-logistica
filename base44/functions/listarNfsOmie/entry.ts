@@ -63,16 +63,32 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    // Doc Omie nfconsultar: ListarNF NÃO retorna cStat SEFAZ.
-    // Status real é derivado de:
-    //   - ide.dCan preenchida  → Cancelada
-    //   - ide.cDeneg = 'S'     → Denegada
-    //   - ide.dInut preenchida → Inutilizada
-    //   - compl.cChaveNFe presente + sem dCan/dInut → Autorizada (faturada na SEFAZ)
-    //   - sem chave → Pendente (cadastrada, ainda não autorizada)
+    // Doc Omie nfconsultar: ListarNF retorna nfStatus.cStat (status SEFAZ real).
+    // Códigos SEFAZ comuns:
+    //   - 100 = Autorizada
+    //   - 101 = Cancelada
+    //   - 102 = Inutilizada
+    //   - 110 = Denegada (110/301/302)
+    //   - 135 = Evento autorizado (carta de correção etc — mantém autorizada)
+    //   - 200+ (sem ser 200/135) = Rejeitada
+    // Fallback: derivar de ide.dCan / ide.dInut / ide.cDeneg / compl.cChaveNFe
     const derivarStatus = (nf) => {
       const ide = nf.ide || {};
       const compl = nf.compl || {};
+      const nfStatus = nf.nfStatus || {};
+      const cStat = String(nfStatus.cStat || compl.cStat || '').trim();
+
+      // 1) Códigos SEFAZ explícitos têm prioridade absoluta
+      if (cStat) {
+        if (cStat === '101') return 'cancelada';
+        if (cStat === '102') return 'inutilizada';
+        if (cStat === '110' || cStat === '301' || cStat === '302') return 'denegada';
+        if (cStat === '100' || cStat === '135') return 'autorizada';
+        // Qualquer outro código diferente de 100 = rejeitada/erro
+        return 'rejeitada';
+      }
+
+      // 2) Fallback por campos de evento
       if (ide.dCan && String(ide.dCan).trim()) return 'cancelada';
       if (ide.cDeneg === 'S' || ide.cDeneg === 'D') return 'denegada';
       if (ide.dInut && String(ide.dInut).trim()) return 'inutilizada';

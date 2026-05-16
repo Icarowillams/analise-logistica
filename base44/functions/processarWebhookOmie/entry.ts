@@ -166,6 +166,22 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
   const rotaNome = rotaRec[0]?.nome || pedidoLocal?.rota_nome || '';
   const vendedorNome = vendedorRec[0]?.nome || pedidoLocal?.vendedor_nome || '';
 
+  // 🆕 Resolver tipo_operacao (venda/bonificacao/troca/devolucao/remessa)
+  // Prioridade:
+  //   1. pedidoLocal.tipo (já tem essa info no Pedido)
+  //   2. Cenário fiscal Omie do pedido → mapeia via CenarioFiscalLocal (cenario_omie_codigo) → tipo_operacao
+  let tipoOperacao = pedidoLocal?.tipo || null;
+  if (!tipoOperacao) {
+    const codCenarioOmie = String(pedidoBruto.cabecalho.codigo_cenario || pedidoBruto.cabecalho.codigo_parcela || '');
+    if (codCenarioOmie) {
+      const cenariosLocais = await base44.asServiceRole.entities.CenarioFiscalLocal
+        .filter({ cenario_omie_codigo: codCenarioOmie }, '-created_date', 1)
+        .catch(() => []);
+      tipoOperacao = cenariosLocais[0]?.tipo_operacao || null;
+    }
+  }
+  tipoOperacao = tipoOperacao || 'venda';
+
   // Status NF apenas pra etapa 60
   const infoNfe = pedidoBruto.infoNfe || pedidoBruto.info_nf || null;
   const statusNf = etapa === '60' ? calcularStatusNF(pedidoBruto.cabecalho, infoNfe) : { status_real: null, status_label: null };
@@ -189,6 +205,7 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
     nome_fantasia: cliente?.nome_fantasia || pedidoLocal?.cliente_nome_fantasia || cliente?.razao_social || '',
     cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || '',
     tipo_nota: cliente?.tipo_nota || pedidoLocal?.modelo_nota || '55',
+    tipo_operacao: tipoOperacao,
     tags_cliente: cliente?.tags || [],
     motorista_padrao_id: cliente?.motorista_id || null,
     rota_id: cliente?.rota_id || pedidoLocal?.rota_id || null,

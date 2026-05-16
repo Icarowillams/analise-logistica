@@ -123,9 +123,28 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                                 <Checkbox checked={selecionado} onCheckedChange={() => toggle(p.codigo_pedido)} />
                               </td>
                               <td className="p-2">
-                                <Badge className={p.tipo === 'troca' ? 'border-orange-200 bg-orange-50 text-orange-700' : p.tipo === 'd1' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
-                                  {p.tipo === 'troca' ? 'Troca' : p.tipo === 'd1' ? 'D1' : 'Venda'}
-                                </Badge>
+                                {(() => {
+                                  // Para D1 mostra "D1 - <tipo_operacao_fiscal>"; para troca mostra "Troca";
+                                  // para venda Omie mostra o tipo_operacao real (Bonificação/Venda/Devolução/Remessa)
+                                  if (p.tipo === 'troca') {
+                                    return <Badge className="border-orange-200 bg-orange-50 text-orange-700">Troca</Badge>;
+                                  }
+                                  if (p.tipo === 'd1') {
+                                    const op = p.tipo_operacao_fiscal || 'venda';
+                                    return <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">D1{op !== 'venda' ? ` · ${op}` : ''}</Badge>;
+                                  }
+                                  const op = p.tipo_operacao || 'venda';
+                                  const map = {
+                                    venda: { label: 'Venda', cls: 'border-blue-200 bg-blue-50 text-blue-700' },
+                                    bonificacao: { label: 'Bonificação', cls: 'border-purple-200 bg-purple-50 text-purple-800' },
+                                    devolucao: { label: 'Devolução', cls: 'border-red-200 bg-red-50 text-red-700' },
+                                    remessa: { label: 'Remessa', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+                                    troca: { label: 'Troca', cls: 'border-orange-200 bg-orange-50 text-orange-700' },
+                                    transferencia: { label: 'Transferência', cls: 'border-indigo-200 bg-indigo-50 text-indigo-700' }
+                                  };
+                                  const info = map[op] || map.venda;
+                                  return <Badge className={info.cls}>{info.label}</Badge>;
+                                })()}
                               </td>
                               <td className="p-2 font-mono text-xs text-slate-700">{p.numero_pedido || '-'}</td>
                               <td className="p-2 font-mono text-xs text-slate-500">{p.codigo_cliente_cod || '-'}</td>
