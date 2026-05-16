@@ -149,3 +149,195 @@ Cada item só vira 🟢 quando:
 5. **P5** (duplicar com modal) — novo UX
 6. **P6** (motivo troca D1) — debug do caso real
 7. **P7** (permissões granulares) — refatoração ampla
+
+---
+
+# 🧪 ROTEIRO DE VALIDAÇÃO EM PRODUÇÃO (P1–P5)
+
+> Execute na ordem. Cada cenário tem **passos**, **resultado esperado** e **onde olhar** se falhar.
+> Use sempre cliente/pedido de TESTE quando possível. Caso use produção real, anote IDs.
+
+---
+
+## ✅ P1 — Bloqueio financeiro ao LIBERAR pedido
+
+### Cenário 1.1 — Cliente COM débito → modal abre
+**Passos:**
+1. Abrir `Pedidos` (ou `EmissaoPedidos` / `MontagemCarga`)
+2. Escolher pedido de cliente que sabidamente tem título em aberto no Omie
+3. Clicar **Liberar**
+
+**Esperado:**
+- [ ] Pop-up `BloqueioLiberarModal` abre
+- [ ] Lista os títulos com colunas: nº título, emissão, vencimento, valor, status
+- [ ] Cliente é marcado com `bloquear_faturamento=true` (verificar em Clientes)
+- [ ] Botão "Liberar ignorando estes títulos" aparece SOMENTE se usuário tem `permissoes_cadastros.desbloquear_financeiro=true`
+
+**Se falhar:** abrir runtime logs e verificar resposta de `consultarBloqueioFinanceiroOmie`.
+
+### Cenário 1.2 — Marcar título e liberar
+**Passos:**
+1. No pop-up, marcar 1 ou mais títulos
+2. Clicar **Liberar ignorando estes títulos**
+
+**Esperado:**
+- [ ] Pedido segue para etapa 20 (Liberado) no Omie
+- [ ] `LogGerencial` recebe registro tipo `liberacao` com observação dos títulos perdoados
+- [ ] Cliente CONTINUA com `bloquear_faturamento=true` (não desbloqueia o cadastro)
+- [ ] Próximo pedido do mesmo cliente reabre o modal
+
+**Se falhar:** verificar `registrarLogGerencial` e `liberarPedidoOmie`.
+
+### Cenário 1.3 — Usuário SEM permissão
+**Passos:**
+1. Logar como usuário sem `desbloquear_financeiro`
+2. Tentar liberar pedido de cliente com débito
+
+**Esperado:**
+- [ ] Pop-up abre mas botão "Liberar ignorando" está oculto/desabilitado
+- [ ] Mensagem: "Você não tem permissão para liberar pedidos de clientes com débito"
+
+### Cenário 1.4 — Cliente SEM débito → flui direto
+**Passos:**
+1. Liberar pedido de cliente em dia
+
+**Esperado:**
+- [ ] Sem pop-up, vai direto para etapa 20
+
+---
+
+## ✅ P2 — Log de Emissão preenchido automaticamente
+
+### Cenário 2.1 — Emissão em lote
+**Passos:**
+1. Abrir `NotasOmie` → aba **Emissão de NF-e**
+2. Selecionar 3–5 pedidos
+3. Clicar **Emitir NF-e em lote**
+
+**Esperado:**
+- [ ] Toast indica início, depois conclusão
+- [ ] Imediatamente após, abrir aba **Log de Emissão** e filtrar pelo lote/data → status `autorizada`, `rejeitada` ou `pendente` (com mensagem "será reconciliado em até 15min")
+- [ ] **NÃO** ficar todos como "pendente" sem mensagem
+- [ ] Para os `autorizada`: `numero_nf` preenchido
+
+**Se falhar:** runtime logs de `emitirNfsLoteOmie` — checar quantas tentativas do loop foram feitas.
+
+### Cenário 2.2 — Reconciliação automática (15min)
+**Passos:**
+1. Aguardar 15min após emissão se algum ficou `pendente`
+2. Verificar `LogEmissaoNF` novamente
+
+**Esperado:**
+- [ ] `atualizarStatusLogsPendentes` rodou e os pendentes viraram `autorizada` ou `rejeitada`
+
+---
+
+## ✅ P3 — Boletos automáticos com a NF-e
+
+### Cenário 3.1 — Diagnóstico de clientes sem modalidade
+**Passos:**
+1. Abrir `BoletosOmie`
+2. Localizar componente **DiagnosticoClientesSemModalidade**
+
+**Esperado:**
+- [ ] Lista de clientes que emitiram NF nos últimos 7 dias SEM `modalidade_pagamento_id`
+- [ ] Cada linha tem botão "Atribuir modalidade"
+
+**Ação corretiva:** Rodrigo preenche modalidade BOLETO BANCARIO para os clientes elegíveis.
+
+### Cenário 3.2 — Emissão de NF com cliente boleto
+**Passos:**
+1. Confirmar que cliente X tem `modalidade_pagamento_id` apontando para "BOLETO BANCARIO"
+2. Emitir NF-e desse cliente via `emitirNfsLoteOmie`
+3. Aguardar 30s
+
+**Esperado:**
+- [ ] Boleto aparece em `BoletosOmie`
+- [ ] `LogEmissaoNF.boleto_gerado=true` para esse pedido
+
+**Se falhar:** runtime logs de `emitirNfsLoteOmie` → procurar mensagem `clienteUsaBoleto` e `gerarBoletosAutoPedidos`.
+
+### Cenário 3.3 — Webhook tardio também dispara boleto
+**Passos:**
+1. Forçar uma situação onde NF demora a ser autorizada (cliente boleto)
+2. Aguardar webhook NFe.NotaAutorizada chegar
+
+**Esperado:**
+- [ ] `processarWebhookOmie.handleNFe` chama `gerarBoletosAutoPedidos`
+- [ ] Boleto aparece
+
+---
+
+## ✅ P4 — NF-e canceladas removidas de "Notas a Emitir"
+
+### Cenário 4.1 — NF cancelada não aparece
+**Passos:**
+1. Pegar um pedido cuja NF foi cancelada no Omie
+2. Abrir `NotasOmie` → aba **Emissão de NF-e**
+
+**Esperado:**
+- [ ] Pedido NÃO aparece na lista
+- [ ] Confirmar que `PedidoLiberadoOmie.status_real === 'cancelada'` OU pedido local `status === 'cancelado'`
+
+### Cenário 4.2 — Cancelar agora
+**Passos:**
+1. Cancelar NF de um pedido pelo Omie diretamente
+2. Aguardar webhook (1–2 min)
+3. Recarregar `NotasOmie`
+
+**Esperado:**
+- [ ] Pedido some imediatamente da lista de "Emissão"
+
+**Se falhar:** verificar `processarWebhookOmie.handleNFe` para evento `NFe.NotaCancelada`.
+
+---
+
+## ✅ P5 — Duplicar pedido com modal de cenário/forma pagamento
+
+### Cenário 5.1 — Modal abre com seleções
+**Passos:**
+1. Abrir `Pedidos` (Pedidos Omie)
+2. Selecionar 1 ou mais pedidos
+3. Clicar **Duplicar N pedidos**
+
+**Esperado:**
+- [ ] Modal `DuplicarPedidosModal` abre
+- [ ] Combo "Cenário Fiscal" carrega `CenarioFiscalLocal` ativos
+- [ ] Combo "Forma de Pagamento" carrega `PlanoPagamento` ativos
+- [ ] Botão **Duplicar** desabilitado até as duas seleções
+
+### Cenário 5.2 — Duplicação com sucesso
+**Passos:**
+1. Selecionar cenário fiscal X (tipo `venda`) e plano Y (à vista)
+2. Clicar **Duplicar**
+
+**Esperado:**
+- [ ] Toast "N pedido(s) duplicado(s) com sucesso"
+- [ ] Pedido novo aparece no Omie em etapa 10
+- [ ] No Omie, conferir que o pedido novo está com o CENÁRIO escolhido (não o do original)
+- [ ] `codigo_parcela` do novo bate com o plano escolhido
+
+**Se falhar:** runtime logs de `duplicarPedidoOmie` — conferir se `overrides.cenario_omie_codigo` e `overrides.codigo_parcela` foram aplicados.
+
+### Cenário 5.3 — Cenário sem código Omie vinculado
+**Passos:**
+1. Escolher um cenário local SEM `cenario_omie_codigo`
+2. Tentar duplicar
+
+**Esperado:**
+- [ ] Aviso amarelo no modal: "Este cenário local não tem código Omie vinculado"
+- [ ] Duplicação prossegue, pedido é criado SEM cenário no Omie (Omie usa o padrão)
+
+---
+
+## 📊 RESUMO DA VALIDAÇÃO
+
+| Item | Cenários | Status Rodrigo |
+|------|----------|----------------|
+| P1   | 1.1–1.4  | ⬜ |
+| P2   | 2.1–2.2  | ⬜ |
+| P3   | 3.1–3.3  | ⬜ |
+| P4   | 4.1–4.2  | ⬜ |
+| P5   | 5.1–5.3  | ⬜ |
+
+> Marcar ✅ ao concluir cada item. Quando todos ✅ + "300%" do Rodrigo → fechar rodada 16/05 e iniciar P7.
