@@ -49,20 +49,30 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
     return m;
   }, [clientes]);
 
-  // Pedidos D1 (internos): preferir prop, senão extrair da carga
+  // Pedidos D1 (internos) + Trocas: ambos viram nota D1 (sem NF-e fiscal).
+  // Para trocas, marca explicitamente o tipo_operacao_fiscal='troca' para que o cenário
+  // seja exibido corretamente e o motivo apareça por item.
   const notasD1 = useMemo(() => {
-    const fonte = pedidosProp && pedidosProp.length > 0
-      ? pedidosProp
-      : (carga?.pedidos_internos || []);
-    return fonte
-      .filter(p => {
-        const modelo = (p.modelo_nota || '').toString().toLowerCase();
-        return modelo === 'd1' || modelo === '';
-      })
-      .map(p => ({
-        ...p,
-        cliente: clientesMap.get(p.cliente_id) || {}
-      }));
+    if (pedidosProp && pedidosProp.length > 0) {
+      return pedidosProp
+        .filter(p => {
+          const modelo = (p.modelo_nota || '').toString().toLowerCase();
+          return modelo === 'd1' || modelo === '';
+        })
+        .map(p => ({ ...p, cliente: clientesMap.get(p.cliente_id) || {} }));
+    }
+    const internos = (carga?.pedidos_internos || []).map(p => ({
+      ...p,
+      cliente: clientesMap.get(p.cliente_id) || {}
+    }));
+    const trocas = (carga?.pedidos_troca || []).map(p => ({
+      ...p,
+      modelo_nota: 'd1',
+      tipo_operacao_fiscal: 'troca',
+      cenario_fiscal_nome: p.cenario_fiscal_nome || 'Troca',
+      cliente: clientesMap.get(p.cliente_id) || {}
+    }));
+    return [...internos, ...trocas];
   }, [carga, pedidosProp, clientesMap]);
 
   const handlePrint = () => {

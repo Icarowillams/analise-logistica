@@ -155,9 +155,11 @@ cliente selecionado. Precisa ser específico por cliente.
 
 ---
 
-## 9. 🔴 NF de Troca D1 não recebe motivo no espelho/relatórios
+## 9. 🟢 NF de Troca D1 não recebe motivo no espelho/relatórios — CONCLUÍDO 2026-05-16
 
-**Sintoma:** ao gerar nota D1 (troca) em "Cargas / Logística":
+**Correção aplicada:** `NotaD1Pdf` agora une `carga.pedidos_internos` + `carga.pedidos_troca` na mesma listagem de notas D1. Antes, trocas (vindas via `PedidoTroca`/`ItemPedidoTroca`) iam parar em `pedidos_troca` da Carga e **não eram exibidas** na aba "Impressão D1". O motivo já estava sendo persistido corretamente em `ItemPedidoTroca.motivo_descricao` → mapeado pelo `useDadosMontagem` → salvo em `Carga.pedidos_troca[].produtos[].motivo_troca_descricao`. A coluna "MOTIVO" ao lado do produto agora exibe o valor corretamente.
+
+**Sintoma original:** ao gerar nota D1 (troca) em "Cargas / Logística":
 - Motivo da troca não está sendo armazenado
 - Precisa aparecer ao lado do nome do produto, na coluna "Motivo"
 - Vai entrar em relatórios do Base44
