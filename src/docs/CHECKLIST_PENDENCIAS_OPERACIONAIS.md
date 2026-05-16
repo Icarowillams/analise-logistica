@@ -139,19 +139,20 @@ cliente selecionado. Precisa ser específico por cliente.
 
 ---
 
-## 8. 🔴 Duplicar pedido perde cenário fiscal e vínculo de integração
+## 8. 🟢 Duplicar pedido perde cenário fiscal e vínculo de integração — CONCLUÍDO 2026-05-16
 
-**Sintoma:** em "Ajustes de Pedidos" → Duplicar Pedido:
-- Cenário fiscal NÃO é replicado (sempre vira "Venda" mesmo se era Bonificação)
-- Pedido pós-duplicação aparece no Omie mas SEM vínculo de integração
-- Não consegue mudar etapa (liberar) porque perdeu o `cCodIntPed`
+**Correções aplicadas em `functions/duplicarPedidoOmie.js`:**
 
-**Onde investigar:**
-- `functions/duplicarPedidoOmie.js`
-- Garantir que o `codigo_cenario` do pedido original seja replicado no novo
-- Garantir que o `cCodIntPed` do novo pedido seja gerado e gravado de volta no Pedido local
-- Atualizar `omie_codigo_pedido` corretamente após duplicação
-- Sincronizar com `PedidoLiberadoOmie` imediatamente
+1. **Fallback de cenário fiscal:** quando `ConsultarPedido` do Omie não retorna `codigo_cenario`/`codigo_cenario_impostos`/`informacoes_adicionais.codigo_cenario`, agora a função consulta o `PedidoLiberadoOmie` (espelho) → `Pedido` local pra recuperar o `cenario_fiscal_codigo` e injetar no payload antes do `IncluirPedido`. Resultado: pedidos de Bonificação/Troca duplicados mantêm a operação fiscal correta.
+
+2. **Vínculo `cCodIntPed` preservado:** já vinha sendo gerado (`DUP-…`) e enviado, mas agora também é **espelhado imediatamente em `PedidoLiberadoOmie`** com `codigo_pedido_integracao`, `codigo_pedido` novo, `tipo_operacao`, `cenario_fiscal_*`, `pedido_id` local e produtos. Isso elimina a janela em que o pedido duplicado existia no Omie mas não aparecia em Montagem/Operação até o webhook chegar.
+
+3. **`omie_codigo_pedido`** do `Pedido` local continua sendo gravado (linha 224 da função) — confirmado funcionando.
+
+**Sintoma original:**
+- Cenário fiscal NÃO era replicado (sempre virava "Venda" mesmo se era Bonificação)
+- Pedido pós-duplicação aparecia no Omie mas SEM vínculo de integração no espelho
+- Mudança de etapa (Liberar) falhava porque o espelho estava desatualizado
 
 ---
 

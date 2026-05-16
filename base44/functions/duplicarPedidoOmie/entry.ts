@@ -113,6 +113,28 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
   const pedidoOriginal = consulta.pedido_venda_produto;
   if (!pedidoOriginal) return { sucesso: false, erro: 'Pedido não encontrado no Omie' };
 
+  // 1.b — Fallback do cenário fiscal: se Omie não devolveu nas chaves esperadas,
+  // procura no espelho local (PedidoLiberadoOmie → CenarioFiscalLocal) ou no Pedido local
+  // pra garantir que bonificação/troca não vire venda na duplicação.
+  let cenarioFallback = null;
+  const cabOrig = pedidoOriginal.cabecalho || {};
+  const infoAdicOrig = pedidoOriginal.informacoes_adicionais || {};
+  if (!cabOrig.codigo_cenario && !cabOrig.codigo_cenario_impostos && !infoAdicOrig.codigo_cenario) {
+    try {
+      const espelhoOrig = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigo_pedido) });
+      const esp = espelhoOrig?.[0];
+      if (esp?.pedido_id) {
+        const pedLocalOrig = await base44.asServiceRole.entities.Pedido.get(esp.pedido_id).catch(() => null);
+        if (pedLocalOrig?.cenario_fiscal_codigo) {
+          cenarioFallback = String(pedLocalOrig.cenario_fiscal_codigo);
+        }
+      }
+    } catch { /* ignore */ }
+    if (cenarioFallback) {
+      pedidoOriginal.cabecalho = { ...cabOrig, codigo_cenario: cenarioFallback };
+    }
+  }
+
   // 2. Gerar codigo_pedido_integracao único
   const codigoIntegracaoNovo = `DUP-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -229,6 +251,67 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
     pedidoLocalId = novoPedidoLocal?.id;
   } catch (e) {
     console.error('[duplicarPedidoOmie] Falha ao criar Pedido local:', e.message);
+  }
+
+  // 4.b — Cria/atualiza espelho PedidoLiberadoOmie pra aparecer IMEDIATAMENTE em
+  // Montagem de Carga / Operação Completa sem precisar esperar webhook.
+  try {
+    const cab = pedidoOriginal.cabecalho || {};
+    const det = pedidoOriginal.det || [];
+    const cenarioCod = cab.codigo_cenario || cab.codigo_cenario_impostos || pedidoOriginal.informacoes_adicionais?.codigo_cenario || null;
+
+    let tipoOperacao = 'venda';
+    let cenarioNome = '';
+    if (cenarioCod) {
+      try {
+        const cenarios = await base44.asServiceRole.entities.CenarioFiscalLocal.filter({ cenario_omie_codigo: String(cenarioCod) });
+        const cen = cenarios?.[0];
+        if (cen) {
+          cenarioNome = cen.nome || '';
+          if (['bonificacao', 'troca', 'devolucao', 'remessa'].includes(cen.tipo_operacao)) {
+            tipoOperacao = cen.tipo_operacao;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Resolve cliente do espelho original (mais barato que refazer lookup)
+    let clienteIdEsp = '';
+    try {
+      const espelhoOrig2 = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigo_pedido) });
+      if (espelhoOrig2?.[0]?.cliente_id) clienteIdEsp = espelhoOrig2[0].cliente_id;
+    } catch { /* ignore */ }
+
+    const produtosEsp = det.map(d => ({
+      codigo_produto: String(d.produto?.codigo_produto || ''),
+      codigo_produto_integracao: String(d.produto?.codigo_produto_integracao || ''),
+      descricao: d.produto?.descricao || '',
+      quantidade: Number(d.produto?.quantidade) || 0,
+      valor_unitario: Number(d.produto?.valor_unitario) || 0,
+      valor_total: Number(d.produto?.valor_total) || 0,
+      unidade: d.produto?.unidade || ''
+    }));
+
+    await base44.asServiceRole.entities.PedidoLiberadoOmie.create({
+      codigo_pedido: String(novoCodigoPedido),
+      codigo_pedido_integracao: codigoIntegracaoNovo,
+      numero_pedido: novoNumeroPedido ? String(novoNumeroPedido) : '',
+      etapa: '10',
+      codigo_cliente: String(cab.codigo_cliente || ''),
+      codigo_cliente_integracao: String(cab.codigo_cliente_integracao || ''),
+      cliente_id: clienteIdEsp,
+      tipo_operacao: tipoOperacao,
+      cenario_fiscal_codigo: cenarioCod ? Number(cenarioCod) : undefined,
+      cenario_fiscal_nome: cenarioNome,
+      pedido_id: pedidoLocalId || '',
+      quantidade_itens: produtosEsp.length,
+      valor_total_pedido: produtosEsp.reduce((s, p) => s + (p.valor_total || 0), 0),
+      produtos: produtosEsp,
+      sincronizado_em: new Date().toISOString(),
+      origem_sync: 'webhook'
+    });
+  } catch (e) {
+    console.error('[duplicarPedidoOmie] Falha ao espelhar PedidoLiberadoOmie:', e.message);
   }
 
   // 5. Log gerencial
