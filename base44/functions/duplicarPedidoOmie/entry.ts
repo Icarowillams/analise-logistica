@@ -33,8 +33,9 @@ function hojeBR() {
   return new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
 }
 
-// Constrói payload IncluirPedido a partir de um pedido_venda_produto consultado
-function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
+// Constrói payload IncluirPedido a partir de um pedido_venda_produto consultado.
+// P5 (16/05): aceita override de cenário fiscal e codigo_parcela (forma de pagamento).
+function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo, overrides = {}) {
   const cab = pedidoOriginal.cabecalho || {};
   const infoAdic = pedidoOriginal.informacoes_adicionais || {};
   const det = (pedidoOriginal.det || []).map((d, idx) => {
@@ -46,15 +47,16 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
     };
   });
 
-  // Cenário fiscal pode estar em diferentes campos dependendo da resposta do Omie:
-  //  - cabecalho.codigo_cenario / codigo_cenario_impostos
-  //  - informacoes_adicionais.codigo_cenario
-  // Replicar TODOS para garantir que bonificação/troca/etc. seja preservada.
+  // Cenário fiscal: prioriza override (escolha do usuário), senão usa do pedido original
   const cenarioFiscal =
+    overrides.cenario_omie_codigo ||
     cab.codigo_cenario ||
     cab.codigo_cenario_impostos ||
     infoAdic.codigo_cenario ||
     null;
+
+  // codigo_parcela: prioriza override (forma de pagamento escolhida)
+  const codigoParcela = overrides.codigo_parcela || cab.codigo_parcela || '999';
 
   const cabecalho = {
     codigo_pedido_integracao: codigoIntegracaoNovo,
@@ -63,7 +65,7 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
     ...(cab.codigo_cliente_integracao ? { codigo_cliente_integracao: cab.codigo_cliente_integracao } : {}),
     data_previsao: hojeBR(),
     etapa: '10',
-    codigo_parcela: cab.codigo_parcela || '999',
+    codigo_parcela: codigoParcela,
     quantidade_itens: det.length,
     ...(cenarioFiscal ? { codigo_cenario: String(cenarioFiscal) } : {})
   };
@@ -101,7 +103,7 @@ function montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo) {
   return payload;
 }
 
-async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userEmail) {
+async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userEmail, overrides = {}) {
   // 1. Consultar pedido original
   const param = {};
   if (codigo_pedido) param.codigo_pedido = Number(codigo_pedido);
@@ -138,8 +140,8 @@ async function duplicarUm(base44, codigo_pedido, codigo_pedido_integracao, userE
   // 2. Gerar codigo_pedido_integracao único
   const codigoIntegracaoNovo = `DUP-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // 3. Montar payload e enviar IncluirPedido
-  const payload = montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo);
+  // 3. Montar payload e enviar IncluirPedido (com overrides P5 se houver)
+  const payload = montarPayloadDuplicado(pedidoOriginal, codigoIntegracaoNovo, overrides);
   const resultado = await omieCall('IncluirPedido', payload);
   if (resultado?.faultstring) {
     return { sucesso: false, erro: resultado.faultstring, origem_codigo: codigo_pedido };
@@ -370,9 +372,36 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, erro: 'Informe codigo_pedido ou pedidos[]' }, { status: 400 });
     }
 
+    // P5 (16/05): resolve overrides escolhidos pelo usuário (cenário fiscal + plano pagamento)
+    const overrides = {};
+    if (body.cenario_local_id) {
+      try {
+        const cen = await base44.asServiceRole.entities.CenarioFiscalLocal.get(body.cenario_local_id);
+        if (cen?.cenario_omie_codigo) {
+          overrides.cenario_omie_codigo = String(cen.cenario_omie_codigo);
+          overrides.cenario_local_nome = cen.nome;
+          overrides.tipo_operacao = cen.tipo_operacao;
+        }
+      } catch (e) {
+        console.warn('[duplicarPedidoOmie] cenario_local_id inválido:', e.message);
+      }
+    }
+    if (body.plano_pagamento_id) {
+      try {
+        const plano = await base44.asServiceRole.entities.PlanoPagamento.get(body.plano_pagamento_id);
+        if (plano?.numero_parcelas) {
+          // Omie codigo_parcela: "999" = à vista padrão, ou formato "NNNxDD" (parcelas x dias)
+          overrides.codigo_parcela = plano.numero_parcelas === 1 ? '999' : String(plano.numero_parcelas).padStart(3, '0');
+          overrides.plano_pagamento_nome = plano.nome;
+        }
+      } catch (e) {
+        console.warn('[duplicarPedidoOmie] plano_pagamento_id inválido:', e.message);
+      }
+    }
+
     const resultados = [];
     for (const item of listaEntrada) {
-      const r = await duplicarUm(base44, item.codigo_pedido, item.codigo_pedido_integracao, user.email);
+      const r = await duplicarUm(base44, item.codigo_pedido, item.codigo_pedido_integracao, user.email, overrides);
       resultados.push(r);
       // pequeno espaçamento pra não estourar cota
       await sleep(400);

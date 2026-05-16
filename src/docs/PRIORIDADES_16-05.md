@@ -83,7 +83,7 @@
 
 ## 📋 PENDÊNCIAS DA RODADA ANTERIOR (revalidar)
 
-### P5. 🟡 Item 8 (anterior) — Duplicar pedido com escolha de cenário fiscal/forma pagamento
+### P5. 🟢 Item 8 (anterior) — Duplicar pedido com escolha de cenário fiscal/forma pagamento
 
 **Situação atual (após correção anterior):** o backend já preserva o cenário fiscal e o vínculo `cCodIntPed`. Funciona.
 
@@ -100,17 +100,20 @@ E aí dispara o `IncluirPedido` com o cenário e plano escolhidos.
 
 ---
 
-### P6. 🟡 Item 9 (anterior) — Motivo da troca na nota D1
+### P6. 🔵 Item 9 (anterior) — Motivo da troca na nota D1 (aguarda caso real)
 
-**Situação atual:** correção já foi aplicada no `NotaD1Pdf` para unir `pedidos_internos` + `pedidos_troca`. Rodrigo diz que ainda não aparece.
+**Diagnóstico 16/05:** auditoria completa da cadeia mostra que **todos os elos estão corretos**:
+1. `ItemPedidoTroca` tem `motivo_descricao` ✅
+2. `PedidoItem` tem `motivo_troca_descricao` e o PedidoFormulario salva quando há motivo (linha 405-408) ✅
+3. `useDadosMontagem` mapeia `i.motivo_descricao` → `motivo_troca_descricao` no produto (linha 173) ✅
+   E também mapeia `i.motivo_troca_descricao` → `motivo_troca_descricao` para D1 (linha 137) ✅
+4. `PainelFecharCarga` passa `produtos: p.produtos || []` preservando todos os campos (linha 96, 109) ✅
+5. `NotaD1Pdf` lê `item.motivo_troca_descricao` na coluna MOTIVO (linha 287) ✅
 
-**Próximo passo:** validar com caso real (carga + pedido troca específico) e debugar a cadeia:
-1. `ItemPedidoTroca.motivo_descricao` foi salvo? → consultar entidade
-2. `useDadosMontagem` mapeou para `motivo_troca_descricao`? → confirmar
-3. `Carga.pedidos_troca[].produtos[].motivo_troca_descricao` persistiu na criação da carga? → confirmar
-4. `NotaD1Pdf` está usando o campo correto na coluna "MOTIVO"? → confirmar
-
-**Onde mexer:** depende do diagnóstico.
+**Próximo passo:** pedir ao Rodrigo um caso ESPECÍFICO (número da carga + pedido) que está apresentando o problema, para auditar o registro real no banco. Pode ser:
+- Carga antiga, criada antes da correção
+- Cliente sem `motivo_id` ao digitar a troca
+- Pedido de troca via `tipo='troca'` na EmissaoPedidos sem informar motivo no item
 
 ---
 
