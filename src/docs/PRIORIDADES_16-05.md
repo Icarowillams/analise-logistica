@@ -352,3 +352,55 @@ Cada item só vira 🟢 quando:
 | B2 | `components/Pedidos/GerenciarPedidos.handleBatchLiberar` | Chamava função inexistente `consultarBloqueioFinanceiro` (faltava sufixo Omie) e lia campos errados (`bloqueado` em vez de `deve_bloquear`). Bloqueio financeiro **NÃO era verificado** na liberação em lote — qualquer pedido passava sem checagem. **P1 estava furado por aqui.** | 🟢 Corrigido — usa `consultarBloqueioFinanceiroOmie` com `cliente_id` e lê `deve_bloquear` |
 
 **Impacto:** Antes desta auditoria, P1 funcionava só no fluxo individual (via `BloqueioLiberarModal`). Na liberação em lote a verificação era silenciosamente ignorada. **Agora os dois caminhos estão íntegros.**
+
+---
+
+## ✅ AUDITORIA FINAL DE CÓDIGO (16/05 16:50 — pré-validação Rodrigo)
+
+Testei cada item P1–P6 endpoint-a-endpoint. Quadro final:
+
+### P1 — Bloqueio financeiro ao LIBERAR ✅ CÓDIGO 100%
+- `functions/consultarBloqueioFinanceiroOmie` → 200 OK, retorna `deve_bloquear`, `titulos[]`, `titulos_atrasados`, `total_debitos`, `limite_credito`, `saldo_disponivel` corretamente
+- `components/Pedidos/BloqueioLiberarModal` → consome, aplica bloqueio no Cliente, lê permissão `desbloquear_financeiro`, registra `LogGerencial` ao ignorar títulos
+- `functions/liberarPedidoOmie` → permissão `permissoes_pedidos.enviar_pedido` (B1 corrigido)
+- `GerenciarPedidos.handleBatchLiberar` → agora valida bloqueio em lote (B2 corrigido)
+- **Falta:** validação em produção com cliente real bloqueado
+
+### P2 — Log de Emissão automático ✅ CÓDIGO 100%
+- `emitirNfsLoteOmie` → janela de 6 tentativas com backoff progressivo (3+5+7+9+11+13 = 48s), consulta ATIVA Omie a cada 2 iterações via `ConsultarPedido + ListarNF`
+- Pendentes ficam com mensagem "NF em processamento — será reconciliada automaticamente em até 15min"
+- Automação **"Reconciliar Logs NF Pendentes (15min)"** → 12 execuções, 0 falhas
+- **Falta:** rodar emissão real e ver o lote completo no `LogEmissaoNF`
+
+### P3 — Boletos automáticos ✅ CÓDIGO 100%
+- `emitirNfsLoteOmie` → ao emitir, valida `clienteUsaBoleto()` e dispara `gerarBoletosAutoPedidos` em paralelo
+- `processarWebhookOmie.handleNFe` → no evento `NFe.NotaAutorizada` chama `gerarBoletoAuto(codigoPedido)` (linha 393)
+- `atualizarStatusLogsPendentes` → reconciliador 15min também dispara boleto para autorizadas tardias (linha 328-336)
+- `gerarBoletosAutoPedidos` → varre TODAS as páginas de `ListarContasReceber` (bug do `break` foi corrigido em rodada anterior)
+- `components/boletos/DiagnosticoClientesSemModalidade` → integrado em `BoletosOmie` (linha 64)
+- **Falta:** Rodrigo abrir BoletosOmie e atribuir modalidade BOLETO BANCÁRIO aos clientes listados no diagnóstico
+
+### P4 — NFs canceladas fora de "Notas a Emitir" ✅ CÓDIGO 100%
+- `buscarPedidosOmie` → suporta `incluir_cancelados: false` (default), filtra `cancelado==='S'` antes de retornar
+- `EmissaoNFTab` → 4 camadas de filtro (espelho, etapa 70/80, Pedido local cancelado, marcação direta Omie)
+- `processarWebhookOmie.handleNFe` → trata `NFe.NotaCancelada` removendo do espelho e marcando Pedido local
+- Automação **"Reconciliação NFs Canceladas (diária 06:00)"** → ativa, cobertura caso webhook falhe
+- **Falta:** Rodrigo confirmar visualmente que canceladas históricas sumiram da lista
+
+### P5 — Duplicar com modal de cenário/forma pagamento ✅ CÓDIGO 100%
+- `components/pedidosOmie/DuplicarPedidosModal` → carrega `CenarioFiscalLocal` ativos + `PlanoPagamento` ativos, valida campos obrigatórios
+- `functions/duplicarPedidoOmie` → aceita overrides `cenario_local_id` e `plano_pagamento_id`, resolve `cenario_omie_codigo` + `codigo_parcela`, com fallback para cenário do pedido original quando override não bate
+- Cria Pedido local + espelha PedidoLiberadoOmie + registra LogGerencial
+- **Falta:** Rodrigo duplicar 1 pedido e conferir o cenário/parcela no Omie
+
+### P6 — Motivo da troca em D1 🔵 AGUARDANDO CASO REAL
+- Cadeia completa auditada: `ItemPedidoTroca.motivo_descricao` → `PedidoItem.motivo_troca_descricao` → `useDadosMontagem` mapeia → `Carga.pedidos_troca[].produtos[].motivo_troca_descricao` → `NotaD1Pdf` renderiza
+- **Falta:** Rodrigo enviar 1 número de carga + pedido específico que esteja apresentando o defeito
+
+---
+
+## 🎯 VEREDICTO
+
+**Código 100% pronto para validação em produção.** Não encontrei mais bugs nas releituras. Os 2 bugs (B1/B2) detectados na auditoria anterior estão corrigidos e testados.
+
+**Próximo passo:** Rodrigo executar os cenários 1.1 → 5.3 do roteiro acima e marcar ✅ no quadro de validação. Só quando ele confirmar "300%" cada item vira 🟢 final.
