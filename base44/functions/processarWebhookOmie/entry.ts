@@ -182,10 +182,18 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
   }
   tipoOperacao = tipoOperacao || 'venda';
 
-  // Status NF apenas pra etapa 60
+  // Status NF: etapa 60 = leitura normal da NF; etapa 50 sem NF = rejeição implícita após tentativa de faturamento
   const infoNfe = pedidoBruto.infoNfe || pedidoBruto.info_nf || null;
-  const statusNf = etapa === '60' ? calcularStatusNF(pedidoBruto.cabecalho, infoNfe) : { status_real: null, status_label: null };
   const numeroNf = String(infoNfe?.nNF || infoNfe?.numero_nf || pedidoBruto.cabecalho?.numero_nfe || '');
+  const mensagemRejeicao = infoNfe?.cMensStatus || infoNfe?.xMotivo || pedidoBruto.cabecalho?.motivo_status || pedidoBruto.cabecalho?.mensagem_status || '';
+  const statusNf = etapa === '60'
+    ? calcularStatusNF(pedidoBruto.cabecalho, infoNfe)
+    : etapa === '50'
+      ? {
+          status_real: 'rejeitada',
+          status_label: mensagemRejeicao || 'NF rejeitada pela SEFAZ — pedido retornou para etapa Faturar'
+        }
+      : { status_real: null, status_label: null };
 
   const registro = {
     codigo_pedido: String(omieCodigoPedido),

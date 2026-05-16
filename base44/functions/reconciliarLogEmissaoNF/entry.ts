@@ -42,9 +42,9 @@ Deno.serve(async (req) => {
     if (statusReal === 'emitida' || (etapa === '60' && numeroNf)) {
       novoStatus = 'autorizada';
       mensagem = `NF ${numeroNf} autorizada`;
-    } else if (statusReal === 'rejeitada') {
+    } else if (statusReal === 'rejeitada' || etapa === '50') {
       novoStatus = 'rejeitada';
-      mensagem = mensagem || 'NF rejeitada';
+      mensagem = mensagem || 'NF rejeitada pela SEFAZ — pedido retornou para etapa Faturar';
     } else if (statusReal === 'cancelada' || statusReal === 'denegada') {
       novoStatus = 'rejeitada';
       mensagem = mensagem || `NF ${statusReal}`;
