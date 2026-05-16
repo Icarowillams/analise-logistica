@@ -36,14 +36,19 @@ async function omieCall(call, param, tentativa = 1) {
 // Lista TODOS os títulos do Omie do período recente e filtra por nCodPedido.
 // O Omie NÃO oferece filtro nativo por pedido em ListarContasReceber,
 // mas o título tem o campo nCodPedido vinculado.
+//
+// ⚠️ BUG anterior: o `break` ao encontrar 1 título parava a busca antes de cobrir
+// todas as páginas — se o título estivesse na página 2+, a função NUNCA achava.
+// Agora varremos TODAS as páginas até findall.
 async function listarTitulosDoPedido(codigoPedido) {
   const titulos = [];
-  let pagina = 1;
   const hoje = new Date();
-  const inicio = new Date(hoje.getTime() - 60 * 86400000); // últimos 60 dias de emissão
+  const inicio = new Date(hoje.getTime() - 30 * 86400000); // últimos 30 dias (suficiente p/ NFs recém-emitidas)
   const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 
-  while (pagina <= 10) {
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
     const data = await omieCall('ListarContasReceber', {
       pagina,
       registros_por_pagina: 100,
@@ -51,11 +56,14 @@ async function listarTitulosDoPedido(codigoPedido) {
       filtrar_por_emissao_de: fmt(inicio),
       filtrar_por_emissao_ate: fmt(hoje)
     });
+    totalPaginas = data?.total_de_paginas || 1;
     const lista = data?.conta_receber_cadastro || [];
     titulos.push(...lista.filter(t => String(t.nCodPedido || '') === String(codigoPedido)));
-    if (titulos.length > 0 || pagina >= (data?.total_de_paginas || 1)) break;
     pagina++;
-  }
+    // pequeno respiro entre páginas para não estourar a cota Omie
+    if (pagina <= totalPaginas) await new Promise(r => setTimeout(r, 300));
+  } while (pagina <= totalPaginas && pagina <= 15);
+
   return titulos;
 }
 

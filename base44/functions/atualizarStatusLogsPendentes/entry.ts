@@ -190,10 +190,18 @@ async function atualizarEspelho(base44, codigoPedido, resultado) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Permite execução sem usuário autenticado quando chamada por automation (scheduled).
+    // Para chamadas vindas do frontend, exige usuário; para automation, segue como 'sistema'.
+    let user = null;
+    try { user = await base44.auth.me(); } catch { user = null; }
 
     const body = await req.json().catch(() => ({}));
+    const isSchedule = !!body?.scheduled || !!body?.automation;
+    if (!user && !isSchedule) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
+
     const { codigos_pedido, status_filtros } = body;
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.

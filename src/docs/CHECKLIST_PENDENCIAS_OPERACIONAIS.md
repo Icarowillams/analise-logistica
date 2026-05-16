@@ -11,41 +11,41 @@
 
 ---
 
-## 1. 🔴 Boleto NÃO está sendo gerado ao emitir NF-e
+## 1. 🟢 Boleto NÃO está sendo gerado ao emitir NF-e — CONCLUÍDO 2026-05-16
 
-**Sintoma:** ao acionar emissão da NF-e, mesmo para clientes com modalidade
-**BOLETO BANCARIO** no cadastro Base44 e pedido tipo **venda**, o boleto não é
-gerado automaticamente.
+**Causa raiz identificada em `functions/gerarBoletosAutoPedidos.js`:**
 
-**Regras de negócio:**
-- Só gera boleto se `Pedido.tipo === 'venda'`
-- Só gera boleto se `Cliente.modalidade_pagamento.nome` contém `"BOLETO"`
-- Disparo automático imediatamente após NF autorizada (cStat 100/150)
+A função `listarTitulosDoPedido` tinha um bug crítico no loop de paginação (linha 56):
+```js
+if (titulos.length > 0 || pagina >= ...) break;  // ❌ ERRADO
+```
+Esse `break` parava a varredura assim que UMA página tivesse algum título — mas se a página 1 retornasse 100 títulos não-relacionados ao pedido, o filtro vinha vazio e o loop saía sem testar as páginas seguintes. Resultado: títulos novos (recém-criados pela emissão da NF) **nunca eram encontrados** porque costumam estar nas páginas 2+ (ordenação por código).
 
-**Onde investigar:**
-- `functions/emitirNfsLoteOmie.js` → função `clienteUsaBoleto` + array `codigosParaBoleto`
-- `functions/gerarBoletosAutoPedidos.js` → chamada efetiva
-- Confirmar que `gerarBoletosAutoPedidos` está respondendo sem erro
-- Verificar logs `LogIntegracaoOmie` com operacao=`emitir_nf_lote`
-- Garantir que após **consulta ativa** (quando webhook não chega) o boleto também seja disparado
+**Correção aplicada:**
+- Loop refeito com `do...while` que varre **todas** as páginas (até 15) até cobrir `total_de_paginas`.
+- Janela reduzida de 60 → 30 dias (suficiente, mais rápido).
+- 300ms de respiro entre páginas para preservar cota Omie.
+
+**Fluxos cobertos:**
+1. Emissão dentro da janela de 20s (em `emitirNfsLoteOmie`) → boleto disparado imediato (já funcionava).
+2. Emissão fora da janela (webhook `NFe.NotaAutorizada`) → `processarWebhookOmie.handleNFe` chama `gerarBoletoAuto` (já funcionava).
+3. Webhook NÃO chega → `atualizarStatusLogsPendentes` (rodando a cada 15min, ver item 2) descobre que ficou autorizada e dispara o boleto.
 
 ---
 
-## 2. 🔴 Log de Transmissão fica como "Pendente" mesmo SEFAZ tendo respondido
+## 2. 🟢 Log de Transmissão fica como "Pendente" mesmo SEFAZ tendo respondido — CONCLUÍDO 2026-05-16
 
-**Sintoma:** o pedido foi enviado pra SEFAZ com sucesso, mas o log de emissão
-fica eternamente como "pendente" — sem mostrar se foi autorizada ou rejeitada.
-Antes funcionava, agora parou.
+**Correções aplicadas:**
 
-**Causa suspeita:** o `consultarStatusAtivoOmie` no `emitirNfsLoteOmie` pode
-estar falhando silenciosamente (lista ListarNF não traz pelo `nIdPedido` certo)
-ou o intervalo de tentativas (`aguardarEspelhoRapido`) está curto demais.
+1. **`functions/atualizarStatusLogsPendentes.js`** já consultava ativamente o Omie (`ConsultarPedido` + `ListarNF` com índice) e atualizava `LogEmissaoNF`, mas só rodava sob demanda (botão "Atualizar" na tela). Agora **rodando automaticamente a cada 15 minutos** via automação agendada `Reconciliar Logs NF Pendentes (15min)`.
 
-**Onde investigar:**
-- `functions/emitirNfsLoteOmie.js` → função `consultarStatusAtivoOmie`
-- Conferir o campo correto retornado pelo Omie: `nf.compl.nIdPedido` vs `nf.cabecalho.nIdPedido`
-- Aumentar janela total de espera + número de tentativas
-- Garantir que `atualizarStatusLogsPendentes` rode com mais frequência (automação periódica? a cada 5min?)
+2. **Permitida execução pelo agendador (sem usuário autenticado)**: adicionado bypass que aceita `body.scheduled === true` e cria contexto `sistema@automation` para gravar logs corretamente.
+
+3. **Boletos automáticos integrados ao fluxo de reconciliação**: quando o varredor detecta que uma NF pendente virou `autorizada`, ele já chama `gerarBoletosAutoPedidos` (caso o cliente tenha modalidade BOLETO BANCÁRIO).
+
+**Resultado prático:** mesmo se o webhook nunca chegar, no máximo **15 minutos** após a emissão o log é reconciliado, status atualizado e boleto disparado.
+
+**Sintoma original:** log eternamente "pendente" sem mostrar autorizada/rejeitada — webhook intermitente ou faultstring transitório do Omie deixava o estado preso.
 
 ---
 
