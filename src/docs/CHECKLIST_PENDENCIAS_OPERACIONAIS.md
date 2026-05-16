@@ -84,20 +84,20 @@ ontem porque o CFOP no Omie está sem configuração correta.
 
 ---
 
-## 5. 🔴 Excluir funcionalidades de sincronização desnecessárias
+## 5. ⚪ Excluir funcionalidades de sincronização desnecessárias — PAUSADO 2026-05-16
+
+**Status:** ignorar por enquanto a pedido do usuário. Reabrir quando houver
+janela para mapeamento e decisão item por item.
 
 **Sintoma:** menu/sistema poluídos com sincronizações redundantes.
 
-**Avaliar para remover:**
+**Avaliar para remover (quando reabrir):**
 - `pages/SincronizarClientesCSVPage` — mantém? CSV é caso raro.
 - `pages/SincronizarClienteOmie` — duplicado?
 - `functions/sincronizacaoCompletaOmie` — usada hoje?
 - `functions/importarTudoDoOmie` — usada hoje?
 - `functions/espelharBase44Omie` — usada hoje?
 - `functions/sincronizarClientesCSV`, `validarClientesCsv`, `validarClientesXlsx`
-
-**Definição:** o usuário precisa listar quais ele USA. Antes de deletar nada,
-listar tudo e perguntar item por item.
 
 ---
 
