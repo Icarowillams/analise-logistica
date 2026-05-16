@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import FiltrosBoletos from '@/components/boletos/FiltrosBoletos';
 import TabelaBoletos from '@/components/boletos/TabelaBoletos';
 import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
+import DiagnosticoClientesSemModalidade from '@/components/boletos/DiagnosticoClientesSemModalidade';
 import { toast } from 'sonner';
 
 export default function BoletosOmie() {
@@ -59,6 +60,8 @@ export default function BoletosOmie() {
         titulos={titulosSelecionados}
         modo={modoImpressao}
       />
+
+      <DiagnosticoClientesSemModalidade />
 
       <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); }} />
 

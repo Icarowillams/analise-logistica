@@ -7,7 +7,7 @@
 
 ## 🔥 EXTREMA PRIORIDADE
 
-### P1. 🔴 Bloqueio financeiro automático ao LIBERAR pedido
+### P1. 🟢 Bloqueio financeiro automático ao LIBERAR pedido
 
 **Situação atual:** o bloqueio só acontece quando alguém abre manualmente o modal "Débitos do Cliente". Pedidos podem ser liberados (etapa 10→20) mesmo com débitos em aberto.
 
@@ -28,7 +28,7 @@
 
 ---
 
-### P2. 🔴 Log de Emissão preenchido AUTOMATICAMENTE pós-emissão
+### P2. 🟢 Log de Emissão preenchido AUTOMATICAMENTE pós-emissão
 
 **Situação atual:** após `FaturarPedidoVenda`, a função `emitirNfsLoteOmie` já tenta capturar status via espelho + `consultarStatusAtivoOmie`, mas em muitos casos não pega — log fica como "pendente" e só o varredor de 15min resolve.
 
@@ -41,7 +41,7 @@
 
 ---
 
-### P3. 🔴 Boletos NÃO estão sendo gerados automaticamente com a NF-e
+### P3. 🟢 Boletos NÃO estão sendo gerados automaticamente com a NF-e
 
 **Situação atual:** Já existe `gerarBoletosAutoPedidos` que é chamado por `emitirNfsLoteOmie` quando `clienteUsaBoleto()` retorna true. Mas Rodrigo diz que **não está disparando em produção**.
 
@@ -65,7 +65,7 @@
 
 ---
 
-### P4. 🔴 NF-e canceladas continuam aparecendo em "Notas a Emitir"
+### P4. 🟢 NF-e canceladas continuam aparecendo em "Notas a Emitir"
 
 **Situação atual:** a aba `EmissaoNFTab` já filtra pedidos cuja carga é "faturada" + pedido sem NF + `status_real !== cancelada/denegada` + pedido local `!== cancelado`. Mas Rodrigo diz que ainda aparecem canceladas — provavelmente o `status` do pedido local não foi atualizado quando a NF foi cancelada no Omie depois.
 

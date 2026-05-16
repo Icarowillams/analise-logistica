@@ -350,56 +350,51 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // FASE 2 — Janela CURTA de espera pelo webhook (no máximo ~20s).
-    // Estratégia: NÃO travamos a UI esperando a SEFAZ. Os pedidos que o Omie aceitou
-    // são gravados como "pendente" e a automação reconciliarLogEmissaoNF atualiza
-    // automaticamente assim que o webhook chegar (autorizada / rejeitada).
-    // Boletos automáticos também são disparados por automação após reconciliação.
-    const aguardarEspelhoRapido = async (codPed, maxTentativas = 4, intervaloMs = 4000) => {
-      for (let i = 0; i < maxTentativas; i++) {
-        await new Promise(r => setTimeout(r, intervaloMs));
+    // FASE 2 — Janela de espera ATIVA pelo status real da SEFAZ.
+    // P2 (16/05): ampliada a janela e combinada com consulta ativa em cada iteração
+    // para que o LogEmissaoNF saia desta função já com status final (autorizada/rejeitada)
+    // sempre que a SEFAZ retornar dentro de ~45s. Pedidos ainda não respondidos viram
+    // 'pendente' e são reconciliados pela automação de 15min.
+    const aguardarStatusFinal = async (codPed) => {
+      // 6 tentativas com backoff progressivo: 3s, 5s, 7s, 9s, 11s, 13s (≈48s total)
+      const intervalos = [3000, 5000, 7000, 9000, 11000, 13000];
+      for (let i = 0; i < intervalos.length; i++) {
+        await new Promise(r => setTimeout(r, intervalos[i]));
+
+        // 1) Espelho (webhook já chegou?)
         const doEspelho = await lerStatusDoEspelho(base44, codPed);
         if (doEspelho && (doEspelho.status === 'emitida' || doEspelho.status === 'rejeitada')) {
           return doEspelho;
         }
-      }
-      return { status: 'aguardando', mensagem: 'NF em processamento — será atualizada automaticamente quando o Omie/SEFAZ retornar' };
-    };
 
-    if (pedidosEnviados.length > 0) {
-      // Aguarda inicial curta — só pra dar chance ao webhook chegar nos casos rápidos
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Roda as verificações em PARALELO — uma trava não atrasa a outra
-      const verificacoes = await Promise.all(
-        pedidosEnviados.map(({ codigo_pedido: codPed }) => aguardarEspelhoRapido(codPed))
-      );
-
-      for (let i = 0; i < pedidosEnviados.length; i++) {
-        const codPed = pedidosEnviados[i].codigo_pedido;
-        let statusReal = verificacoes[i];
-
-        // 🆕 Se o espelho ainda não tem resposta final, CONSULTA ATIVAMENTE o Omie
-        // (ConsultarPedido + ListarNF) para descobrir o motivo SEFAZ na mesma hora —
-        // sem precisar do usuário clicar em "Corrigir Etapa" depois.
-        if (statusReal.status === 'aguardando') {
-          console.log(`[emitirNfsLoteOmie] pedido ${codPed} sem espelho atualizado — consultando Omie ativamente`);
+        // 2) A cada 2 tentativas, consulta ATIVAMENTE o Omie (ConsultarPedido + ListarNF)
+        if (i === 1 || i === 3 || i === 5) {
           const ativo = await consultarStatusAtivoOmie(codPed);
           if (ativo.status && ativo.status !== 'aguardando') {
-            // Normaliza para o formato esperado abaixo
-            statusReal = {
+            return {
               status: ativo.status === 'autorizada' ? 'emitida' :
                       (ativo.status === 'cancelada' || ativo.status === 'denegada' || ativo.status === 'rejeitada') ? 'rejeitada' :
                       'aguardando',
               numero_nf: ativo.numero_nf || null,
               mensagem: ativo.mensagem,
               codigo_sefaz: ativo.codigo_sefaz || '',
-              substatus: ativo.status // guardamos o detalhe (rejeitada/denegada/cancelada) para o log
+              substatus: ativo.status
             };
-          } else {
-            statusReal = { status: 'aguardando', mensagem: ativo.mensagem || statusReal.mensagem };
           }
         }
+      }
+      return { status: 'aguardando', mensagem: 'NF em processamento — será reconciliada automaticamente em até 15min' };
+    };
+
+    if (pedidosEnviados.length > 0) {
+      // Roda as verificações em PARALELO — uma trava não atrasa a outra
+      const verificacoes = await Promise.all(
+        pedidosEnviados.map(({ codigo_pedido: codPed }) => aguardarStatusFinal(codPed))
+      );
+
+      for (let i = 0; i < pedidosEnviados.length; i++) {
+        const codPed = pedidosEnviados[i].codigo_pedido;
+        const statusReal = verificacoes[i];
 
         const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
         const cStat = statusReal.codigo_sefaz || (matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : ''));

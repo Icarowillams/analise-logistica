@@ -25,9 +25,13 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
   const [carregamentoIniciado, setCarregamentoIniciado] = useState(false);
 
   // Buscar cargas FATURADAS — pedidos só aparecem aqui se a carga já foi faturada (etapa 50 no Omie)
+  // Excluímos cargas canceladas (Rodrigo 16/05 — cancelados não devem aparecer em "Notas a Emitir")
   const { data: cargas = [] } = useQuery({
     queryKey: ['cargasFaturadasEmissao'],
-    queryFn: () => base44.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200),
+    queryFn: async () => {
+      const lista = await base44.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200);
+      return lista.filter(c => c.status_carga !== 'cancelada');
+    },
     enabled: ativa && carregamentoIniciado,
     staleTime: 60000
   });
@@ -87,10 +91,14 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         .filter(p => {
           const cod = String(p.codigo_pedido);
           const e = mapaEspelho.get(cod);
-          // Filtro 1: espelho indica status final negativo
-          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada') return false;
-          // Filtro 2: pedido local cancelado
+          // Filtro 1: espelho indica status final negativo (cancelada/denegada/rejeitada)
+          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada' || e?.status_real === 'rejeitada') return false;
+          // Filtro 2: etapa Omie 70/80 = cancelado/excluído no Omie
+          if (e?.etapa === '70' || e?.etapa === '80') return false;
+          // Filtro 3: pedido local cancelado (fonte de verdade interna)
           if (statusPedidoLocal.get(cod) === 'cancelado') return false;
+          // Filtro 4: marcação direta do Omie (campo cancelado/etapa = 'cancelado' em buscarPedidosOmie)
+          if (p.cancelado === true || p.etapa === 'cancelado') return false;
           return true;
         })
         .map(p => {
