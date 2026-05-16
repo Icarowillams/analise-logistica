@@ -76,19 +76,36 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         : [];
       const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
 
-      return pedidosOmie.map(p => {
-        const e = mapaEspelho.get(String(p.codigo_pedido)) || {};
-        return {
-          codigo_pedido: String(p.codigo_pedido),
-          numero_pedido: p.numero_pedido,
-          valor_total_pedido: p.valor_total_pedido || e.valor_total_pedido || 0,
-          quantidade_itens: p.quantidade_itens || e.quantidade_itens || 0,
-          nome_cliente: e.nome_cliente || '',
-          nome_fantasia: e.nome_fantasia || '',
-          cidade: e.cidade || '',
-          cliente_id: e.cliente_id || ''
-        };
-      });
+      // 🆕 Cruza com Pedido local — se já está cancelado lá (rejeição definitiva/IE inválida),
+      // não aparece na fila de emissão.
+      const pedidosLocais = codigos.length > 0
+        ? await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigos } }, '-created_date', 500)
+        : [];
+      const statusPedidoLocal = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl.status]));
+
+      return pedidosOmie
+        .filter(p => {
+          const cod = String(p.codigo_pedido);
+          const e = mapaEspelho.get(cod);
+          // Filtro 1: espelho indica status final negativo
+          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada') return false;
+          // Filtro 2: pedido local cancelado
+          if (statusPedidoLocal.get(cod) === 'cancelado') return false;
+          return true;
+        })
+        .map(p => {
+          const e = mapaEspelho.get(String(p.codigo_pedido)) || {};
+          return {
+            codigo_pedido: String(p.codigo_pedido),
+            numero_pedido: p.numero_pedido,
+            valor_total_pedido: p.valor_total_pedido || e.valor_total_pedido || 0,
+            quantidade_itens: p.quantidade_itens || e.quantidade_itens || 0,
+            nome_cliente: e.nome_cliente || '',
+            nome_fantasia: e.nome_fantasia || '',
+            cidade: e.cidade || '',
+            cliente_id: e.cliente_id || ''
+          };
+        });
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
     staleTime: 30000

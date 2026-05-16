@@ -9,6 +9,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // Resposta: { sucesso, total, sucessos, erros, resultados[], boletos_auto }
 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
+const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
@@ -152,6 +154,88 @@ async function buscarContextoPedido(base44, codigoPedido) {
   }
 }
 
+// 🎯 CONSULTA ATIVA AO OMIE — quando o webhook não chegou no prazo, vamos buscar
+// ConsultarPedido (etapa) + ListarNF (cStat/xMotivo) e retornar o status REAL.
+// Diferencia rejeição (etapa volta pra 50) × cancelamento × denegação (cStat 110/301/302).
+async function consultarStatusAtivoOmie(codigoPedido) {
+  const t0 = Date.now();
+  let etapa = '';
+  try {
+    const r = await fetch(OMIE_PEDIDO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call: 'ConsultarPedido', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ codigo_pedido: Number(codigoPedido) }] })
+    });
+    const d = await r.json();
+    if (d.faultstring) throw new Error(d.faultstring);
+    etapa = String(d?.pedido_venda_produto?.cabecalho?.etapa || '');
+  } catch (e) {
+    return { erro: e.message, duracao_ms: Date.now() - t0 };
+  }
+
+  // Lista NFs dos últimos 7 dias e filtra pelo nIdPedido
+  try {
+    const hoje = new Date();
+    const seteDias = new Date(hoje.getTime() - 7 * 86400000);
+    const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+    let nfEncontrada = null;
+    for (let pagina = 1; pagina <= 3 && !nfEncontrada; pagina++) {
+      const res = await fetch(OMIE_NF_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          call: 'ListarNF', app_key: APP_KEY, app_secret: APP_SECRET,
+          param: [{ pagina, registros_por_pagina: 200, dEmiInicial: fmt(seteDias), dEmiFinal: fmt(hoje) }]
+        })
+      });
+      const data = await res.json();
+      if (data.faultstring) {
+        if (/n[ãa]o existem registros/i.test(data.faultstring)) break;
+        throw new Error(data.faultstring);
+      }
+      nfEncontrada = (data.nfCadastro || []).find(nf => String(nf.compl?.nIdPedido || nf.nIdPedido || '') === String(codigoPedido));
+      if (!nfEncontrada && pagina >= (data.nTotPaginas || 1)) break;
+    }
+
+    if (nfEncontrada) {
+      const cStat = String(nfEncontrada.ide?.cStat || '');
+      const numNf = nfEncontrada.ide?.nNF || '';
+      const xMotivo = nfEncontrada.ide?.xMotivo || '';
+
+      if (cStat === '100' || cStat === '150') {
+        return { etapa, status: 'autorizada', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} autorizada` };
+      }
+      if (cStat === '101' || cStat === '135') {
+        return { etapa, status: 'cancelada', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
+      }
+      if (['110', '301', '302', '205'].includes(cStat)) {
+        return { etapa, status: 'denegada', codigo_sefaz: cStat, mensagem: `[SEFAZ ${cStat}] NF DENEGADA${xMotivo ? ' — ' + xMotivo : ''}` };
+      }
+      if (cStat && Number(cStat) >= 200) {
+        return { etapa, status: 'rejeitada', codigo_sefaz: cStat, mensagem: `[SEFAZ ${cStat}] NF REJEITADA${xMotivo ? ' — ' + xMotivo : ''}` };
+      }
+      if (numNf) {
+        return { etapa, status: 'autorizada', numero_nf: String(numNf), codigo_sefaz: cStat || '100', mensagem: `NF ${numNf}` };
+      }
+    }
+  } catch (e) {
+    console.error('[consultarStatusAtivoOmie] erro ListarNF:', e.message);
+  }
+
+  // Sem NF localizada — interpreta pela etapa
+  if (etapa === '50') {
+    return { etapa, status: 'rejeitada', codigo_sefaz: '', mensagem: 'NF rejeitada pela SEFAZ — pedido retornou para etapa Faturar (50). Verifique CFOP/IE no cadastro/cenário fiscal.' };
+  }
+  if (etapa === '70' || etapa === '80') {
+    return { etapa, status: 'cancelada', codigo_sefaz: '', mensagem: `Pedido foi cancelado/excluído no Omie (etapa ${etapa})` };
+  }
+  if (etapa === '60') {
+    return { etapa, status: 'aguardando', mensagem: 'Etapa 60 (faturado) mas NF ainda não localizada no listado — aguarde reconciliação' };
+  }
+  return { etapa, status: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda em processamento SEFAZ` };
+}
+
 // Cancela o pedido local (Gerenciar Pedidos) gravando o motivo da rejeição da SEFAZ.
 async function cancelarPedidoLocal(base44, codigoPedido, motivo, user) {
   try {
@@ -293,9 +377,32 @@ Deno.serve(async (req) => {
 
       for (let i = 0; i < pedidosEnviados.length; i++) {
         const codPed = pedidosEnviados[i].codigo_pedido;
-        const statusReal = verificacoes[i];
+        let statusReal = verificacoes[i];
+
+        // 🆕 Se o espelho ainda não tem resposta final, CONSULTA ATIVAMENTE o Omie
+        // (ConsultarPedido + ListarNF) para descobrir o motivo SEFAZ na mesma hora —
+        // sem precisar do usuário clicar em "Corrigir Etapa" depois.
+        if (statusReal.status === 'aguardando') {
+          console.log(`[emitirNfsLoteOmie] pedido ${codPed} sem espelho atualizado — consultando Omie ativamente`);
+          const ativo = await consultarStatusAtivoOmie(codPed);
+          if (ativo.status && ativo.status !== 'aguardando') {
+            // Normaliza para o formato esperado abaixo
+            statusReal = {
+              status: ativo.status === 'autorizada' ? 'emitida' :
+                      (ativo.status === 'cancelada' || ativo.status === 'denegada' || ativo.status === 'rejeitada') ? 'rejeitada' :
+                      'aguardando',
+              numero_nf: ativo.numero_nf || null,
+              mensagem: ativo.mensagem,
+              codigo_sefaz: ativo.codigo_sefaz || '',
+              substatus: ativo.status // guardamos o detalhe (rejeitada/denegada/cancelada) para o log
+            };
+          } else {
+            statusReal = { status: 'aguardando', mensagem: ativo.mensagem || statusReal.mensagem };
+          }
+        }
+
         const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
-        const cStat = matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : '');
+        const cStat = statusReal.codigo_sefaz || (matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : ''));
 
         if (statusReal.status === 'emitida') {
           const usaBoleto = await clienteUsaBoleto(base44, codPed);
@@ -315,6 +422,8 @@ Deno.serve(async (req) => {
             boleto_gerado: usaBoleto
           });
         } else if (statusReal.status === 'rejeitada') {
+          // substatus distingue rejeitada × denegada × cancelada — todos viram status='rejeitada' no log,
+          // mas a mensagem já carrega o detalhe vindo da SEFAZ (xMotivo).
           resultados.push({
             codigo_pedido: codPed,
             sucesso: false,
@@ -327,7 +436,11 @@ Deno.serve(async (req) => {
             mensagem: statusReal.mensagem,
             codigo_sefaz: cStat
           });
-          await cancelarPedidoLocal(base44, codPed, statusReal.mensagem, user);
+          // Só cancela pedido local em casos definitivos (denegada/cancelada). Rejeição "comum"
+          // (ex: CFOP errado) o pedido volta pra etapa 50 no Omie e pode ser corrigido — não cancelamos.
+          if (statusReal.substatus === 'denegada' || statusReal.substatus === 'cancelada') {
+            await cancelarPedidoLocal(base44, codPed, statusReal.mensagem, user);
+          }
         } else {
           // PENDENTE — usuário acompanha pelo Log de Emissão; webhook reconcilia depois
           resultados.push({
