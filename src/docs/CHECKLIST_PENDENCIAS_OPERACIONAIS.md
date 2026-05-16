@@ -122,23 +122,23 @@ Precisa cobrir TUDO: Logística (cargas, NF, boletos, acerto), Roteiros, Gerenci
 
 ---
 
-## 7. 🔴 Rotina de bloqueio financeiro por cliente
+## 7. 🟢 Rotina de bloqueio financeiro por cliente — CONCLUÍDO 2026-05-16
 
-**Sintoma atual:** `consultarDebitosOmie` retorna débitos GENÉRICOS, não do
-cliente selecionado. Precisa ser específico por cliente.
+**Correções aplicadas:**
 
-**Cenário esperado:**
-1. Ao consultar débitos de um cliente, retornar APENAS os débitos DAQUELE cliente (via `cCodCliente` no Omie)
-2. Se o cliente tem débito → marcar `Cliente.bloquear_faturamento = true` + `Cliente.motivo_bloqueio = "Débito em aberto: <descrição>"`
-3. Permitir desbloqueio através de:
-   - **Opção A**: desbloqueio manual no Base44 com permissão específica `desbloquear_financeiro`
-   - **Opção B**: desbloqueio sincronizado com Omie (se possível via API)
+1. **Backend já filtrava por cliente.** Tanto `consultarDebitosOmie` quanto `consultarBloqueioFinanceiroOmie` já usam `cCPFCNPJCliente` no `PesquisarLancamentos`, retornando só os débitos do cliente consultado. O `consultarBloqueioFinanceiroOmie` ainda calcula `deve_bloquear` consolidado (atrasados OU saldo negativo de limite de crédito).
 
-**Onde investigar:**
-- `functions/consultarDebitosOmie.js` — adicionar filtro por cliente
-- `functions/consultarBloqueioFinanceiroOmie.js` — usar para bloqueio real
-- Adicionar permissão `desbloquear_financeiro` ao schema `Permissao`
-- Criar tela ou ação para desbloquear cliente com motivo
+2. **Bloqueio automático aplicado no `Cliente` Base44.** `components/Pedidos/DebitosClienteModal.jsx` foi reformulado para:
+   - Chamar `consultarBloqueioFinanceiroOmie` (em vez de `consultarDebitosOmie`).
+   - **Quando `deve_bloquear=true`:** grava `Cliente.bloquear_faturamento=true` e `Cliente.motivo_bloqueio="Débito em aberto: <descrição>"` automaticamente.
+   - **Quando `deve_bloquear=false` e o bloqueio anterior era automático** (motivo começa com "Débito em aberto"): limpa o bloqueio.
+   - **Bloqueios manuais (motivo livre)** são preservados — só admin/operador desbloqueia.
+
+3. **Botão "Desbloquear" com permissão e motivo obrigatório.** O modal mostra um botão verde quando o cliente está bloqueado E o usuário tem `permissoes_cadastros.desbloquear_financeiro=true` (ou é admin). Ao clicar, abre input pedindo motivo → grava `motivo_bloqueio="Desbloqueio manual: <motivo>"` e registra entrada em `LogGerencial` via `registrarLogGerencial`.
+
+4. **Schema `Permissao` atualizado** com o campo `desbloquear_financeiro` em `permissoes_cadastros`. UI de Permissões (`pages/Permissoes.jsx`) expõe o checkbox "Desbloquear Financeiramente" no grupo Cadastros, mapeado também em Marcar/Desmarcar Todas.
+
+**Resultado prático:** consultar débitos de um cliente passou a ser uma ação de governança financeira — o bloqueio é refletido no cadastro automaticamente, e só usuários autorizados podem destravar com justificativa rastreável.
 
 ---
 

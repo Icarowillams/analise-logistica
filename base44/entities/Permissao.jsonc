@@ -92,6 +92,11 @@
         "importar_atualizar_omie": {
           "type": "boolean",
           "default": false
+        },
+        "desbloquear_financeiro": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permite desbloquear cliente financeiramente ap\u00f3s consulta de d\u00e9bitos no Omie"
         }
       },
       "default": {}
