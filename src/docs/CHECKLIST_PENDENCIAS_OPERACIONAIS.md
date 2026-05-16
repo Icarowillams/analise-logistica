@@ -63,21 +63,21 @@ ontem porque o CFOP no Omie está sem configuração correta.
 
 ---
 
-## 4. 🔴 Notas rejeitadas/canceladas no Omie aparecem como emitidas na rotina de NF-e
+## 4. 🟢 Notas rejeitadas/canceladas no Omie aparecem como emitidas na rotina de NF-e — CONCLUÍDO 2026-05-16
 
-**Sintoma:** na aba de impressão NF-e Omie aparecem notas que estão canceladas
-ou rejeitadas no Omie. PDF do pedido pode aparecer, mas a NF não.
+**Verificações + correções aplicadas:**
 
-**Regras corretas:**
-- **Aba "Impressão NF 55"**: SÓ mostra notas com `status='autorizada'` (cStat 100/150)
-- **Notas canceladas**: NÃO aparecem em NF-e Omie, status do pedido vai pra `cancelado` em "Gerenciar Pedidos"
-- **Notas rejeitadas**: NÃO aparecem em NF-e Omie
+1. **Frontend NF-55 (`NotasNF55Tab.jsx` linha 112)** já filtra `cStatus === 'autorizada'` antes de exibir. Notas canceladas/denegadas/rejeitadas/pendentes não aparecem na aba. ✅
 
-**Onde investigar:**
-- `components/notasOmie/NotasNF55Tab.jsx` → filtro de `derivarStatus === 'autorizada'`
-- `functions/listarNfsOmie.js` → `derivarStatus` já está prioritizando `cStat`, mas o frontend ainda mostra status `'pendente'` e outros?
-- Garantir que `processarWebhookOmie` no `NFe.NotaCancelada` atualize o `Pedido.status='cancelado'`
-- Adicionar reconciliação periódica que detecta canceladas e atualiza pedido local
+2. **`listarNfsOmie.derivarStatus`** já prioriza `cStat` da SEFAZ (100/135 → autorizada; 101 → cancelada; 102 → inutilizada; 110/301/302 → denegada; demais → rejeitada). ✅
+
+3. **`processarWebhookOmie` `NFe.NotaCancelada` e `VendaProduto.Cancelada/Excluida`** já marcam `Pedido.status='cancelado'`, gravam `data_cancelamento` + `motivo_cancelamento` e propagam para a Carga via `atualizarPedidoNaCarga`. ✅
+
+4. **NOVO: `functions/reconciliarNfsCanceladasOmie.js`** — fallback para o caso de webhook NÃO chegar. Varre `ListarNF` dos últimos N dias (default 7) e, para cada NF com `cStat` ≠ autorizada, marca `Pedido.status='cancelado'` e ajusta `LogEmissaoNF` correspondente.
+
+5. **NOVO: automação agendada "Reconciliação NFs Canceladas Omie (diária)"** rodando todo dia às 03:00 (America/Recife) com janela de 7 dias. Garante consistência mesmo se a rede do Omie deixar de entregar algum webhook.
+
+**Sintoma original:** notas canceladas/rejeitadas no Omie continuavam aparecendo como emitidas no Base44.
 
 ---
 
