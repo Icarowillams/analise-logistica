@@ -552,6 +552,15 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                     ⚠ Este cenário local não tem um cenário Omie vinculado. Vincule em Cadastros → Cenários Fiscais Locais.
                   </p>
                 )}
+                {!isNotaD1 && cenarioLocalAtual?.tipo_operacao === 'bonificacao' && (
+                  <div className="mt-2 p-2 rounded border border-amber-300 bg-amber-50 text-[11px] text-amber-800 leading-snug">
+                    <p className="font-semibold mb-0.5">⚠ Atenção — Bonificação</p>
+                    <p>
+                      Confirme no Omie se o cenário fiscal vinculado{cenarioLocalAtual.cenario_omie_nome ? ` (${cenarioLocalAtual.cenario_omie_nome})` : ''} está com o <strong>CFOP correto</strong>: <strong>5910</strong> (bonificação dentro do estado) ou <strong>6910</strong> (interestadual).
+                      Sem CFOP configurado, a NF-e <strong>não será emitida</strong>.
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Nº Pedido Compra</Label>

@@ -49,17 +49,20 @@ Esse `break` parava a varredura assim que UMA página tivesse algum título — 
 
 ---
 
-## 3. 🔴 Bonificação não emite NF — CFOP não configurado no Omie
+## 3. 🟡 Bonificação não emite NF — CFOP não configurado no Omie — ALERTA VISUAL APLICADO 2026-05-16
 
 **Sintoma:** pedidos com cenário fiscal de **bonificação** não foram faturados
 ontem porque o CFOP no Omie está sem configuração correta.
 
-**Onde investigar / agir:**
-- Conferir no Omie qual `cenario_fiscal` está vinculado ao CenarioFiscalLocal "Bonificação"
-- O CFOP deve ser `5910` (bonificação dentro do estado) ou `6910` (interestadual)
-- Validar a aba **Tributação** do cenário fiscal Omie
-- **AÇÃO MANUAL no Omie:** o cliente precisa corrigir lá. Do nosso lado, só checamos se está vinculado.
-- Adicionar **alerta visual no Base44** ao criar pedido de bonificação se o cenário Omie não tem CFOP completo
+**O que foi feito (lado Base44):**
+- `components/Pedidos/PedidoFormulario.jsx` agora exibe um **alerta amarelo dedicado** sempre que o usuário seleciona um cenário fiscal local com `tipo_operacao = 'bonificacao'` (Nota 55), lembrando de validar no Omie se o CFOP é **5910** (interno) ou **6910** (interestadual).
+- Mostra também o nome do cenário Omie vinculado (quando existe) pra facilitar a conferência.
+
+**Pendente (lado Omie — ação manual do cliente):**
+- Validar no Omie a aba **Tributação** do cenário fiscal vinculado a "Bonificação" e garantir CFOP 5910/6910.
+- Não há como ler o CFOP via API pública do Omie de forma confiável; portanto não há validação programática — só alerta preventivo.
+
+**Após o cliente corrigir o CFOP no Omie, marcar como 🟢.**
 
 ---
 
