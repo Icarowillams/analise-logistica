@@ -509,13 +509,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return localMap[p.status] || p.status;
   };
 
-  // Consultar bloqueio financeiro de um cliente pelo código
-  const consultarBloqueio = async (codigoCliente) => {
-    if (!codigoCliente) return null;
+  // P1 (16/05): consulta bloqueio financeiro do cliente direto no Omie.
+  // Usa a função correta `consultarBloqueioFinanceiroOmie` com cliente_id.
+  // Retorna { deve_bloquear, titulos, titulos_atrasados, total_debitos, ... }
+  const consultarBloqueio = async (clienteId) => {
+    if (!clienteId) return null;
     try {
-      const res = await base44.functions.invoke('consultarBloqueioFinanceiro', {
-        acao: 'consultar',
-        codigo: codigoCliente
+      const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', {
+        cliente_id: clienteId
       });
       return res.data;
     } catch (e) {
@@ -541,16 +542,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
     for (const p of allSelected) {
       const analise = getAnaliseStatus(p);
       if (analise === 'Pendente') {
-        // Verificar bloqueio financeiro antes de liberar
-        const codigoCliente = p.cliente_codigo_base || p.cliente_codigo;
-        if (codigoCliente) {
-          const bloqueio = await consultarBloqueio(codigoCliente);
-          if (bloqueio && bloqueio.bloqueado === true) {
+        // P1 (16/05): verifica bloqueio financeiro consultando ContasReceber do cliente no Omie.
+        // O backend retorna { sucesso, deve_bloquear, titulos_atrasados, total_debitos }.
+        if (p.cliente_id) {
+          const bloqueio = await consultarBloqueio(p.cliente_id);
+          if (bloqueio?.deve_bloquear === true) {
             bloqueadosFinanceiro++;
-            const nomeCliente = p.cliente_nome_base || p.cliente_nome || codigoCliente;
-            const motivo = bloqueio.cliente?.motivo || bloqueio.mensagem || 'Bloqueio financeiro';
-            const tipoBloqueio = bloqueio.cliente?.tipo_bloqueio || 'financeiro';
-            clientesBloqueados.push(`${nomeCliente} (${codigoCliente}) - ${tipoBloqueio}: ${motivo}`);
+            const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo_base || p.cliente_id;
+            const totalFmt = formatCurrency(bloqueio.total_debitos || 0);
+            clientesBloqueados.push(`${nomeCliente} - ${bloqueio.titulos_atrasados || 0} título(s) atrasado(s), total ${totalFmt}`);
             continue;
           }
         }

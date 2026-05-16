@@ -13,8 +13,20 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // P7-prep (16/05): permissão granular — admin sempre passa,
+        // demais usuários precisam ter `permissoes_pedidos.enviar_pedido` ativo
+        // (mesma permissão que já controla envio ao Omie).
         if (user.role !== 'admin') {
-            return Response.json({ error: 'Apenas administradores podem alterar etapa de pedidos no Omie' }, { status: 403 });
+            const allVendedores = await base44.asServiceRole.entities.Vendedor.list();
+            const vendedor = allVendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+            if (!vendedor) {
+                return Response.json({ error: 'Funcionário não encontrado no cadastro' }, { status: 403 });
+            }
+            const permissoes = await base44.asServiceRole.entities.Permissao.filter({ vendedor_id: vendedor.id });
+            const perm = permissoes[0];
+            if (!perm?.permissoes_pedidos?.enviar_pedido) {
+                return Response.json({ error: 'Sem permissão para liberar pedidos' }, { status: 403 });
+            }
         }
 
         const body = await req.json();

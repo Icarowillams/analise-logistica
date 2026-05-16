@@ -341,3 +341,14 @@ Cada item só vira 🟢 quando:
 | P5   | 5.1–5.3  | ⬜ |
 
 > Marcar ✅ ao concluir cada item. Quando todos ✅ + "300%" do Rodrigo → fechar rodada 16/05 e iniciar P7.
+
+---
+
+## 🐛 BUGS ENCONTRADOS NA AUDITORIA (16/05 — pós validação)
+
+| # | Onde | Sintoma | Status |
+|---|------|---------|:---:|
+| B1 | `functions/liberarPedidoOmie` | Função estava restrita a `role==='admin'` → nenhum vendedor conseguia liberar pedido, mesmo com permissão. Quebra P1 completamente. | 🟢 Corrigido — agora checa `permissoes_pedidos.enviar_pedido` |
+| B2 | `components/Pedidos/GerenciarPedidos.handleBatchLiberar` | Chamava função inexistente `consultarBloqueioFinanceiro` (faltava sufixo Omie) e lia campos errados (`bloqueado` em vez de `deve_bloquear`). Bloqueio financeiro **NÃO era verificado** na liberação em lote — qualquer pedido passava sem checagem. **P1 estava furado por aqui.** | 🟢 Corrigido — usa `consultarBloqueioFinanceiroOmie` com `cliente_id` e lê `deve_bloquear` |
+
+**Impacto:** Antes desta auditoria, P1 funcionava só no fluxo individual (via `BloqueioLiberarModal`). Na liberação em lote a verificação era silenciosamente ignorada. **Agora os dois caminhos estão íntegros.**
