@@ -223,7 +223,17 @@ export default function useDadosMontagem() {
   }, [carregar]);
 
   useEffect(() => {
-    carregar();
+    // No primeiro load, SINCRONIZA com o Omie antes de carregar do espelho local.
+    // Isso garante que pedidos recém-liberados no Omie apareçam mesmo quando o
+    // webhook atrasou ou não chegou ainda (espelho desatualizado).
+    (async () => {
+      try {
+        await base44.functions.invoke('sincronizarLiberadosOmieRapido', {});
+      } catch (e) {
+        console.warn('[useDadosMontagem] sincronização inicial Omie falhou:', e?.message);
+      }
+      await carregar();
+    })();
 
     // Subscribe em tempo real — qualquer mudança nas 3 fontes reagenda refresh
     const unsubEspelho = base44.entities.PedidoLiberadoOmie.subscribe(() => agendarRefresh());
