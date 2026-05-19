@@ -34,10 +34,13 @@ export default function EmissaoBoletos() {
     refetchOnWindowFocus: false
   });
 
+  // Só faz sentido emitir boleto para cargas FATURADAS — antes disso ainda não existe
+  // NF emitida e portanto não há título no Omie para virar boleto.
   const cargasFiltradas = useMemo(() => {
     const termo = filtroNumeroCarga.trim().toLowerCase();
-    if (!termo) return cargas;
-    return cargas.filter(c => String(c.numero_carga || '').toLowerCase().includes(termo));
+    return cargas
+      .filter(c => c.status_carga === 'faturada')
+      .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo));
   }, [cargas, filtroNumeroCarga]);
 
   const cargaSelecionada = useMemo(
