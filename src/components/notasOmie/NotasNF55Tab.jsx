@@ -102,23 +102,51 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           return;
         }
       }
-      const { data } = await base44.functions.invoke('listarNfsOmie', {
-        ...filtrosBusca,
-        pagina: pg,
-        registros_por_pagina: 50
-      });
-      if (data?.sucesso) {
-        // Mostra APENAS NFs autorizadas — canceladas/denegadas/inutilizadas/pendentes não devem aparecer aqui
-        const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
+      // Quando filtra por CARGA, precisamos varrer TODAS as páginas do período
+      // (uma NF da carga pode estar em qualquer página). Caso contrário, só busca a página pg.
+      let nfsAcumuladas = [];
+      let dataFinalResp = null;
+      if (cargaParaFiltrar) {
+        let pagAtual = 1;
+        const MAX_PAG = 20; // até 200×20 = 4000 NFs no período (largo o suficiente)
+        while (pagAtual <= MAX_PAG) {
+          const { data } = await base44.functions.invoke('listarNfsOmie', {
+            ...filtrosBusca,
+            pagina: pagAtual,
+            registros_por_pagina: 200
+          });
+          if (!data?.sucesso) {
+            toast.error(data?.error || 'Erro ao consultar NFs');
+            setLoading(false);
+            return;
+          }
+          dataFinalResp = data;
+          nfsAcumuladas = nfsAcumuladas.concat(data.nfs || []);
+          const totalPag = Number(data.total_de_paginas || 1);
+          if (pagAtual >= totalPag) break;
+          pagAtual++;
+        }
+        const apenasAutorizadas = nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada');
         const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
         const mapaCargas = await buscarCargasDasNfs(nfsFiltradas);
         setCargasPorNf(mapaCargas);
-        setResultado(cargaParaFiltrar
-          ? { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 }
-          : { ...data, nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length });
-        setPagina(pg);
+        setResultado({ ...(dataFinalResp || {}), nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
+        setPagina(1);
       } else {
-        toast.error(data?.error || 'Erro ao consultar NFs');
+        const { data } = await base44.functions.invoke('listarNfsOmie', {
+          ...filtrosBusca,
+          pagina: pg,
+          registros_por_pagina: 50
+        });
+        if (data?.sucesso) {
+          const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
+          const mapaCargas = await buscarCargasDasNfs(apenasAutorizadas);
+          setCargasPorNf(mapaCargas);
+          setResultado({ ...data, nfs: apenasAutorizadas, total_de_registros: apenasAutorizadas.length });
+          setPagina(pg);
+        } else {
+          toast.error(data?.error || 'Erro ao consultar NFs');
+        }
       }
     } catch (e) {
       toast.error(e.message);
