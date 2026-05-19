@@ -166,10 +166,12 @@ Deno.serve(async (req) => {
       if (reg?.codigo_pedido) espelhoPorCodigo.set(String(reg.codigo_pedido), reg);
     });
 
-    // 3. Upsert
+    // 3. Upsert — tolerante a falhas parciais
     let criados = 0;
     let atualizados = 0;
+    const erros = [];
     for (const p of pedidosOmie) {
+      try {
       const pedidoLocal = pedidoLocalPorOmie.get(p.codigo_pedido) || null;
       const cliente = buscarClienteLocal(p, pedidoLocal, indices);
       const rotaNome = cliente?.rota_id ? (mapaRota.get(cliente.rota_id) || '') : (pedidoLocal?.rota_nome || '');
@@ -218,6 +220,10 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
         criados += 1;
       }
+      } catch (e) {
+        erros.push({ codigo_pedido: p.codigo_pedido, erro: e.message });
+        // Continua o loop em vez de explodir 500
+      }
     }
 
     return Response.json({
@@ -225,9 +231,12 @@ Deno.serve(async (req) => {
       total: pedidosOmie.length,
       criados,
       atualizados,
+      erros_count: erros.length,
+      erros: erros.slice(0, 10),
       duracao_ms: Date.now() - t0
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[sincronizarLiberadosOmieRapido] Erro:', error.message);
+    return Response.json({ sucesso: false, error: error.message }, { status: 500 });
   }
 });

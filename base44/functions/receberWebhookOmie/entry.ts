@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 // ⚡ WEBHOOK RECEIVER — Ultra leve (< 200ms)
 // Apenas valida e enfileira. Processamento é feito async pelo processarWebhookOmie.
@@ -31,7 +31,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'app_key inválida' }, { status: 401 });
     }
 
-    const base44 = createClient({ appId: Deno.env.get('BASE44_APP_ID') });
+    // createClientFromRequest funciona mesmo sem cookie de usuário, contanto que
+    // usemos apenas base44.asServiceRole — o SDK injeta o service token do app.
+    const base44 = createClientFromRequest(req);
 
     // Idempotência: se messageId já foi processado, retorna OK sem reprocessar
     if (messageId) {
