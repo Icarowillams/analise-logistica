@@ -94,13 +94,22 @@ Deno.serve(async (req) => {
         if (id_conta_corrente) param.id_conta_corrente = Number(id_conta_corrente);
 
         const data = await omieCall('GerarBoleto', param);
+        const numBoleto = data.numero_boleto || data.nNumBoleto || '';
+        const codBarras = data.codigo_barras || data.cCodBarras || '';
+        const linkBoleto = data.link_boleto || data.cLinkBoleto || '';
+        // Omie às vezes responde 200 sem erro mas SEM gerar boleto (ex: título já RECEBIDO).
+        // Consideramos sucesso real apenas se algum identificador do boleto voltou preenchido.
+        const sucessoReal = !!(String(numBoleto).trim() || String(codBarras).trim() || String(linkBoleto).trim());
         resultados.push({
           codigo_lancamento: codigo,
-          sucesso: true,
-          numero_boleto: data.numero_boleto || data.nNumBoleto || '',
-          codigo_barras: data.codigo_barras || data.cCodBarras || '',
+          sucesso: sucessoReal,
+          numero_boleto: numBoleto,
+          codigo_barras: codBarras,
           linha_digitavel: data.linha_digitavel || data.cLinDig || '',
-          link_boleto: data.link_boleto || data.cLinkBoleto || ''
+          link_boleto: linkBoleto,
+          mensagem: sucessoReal
+            ? 'Boleto gerado'
+            : 'Omie respondeu sem gerar boleto (título pode estar liquidado/recebido)'
         });
       } catch (err) {
         const msg = err.message.toLowerCase();
