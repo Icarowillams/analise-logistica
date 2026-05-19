@@ -160,10 +160,8 @@ Deno.serve(async (req) => {
             if (!enr.cnpj_cpf) enr.cnpj_cpf = c.cnpj_cpf;
           }
         }
-        // Fallback do número do documento: usa numero_pedido_vinculado, depois codigo_lancamento
-        if (!enr.numero_documento) {
-          enr.numero_documento = enr.numero_pedido_vinculado || String(enr.codigo_lancamento || '');
-        }
+        // NÃO inventamos numero_documento: se o título Omie vier sem doc fiscal,
+        // mostramos vazio na UI (caso de lançamento manual/avulso, ex: id_origem MANR).
         return enr;
       });
     } catch (e) {
