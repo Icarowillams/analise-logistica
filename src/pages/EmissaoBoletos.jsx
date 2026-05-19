@@ -23,6 +23,7 @@ export default function EmissaoBoletos() {
   const queryClient = useQueryClient();
   const [cargaId, setCargaId] = useState('');
   const [filtroNumeroCarga, setFiltroNumeroCarga] = useState('');
+  const [apenasComBoletosDisponiveis, setApenasComBoletosDisponiveis] = useState(false);
   const [selecionados, setSelecionados] = useState(new Set());
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState(null);
@@ -38,14 +39,61 @@ export default function EmissaoBoletos() {
     refetchOnWindowFocus: false
   });
 
+  // Pré-carrega TODOS os títulos em aberto sem boleto (últimos 90d) — 1 chamada só.
+  // Usado para identificar quais cargas têm boletos disponíveis sem chamar o Omie por carga.
+  const { data: titulosDisponiveis = [], isLoading: loadingTitulosDisp } = useQuery({
+    queryKey: ['titulos-disponiveis-globais'],
+    queryFn: async () => {
+      const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+      const hoje = new Date();
+      const inicio = new Date(hoje.getTime() - 90 * 86400000);
+      let acumulados = [];
+      for (let pag = 1; pag <= 10; pag++) {
+        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+          data_de: fmt(inicio),
+          data_ate: fmt(hoje),
+          filtrar_por_data: 'E',
+          apenas_pendentes: true,
+          pagina: pag,
+          registros_por_pagina: 100
+        });
+        if (!data?.sucesso) break;
+        acumulados = acumulados.concat(data.titulos || []);
+        if (pag >= (data.total_de_paginas || 1)) break;
+      }
+      // Só interessam títulos SEM boleto ainda gerado
+      return acumulados.filter(t => !(t.numero_boleto && String(t.numero_boleto).trim()));
+    },
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000
+  });
+
+  // Set de codigo_cliente Omie que TÊM título disponível p/ boleto
+  const codigosClienteComBoleto = useMemo(
+    () => new Set(titulosDisponiveis.map(t => String(t.codigo_cliente || '').trim()).filter(Boolean)),
+    [titulosDisponiveis]
+  );
+
+  // Verifica se a carga tem ao menos 1 pedido cujo cliente aparece nos títulos disponíveis
+  const cargaTemBoletoDisponivel = (carga) => {
+    const pedidos = carga.pedidos_omie || [];
+    return pedidos.some(p => codigosClienteComBoleto.has(String(p.codigo_cliente || '').trim()));
+  };
+
   // Só faz sentido emitir boleto para cargas FATURADAS — antes disso ainda não existe
   // NF emitida e portanto não há título no Omie para virar boleto.
   const cargasFiltradas = useMemo(() => {
     const termo = filtroNumeroCarga.trim().toLowerCase();
     return cargas
       .filter(c => c.status_carga === 'faturada')
-      .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo));
-  }, [cargas, filtroNumeroCarga]);
+      .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo))
+      .filter(c => !apenasComBoletosDisponiveis || cargaTemBoletoDisponivel(c));
+  }, [cargas, filtroNumeroCarga, apenasComBoletosDisponiveis, codigosClienteComBoleto]);
+
+  const totalCargasComBoleto = useMemo(
+    () => cargas.filter(c => c.status_carga === 'faturada' && cargaTemBoletoDisponivel(c)).length,
+    [cargas, codigosClienteComBoleto]
+  );
 
   const cargaSelecionada = useMemo(
     () => cargas.find(c => c.id === cargaId) || null,
@@ -215,6 +263,23 @@ export default function EmissaoBoletos() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+              <Checkbox
+                checked={apenasComBoletosDisponiveis}
+                onCheckedChange={(v) => setApenasComBoletosDisponiveis(!!v)}
+                disabled={loadingTitulosDisp}
+              />
+              Apenas cargas com boletos disponíveis
+              {loadingTitulosDisp && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+            </label>
+            {!loadingTitulosDisp && (
+              <Badge variant="outline" className="text-xs">
+                {totalCargasComBoleto} carga(s) com boleto pendente
+              </Badge>
+            )}
           </div>
 
           {cargaSelecionada && (
