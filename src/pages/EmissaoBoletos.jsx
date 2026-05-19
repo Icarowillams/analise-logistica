@@ -68,16 +68,36 @@ export default function EmissaoBoletos() {
     staleTime: 5 * 60 * 1000
   });
 
-  // Set de codigo_cliente Omie que TÊM título disponível p/ boleto
-  const codigosClienteComBoleto = useMemo(
-    () => new Set(titulosDisponiveis.map(t => String(t.codigo_cliente || '').trim()).filter(Boolean)),
-    [titulosDisponiveis]
-  );
+  // Índices dos títulos disponíveis (sem boleto) p/ matching fiel — mesmos critérios
+  // usados no carregamento de títulos por carga: codigo_cliente OU cnpj OU numero_documento (NF)
+  const indicesTitulos = useMemo(() => {
+    const codigos = new Set();
+    const cnpjs = new Set();
+    const nfs = new Set();
+    titulosDisponiveis.forEach(t => {
+      const cod = String(t.codigo_cliente || '').trim();
+      if (cod) codigos.add(cod);
+      const cn = String(t.cnpj_cpf || '').replace(/\D/g, '');
+      if (cn) cnpjs.add(cn);
+      const doc = String(t.numero_documento || '').replace(/\D/g, '');
+      if (doc) nfs.add(doc);
+    });
+    return { codigos, cnpjs, nfs };
+  }, [titulosDisponiveis]);
 
-  // Verifica se a carga tem ao menos 1 pedido cujo cliente aparece nos títulos disponíveis
+  // Verifica se a carga tem ao menos 1 pedido que casa com algum título disponível.
+  // Critérios (qualquer um casa): codigo_cliente Omie, CNPJ do cliente, ou número da NF.
   const cargaTemBoletoDisponivel = (carga) => {
     const pedidos = carga.pedidos_omie || [];
-    return pedidos.some(p => codigosClienteComBoleto.has(String(p.codigo_cliente || '').trim()));
+    return pedidos.some(p => {
+      const cod = String(p.codigo_cliente || '').trim();
+      if (cod && indicesTitulos.codigos.has(cod)) return true;
+      const cn = String(p.cnpj_cpf_cliente || '').replace(/\D/g, '');
+      if (cn && indicesTitulos.cnpjs.has(cn)) return true;
+      const nf = String(p.numero_nf || '').replace(/\D/g, '');
+      if (nf && indicesTitulos.nfs.has(nf)) return true;
+      return false;
+    });
   };
 
   // Só faz sentido emitir boleto para cargas FATURADAS — antes disso ainda não existe
@@ -88,11 +108,11 @@ export default function EmissaoBoletos() {
       .filter(c => c.status_carga === 'faturada')
       .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo))
       .filter(c => !apenasComBoletosDisponiveis || cargaTemBoletoDisponivel(c));
-  }, [cargas, filtroNumeroCarga, apenasComBoletosDisponiveis, codigosClienteComBoleto]);
+  }, [cargas, filtroNumeroCarga, apenasComBoletosDisponiveis, indicesTitulos]);
 
   const totalCargasComBoleto = useMemo(
     () => cargas.filter(c => c.status_carga === 'faturada' && cargaTemBoletoDisponivel(c)).length,
-    [cargas, codigosClienteComBoleto]
+    [cargas, indicesTitulos]
   );
 
   const cargaSelecionada = useMemo(
