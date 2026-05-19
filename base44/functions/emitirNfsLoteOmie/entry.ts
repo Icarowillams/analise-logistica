@@ -84,11 +84,11 @@ async function lerStatusDoEspelho(base44, codigoPedido) {
     if (statusReal === 'cancelada' || statusReal === 'denegada') {
       return { status: 'rejeitada', mensagem: esp.status_label || `NF ${statusReal}` };
     }
-    // Pedido voltou para etapa 50 (rejeição implícita)
-    if (etapa === '50') {
-      return { status: 'rejeitada', mensagem: 'NF rejeitada pelo Omie (pedido voltou para etapa Faturar)' };
-    }
-    return null; // ainda aguardando
+    // ⚠️ NÃO classifica etapa 50 como "rejeitada" só pela etapa.
+    // Etapa 50 é o estado NORMAL e transitório do pedido logo após FaturarPedidoVenda,
+    // enquanto a SEFAZ processa. Só consideramos rejeição quando vier confirmação real
+    // via consultarStatusAtivoOmie (cStat>=200 do ListarNF) ou via webhook (status_real='rejeitada').
+    return null; // ainda aguardando — deixa o consultarStatusAtivoOmie/webhook decidir
   } catch {
     return null;
   }
