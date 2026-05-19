@@ -456,21 +456,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 🤖 Geração automática de boletos APENAS para NFs já autorizadas dentro da janela
-    // (as autorizadas depois pelo webhook geram boletos via automação separada).
-    let boletosAuto = null;
-    if (codigosParaBoleto.length > 0) {
-      try {
-        await new Promise(r => setTimeout(r, 5000));
-        const inv = await base44.functions.invoke('gerarBoletosAutoPedidos', {
-          codigos_pedido: codigosParaBoleto
-        });
-        boletosAuto = inv?.data || null;
-      } catch (e) {
-        console.error('[emitirNfsLoteOmie] erro ao gerar boletos auto:', e.message);
-        boletosAuto = { error: e.message };
-      }
-    }
+    // 🚫 Geração AUTOMÁTICA de boletos foi DESATIVADA por decisão do usuário.
+    // A emissão de boletos agora é feita manualmente na tela "Logística → Emissão de Boletos",
+    // de forma análoga à emissão manual de NF-e. Isso dá ao operador controle de quando e
+    // quais títulos virar boleto.
+    const boletosAuto = null;
 
     // 🎯 AUTO-RESOLVE: se sobraram pendentes, dispara reconciliação automática
     // (consulta ConsultarPedido + ListarNF) para resolver agora — sem o usuário

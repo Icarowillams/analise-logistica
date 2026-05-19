@@ -46,16 +46,29 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
   const [cargasPorNf, setCargasPorNf] = useState({}); // cNumero(normalizado) → numero_carga
 
-  // Filtra NFs pela carga usando nIdPedido (Omie) — cruza com Carga.pedidos_omie[].codigo_pedido
+  // Filtra NFs pela carga cruzando por DOIS critérios (qualquer um casa):
+  //  1. nIdPedido da NF == codigo_pedido do pedido na carga (caminho normal)
+  //  2. nNF normalizado da NF == numero_nf do pedido na carga (fallback quando o
+  //     ListarNF do Omie não devolve nIdPedido — comum para NFs antigas ou
+  //     emitidas via outros canais)
   const filtrarNfsPorCarga = (nfs, carga) => {
     if (!carga) return nfs;
+    const pedidos = carga.pedidos_omie || [];
     const codigosPedido = new Set(
-      (carga.pedidos_omie || [])
-        .map(p => p.codigo_pedido && String(p.codigo_pedido))
+      pedidos.map(p => p.codigo_pedido && String(p.codigo_pedido)).filter(Boolean)
+    );
+    const numerosNf = new Set(
+      pedidos
+        .map(p => p.numero_nf && String(p.numero_nf).replace(/\D/g, ''))
         .filter(Boolean)
     );
-    if (codigosPedido.size === 0) return [];
-    return (nfs || []).filter(nf => codigosPedido.has(String(nf.nIdPedido || '')));
+    if (codigosPedido.size === 0 && numerosNf.size === 0) return [];
+    return (nfs || []).filter(nf => {
+      const idPedido = String(nf.nIdPedido || '');
+      const numNf = String(nf.cNumero || '').replace(/\D/g, '');
+      return (idPedido && codigosPedido.has(idPedido)) ||
+             (numNf && numerosNf.has(numNf));
+    });
   };
 
   // Mapeia NF (cNumero normalizado) → numero_carga usando nIdPedido (omie_codigo_pedido)

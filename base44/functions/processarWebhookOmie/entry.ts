@@ -406,8 +406,8 @@ async function handleNFe(base44, topic, evt) {
     }
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
-    // 🤖 NF autorizada → geração automática de boleto
-    await gerarBoletoAuto(base44, codigoPedido);
+    // 🚫 Geração AUTOMÁTICA de boleto foi DESATIVADA.
+    // O operador gera os boletos manualmente em "Logística → Emissão de Boletos".
   } else if (topic === 'NFe.NotaCancelada') {
     updates.status = 'cancelado';
     updates.data_cancelamento = new Date().toISOString();
