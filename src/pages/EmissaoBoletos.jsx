@@ -26,8 +26,10 @@ export default function EmissaoBoletos() {
   const [selecionados, setSelecionados] = useState(new Set());
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState(null);
-  // Filtro: por padrão escondemos títulos sem NF/Pedido vinculado (lançamentos avulsos no Omie)
+  // Filtros dos títulos
   const [apenasComVinculo, setApenasComVinculo] = useState(true);
+  const [filtroCliente, setFiltroCliente] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState('todos');
 
   // Lista as cargas (faturadas têm prioridade — são as que precisam de boleto)
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
@@ -117,12 +119,22 @@ export default function EmissaoBoletos() {
 
   const titulosTodos = titulosResp?.titulos || [];
   const titulos = useMemo(() => {
-    if (!apenasComVinculo) return titulosTodos;
-    return titulosTodos.filter(t =>
-      (t.numero_documento && String(t.numero_documento).trim()) ||
-      (t.numero_pedido_vinculado && String(t.numero_pedido_vinculado).trim())
-    );
-  }, [titulosTodos, apenasComVinculo]);
+    const termo = filtroCliente.trim().toLowerCase();
+    return titulosTodos.filter(t => {
+      if (apenasComVinculo) {
+        const temVinc = (t.numero_documento && String(t.numero_documento).trim()) ||
+                        (t.numero_pedido_vinculado && String(t.numero_pedido_vinculado).trim());
+        if (!temVinc) return false;
+      }
+      if (termo && !String(t.nome_cliente || '').toLowerCase().includes(termo)) return false;
+      if (filtroStatus !== 'todos') {
+        const st = String(t.status_titulo || '').toUpperCase();
+        if (filtroStatus === 'aberto' && st !== 'ABERTO') return false;
+        if (filtroStatus === 'recebido' && st !== 'RECEBIDO') return false;
+      }
+      return true;
+    });
+  }, [titulosTodos, apenasComVinculo, filtroCliente, filtroStatus]);
   const ocultos = titulosTodos.length - titulos.length;
 
   const handleSelecionarCarga = (id) => {
@@ -221,9 +233,58 @@ export default function EmissaoBoletos() {
       {cargaSelecionada && (
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">2. Filtros</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <Label>Cliente</Label>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    className="pl-8"
+                    placeholder="Buscar por nome..."
+                    value={filtroCliente}
+                    onChange={(e) => setFiltroCliente(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Status do título</Label>
+                <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="aberto">Apenas em aberto</SelectItem>
+                    <SelectItem value="recebido">Apenas recebidos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer h-10">
+                <Checkbox
+                  checked={apenasComVinculo}
+                  onCheckedChange={(v) => setApenasComVinculo(!!v)}
+                />
+                Apenas títulos com NF/Pedido vinculado
+              </label>
+            </div>
+            {apenasComVinculo && ocultos > 0 && (
+              <div className="mt-2">
+                <Badge variant="outline" className="text-xs">
+                  {ocultos} título(s) avulso(s) ocultado(s)
+                </Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {cargaSelecionada && (
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base flex flex-wrap items-center justify-between gap-3">
               <span>
-                2. Títulos da carga
+                3. Títulos da carga
                 {titulos.length > 0 && (
                   <span className="ml-2 text-sm font-normal text-slate-500">
                     ({titulos.length} encontrado{titulos.length > 1 ? 's' : ''}
@@ -243,20 +304,6 @@ export default function EmissaoBoletos() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                <Checkbox
-                  checked={apenasComVinculo}
-                  onCheckedChange={(v) => setApenasComVinculo(!!v)}
-                />
-                Apenas títulos com NF/Pedido vinculado
-              </label>
-              {apenasComVinculo && ocultos > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {ocultos} título(s) avulso(s) ocultado(s)
-                </Badge>
-              )}
-            </div>
             <ListaTitulosCarga
               titulos={titulos}
               loading={loadingTitulos}
