@@ -68,6 +68,10 @@ export default function EmissaoBoletos() {
       const nfsCarga = new Set(
         pedidos.map(p => String(p.numero_nf || '').replace(/\D/g, '')).filter(Boolean)
       );
+      // codigo_cliente Omie sempre vem preenchido nos pedidos — usado como casamento principal
+      const codigosClienteCarga = new Set(
+        pedidos.map(p => String(p.codigo_cliente || '')).filter(Boolean)
+      );
 
       // Período: 60 dias atrás até 30 dias à frente (cobre emissão e vencimentos futuros)
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
@@ -94,9 +98,11 @@ export default function EmissaoBoletos() {
       const titulos = acumulados.filter(t => {
         const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
         const docT = String(t.numero_documento || '').replace(/\D/g, '');
+        const codClienteT = String(t.codigo_cliente || '');
+        const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
         const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
         const baseNf = nfsCarga.size > 0 && docT && nfsCarga.has(docT);
-        return baseCnpj || baseNf;
+        return baseCodCli || baseCnpj || baseNf;
       });
       return { titulos };
     },
