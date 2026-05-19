@@ -81,17 +81,15 @@ Deno.serve(async (req) => {
     const dAte = parseBR(data_ate);
     const cnpjNorm = cnpj_cpf ? cnpj_cpf.replace(/\D/g, '') : null;
 
-    // Pós-filtro: CNPJ + fallback de data caso o Omie não tenha filtrado nativamente.
-    // Status já vem filtrado pela API quando apenas_pendentes=true.
+    // Pós-filtro: apenas status (CNPJ + data já foram aplicados pela própria API do Omie via
+    // filtrar_por_cpf_cnpj / filtrar_por_(emissao|data)_de|ate). Refiltrar aqui pelo CNPJ
+    // bruto NÃO funciona porque o Omie nem sempre devolve cpf_cnpj_cliente no resultado.
     const titulosRaw = (data.conta_receber_cadastro || []).filter(t => {
       if (apenas_pendentes && t.status_titulo && t.status_titulo !== 'ABERTO') return false;
-      if (cnpjNorm && (t.cpf_cnpj_cliente || '').replace(/\D/g, '') !== cnpjNorm) return false;
-      if (dDe && dAte) {
-        const ref = filtrar_por_data === 'E' ? parseBR(t.data_emissao) : parseBR(t.data_vencimento);
-        if (!ref || ref < dDe || ref > dAte) return false;
-      }
       return true;
     });
+    // Mantém parser pra eventual uso futuro — silenciado abaixo
+    void parseBR; void dDe; void dAte; void cnpjNorm;
 
     let titulos = titulosRaw.map(t => ({
       codigo_lancamento: t.codigo_lancamento_omie,
