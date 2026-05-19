@@ -469,6 +469,46 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 🎯 AUTO-RESOLVE: se sobraram pendentes, dispara reconciliação automática
+    // (consulta ConsultarPedido + ListarNF) para resolver agora — sem o usuário
+    // precisar clicar manualmente em "Resolver pendentes" depois.
+    const codigosPendentes = resultados.filter(r => r.pendente).map(r => String(r.codigo_pedido));
+    if (codigosPendentes.length > 0) {
+      try {
+        // Aguarda uns segundos para dar tempo da SEFAZ processar
+        await new Promise(r => setTimeout(r, 8000));
+        const recon = await base44.functions.invoke('atualizarStatusLogsPendentes', {
+          codigos_pedido: codigosPendentes
+        });
+        const reconData = recon?.data || {};
+        // Atualiza os resultados retornados ao frontend com o status reconciliado
+        if (Array.isArray(reconData.resultados)) {
+          for (const rr of reconData.resultados) {
+            const idx = resultados.findIndex(x => String(x.codigo_pedido) === String(rr.codigo_pedido));
+            if (idx >= 0 && rr.sucesso) {
+              if (rr.novo_status === 'autorizada') {
+                resultados[idx] = {
+                  codigo_pedido: rr.codigo_pedido,
+                  sucesso: true,
+                  numero_nf: rr.numero_nf,
+                  mensagem: rr.mensagem
+                };
+              } else if (rr.novo_status === 'rejeitada') {
+                resultados[idx] = {
+                  codigo_pedido: rr.codigo_pedido,
+                  sucesso: false,
+                  rejeitada: true,
+                  mensagem: rr.mensagem
+                };
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[emitirNfsLoteOmie] erro na reconciliação automática:', e.message);
+      }
+    }
+
     const sucessos = resultados.filter(r => r.sucesso).length;
     const rejeitadas = resultados.filter(r => r.rejeitada).length;
     const pendentes = resultados.filter(r => r.pendente).length;
