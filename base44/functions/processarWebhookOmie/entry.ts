@@ -182,18 +182,27 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
   }
   tipoOperacao = tipoOperacao || 'venda';
 
-  // Status NF: etapa 60 = leitura normal da NF; etapa 50 sem NF = rejeição implícita após tentativa de faturamento
+  // Status NF: etapa 60 = leitura normal da NF; etapa 50 = aguardando (transitório normal após FaturarPedidoVenda)
+  // ⚠️ NÃO marcamos etapa 50 como rejeitada — esse é o estado padrão enquanto a SEFAZ processa.
+  // Rejeição real só vem por: (a) cStat>=200 no infoNfe (capturado abaixo) ou (b) webhook NFe.NotaRejeitada/Denegada.
   const infoNfe = pedidoBruto.infoNfe || pedidoBruto.info_nf || null;
   const numeroNf = String(infoNfe?.nNF || infoNfe?.numero_nf || pedidoBruto.cabecalho?.numero_nfe || '');
-  const mensagemRejeicao = infoNfe?.cMensStatus || infoNfe?.xMotivo || pedidoBruto.cabecalho?.motivo_status || pedidoBruto.cabecalho?.mensagem_status || '';
-  const statusNf = etapa === '60'
-    ? calcularStatusNF(pedidoBruto.cabecalho, infoNfe)
-    : etapa === '50'
-      ? {
-          status_real: 'rejeitada',
-          status_label: mensagemRejeicao || 'NF rejeitada pela SEFAZ — pedido retornou para etapa Faturar'
-        }
-      : { status_real: null, status_label: null };
+  const cStatNfe = String(infoNfe?.cStat || '');
+  const xMotivoNfe = infoNfe?.xMotivo || infoNfe?.cMensStatus || '';
+  let statusNf;
+  if (etapa === '60') {
+    statusNf = calcularStatusNF(pedidoBruto.cabecalho, infoNfe);
+  } else if (etapa === '50' && cStatNfe && Number(cStatNfe) >= 200 && !['100','101','135','150'].includes(cStatNfe)) {
+    // Rejeição EXPLÍCITA confirmada pela SEFAZ via cStat>=200
+    statusNf = {
+      status_real: ['110','301','302','205'].includes(cStatNfe) ? 'denegada' : 'rejeitada',
+      status_label: `[SEFAZ ${cStatNfe}] ${xMotivoNfe || 'NF rejeitada'}`
+    };
+  } else if (etapa === '50') {
+    statusNf = { status_real: 'aguardando_nf', status_label: 'Aguardando processamento SEFAZ' };
+  } else {
+    statusNf = { status_real: null, status_label: null };
+  }
 
   const registro = {
     codigo_pedido: String(omieCodigoPedido),
