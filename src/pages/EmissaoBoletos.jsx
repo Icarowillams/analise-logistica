@@ -45,24 +45,56 @@ export default function EmissaoBoletos() {
     [cargas, cargaId]
   );
 
-  // Busca os títulos (contas a receber) no Omie para os pedidos da carga
+  // Busca os títulos (contas a receber) no Omie e filtra pelos pedidos da carga.
+  // Como a API ListarContasReceber NÃO devolve nCodPedido no mapeamento atual,
+  // casamos por DOIS critérios (qualquer um casa):
+  //   1. CNPJ/CPF do cliente do título == CNPJ/CPF do cliente do pedido na carga
+  //   2. numero_documento do título == numero_nf do pedido na carga
+  // Buscamos os últimos 60 dias (suficiente para NFs recém-emitidas) — sem o
+  // filtro de período o Omie pode retornar dados muito antigos e estourar paginação.
   const { data: titulosResp, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
     queryKey: ['titulos-carga', cargaId],
     queryFn: async () => {
       if (!cargaSelecionada) return { titulos: [] };
       const pedidos = cargaSelecionada.pedidos_omie || [];
-      const codigosPedido = pedidos.map(p => String(p.codigo_pedido)).filter(Boolean);
-      if (codigosPedido.length === 0) return { titulos: [] };
+      if (pedidos.length === 0) return { titulos: [] };
 
-      // Reusa listarContasReceberOmie filtrando depois pelos códigos da carga
-      const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-        registros_por_pagina: 500,
-        apenas_importado_api: 'N'
+      const cnpjsCarga = new Set(
+        pedidos.map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, '')).filter(Boolean)
+      );
+      const nfsCarga = new Set(
+        pedidos.map(p => String(p.numero_nf || '').replace(/\D/g, '')).filter(Boolean)
+      );
+
+      // Período: 60 dias atrás até 30 dias à frente (cobre emissão e vencimentos futuros)
+      const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+      const hoje = new Date();
+      const inicio = new Date(hoje.getTime() - 60 * 86400000);
+      const fim = new Date(hoje.getTime() + 30 * 86400000);
+
+      // Varre até 5 páginas (500 títulos) — suficiente p/ uma carga
+      let acumulados = [];
+      for (let pag = 1; pag <= 5; pag++) {
+        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+          data_de: fmt(inicio),
+          data_ate: fmt(fim),
+          filtrar_por_data: 'V',
+          apenas_pendentes: false,
+          pagina: pag,
+          registros_por_pagina: 100
+        });
+        if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos');
+        acumulados = acumulados.concat(data.titulos || []);
+        if (pag >= (data.total_de_paginas || 1)) break;
+      }
+
+      const titulos = acumulados.filter(t => {
+        const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
+        const docT = String(t.numero_documento || '').replace(/\D/g, '');
+        const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
+        const baseNf = nfsCarga.size > 0 && docT && nfsCarga.has(docT);
+        return baseCnpj || baseNf;
       });
-      if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos');
-
-      const setCodigos = new Set(codigosPedido);
-      const titulos = (data.titulos || []).filter(t => setCodigos.has(String(t.nCodPedido || '')));
       return { titulos };
     },
     enabled: !!cargaSelecionada,

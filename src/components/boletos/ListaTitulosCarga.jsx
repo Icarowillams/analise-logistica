@@ -17,14 +17,14 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
 
   const todosMarcados =
     elegiveis.length > 0 &&
-    elegiveis.every(t => selecionados.has(String(t.codigo_lancamento_omie)));
+    elegiveis.every(t => selecionados.has(String(t.codigo_lancamento)));
 
   const toggleTodos = () => {
     const novo = new Set(selecionados);
     if (todosMarcados) {
-      elegiveis.forEach(t => novo.delete(String(t.codigo_lancamento_omie)));
+      elegiveis.forEach(t => novo.delete(String(t.codigo_lancamento)));
     } else {
-      elegiveis.forEach(t => novo.add(String(t.codigo_lancamento_omie)));
+      elegiveis.forEach(t => novo.add(String(t.codigo_lancamento)));
     }
     setSelecionados(novo);
   };
@@ -78,7 +78,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
             const aberto = STATUS_ABERTOS.has(status);
             const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
             const elegivel = aberto && !jaTemBoleto;
-            const k = String(t.codigo_lancamento_omie);
+            const k = String(t.codigo_lancamento);
             const marcado = selecionados.has(k);
 
             return (
@@ -90,9 +90,9 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                     <span className="text-slate-300">—</span>
                   )}
                 </td>
-                <td className="p-2">{t.cliente_nome || t.nome_cliente || '—'}</td>
-                <td className="p-2">{t.numero_pedido || t.nCodPedido || '—'}</td>
-                <td className="p-2">{t.numero_documento_fiscal || t.numero_nfse || '—'}</td>
+                <td className="p-2">{t.nome_cliente || '—'}</td>
+                <td className="p-2">{t.numero_pedido_vinculado || '—'}</td>
+                <td className="p-2">{t.numero_documento || '—'}</td>
                 <td className="p-2">{t.data_vencimento || '—'}</td>
                 <td className="p-2 text-right">{formatarValor(t.valor_documento)}</td>
                 <td className="p-2">
