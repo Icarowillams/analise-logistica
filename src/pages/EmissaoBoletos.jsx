@@ -68,16 +68,18 @@ export default function EmissaoBoletos() {
       const nfsCarga = new Set(
         pedidos.map(p => String(p.numero_nf || '').replace(/\D/g, '')).filter(Boolean)
       );
-      // codigo_cliente Omie sempre vem preenchido nos pedidos — usado como casamento principal
+      // codigo_cliente Omie sempre vem preenchido nos pedidos — usado como casamento principal.
+      // O Omie devolve esse campo como NÚMERO no título, então normalizamos pra string sem espaços.
       const codigosClienteCarga = new Set(
-        pedidos.map(p => String(p.codigo_cliente || '')).filter(Boolean)
+        pedidos.map(p => String(p.codigo_cliente || '').trim()).filter(Boolean)
       );
 
-      // Período: 60 dias atrás até 30 dias à frente (cobre emissão e vencimentos futuros)
+      // Filtramos por EMISSÃO (e não vencimento) — cargas recém-faturadas ainda não venceram.
+      // Janela: 90 dias atrás até hoje (cobre folga p/ NFs emitidas semanas antes).
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 60 * 86400000);
-      const fim = new Date(hoje.getTime() + 30 * 86400000);
+      const inicio = new Date(hoje.getTime() - 90 * 86400000);
+      const fim = hoje;
 
       // Varre até 5 páginas (500 títulos) — suficiente p/ uma carga
       let acumulados = [];
@@ -85,7 +87,7 @@ export default function EmissaoBoletos() {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: fmt(inicio),
           data_ate: fmt(fim),
-          filtrar_por_data: 'V',
+          filtrar_por_data: 'E',
           apenas_pendentes: false,
           pagina: pag,
           registros_por_pagina: 100
@@ -98,7 +100,8 @@ export default function EmissaoBoletos() {
       const titulos = acumulados.filter(t => {
         const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
         const docT = String(t.numero_documento || '').replace(/\D/g, '');
-        const codClienteT = String(t.codigo_cliente || '');
+        // Omie devolve codigo_cliente como number — normaliza pra string
+        const codClienteT = String(t.codigo_cliente || '').trim();
         const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
         const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
         const baseNf = nfsCarga.size > 0 && docT && nfsCarga.has(docT);
