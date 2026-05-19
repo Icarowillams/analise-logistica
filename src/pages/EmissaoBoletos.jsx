@@ -26,6 +26,8 @@ export default function EmissaoBoletos() {
   const [selecionados, setSelecionados] = useState(new Set());
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  // Filtro: por padrão escondemos títulos sem NF/Pedido vinculado (lançamentos avulsos no Omie)
+  const [apenasComVinculo, setApenasComVinculo] = useState(true);
 
   // Lista as cargas (faturadas têm prioridade — são as que precisam de boleto)
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
@@ -113,7 +115,15 @@ export default function EmissaoBoletos() {
     refetchOnWindowFocus: false
   });
 
-  const titulos = titulosResp?.titulos || [];
+  const titulosTodos = titulosResp?.titulos || [];
+  const titulos = useMemo(() => {
+    if (!apenasComVinculo) return titulosTodos;
+    return titulosTodos.filter(t =>
+      (t.numero_documento && String(t.numero_documento).trim()) ||
+      (t.numero_pedido_vinculado && String(t.numero_pedido_vinculado).trim())
+    );
+  }, [titulosTodos, apenasComVinculo]);
+  const ocultos = titulosTodos.length - titulos.length;
 
   const handleSelecionarCarga = (id) => {
     setCargaId(id);
@@ -233,6 +243,20 @@ export default function EmissaoBoletos() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <Checkbox
+                  checked={apenasComVinculo}
+                  onCheckedChange={(v) => setApenasComVinculo(!!v)}
+                />
+                Apenas títulos com NF/Pedido vinculado
+              </label>
+              {apenasComVinculo && ocultos > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {ocultos} título(s) avulso(s) ocultado(s)
+                </Badge>
+              )}
+            </div>
             <ListaTitulosCarga
               titulos={titulos}
               loading={loadingTitulos}
