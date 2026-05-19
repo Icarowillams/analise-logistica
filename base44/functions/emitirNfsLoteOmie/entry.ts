@@ -224,14 +224,17 @@ async function consultarStatusAtivoOmie(codigoPedido) {
   }
 
   // Sem NF localizada — interpreta pela etapa
-  if (etapa === '50') {
-    return { etapa, status: 'rejeitada', codigo_sefaz: '', mensagem: 'NF rejeitada pela SEFAZ — pedido retornou para etapa Faturar (50). Verifique CFOP/IE no cadastro/cenário fiscal.' };
-  }
+  // ⚠️ Etapa 50 SEM NF localizada NÃO é rejeição: é o estado transitório normal
+  // (pedido aguardando processamento SEFAZ ou NF ainda não indexada no ListarNF).
+  // Só consideramos rejeitada quando houver cStat>=200 EXPLÍCITO retornado acima.
   if (etapa === '70' || etapa === '80') {
     return { etapa, status: 'cancelada', codigo_sefaz: '', mensagem: `Pedido foi cancelado/excluído no Omie (etapa ${etapa})` };
   }
   if (etapa === '60') {
     return { etapa, status: 'aguardando', mensagem: 'Etapa 60 (faturado) mas NF ainda não localizada no listado — aguarde reconciliação' };
+  }
+  if (etapa === '50') {
+    return { etapa, status: 'aguardando', mensagem: 'Pedido em etapa 50 (Faturar) — aguardando processamento SEFAZ' };
   }
   return { etapa, status: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda em processamento SEFAZ` };
 }
