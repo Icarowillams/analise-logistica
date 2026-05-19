@@ -4,15 +4,19 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
 
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
+// Status que NUNCA podem virar boleto (já encerrados negativamente)
+const STATUS_BLOQUEADOS = new Set(['CANCELADO']);
 
 const formatarValor = (v) =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
 export default function ListaTitulosCarga({ titulos = [], loading, selecionados, setSelecionados }) {
+  // Elegível = qualquer título que ainda não tem boleto e não foi cancelado.
+  // Mantemos "RECEBIDO" elegível pois o Omie pode gerar boleto retroativo.
   const elegiveis = titulos.filter(t => {
     const status = String(t.status_titulo || '').toUpperCase();
     const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
-    return STATUS_ABERTOS.has(status) && !jaTemBoleto;
+    return !STATUS_BLOQUEADOS.has(status) && !jaTemBoleto;
   });
 
   const todosMarcados =
@@ -77,7 +81,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
             const status = String(t.status_titulo || '').toUpperCase();
             const aberto = STATUS_ABERTOS.has(status);
             const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
-            const elegivel = aberto && !jaTemBoleto;
+            const elegivel = !STATUS_BLOQUEADOS.has(status) && !jaTemBoleto;
             const k = String(t.codigo_lancamento);
             const marcado = selecionados.has(k);
 
