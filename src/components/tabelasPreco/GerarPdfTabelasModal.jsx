@@ -1,10 +1,14 @@
 import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileDown, Search, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FileDown, Search, Loader2, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const LOGO_PAO_MEL = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png';
@@ -129,7 +133,52 @@ export default function GerarPdfTabelasModal({ open, onOpenChange, tabelas, allP
   const [busca, setBusca] = useState('');
   const [gerando, setGerando] = useState(false);
 
-  // Conta produtos com preço > 0 por tabela
+  // Filtros de produto
+  const [filtroCategoria, setFiltroCategoria] = useState('all');
+  const [filtroSubCategoria, setFiltroSubCategoria] = useState('all');
+  const [produtosSelecionados, setProdutosSelecionados] = useState([]);
+  const [buscaProduto, setBuscaProduto] = useState('');
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => base44.entities.Categoria.list()
+  });
+
+  const { data: subCategorias = [] } = useQuery({
+    queryKey: ['subCategorias'],
+    queryFn: () => base44.entities.SubCategoria.list()
+  });
+
+  const subCategoriasFiltradas = useMemo(() => {
+    if (filtroCategoria === 'all') return subCategorias;
+    return subCategorias.filter(sc => sc.categoria_id === filtroCategoria);
+  }, [subCategorias, filtroCategoria]);
+
+  // Conjunto de IDs de produtos que passam pelos filtros (categoria/subcategoria/seleção manual)
+  const produtosPermitidosIds = useMemo(() => {
+    let lista = produtos;
+    if (filtroCategoria !== 'all') lista = lista.filter(p => p.categoria_id === filtroCategoria);
+    if (filtroSubCategoria !== 'all') lista = lista.filter(p => p.sub_categoria_id === filtroSubCategoria);
+    if (produtosSelecionados.length > 0) {
+      const sel = new Set(produtosSelecionados);
+      lista = lista.filter(p => sel.has(p.id));
+    }
+    return new Set(lista.map(p => p.id));
+  }, [produtos, filtroCategoria, filtroSubCategoria, produtosSelecionados]);
+
+  const temFiltroProduto = filtroCategoria !== 'all' || filtroSubCategoria !== 'all' || produtosSelecionados.length > 0;
+
+  const produtosBusca = useMemo(() => {
+    const termo = buscaProduto.trim().toLowerCase();
+    if (!termo) return [];
+    return produtos.filter(p =>
+      (p.nome || '').toLowerCase().includes(termo) ||
+      (p.codigo || '').toLowerCase().includes(termo) ||
+      (p.codigo_interno || '').toLowerCase().includes(termo)
+    ).slice(0, 15);
+  }, [produtos, buscaProduto]);
+
+  // Conta produtos com preço > 0 por tabela, aplicando filtros de categoria/subcategoria/produtos
   const resumoPorTabela = useMemo(() => {
     const map = {};
     tabelas.forEach(t => {
@@ -137,6 +186,7 @@ export default function GerarPdfTabelasModal({ open, onOpenChange, tabelas, allP
         .filter(p => p.tabela_id === t.id)
         .map(p => ({ ...p, produto: produtos.find(pr => pr.id === p.produto_id) }))
         .filter(p => p.produto)
+        .filter(p => produtosPermitidosIds.has(p.produto.id))
         .filter(p => {
           const valor = p.ativacao_acao && p.valor_acao > 0 ? p.valor_acao : p.valor_unitario;
           return Number(valor) > 0;
@@ -144,7 +194,18 @@ export default function GerarPdfTabelasModal({ open, onOpenChange, tabelas, allP
       map[t.id] = precos;
     });
     return map;
-  }, [tabelas, allPrecos, produtos]);
+  }, [tabelas, allPrecos, produtos, produtosPermitidosIds]);
+
+  const limparFiltros = () => {
+    setFiltroCategoria('all');
+    setFiltroSubCategoria('all');
+    setProdutosSelecionados([]);
+    setBuscaProduto('');
+  };
+
+  const toggleProduto = (id) => {
+    setProdutosSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
   const tabelasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -201,7 +262,7 @@ export default function GerarPdfTabelasModal({ open, onOpenChange, tabelas, allP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileDown className="w-5 h-5 text-red-600" />
@@ -210,6 +271,91 @@ export default function GerarPdfTabelasModal({ open, onOpenChange, tabelas, allP
         </DialogHeader>
 
         <div className="space-y-3">
+          {/* Filtros de produto */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Filter className="w-4 h-4" /> Filtros de produtos
+              </div>
+              {temFiltroProduto && (
+                <button onClick={limparFiltros} className="text-xs text-red-600 hover:underline flex items-center gap-1">
+                  <X className="w-3 h-3" /> Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-slate-500 mb-1 block">Categoria</Label>
+                <Select value={filtroCategoria} onValueChange={(v) => { setFiltroCategoria(v); setFiltroSubCategoria('all'); }}>
+                  <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Categorias</SelectItem>
+                    {categorias.filter(c => c.status === 'ativo').map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-slate-500 mb-1 block">Subcategoria</Label>
+                <Select value={filtroSubCategoria} onValueChange={setFiltroSubCategoria}>
+                  <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Subcategorias</SelectItem>
+                    {subCategoriasFiltradas.filter(sc => sc.status === 'ativo').map(sc => (
+                      <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Produtos específicos (opcional)</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Buscar produto por nome ou código…"
+                  value={buscaProduto}
+                  onChange={(e) => setBuscaProduto(e.target.value)}
+                  className="pl-9"
+                />
+                {buscaProduto.trim() && produtosBusca.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    {produtosBusca.map(p => (
+                      <div
+                        key={p.id}
+                        onClick={() => { toggleProduto(p.id); setBuscaProduto(''); }}
+                        className="p-2 hover:bg-amber-50 cursor-pointer flex justify-between items-center border-b last:border-b-0 text-sm"
+                      >
+                        <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">{p.codigo_interno || p.codigo}</span>
+                        <span className="flex-1 ml-2 truncate">{p.nome}</span>
+                        {produtosSelecionados.includes(p.id) && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">selecionado</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {produtosSelecionados.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {produtosSelecionados.map(id => {
+                    const p = produtos.find(x => x.id === id);
+                    if (!p) return null;
+                    return (
+                      <Badge key={id} className="bg-blue-100 text-blue-700 gap-1 pr-1">
+                        {p.nome}
+                        <button onClick={() => toggleProduto(id)} className="hover:bg-blue-200 rounded px-1">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
