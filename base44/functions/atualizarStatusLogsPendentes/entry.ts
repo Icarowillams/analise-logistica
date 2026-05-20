@@ -8,7 +8,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 //   2. Para cada um, chama ConsultarPedido no Omie para descobrir a etapa real
 //   3. Se etapa=60 → busca a NF (ListarNF) para pegar cStat e nNF
 //   4. Atualiza o log + o espelho PedidoLiberadoOmie com o resultado real
-//   5. Se rejeitada → cancela o pedido local com o motivo
+//   5. Se denegada/cancelada → cancela o pedido local; rejeitada comum volta para etapa 50
 //   6. Se autorizada → marca boleto_gerado e dispara gerarBoletosAutoPedidos
 //      (apenas para clientes com BOLETO BANCARIO + tipo=venda)
 //
@@ -302,8 +302,9 @@ Deno.serve(async (req) => {
           primeiroLog = false;
         }
 
-        // Cancela pedido local se rejeitada/cancelada/denegada
-        if (novoStatus === 'rejeitada') {
+        // Cancela pedido local apenas em casos definitivos: NF denegada ou NF realmente cancelada.
+        // Rejeição comum volta para etapa 50 e deve continuar disponível para correção/reemissão.
+        if (real.status_real === 'denegada' || real.status_real === 'cancelada') {
           await cancelarPedidoLocal(base44, codPed, real.mensagem, user);
         }
 
