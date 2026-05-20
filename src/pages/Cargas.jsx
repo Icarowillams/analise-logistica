@@ -14,15 +14,50 @@ import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import { toast } from 'sonner';
 
-// Status simplificado: apenas montagem / faturada / cancelada
-const FATURAVEL = ['montagem'];
+// Status: montagem → aguardando_nf → faturada / faturada_parcial / cancelada
+// faturada = TODAS as NFs autorizadas pela SEFAZ
+// faturada_parcial = mistura de autorizadas + rejeitadas/pendentes
+// aguardando_nf = ainda processando SEFAZ
+const FATURAVEL = ['montagem', 'faturada_parcial', 'aguardando_nf'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
+  aguardando_nf: 'bg-blue-100 text-blue-800',
+  faturada_parcial: 'bg-yellow-100 text-yellow-800',
   faturada: 'bg-green-100 text-green-800',
   cancelada: 'bg-red-100 text-red-800',
   excluida: 'bg-red-100 text-red-800'
 };
+
+const STATUS_LABEL = {
+  montagem: 'montagem',
+  aguardando_nf: 'aguard. NF',
+  faturada_parcial: 'parcial',
+  faturada: 'faturada',
+  cancelada: 'cancelada',
+  excluida: 'excluída'
+};
+
+// Calcula novo status da carga baseado no resultado real do Omie (resultados de emitirNfsLoteOmie)
+// resultados: array de { codigo_pedido, sucesso, rejeitada, pendente }
+function calcularStatusPosEmissao(carga, resultados) {
+  const codigosOmie = (carga.pedidos_omie || [])
+    .filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido)
+    .map(p => String(p.codigo_pedido));
+
+  if (codigosOmie.length === 0) return 'faturada'; // só tinha D1
+
+  const porCodigo = new Map(resultados.map(r => [String(r.codigo_pedido), r]));
+  const autorizadas = codigosOmie.filter(c => porCodigo.get(c)?.sucesso).length;
+  const rejeitadas = codigosOmie.filter(c => porCodigo.get(c)?.rejeitada).length;
+  const pendentes = codigosOmie.filter(c => porCodigo.get(c)?.pendente).length;
+
+  if (autorizadas === codigosOmie.length) return 'faturada';
+  if (autorizadas > 0 && (rejeitadas > 0 || pendentes > 0)) return 'faturada_parcial';
+  if (pendentes > 0 && rejeitadas === 0) return 'aguardando_nf';
+  if (rejeitadas > 0 && autorizadas === 0) return 'montagem'; // tudo rejeitado — volta a estar em montagem para nova tentativa
+  return carga.status_carga || 'montagem';
+}
 
 const statusExibido = (carga) => {
   const pedidos = carga.pedidos_omie || [];
@@ -99,14 +134,41 @@ export default function Cargas() {
       const autorizadas = data?.sucessos || 0;
       const rejeitadas = data?.rejeitadas || 0;
       const pendentes = data?.pendentes || 0;
+      const resultados = Array.isArray(data?.resultados) ? data.resultados : [];
 
-      if (autorizadas > 0) {
-        toast.success(`Carga ${carga.numero_carga}: ${autorizadas} NF(s) autorizada(s) ✅`, {
-          description: `${rejeitadas > 0 ? `${rejeitadas} rejeitada(s). ` : ''}${pendentes > 0 ? `${pendentes} em processamento. ` : ''}Veja detalhes em "Notas Omie → Log de Emissão".`,
-          duration: 12000
+      // 🎯 Atualiza status da carga baseado no RESULTADO REAL do Omie
+      const novoStatus = calcularStatusPosEmissao(carga, resultados);
+      const updates = { status_carga: novoStatus };
+      if (novoStatus === 'faturada' || novoStatus === 'faturada_parcial') {
+        updates.data_faturamento = new Date().toISOString();
+      }
+      // Persiste número da NF nos pedidos_omie da carga
+      const nfsPorCodigo = new Map(
+        resultados.filter(r => r.sucesso && r.numero_nf).map(r => [String(r.codigo_pedido), String(r.numero_nf)])
+      );
+      if (nfsPorCodigo.size > 0) {
+        updates.pedidos_omie = (carga.pedidos_omie || []).map(p => {
+          const nf = nfsPorCodigo.get(String(p.codigo_pedido));
+          return nf ? { ...p, numero_nf: nf } : p;
+        });
+        updates.notas_fiscais = Array.from(new Set(
+          updates.pedidos_omie.map(p => p.numero_nf).filter(Boolean).map(String)
+        ));
+      }
+      await base44.entities.Carga.update(carga.id, updates);
+
+      if (autorizadas > 0 && rejeitadas === 0 && pendentes === 0) {
+        toast.success(`Carga ${carga.numero_carga}: ${autorizadas} NF(s) autorizada(s) ✅`, { duration: 10000 });
+      } else if (autorizadas > 0) {
+        toast.warning(`Carga ${carga.numero_carga}: faturamento PARCIAL`, {
+          description: `${autorizadas} autorizada(s) · ${rejeitadas} rejeitada(s) · ${pendentes} pendente(s). Veja detalhes em "Notas Omie → Log de Emissão".`,
+          duration: 15000
         });
       } else if (rejeitadas > 0) {
-        toast.error(`${rejeitadas} NF(s) rejeitada(s). Veja motivos em "Notas Omie → Log de Emissão".`, { duration: 12000 });
+        toast.error(`Carga ${carga.numero_carga}: ${rejeitadas} NF(s) rejeitada(s) pela SEFAZ`, {
+          description: `Veja motivos em "Notas Omie → Log de Emissão" e corrija os pedidos.`,
+          duration: 15000
+        });
       } else if (pendentes > 0) {
         toast.message(`${pendentes} NF(s) em processamento. Acompanhe em "Notas Omie → Log de Emissão".`, { duration: 10000 });
       } else {
@@ -145,14 +207,44 @@ export default function Cargas() {
       const autorizadas = data?.sucessos || 0;
       const rejeitadas = data?.rejeitadas || 0;
       const pendentes = data?.pendentes || 0;
+      const resultados = Array.isArray(data?.resultados) ? data.resultados : [];
 
-      if (autorizadas > 0) {
-        toast.success(`${autorizadas} NF(s) autorizada(s) ✅`, {
-          description: `${rejeitadas > 0 ? `${rejeitadas} rejeitada(s). ` : ''}${pendentes > 0 ? `${pendentes} em processamento. ` : ''}Veja detalhes em "Notas Omie → Log de Emissão".`,
-          duration: 12000
+      // 🎯 Atualiza status REAL de cada carga selecionada baseado no retorno do Omie
+      for (const carga of cargasFaturar) {
+        const novoStatus = calcularStatusPosEmissao(carga, resultados);
+        const updates = { status_carga: novoStatus };
+        if (novoStatus === 'faturada' || novoStatus === 'faturada_parcial') {
+          updates.data_faturamento = new Date().toISOString();
+        }
+        const nfsPorCodigo = new Map(
+          resultados.filter(r => r.sucesso && r.numero_nf).map(r => [String(r.codigo_pedido), String(r.numero_nf)])
+        );
+        if (nfsPorCodigo.size > 0) {
+          updates.pedidos_omie = (carga.pedidos_omie || []).map(p => {
+            const nf = nfsPorCodigo.get(String(p.codigo_pedido));
+            return nf ? { ...p, numero_nf: nf } : p;
+          });
+          updates.notas_fiscais = Array.from(new Set(
+            updates.pedidos_omie.map(p => p.numero_nf).filter(Boolean).map(String)
+          ));
+        }
+        try {
+          await base44.entities.Carga.update(carga.id, updates);
+        } catch (e) { console.warn(`Falha update carga ${carga.numero_carga}:`, e.message); }
+      }
+
+      if (autorizadas > 0 && rejeitadas === 0 && pendentes === 0) {
+        toast.success(`${autorizadas} NF(s) autorizada(s) ✅`, { duration: 10000 });
+      } else if (autorizadas > 0) {
+        toast.warning(`Faturamento PARCIAL`, {
+          description: `${autorizadas} autorizada(s) · ${rejeitadas} rejeitada(s) · ${pendentes} pendente(s). Veja em "Notas Omie → Log de Emissão".`,
+          duration: 15000
         });
       } else if (rejeitadas > 0) {
-        toast.error(`${rejeitadas} NF(s) rejeitada(s). Veja motivos em "Notas Omie → Log de Emissão".`, { duration: 12000 });
+        toast.error(`${rejeitadas} NF(s) rejeitada(s) pela SEFAZ`, {
+          description: `Veja motivos em "Notas Omie → Log de Emissão" e corrija os pedidos.`,
+          duration: 15000
+        });
       } else if (pendentes > 0) {
         toast.message(`${pendentes} NF(s) em processamento. Acompanhe em "Notas Omie → Log de Emissão".`, { duration: 10000 });
       } else {
@@ -285,10 +377,10 @@ export default function Cargas() {
     {
       key: 'status_carga',
       label: 'Status',
-      width: '110px',
+      width: '120px',
       render: (_, row) => {
         const status = statusExibido(row);
-        return <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{status === 'excluida' ? 'excluída' : status}</Badge>;
+        return <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>;
       }
     },
     {
@@ -296,13 +388,15 @@ export default function Cargas() {
       label: 'Ações',
       width: '180px',
       render: (_, row) => {
+        const podeFaturar = FATURAVEL.includes(row.status_carga);
         const emMontagem = row.status_carga === 'montagem';
-        const jaFaturada = row.status_carga === 'faturada';
+        const jaFaturada = row.status_carga === 'faturada' || row.status_carga === 'faturada_parcial' || row.status_carga === 'aguardando_nf';
+        const labelBotao = row.status_carga === 'faturada_parcial' ? 'Reemitir' : row.status_carga === 'aguardando_nf' ? 'Tentar' : 'Faturar';
         return (
           <div className="flex items-center gap-1">
-            {emMontagem && (
+            {podeFaturar && (
               <Button size="sm" className="h-7 px-2 text-xs" onClick={() => faturar(row)} disabled={faturando === row.id}>
-                {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Faturar'}
+                {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : labelBotao}
               </Button>
             )}
             {jaFaturada && (

@@ -343,13 +343,16 @@
         "fechada",
         "conferindo",
         "pronta",
+        "aguardando_nf",
+        "faturada_parcial",
         "faturada",
         "em_rota",
         "entregue",
         "finalizada",
         "cancelada"
       ],
-      "default": "montagem"
+      "default": "montagem",
+      "description": "aguardando_nf = NF emitida, aguardando SEFAZ. faturada_parcial = algumas NFs autorizadas e outras rejeitadas. faturada = TODAS as NFs autorizadas pela SEFAZ."
     },
     "observacao": {
       "type": "string"
