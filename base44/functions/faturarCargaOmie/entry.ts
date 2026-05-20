@@ -55,39 +55,22 @@ Deno.serve(async (req) => {
     const pedidos = carga.pedidos_omie || [];
     const resultados = [];
 
-    // ATENÇÃO: Esta função APENAS move os pedidos para etapa "Faturar" (50) no Omie
-    // e marca a carga como faturada. A emissão da NF-e e geração de boleto agora
-    // ocorre na tela "Notas Omie → Emissão" de forma manual (individual ou em lote).
+    // ATENÇÃO: Esta função NÃO altera etapa no Omie e NÃO emite NF.
+    // Ela apenas marca a carga/pedidos como faturados localmente para liberar a tela "Notas Omie → Emissão".
     for (const p of pedidos) {
-      // Pula pedidos D1 (cliente não emite NF)
       if (p.tipo_nota === 'D1') {
         resultados.push({ codigo_pedido: p.codigo_pedido, skip: true, motivo: 'cliente D1 - não emite NF' });
         continue;
       }
 
-      try {
-        // Move pedido para etapa 50 (Faturar) — sem emitir NF
-        await omieCall('TrocarEtapaPedido', {
-          codigo_pedido: Number(p.codigo_pedido),
-          etapa: String(etapa_destino)
-        });
-
-        resultados.push({
-          codigo_pedido: p.codigo_pedido,
-          sucesso: true,
-          etapa_atual: String(etapa_destino),
-          nf_emitida: false,
-          numero_nf: null,
-          mensagem: `Movido para etapa ${etapa_destino} (Faturar). Use "Notas Omie → Emissão" para gerar a NF.`
-        });
-      } catch (err) {
-        resultados.push({
-          codigo_pedido: p.codigo_pedido,
-          sucesso: false,
-          mensagem: err.message
-        });
-      }
-      await new Promise(r => setTimeout(r, 1500));
+      resultados.push({
+        codigo_pedido: p.codigo_pedido,
+        sucesso: true,
+        etapa_atual: p.etapa || null,
+        nf_emitida: false,
+        numero_nf: null,
+        mensagem: 'Carga faturada localmente. Use "Notas Omie → Emissão" para gerar a NF-e no Omie.'
+      });
     }
 
     const sucessos = resultados.filter(r => r.sucesso).length;
@@ -96,25 +79,15 @@ Deno.serve(async (req) => {
     const nfsEmitidas = 0;
     const aguardandoNf = sucessos;
 
-    // STATUS SIMPLIFICADO — apenas 3 estados possíveis para a carga:
-    //   montagem → faturada → cancelada
-    // Regra: se TODOS os pedidos processados chegaram na etapa 60 (faturado no Omie),
-    // a carga vira FATURADA — independente de a NF já ter número (o sincronizador puxa depois).
-    // Pedido D1 (sem NF) é considerado faturado para fins de status da carga.
+    // Status local: faturar carga apenas libera a carga para a tela de Emissão NF-e.
     const processados = resultados.length - skips;
     let novoStatus = carga.status_carga;
     let novaDataFat = carga.data_faturamento;
 
-    if (processados === 0 && skips === resultados.length && resultados.length > 0) {
-      // Só havia D1 — considera faturada (não há nada para emitir no Omie)
-      novoStatus = 'faturada';
-      novaDataFat = new Date().toISOString();
-    } else if (processados > 0 && sucessos === processados) {
-      // Todos os pedidos Omie foram aceitos (etapa 60) → carga faturada
+    if (resultados.length > 0 && (processados === 0 || sucessos === processados)) {
       novoStatus = 'faturada';
       novaDataFat = new Date().toISOString();
     } else {
-      // Manteve em montagem para o usuário reprocessar — não criamos status intermediário
       novoStatus = 'montagem';
     }
 

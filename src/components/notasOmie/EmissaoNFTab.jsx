@@ -47,58 +47,36 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
     return map;
   }, [cargas]);
 
-  // Busca pedidos em etapa 50 DIRETO do Omie e filtra apenas os que estão em cargas faturadas e ainda sem NF
+  // Lista pedidos das cargas faturadas localmente; a emissão NF-e é quem altera o Omie.
   const { data: espelho = [], isLoading, refetch } = useQuery({
-    queryKey: ['pedidosOmieEmissaoEtapa50', cargas.length],
+    queryKey: ['pedidosEmissaoNfePorCarga', cargas.length],
     queryFn: async () => {
       if (cargas.length === 0) return [];
 
-      const { data } = await base44.functions.invoke('buscarPedidosOmie', {
-        etapa: '50',
-        registros_por_pagina: 100,
-        buscar_todas_paginas: true,
-        max_paginas: 10,
-        incluir_cancelados: false
-      });
-      if (!data?.sucesso) throw new Error(data?.error || 'Erro ao buscar pedidos Omie');
+      const pedidosCarga = cargas.flatMap(c =>
+        (c.pedidos_omie || [])
+          .filter(p => p.codigo_pedido && !p.numero_nf && p.tipo_nota !== 'D1')
+          .map(p => ({ ...p, numero_carga: c.numero_carga }))
+      );
 
-      // Só aceita pedidos que pertencem a uma carga FATURADA E que ainda não tenham NF emitida
-      const pedidosOmie = (data.pedidos || []).filter(p => {
-        const numCarga = cargaPorPedido.get(String(p.codigo_pedido));
-        if (!numCarga) return false; // pedido sem carga faturada — não exibe
-        // Localiza o pedido dentro da carga para checar se já tem NF
-        for (const c of cargas) {
-          const item = (c.pedidos_omie || []).find(x => String(x.codigo_pedido) === String(p.codigo_pedido));
-          if (item && item.numero_nf) return false; // já emitiu NF
-        }
-        return true;
-      });
-
-      const codigos = pedidosOmie.map(p => String(p.codigo_pedido));
+      const codigos = pedidosCarga.map(p => String(p.codigo_pedido));
       const espelhoLocal = codigos.length > 0
         ? await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigos } }, '-sincronizado_em', 500)
         : [];
       const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
 
-      // 🆕 Cruza com Pedido local — se já está cancelado lá (rejeição definitiva/IE inválida),
-      // não aparece na fila de emissão.
       const pedidosLocais = codigos.length > 0
         ? await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigos } }, '-created_date', 500)
         : [];
       const statusPedidoLocal = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl.status]));
 
-      return pedidosOmie
+      return pedidosCarga
         .filter(p => {
           const cod = String(p.codigo_pedido);
           const e = mapaEspelho.get(cod);
-          // Filtro 1: espelho indica status final negativo (cancelada/denegada/rejeitada)
           if (e?.status_real === 'cancelada' || e?.status_real === 'denegada' || e?.status_real === 'rejeitada') return false;
-          // Filtro 2: etapa Omie 70/80 = cancelado/excluído no Omie
           if (e?.etapa === '70' || e?.etapa === '80') return false;
-          // Filtro 3: pedido local cancelado (fonte de verdade interna)
           if (statusPedidoLocal.get(cod) === 'cancelado') return false;
-          // Filtro 4: marcação direta do Omie (campo cancelado/etapa = 'cancelado' em buscarPedidosOmie)
-          if (p.cancelado === true || p.etapa === 'cancelado') return false;
           return true;
         })
         .map(p => {
@@ -108,10 +86,10 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
             numero_pedido: p.numero_pedido,
             valor_total_pedido: p.valor_total_pedido || e.valor_total_pedido || 0,
             quantidade_itens: p.quantidade_itens || e.quantidade_itens || 0,
-            nome_cliente: e.nome_cliente || '',
-            nome_fantasia: e.nome_fantasia || '',
-            cidade: e.cidade || '',
-            cliente_id: e.cliente_id || ''
+            nome_cliente: e.nome_cliente || p.nome_cliente || '',
+            nome_fantasia: e.nome_fantasia || p.nome_fantasia || '',
+            cidade: e.cidade || p.cidade || '',
+            cliente_id: e.cliente_id || p.cliente_id || ''
           };
         });
     },
