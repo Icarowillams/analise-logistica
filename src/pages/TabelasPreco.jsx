@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap, Sparkles, Download } from 'lucide-react';
+import { Table as TableIcon, CheckCircle, XCircle, Search, Save, Calendar, Upload, ChevronDown, ChevronRight, Link2, Zap, Sparkles, Download, FileDown } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import FormModal from '@/components/forms/FormModal';
@@ -20,6 +20,7 @@ import LogErrosImportacao from '@/components/tabelasPreco/LogErrosImportacao';
 import SincronizarOmieModal from '@/components/tabelasPreco/SincronizarOmieModal';
 import AjustarPrecosOriginaisModal from '@/components/tabelasPreco/AjustarPrecosOriginaisModal';
 import TratarTabelasModal from '@/components/tabelasPreco/TratarTabelasModal';
+import GerarPdfTabelasModal from '@/components/tabelasPreco/GerarPdfTabelasModal';
 import AcoesPromocionais from '@/components/tabelasPreco/AcoesPromocionais';
 import ExportarTabelasTab from '@/components/tabelasPreco/ExportarTabelasTab';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
@@ -90,6 +91,7 @@ function GerenciarTabelas({ podeOmie }) {
   const [sincOmieOpen, setSincOmieOpen] = useState(false);
   const [ajustarPrecosOpen, setAjustarPrecosOpen] = useState(false);
   const [tratarTabelasOpen, setTratarTabelasOpen] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -246,6 +248,14 @@ function GerenciarTabelas({ podeOmie }) {
   return (
     <div>
       <div className="flex justify-end gap-2 mb-4 flex-wrap">
+        <Button
+          onClick={() => setPdfModalOpen(true)}
+          variant="outline"
+          className="border-red-400 text-red-700 hover:bg-red-50"
+        >
+          <FileDown className="w-4 h-4 mr-2" />
+          Gerar PDF Tabelas
+        </Button>
         {podeOmie && (
           <>
             <Button 
@@ -501,6 +511,14 @@ function GerenciarTabelas({ podeOmie }) {
       <TratarTabelasModal
         open={tratarTabelasOpen}
         onOpenChange={setTratarTabelasOpen}
+      />
+
+      <GerarPdfTabelasModal
+        open={pdfModalOpen}
+        onOpenChange={setPdfModalOpen}
+        tabelas={tabelas}
+        allPrecos={allPrecos}
+        produtos={produtos}
       />
     </div>
   );
