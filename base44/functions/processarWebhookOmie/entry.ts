@@ -24,7 +24,7 @@ function recalcularStatusCarga(pedidosOmie, statusAtual) {
   if (todosFaturados) return 'faturada';
   if (todosCancelados) return 'cancelada';
   if (todos.some(p => p.etapa === '60')) return statusAtual === 'faturada' ? 'faturada' : 'conferindo';
-  return statusAtual || 'conferindo';
+  return statusAtual === 'cancelada' ? 'montagem' : (statusAtual || 'conferindo');
 }
 
 // Etapas operacionais que devem estar no espelho

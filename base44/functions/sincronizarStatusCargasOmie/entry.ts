@@ -77,12 +77,16 @@ function extrairPedido(consulta, pedidoOriginal) {
   const cStatPedido = String(infoNfe.cStat || '');
   const textoPedido = JSON.stringify(pedido || {}).toLowerCase();
 
+  // Cancelamento só pode vir de campo/etapa explícita; nunca por texto solto do retorno,
+  // pois descrições/observações podem conter a palavra "cancelado" e cancelar carga indevidamente.
+  const statusTexto = String(cab.status_pedido || cab.status || '').toLowerCase();
   const cancelado =
+    etapa === '70' ||
+    etapa === '80' ||
     String(cab.cancelado || '').toUpperCase() === 'S' ||
     String(info.cancelada || '').toUpperCase() === 'S' ||
-    String(cab.status_pedido || cab.status || '').toLowerCase().includes('cancel') ||
-    textoPedido.includes('cancelado') ||
-    textoPedido.includes('cancelada');
+    statusTexto === 'cancelado' ||
+    statusTexto === 'cancelada';
 
   const rejeitado =
     textoPedido.includes('rejeitad') ||
@@ -121,8 +125,8 @@ function definirStatusCarga(pedidosStatus, statusAtual) {
 
   const em60 = ativos.filter(p => p.etapa === '60' || p.faturado);
 
-  // Nenhum pedido faturado ainda → volta pra montagem (caso operador tenha desistido)
-  if (em60.length === 0) return statusAtual || 'montagem';
+  // Nenhum pedido faturado ainda e ainda há pedidos ativos → não pode ficar como cancelada.
+  if (em60.length === 0) return statusAtual === 'cancelada' ? 'montagem' : (statusAtual || 'montagem');
 
   const autorizadas = em60.filter(p => p.classificacao === 'autorizada').length;
   const rejeitadas = em60.filter(p => p.classificacao === 'rejeitada' || p.classificacao === 'denegada').length;
