@@ -57,14 +57,31 @@ const formatNumeroPedido = (pedido) => {
 
 const NF_STATUS_LABELS = {
   emitida:       { label: 'NF Emitida',       bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300' },
-  rejeitada:     { label: 'NF Rejeitada',     bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
+  rejeitada:     { label: 'NF-e Rejeitada',   bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
   cancelada:     { label: 'NF Cancelada',     bg: 'bg-gray-200',   text: 'text-gray-800',   border: 'border-gray-400' },
   denegada:      { label: 'NF Denegada',      bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300' },
   aguardando_nf: { label: 'Aguardando NF',    bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
 };
 
+const getErroFiscal = (p) => {
+  const erro = String(p.omie_erro || '').toLowerCase();
+  if (erro.includes('rejeitad')) return NF_STATUS_LABELS.rejeitada;
+  if (erro.includes('denegad')) return NF_STATUS_LABELS.denegada;
+  return null;
+};
+
 export default function PedidoCellRenderer({ col, p }) {
+  const erroFiscal = getErroFiscal(p);
+
   if (col.id === 'status') {
+    if (erroFiscal) {
+      return (
+        <Badge className={`${erroFiscal.bg} ${erroFiscal.text} ${erroFiscal.border} border text-[10px]`} title={p.omie_erro || ''}>
+          {erroFiscal.label}
+        </Badge>
+      );
+    }
+
     const label = STATUS_LABELS[p.status] || p.status;
     const colors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
     return (

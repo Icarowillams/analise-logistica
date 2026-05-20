@@ -255,7 +255,17 @@ Deno.serve(async (req) => {
       const registro = montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem, fallback);
       const existente = espelhoPorCodigo.get(registro.codigo_pedido);
       if (existente) {
-        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registro);
+        const statusProtegido = ['rejeitada', 'denegada', 'cancelada'].includes(String(existente.status_real || ''));
+        const registroFinal = statusProtegido && registro.status_real === 'aguardando_nf'
+          ? {
+              ...registro,
+              status_real: existente.status_real,
+              status_label: existente.status_label,
+              numero_nf: existente.numero_nf || registro.numero_nf,
+              data_faturamento: existente.data_faturamento || registro.data_faturamento
+            }
+          : registro;
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registroFinal);
         atualizados += 1;
       } else {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);

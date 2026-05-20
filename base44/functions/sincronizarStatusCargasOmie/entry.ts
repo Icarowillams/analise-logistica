@@ -75,11 +75,19 @@ function extrairPedido(consulta, pedidoOriginal) {
   const etapa = String(cab.etapa || pedidoOriginal.etapa || '');
   const numeroNf = infoNfe.nNF || cab.numero_nf || cab.numero_nota_fiscal || info.numero_nf || info.numero_nota_fiscal || pedidoOriginal.numero_nf || '';
   const cStatPedido = String(infoNfe.cStat || '');
+  const textoPedido = JSON.stringify(pedido || {}).toLowerCase();
 
   const cancelado =
     String(cab.cancelado || '').toUpperCase() === 'S' ||
     String(info.cancelada || '').toUpperCase() === 'S' ||
-    String(cab.status_pedido || cab.status || '').toLowerCase().includes('cancel');
+    String(cab.status_pedido || cab.status || '').toLowerCase().includes('cancel') ||
+    textoPedido.includes('cancelado') ||
+    textoPedido.includes('cancelada');
+
+  const rejeitado =
+    textoPedido.includes('rejeitad') ||
+    textoPedido.includes('denegad') ||
+    textoPedido.includes('sefaz');
 
   return {
     etapa,
@@ -87,6 +95,7 @@ function extrairPedido(consulta, pedidoOriginal) {
     numero_nf: numeroNf,
     faturado: etapa === '60' || !!numeroNf,
     cancelado,
+    rejeitado,
     cStat: cStatPedido,
     xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || ''
   };
@@ -191,8 +200,16 @@ Deno.serve(async (req) => {
             await new Promise(r => setTimeout(r, 250));
           }
 
+          // Caso real Omie: pedido vai para etapa 60, a NF é rejeitada e o pedido aparece como cancelado/sem NF.
+          // Isso NÃO deve virar "cancelada" operacional; é rejeição fiscal para o operador corrigir/reemitir.
+          if (status.etapa === '60' && !classificacao && !numeroNfFinal && (status.cancelado || status.rejeitado)) {
+            classificacao = 'rejeitada';
+            xMotivoFinal = xMotivoFinal || 'NF-e rejeitada pela SEFAZ';
+          }
+
           pedidosStatus.push({
             ...status,
+            cancelado: status.cancelado && classificacao !== 'rejeitada',
             numero_nf: numeroNfFinal,
             cStat: cStatFinal,
             xMotivo: xMotivoFinal,
@@ -200,7 +217,7 @@ Deno.serve(async (req) => {
           });
 
           const statusRealLabel = classificacao
-            ? `[${cStatFinal}] ${xMotivoFinal || classificacao}`.slice(0, 200)
+            ? `${cStatFinal ? `[${cStatFinal}] ` : ''}${xMotivoFinal || classificacao}`.slice(0, 200)
             : null;
 
           pedidosAtualizados.push({
@@ -248,21 +265,28 @@ Deno.serve(async (req) => {
             : carga.data_faturamento
         });
 
-        // Reflete o numero_nf nos Pedidos locais correspondentes (apenas autorizadas)
+        // Reflete resultado fiscal nos Pedidos locais:
+        // - autorizada: marca faturado e salva número da NF
+        // - rejeitada/denegada: desfaz o "faturado" visual e mostra erro fiscal no Gerenciar Pedidos
         for (const p of pedidosAtualizados) {
-          if (!p.numero_nf || !p.codigo_pedido) continue;
-          if (p.status_nf && p.status_nf !== 'autorizada') continue;
+          if (!p.codigo_pedido) continue;
           try {
             const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({
               omie_codigo_pedido: String(p.codigo_pedido)
             });
             for (const pl of pedidosLocais) {
-              if (pl.numero_nota_fiscal !== String(p.numero_nf)) {
+              if (p.status_nf === 'autorizada' && p.numero_nf && pl.numero_nota_fiscal !== String(p.numero_nf)) {
                 await base44.asServiceRole.entities.Pedido.update(pl.id, {
                   numero_nota_fiscal: String(p.numero_nf),
                   faturado: true,
                   data_faturamento: pl.data_faturamento || new Date().toISOString(),
                   status: 'faturado'
+                });
+              } else if (p.status_nf === 'rejeitada' || p.status_nf === 'denegada') {
+                await base44.asServiceRole.entities.Pedido.update(pl.id, {
+                  faturado: false,
+                  status: 'enviado',
+                  omie_erro: p.motivo_rejeicao || p.status_real_omie || 'NF-e rejeitada pela SEFAZ'
                 });
               }
             }
