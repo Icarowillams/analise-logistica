@@ -74,7 +74,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
         .filter(p => {
           const cod = String(p.codigo_pedido);
           const e = mapaEspelho.get(cod);
-          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada' || e?.status_real === 'rejeitada') return false;
+          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada') return false;
           if (e?.etapa === '70' || e?.etapa === '80') return false;
           if (statusPedidoLocal.get(cod) === 'cancelado') return false;
           return true;
