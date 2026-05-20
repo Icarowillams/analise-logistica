@@ -378,8 +378,8 @@ async function handleNFe(base44, topic, evt) {
   // o dedupe pula o webhook NFe (chega logo após VendaProduto.Faturada) e o número da NF se perde.
   try {
     const numNfWebhook = evt?.numero_nf || evt?.numero_nota || null;
-    if (topic === 'NFe.NotaCancelada') {
-      // NF cancelada → upsert pra refletir status_real=cancelada
+    if (topic === 'NFe.NotaCancelada' || topic === 'NFe.NotaRejeitada' || topic === 'NFe.NotaDenegada') {
+      // NF cancelada/rejeitada/denegada → upsert pra refletir status_real real (etapa 60 com rejeição)
       await upsertEspelho(base44, codigoPedido);
     } else if (topic === 'NFe.NotaAutorizada' || topic === 'NFe.NotaDevolucaoAutorizada') {
       await upsertEspelho(base44, codigoPedido, numNfWebhook);
@@ -419,6 +419,16 @@ async function handleNFe(base44, topic, evt) {
     const numNf = evt?.numero_nf || evt?.numero_nota;
     if (numNf) updates.numero_nota_fiscal = String(numNf);
     dadosCarga.status_pedido = 'devolvido';
+  } else if (topic === 'NFe.NotaRejeitada' || topic === 'NFe.NotaDenegada') {
+    // NF rejeitada/denegada: pedido FICA em etapa 60 no Omie (Faturado com rejeição).
+    // Não cancelamos o Pedido local — apenas marcamos para o operador agir (corrigir e reemitir).
+    updates.faturado = false;
+    const motivo = topic === 'NFe.NotaDenegada' ? 'NF-e DENEGADA pela SEFAZ' : 'NF-e REJEITADA pela SEFAZ';
+    const detalhe = evt?.xMotivo || evt?.cMensStatus || evt?.motivo || '';
+    updates.omie_erro = `${motivo}${detalhe ? ' — ' + detalhe : ''}`.slice(0, 500);
+    dadosCarga.etapa = '60';
+    dadosCarga.status_pedido = topic === 'NFe.NotaDenegada' ? 'nf_denegada' : 'nf_rejeitada';
+    dadosCarga.motivo_rejeicao = updates.omie_erro;
   }
 
   if (Object.keys(updates).length > 0) {

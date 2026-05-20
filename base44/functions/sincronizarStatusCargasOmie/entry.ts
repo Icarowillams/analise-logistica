@@ -5,6 +5,21 @@ const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
+// cStat SEFAZ:
+//   100/150 = autorizada
+//   101/135 = cancelada (após autorizada)
+//   110/301/302/205 = denegada
+//   >=200 (demais) = rejeitada
+function classificarCStat(cStat) {
+  const c = String(cStat || '').trim();
+  if (!c) return null;
+  if (['100', '150'].includes(c)) return 'autorizada';
+  if (['101', '135'].includes(c)) return 'cancelada';
+  if (['110', '301', '302', '205'].includes(c)) return 'denegada';
+  if (Number(c) >= 200) return 'rejeitada';
+  return null;
+}
+
 async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
   const res = await fetch(url, {
     method: 'POST',
@@ -26,9 +41,8 @@ async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
   return data;
 }
 
-// Busca o número da NF emitida para um pedido específico via ListarNF (filtra por nIdPedido).
-// Usado como fallback quando ConsultarPedido não retorna numero_nf (caso comum no Omie).
-async function buscarNumeroNfPorPedido(codigoPedido) {
+// Busca NF emitida + cStat (status SEFAZ) para um pedido específico.
+async function buscarNfPorPedido(codigoPedido) {
   try {
     const data = await omieCall('ListarNF', {
       pagina: 1,
@@ -36,14 +50,17 @@ async function buscarNumeroNfPorPedido(codigoPedido) {
       nIdPedido: Number(codigoPedido)
     }, 1, OMIE_NF_URL);
     const nfs = data?.nfCadastro || [];
-    // Primeira NF não cancelada
-    const ativa = nfs.find(nf => String(nf.ide?.cStat || '').toUpperCase() !== 'CANCELADA') || nfs[0];
-    if (!ativa) return null;
+    if (nfs.length === 0) return null;
+    // Prioriza NF NÃO cancelada e mais recente
+    const ativa = nfs.find(nf => !['101','135'].includes(String(nf.ide?.cStat || ''))) || nfs[0];
+    const cStat = String(ativa.ide?.cStat || '');
     return {
       numero_nf: String(ativa.ide?.nNF || ativa.cNumero || ''),
       serie: ativa.ide?.serie || '',
       chave: ativa.compl?.cChaveNFe || '',
-      status: ativa.ide?.cStat || ''
+      cStat,
+      xMotivo: ativa.ide?.xMotivo || ativa.compl?.cMensagem || '',
+      classificacao: classificarCStat(cStat)
     };
   } catch {
     return null;
@@ -54,12 +71,11 @@ function extrairPedido(consulta, pedidoOriginal) {
   const pedido = consulta?.pedido_venda_produto || consulta || {};
   const cab = pedido.cabecalho || {};
   const info = pedido.informacoes_adicionais || {};
+  const infoNfe = pedido.infoNfe || pedido.info_nf || {};
   const etapa = String(cab.etapa || pedidoOriginal.etapa || '');
-  const numeroNf = cab.numero_nf || cab.numero_nota_fiscal || info.numero_nf || info.numero_nota_fiscal || pedidoOriginal.numero_nf || '';
+  const numeroNf = infoNfe.nNF || cab.numero_nf || cab.numero_nota_fiscal || info.numero_nf || info.numero_nota_fiscal || pedidoOriginal.numero_nf || '';
+  const cStatPedido = String(infoNfe.cStat || '');
 
-  // Cancelamento real do Omie vem em cab.cancelado === 'S' ou info.cancelada === 'S'.
-  // NUNCA inferir cancelamento por busca textual no JSON — palavras como "cancelar_pedido"
-  // aparecem em campos de configuração e davam falso-positivo.
   const cancelado =
     String(cab.cancelado || '').toUpperCase() === 'S' ||
     String(info.cancelada || '').toUpperCase() === 'S' ||
@@ -70,7 +86,9 @@ function extrairPedido(consulta, pedidoOriginal) {
     status_pedido: cab.status_pedido || cab.status || pedidoOriginal.status_pedido || '',
     numero_nf: numeroNf,
     faturado: etapa === '60' || !!numeroNf,
-    cancelado
+    cancelado,
+    cStat: cStatPedido,
+    xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || ''
   };
 }
 
@@ -79,23 +97,38 @@ function erroPedidoExcluido(mensagem) {
   return texto.includes('não existem registros') || texto.includes('nao existem registros') || texto.includes('não encontrado') || texto.includes('nao encontrado') || texto.includes('não cadastrado') || texto.includes('nao cadastrado') || texto.includes('excluído') || texto.includes('excluido') || texto.includes('inexistente');
 }
 
-// Status simplificado: apenas montagem / faturada / cancelada.
-// - Todos cancelados/excluídos no Omie → cancelada
-// - Carga foi faturada pelo sistema (data_faturamento preenchida) E todos pedidos em etapa 60 → faturada
-// - Caso contrário → mantém status atual (em geral montagem)
-function definirStatusCarga(pedidosStatus, statusAtual, cargaFoiFaturadaPeloSistema) {
+// 🎯 Status REAL refletindo o que o Omie mostra:
+//  - todos cancelados/excluídos → cancelada
+//  - todos com NF autorizada → faturada
+//  - todos com NF rejeitada/denegada (etapa 60 mas faixa vermelha) → faturada_com_rejeicao
+//  - todos etapa 60 sem cStat ainda → aguardando_nf
+//  - mistura autorizadas + rejeitadas/pendentes → faturada_parcial
+//  - nenhum em 60 → mantém status atual (provavelmente montagem)
+function definirStatusCarga(pedidosStatus, statusAtual) {
   if (pedidosStatus.length === 0) return statusAtual || 'montagem';
-  if (pedidosStatus.every(p => p.cancelado || p.excluido)) return 'cancelada';
 
-  if (cargaFoiFaturadaPeloSistema) {
-    // Considera "pronta no Omie" qualquer pedido em etapa 60 ou já com NF emitida
-    const ativos = pedidosStatus.filter(p => !p.excluido && !p.cancelado);
-    if (ativos.length > 0 && ativos.every(p => p.etapa === '60' || p.faturado)) {
-      return 'faturada';
-    }
+  const ativos = pedidosStatus.filter(p => !p.excluido && !p.cancelado);
+  if (ativos.length === 0) return 'cancelada';
+
+  const em60 = ativos.filter(p => p.etapa === '60' || p.faturado);
+
+  // Nenhum pedido faturado ainda → volta pra montagem (caso operador tenha desistido)
+  if (em60.length === 0) return statusAtual || 'montagem';
+
+  const autorizadas = em60.filter(p => p.classificacao === 'autorizada').length;
+  const rejeitadas = em60.filter(p => p.classificacao === 'rejeitada' || p.classificacao === 'denegada').length;
+  const aguardando = em60.filter(p => !p.classificacao && !p.numero_nf).length;
+  const todosFaturados = em60.length === ativos.length;
+
+  if (todosFaturados) {
+    if (autorizadas === em60.length) return 'faturada';
+    if (rejeitadas === em60.length) return 'faturada_com_rejeicao';
+    if (aguardando === em60.length) return 'aguardando_nf';
+    return 'faturada_parcial';
   }
 
-  return statusAtual || 'montagem';
+  // Alguns em 60, outros não — considera parcial
+  return autorizadas > 0 ? 'faturada_parcial' : 'aguardando_nf';
 }
 
 Deno.serve(async (req) => {
@@ -107,8 +140,16 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const listLimit = Math.min(Number(body.list_limit || 500), 500);
     const syncLimit = Math.min(Number(body.sync_limit || 50), listLimit);
+    const cargaIds = Array.isArray(body.carga_ids) ? body.carga_ids : null;
 
-    const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', listLimit);
+    let cargas = await base44.asServiceRole.entities.Carga.list('-created_date', listLimit);
+
+    // Filtro opcional por IDs específicos (para força de atualização em massa)
+    if (cargaIds && cargaIds.length > 0) {
+      const set = new Set(cargaIds.map(String));
+      cargas = cargas.filter(c => set.has(String(c.id)));
+    }
+
     const cargasAtualizadas = [];
 
     for (const carga of cargas.slice(0, syncLimit)) {
@@ -132,21 +173,45 @@ Deno.serve(async (req) => {
           const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo) });
           const status = extrairPedido(consulta, pedido);
 
-          // Fallback: se o pedido foi faturado (etapa 60) mas o ConsultarPedido não retornou
-          // numero_nf, busca diretamente no endpoint de NFs do Omie.
+          // Fallback: se etapa 60 mas SEM cStat (ConsultarPedido não trouxe infoNfe completo),
+          // busca NF direto pra capturar cStat real (autorizada/rejeitada/denegada)
+          let cStatFinal = status.cStat;
+          let xMotivoFinal = status.xMotivo;
           let numeroNfFinal = status.numero_nf || pedido.numero_nf;
-          if (!numeroNfFinal && (status.etapa === '60' || status.faturado)) {
-            const nfInfo = await buscarNumeroNfPorPedido(codigo);
-            if (nfInfo?.numero_nf) numeroNfFinal = nfInfo.numero_nf;
+          let classificacao = classificarCStat(cStatFinal);
+
+          if (status.etapa === '60' && (!classificacao || !numeroNfFinal)) {
+            const nfInfo = await buscarNfPorPedido(codigo);
+            if (nfInfo) {
+              if (nfInfo.numero_nf) numeroNfFinal = nfInfo.numero_nf;
+              if (nfInfo.cStat) cStatFinal = nfInfo.cStat;
+              if (nfInfo.xMotivo) xMotivoFinal = nfInfo.xMotivo;
+              if (nfInfo.classificacao) classificacao = nfInfo.classificacao;
+            }
             await new Promise(r => setTimeout(r, 250));
           }
 
-          pedidosStatus.push({ ...status, numero_nf: numeroNfFinal });
+          pedidosStatus.push({
+            ...status,
+            numero_nf: numeroNfFinal,
+            cStat: cStatFinal,
+            xMotivo: xMotivoFinal,
+            classificacao
+          });
+
+          const statusRealLabel = classificacao
+            ? `[${cStatFinal}] ${xMotivoFinal || classificacao}`.slice(0, 200)
+            : null;
+
           pedidosAtualizados.push({
             ...pedido,
             etapa: status.etapa || pedido.etapa,
             status_pedido: status.status_pedido || pedido.status_pedido,
-            numero_nf: numeroNfFinal
+            numero_nf: numeroNfFinal,
+            cstat_sefaz: cStatFinal || undefined,
+            status_nf: classificacao || undefined,
+            motivo_rejeicao: ['rejeitada','denegada'].includes(classificacao) ? statusRealLabel : undefined,
+            status_real_omie: statusRealLabel || undefined
           });
         } catch (error) {
           if (erroPedidoExcluido(error.message)) {
@@ -165,11 +230,9 @@ Deno.serve(async (req) => {
         await new Promise(r => setTimeout(r, 250));
       }
 
-      const novoStatus = definirStatusCarga(pedidosStatus, carga.status_carga, !!carga.data_faturamento);
+      const novoStatus = definirStatusCarga(pedidosStatus, carga.status_carga);
       const precisaAtualizar = novoStatus !== carga.status_carga || JSON.stringify(pedidosAtualizados) !== JSON.stringify(pedidos);
 
-      // Consolida notas_fiscais[] APENAS com números reais de NF retornados pelo Omie
-      // (não mescla com valores antigos para evitar lixo persistido erroneamente).
       const notasFiscaisAtualizadas = Array.from(new Set(
         pedidosAtualizados.map(p => p.numero_nf).filter(Boolean).map(String)
       ));
@@ -180,12 +243,15 @@ Deno.serve(async (req) => {
           status_carga: novoStatus,
           pedidos_omie: pedidosAtualizados,
           notas_fiscais: notasFiscaisAtualizadas,
-          data_faturamento: novoStatus === 'faturada' ? (carga.data_faturamento || new Date().toISOString()) : carga.data_faturamento
+          data_faturamento: (novoStatus === 'faturada' || novoStatus === 'faturada_parcial' || novoStatus === 'faturada_com_rejeicao')
+            ? (carga.data_faturamento || new Date().toISOString())
+            : carga.data_faturamento
         });
 
-        // Reflete o numero_nf nos Pedidos locais correspondentes
+        // Reflete o numero_nf nos Pedidos locais correspondentes (apenas autorizadas)
         for (const p of pedidosAtualizados) {
           if (!p.numero_nf || !p.codigo_pedido) continue;
+          if (p.status_nf && p.status_nf !== 'autorizada') continue;
           try {
             const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({
               omie_codigo_pedido: String(p.codigo_pedido)

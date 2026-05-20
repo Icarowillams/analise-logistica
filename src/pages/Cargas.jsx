@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -83,6 +83,7 @@ export default function Cargas() {
   const [filtroNumero, setFiltroNumero] = useState('');
   const [filtroDataInicial, setFiltroDataInicial] = useState('');
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
+  const [sincronizando, setSincronizando] = useState(false);
 
   // 1️⃣ Carrega cargas direto do banco — RÁPIDO (sem chamada ao Omie)
   const { data: cargasTodas = [], isLoading } = useQuery({
@@ -123,6 +124,38 @@ export default function Cargas() {
     setFiltroDataFinal('');
   };
   const temFiltro = !!(filtroNumero || filtroDataInicial || filtroDataFinal);
+
+  // 🔄 FORÇA sincronização em massa — reconsulta no Omie e reclassifica cStat (autorizada/rejeitada/denegada/cancelada).
+  // Se houver seleção, sincroniza apenas as selecionadas; senão sincroniza as cargas filtradas/visíveis.
+  const forcarSincronizacao = async () => {
+    const alvos = selecionadas.length > 0
+      ? selecionadas
+      : cargas
+          .filter(c => !['cancelada','excluida'].includes(statusExibido(c)))
+          .slice(0, 100)
+          .map(c => c.id);
+
+    if (alvos.length === 0) {
+      toast.error('Nenhuma carga para sincronizar');
+      return;
+    }
+
+    setSincronizando(true);
+    const toastId = toast.loading(`Reconsultando ${alvos.length} carga(s) no Omie…`);
+    try {
+      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
+        carga_ids: alvos,
+        list_limit: 500,
+        sync_limit: alvos.length
+      });
+      if (data?.error) throw new Error(data.error);
+      toast.success(`${data?.sincronizadas || 0} carga(s) atualizada(s) com status real do Omie`, { id: toastId, duration: 8000 });
+      queryClient.invalidateQueries({ queryKey: ['cargas'] });
+    } catch (e) {
+      toast.error(`Falha ao sincronizar: ${e.message}`, { id: toastId });
+    }
+    setSincronizando(false);
+  };
 
   const faturar = async (carga) => {
     const codigos = (carga.pedidos_omie || [])
@@ -384,10 +417,25 @@ export default function Cargas() {
     {
       key: 'status_carga',
       label: 'Status',
-      width: '120px',
+      width: '160px',
       render: (_, row) => {
         const status = statusExibido(row);
-        return <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>;
+        // Coleta motivos de rejeição dos pedidos para mostrar no tooltip
+        const rejeitados = (row.pedidos_omie || []).filter(p => p.status_nf === 'rejeitada' || p.status_nf === 'denegada');
+        const temRejeicao = rejeitados.length > 0;
+        const motivos = rejeitados
+          .map(p => `Pedido ${p.numero_pedido || p.codigo_pedido}: ${p.motivo_rejeicao || p.status_real_omie || 'rejeitada'}`)
+          .join('\n');
+        return (
+          <div className="flex items-center gap-1">
+            <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>
+            {temRejeicao && (
+              <span title={motivos} className="cursor-help">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+              </span>
+            )}
+          </div>
+        );
       }
     },
     {
@@ -456,6 +504,19 @@ export default function Cargas() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={forcarSincronizacao}
+            disabled={sincronizando || faturandoLote}
+            variant="outline"
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+            title={selecionadas.length > 0
+              ? `Reconsultar status real no Omie das ${selecionadas.length} carga(s) selecionada(s)`
+              : 'Reconsultar status real no Omie das cargas visíveis (máx. 100)'}
+          >
+            {sincronizando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            Atualizar status Omie
+            {selecionadas.length > 0 ? ` (${selecionadas.length})` : ''}
+          </Button>
           {selecionadas.length > 0 && (
             <Button
               onClick={faturarLote}
