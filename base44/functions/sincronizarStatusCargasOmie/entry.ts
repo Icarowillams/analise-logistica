@@ -269,6 +269,38 @@ Deno.serve(async (req) => {
           } catch { /* não bloqueia */ }
         }
 
+        // 🆕 Reflete status real (autorizada/rejeitada/denegada/cancelada) no espelho PedidoLiberadoOmie
+        // — assim a tela "Gerenciar Pedidos" mostra a rejeição em tempo real, sem precisar de webhook.
+        for (const p of pedidosAtualizados) {
+          if (!p.codigo_pedido || !p.status_nf) continue;
+          try {
+            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+              codigo_pedido: String(p.codigo_pedido)
+            }, '-sincronizado_em', 1);
+            const esp = espelhos[0];
+            if (!esp) continue;
+
+            const mapaStatus = {
+              autorizada: { status_real: 'emitida', status_label: 'Faturado' },
+              rejeitada:  { status_real: 'rejeitada', status_label: p.motivo_rejeicao || p.status_real_omie || 'NF Rejeitada' },
+              denegada:   { status_real: 'denegada',  status_label: p.motivo_rejeicao || p.status_real_omie || 'NF Denegada' },
+              cancelada:  { status_real: 'cancelada', status_label: 'NF Cancelada' }
+            };
+            const novoStatus = mapaStatus[p.status_nf];
+            if (!novoStatus) continue;
+            if (esp.status_real === novoStatus.status_real && esp.numero_nf === String(p.numero_nf || '')) continue;
+
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+              etapa: '60',
+              status_real: novoStatus.status_real,
+              status_label: String(novoStatus.status_label).slice(0, 200),
+              numero_nf: p.numero_nf ? String(p.numero_nf) : esp.numero_nf,
+              sincronizado_em: new Date().toISOString(),
+              origem_sync: 'reconciliacao'
+            });
+          } catch { /* não bloqueia */ }
+        }
+
         cargasAtualizadas.push({ ...carga, status_carga: novoStatus, pedidos_omie: pedidosAtualizados, notas_fiscais: notasFiscaisAtualizadas });
       } else {
         cargasAtualizadas.push(carga);

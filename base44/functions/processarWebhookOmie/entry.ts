@@ -54,8 +54,34 @@ async function removerDoEspelho(base44, omieCodigoPedido) {
 // webhooks VendaProduto.Faturada + NFe.NotaAutorizada chegam quase simultâneos).
 // 🆕 forceNumeroNf: quando passado (webhook NFe.NotaAutorizada com numero_nf), bypass do dedupe E
 //                  atualiza diretamente o numero_nf no espelho sem precisar da info_nfe do ConsultarPedido.
-async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null) {
+// 🆕 forceRejeicao: { status_real, status_label, motivo } — quando vem de NFe.NotaRejeitada/Denegada/Cancelada,
+//                   bypass do dedupe E aplica o status direto no espelho (não pode esperar a SEFAZ via ConsultarPedido).
+async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, forceRejeicao = null) {
   if (!omieCodigoPedido) return;
+
+  // 🆕 Atalho REJEIÇÃO/CANCELAMENTO/DENEGAÇÃO: aplica status direto no espelho sem esperar ConsultarPedido
+  // (a SEFAZ atualiza o cStat com atraso, e o dedupe pode ter pulado anteriormente).
+  if (forceRejeicao) {
+    try {
+      const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+        codigo_pedido: String(omieCodigoPedido)
+      }, '-sincronizado_em', 1);
+      const esp = espelhos[0];
+      if (esp) {
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+          etapa: '60',
+          status_real: forceRejeicao.status_real,
+          status_label: forceRejeicao.status_label,
+          sincronizado_em: new Date().toISOString(),
+          origem_sync: 'webhook'
+        });
+        console.log(`[espelho] forceRejeicao=${forceRejeicao.status_real} aplicado em ${omieCodigoPedido}`);
+        return;
+      }
+    } catch (e) {
+      console.error(`[espelho] erro ao aplicar forceRejeicao:`, e.message);
+    }
+  }
 
   // 🆕 Atalho: se o webhook NFe trouxe o número, atualiza direto SEM bater no Omie (evita rate limit + perda do número).
   if (forceNumeroNf) {
@@ -376,11 +402,28 @@ async function handleNFe(base44, topic, evt) {
   // 🔄 ESPELHO OPERAÇÃO: atualizar status NF do pedido (etapa 60)
   // Quando o webhook traz numero_nf, repassamos para forçar atualização direta — evita o caso em que
   // o dedupe pula o webhook NFe (chega logo após VendaProduto.Faturada) e o número da NF se perde.
+  // ⚠️ REJEIÇÃO/DENEGAÇÃO: usa forceRejeicao para BYPASSAR o dedupe (senão o espelho fica como "Faturado"
+  // porque VendaProduto.Faturada acabou de sincronizar e o ConsultarPedido ainda não traz o cStat>=200).
   try {
     const numNfWebhook = evt?.numero_nf || evt?.numero_nota || null;
-    if (topic === 'NFe.NotaCancelada' || topic === 'NFe.NotaRejeitada' || topic === 'NFe.NotaDenegada') {
-      // NF cancelada/rejeitada/denegada → upsert pra refletir status_real real (etapa 60 com rejeição)
-      await upsertEspelho(base44, codigoPedido);
+    const xMotivo = evt?.xMotivo || evt?.cMensStatus || evt?.motivo || '';
+    const cStat = evt?.cStat || '';
+
+    if (topic === 'NFe.NotaRejeitada') {
+      await upsertEspelho(base44, codigoPedido, null, {
+        status_real: 'rejeitada',
+        status_label: `NF Rejeitada${cStat ? ` [${cStat}]` : ''}${xMotivo ? ` — ${xMotivo}` : ''}`.slice(0, 200)
+      });
+    } else if (topic === 'NFe.NotaDenegada') {
+      await upsertEspelho(base44, codigoPedido, null, {
+        status_real: 'denegada',
+        status_label: `NF Denegada${cStat ? ` [${cStat}]` : ''}${xMotivo ? ` — ${xMotivo}` : ''}`.slice(0, 200)
+      });
+    } else if (topic === 'NFe.NotaCancelada') {
+      await upsertEspelho(base44, codigoPedido, null, {
+        status_real: 'cancelada',
+        status_label: 'NF Cancelada'
+      });
     } else if (topic === 'NFe.NotaAutorizada' || topic === 'NFe.NotaDevolucaoAutorizada') {
       await upsertEspelho(base44, codigoPedido, numNfWebhook);
     }
