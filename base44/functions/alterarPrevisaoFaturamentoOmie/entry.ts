@@ -56,6 +56,21 @@ Deno.serve(async (req) => {
       try {
         const data = await omieCall('AlterarPedidoVenda', { cabecalho });
         const ok = data.cCodStatus === '0' || data.cCodStatus === 0;
+
+        if (ok && p.codigo_pedido) {
+          const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+            { codigo_pedido: String(p.codigo_pedido) },
+            '-created_date',
+            1
+          );
+          if (espelhos?.[0]) {
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+              data_previsao: data_previsao,
+              sincronizado_em: new Date().toISOString()
+            });
+          }
+        }
+
         resultados.push({
           codigo_pedido: p.codigo_pedido,
           numero_pedido: p.numero_pedido,
