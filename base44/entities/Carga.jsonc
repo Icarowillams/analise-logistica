@@ -344,6 +344,7 @@
         "conferindo",
         "pronta",
         "aguardando_nf",
+        "faturada_com_rejeicao",
         "faturada_parcial",
         "faturada",
         "em_rota",
@@ -352,7 +353,7 @@
         "cancelada"
       ],
       "default": "montagem",
-      "description": "aguardando_nf = NF emitida, aguardando SEFAZ. faturada_parcial = algumas NFs autorizadas e outras rejeitadas. faturada = TODAS as NFs autorizadas pela SEFAZ."
+      "description": "aguardando_nf = NF emitida, aguardando SEFAZ. faturada_com_rejeicao = pedido na etapa 60 (Faturado) mas TODAS as NFs foram rejeitadas pela SEFAZ (Omie mostra faixa vermelha). faturada_parcial = mistura de autorizadas + rejeitadas/pendentes. faturada = TODAS as NFs autorizadas pela SEFAZ."
     },
     "observacao": {
       "type": "string"

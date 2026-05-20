@@ -14,15 +14,19 @@ import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import { toast } from 'sonner';
 
-// Status: montagem → aguardando_nf → faturada / faturada_parcial / cancelada
-// faturada = TODAS as NFs autorizadas pela SEFAZ
-// faturada_parcial = mistura de autorizadas + rejeitadas/pendentes
-// aguardando_nf = ainda processando SEFAZ
-const FATURAVEL = ['montagem', 'faturada_parcial', 'aguardando_nf'];
+// Status reflete o REAL do Omie:
+//  - faturada            = TODAS as NFs autorizadas pela SEFAZ (cStat 100)
+//  - faturada_com_rejeicao = pedido(s) em etapa 60 (Faturado) mas COM NF rejeitada pela SEFAZ (cStat>=200).
+//                             No Kanban do Omie aparece com faixa VERMELHA na coluna "Faturado".
+//  - faturada_parcial    = mistura de autorizadas + rejeitadas/pendentes
+//  - aguardando_nf       = SEFAZ ainda processando, sem resposta final
+//  - montagem            = inicial / nada emitido ainda
+const FATURAVEL = ['montagem', 'faturada_parcial', 'aguardando_nf', 'faturada_com_rejeicao'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
   aguardando_nf: 'bg-blue-100 text-blue-800',
+  faturada_com_rejeicao: 'bg-red-100 text-red-800 border border-red-300',
   faturada_parcial: 'bg-yellow-100 text-yellow-800',
   faturada: 'bg-green-100 text-green-800',
   cancelada: 'bg-red-100 text-red-800',
@@ -32,14 +36,16 @@ const STATUS_COLORS = {
 const STATUS_LABEL = {
   montagem: 'montagem',
   aguardando_nf: 'aguard. NF',
+  faturada_com_rejeicao: 'NF rejeitada',
   faturada_parcial: 'parcial',
   faturada: 'faturada',
   cancelada: 'cancelada',
   excluida: 'excluída'
 };
 
-// Calcula novo status da carga baseado no resultado real do Omie (resultados de emitirNfsLoteOmie)
-// resultados: array de { codigo_pedido, sucesso, rejeitada, pendente }
+// Calcula novo status da carga baseado no resultado real do Omie (resultados de emitirNfsLoteOmie).
+// IMPORTANTE: pedido com NF rejeitada FICA NA ETAPA 60 (Faturado) no Omie — não volta pra montagem.
+// É o estado "Faturado (NF-e rejeitada)" que o Omie mostra com faixa vermelha no Kanban.
 function calcularStatusPosEmissao(carga, resultados) {
   const codigosOmie = (carga.pedidos_omie || [])
     .filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido)
@@ -53,10 +59,11 @@ function calcularStatusPosEmissao(carga, resultados) {
   const pendentes = codigosOmie.filter(c => porCodigo.get(c)?.pendente).length;
 
   if (autorizadas === codigosOmie.length) return 'faturada';
+  if (rejeitadas === codigosOmie.length) return 'faturada_com_rejeicao';
+  if (pendentes === codigosOmie.length) return 'aguardando_nf';
   if (autorizadas > 0 && (rejeitadas > 0 || pendentes > 0)) return 'faturada_parcial';
-  if (pendentes > 0 && rejeitadas === 0) return 'aguardando_nf';
-  if (rejeitadas > 0 && autorizadas === 0) return 'montagem'; // tudo rejeitado — volta a estar em montagem para nova tentativa
-  return carga.status_carga || 'montagem';
+  // resto (mistura sem autorizadas) → trata como parcial para o operador agir
+  return 'faturada_parcial';
 }
 
 const statusExibido = (carga) => {
@@ -390,8 +397,15 @@ export default function Cargas() {
       render: (_, row) => {
         const podeFaturar = FATURAVEL.includes(row.status_carga);
         const emMontagem = row.status_carga === 'montagem';
-        const jaFaturada = row.status_carga === 'faturada' || row.status_carga === 'faturada_parcial' || row.status_carga === 'aguardando_nf';
-        const labelBotao = row.status_carga === 'faturada_parcial' ? 'Reemitir' : row.status_carga === 'aguardando_nf' ? 'Tentar' : 'Faturar';
+        const jaFaturada =
+          row.status_carga === 'faturada' ||
+          row.status_carga === 'faturada_parcial' ||
+          row.status_carga === 'aguardando_nf' ||
+          row.status_carga === 'faturada_com_rejeicao';
+        const labelBotao =
+          row.status_carga === 'faturada_parcial' ? 'Reemitir' :
+          row.status_carga === 'faturada_com_rejeicao' ? 'Reemitir' :
+          row.status_carga === 'aguardando_nf' ? 'Tentar' : 'Faturar';
         return (
           <div className="flex items-center gap-1">
             {podeFaturar && (
