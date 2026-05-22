@@ -93,37 +93,50 @@ export default function RomaneioEntregaPdf({ carga }) {
     enabled: !!carga?.id
   });
 
-  // Logs de emissão de NF — fonte autoritativa do número da NF emitida
+  // Logs de emissão de NF — carrega todos os status para tratar rejeitadas/pendentes
   const { data: logsEmissaoNF = [] } = useQuery({
     queryKey: ['logs-emissao-nf-romaneio', carga?.id],
     queryFn: () => carga?.id
-      ? base44.entities.LogEmissaoNF.filter({ carga_id: carga.id, status: 'autorizada' }, '-created_date', 1000)
+      ? base44.entities.LogEmissaoNF.filter({ carga_id: carga.id }, '-created_date', 1000)
       : Promise.resolve([]),
     enabled: !!carga?.id
   });
 
-  // Index NF por codigo_pedido (Omie) e por id do Pedido interno
+  // Index NF por codigo_pedido (Omie) e por id do Pedido interno, incluindo status/etapa
   const nfPorCodigoOmie = useMemo(() => {
     const m = new Map();
-    // 1) Espelho Omie (pode estar vazio se ainda não sincronizou)
-    liberadosOmie.forEach(lo => {
-      if (lo.codigo_pedido && lo.numero_nf) {
-        m.set(String(lo.codigo_pedido), String(lo.numero_nf));
-      }
-    });
-    // 2) Pedidos locais com NF (sobrescreve se houver)
-    pedidosCarga.forEach(p => {
-      if (p.numero_nota_fiscal) {
-        if (p.omie_codigo_pedido) m.set(String(p.omie_codigo_pedido), String(p.numero_nota_fiscal));
-        if (p.id) m.set(String(p.id), String(p.numero_nota_fiscal));
-      }
-    });
-    // 3) LogEmissaoNF — fonte autoritativa (sobrescreve as anteriores se houver)
+
     logsEmissaoNF.forEach(log => {
-      if (log.numero_nf) {
-        if (log.codigo_pedido) m.set(String(log.codigo_pedido), String(log.numero_nf));
+      if (log.codigo_pedido && !m.has(String(log.codigo_pedido))) {
+        m.set(String(log.codigo_pedido), {
+          numero_nf: log.numero_nf || '',
+          status: log.status || '',
+          etapa: '',
+          label: log.status === 'rejeitada' ? 'NF Rejeitada' : log.status === 'pendente' ? 'NF Pendente' : log.status === 'erro' ? 'Erro NF' : ''
+        });
       }
     });
+
+    liberadosOmie.forEach(lo => {
+      if (!lo.codigo_pedido) return;
+      const key = String(lo.codigo_pedido);
+      const atual = m.get(key) || {};
+      m.set(key, {
+        ...atual,
+        numero_nf: atual.numero_nf || lo.numero_nf || '',
+        status: atual.status || lo.status_real || '',
+        etapa: lo.etapa || atual.etapa || '',
+        label: atual.label || lo.status_label || ''
+      });
+    });
+
+    pedidosCarga.forEach(p => {
+      const info = p.numero_nota_fiscal ? { numero_nf: p.numero_nota_fiscal, status: 'autorizada', etapa: p.etapa || '' } : null;
+      if (!info) return;
+      if (p.omie_codigo_pedido && !m.has(String(p.omie_codigo_pedido))) m.set(String(p.omie_codigo_pedido), info);
+      if (p.id && !m.has(String(p.id))) m.set(String(p.id), info);
+    });
+
     return m;
   }, [liberadosOmie, pedidosCarga, logsEmissaoNF]);
 
@@ -184,53 +197,61 @@ export default function RomaneioEntregaPdf({ carga }) {
         vendedor_nome_cliente: vendedorCliente?.nome || ''
       };
     };
-    const resolverNF = (p, origem) => {
-      // 1) Pedido Omie: usa codigo_pedido
-      if (origem === 'omie' && p.codigo_pedido) {
-        const nf = nfPorCodigoOmie.get(String(p.codigo_pedido));
-        if (nf) return nf;
+    const resolverInfoNF = (p, origem) => {
+      const key = origem === 'omie' && p.codigo_pedido ? p.codigo_pedido : (p.pedido_id || p.pedido_troca_id);
+      const info = key ? nfPorCodigoOmie.get(String(key)) : null;
+      if (!info) return { numero_nf: p.numero_nf || '', deveExibir: true };
+
+      if (info.status === 'rejeitada') {
+        const voltouEtapa50 = String(info.etapa || p.etapa || '') === '50';
+        return voltouEtapa50
+          ? { numero_nf: info.label || 'NF Rejeitada', deveExibir: true }
+          : { numero_nf: '', deveExibir: false };
       }
-      // 2) Pedido interno/troca: usa pedido_id ou pedido_troca_id
-      const localId = p.pedido_id || p.pedido_troca_id;
-      if (localId) {
-        const nf = nfPorCodigoOmie.get(String(localId));
-        if (nf) return nf;
-      }
-      // 3) Fallback: numero_nf que já vem no payload da carga
-      return p.numero_nf || '';
+
+      return {
+        numero_nf: info.numero_nf || info.label || p.numero_nf || '',
+        deveExibir: true
+      };
     };
     (carga.pedidos_omie || []).forEach(p => {
       if (cancelados.omieSet.has(String(p.codigo_pedido))) return;
+      const nfInfo = resolverInfoNF(p, 'omie');
+      if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'omie',
         _tipo: tipoNotaLabel(p, 'omie'),
-        numero_nf: resolverNF(p, 'omie'),
+        numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
     });
     (carga.pedidos_internos || []).forEach(p => {
       if (cancelados.idSet.has(String(p.pedido_id))) return;
+      const nfInfo = resolverInfoNF(p, 'interno');
+      if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'interno',
         _tipo: tipoNotaLabel(p, 'interno'),
-        numero_nf: resolverNF(p, 'interno'),
+        numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
     });
     (carga.pedidos_troca || []).forEach(p => {
       if (cancelados.idSet.has(String(p.pedido_troca_id))) return;
+      const nfInfo = resolverInfoNF(p, 'troca');
+      if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
       out.push({
         ...p,
         _origem: 'troca',
         _tipo: 'TROCA',
-        numero_nf: resolverNF(p, 'troca'),
+        numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
         ...resolverExtras(p, cliente)
       });
