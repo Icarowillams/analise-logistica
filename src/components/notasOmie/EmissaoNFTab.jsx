@@ -16,7 +16,7 @@ import { toast } from 'sonner';
  * Quando o cliente tem modalidade "BOLETO BANCARIO" no cadastro, o boleto é gerado
  * automaticamente após a emissão da NF.
  */
-export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
+export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComplete }) {
   const [filtroCarga, setFiltroCarga] = useState('');
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
@@ -177,8 +177,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true }) {
       }
 
       setSelecionados(new Set());
-      // Atualiza a lista após alguns segundos (etapa pode ter mudado)
-      setTimeout(() => refetch(), 5000);
+      onEmissionComplete?.(codigos.map(String));
     } catch (e) {
       toast.error('Erro ao emitir NFs: ' + e.message);
     }

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FileText, FileWarning, Printer, FileSignature, ScrollText } from 'lucide-react';
 import NotasNF55Tab from '@/components/notasOmie/NotasNF55Tab';
@@ -16,6 +15,7 @@ export default function NotasOmie() {
   const [tab, setTab] = useState('impressao_nf55');
   const [cargaFiltro, setCargaFiltro] = useState(null);
   const [cargaFiltroId, setCargaFiltroId] = useState(null);
+  const [codigosUltimaEmissao, setCodigosUltimaEmissao] = useState([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -52,14 +52,6 @@ export default function NotasOmie() {
         </div>
       </div>
 
-      {cargaFiltro && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="py-3 text-sm text-blue-800">
-            Exibindo notas filtradas pela carga <b>{cargaFiltro.numero_carga}</b>.
-          </CardContent>
-        </Card>
-      )}
-
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 max-w-3xl">
           <TabsTrigger value="emissao" className="flex items-center gap-2">
@@ -77,11 +69,22 @@ export default function NotasOmie() {
         </TabsList>
 
         <TabsContent value="emissao" className="mt-4">
-          <EmissaoNFTab cargaFiltro={cargaFiltro} ativa={tab === 'emissao'} />
+          <EmissaoNFTab
+            cargaFiltro={cargaFiltro}
+            ativa={tab === 'emissao'}
+            onEmissionComplete={(codigos) => {
+              setCodigosUltimaEmissao(codigos);
+              setTab('log_emissao');
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="log_emissao" className="mt-4">
-          <LogEmissaoNFTab ativa={tab === 'log_emissao'} />
+          <LogEmissaoNFTab
+            ativa={tab === 'log_emissao'}
+            cargaFiltro={cargaFiltro}
+            autoConsultarCodigos={codigosUltimaEmissao}
+          />
         </TabsContent>
 
         <TabsContent value="impressao_nf55" className="mt-4">
@@ -89,7 +92,7 @@ export default function NotasOmie() {
         </TabsContent>
 
         <TabsContent value="impressao_d1" className="mt-4">
-          <NotasD1Tab cargaFiltroId={cargaFiltroId} ativa={tab === 'impressao_d1'} />
+          <NotasD1Tab cargaFiltroId={cargaFiltroId} cargaFiltro={cargaFiltro} ativa={tab === 'impressao_d1'} />
         </TabsContent>
       </Tabs>
     </div>

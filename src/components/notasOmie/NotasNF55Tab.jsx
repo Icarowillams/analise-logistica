@@ -187,7 +187,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   // Ao receber cargaFiltro pela URL, zera o período e dispara busca pela carga
   useEffect(() => {
     if (!cargaFiltro || !ativa) return;
-    const filtrosCarga = { ...filtros, data_inicial: '', data_final: '' };
+    const filtrosCarga = { ...filtros, data_inicial: '', data_final: '', numero_carga: cargaFiltro.numero_carga || '' };
     setFiltros(filtrosCarga);
     const timer = setTimeout(() => buscar(1, cargaFiltro, filtrosCarga), 800);
     return () => clearTimeout(timer);

@@ -353,154 +353,25 @@ Deno.serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // FASE 2 — Janela de espera ATIVA pelo status real da SEFAZ.
-    // P2 (16/05): ampliada a janela e combinada com consulta ativa em cada iteração
-    // para que o LogEmissaoNF saia desta função já com status final (autorizada/rejeitada)
-    // sempre que a SEFAZ retornar dentro de ~45s. Pedidos ainda não respondidos viram
-    // 'pendente' e são reconciliados pela automação de 15min.
-    const aguardarStatusFinal = async (codPed) => {
-      // 6 tentativas com backoff progressivo: 3s, 5s, 7s, 9s, 11s, 13s (≈48s total)
-      const intervalos = [3000, 5000, 7000, 9000, 11000, 13000];
-      for (let i = 0; i < intervalos.length; i++) {
-        await new Promise(r => setTimeout(r, intervalos[i]));
-
-        // 1) Espelho (webhook já chegou?)
-        const doEspelho = await lerStatusDoEspelho(base44, codPed);
-        if (doEspelho && (doEspelho.status === 'emitida' || doEspelho.status === 'rejeitada')) {
-          return doEspelho;
-        }
-
-        // 2) A cada 2 tentativas, consulta ATIVAMENTE o Omie (ConsultarPedido + ListarNF)
-        if (i === 1 || i === 3 || i === 5) {
-          const ativo = await consultarStatusAtivoOmie(codPed);
-          if (ativo.status && ativo.status !== 'aguardando') {
-            return {
-              status: ativo.status === 'autorizada' ? 'emitida' :
-                      (ativo.status === 'cancelada' || ativo.status === 'denegada' || ativo.status === 'rejeitada') ? 'rejeitada' :
-                      'aguardando',
-              numero_nf: ativo.numero_nf || null,
-              mensagem: ativo.mensagem,
-              codigo_sefaz: ativo.codigo_sefaz || '',
-              substatus: ativo.status
-            };
-          }
-        }
-      }
-      return { status: 'aguardando', mensagem: 'NF em processamento — será reconciliada automaticamente em até 15min' };
-    };
-
-    if (pedidosEnviados.length > 0) {
-      // Roda as verificações em PARALELO — uma trava não atrasa a outra
-      const verificacoes = await Promise.all(
-        pedidosEnviados.map(({ codigo_pedido: codPed }) => aguardarStatusFinal(codPed))
-      );
-
-      for (let i = 0; i < pedidosEnviados.length; i++) {
-        const codPed = pedidosEnviados[i].codigo_pedido;
-        const statusReal = verificacoes[i];
-
-        const matchCStat = String(statusReal.mensagem || '').match(/\[SEFAZ (\d+)\]/);
-        const cStat = statusReal.codigo_sefaz || (matchCStat ? matchCStat[1] : (statusReal.status === 'emitida' ? '100' : ''));
-
-        if (statusReal.status === 'emitida') {
-          const usaBoleto = await clienteUsaBoleto(base44, codPed);
-          if (usaBoleto) codigosParaBoleto.push(codPed);
-          resultados.push({
-            codigo_pedido: codPed,
-            sucesso: true,
-            numero_nf: statusReal.numero_nf,
-            mensagem: statusReal.mensagem
-          });
-          await gravarLog({
-            codigo_pedido: codPed,
-            status: 'autorizada',
-            numero_nf: statusReal.numero_nf || '',
-            mensagem: statusReal.mensagem,
-            codigo_sefaz: cStat,
-            boleto_gerado: usaBoleto
-          });
-        } else if (statusReal.status === 'rejeitada') {
-          // substatus distingue rejeitada × denegada × cancelada — todos viram status='rejeitada' no log,
-          // mas a mensagem já carrega o detalhe vindo da SEFAZ (xMotivo).
-          resultados.push({
-            codigo_pedido: codPed,
-            sucesso: false,
-            rejeitada: true,
-            mensagem: statusReal.mensagem
-          });
-          await gravarLog({
-            codigo_pedido: codPed,
-            status: 'rejeitada',
-            mensagem: statusReal.mensagem,
-            codigo_sefaz: cStat
-          });
-          // Só cancela pedido local em casos definitivos (denegada/cancelada). Rejeição "comum"
-          // (ex: CFOP errado) o pedido volta pra etapa 50 no Omie e pode ser corrigido — não cancelamos.
-          if (statusReal.substatus === 'denegada' || statusReal.substatus === 'cancelada') {
-            await cancelarPedidoLocal(base44, codPed, statusReal.mensagem, user);
-          }
-        } else {
-          // PENDENTE — usuário acompanha pelo Log de Emissão; webhook reconcilia depois
-          resultados.push({
-            codigo_pedido: codPed,
-            sucesso: false,
-            pendente: true,
-            mensagem: statusReal.mensagem
-          });
-          await gravarLog({
-            codigo_pedido: codPed,
-            status: 'pendente',
-            mensagem: statusReal.mensagem
-          });
-        }
-      }
+    // FASE 2 — Não aguarda nem consulta SEFAZ aqui.
+    // Esta função apenas aciona a emissão no Omie e grava os logs como pendentes.
+    // A consulta de autorização/rejeição é feita automaticamente pela aba Log de Emissão.
+    for (const { codigo_pedido: codPed } of pedidosEnviados) {
+      resultados.push({
+        codigo_pedido: codPed,
+        sucesso: false,
+        pendente: true,
+        mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ'
+      });
+      await gravarLog({
+        codigo_pedido: codPed,
+        status: 'pendente',
+        mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ'
+      });
     }
 
-    // 🚫 Geração AUTOMÁTICA de boletos foi DESATIVADA por decisão do usuário.
-    // A emissão de boletos agora é feita manualmente na tela "Logística → Emissão de Boletos",
-    // de forma análoga à emissão manual de NF-e. Isso dá ao operador controle de quando e
-    // quais títulos virar boleto.
+    // Boletos permanecem manuais; autorização/rejeição será apurada no Log de Emissão.
     const boletosAuto = null;
-
-    // 🎯 AUTO-RESOLVE: se sobraram pendentes, dispara reconciliação automática
-    // (consulta ConsultarPedido + ListarNF) para resolver agora — sem o usuário
-    // precisar clicar manualmente em "Resolver pendentes" depois.
-    const codigosPendentes = resultados.filter(r => r.pendente).map(r => String(r.codigo_pedido));
-    if (codigosPendentes.length > 0) {
-      try {
-        // Aguarda uns segundos para dar tempo da SEFAZ processar
-        await new Promise(r => setTimeout(r, 8000));
-        const recon = await base44.functions.invoke('atualizarStatusLogsPendentes', {
-          codigos_pedido: codigosPendentes
-        });
-        const reconData = recon?.data || {};
-        // Atualiza os resultados retornados ao frontend com o status reconciliado
-        if (Array.isArray(reconData.resultados)) {
-          for (const rr of reconData.resultados) {
-            const idx = resultados.findIndex(x => String(x.codigo_pedido) === String(rr.codigo_pedido));
-            if (idx >= 0 && rr.sucesso) {
-              if (rr.novo_status === 'autorizada') {
-                resultados[idx] = {
-                  codigo_pedido: rr.codigo_pedido,
-                  sucesso: true,
-                  numero_nf: rr.numero_nf,
-                  mensagem: rr.mensagem
-                };
-              } else if (rr.novo_status === 'rejeitada') {
-                resultados[idx] = {
-                  codigo_pedido: rr.codigo_pedido,
-                  sucesso: false,
-                  rejeitada: true,
-                  mensagem: rr.mensagem
-                };
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[emitirNfsLoteOmie] erro na reconciliação automática:', e.message);
-      }
-    }
 
     const sucessos = resultados.filter(r => r.sucesso).length;
     const rejeitadas = resultados.filter(r => r.rejeitada).length;

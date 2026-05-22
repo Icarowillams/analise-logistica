@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,7 @@ import { toast } from 'sonner';
  * Lê da entidade LogEmissaoNF (uma linha por pedido emitido).
  * Mostra o motivo SEFAZ (xMotivo) e o cStat retornado.
  */
-export default function LogEmissaoNFTab({ ativa = true }) {
+export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsultarCodigos = [] }) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [busca, setBusca] = useState('');
   const [filtroCarga, setFiltroCarga] = useState('');
@@ -32,6 +32,7 @@ export default function LogEmissaoNFTab({ ativa = true }) {
   const [dataFim, setDataFim] = useState('');
   const [resolvendo, setResolvendo] = useState(false);
   const [atualizandoOmie, setAtualizandoOmie] = useState(false);
+  const autoConsultaKeyRef = useRef('');
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -65,6 +66,12 @@ export default function LogEmissaoNFTab({ ativa = true }) {
       };
     });
   }, [logs, clientePorId]);
+
+  useEffect(() => {
+    if (cargaFiltro?.numero_carga) {
+      setFiltroCarga(cargaFiltro.numero_carga);
+    }
+  }, [cargaFiltro]);
 
   const limparFiltros = () => {
     setFiltroStatus('todos');
@@ -192,6 +199,41 @@ export default function LogEmissaoNFTab({ ativa = true }) {
     }
     setAtualizandoOmie(false);
   };
+
+  useEffect(() => {
+    if (!ativa || autoConsultarCodigos.length === 0) return;
+
+    const codigos = [...new Set(autoConsultarCodigos.map(String).filter(Boolean))];
+    const key = codigos.sort().join('|');
+    if (!key || autoConsultaKeyRef.current === key) return;
+
+    autoConsultaKeyRef.current = key;
+    const timer = setTimeout(async () => {
+      setAtualizandoOmie(true);
+      try {
+        toast.info(`Consultando status de ${codigos.length} NF(s) no Omie...`);
+        const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
+          codigos_pedido: codigos
+        });
+        const r = resp?.data || {};
+        if (r?.sucesso) {
+          const partes = [];
+          if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
+          if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
+          if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
+          toast.success(`Log atualizado${partes.length ? ': ' + partes.join(', ') : ''}`);
+        } else {
+          toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
+        }
+        await refetch();
+      } catch (e) {
+        toast.error('Falha ao consultar status: ' + e.message);
+      }
+      setAtualizandoOmie(false);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [ativa, autoConsultarCodigos, refetch]);
 
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;

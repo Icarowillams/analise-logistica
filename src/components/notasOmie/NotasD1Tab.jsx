@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import NotaD1Pdf from '@/components/cargas/documentos/NotaD1Pdf';
  * Aba de listagem das Notas D1 — vendas internas (sem NF-e Omie).
  * Lê pedidos_internos D1 de todas as Cargas e exibe em tabela com filtros.
  */
-export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
+export default function NotasD1Tab({ cargaFiltroId, cargaFiltro, ativa = true }) {
   const [filtros, setFiltros] = useState({
     data_inicial: '',
     data_final: '',
@@ -24,6 +24,12 @@ export default function NotasD1Tab({ cargaFiltroId, ativa = true }) {
     numero_carga: ''
   });
   const [notaSelecionada, setNotaSelecionada] = useState(null);
+
+  useEffect(() => {
+    if (cargaFiltro?.numero_carga) {
+      setFiltros(prev => ({ ...prev, numero_carga: cargaFiltro.numero_carga }));
+    }
+  }, [cargaFiltro]);
 
   // Só busca quando a aba estiver ativa — evita competir por rate-limit com NF-55
   const { data: cargas = [], isLoading } = useQuery({
