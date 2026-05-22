@@ -100,18 +100,9 @@ export default function PedidoCellRenderer({ col, p }) {
     }
     const e = ETAPA_OMIE_LABELS[p.omie_etapa_real];
     if (!e) return <span className="block truncate text-[10px]">{p.omie_etapa_real}</span>;
-    // Etapa 60 + status NF detalhado
-    if (p.omie_etapa_real === '60' && p.omie_status_nf && NF_STATUS_LABELS[p.omie_status_nf]) {
-      const nf = NF_STATUS_LABELS[p.omie_status_nf];
-      return (
-        <Badge className={`${nf.bg} ${nf.text} ${nf.border} border text-[10px]`} title={p.omie_status_label || ''}>
-          {nf.label}
-        </Badge>
-      );
-    }
     return (
-      <Badge className={`${e.bg} ${e.text} ${e.border} border text-[10px]`}>
-        {e.label}
+      <Badge className={`${e.bg} ${e.text} ${e.border} border text-[10px]`} title={p.omie_status_label || ''}>
+        {p.omie_etapa_real} - {e.label}
       </Badge>
     );
   }
