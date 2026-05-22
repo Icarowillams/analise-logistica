@@ -71,17 +71,7 @@ const getErroFiscal = (p) => {
 };
 
 export default function PedidoCellRenderer({ col, p }) {
-  const erroFiscal = getErroFiscal(p);
-
   if (col.id === 'status') {
-    if (erroFiscal) {
-      return (
-        <Badge className={`${erroFiscal.bg} ${erroFiscal.text} ${erroFiscal.border} border text-[10px]`} title={p.omie_erro || ''}>
-          {erroFiscal.label}
-        </Badge>
-      );
-    }
-
     const label = STATUS_LABELS[p.status] || p.status;
     const colors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
     return (
