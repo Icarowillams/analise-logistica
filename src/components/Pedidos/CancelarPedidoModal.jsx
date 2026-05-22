@@ -12,6 +12,8 @@ import { Loader2, XCircle, AlertTriangle } from 'lucide-react';
 
 export default function CancelarPedidoModal({ open, onOpenChange, pedido, onConfirm }) {
   const [motivo, setMotivo] = useState('');
+  const pedidos = Array.isArray(pedido) ? pedido : [pedido].filter(Boolean);
+  const primeiroPedido = pedidos[0];
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -45,21 +47,25 @@ export default function CancelarPedidoModal({ open, onOpenChange, pedido, onConf
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <XCircle className="w-5 h-5" />
-            Cancelar Pedido
+            {pedidos.length > 1 ? 'Cancelar Pedidos' : 'Cancelar Pedido'}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
             <p className="font-semibold">
-              Pedido {pedido?.numero_pedido ? `#${pedido.numero_pedido}` : ''} — {pedido?.cliente_nome}
+              {pedidos.length > 1
+                ? `${pedidos.length} pedidos selecionados para cancelamento`
+                : `Pedido ${primeiroPedido?.numero_pedido ? `#${primeiroPedido.numero_pedido}` : ''} — ${primeiroPedido?.cliente_nome || ''}`}
             </p>
-            <p className="text-xs mt-1">
-              Valor: R$ {(pedido?.valor_total || 0).toFixed(2)} | Vendedor: {pedido?.vendedor_nome}
-            </p>
-            {pedido?.omie_enviado && (
+            {pedidos.length === 1 && (
+              <p className="text-xs mt-1">
+                Valor: R$ {(primeiroPedido?.valor_total || 0).toFixed(2)} | Vendedor: {primeiroPedido?.vendedor_nome}
+              </p>
+            )}
+            {pedidos.some(p => p?.omie_enviado) && (
               <p className="text-xs mt-1 font-medium">
-                ⚠ Este pedido será verificado e cancelado no Omie. Só é possível cancelar pedidos nas etapas "Pedido de Venda" ou "Pedidos Liberados".
+                ⚠ Os pedidos enviados serão verificados e cancelados no Omie. Só é possível cancelar pedidos nas etapas "Pedido de Venda" ou "Pedidos Liberados".
               </p>
             )}
           </div>
@@ -96,7 +102,7 @@ export default function CancelarPedidoModal({ open, onOpenChange, pedido, onConf
             {loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verificando e cancelando...</>
             ) : (
-              <><XCircle className="w-4 h-4 mr-2" /> Confirmar Cancelamento</>
+              <><XCircle className="w-4 h-4 mr-2" /> Confirmar Cancelamento{pedidos.length > 1 ? ` (${pedidos.length})` : ''}</>
             )}
           </Button>
         </DialogFooter>

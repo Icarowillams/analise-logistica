@@ -116,6 +116,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const isAdmin = currentUser?.role === 'admin';
 
+  const recarregarAbaAposAcao = async (resultado = null) => {
+    setSelectedIds([]);
+    if (resultado) setBatchResult(resultado);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
+      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+      queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
+    ]);
+  };
+
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
     queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
@@ -655,27 +665,40 @@ export default function GerenciarPedidos({ onEditPedido }) {
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
   };
 
-  const handleCancelConfirm = async (pedido, motivo) => {
-    // Se o pedido foi enviado ao Omie, usa a função backend que valida a etapa
-    if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-      const res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
-      if (!res.data?.sucesso) {
-        // Lançar erro para o modal exibir a mensagem
-        throw new Error(res.data?.error || 'Erro ao cancelar pedido no Omie');
+  const handleCancelConfirm = async (pedidoOuPedidos, motivo) => {
+    const pedidosParaCancelar = Array.isArray(pedidoOuPedidos) ? pedidoOuPedidos : [pedidoOuPedidos].filter(Boolean);
+    let cancelados = 0;
+    let erros = 0;
+    const detalhesErro = [];
+
+    for (const pedido of pedidosParaCancelar) {
+      try {
+        if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
+          const res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+          if (!res.data?.sucesso) {
+            throw new Error(res.data?.error || 'Erro ao cancelar pedido no Omie');
+          }
+        } else {
+          await base44.entities.Pedido.update(pedido.id, {
+            status: 'cancelado',
+            cancelado_por: currentUser?.email,
+            cancelado_por_nome: currentUserName,
+            data_cancelamento: new Date().toISOString(),
+            motivo_cancelamento: motivo,
+          });
+        }
+        cancelados++;
+      } catch (e) {
+        erros++;
+        detalhesErro.push(`Pedido ${pedido.numero_pedido || pedido.id}: ${e.message}`);
       }
-      toast.success(res.data.mensagem || 'Pedido cancelado com sucesso');
-    } else {
-      // Pedido não foi enviado ao Omie, cancelar apenas localmente
-      await base44.entities.Pedido.update(pedido.id, {
-        status: 'cancelado',
-        cancelado_por: currentUser?.email,
-        cancelado_por_nome: currentUserName,
-        data_cancelamento: new Date().toISOString(),
-        motivo_cancelamento: motivo,
-      });
-      toast.success('Pedido cancelado');
     }
-    queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+
+    const items = [];
+    if (cancelados > 0) items.push({ color: 'green', text: `${cancelados} pedido(s) cancelado(s) com sucesso` });
+    if (erros > 0) items.push({ color: 'red', text: `${erros} pedido(s) não puderam ser cancelados:\n${detalhesErro.join('\n')}` });
+
+    await recarregarAbaAposAcao({ title: 'Resultado do Cancelamento', items });
   };
 
 
@@ -1000,14 +1023,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         })()}
         <Button size="sm" variant="destructive" disabled={!!batchAction || selectedIds.length === 0} onClick={() => {
           const selectedPedidos = pedidos.filter(p => selectedIds.includes(p.id));
-          const cancelavel = selectedPedidos.find(p => !['cancelado', 'faturado', 'montagem'].includes(p.status));
-          if (selectedIds.length === 1 && cancelavel) {
-            setCancelPedido(cancelavel);
-            setCancelModalOpen(true);
-          } else if (selectedIds.length > 1) {
-            if (cancelavel) { setCancelPedido(cancelavel); setCancelModalOpen(true); }
-            else toast.warning('Nenhum dos pedidos selecionados pode ser cancelado');
+          const cancelaveis = selectedPedidos.filter(p => !['cancelado', 'faturado', 'montagem'].includes(p.status));
+          if (cancelaveis.length === 0) {
+            toast.warning('Nenhum dos pedidos selecionados pode ser cancelado');
+            return;
           }
+          setCancelPedido(cancelaveis);
+          setCancelModalOpen(true);
         }}>
           <XCircle className="w-3 h-3 mr-1" /> Cancelar
         </Button>
