@@ -239,28 +239,6 @@ async function consultarStatusAtivoOmie(codigoPedido) {
   return { etapa, status: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda em processamento SEFAZ` };
 }
 
-// Cancela o pedido local (Gerenciar Pedidos) gravando o motivo da rejeição da SEFAZ.
-async function cancelarPedidoLocal(base44, codigoPedido, motivo, user) {
-  try {
-    const pedidos = await base44.asServiceRole.entities.Pedido.filter({
-      omie_codigo_pedido: String(codigoPedido)
-    });
-    const p = pedidos?.[0];
-    if (!p) return false;
-    await base44.asServiceRole.entities.Pedido.update(p.id, {
-      status: 'cancelado',
-      motivo_cancelamento: motivo,
-      cancelado_por: user.email,
-      cancelado_por_nome: user.full_name || '',
-      data_cancelamento: new Date().toISOString()
-    });
-    return true;
-  } catch (e) {
-    console.error('[emitirNfsLoteOmie] falha ao cancelar pedido local:', e.message);
-    return false;
-  }
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -347,8 +325,7 @@ Deno.serve(async (req) => {
           status: 'erro',
           mensagem: motivoErro
         });
-        // Cancela pedido local com o motivo
-        await cancelarPedidoLocal(base44, codPed, motivoErro, user);
+        // Erro/rejeição de NF-e fica apenas nos logs; não altera o status local do pedido.
       }
       await new Promise(r => setTimeout(r, 1500));
     }

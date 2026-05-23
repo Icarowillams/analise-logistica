@@ -269,9 +269,8 @@ Deno.serve(async (req) => {
             : carga.data_faturamento
         });
 
-        // Reflete resultado fiscal nos Pedidos locais:
-        // - autorizada: marca faturado e salva número da NF
-        // - rejeitada/denegada: desfaz o "faturado" visual e mostra erro fiscal no Gerenciar Pedidos
+        // Reflete apenas autorização fiscal nos Pedidos locais.
+        // Rejeição/denegação de NF-e NÃO altera Pedido.status nem omie_erro — fica apenas em logs/Notas Omie.
         for (const p of pedidosAtualizados) {
           if (!p.codigo_pedido) continue;
           try {
@@ -287,11 +286,17 @@ Deno.serve(async (req) => {
                   status: 'faturado'
                 });
               } else if (p.status_nf === 'rejeitada' || p.status_nf === 'denegada') {
-                await base44.asServiceRole.entities.Pedido.update(pl.id, {
-                  faturado: false,
-                  status: 'enviado',
-                  omie_erro: p.motivo_rejeicao || p.status_real_omie || 'NF-e rejeitada pela SEFAZ'
-                });
+                await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+                  endpoint: 'produtos/nfconsultar',
+                  call: 'ListarNF',
+                  operacao: 'sincronizar_status_carga_nf_rejeitada',
+                  entidade_tipo: 'Pedido',
+                  entidade_id: pl.id,
+                  status: 'warning',
+                  mensagem_erro: p.motivo_rejeicao || p.status_real_omie || 'NF-e rejeitada pela SEFAZ',
+                  payload_resposta: JSON.stringify({ codigo_pedido: p.codigo_pedido, numero_pedido: p.numero_pedido, status_nf: p.status_nf, cstat_sefaz: p.cstat_sefaz }).slice(0, 2000),
+                  usuario_email: user.email
+                }).catch(() => {});
               }
             }
           } catch { /* não bloqueia */ }
