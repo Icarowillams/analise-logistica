@@ -232,6 +232,14 @@
       "type": "string",
       "format": "date-time"
     },
+    "liberacao_forcada": {
+      "type": "boolean",
+      "default": false
+    },
+    "motivo_liberacao_forcada": {
+      "type": "string",
+      "description": "Motivo informado quando o pedido \u00e9 liberado mesmo com bloqueio financeiro"
+    },
     "cancelado_por": {
       "type": "string"
     },

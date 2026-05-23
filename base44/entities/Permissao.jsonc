@@ -63,7 +63,7 @@
         "criar_precadastro": {
           "type": "boolean",
           "default": false,
-          "description": "Permite criar pr\u00e9-cadastros de clientes (independente da permiss\u00e3o geral de criar)"
+          "description": "Permite criar pr\u00e9-cadastros de clientes"
         },
         "editar": {
           "type": "boolean",
@@ -279,6 +279,10 @@
           "type": "boolean",
           "default": false
         },
+        "pedido_avulso": {
+          "type": "boolean",
+          "default": false
+        },
         "enviar_pedido": {
           "type": "boolean",
           "default": false
@@ -295,6 +299,11 @@
           "type": "boolean",
           "default": false,
           "description": "Permite usar cen\u00e1rios fiscais do Omie ao digitar pedido de venda"
+        },
+        "liberar_pedidos_bloqueados": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permite liberar pedidos de clientes com d\u00e9bitos em aberto no Omie"
         }
       },
       "default": {}

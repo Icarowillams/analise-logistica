@@ -154,7 +154,7 @@ export default function Permissoes() {
             rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
             analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
           },
-          permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, pedido_avulso: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
+          permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, pedido_avulso: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false, liberar_pedidos_bloqueados: false }
         });
       }
     } else if (modoSelecao === 'funcionario' && funcionariosSelecionados.length > 1) {
@@ -673,7 +673,7 @@ export default function Permissoes() {
                       rel_trocas_visualizar: true, rel_trocas_filtros: true, rel_trocas_exportar: true,
                       analise_visitas_visualizar: true, analise_visitas_filtros: true, analise_visitas_exportar: true
                     },
-                    permissoes_pedidos: { visualizar: true, digitar_pedido_venda: true, digitar_pedido_troca: true, pedido_avulso: true, enviar_pedido: true, editar_pedido: true, excluir_pedido: true, usar_cenarios_fiscais: true }
+                    permissoes_pedidos: { visualizar: true, digitar_pedido_venda: true, digitar_pedido_troca: true, pedido_avulso: true, enviar_pedido: true, editar_pedido: true, excluir_pedido: true, usar_cenarios_fiscais: true, liberar_pedidos_bloqueados: true }
                   }));
                 }}
                 className="gap-1 text-green-700 border-green-300 hover:bg-green-50"
@@ -700,7 +700,7 @@ export default function Permissoes() {
                       rel_trocas_visualizar: false, rel_trocas_filtros: false, rel_trocas_exportar: false,
                       analise_visitas_visualizar: false, analise_visitas_filtros: false, analise_visitas_exportar: false
                     },
-                    permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, pedido_avulso: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false }
+                    permissoes_pedidos: { visualizar: false, digitar_pedido_venda: false, digitar_pedido_troca: false, pedido_avulso: false, enviar_pedido: false, editar_pedido: false, excluir_pedido: false, usar_cenarios_fiscais: false, liberar_pedidos_bloqueados: false }
                   }));
                 }}
                 className="gap-1 text-red-700 border-red-300 hover:bg-red-50"
@@ -974,7 +974,7 @@ export default function Permissoes() {
                   <CardTitle className="text-base">Permissões - Pedidos</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {['visualizar', 'digitar_pedido_venda', 'digitar_pedido_troca', 'pedido_avulso', 'enviar_pedido', 'editar_pedido', 'excluir_pedido', 'usar_cenarios_fiscais'].map(perm => {
+                  {['visualizar', 'digitar_pedido_venda', 'digitar_pedido_troca', 'pedido_avulso', 'enviar_pedido', 'editar_pedido', 'excluir_pedido', 'usar_cenarios_fiscais', 'liberar_pedidos_bloqueados'].map(perm => {
                     const labels = {
                       visualizar: 'Visualizar',
                       digitar_pedido_venda: 'Digitar Pedido de Venda',
@@ -983,7 +983,8 @@ export default function Permissoes() {
                       enviar_pedido: 'Enviar Pedido',
                       editar_pedido: 'Editar Pedido',
                       excluir_pedido: 'Excluir Pedido (antes de enviar)',
-                      usar_cenarios_fiscais: 'Usar Cenários Fiscais (Omie)'
+                      usar_cenarios_fiscais: 'Usar Cenários Fiscais (Omie)',
+                      liberar_pedidos_bloqueados: 'Liberar pedidos com bloqueio financeiro'
                     };
                     const isCenarioFiscal = perm === 'usar_cenarios_fiscais';
                     return (

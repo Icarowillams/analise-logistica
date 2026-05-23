@@ -27,6 +27,7 @@ import useColumnResize from './useColumnResize';
 import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
 import BatchResultToast from './BatchResultToast';
 import BuscarClienteModal from './BuscarClienteModal';
+import LiberarPedidosModal from './LiberarPedidosModal';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
@@ -104,6 +105,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [viewPedidoAnaliticoIds, setViewPedidoAnaliticoIds] = useState(null);
   const [batchResult, setBatchResult] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [modalLiberar, setModalLiberar] = useState({ open: false, pedidos: [] });
 
 
   const { columns, reorder, resetOrder } = useColumnOrder();
@@ -536,79 +538,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
   };
 
   // Batch actions
-  const handleBatchLiberar = async () => {
-    setBatchAction('liberando');
-    const allSelected = pedidos.filter(p => selectedIds.includes(p.id));
+  const handleBatchLiberar = () => {
+    const selecionados = pedidosComVendedorCliente.filter(p => selectedIds.includes(p.id));
+    const pendentes = selecionados.filter(p => getAnaliseStatus(p) === 'Pendente');
 
-    let liberados = 0;
-    let jaLiberados = 0;
-    let naoAlteraveis = 0;
-    let bloqueadosFinanceiro = 0;
-    let errosOmie = 0;
-    const naoAlteravelLabels = [];
-    const clientesBloqueados = [];
-    const clientesErroOmie = [];
-
-    for (const p of allSelected) {
-      const analise = getAnaliseStatus(p);
-      if (analise === 'Pendente') {
-        // P1 (16/05): verifica bloqueio financeiro consultando ContasReceber do cliente no Omie.
-        // O backend retorna { sucesso, deve_bloquear, titulos_atrasados, total_debitos }.
-        if (p.cliente_id) {
-          const bloqueio = await consultarBloqueio(p.cliente_id);
-          if (bloqueio?.deve_bloquear === true) {
-            bloqueadosFinanceiro++;
-            const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo_base || p.cliente_id;
-            const totalFmt = formatCurrency(bloqueio.total_debitos || 0);
-            clientesBloqueados.push(`${nomeCliente} - ${bloqueio.titulos_atrasados || 0} título(s) atrasado(s), total ${totalFmt}`);
-            continue;
-          }
-        }
-
-        // Pode liberar — primeiro tenta no Omie, depois atualiza localmente
-        if (p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca') {
-          try {
-            const res = await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id });
-            if (res.data && !res.data.sucesso && res.data.erro) {
-              errosOmie++;
-              const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo;
-              clientesErroOmie.push(`${nomeCliente}: ${res.data.erro}`);
-              continue; // Não libera localmente se o Omie rejeitou
-            }
-          } catch (e) {
-            errosOmie++;
-            const nomeCliente = p.cliente_nome_base || p.cliente_nome || p.cliente_codigo;
-            clientesErroOmie.push(`${nomeCliente}: ${e.message}`);
-            continue; // Não libera localmente se houve erro
-          }
-        }
-        const updateData = {
-          status: 'liberado',
-          liberado_por: currentUser?.email,
-          liberado_por_nome: currentUserName,
-          data_liberacao: new Date().toISOString(),
-        };
-        await base44.entities.Pedido.update(p.id, updateData);
-        liberados++;
-      } else if (analise === 'Liberados') {
-        jaLiberados++;
-      } else {
-        naoAlteraveis++;
-        if (!naoAlteravelLabels.includes(analise)) naoAlteravelLabels.push(analise);
-      }
+    if (pendentes.length === 0) {
+      toast.warning('Selecione ao menos um pedido pendente para liberar');
+      return;
     }
 
-    const items = [];
-    if (liberados > 0) items.push({ color: 'green', text: `${liberados} pedido(s) liberado(s) com sucesso` });
-    if (bloqueadosFinanceiro > 0) items.push({ color: 'red', text: `${bloqueadosFinanceiro} pedido(s) BLOQUEADO(S) financeiramente:\n${clientesBloqueados.join('\n')}` });
-    if (errosOmie > 0) items.push({ color: 'red', text: `${errosOmie} pedido(s) com ERRO no Omie (não liberados):\n${clientesErroOmie.join('\n')}` });
-    if (jaLiberados > 0) items.push({ color: 'yellow', text: `${jaLiberados} pedido(s) já liberado(s), sem alteração` });
-    if (naoAlteraveis > 0) items.push({ color: 'red', text: `${naoAlteraveis} pedido(s) em ${naoAlteravelLabels.join('/')} não puderam ser alterados` });
-
-    setBatchResult({ title: 'Resultado da Liberação', items });
-    setSelectedIds([]);
-    setBatchAction(null);
-    await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    setModalLiberar({ open: true, pedidos: pendentes });
   };
 
   const handleBatchBloquear = async () => {
@@ -1085,6 +1024,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
         open={buscarClienteOpen}
         onOpenChange={setBuscarClienteOpen}
         onConfirm={(codigo) => setClienteCodigo(codigo)}
+      />
+      <LiberarPedidosModal
+        isOpen={modalLiberar.open}
+        pedidosSelecionados={modalLiberar.pedidos}
+        usuarioLogado={currentUser}
+        usuarioNome={currentUserName}
+        onClose={async () => {
+          setModalLiberar({ open: false, pedidos: [] });
+          setSelectedIds([]);
+          await recarregarAbaAposAcao();
+        }}
       />
     </div>
   );

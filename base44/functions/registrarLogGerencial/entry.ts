@@ -27,11 +27,15 @@ Deno.serve(async (req) => {
       tipo_acao: body.tipo_acao || 'outro',
       entidade_tipo: body.entidade_tipo || 'Desconhecida',
       entidade_id: body.entidade_id || null,
+      pedido_id: body.pedido_id || null,
+      carga_id: body.carga_id || null,
+      cliente_id: body.cliente_id || null,
       entidade_descricao: body.entidade_descricao || '',
       usuario_email: user.email,
       usuario_nome: user.full_name || user.email,
       descricao: body.descricao || '',
       alteracoes: Array.isArray(body.alteracoes) ? body.alteracoes.slice(0, 100) : [],
+      dados_json: body.dados_json || '',
       origem: body.origem || 'frontend',
       observacao: body.observacao || ''
     };
