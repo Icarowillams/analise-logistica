@@ -47,46 +47,94 @@ function PedidoTable({ pedidos, showCheckbox, selectedIds, onToggle, disabled })
   );
 }
 
-function DebitosAccordion({ pedido, bloqueio, open, onToggle }) {
-  const titulos = bloqueio?.titulos || [];
+function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded, disabled }) {
+  const toggleExpand = (pedidoId) => setExpanded(prev => ({ ...prev, [pedidoId]: !prev[pedidoId] }));
+
   return (
-    <div className="rounded-lg border border-red-200 bg-white">
-      <button type="button" className="flex w-full items-center justify-between gap-3 p-3 text-left" onClick={onToggle}>
-        <div>
-          <p className="font-semibold text-red-900">{getNomeCliente(pedido)} • Pedido {getPedidoNumero(pedido)}</p>
-          <p className="text-xs text-red-700">Total de débitos: {formatCurrency(bloqueio?.total_debitos)} • {bloqueio?.titulos_atrasados || 0} título(s) atrasado(s)</p>
-        </div>
-        {open ? <ChevronDown className="h-4 w-4 text-red-700" /> : <ChevronRight className="h-4 w-4 text-red-700" />}
-      </button>
-      {open && (
-        <div className="border-t p-3">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-xs">
-              <thead className="bg-red-50 text-red-800">
-                <tr>
-                  <th className="p-2 text-left">Nº Documento / NF</th>
-                  <th className="p-2 text-left">Pedido Omie</th>
-                  <th className="p-2 text-left">Vencimento</th>
-                  <th className="p-2 text-right">Valor</th>
-                  <th className="p-2 text-center">Status</th>
+    <div className="overflow-x-auto rounded-lg border bg-white">
+      <table className="w-full min-w-[820px] text-sm">
+        <thead className="bg-red-100/70 text-red-900">
+          <tr>
+            <th className="w-10 p-2 text-center">Sel.</th>
+            <th className="p-2 text-left font-semibold">Código Cliente</th>
+            <th className="p-2 text-left font-semibold">Nome Fantasia</th>
+            <th className="p-2 text-left font-semibold">Número Pedido</th>
+            <th className="p-2 text-right font-semibold">Valor Pedido</th>
+            <th className="w-12 p-2 text-center font-semibold">Débitos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pedidos.map((pedido) => {
+            const open = !!expanded[pedido.id];
+            const bloqueio = pedido.bloqueio_financeiro || {};
+            const titulos = bloqueio.titulos || [];
+
+            return (
+              <React.Fragment key={pedido.id}>
+                <tr
+                  className={`cursor-pointer border-t transition-colors hover:bg-red-50/60 ${open ? 'bg-red-50/30' : ''}`}
+                  onClick={() => toggleExpand(pedido.id)}
+                  aria-expanded={open}
+                >
+                  <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox checked={selectedIds.includes(pedido.id)} disabled={disabled} onCheckedChange={() => onToggle(pedido.id)} />
+                  </td>
+                  <td className="p-2 font-mono">{getCodigoCliente(pedido)}</td>
+                  <td className="p-2 font-medium">{getNomeCliente(pedido)}</td>
+                  <td className="p-2">{getPedidoNumero(pedido)}</td>
+                  <td className="p-2 text-right font-medium">{formatCurrency(pedido.valor_total)}</td>
+                  <td className="p-2 text-center">
+                    <button
+                      type="button"
+                      className="rounded-full px-2 py-1 text-red-800 hover:bg-red-100"
+                      onClick={(e) => { e.stopPropagation(); toggleExpand(pedido.id); }}
+                      aria-label={open ? 'Recolher débitos' : 'Expandir débitos'}
+                    >
+                      {open ? '▲' : '▼'}
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {titulos.map((titulo, index) => (
-                  <tr key={`${pedido.id}-${index}`} className="border-t">
-                    <td className="p-2">{titulo.documento_fiscal || titulo.numero || '-'}</td>
-                    <td className="p-2">{titulo.codigo_pedido_omie || titulo.codigo_pedido || '-'}</td>
-                    <td className="p-2">{titulo.vencimento || '-'}</td>
-                    <td className="p-2 text-right font-medium">{formatCurrency(titulo.valor)}</td>
-                    <td className="p-2 text-center"><Badge className="bg-red-600 text-white">Atrasado</Badge></td>
+                {open && (
+                  <tr className="bg-red-50/30">
+                    <td colSpan={6} className="border-t border-red-100 p-3">
+                      <div className="overflow-hidden rounded-lg border border-red-200 bg-white transition-all duration-200 ease-out">
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[680px] text-xs">
+                            <thead className="bg-red-50 text-red-800">
+                              <tr>
+                                <th className="p-2 text-left font-semibold">Nº Documento / NF</th>
+                                <th className="p-2 text-left font-semibold">Pedido Omie</th>
+                                <th className="p-2 text-left font-semibold">Vencimento</th>
+                                <th className="p-2 text-right font-semibold">Valor</th>
+                                <th className="p-2 text-center font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {titulos.map((titulo, index) => (
+                                <tr key={`${pedido.id}-${index}`} className="border-t">
+                                  <td className="p-2">{titulo.documento_fiscal || titulo.numero || '-'}</td>
+                                  <td className="p-2">{titulo.codigo_pedido_omie || titulo.codigo_pedido || '-'}</td>
+                                  <td className="p-2">{titulo.vencimento || '-'}</td>
+                                  <td className="p-2 text-right font-medium">{formatCurrency(titulo.valor)}</td>
+                                  <td className="p-2 text-center"><Badge className="bg-red-600 text-white">Atrasado</Badge></td>
+                                </tr>
+                              ))}
+                              {titulos.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-500">Nenhum título detalhado retornado pelo Omie.</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="border-t border-red-100 bg-red-50/70 px-3 py-2 text-xs font-semibold text-red-800">
+                          Total de débitos: {formatCurrency(bloqueio.total_debitos)} • {bloqueio.titulos_atrasados || 0} título(s) atrasado(s)
+                        </div>
+                      </div>
+                    </td>
                   </tr>
-                ))}
-                {titulos.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-500">Nenhum título detalhado retornado pelo Omie.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                )}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -313,18 +361,14 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
                   Você não possui permissão para liberar pedidos bloqueados. Solicite ao gestor.
                 </div>
               )}
-              <PedidoTable pedidos={pedidosBloqueados} showCheckbox selectedIds={selecionados} onToggle={toggleSelecionado} disabled={!podeLiberar} />
-              <div className="mt-4 space-y-2">
-                {pedidosBloqueados.map((pedido) => (
-                  <DebitosAccordion
-                    key={pedido.id}
-                    pedido={pedido}
-                    bloqueio={pedido.bloqueio_financeiro}
-                    open={!!expanded[pedido.id]}
-                    onToggle={() => setExpanded(prev => ({ ...prev, [pedido.id]: !prev[pedido.id] }))}
-                  />
-                ))}
-              </div>
+              <BloqueadosTable
+                pedidos={pedidosBloqueados}
+                selectedIds={selecionados}
+                onToggle={toggleSelecionado}
+                expanded={expanded}
+                setExpanded={setExpanded}
+                disabled={!podeLiberar}
+              />
               {podeLiberar && selecionados.length > 0 && (
                 <div className="mt-4 space-y-2">
                   <label className="text-sm font-semibold">Motivo da liberação forçada <span className="text-red-600">*</span></label>
