@@ -251,8 +251,9 @@ Deno.serve(async (req) => {
         await new Promise(r => setTimeout(r, 250));
       }
 
-      const novoStatus = definirStatusCarga(pedidosStatus, carga.status_carga);
-      const precisaAtualizar = novoStatus !== carga.status_carga || JSON.stringify(pedidosAtualizados) !== JSON.stringify(pedidos);
+      // O status da carga é controlado exclusivamente por ações internas do sistema.
+      // A sincronização com Omie atualiza apenas detalhes dos pedidos/NFs para consulta e auditoria.
+      const precisaAtualizar = JSON.stringify(pedidosAtualizados) !== JSON.stringify(pedidos);
 
       const notasFiscaisAtualizadas = Array.from(new Set(
         pedidosAtualizados.map(p => p.numero_nf).filter(Boolean).map(String)
@@ -261,12 +262,8 @@ Deno.serve(async (req) => {
 
       if (precisaAtualizar || notasMudaram) {
         await base44.asServiceRole.entities.Carga.update(carga.id, {
-          status_carga: novoStatus,
           pedidos_omie: pedidosAtualizados,
-          notas_fiscais: notasFiscaisAtualizadas,
-          data_faturamento: (novoStatus === 'faturada' || novoStatus === 'faturada_parcial' || novoStatus === 'faturada_com_rejeicao')
-            ? (carga.data_faturamento || new Date().toISOString())
-            : carga.data_faturamento
+          notas_fiscais: notasFiscaisAtualizadas
         });
 
         // Reflete apenas autorização fiscal nos Pedidos locais.
@@ -282,8 +279,7 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.Pedido.update(pl.id, {
                   numero_nota_fiscal: String(p.numero_nf),
                   faturado: true,
-                  data_faturamento: pl.data_faturamento || new Date().toISOString(),
-                  status: 'faturado'
+                  data_faturamento: pl.data_faturamento || new Date().toISOString()
                 });
               } else if (p.status_nf === 'rejeitada' || p.status_nf === 'denegada') {
                 await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -302,7 +298,7 @@ Deno.serve(async (req) => {
           } catch { /* não bloqueia */ }
         }
 
-        cargasAtualizadas.push({ ...carga, status_carga: novoStatus, pedidos_omie: pedidosAtualizados, notas_fiscais: notasFiscaisAtualizadas });
+        cargasAtualizadas.push({ ...carga, pedidos_omie: pedidosAtualizados, notas_fiscais: notasFiscaisAtualizadas });
       } else {
         cargasAtualizadas.push(carga);
       }
