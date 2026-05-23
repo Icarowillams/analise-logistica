@@ -11,7 +11,6 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import PedidoPdf from './PedidoPdf';
-import BloqueioLiberarModal from './BloqueioLiberarModal';
 
 export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const queryClient = useQueryClient();
@@ -25,8 +24,6 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
   const [progressoLote, setProgressoLote] = useState(null); // { total, processados, sucessos, erros }
   const [erroLoteDetalhes, setErroLoteDetalhes] = useState([]); // lista de erros do último lote
-  // P1 (16/05): gate de bloqueio financeiro antes de enviar ao Omie
-  const [bloqueioModalState, setBloqueioModalState] = useState(null); // { pedido } ou null
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
@@ -38,8 +35,18 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     queryFn: () => base44.entities.PedidoItem.list()
   });
 
-  const pendentes = pedidos.filter(p => p.status === 'pendente' && !p.data_envio);
-  const enviados = pedidos.filter(p => !!p.data_envio);
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientes-envio-pedidos'],
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
+  });
+
+  const pedidosComCliente = useMemo(() => {
+    const mapa = new Map(clientes.map(c => [c.id, c]));
+    return pedidos.map(p => ({ ...p, cliente_pendencia_financeira: !!mapa.get(p.cliente_id)?.pendencia_financeira }));
+  }, [pedidos, clientes]);
+
+  const pendentes = pedidosComCliente.filter(p => p.status === 'pendente' && !p.data_envio);
+  const enviados = pedidosComCliente.filter(p => !!p.data_envio);
 
   const filtrarPedidos = (lista) => {
     return lista.filter(p => {
@@ -118,6 +125,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         }
 
         if (omieOk) {
+          base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id }).catch(() => {});
           // Backend já atualiza o pedido localmente, apenas garantir status
           toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
         } else {
@@ -136,34 +144,12 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     }
   };
 
-  // P1 (16/05): valida bloqueio financeiro ANTES de enviar pedidos de venda ao Omie.
-  // Pedidos internos (D1/troca) não tocam financeiro.
+  // Envio livre: débito financeiro não bloqueia envio ao Omie.
   const enviarPedido = async (pedido) => {
     if (!pedido.data_previsao_entrega && !isInterno(pedido)) {
       toast.error(`Pedido de ${pedido.cliente_nome} não tem Data de Previsão de Entrega. Edite o pedido para informar.`);
       return;
     }
-    if (isInterno(pedido)) return executarEnvio(pedido);
-
-    // Verifica se cliente está bloqueado ou tem pendência no Omie
-    try {
-      const cli = await base44.entities.Cliente.get(pedido.cliente_id);
-      // Se já está bloqueado no cadastro, abre o modal direto
-      if (cli?.bloquear_faturamento) {
-        setBloqueioModalState({ pedido });
-        return;
-      }
-      // Caso contrário, consulta Omie pra ver se há pendência atual
-      const response = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id });
-      if (response.data?.sucesso && response.data?.deve_bloquear) {
-        setBloqueioModalState({ pedido });
-        return;
-      }
-    } catch (e) {
-      // Em caso de falha da consulta, segue (não trava o envio)
-      console.error('[enviarPedido] erro na verificação de bloqueio:', e.message);
-    }
-
     return executarEnvio(pedido);
   };
 
@@ -304,23 +290,6 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     );
   }
 
-  // Modal P1 — gate de bloqueio financeiro
-  const renderBloqueioModal = () => bloqueioModalState && (
-    <BloqueioLiberarModal
-      open={!!bloqueioModalState}
-      onOpenChange={(o) => { if (!o) setBloqueioModalState(null); }}
-      clienteId={bloqueioModalState.pedido.cliente_id}
-      clienteNome={bloqueioModalState.pedido.cliente_nome}
-      pedidoDescricao={`Pedido ${bloqueioModalState.pedido.numero_pedido || '(novo)'} - ${bloqueioModalState.pedido.cliente_nome}`}
-      onConfirmar={() => {
-        const ped = bloqueioModalState.pedido;
-        setBloqueioModalState(null);
-        executarEnvio(ped);
-      }}
-      onCancelar={() => setBloqueioModalState(null)}
-    />
-  );
-
   const PedidoCard = ({ pedido, showEnviar }) => {
     const modeloLabel = pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === '55' ? '55' : 'NFCe';
     const dataEmissao = pedido.data_envio ? new Date(pedido.data_envio).toLocaleString('pt-BR') : new Date(pedido.created_date).toLocaleString('pt-BR');
@@ -331,7 +300,10 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         <CardContent className="p-4 space-y-2">
           <div className="flex justify-between items-start">
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm">{pedido.cliente_codigo} - {pedido.cliente_nome}</p>
+              <p className="font-semibold text-sm">
+                {pedido.cliente_codigo} - {pedido.cliente_nome}
+                {pedido.cliente_pendencia_financeira && <Badge className="ml-2 border border-amber-300 bg-amber-100 text-[10px] text-amber-800">Pendência Financeira</Badge>}
+              </p>
               <p className="text-xs text-slate-500">{pedido.cliente_nome_fantasia}</p>
             </div>
             {pedido.status === 'enviado' && (
@@ -413,7 +385,6 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   return (
     <div className="space-y-4">
-      {renderBloqueioModal()}
       <Tabs value={subTab} onValueChange={setSubTab}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="pendentes">Pendentes ({pendentes.length})</TabsTrigger>

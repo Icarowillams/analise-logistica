@@ -92,6 +92,13 @@ Deno.serve(async (req) => {
         const temPendencia = titulosAtrasados > 0;
         const deveBloquear = temPendencia || (limiteCredito > 0 && saldoDisponivel < 0);
 
+        if (cliente?.id) {
+            await base44.asServiceRole.entities.Cliente.update(cliente.id, {
+                pendencia_financeira: deveBloquear,
+                pendencia_financeira_atualizada_em: new Date().toISOString()
+            });
+        }
+
         return Response.json({
             sucesso: true,
             cliente_nome: cliente?.razao_social || cliente?.nome_fantasia || null,

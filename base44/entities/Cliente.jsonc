@@ -119,6 +119,15 @@
     "motivo_bloqueio": {
       "type": "string"
     },
+    "pendencia_financeira": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indica se a \u00faltima consulta ao Omie encontrou d\u00e9bitos/pend\u00eancias financeiras"
+    },
+    "pendencia_financeira_atualizada_em": {
+      "type": "string",
+      "format": "date-time"
+    },
     "segmento_id": {
       "type": "string"
     },

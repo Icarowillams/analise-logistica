@@ -48,46 +48,76 @@ function PedidoTable({ pedidos, showCheckbox, selectedIds, onToggle, disabled })
 }
 
 function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded, disabled }) {
-  const toggleExpand = (pedidoId) => setExpanded(prev => ({ ...prev, [pedidoId]: !prev[pedidoId] }));
+  const grupos = useMemo(() => {
+    const map = new Map();
+    pedidos.forEach((pedido) => {
+      const key = pedido.cliente_id || getCodigoCliente(pedido);
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          codigo: getCodigoCliente(pedido),
+          nome: getNomeCliente(pedido),
+          pedidos: [],
+          bloqueio: pedido.bloqueio_financeiro || {}
+        });
+      }
+      const grupo = map.get(key);
+      grupo.pedidos.push(pedido);
+      grupo.valorTotal = (grupo.valorTotal || 0) + (Number(pedido.valor_total) || 0);
+    });
+    return Array.from(map.values());
+  }, [pedidos]);
+
+  const toggleExpand = (grupoId) => setExpanded(prev => ({ ...prev, [grupoId]: !prev[grupoId] }));
+  const toggleGrupo = (grupo) => {
+    const todosSelecionados = grupo.pedidos.every(p => selectedIds.includes(p.id));
+    grupo.pedidos.forEach((pedido) => {
+      if (todosSelecionados === selectedIds.includes(pedido.id)) onToggle(pedido.id);
+    });
+  };
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-white">
-      <table className="w-full min-w-[820px] text-sm">
+      <table className="w-full min-w-[860px] text-sm">
         <thead className="bg-red-100/70 text-red-900">
           <tr>
             <th className="w-10 p-2 text-center">Sel.</th>
             <th className="p-2 text-left font-semibold">Código Cliente</th>
             <th className="p-2 text-left font-semibold">Nome Fantasia</th>
-            <th className="p-2 text-left font-semibold">Número Pedido</th>
-            <th className="p-2 text-right font-semibold">Valor Pedido</th>
+            <th className="p-2 text-left font-semibold">Quantidade de Pedidos</th>
+            <th className="p-2 text-right font-semibold">Valor Total</th>
             <th className="w-12 p-2 text-center font-semibold">Débitos</th>
           </tr>
         </thead>
         <tbody>
-          {pedidos.map((pedido) => {
-            const open = !!expanded[pedido.id];
-            const bloqueio = pedido.bloqueio_financeiro || {};
-            const titulos = bloqueio.titulos || [];
+          {grupos.map((grupo) => {
+            const open = !!expanded[grupo.id];
+            const titulos = grupo.bloqueio?.titulos || [];
+            const todosSelecionados = grupo.pedidos.length > 0 && grupo.pedidos.every(p => selectedIds.includes(p.id));
+            const algunsSelecionados = grupo.pedidos.some(p => selectedIds.includes(p.id));
 
             return (
-              <React.Fragment key={pedido.id}>
+              <React.Fragment key={grupo.id}>
                 <tr
                   className={`cursor-pointer border-t transition-colors hover:bg-red-50/60 ${open ? 'bg-red-50/30' : ''}`}
-                  onClick={() => toggleExpand(pedido.id)}
+                  onClick={() => toggleExpand(grupo.id)}
                   aria-expanded={open}
                 >
                   <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox checked={selectedIds.includes(pedido.id)} disabled={disabled} onCheckedChange={() => onToggle(pedido.id)} />
+                    <Checkbox checked={todosSelecionados || (algunsSelecionados && 'indeterminate')} disabled={disabled} onCheckedChange={() => toggleGrupo(grupo)} />
                   </td>
-                  <td className="p-2 font-mono">{getCodigoCliente(pedido)}</td>
-                  <td className="p-2 font-medium">{getNomeCliente(pedido)}</td>
-                  <td className="p-2">{getPedidoNumero(pedido)}</td>
-                  <td className="p-2 text-right font-medium">{formatCurrency(pedido.valor_total)}</td>
+                  <td className="p-2 font-mono">{grupo.codigo}</td>
+                  <td className="p-2 font-medium">
+                    <span>{grupo.nome}</span>
+                    <Badge className="ml-2 border border-amber-300 bg-amber-100 text-[10px] text-amber-800">Pendência Financeira</Badge>
+                  </td>
+                  <td className="p-2">{grupo.pedidos.length} pedido(s)</td>
+                  <td className="p-2 text-right font-medium">{formatCurrency(grupo.valorTotal)}</td>
                   <td className="p-2 text-center">
                     <button
                       type="button"
                       className="rounded-full px-2 py-1 text-red-800 hover:bg-red-100"
-                      onClick={(e) => { e.stopPropagation(); toggleExpand(pedido.id); }}
+                      onClick={(e) => { e.stopPropagation(); toggleExpand(grupo.id); }}
                       aria-label={open ? 'Recolher débitos' : 'Expandir débitos'}
                     >
                       {open ? '▲' : '▼'}
@@ -97,8 +127,31 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                 {open && (
                   <tr className="bg-red-50/30">
                     <td colSpan={6} className="border-t border-red-100 p-3">
-                      <div className="overflow-hidden rounded-lg border border-red-200 bg-white transition-all duration-200 ease-out">
-                        <div className="overflow-x-auto">
+                      <div className="space-y-3 overflow-hidden rounded-lg border border-red-200 bg-white p-3 transition-all duration-200 ease-out">
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full min-w-[460px] text-xs">
+                            <thead className="bg-slate-50 text-slate-700">
+                              <tr>
+                                <th className="w-10 p-2 text-center font-semibold">Sel.</th>
+                                <th className="p-2 text-left font-semibold">Número Pedido</th>
+                                <th className="p-2 text-right font-semibold">Valor Pedido</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {grupo.pedidos.map((pedido) => (
+                                <tr key={pedido.id} className="border-t">
+                                  <td className="p-2 text-center">
+                                    <Checkbox checked={selectedIds.includes(pedido.id)} disabled={disabled} onCheckedChange={() => onToggle(pedido.id)} />
+                                  </td>
+                                  <td className="p-2">Pedido {getPedidoNumero(pedido)}</td>
+                                  <td className="p-2 text-right font-medium">{formatCurrency(pedido.valor_total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-red-100">
                           <table className="w-full min-w-[680px] text-xs">
                             <thead className="bg-red-50 text-red-800">
                               <tr>
@@ -111,7 +164,7 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                             </thead>
                             <tbody>
                               {titulos.map((titulo, index) => (
-                                <tr key={`${pedido.id}-${index}`} className="border-t">
+                                <tr key={`${grupo.id}-${index}`} className="border-t">
                                   <td className="p-2">{titulo.documento_fiscal || titulo.numero || '-'}</td>
                                   <td className="p-2">{titulo.codigo_pedido_omie || titulo.codigo_pedido || '-'}</td>
                                   <td className="p-2">{titulo.vencimento || '-'}</td>
@@ -123,8 +176,8 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                             </tbody>
                           </table>
                         </div>
-                        <div className="border-t border-red-100 bg-red-50/70 px-3 py-2 text-xs font-semibold text-red-800">
-                          Total de débitos: {formatCurrency(bloqueio.total_debitos)} • {bloqueio.titulos_atrasados || 0} título(s) atrasado(s)
+                        <div className="rounded-lg bg-red-50/70 px-3 py-2 text-xs font-semibold text-red-800">
+                          Total de débitos: {formatCurrency(grupo.bloqueio?.total_debitos)} • {grupo.bloqueio?.titulos_atrasados || 0} título(s) atrasado(s)
                         </div>
                       </div>
                     </td>

@@ -303,6 +303,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         cliente_codigo_base: codigoCliente,
         cliente_nome_base: cliente?.razao_social || pedido.cliente_nome,
         cliente_fantasia_base: cliente?.nome_fantasia || pedido.cliente_nome_fantasia,
+        cliente_pendencia_financeira: !!cliente?.pendencia_financeira,
         rede_id: cliente?.rede_id || '',
         segmento_id: cliente?.segmento_id || '',
         cliente_rota_id: cliente?.rota_id || '',

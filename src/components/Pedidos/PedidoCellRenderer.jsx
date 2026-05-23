@@ -151,11 +151,21 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'cliente_nome') {
-    return <span className={truncClass} title={p.cliente_nome_base || ''}>{p.cliente_nome_base || '-'}</span>;
+    return (
+      <span className="block truncate" title={p.cliente_nome_base || ''}>
+        {p.cliente_nome_base || '-'}
+        {p.cliente_pendencia_financeira && <Badge className="ml-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-800">Pendência Financeira</Badge>}
+      </span>
+    );
   }
 
   if (col.id === 'cliente_nome_fantasia') {
-    return <span className={truncClass} title={p.cliente_fantasia_base || ''}>{p.cliente_fantasia_base || '-'}</span>;
+    return (
+      <span className="block truncate" title={p.cliente_fantasia_base || ''}>
+        {p.cliente_fantasia_base || '-'}
+        {p.cliente_pendencia_financeira && <Badge className="ml-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-800">Pendência Financeira</Badge>}
+      </span>
+    );
   }
 
   if (col.id === 'usuario_envio') {
