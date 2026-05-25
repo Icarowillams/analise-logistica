@@ -252,7 +252,21 @@ export default function Cargas() {
       for (const t of trocas) {
         try {
           if (t.pedido_troca_id) {
-            await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: null, motorista_id: null });
+            await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: null, motorista_id: null, status: 'aprovado' });
+          }
+          let pedidoTrocaId = t.pedido_id;
+          if (!pedidoTrocaId && t.numero_pedido) {
+            const locais = await base44.entities.Pedido.filter({ numero_pedido: t.numero_pedido, tipo: 'troca' }, '-created_date', 1);
+            pedidoTrocaId = locais?.[0]?.id;
+          }
+          if (pedidoTrocaId) {
+            await base44.entities.Pedido.update(pedidoTrocaId, {
+              carga_id: null,
+              numero_carga: null,
+              status: 'liberado',
+              status_logistico: 'aguardando',
+              etapa: 'faturamento'
+            });
           }
         } catch (e) { console.warn('Falha reverter troca:', e.message); }
       }

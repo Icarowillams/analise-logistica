@@ -16,6 +16,8 @@
         "aberto",
         "em_analise",
         "aprovado",
+        "liberado",
+        "montagem",
         "recusado",
         "finalizado"
       ],

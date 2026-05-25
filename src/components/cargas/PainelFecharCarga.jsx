@@ -98,6 +98,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
       const pedidosTrocaFmt = trocas.map(t => ({
         pedido_troca_id: t.pedido_troca_id,
+        pedido_id: t.pedido_id || '',
         numero_pedido: t.numero_pedido,
         cliente_id: t.cliente_id,
         nome_cliente: t.nome_cliente,
@@ -108,22 +109,6 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         quantidade_itens: t.quantidade_itens || 0,
         produtos: t.produtos || []
       }));
-
-      if (vendas.length > 0) {
-        try {
-          await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
-            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
-            data_previsao: dataSaida
-          });
-        } catch (e) { console.warn('Falha previsão Omie:', e.message); }
-
-        try {
-          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
-            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
-            etapa_destino: '50'
-          });
-        } catch (e) { console.warn('Falha trocar etapa:', e.message); }
-      }
 
       const clientesUnicos = new Set(pedidosSel.map(p => p.cliente_id || p.codigo_cliente));
       const carga = await base44.entities.Carga.create({
@@ -147,6 +132,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         observacoes: obs
       });
 
+      const falhasVinculo = [];
+
       for (const p of [...vendas, ...pedidosD1]) {
         try {
           let pedidoId = p.pedido_id;
@@ -154,7 +141,10 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             const locais = await base44.entities.Pedido.filter({ omie_codigo_pedido: String(p.codigo_pedido) }, '-created_date', 1);
             pedidoId = locais?.[0]?.id;
           }
-          if (!pedidoId) continue;
+          if (!pedidoId) {
+            falhasVinculo.push(p.numero_pedido || p.codigo_pedido);
+            continue;
+          }
           await base44.entities.Pedido.update(pedidoId, {
             carga_id: carga.id,
             numero_carga: numero,
@@ -162,13 +152,20 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             status_logistico: 'em_carga',
             etapa: 'logistica'
           });
-        } catch (e) { console.warn('Falha vincular pedido à carga:', e.message); }
+        } catch (e) {
+          falhasVinculo.push(p.numero_pedido || p.codigo_pedido);
+          console.warn('Falha vincular pedido à carga:', e.message);
+        }
       }
 
       for (const t of trocas) {
         try {
           if (t.pedido_troca_id) {
-            await base44.entities.PedidoTroca.update(t.pedido_troca_id, { carga_id: carga.id, motorista_id: motoristaId });
+            await base44.entities.PedidoTroca.update(t.pedido_troca_id, {
+              carga_id: carga.id,
+              motorista_id: motoristaId,
+              status: 'montagem'
+            });
           }
           // Trocas criadas via emissão de pedidos (tipo='troca' em Pedido) também precisam ir para montagem
           let pedidoTrocaId = t.pedido_id;
@@ -185,10 +182,33 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
               etapa: 'logistica'
             });
           }
-        } catch (e) { console.warn('Falha vincular troca:', e.message); }
+        } catch (e) {
+          falhasVinculo.push(t.numero_pedido || t.pedido_troca_id);
+          console.warn('Falha vincular troca:', e.message);
+        }
       }
 
-      toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
+      if (vendas.length > 0) {
+        try {
+          await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
+            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
+            data_previsao: dataSaida
+          });
+        } catch (e) { console.warn('Falha previsão Omie:', e.message); }
+
+        try {
+          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
+            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
+            etapa_destino: '50'
+          });
+        } catch (e) { console.warn('Falha trocar etapa:', e.message); }
+      }
+
+      if (falhasVinculo.length > 0) {
+        toast.error(`Carga ${numero} criada, mas ${falhasVinculo.length} pedido(s) não tiveram status local atualizado`);
+      } else {
+        toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
+      }
       onSuccess?.(carga);
       navigate('/Cargas');
     } catch (e) {
