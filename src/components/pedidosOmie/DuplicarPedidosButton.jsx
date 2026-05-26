@@ -6,8 +6,7 @@ import DuplicarPedidosModal from './DuplicarPedidosModal';
 
 /**
  * Botão de duplicação em lote de pedidos Omie.
- * P5 (16/05): agora abre modal que pede cenário fiscal + plano de pagamento
- * antes de duplicar — itens/cliente/valores do original são reaproveitados.
+ * Duplica o pedido para a tela de Envio como pendente, preservando os dados do original.
  */
 export default function DuplicarPedidosButton({ pedidosSelecionados, onSucesso }) {
   const [modalOpen, setModalOpen] = useState(false);
