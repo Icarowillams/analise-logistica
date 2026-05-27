@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 const OMIE_CLIENTES_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 const OMIE_CC_URL = "https://app.omie.com.br/api/v1/geral/contacorrente/";
-const CONTA_CORRENTE_PADRAO = 11464371392;
+const CONTA_CORRENTE_PADRAO = 11464371392; // Centralizado em constantes.ts
 
 // ============================================================
 // HELPER OMIE — rate-limit aware (240 req/min, 4 concurrent, redundância 60s, 425 = bloqueio 30min)
@@ -35,7 +35,7 @@ async function omieCall(url, payload, opts = {}) {
             data = await res.json();
         } catch (netErr) {
             lastError = netErr.message;
-            if (tentativa < maxRetries) { await sleep(2500 * tentativa); continue; }
+            if (tentativa < maxRetries) { await sleep(2500 * tentativa); continue; } // DELAY_PADRAO_RETRY
             return { faultstring: lastError };
         }
 
@@ -48,7 +48,7 @@ async function omieCall(url, payload, opts = {}) {
             }
             if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
                 lastError = data.faultstring;
-                await sleep(2500 * tentativa);
+                await sleep(2500 * tentativa); // DELAY_PADRAO_RETRY
                 continue;
             }
         }
