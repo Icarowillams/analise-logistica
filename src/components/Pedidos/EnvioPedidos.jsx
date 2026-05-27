@@ -125,7 +125,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         }
 
         if (omieOk) {
-          base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id }).catch(() => {});
+          if (pedido.cliente_id) base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id }).catch(() => {});
           // Backend já atualiza o pedido localmente, apenas garantir status
           toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
         } else {

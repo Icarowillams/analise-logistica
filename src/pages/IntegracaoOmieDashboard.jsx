@@ -2,13 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Activity, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Plug, Zap, Clock } from 'lucide-react';
+import { Activity, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Plug, Zap, Clock, Leaf } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import SaudeIntegracaoOmie from '@/components/integracao/SaudeIntegracaoOmie';
 
 export default function IntegracaoOmieDashboard() {
@@ -22,8 +23,25 @@ export default function IntegracaoOmieDashboard() {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['logsOmie'],
     queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 200),
-    refetchInterval: 10000
+    refetchInterval: 10000,
+    staleTime: 30 * 1000 // Exceção: painel de monitoramento precisa de dados quase em tempo real.
   });
+
+  const { data: configSistema = { modo_economico: false }, isLoading: loadingConfig } = useQuery({
+    queryKey: ['configuracao-sistema-global'],
+    queryFn: async () => {
+      const configs = await base44.entities.ConfiguracaoSistema.filter({ chave: 'global' });
+      if (configs[0]) return configs[0];
+      return base44.entities.ConfiguracaoSistema.create({ chave: 'global', modo_economico: false });
+    }
+  });
+
+  const alterarModoEconomico = async (checked) => {
+    if (!configSistema?.id) return;
+    await base44.entities.ConfiguracaoSistema.update(configSistema.id, { modo_economico: checked });
+    qc.invalidateQueries({ queryKey: ['configuracao-sistema-global'] });
+    toast.success(checked ? 'Modo Econômico ativado' : 'Modo Econômico desativado');
+  };
 
   const stats = useMemo(() => {
     const ultimas24h = logs.filter(l => {
@@ -62,7 +80,7 @@ export default function IntegracaoOmieDashboard() {
       } else {
         toast.error('❌ ' + (res.data?.error || 'Falha'));
       }
-      qc.invalidateQueries(['logsOmie']);
+      qc.invalidateQueries({ queryKey: ['logsOmie'] });
     } catch (e) {
       // Axios joga erro quando status != 2xx — precisamos ler o payload para ver o diagnóstico
       const payload = e?.response?.data || { ok: false, error: e.message };
@@ -98,6 +116,21 @@ export default function IntegracaoOmieDashboard() {
           Testar Conexão
         </Button>
       </div>
+
+      <Card className="border-emerald-200 bg-emerald-50/70">
+        <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
+              <Leaf className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-950">Modo Econômico de Créditos</p>
+              <p className="text-sm text-emerald-800">Reduz o consumo ao aumentar caches e diminuir sincronizações automáticas. Ative quando estiver perto do limite do plano.</p>
+            </div>
+          </div>
+          <Switch checked={!!configSistema?.modo_economico} disabled={loadingConfig} onCheckedChange={alterarModoEconomico} />
+        </CardContent>
+      </Card>
 
       {testResult && (
         <Card className={testResult.ok ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50'}>
@@ -207,7 +240,7 @@ export default function IntegracaoOmieDashboard() {
               onChange={e => setFiltroCall(e.target.value)}
               className="max-w-xs"
             />
-            <Button variant="outline" onClick={() => qc.invalidateQueries(['logsOmie'])}>
+            <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['logsOmie'] })}>
               <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
             </Button>
           </div>

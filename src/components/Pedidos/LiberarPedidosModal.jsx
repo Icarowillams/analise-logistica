@@ -47,7 +47,7 @@ function PedidoTable({ pedidos, showCheckbox, selectedIds, onToggle, disabled })
   );
 }
 
-function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded, disabled }) {
+function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded, disabled, onExpandDebitos, loadingDetalhes }) {
   const grupos = useMemo(() => {
     const map = new Map();
     pedidos.forEach((pedido) => {
@@ -68,7 +68,11 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
     return Array.from(map.values());
   }, [pedidos]);
 
-  const toggleExpand = (grupoId) => setExpanded(prev => ({ ...prev, [grupoId]: !prev[grupoId] }));
+  const toggleExpand = (grupo) => {
+    const vaiAbrir = !expanded[grupo.id];
+    setExpanded(prev => ({ ...prev, [grupo.id]: vaiAbrir }));
+    if (vaiAbrir && (!grupo.bloqueio?.titulos || grupo.bloqueio.titulos.length === 0)) onExpandDebitos?.(grupo);
+  };
   const toggleGrupo = (grupo) => {
     const todosSelecionados = grupo.pedidos.every(p => selectedIds.includes(p.id));
     grupo.pedidos.forEach((pedido) => {
@@ -100,7 +104,7 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
               <React.Fragment key={grupo.id}>
                 <tr
                   className={`cursor-pointer border-t transition-colors hover:bg-red-50/60 ${open ? 'bg-red-50/30' : ''}`}
-                  onClick={() => toggleExpand(grupo.id)}
+                  onClick={() => toggleExpand(grupo)}
                   aria-expanded={open}
                 >
                   <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -117,7 +121,7 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                     <button
                       type="button"
                       className="rounded-full px-2 py-1 text-red-800 hover:bg-red-100"
-                      onClick={(e) => { e.stopPropagation(); toggleExpand(grupo.id); }}
+                      onClick={(e) => { e.stopPropagation(); toggleExpand(grupo); }}
                       aria-label={open ? 'Recolher débitos' : 'Expandir débitos'}
                     >
                       {open ? '▲' : '▼'}
@@ -163,7 +167,8 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                               </tr>
                             </thead>
                             <tbody>
-                              {titulos.map((titulo, index) => (
+                              {loadingDetalhes?.[grupo.id] && <tr><td colSpan={5} className="p-3 text-center text-slate-500">Consultando detalhes no Omie...</td></tr>}
+                              {!loadingDetalhes?.[grupo.id] && titulos.map((titulo, index) => (
                                 <tr key={`${grupo.id}-${index}`} className="border-t">
                                   <td className="p-2">{titulo.documento_fiscal || titulo.numero || '-'}</td>
                                   <td className="p-2">{titulo.codigo_pedido_omie || titulo.codigo_pedido || '-'}</td>
@@ -172,7 +177,7 @@ function BloqueadosTable({ pedidos, selectedIds, onToggle, expanded, setExpanded
                                   <td className="p-2 text-center"><Badge className="bg-red-600 text-white">Atrasado</Badge></td>
                                 </tr>
                               ))}
-                              {titulos.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-500">Nenhum título detalhado retornado pelo Omie.</td></tr>}
+                              {!loadingDetalhes?.[grupo.id] && titulos.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-500">Clique para consultar os detalhes dos débitos no Omie.</td></tr>}
                             </tbody>
                           </table>
                         </div>
@@ -218,6 +223,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
   const [etapa, setEtapa] = useState('analise');
   const [expanded, setExpanded] = useState({});
   const [processando, setProcessando] = useState(false);
+  const [loadingDetalhes, setLoadingDetalhes] = useState({});
   const autoRunRef = useRef(false);
 
   const { data: permissaoInfo = { podeLiberarBloqueados: false }, isLoading: loadingPermissao } = useQuery({
@@ -237,21 +243,13 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
 
   const clienteIds = useMemo(() => [...new Set(pedidosSelecionados.map(p => p.cliente_id).filter(Boolean))], [pedidosSelecionados]);
 
-  const { data: bloqueiosPorCliente = {}, isLoading: consultandoDebitos } = useQuery({
-    queryKey: ['bloqueios-financeiros-omie-liberacao', clienteIds.join('|')],
+  const { data: clientesPorId = {}, isLoading: loadingClientes } = useQuery({
+    queryKey: ['clientes-liberacao-flags', clienteIds.join('|')],
     enabled: isOpen && clienteIds.length > 0,
-    staleTime: 300000,
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const pares = await Promise.all(clienteIds.map(async (clienteId) => {
-        try {
-          const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: clienteId });
-          if (res.data?.error || res.data?.sucesso === false) throw new Error(res.data?.error || 'Falha na consulta');
-          return [clienteId, { ok: true, data: res.data }];
-        } catch (error) {
-          return [clienteId, { ok: false, error: error.message || 'Erro ao consultar Omie' }];
-        }
-      }));
-      return Object.fromEntries(pares);
+      const clientes = await Promise.all(clienteIds.map(id => base44.entities.Cliente.get(id)));
+      return Object.fromEntries(clientes.filter(Boolean).map(cliente => [cliente.id, cliente]));
     }
   });
 
@@ -265,6 +263,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
       setEtapa('analise');
       setExpanded({});
       setProcessando(false);
+      setLoadingDetalhes({});
       autoRunRef.current = false;
     }
   }, [isOpen]);
@@ -284,7 +283,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
   };
 
   useEffect(() => {
-    if (!isOpen || consultandoDebitos || loadingPermissao || autoRunRef.current) return;
+    if (!isOpen || loadingClientes || loadingPermissao || autoRunRef.current) return;
     autoRunRef.current = true;
 
     const executarAnalise = async () => {
@@ -294,15 +293,36 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
       const erros = [];
 
       for (const pedido of pedidosSelecionados) {
-        const bloqueio = bloqueiosPorCliente[pedido.cliente_id];
-        if (!bloqueio?.ok) {
-          erros.push({ ...pedido, erro_liberacao: bloqueio?.error || 'Erro ao consultar débitos no Omie' });
+        const cliente = clientesPorId[pedido.cliente_id];
+        if (cliente?.pendencia_financeira === true) {
+          bloqueados.push({
+            ...pedido,
+            bloqueio_financeiro: {
+              deve_bloquear: true,
+              tem_pendencia: true,
+              titulos: [],
+              total_debitos: 0,
+              titulos_atrasados: 0,
+              origem_flag_local: true
+            }
+          });
           continue;
         }
-        if (bloqueio.data?.deve_bloquear === true) {
-          bloqueados.push({ ...pedido, bloqueio_financeiro: bloqueio.data });
-          continue;
+
+        if (cliente?.pendencia_financeira == null) {
+          try {
+            const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id });
+            if (res.data?.error || res.data?.sucesso === false) throw new Error(res.data?.error || 'Falha na consulta');
+            if (res.data?.deve_bloquear === true) {
+              bloqueados.push({ ...pedido, bloqueio_financeiro: res.data });
+              continue;
+            }
+          } catch (error) {
+            erros.push({ ...pedido, erro_liberacao: error.message || 'Erro ao consultar Omie' });
+            continue;
+          }
         }
+
         try {
           await liberarPedido(pedido);
           liberados.push(pedido);
@@ -319,7 +339,19 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
     };
 
     executarAnalise();
-  }, [isOpen, consultandoDebitos, loadingPermissao, bloqueiosPorCliente, clienteIds.length, pedidosSelecionados]);
+  }, [isOpen, loadingClientes, loadingPermissao, clientesPorId, clienteIds.length, pedidosSelecionados]);
+
+  const carregarDetalhesDebitos = async (grupo) => {
+    const clienteId = grupo.pedidos[0]?.cliente_id;
+    if (!clienteId || loadingDetalhes[grupo.id]) return;
+    setLoadingDetalhes(prev => ({ ...prev, [grupo.id]: true }));
+    try {
+      const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: clienteId });
+      setPedidosBloqueados(prev => prev.map(p => p.cliente_id === clienteId ? { ...p, bloqueio_financeiro: res.data } : p));
+    } finally {
+      setLoadingDetalhes(prev => ({ ...prev, [grupo.id]: false }));
+    }
+  };
 
   const toggleSelecionado = (pedidoId) => {
     setSelecionados(prev => prev.includes(pedidoId) ? prev.filter(id => id !== pedidoId) : [...prev, pedidoId]);
@@ -365,6 +397,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
           motivo_liberacao_forcada: motivoLiberacao.trim()
         });
         await registrarLogForcado(pedido, pedido.bloqueio_financeiro, motivoLiberacao.trim());
+        if (pedido.cliente_id) base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id, invalidar_cache: true, somente_invalidar_cache: true }).catch(() => {});
         liberadosAgora.push(pedido);
       } catch (error) {
         errosAgora.push({ ...pedido, erro_liberacao: error.message || 'Erro na liberação forçada' });
@@ -380,7 +413,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
   };
 
   const podeLiberar = permissaoInfo.podeLiberarBloqueados;
-  const carregando = consultandoDebitos || loadingPermissao || processando;
+  const carregando = loadingClientes || loadingPermissao || processando;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose?.()}>
@@ -394,7 +427,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
         {carregando && etapa === 'analise' && (
           <div className="flex flex-col items-center justify-center gap-3 py-14 text-slate-600">
             <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-            <p className="font-medium">Consultando débitos no Omie...</p>
+            <p className="font-medium">Analisando pendências financeiras...</p>
           </div>
         )}
 
@@ -421,6 +454,8 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
                 expanded={expanded}
                 setExpanded={setExpanded}
                 disabled={!podeLiberar}
+                onExpandDebitos={carregarDetalhesDebitos}
+                loadingDetalhes={loadingDetalhes}
               />
               {podeLiberar && selecionados.length > 0 && (
                 <div className="mt-4 space-y-2">

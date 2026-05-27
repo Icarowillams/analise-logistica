@@ -2,6 +2,28 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const produtoCache = new Map();
+const configCache = { value: false, expiresAt: 0 };
+
+async function getModoEconomico(base44) {
+    const now = Date.now();
+    if (configCache.expiresAt > now) return configCache.value;
+    const configs = await base44.asServiceRole.entities.ConfiguracaoSistema.filter({ chave: 'global' });
+    configCache.value = !!configs[0]?.modo_economico;
+    configCache.expiresAt = now + 60000;
+    return configCache.value;
+}
+
+function getProdutoCached(codigo) {
+    const item = produtoCache.get(`consultarProdutoOmie:${codigo}`);
+    if (!item || item.expiresAt <= Date.now()) return null;
+    return item.data;
+}
+
+function setProdutoCached(codigo, data, modoEconomico) {
+    const ttl = modoEconomico ? 60 * 60 * 1000 : 30 * 60 * 1000;
+    produtoCache.set(`consultarProdutoOmie:${codigo}`, { data: { ...data, origem_cache: true }, expiresAt: Date.now() + ttl });
+}
 
 Deno.serve(async (req) => {
     try {
@@ -19,8 +41,14 @@ Deno.serve(async (req) => {
         }
 
         const resultados = {};
+        const modoEconomico = await getModoEconomico(base44);
 
         for (const codigo of codigos) {
+            const cached = getProdutoCached(codigo);
+            if (cached) {
+                resultados[codigo] = cached;
+                continue;
+            }
             const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -64,9 +92,11 @@ Deno.serve(async (req) => {
                     codigo_beneficio: data.codigo_beneficio || null,
                     dadosIbpt: data.dadosIbpt || null,
                     bloqueado: data.bloqueado || null,
+                    cache_hit: false,
                     // Raw completo para comparação
                     _raw: data,
                 };
+                setProdutoCached(codigo, resultados[codigo], modoEconomico);
             }
 
             await new Promise(r => setTimeout(r, 600));

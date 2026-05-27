@@ -2,6 +2,30 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const cache = new Map();
+const configCache = { value: false, expiresAt: 0 };
+
+async function getModoEconomico(base44) {
+    const now = Date.now();
+    if (configCache.expiresAt > now) return configCache.value;
+    const configs = await base44.asServiceRole.entities.ConfiguracaoSistema.filter({ chave: 'global' });
+    configCache.value = !!configs[0]?.modo_economico;
+    configCache.expiresAt = now + 60000;
+    return configCache.value;
+}
+
+function getCached(key) {
+    const item = cache.get(key);
+    if (!item || item.expiresAt <= Date.now()) return null;
+    return item.data;
+}
+
+function setCached(key, data, modoEconomico) {
+    const temDebito = data?.tem_pendencia || (data?.total_debitos || 0) > 0;
+    const ttl = temDebito ? 15 * 60 * 1000 : 30 * 60 * 1000;
+    cache.set(key, { data: { ...data, origem_cache: true }, expiresAt: Date.now() + (modoEconomico ? ttl * 2 : ttl) });
+}
+
 // Consulta débitos e limite de crédito do cliente no Omie
 
 Deno.serve(async (req) => {
@@ -22,6 +46,11 @@ Deno.serve(async (req) => {
         if (!cliente) {
             return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
         }
+
+        const modoEconomico = await getModoEconomico(base44);
+        const cacheKey = `consultarDebitosOmie:${cliente.codigo_omie || cliente.codigo || cliente_id}`;
+        const cached = getCached(cacheKey);
+        if (cached) return Response.json({ ...cached, cache_hit: true });
 
         // 1) Consultar títulos a receber pendentes no Omie via PesquisarLancamentos
         const titulosPendentes = [];
@@ -160,7 +189,7 @@ Deno.serve(async (req) => {
         const totalDebitos = titulos.reduce((sum, t) => sum + t.valor, 0);
         const temPendencia = titulos.some(t => t.status === 'ATRASADO');
 
-        return Response.json({
+        const resultado = {
             cliente_nome: cliente.razao_social || cliente.nome_fantasia,
             cliente_codigo: cliente.codigo,
             titulos,
@@ -168,8 +197,11 @@ Deno.serve(async (req) => {
             tem_pendencia: temPendencia,
             titulos_atrasados: titulos.filter(t => t.status === 'ATRASADO').length,
             limite_credito: limiteCredito,
-            saldo_disponivel: saldoDisponivel
-        });
+            saldo_disponivel: saldoDisponivel,
+            cache_hit: false
+        };
+        setCached(cacheKey, resultado, modoEconomico);
+        return Response.json(resultado);
 
     } catch (error) {
         console.error('Erro ao consultar débitos:', error.message);

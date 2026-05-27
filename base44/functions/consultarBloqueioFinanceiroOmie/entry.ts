@@ -2,6 +2,29 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const cache = new Map();
+const configCache = { value: false, expiresAt: 0 };
+
+async function getModoEconomico(base44) {
+    const now = Date.now();
+    if (configCache.expiresAt > now) return configCache.value;
+    const configs = await base44.asServiceRole.entities.ConfiguracaoSistema.filter({ chave: 'global' });
+    configCache.value = !!configs[0]?.modo_economico;
+    configCache.expiresAt = now + 60000;
+    return configCache.value;
+}
+
+function getCached(key) {
+    const item = cache.get(key);
+    if (!item || item.expiresAt <= Date.now()) return null;
+    return item.data;
+}
+
+function setCached(key, data, modoEconomico) {
+    const temDebito = data?.deve_bloquear || data?.tem_pendencia || (data?.total_debitos || 0) > 0;
+    const ttl = temDebito ? 15 * 60 * 1000 : 30 * 60 * 1000;
+    cache.set(key, { data: { ...data, origem_cache: true }, expiresAt: Date.now() + (modoEconomico ? ttl * 2 : ttl) });
+}
 
 // Consulta consolidada de bloqueio financeiro do cliente DIRETO no Omie.
 // Retorna: títulos atrasados, em aberto, total débitos, limite de crédito, saldo disponível e se deve bloquear.
@@ -31,7 +54,7 @@ Deno.serve(async (req) => {
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { cliente_id, cpf_cnpj } = await req.json();
+        const { cliente_id, cpf_cnpj, invalidar_cache, somente_invalidar_cache } = await req.json();
         if (!cliente_id && !cpf_cnpj) {
             return Response.json({ error: 'Informe cliente_id ou cpf_cnpj' }, { status: 400 });
         }
@@ -43,6 +66,13 @@ Deno.serve(async (req) => {
             if (cliente && !cnpjLimpo) cnpjLimpo = (cliente.cnpj_cpf || cliente.cpf_cnpj || '').replace(/\D/g, '');
         }
         if (!cnpjLimpo) return Response.json({ error: 'CPF/CNPJ inválido' }, { status: 400 });
+
+        const modoEconomico = await getModoEconomico(base44);
+        const cacheKey = `consultarBloqueioFinanceiroOmie:${cliente?.codigo_omie || cliente?.codigo || cliente_id || cnpjLimpo}`;
+        if (invalidar_cache) cache.delete(cacheKey);
+        if (somente_invalidar_cache) return Response.json({ sucesso: true, cache_invalidado: true });
+        const cached = !invalidar_cache ? getCached(cacheKey) : null;
+        if (cached) return Response.json({ ...cached, cache_hit: true });
 
         // 1. Buscar títulos ATRASADOS e EM ABERTO
         const titulosMap = new Map();
@@ -99,7 +129,7 @@ Deno.serve(async (req) => {
             });
         }
 
-        return Response.json({
+        const resultado = {
             sucesso: true,
             cliente_nome: cliente?.razao_social || cliente?.nome_fantasia || null,
             cliente_codigo: cliente?.codigo || null,
@@ -111,8 +141,11 @@ Deno.serve(async (req) => {
             tem_pendencia: temPendencia,
             limite_credito: limiteCredito,
             saldo_disponivel: saldoDisponivel,
-            deve_bloquear: deveBloquear
-        });
+            deve_bloquear: deveBloquear,
+            cache_hit: false
+        };
+        setCached(cacheKey, resultado, modoEconomico);
+        return Response.json(resultado);
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
     }

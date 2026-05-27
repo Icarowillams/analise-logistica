@@ -3,8 +3,30 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+const clientesCache = new Map();
+const configCache = { value: false, expiresAt: 0 };
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function getModoEconomico(base44) {
+    const now = Date.now();
+    if (configCache.expiresAt > now) return configCache.value;
+    const configs = await base44.asServiceRole.entities.ConfiguracaoSistema.filter({ chave: 'global' });
+    configCache.value = !!configs[0]?.modo_economico;
+    configCache.expiresAt = now + 60000;
+    return configCache.value;
+}
+
+function getCached(key) {
+    const item = clientesCache.get(key);
+    if (!item || item.expiresAt <= Date.now()) return null;
+    return item.data;
+}
+
+function setCached(key, data, modoEconomico) {
+    const ttl = modoEconomico ? 60 * 60 * 1000 : 30 * 60 * 1000;
+    clientesCache.set(key, { data: { ...data, origem_cache: true }, expiresAt: Date.now() + ttl });
+}
 
 // Doc Omie: máx 100 reg/pág, 4 simultâneas, 240 req/min. Backoff em 425/520/429.
 async function listarClientesOmie(pagina = 1, registrosPorPagina = 100, tentativa = 0) {
@@ -46,11 +68,15 @@ Deno.serve(async (req) => {
 
         const body = await req.json();
         const { acao, pagina_omie } = body;
+        const modoEconomico = await getModoEconomico(base44);
         // acao: 'listar_omie' (paginado), 'comparar' (busca tudo e compara)
 
         if (acao === 'listar_omie') {
             // Retorna uma página de clientes do Omie
             const pag = pagina_omie || 1;
+            const cacheKey = `consultarClientesOmie:listar_omie:${pag}`;
+            const cached = getCached(cacheKey);
+            if (cached) return Response.json({ ...cached, cache_hit: true });
             const resultado = await listarClientesOmie(pag, 100);
             
             if (resultado.faultstring) {
@@ -76,13 +102,16 @@ Deno.serve(async (req) => {
                 pessoa_fisica: c.pessoa_fisica || 'N',
             }));
 
-            return Response.json({
+            const resposta = {
                 sucesso: true,
                 pagina: pag,
                 total_paginas: resultado.total_de_paginas || 1,
                 total_registros: resultado.total_de_registros || 0,
-                clientes
-            });
+                clientes,
+                cache_hit: false
+            };
+            setCached(cacheKey, resposta, modoEconomico);
+            return Response.json(resposta);
         }
 
         if (acao === 'comparar') {
