@@ -3,43 +3,80 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+let base44Global = null;
 
 // Doc Omie: máximo 100 registros/página, 240 req/min (4/s), 4 simultâneas
 const REGISTROS_PAGINA = 100;
 const PARALELISMO = 3; // conservador (limite é 4 simultâneas)
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+async function omieCall(call, param, opts = {}) {
+  const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
+  const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
+  const controles = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = controles?.[0];
 
-async function listarClientesOmie(pagina, tentativa = 0) {
-  const res = await fetch(OMIE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      call: "ListarClientes",
-      app_key: OMIE_APP_KEY,
-      app_secret: OMIE_APP_SECRET,
-      param: [{
-        pagina,
-        registros_por_pagina: REGISTROS_PAGINA,
-        apenas_importado_api: "N"
-      }]
-    })
-  });
-  const data = await res.json();
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
-    const fc = String(data.faultcode || '');
-    // Doc Omie: 425 = rate limit, 520 = transiente. Backoff exponencial.
-    const isRate = msg.includes('too many') || msg.includes('aguarde') || msg.includes('cota')
-      || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon')
-      || fc.includes('425') || fc.includes('520') || res.status === 429;
-    if (isRate && tentativa < 4) {
-      await sleep(2000 * (tentativa + 1));
-      return listarClientesOmie(pagina, tentativa + 1);
-    }
-    throw new Error(`Pag ${pagina}: ${data.faultstring}`);
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
   }
-  return data;
+
+  if (cacheMinutes > 0) {
+    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
+  }
+
+  let ultimoErro = '';
+  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+    const inicio = Date.now();
+    const res = await fetch(OMIE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+    });
+    const data = await res.json();
+
+    if (data.faultstring || data.faultcode) {
+      const msg = String(data.faultstring || '').toLowerCase();
+      const deveBloquear = res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde');
+      if (deveBloquear) {
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
+      }
+
+      const deveTentar = res.status === 429 || msg.includes('too many') || msg.includes('aguarde') || msg.includes('cota') || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon');
+      ultimoErro = data.faultstring || 'Erro Omie';
+      if (deveTentar && tentativa < maxRetries) {
+        await new Promise(r => setTimeout(r, 2500 * tentativa));
+        continue;
+      }
+      throw new Error(ultimoErro);
+    }
+
+    if (logIntegration) {
+      await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: OMIE_URL,
+        call,
+        operacao: call,
+        status: 'sucesso',
+        payload_enviado: JSON.stringify(param || {}).slice(-500),
+        payload_resposta: JSON.stringify(data || {}).slice(-500),
+        duracao_ms: Date.now() - inicio,
+        tentativas: tentativa
+      }).catch(() => {});
+    }
+    return data;
+  }
+
+  throw new Error(ultimoErro || 'Máximo de tentativas Omie excedido');
+}
+
+async function listarClientesOmie(pagina) {
+  return await omieCall("ListarClientes", {
+    pagina,
+    registros_por_pagina: REGISTROS_PAGINA,
+    apenas_importado_api: "N"
+  }, { cacheMinutes: 0 });
 }
 
 async function processarLote(paginas) {
@@ -49,6 +86,7 @@ async function processarLote(paginas) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -155,8 +193,7 @@ async function processar(base44, jobId) {
       total_omie_obtidos: todosOmie.length,
       etapa_descricao: `Página ${ultimaPag}/${totalPaginas} (${todosOmie.length}/${totalRegistros})`,
     });
-    // Pausa pra respeitar 240 req/min = 4/s. Com PARALELISMO=3 por lote, aguarda 1s.
-    if (i + PARALELISMO < paginasRestantes.length) await sleep(1000);
+
   }
 
   // ===== 3. Buscar Base44 =====
