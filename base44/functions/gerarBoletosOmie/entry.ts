@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
 
 async function omieCall(call, param, tentativa = 1) {
   const res = await fetch(OMIE_URL, {
@@ -12,7 +13,7 @@ async function omieCall(call, param, tentativa = 1) {
   });
   const data = await res.json();
   if (data.faultstring) {
-    const msg = data.faultstring.toLowerCase();
+    const msg = String(data.faultstring).toLowerCase();
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
     if (isRate && tentativa < 5) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
@@ -23,108 +24,104 @@ async function omieCall(call, param, tentativa = 1) {
   return data;
 }
 
-// Gera boletos em lote no Omie
-// body: { titulos: [codigo_lancamento], id_conta_corrente (opcional) }
+async function listarTitulosDoPedido(codigoPedido) {
+  const titulos = [];
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - 30 * 86400000);
+  const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const data = await omieCall('ListarContasReceber', {
+      pagina,
+      registros_por_pagina: 100,
+      apenas_importado_api: 'N',
+      filtrar_por_emissao_de: fmt(inicio),
+      filtrar_por_emissao_ate: fmt(hoje)
+    });
+    totalPaginas = data?.total_de_paginas || 1;
+    const lista = data?.conta_receber_cadastro || [];
+    titulos.push(...lista.filter(t => String(t.nCodPedido || '') === String(codigoPedido)));
+    pagina++;
+    if (pagina <= totalPaginas) await new Promise(r => setTimeout(r, 300));
+  } while (pagina <= totalPaginas && pagina <= 15);
+
+  return titulos;
+}
+
+async function gerarBoletosTitulos(titulos, idContaCorrente) {
+  const resultados = [];
+  for (const titulo of titulos) {
+    const codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento || titulo;
+    const status = String(titulo.status_titulo || '').toUpperCase();
+    const aberto = !status || STATUS_ABERTOS.has(status);
+    const jaTemBoleto = !!(titulo.numero_boleto && String(titulo.numero_boleto).trim()) || titulo.boleto?.cGerado === 'S';
+
+    if (!aberto) {
+      resultados.push({ codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Título ${status}` });
+      continue;
+    }
+    if (jaTemBoleto) {
+      resultados.push({ codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Boleto já gerado: ${titulo.numero_boleto || ''}` });
+      continue;
+    }
+
+    try {
+      const param = { codigo_lancamento: Number(codigo) };
+      if (idContaCorrente) param.id_conta_corrente = Number(idContaCorrente);
+      const data = await omieCall('GerarBoleto', param);
+      const numBoleto = data.numero_boleto || data.nNumBoleto || '';
+      const codBarras = data.codigo_barras || data.cCodBarras || '';
+      const linkBoleto = data.link_boleto || data.cLinkBoleto || '';
+      const sucessoReal = !!(String(numBoleto).trim() || String(codBarras).trim() || String(linkBoleto).trim());
+      resultados.push({
+        codigo_lancamento: codigo,
+        sucesso: sucessoReal,
+        numero_boleto: numBoleto,
+        codigo_barras: codBarras,
+        linha_digitavel: data.linha_digitavel || data.cLinDig || '',
+        link_boleto: linkBoleto,
+        mensagem: sucessoReal ? 'Boleto gerado' : 'Omie respondeu sem gerar boleto'
+      });
+    } catch (err) {
+      const msg = err.message.toLowerCase();
+      resultados.push({
+        codigo_lancamento: codigo,
+        sucesso: false,
+        skip: msg.includes('liquidado') || msg.includes('baixado') || msg.includes('cancelado'),
+        mensagem: err.message
+      });
+    }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  return resultados;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
     const body = await req.json().catch(() => ({}));
-    const { titulos = [], id_conta_corrente, pular_validacao = false } = body;
-    if (!Array.isArray(titulos) || titulos.length === 0) {
-      return Response.json({ error: 'titulos vazio' }, { status: 400 });
-    }
+    const { origem = 'manual', pedidos = [], titulos = [], id_conta_corrente } = body;
 
-    // Pré-filtro: consulta os títulos no Omie e remove os que já têm boleto OU foram liquidados/cancelados.
-    // Economiza chamadas de GerarBoleto (cada uma consome quota Omie).
-    let titulosValidos = titulos;
-    let preSkips = [];
-    if (!pular_validacao) {
-      try {
-        const consultaUrl = 'https://app.omie.com.br/api/v1/financas/contareceber/';
-        const consultaRes = await fetch(consultaUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            call: 'ListarContasReceber',
-            app_key: APP_KEY,
-            app_secret: APP_SECRET,
-            param: [{ pagina: 1, registros_por_pagina: 500, apenas_importado_api: 'N' }]
-          })
-        });
-        const consultaData = await consultaRes.json();
-        const todos = consultaData?.conta_receber_cadastro || [];
-        const mapa = new Map(todos.map(t => [String(t.codigo_lancamento_omie), t]));
+    let user = null;
+    try { user = await base44.auth.me(); } catch { user = null; }
+    if (!user && origem !== 'auto') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) user = { email: 'sistema@automation' };
 
-        // Status do Omie considerados "em aberto" e elegíveis para gerar boleto:
-        const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
-        titulosValidos = [];
-        for (const cod of titulos) {
-          const t = mapa.get(String(cod));
-          if (!t) {
-            titulosValidos.push(cod);
-            continue;
-          }
-          const status = String(t.status_titulo || '').toUpperCase();
-          const liquidado = status && !STATUS_ABERTOS.has(status);
-          const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
-          if (liquidado || jaTemBoleto) {
-            preSkips.push({
-              codigo_lancamento: cod,
-              sucesso: false,
-              skip: true,
-              mensagem: liquidado ? `Título ${t.status_titulo}` : `Boleto já gerado: ${t.numero_boleto}`
-            });
-          } else {
-            titulosValidos.push(cod);
-          }
-        }
-      } catch (_) {
-        // Se a pré-validação falhar, segue com a lista original
-        titulosValidos = titulos;
+    let titulosParaGerar = [];
+    if (origem === 'auto') {
+      const codigosPedido = pedidos.map(p => p.codigo_pedido || p).filter(Boolean);
+      for (const codigoPedido of codigosPedido) {
+        const titulosPedido = await listarTitulosDoPedido(codigoPedido);
+        titulosParaGerar.push(...titulosPedido.map(t => ({ ...t, codigo_pedido: codigoPedido })));
       }
+    } else {
+      if (!Array.isArray(titulos) || titulos.length === 0) return Response.json({ error: 'titulos vazio' }, { status: 400 });
+      titulosParaGerar = titulos;
     }
 
-    const resultados = [...preSkips];
-    for (const codigo of titulosValidos) {
-      try {
-        const param = { codigo_lancamento: Number(codigo) };
-        if (id_conta_corrente) param.id_conta_corrente = Number(id_conta_corrente);
-
-        const data = await omieCall('GerarBoleto', param);
-        const numBoleto = data.numero_boleto || data.nNumBoleto || '';
-        const codBarras = data.codigo_barras || data.cCodBarras || '';
-        const linkBoleto = data.link_boleto || data.cLinkBoleto || '';
-        // Omie às vezes responde 200 sem erro mas SEM gerar boleto (ex: título já RECEBIDO).
-        // Consideramos sucesso real apenas se algum identificador do boleto voltou preenchido.
-        const sucessoReal = !!(String(numBoleto).trim() || String(codBarras).trim() || String(linkBoleto).trim());
-        resultados.push({
-          codigo_lancamento: codigo,
-          sucesso: sucessoReal,
-          numero_boleto: numBoleto,
-          codigo_barras: codBarras,
-          linha_digitavel: data.linha_digitavel || data.cLinDig || '',
-          link_boleto: linkBoleto,
-          mensagem: sucessoReal
-            ? 'Boleto gerado'
-            : 'Omie respondeu sem gerar boleto (título pode estar liquidado/recebido)'
-        });
-      } catch (err) {
-        const msg = err.message.toLowerCase();
-        const liquidado = msg.includes('liquidado') || msg.includes('baixado');
-        const cancelado = msg.includes('cancelado');
-        resultados.push({
-          codigo_lancamento: codigo,
-          sucesso: false,
-          skip: liquidado || cancelado,
-          mensagem: err.message
-        });
-      }
-      await new Promise(r => setTimeout(r, 1500));
-    }
-
+    const resultados = await gerarBoletosTitulos(titulosParaGerar, id_conta_corrente);
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso && !r.skip).length;
     const skips = resultados.filter(r => r.skip).length;
@@ -132,14 +129,15 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'financas/contareceber',
       call: 'GerarBoleto',
-      operacao: 'gerar_boletos_lote',
+      operacao: origem === 'auto' ? 'gerar_boletos_auto' : 'gerar_boletos_lote',
       status: erros > 0 ? 'warning' : 'sucesso',
       mensagem_erro: erros > 0 ? `${erros} boletos falharam` : null,
-      tentativas: titulos.length,
-      usuario_email: user.email
+      tentativas: titulosParaGerar.length,
+      usuario_email: user.email,
+      payload_resposta: JSON.stringify(resultados).slice(0, 2000)
     }).catch(() => {});
 
-    return Response.json({ sucesso: true, total: titulos.length, processados: titulosValidos.length, sucessos, erros, skips, resultados });
+    return Response.json({ sucesso: true, origem, total: titulosParaGerar.length, processados: titulosParaGerar.length, sucessos, erros, skips, resultados });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

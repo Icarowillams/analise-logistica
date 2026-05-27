@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 // Emite NF-e em lote (ou individual) chamando FaturarPedidoVenda do Omie.
 // Após emissão, se o cliente tiver modalidade "BOLETO BANCARIO" no cadastro,
-// dispara automaticamente a geração do boleto via gerarBoletosAutoPedidos.
+// dispara automaticamente a geração do boleto via gerarBoletosOmie.
 //
 // body: { codigos_pedido: [number|string] }
 //

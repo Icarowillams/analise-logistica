@@ -6,7 +6,7 @@ import { base44 } from '@/api/base44Client';
 // - Lê do espelho local PedidoLiberadoOmie (atualizado em tempo real pelos webhooks Omie)
 // - ZERO chamadas Omie no fluxo normal
 // - Real-time via base44.entities.PedidoLiberadoOmie.subscribe()
-// - refetchAll() dispara reconciliação backend (bootstrapPedidosLiberadosOmie) — uso manual apenas
+// - refetchAll() dispara reconciliação backend (sincronizarLiberadosOmieRapido) — uso manual apenas
 
 const ETAPAS = ['10', '20', '50', '60'];
 
@@ -64,7 +64,7 @@ export function useOperacaoOmie() {
   // Dispara reconciliação backend (busca tudo do Omie e atualiza o espelho)
   const refetchAll = async () => {
     try {
-      await base44.functions.invoke('bootstrapPedidosLiberadosOmie', { origem: 'reconciliacao', etapas: ETAPAS });
+      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'reconciliacao', etapas: ETAPAS });
     } catch (e) {
       console.error('[useOperacaoOmie] reconciliação falhou:', e?.message);
     }

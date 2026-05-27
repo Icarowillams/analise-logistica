@@ -58,7 +58,7 @@ export default function PedidosOmieConsulta() {
   const sincronizarAgora = async () => {
     setSincronizando(true);
     try {
-      const { data } = await base44.functions.invoke('bootstrapPedidosLiberadosOmie', {});
+      const { data } = await base44.functions.invoke('sincronizarLiberadosOmieRapido', {});
       if (data?.error) toast.error(data.error);
       else toast.success(`Sincronizado: ${data?.total ?? 0} pedido(s) atualizados.`);
       await queryClient.invalidateQueries({ queryKey: ['pedidos-liberados-omie-consulta'] });

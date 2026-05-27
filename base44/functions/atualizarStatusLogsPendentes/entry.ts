@@ -9,7 +9,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 //   3. Se etapa=60 → busca a NF (ListarNF) para pegar cStat e nNF
 //   4. Atualiza o log + o espelho PedidoLiberadoOmie com o resultado real
 //   5. Se denegada/cancelada → cancela o pedido local; rejeitada comum volta para etapa 50
-//   6. Se autorizada → marca boleto_gerado e dispara gerarBoletosAutoPedidos
+//   6. Se autorizada → marca boleto_gerado e dispara gerarBoletosOmie em modo auto
 //      (apenas para clientes com BOLETO BANCARIO + tipo=venda)
 //
 // body: { codigos_pedido?: [string] }  // se omitido, processa TODOS os pendentes (máx 50)
@@ -329,8 +329,9 @@ Deno.serve(async (req) => {
     if (codigosParaBoleto.length > 0) {
       try {
         await new Promise(r => setTimeout(r, 3000));
-        await base44.asServiceRole.functions.invoke('gerarBoletosAutoPedidos', {
-          codigos_pedido: codigosParaBoleto
+        await base44.asServiceRole.functions.invoke('gerarBoletosOmie', {
+          origem: 'auto',
+          pedidos: codigosParaBoleto.map(codigo_pedido => ({ codigo_pedido }))
         });
       } catch (e) {
         console.error('[atualizarStatusLogsPendentes] erro gerar boletos:', e.message);

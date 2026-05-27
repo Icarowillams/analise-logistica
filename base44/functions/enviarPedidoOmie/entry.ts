@@ -389,8 +389,39 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, duracao_ms: Date.now() - t0 };
 }
 
+async function processarLotePedidos(base44, pedidosInput) {
+    const pedidoIds = pedidosInput
+        .map(p => typeof p === 'string' ? p : (p?.id || p?.pedido_id))
+        .filter(Boolean);
+
+    const resultados = [];
+    let idx = 0;
+    const WORKERS = 4;
+
+    async function worker() {
+        while (idx < pedidoIds.length) {
+            const pedido_id = pedidoIds[idx++];
+            const r = await enviarUmPedido(base44, pedido_id);
+            resultados.push(r);
+            await sleep(280);
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(WORKERS, pedidoIds.length) }, () => worker()));
+    const sucessos = resultados.filter(r => r.sucesso).length;
+    const erros = resultados.filter(r => !r.sucesso).length;
+
+    return {
+        sucesso: true,
+        total: pedidoIds.length,
+        sucessos,
+        erros,
+        resultados
+    };
+}
+
 // ============================================================
-// ENTRY POINT HTTP — pedido único
+// ENTRY POINT HTTP — pedido único ou lote { pedidos: [...] }
 // ============================================================
 Deno.serve(async (req) => {
     let base44 = null;
@@ -420,6 +451,12 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
+        if (Array.isArray(body.pedidos)) {
+            if (body.pedidos.length === 0) return Response.json({ error: 'pedidos vazio' }, { status: 400 });
+            const r = await processarLotePedidos(base44, body.pedidos);
+            return Response.json(r);
+        }
+
         pedido_id = body.pedido_id;
         if (!pedido_id) return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
 

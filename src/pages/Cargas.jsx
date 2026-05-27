@@ -217,13 +217,13 @@ export default function Cargas() {
       // 1) Reverter etapa no Omie: 50 → 20 (Pedido Liberado)
       if (pedidosOmie.length > 0) {
         try {
-          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
+          await base44.functions.invoke('trocarEtapaPedidoOmie', {
             pedidos: pedidosOmie.map(p => ({
               codigo_pedido: p.codigo_pedido,
               codigo_pedido_integracao: p.codigo_pedido_integracao,
-              numero_pedido: p.numero_pedido
-            })),
-            etapa_destino: '20'
+              numero_pedido: p.numero_pedido,
+              etapa: '20'
+            }))
           });
         } catch (e) { console.warn('Falha reverter etapa Omie:', e.message); }
       }

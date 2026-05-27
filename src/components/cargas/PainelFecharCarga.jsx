@@ -197,9 +197,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         } catch (e) { console.warn('Falha previsão Omie:', e.message); }
 
         try {
-          await base44.functions.invoke('trocarEtapaPedidoLoteOmie', {
-            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
-            etapa_destino: '50'
+          await base44.functions.invoke('trocarEtapaPedidoOmie', {
+            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido, etapa: '50' }))
           });
         } catch (e) { console.warn('Falha trocar etapa:', e.message); }
       }

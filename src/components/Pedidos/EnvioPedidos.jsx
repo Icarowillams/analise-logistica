@@ -188,8 +188,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     for (let i = 0; i < externos.length; i += CHUNK_SIZE) {
       const chunk = externos.slice(i, i + CHUNK_SIZE);
       try {
-        const response = await base44.functions.invoke('enviarPedidosOmieLote', {
-          pedido_ids: chunk.map(p => p.id)
+        const response = await base44.functions.invoke('enviarPedidoOmie', {
+          pedidos: chunk.map(p => ({ id: p.id }))
         });
         const data = response.data;
         if (data?.sucesso) {

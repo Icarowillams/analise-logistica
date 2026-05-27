@@ -96,7 +96,9 @@ Deno.serve(async (req) => {
                             valor: cab.nValorTitulo || 0,
                             vencimento: cab.dDtVenc || '',
                             status: cab.cStatus || status,
-                            documento_fiscal: cab.cNumDocFiscal || ''
+                            tipo: cab.cTipo || '',
+                            documento_fiscal: cab.cNumDocFiscal || '',
+                            observacao: cab.observacao || ''
                         });
                     }
                 }
@@ -107,13 +109,20 @@ Deno.serve(async (req) => {
 
         // 2. Consultar cliente no Omie para pegar limite de crédito
         let limiteCredito = 0;
-        const clienteOmie = await omieCall(
+        let clienteOmie = await omieCall(
             "https://app.omie.com.br/api/v1/geral/clientes/",
             "ListarClientes",
             { pagina: 1, registros_por_pagina: 1, clientesFiltro: { cnpj_cpf: cnpjLimpo } }
         );
         if (!clienteOmie.faultstring && clienteOmie.clientes_cadastro?.[0]) {
             limiteCredito = Number(clienteOmie.clientes_cadastro[0].valor_limite_credito || 0);
+        } else if (cliente?.codigo_omie || cliente?.codigo_cliente_omie || cliente?.codigo) {
+            clienteOmie = await omieCall(
+                "https://app.omie.com.br/api/v1/geral/clientes/",
+                "ConsultarCliente",
+                { codigo_cliente_integracao: cliente.codigo || cliente.id }
+            );
+            if (!clienteOmie.faultstring) limiteCredito = Number(clienteOmie.valor_limite_credito || 0);
         }
 
         const totalDebitos = titulos.reduce((s, t) => s + (Number(t.valor) || 0), 0);
