@@ -179,6 +179,12 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Log Gerencial', path: 'LogGerencial' }
         ]
       });
+
+      allMenuItems.push({
+        title: 'Integração Omie',
+        icon: Settings,
+        path: 'IntegracaoOmieDashboard'
+      });
     }
 
     return allMenuItems.map(item => {
