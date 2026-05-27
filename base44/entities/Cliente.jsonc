@@ -8,7 +8,11 @@
     },
     "codigo_omie": {
       "type": "string",
-      "description": "C\u00f3digo de integra\u00e7\u00e3o no Omie"
+      "description": "C\u00f3digo do cliente no Omie"
+    },
+    "codigo_cliente_omie": {
+      "type": "string",
+      "description": "ID/c\u00f3digo num\u00e9rico do cliente retornado pelo Omie"
     },
     "codigo_integracao": {
       "type": "string",

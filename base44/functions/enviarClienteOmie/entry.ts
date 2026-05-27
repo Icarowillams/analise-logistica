@@ -99,6 +99,37 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4)
     return data;
 }
 
+function isErroDuplicidadeCliente(resultado) {
+    return String(resultado?.faultstring || '').toLowerCase().includes('cliente já cadastrado para o cpf/cnpj');
+}
+
+async function buscarClienteOmiePorCpfCnpj(cnpjCpf) {
+    if (!cnpjCpf) return null;
+    const achado = await omieFetchComRetry(OMIE_URL, {
+        call: 'ListarClientes',
+        app_key: OMIE_APP_KEY,
+        app_secret: OMIE_APP_SECRET,
+        param: [{
+            pagina: 1,
+            registros_por_pagina: 1,
+            apenas_importado_api: 'N',
+            clientesFiltro: { cnpj_cpf: cnpjCpf }
+        }]
+    });
+    return achado?.clientes_cadastro?.[0] || null;
+}
+
+async function salvarCodigoOmieNoCliente(base44, clienteId, codigoOmie) {
+    if (!clienteId || !codigoOmie) return;
+    const codigo = String(codigoOmie);
+    const atual = await base44.asServiceRole.entities.Cliente.get(clienteId);
+    if (String(atual?.codigo_omie || '') === codigo && String(atual?.codigo_cliente_omie || '') === codigo) return;
+    await base44.asServiceRole.entities.Cliente.update(clienteId, {
+        codigo_omie: codigo,
+        codigo_cliente_omie: codigo
+    });
+}
+
 function removerAspas(val) {
     if (typeof val !== 'string') return val;
     let v = val.trim();
@@ -320,29 +351,22 @@ Deno.serve(async (req) => {
             return Response.json({ sucesso: false, erro, cliente_id: clienteData.id });
         }
 
-        // Pré-consulta por CNPJ: se já existe no Omie, reutilizar o codigo_cliente_integracao existente
-        // para evitar erro "Cliente já cadastrado... (add)" quando a integração antiga foi criada com outro ID.
+        // Pré-consulta por CNPJ em updates ou quando ainda não há código Omie salvo.
         const cnpjLimpo = clienteOmie.cnpj_cpf;
-        if (cnpjLimpo) {
+        const codigoSalvo = clienteData.codigo_cliente_omie || clienteData.codigo_omie;
+        if (codigoSalvo) {
+            clienteOmie.codigo_cliente_omie = Number(codigoSalvo);
+        }
+        if (cnpjLimpo && (event?.type === 'update' || !codigoSalvo)) {
             try {
-                const achado = await omieFetchComRetry(OMIE_URL, {
-                    call: 'ListarClientes',
-                    app_key: OMIE_APP_KEY,
-                    app_secret: OMIE_APP_SECRET,
-                    param: [{
-                        pagina: 1,
-                        registros_por_pagina: 1,
-                        apenas_importado_api: 'N',
-                        clientesFiltro: { cnpj_cpf: cnpjLimpo }
-                    }]
-                });
-                const existente = achado?.clientes_cadastro?.[0];
+                const existente = await buscarClienteOmiePorCpfCnpj(cnpjLimpo);
                 if (existente?.codigo_cliente_omie) {
                     if (existente.codigo_cliente_integracao && existente.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
                         console.log('[enviarClienteOmie] Reutilizando codigo_cliente_integracao existente no Omie:', existente.codigo_cliente_integracao);
                         clienteOmie.codigo_cliente_integracao = existente.codigo_cliente_integracao;
                     }
-                    clienteOmie.codigo_cliente_omie = existente.codigo_cliente_omie;
+                    clienteOmie.codigo_cliente_omie = Number(existente.codigo_cliente_omie);
+                    await salvarCodigoOmieNoCliente(base44, clienteData.id, existente.codigo_cliente_omie);
                 }
             } catch (e) {
                 console.log('[enviarClienteOmie] Pré-consulta CNPJ falhou (segue fluxo normal):', e.message);
@@ -363,6 +387,50 @@ Deno.serve(async (req) => {
         console.log('[enviarClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
 
         if (resultado.faultstring) {
+            if (isErroDuplicidadeCliente(resultado) && cnpjLimpo) {
+                console.log('[enviarClienteOmie] Duplicidade detectada; consultando cliente existente e tentando alteração.');
+                const existente = await buscarClienteOmiePorCpfCnpj(cnpjLimpo);
+                if (existente?.codigo_cliente_omie) {
+                    if (existente.codigo_cliente_integracao) clienteOmie.codigo_cliente_integracao = existente.codigo_cliente_integracao;
+                    clienteOmie.codigo_cliente_omie = Number(existente.codigo_cliente_omie);
+                    await salvarCodigoOmieNoCliente(base44, clienteData.id, existente.codigo_cliente_omie);
+
+                    const retryStartedAt = Date.now();
+                    const resultadoAlteracao = await omieFetchComRetry(OMIE_URL, {
+                        call: "UpsertCliente",
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [clienteOmie]
+                    });
+                    const duracaoResolvida = duracao_ms + (Date.now() - retryStartedAt);
+
+                    if (!resultadoAlteracao.faultstring) {
+                        await logOmie(base44, {
+                            endpoint: 'geral/clientes',
+                            call: 'UpsertCliente',
+                            operacao: 'enviar_cliente',
+                            entidade_tipo: 'Cliente',
+                            entidade_id: clienteData.id,
+                            status: 'sucesso',
+                            mensagem_erro: 'Duplicidade resolvida automaticamente: código Omie vinculado e cliente alterado.',
+                            payload_enviado: JSON.stringify(clienteOmie).slice(0, 5000),
+                            payload_resposta: JSON.stringify(resultadoAlteracao).slice(0, 5000),
+                            duracao_ms: duracaoResolvida,
+                            tentativas: 2
+                        });
+                        return Response.json({
+                            sucesso: true,
+                            resolvido_automaticamente: true,
+                            cliente_id: clienteData.id,
+                            codigo_omie: existente.codigo_cliente_omie,
+                            mensagem: resultadoAlteracao.descricao_status || 'Cliente alterado com sucesso'
+                        });
+                    }
+                    resultado.faultstring = resultadoAlteracao.faultstring;
+                    resultado.faultcode = resultadoAlteracao.faultcode;
+                }
+            }
+
             console.error('[enviarClienteOmie] Erro Omie:', resultado.faultstring);
             await logOmie(base44, {
                 endpoint: 'geral/clientes',
@@ -385,15 +453,13 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Sucesso: gravar codigo_omie de volta no Cliente
-        const codigoOmie = resultado.codigo_cliente_omie;
+        // Sucesso: gravar codigo Omie de volta no Cliente
+        const codigoOmie = resultado.codigo_cliente_omie || clienteOmie.codigo_cliente_omie;
         if (codigoOmie && clienteData.id) {
             try {
-                await base44.asServiceRole.entities.Cliente.update(clienteData.id, {
-                    codigo_omie: String(codigoOmie)
-                });
+                await salvarCodigoOmieNoCliente(base44, clienteData.id, codigoOmie);
             } catch (e) {
-                console.log('[enviarClienteOmie] Falha gravando codigo_omie:', e.message);
+                console.log('[enviarClienteOmie] Falha gravando codigo Omie:', e.message);
             }
         }
 
