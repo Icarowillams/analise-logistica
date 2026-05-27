@@ -4,29 +4,33 @@ const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+let base44Global = null;
 
-async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
-  });
-  const data = await res.json();
-  // Erro no formato faultstring
-  if (data.faultstring) {
-    const msg = data.faultstring.toLowerCase();
-    const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRate && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(call, param, tentativa + 1, url);
+async function omieCall(call, param, opts = {}, url = OMIE_URL) {
+  const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
+  const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+  const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
+  let lastError = '';
+  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
+    const data = await res.json();
+    if (data.faultstring || data.faultcode || data.status === 'error' || (res.status >= 400 && data.message)) {
+      const erro = data.faultstring || data.message || 'Erro Omie';
+      const msg = String(erro).toLowerCase();
+      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: erro, atualizado_em: new Date().toISOString() };
+        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        throw new Error(erro);
+      }
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) { lastError = erro; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
+      throw new Error(erro);
     }
-    throw new Error(data.faultstring);
+    if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+    return data;
   }
-  // Erro no formato {status:"error", message:"..."}
-  if (data.status === 'error' || (res.status >= 400 && data.message)) {
-    throw new Error(data.message || 'Erro desconhecido no Omie');
-  }
-  return data;
+  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
 }
 
 // Fatura uma carga: muda etapa de cada pedido da etapa atual → etapa destino (default 60 = faturar)
@@ -34,6 +38,7 @@ async function omieCall(call, param, tentativa = 1, url = OMIE_URL) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 

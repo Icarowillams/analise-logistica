@@ -11,54 +11,62 @@ const CONTA_CORRENTE_PADRAO = 11464371392;
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function omieCall(url, payload, opts = {}) {
-    const { maxTentativas = 5, abortarEmBloqueio = true } = opts;
-    let tentativa = 0;
-    while (tentativa < maxTentativas) {
-        tentativa += 1;
+    const { maxRetries = opts.maxTentativas || 3, cacheMinutes = 0, logIntegration = true } = opts;
+    const call = payload.call;
+    const param = Array.isArray(payload.param) ? payload.param[0] : payload.param;
+    const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+
+    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+        return { faultstring: `API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
+    }
+
+    if (cacheMinutes > 0) {
+        const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+        if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
+    }
+
+    let lastError = '';
+    for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
         let res, data;
         try {
-            res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...payload, app_key: OMIE_KEY, app_secret: OMIE_SECRET })
-            });
+            res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, app_key: OMIE_KEY, app_secret: OMIE_SECRET }) });
+            data = await res.json();
         } catch (netErr) {
-            if (tentativa >= maxTentativas) throw netErr;
-            await sleep(800 * tentativa + Math.random() * 300);
-            continue;
+            lastError = netErr.message;
+            if (tentativa < maxRetries) { await sleep(2500 * tentativa); continue; }
+            return { faultstring: lastError };
         }
 
-        // 425 = Too Early / bloqueio Omie 30min
-        if (res.status === 425) {
-            if (abortarEmBloqueio) {
-                return { faultstring: 'API Omie bloqueada (HTTP 425). Aguarde até 30 minutos.', faultcode: 'BLOQUEIO_425', _http: 425 };
+        if (data?.faultstring || data?.faultcode) {
+            const msg = String(data.faultstring || '').toLowerCase();
+            if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+                const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                return { ...data, faultstring: data.faultstring || 'API Omie bloqueada temporariamente', faultcode: data.faultcode || 'CIRCUIT_OPEN' };
             }
-        }
-
-        try { data = await res.json(); } catch { data = {}; }
-
-        if (data?.faultstring) {
-            const f = String(data.faultstring).toLowerCase();
-            const isRedundante = f.includes('redundante') || f.includes('redundant');
-            const isRate = f.includes('cota') || f.includes('aguarde') || f.includes('too many') || res.status === 429;
-            if (isRedundante && tentativa < maxTentativas) {
-                await sleep(60000 / Math.max(1, maxTentativas - tentativa) + 1000);
-                continue;
-            }
-            if (isRate && tentativa < maxTentativas) {
-                // backoff exponencial + jitter
-                const base = Math.min(8000, 1000 * Math.pow(2, tentativa - 1));
-                await sleep(base + Math.random() * base * 0.3);
+            if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
+                lastError = data.faultstring;
+                await sleep(2500 * tentativa);
                 continue;
             }
         }
+
+        if (cacheMinutes > 0) {
+            const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
+            const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+            if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+        }
+        if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
         return data;
     }
-    return { faultstring: 'Máximo de tentativas Omie excedido' };
+    return { faultstring: lastError || 'Máximo de tentativas Omie excedido' };
 }
 
 let OMIE_KEY = null;
 let OMIE_SECRET = null;
+let base44Global = null;
 
 // Cache de conta corrente por execução (evita chamada repetida)
 let _contaCorrenteCache = null;
@@ -428,6 +436,7 @@ Deno.serve(async (req) => {
     let pedido_id = null;
     try {
         base44 = createClientFromRequest(req);
+        base44Global = base44;
         OMIE_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
         OMIE_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_KEY || !OMIE_SECRET) {

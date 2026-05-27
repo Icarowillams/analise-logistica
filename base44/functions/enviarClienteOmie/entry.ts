@@ -80,23 +80,37 @@ function validarCpfCnpj(doc) {
     return false;
 }
 
-// Backoff exponencial para chamadas Omie
-async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4) {
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.faultstring) {
-        const msg = data.faultstring.toLowerCase();
-        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('too many') || res.status === 429;
-        if (isRate && tentativa < maxTentativas) {
-            await new Promise(r => setTimeout(r, 2000 * tentativa));
-            return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
+let base44Global = null;
+
+async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3) {
+    const call = payload.call;
+    const param = Array.isArray(payload.param) ? payload.param[0] : payload.param;
+    const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) return { faultstring: `API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
+
+    let lastError = '';
+    for (let tent = tentativa; tent <= maxTentativas; tent++) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.faultstring || data.faultcode) {
+            const msg = String(data.faultstring || '').toLowerCase();
+            if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+                const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                return data;
+            }
+            if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
+                lastError = data.faultstring;
+                await new Promise(r => setTimeout(r, 2500 * tent));
+                continue;
+            }
         }
+        await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+        return data;
     }
-    return data;
+    return { faultstring: lastError || 'Máximo de tentativas Omie excedido' };
 }
 
 function isErroDuplicidadeCliente(resultado) {
@@ -251,6 +265,7 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        base44Global = base44;
         const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
         const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
