@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 // ============================================================================
 // REVINCULAR REFERÊNCIAS (Tabela Preço, Plano Pagamento, Modalidade Pagamento)
@@ -17,7 +17,6 @@ const HEADER_MAP = {
     'NOME_TABELA': 'tabela_preco', 'STATUS': 'status',
 };
 
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 function normalizeStr(s) {
     return (s || '').toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -101,7 +100,6 @@ Deno.serve(async (req) => {
         modalidades.forEach(m => { modalidadeMap[normalizeStr(m.nome)] = m.id; });
 
         // Carregar clientes do Base44
-        await delay(300);
         let clientesSistema = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
         if (apenas_ativos) {
             clientesSistema = clientesSistema.filter(c => c.status === 'ativo');
@@ -213,12 +211,10 @@ Deno.serve(async (req) => {
                         });
                         ok++;
                         atualizado = true;
-                        await delay(150);
                         break;
                     } catch (e) {
                         const isRateLimit = e.message?.includes('Rate limit') || e.message?.includes('429');
                         if (isRateLimit && attempt < 3) {
-                            await delay(3000 * Math.pow(2, attempt));
                             continue;
                         }
                         break;

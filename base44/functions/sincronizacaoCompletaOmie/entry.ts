@@ -1,10 +1,44 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+let base44Global = null;
 
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+async function omieCall(call, param, opts = {}) {
+    const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
+    const url = OMIE_URL;
+    const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) return { faultstring: `API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
+    if (cacheMinutes > 0) {
+        const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+        if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
+    }
+    let lastError = '';
+    for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] }) });
+        const data = await response.json();
+        if (data.faultstring || data.faultcode) {
+            const fault = String(data.faultstring || '').toLowerCase();
+            if (response.status === 425 || fault.includes('bloqueada') || fault.includes('bloqueio') || fault.includes('try again') || fault.includes('tente novamente')) {
+                const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                return data;
+            }
+            if (response.status === 429 || fault.includes('too many requests') || fault.includes('já existe uma requisição') || fault.includes('limite') || fault.includes('cota') || fault.includes('aguarde') || fault.includes('timeout')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
+        }
+        if (cacheMinutes > 0) {
+            const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
+            const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+            if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+        }
+        if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+        return data;
+    }
+    return { faultstring: lastError || 'Rate limit persistente após todas as tentativas' };
+}
 
 const estadoParaUF = {
     'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
@@ -47,17 +81,7 @@ function mapearClienteParaOmie(c) {
 }
 
 async function upsertClienteOmie(clienteOmie) {
-    const response = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            call: 'UpsertCliente',
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [clienteOmie]
-        })
-    });
-    return await response.json();
+    return await omieCall('UpsertCliente', clienteOmie, { cacheMinutes: 15 });
 }
 
 async function excluirClienteOmie(codigoIntegracao, codigoOmie) {
@@ -67,35 +91,15 @@ async function excluirClienteOmie(codigoIntegracao, codigoOmie) {
     else if (codigoOmie) param.codigo_cliente_omie = codigoOmie;
     else return { faultstring: 'Sem código para excluir' };
 
-    const response = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            call: 'ExcluirCliente',
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [param]
-        })
-    });
-    return await response.json();
+    return await omieCall('ExcluirCliente', param, { cacheMinutes: 15 });
 }
 
-async function chamarComRetry(fn, maxRetries = 3) {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        let resultado;
-        try {
-            resultado = await fn();
-        } catch (e) {
-            resultado = { faultstring: e.message };
-        }
-        const fault = (resultado.faultstring || '').toLowerCase();
-        if (fault && (fault.includes('too many requests') || fault.includes('já existe uma requisição') || fault.includes('try again'))) {
-            await delay(3000 * Math.pow(2, attempt));
-            continue;
-        }
-        return resultado;
+async function chamarComRetry(fn) {
+    try {
+        return await fn();
+    } catch (e) {
+        return { faultstring: e.message };
     }
-    return { faultstring: 'Rate limit persistente após todas as tentativas' };
 }
 
 // acao: 'upsert' | 'excluir'
@@ -104,6 +108,7 @@ async function chamarComRetry(fn, maxRetries = 3) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        base44Global = base44;
         const user = await base44.auth.me();
         if (user?.role !== 'admin') {
             return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -141,7 +146,7 @@ Deno.serve(async (req) => {
                 } else {
                     ok++;
                 }
-                if (i < clientes.length - 1) await delay(500);
+
             }
 
             return Response.json({ sucesso: true, enviados: ok, erros, total: clientes.length, erros_detalhes: errosList });
@@ -172,7 +177,7 @@ Deno.serve(async (req) => {
                 } else {
                     ok++;
                 }
-                if (i < clientes.length - 1) await delay(500);
+
             }
 
             return Response.json({ sucesso: true, excluidos: ok, erros, total: clientes.length, erros_detalhes: errosList });
