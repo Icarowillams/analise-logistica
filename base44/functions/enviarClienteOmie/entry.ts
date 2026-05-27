@@ -133,6 +133,13 @@ async function buscarClienteOmiePorCpfCnpj(cnpjCpf) {
     return achado?.clientes_cadastro?.[0] || null;
 }
 
+async function buscarClienteLocalComMesmoDocumento(base44, clienteId, cnpjCpf) {
+    const doc = normalizarCpfCnpj(cnpjCpf);
+    if (!doc) return null;
+    const candidatos = await base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: cnpjCpf }, '-updated_date', 20).catch(() => []);
+    return (candidatos || []).find(c => c.id !== clienteId && (c.codigo_omie || c.codigo_cliente_omie)) || null;
+}
+
 async function salvarCodigoOmieNoCliente(base44, clienteId, codigoOmie) {
     if (!clienteId || !codigoOmie) return;
     const codigo = String(codigoOmie);
@@ -398,6 +405,13 @@ Deno.serve(async (req) => {
         const codigoSalvo = clienteData.codigo_cliente_omie || clienteData.codigo_omie;
         if (codigoSalvo) {
             clienteOmie.codigo_cliente_omie = Number(codigoSalvo);
+        } else if (cnpjLimpo) {
+            const localDuplicado = await buscarClienteLocalComMesmoDocumento(base44, clienteData.id, cnpjLimpo);
+            if (localDuplicado?.codigo_omie || localDuplicado?.codigo_cliente_omie) {
+                const codigoReutilizado = localDuplicado.codigo_omie || localDuplicado.codigo_cliente_omie;
+                clienteOmie.codigo_cliente_omie = Number(codigoReutilizado);
+                await salvarCodigoOmieNoCliente(base44, clienteData.id, codigoReutilizado);
+            }
         }
         if (cnpjLimpo && (event?.type === 'update' || !codigoSalvo)) {
             try {

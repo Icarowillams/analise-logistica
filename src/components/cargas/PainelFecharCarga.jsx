@@ -57,7 +57,6 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
     setSalvando(true);
     try {
-      const numero = await gerarNumeroCarga(cargas);
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
@@ -111,26 +110,43 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       }));
 
       const clientesUnicos = new Set(pedidosSel.map(p => p.cliente_id || p.codigo_cliente));
-      const carga = await base44.entities.Carga.create({
-        numero_carga: numero,
-        data_carga: dataSaida,
-        motorista_id: motoristaId,
-        motorista_nome: motorista?.nome || '',
-        veiculo_id: veiculoId,
-        veiculo_placa: veiculo?.placa || '',
-        status_carga: 'montagem',
-        valor_total: valorTotal,
-        valor_total_carga: valorTotal,
-        quantidade_pedidos: pedidosSel.length,
-        quantidade_clientes: clientesUnicos.size,
-        quantidade_total_pacotes: qtdPacotesTotal,
-        notas_fiscais: pedidosSel.map(p => p.numero_pedido).filter(Boolean),
-        pedidos_omie: pedidosOmieFmt,
-        pedidos_internos: pedidosD1Fmt,
-        pedidos_troca: pedidosTrocaFmt,
-        observacao: obs,
-        observacoes: obs
-      });
+      let carga = null;
+      let numero = null;
+      for (let tentativa = 0; tentativa < 10; tentativa++) {
+        numero = await gerarNumeroCarga(cargas);
+        const existentes = await base44.entities.Carga.filter({ numero_carga: numero }, '-created_date', 2);
+        if (existentes.length > 0) continue;
+
+        carga = await base44.entities.Carga.create({
+          numero_carga: numero,
+          data_carga: dataSaida,
+          motorista_id: motoristaId,
+          motorista_nome: motorista?.nome || '',
+          veiculo_id: veiculoId,
+          veiculo_placa: veiculo?.placa || '',
+          status_carga: 'montagem',
+          valor_total: valorTotal,
+          valor_total_carga: valorTotal,
+          quantidade_pedidos: pedidosSel.length,
+          quantidade_clientes: clientesUnicos.size,
+          quantidade_total_pacotes: qtdPacotesTotal,
+          notas_fiscais: pedidosSel.map(p => p.numero_pedido).filter(Boolean),
+          pedidos_omie: pedidosOmieFmt,
+          pedidos_internos: pedidosD1Fmt,
+          pedidos_troca: pedidosTrocaFmt,
+          observacao: obs,
+          observacoes: obs
+        });
+
+        const duplicadas = await base44.entities.Carga.filter({ numero_carga: numero }, '-created_date', 10);
+        if (duplicadas.length <= 1 || duplicadas[0]?.id === carga.id) break;
+        await base44.entities.Carga.delete(carga.id).catch(() => {});
+        carga = null;
+      }
+
+      if (!carga) {
+        throw new Error('Não foi possível gerar número de carga único após 10 tentativas. Tente novamente.');
+      }
 
       const falhasVinculo = [];
 

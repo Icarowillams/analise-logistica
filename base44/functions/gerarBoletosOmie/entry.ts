@@ -31,21 +31,21 @@ async function listarTitulosDoPedido(codigoPedido) {
   const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 
   let pagina = 1;
-  let totalPaginas = 1;
-  do {
+  const registrosPorPagina = 100;
+  while (true) {
     const data = await omieCall('ListarContasReceber', {
       pagina,
-      registros_por_pagina: 100,
+      registros_por_pagina: registrosPorPagina,
       apenas_importado_api: 'N',
       filtrar_por_emissao_de: fmt(inicio),
       filtrar_por_emissao_ate: fmt(hoje)
     });
-    totalPaginas = data?.total_de_paginas || 1;
     const lista = data?.conta_receber_cadastro || [];
     titulos.push(...lista.filter(t => String(t.nCodPedido || '') === String(codigoPedido)));
+    if (lista.length < registrosPorPagina) break;
     pagina++;
-    if (pagina <= totalPaginas) await new Promise(r => setTimeout(r, 300));
-  } while (pagina <= totalPaginas && pagina <= 15);
+    await new Promise(r => setTimeout(r, 300));
+  }
 
   return titulos;
 }

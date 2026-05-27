@@ -193,12 +193,12 @@ Deno.serve(async (req) => {
         if (!data) break;
         totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas));
         const lote = (data.pedido_venda_produto || [])
-          .filter((p) => !pedidoCancelado(p))
           .map((p) => {
             const cab = p.cabecalho || {};
             const infoNfe = p.infoNfe || p.info_nf || null;
             const etapa = String(cab.etapa || etapaAtual);
-            const statusNf = etapa === '60' ? calcularStatusNF(cab, infoNfe) : { status_real: null, status_label: null };
+            const canceladoOmie = pedidoCancelado(p) || ['C', 'CANCELADO', 'CANCELADA'].includes(String(cab.status || cab.status_pedido || '').toUpperCase());
+            const statusNf = canceladoOmie ? { status_real: 'cancelada', status_label: 'Cancelado no Omie' } : (etapa === '60' ? calcularStatusNF(cab, infoNfe) : { status_real: null, status_label: null });
             return {
               codigo_pedido: String(cab.codigo_pedido || ''),
               codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
@@ -274,6 +274,15 @@ Deno.serve(async (req) => {
           ? { ...registro, status_real: existente.status_real, status_label: existente.status_label, numero_nf: existente.numero_nf || registro.numero_nf, data_faturamento: existente.data_faturamento || registro.data_faturamento }
           : registro;
         await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registroFinal);
+        if (registroFinal.status_real === 'cancelada' && registroFinal.pedido_id) {
+          await base44.asServiceRole.entities.Pedido.update(registroFinal.pedido_id, {
+            status: 'cancelado',
+            motivo_cancelamento: registroFinal.status_label || 'Cancelado no Omie',
+            data_cancelamento: new Date().toISOString(),
+            cancelado_por: 'sistema',
+            cancelado_por_nome: 'Sincronização Omie'
+          }).catch(() => {});
+        }
         atualizados += 1;
       } else {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);

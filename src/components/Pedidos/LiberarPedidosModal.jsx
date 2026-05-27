@@ -294,7 +294,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
 
       for (const pedido of pedidosSelecionados) {
         const cliente = clientesPorId[pedido.cliente_id];
-        if (cliente?.pendencia_financeira === true) {
+        if (cliente?.bloquear_faturamento === true || cliente?.pendencia_financeira === true) {
           bloqueados.push({
             ...pedido,
             bloqueio_financeiro: {
@@ -303,25 +303,13 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
               titulos: [],
               total_debitos: 0,
               titulos_atrasados: 0,
+              motivo: cliente?.motivo_bloqueio || 'Bloqueado no cadastro do cliente',
               origem_flag_local: true
             }
           });
           continue;
         }
 
-        if (cliente?.pendencia_financeira == null) {
-          try {
-            const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id });
-            if (res.data?.error || res.data?.sucesso === false) throw new Error(res.data?.error || 'Falha na consulta');
-            if (res.data?.deve_bloquear === true) {
-              bloqueados.push({ ...pedido, bloqueio_financeiro: res.data });
-              continue;
-            }
-          } catch (error) {
-            erros.push({ ...pedido, erro_liberacao: error.message || 'Erro ao consultar Omie' });
-            continue;
-          }
-        }
 
         try {
           await liberarPedido(pedido);
@@ -346,7 +334,7 @@ export default function LiberarPedidosModal({ isOpen, onClose, pedidosSelecionad
     if (!clienteId || loadingDetalhes[grupo.id]) return;
     setLoadingDetalhes(prev => ({ ...prev, [grupo.id]: true }));
     try {
-      const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: clienteId });
+      const res = await base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: clienteId, forcar_atualizacao: true });
       setPedidosBloqueados(prev => prev.map(p => p.cliente_id === clienteId ? { ...p, bloqueio_financeiro: res.data } : p));
     } finally {
       setLoadingDetalhes(prev => ({ ...prev, [grupo.id]: false }));

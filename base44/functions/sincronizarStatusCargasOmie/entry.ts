@@ -252,12 +252,12 @@ Deno.serve(async (req) => {
           pedidosAtualizados.push({
             ...pedido,
             etapa: status.etapa || pedido.etapa,
-            status_pedido: status.status_pedido || pedido.status_pedido,
+            status_pedido: status.cancelado ? 'cancelado' : (status.status_pedido || pedido.status_pedido),
             numero_nf: numeroNfFinal,
             cstat_sefaz: cStatFinal || undefined,
-            status_nf: classificacao || undefined,
+            status_nf: status.cancelado ? 'cancelada' : (classificacao || undefined),
             motivo_rejeicao: ['rejeitada','denegada'].includes(classificacao) ? statusRealLabel : undefined,
-            status_real_omie: statusRealLabel || undefined
+            status_real_omie: status.cancelado ? 'Cancelado no Omie' : (statusRealLabel || undefined)
           });
         } catch (error) {
           if (erroPedidoExcluido(error.message)) {
@@ -286,9 +286,11 @@ Deno.serve(async (req) => {
       const notasMudaram = JSON.stringify(notasFiscaisAtualizadas) !== JSON.stringify(carga.notas_fiscais || []);
 
       if (precisaAtualizar || notasMudaram) {
+        const todosCancelados = pedidosAtualizados.length > 0 && pedidosAtualizados.every(p => String(p.status_nf || p.status_pedido || p.status_real_omie || '').toLowerCase().includes('cancel'));
         await base44.asServiceRole.entities.Carga.update(carga.id, {
           pedidos_omie: pedidosAtualizados,
-          notas_fiscais: notasFiscaisAtualizadas
+          notas_fiscais: notasFiscaisAtualizadas,
+          ...(todosCancelados ? { status_carga: 'cancelada' } : {})
         });
 
         // Reflete apenas autorização fiscal nos Pedidos locais.
@@ -300,7 +302,15 @@ Deno.serve(async (req) => {
               omie_codigo_pedido: String(p.codigo_pedido)
             });
             for (const pl of pedidosLocais) {
-              if (p.status_nf === 'autorizada' && p.numero_nf && pl.numero_nota_fiscal !== String(p.numero_nf)) {
+              if (p.status_nf === 'cancelada') {
+                await base44.asServiceRole.entities.Pedido.update(pl.id, {
+                  status: 'cancelado',
+                  motivo_cancelamento: p.status_real_omie || 'Cancelado no Omie',
+                  data_cancelamento: new Date().toISOString(),
+                  cancelado_por: 'sistema',
+                  cancelado_por_nome: 'Sincronização Omie'
+                });
+              } else if (p.status_nf === 'autorizada' && p.numero_nf && pl.numero_nota_fiscal !== String(p.numero_nf)) {
                 await base44.asServiceRole.entities.Pedido.update(pl.id, {
                   numero_nota_fiscal: String(p.numero_nf),
                   faturado: true,

@@ -235,10 +235,17 @@ Deno.serve(async (req) => {
         logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
       }
     } else {
-      // Sem códigos específicos: pega os mais recentes de cada status pedido
+      // Sem códigos específicos: busca todos os pendentes em páginas até esgotar
       for (const st of statusReconsultar) {
-        const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', 20);
-        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
+        let skip = 0;
+        const pageSize = 200;
+        while (true) {
+          const lote = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', pageSize, skip);
+          const arr = Array.isArray(lote) ? lote : [];
+          logs.push(...arr.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
+          if (arr.length < pageSize) break;
+          skip += pageSize;
+        }
       }
     }
 
@@ -284,8 +291,13 @@ Deno.serve(async (req) => {
           usuario_email: user.email
         }).catch(() => {});
 
+        const logsDoPedido = logs.filter(l => String(l.codigo_pedido) === String(codPed));
+
         if (real.erro) {
-          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: real.erro });
+          for (const l of logsDoPedido) {
+            await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem: real.erro });
+          }
+          resultados.push({ codigo_pedido: codPed, sucesso: false, novo_status: 'erro', mensagem: real.erro });
           continue;
         }
 
@@ -296,8 +308,6 @@ Deno.serve(async (req) => {
 
         // ✅ Tem resposta final — atualiza espelho + logs
         await atualizarEspelho(base44, codPed, real);
-
-        const logsDoPedido = logs.filter(l => String(l.codigo_pedido) === String(codPed));
         let novoStatus;
         if (real.status_real === 'emitida') novoStatus = 'autorizada';
         else if (real.status_real === 'rejeitada' || real.status_real === 'cancelada' || real.status_real === 'denegada') novoStatus = 'rejeitada';
