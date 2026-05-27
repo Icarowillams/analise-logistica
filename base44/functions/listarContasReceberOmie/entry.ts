@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     if (apenas_pendentes) param.filtrar_apenas_titulos_em_aberto = 'S';
 
     const t0 = Date.now();
-    const data = await omieCall('ListarContasReceber', param);
+    const data = await omieCall('ListarContasReceber', param, { cacheMinutes: 10 });
     const duracao = Date.now() - t0;
 
     // Parser DD/MM/AAAA → Date

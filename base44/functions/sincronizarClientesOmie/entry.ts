@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
@@ -369,6 +369,7 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0)
         })
     });
     const data = await response.json();
+    // Consulta com cache lógico de 15 minutos será centralizada pelo dispatcher nos próximos lotes.
     if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')

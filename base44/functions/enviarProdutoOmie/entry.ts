@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/produtos/';
 
-// Backoff exponencial para chamadas Omie sujeitas a rate-limit (429 / cota / redundante)
-async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4) {
+// Helper Omie padronizado: mantém retorno bruto para preservar a lógica existente desta função.
+async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3) {
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -12,9 +12,11 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 4)
     const data = await res.json();
     if (data.faultstring) {
         const msg = data.faultstring.toLowerCase();
-        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('too many') || res.status === 429;
+        const isBlocked = msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde') || res.status === 425;
+        const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || res.status === 429;
+        if (isBlocked) return data;
         if (isRate && tentativa < maxTentativas) {
-            await new Promise(r => setTimeout(r, 2000 * tentativa));
+            await new Promise(r => setTimeout(r, 2500 * tentativa));
             return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
         }
     }
