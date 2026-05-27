@@ -93,7 +93,7 @@ async function indexarNFsRecentes() {
         registros_por_pagina: 200,
         dEmiInicial: fmt(dias),
         dEmiFinal: fmt(hoje)
-      });
+      }, { cacheMinutes: 10 });
       totalPaginas = nfData.nTotPaginas || 1;
       (nfData.nfCadastro || []).forEach(nf => {
         const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
@@ -114,7 +114,7 @@ async function indexarNFsRecentes() {
 async function consultarStatusReal(codigoPedido, nfsIndex) {
   let etapa = '';
   try {
-    const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
+    const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
     etapa = String(r?.pedido_venda_produto?.cabecalho?.etapa || '');
   } catch (e) {
     return { erro: e.message };
@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
     if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
 
     const { codigos_pedido, status_filtros } = body;
+    const limite24h = Date.now() - 24 * 60 * 60 * 1000;
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
@@ -231,18 +232,24 @@ Deno.serve(async (req) => {
         const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({
           codigo_pedido: String(cod)
         }, '-created_date', 5);
-        logs.push(...l);
+        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
       }
     } else {
       // Sem códigos específicos: pega os mais recentes de cada status pedido
       for (const st of statusReconsultar) {
         const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', 20);
-        logs.push(...l);
+        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
       }
     }
 
     if (logs.length === 0) {
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [] });
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_24h' });
+    }
+
+    const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
+    const ultimo = ultimosProcessamentos?.[0];
+    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 5 * 60 * 1000) {
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
     }
 
     // 2) Deduplica por codigo_pedido (logs antigos podem ter várias linhas pendentes)
@@ -333,8 +340,6 @@ Deno.serve(async (req) => {
         resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: e.message });
       }
 
-      // Espaçamento entre consultas para preservar cota Omie
-      await new Promise(r => setTimeout(r, 600));
     }
 
     // 4) Dispara boletos automáticos para autorizadas (cliente BOLETO + tipo=venda)

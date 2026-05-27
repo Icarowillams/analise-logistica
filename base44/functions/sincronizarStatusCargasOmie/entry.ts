@@ -173,6 +173,15 @@ Deno.serve(async (req) => {
 
     let cargas = await base44.asServiceRole.entities.Carga.list('-created_date', listLimit);
 
+    if (!cargaIds || cargaIds.length === 0) {
+      const limite48h = Date.now() - 48 * 60 * 60 * 1000;
+      const statusAndamento = new Set(['montagem', 'conferindo', 'liberado', 'pronta']);
+      const temTrabalho = (cargas || []).some(c => statusAndamento.has(String(c.status_carga || '').toLowerCase()) && new Date(c.created_date || c.updated_date || 0).getTime() >= limite48h);
+      if (!temTrabalho) {
+        return Response.json({ sucesso: true, cargas, sincronizadas: 0, otimizado: true, motivo: 'sem_cargas_em_andamento_48h' });
+      }
+    }
+
     // Filtro opcional por IDs específicos (para força de atualização em massa)
     if (cargaIds && cargaIds.length > 0) {
       const set = new Set(cargaIds.map(String));

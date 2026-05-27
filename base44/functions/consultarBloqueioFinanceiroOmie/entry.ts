@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { cliente_id, cpf_cnpj, invalidar_cache, somente_invalidar_cache } = await req.json();
+        const { cliente_id, cpf_cnpj, invalidar_cache, somente_invalidar_cache, forcar_atualizacao = false } = await req.json();
         if (!cliente_id && !cpf_cnpj) {
             return Response.json({ error: 'Informe cliente_id ou cpf_cnpj' }, { status: 400 });
         }
@@ -104,6 +104,26 @@ Deno.serve(async (req) => {
             if (cliente && !cnpjLimpo) cnpjLimpo = (cliente.cnpj_cpf || cliente.cpf_cnpj || '').replace(/\D/g, '');
         }
         if (!cnpjLimpo) return Response.json({ error: 'CPF/CNPJ inválido' }, { status: 400 });
+
+        if (cliente?.bloquear_faturamento === true && !forcar_atualizacao && !invalidar_cache) {
+            return Response.json({
+                sucesso: true,
+                cliente_nome: cliente?.razao_social || cliente?.nome_fantasia || null,
+                cliente_codigo: cliente?.codigo || null,
+                cpf_cnpj: cnpjLimpo,
+                titulos: [],
+                total_titulos: 0,
+                total_debitos: 0,
+                titulos_atrasados: 0,
+                tem_pendencia: true,
+                limite_credito: 0,
+                saldo_disponivel: 0,
+                deve_bloquear: true,
+                bloqueado_localmente: true,
+                motivo: cliente.motivo_bloqueio || 'Cliente bloqueado no cadastro',
+                cache_hit: false
+            });
+        }
 
         const modoEconomico = await getModoEconomico(base44);
         const cacheKey = `consultarBloqueioFinanceiroOmie:${cliente?.codigo_omie || cliente?.codigo || cliente_id || cnpjLimpo}`;

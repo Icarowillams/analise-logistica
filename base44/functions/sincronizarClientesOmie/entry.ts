@@ -354,22 +354,23 @@ async function mapearClienteParaOmie(clienteOriginal) {
 // Busca UMA página de clientes do Omie
 // Doc Omie: máximo 100 registros/página, 240 req/min, 4 simultâneas. Retry com backoff em 425/520.
 async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0) {
+    const param = {
+        pagina,
+        registros_por_pagina: Math.min(registrosPorPagina, 100),
+        apenas_importado_api: "N"
+    };
+    const chave = `${OMIE_URL}|ListarClientes|${JSON.stringify(param)}`;
+    const cacheExistente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    if (cacheExistente?.[0] && new Date(cacheExistente[0].expira_em) > new Date()) {
+        return { ...cacheExistente[0].valor, cache_hit: true };
+    }
+
     const response = await fetch(OMIE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call: "ListarClientes",
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [{
-                pagina,
-                registros_por_pagina: Math.min(registrosPorPagina, 100),
-                apenas_importado_api: "N"
-            }]
-        })
+        body: JSON.stringify({ call: "ListarClientes", app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
     });
     const data = await response.json();
-    // Consulta com cache lógico de 15 minutos será centralizada pelo dispatcher nos próximos lotes.
     if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
@@ -379,6 +380,10 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0)
             await new Promise(r => setTimeout(r, 2000 * (tentativa + 1)));
             return buscarPaginaOmie(pagina, registrosPorPagina, tentativa + 1);
         }
+    } else {
+        const payloadCache = { chave, valor: data, tipo: 'ListarClientes', expira_em: new Date(Date.now() + 15 * 60000).toISOString(), criado_em: new Date().toISOString() };
+        if (cacheExistente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(cacheExistente[0].id, payloadCache).catch(() => {});
+        else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
     }
     return data;
 }
@@ -386,6 +391,7 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0)
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        base44Global = base44;
         const user = await base44.auth.me();
 
         if (!user) {
@@ -449,6 +455,16 @@ Deno.serve(async (req) => {
 
             const totalPaginas = data.total_de_paginas || 1;
             const totalRegistros = data.total_de_registros || 0;
+
+            if (pagina_omie === 1 && !data.cache_hit) {
+                const locaisRecentes = await base44.asServiceRole.entities.Cliente.list('-updated_date', 20).catch(() => []);
+                const algumAtualizado15min = (locaisRecentes || []).some(c => new Date(c.updated_date || c.created_date || 0).getTime() > Date.now() - 15 * 60000);
+                const comCodigoOmie = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000).catch(() => []);
+                const totalComCodigo = (comCodigoOmie || []).filter(c => c.codigo_omie || c.codigo_cliente_omie).length;
+                if (Number(totalRegistros) === Number(totalComCodigo) && !algumAtualizado15min) {
+                    return Response.json({ pagina: pagina_omie, total_paginas: totalPaginas, total_registros: totalRegistros, clientes: [], concluido: true, otimizado: true, motivo: 'totais_iguais_sem_alteracao_15min' });
+                }
+            }
 
             console.log(`[sync] Página ${pagina_omie}/${totalPaginas}: ${clientes.length} registros (total: ${totalRegistros})`);
 
@@ -529,8 +545,6 @@ Deno.serve(async (req) => {
             }
 
             const resultados = [];
-            const delay = (ms) => new Promise(r => setTimeout(r, ms));
-
             for (const cliente of clientesParaEnviar) {
                 const clienteOmie = await mapearClienteParaOmie({ ...cliente });
                 
@@ -600,7 +614,6 @@ Deno.serve(async (req) => {
                         mensagem: err.message
                     });
                 }
-                await delay(1200);
             }
 
             const sucessos = resultados.filter(r => r.sucesso).length;

@@ -157,6 +157,17 @@ Deno.serve(async (req) => {
     const { max_paginas = 10, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
     const t0 = Date.now();
 
+    const limite48h = Date.now() - 48 * 60 * 60 * 1000;
+    const candidatosRecentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 50).catch(() => []);
+    const temTrabalhoRecente = (candidatosRecentes || []).some(p => {
+      const dt = new Date(p.created_date || p.updated_date || 0).getTime();
+      const status = String(p.status_real || p.status_label || '').toLowerCase();
+      return dt >= limite48h && (status.includes('faturado') || status.includes('pendente') || status.includes('aguardando'));
+    });
+    if (origem === 'reconciliacao' && !temTrabalhoRecente) {
+      return Response.json({ sucesso: true, total_omie: 0, total: 0, criados: 0, atualizados: 0, removidos: 0, consultas_fallback_cliente: 0, duracao_ms: Date.now() - t0, otimizado: true, motivo: 'sem_pedidos_recentes_para_sincronizar' });
+    }
+
     const calcularStatusNF = (cab, infoNfe) => {
       if (infoNfe?.cStatus === 'CANCELADA' || cab?.cancelado === 'S') return { status_real: 'cancelada', status_label: 'NF Cancelada' };
       if (infoNfe?.cStatus === 'DENEGADA') return { status_real: 'denegada', status_label: 'NF Denegada' };

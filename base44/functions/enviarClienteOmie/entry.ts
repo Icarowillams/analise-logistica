@@ -153,6 +153,23 @@ function removerAspas(val) {
     return v;
 }
 
+const CAMPOS_OMIE_RELEVANTES = ['razao_social', 'nome', 'cpf_cnpj', 'cnpj_cpf', 'endereco', 'cidade', 'estado', 'cep', 'codigo_omie', 'email_nfe', 'telefone_comercial', 'telefone', 'bairro', 'numero', 'complemento', 'inscricao_estadual', 'nome_fantasia', 'pessoa_fisica', 'tipo_pessoa', 'status', 'email'];
+
+function mudouCampoOmie(data = {}, oldData = {}, changedFields = []) {
+    if (!oldData || Object.keys(oldData).length === 0) return true;
+    const alterados = Array.isArray(changedFields) && changedFields.length > 0 ? changedFields : Object.keys(data || {}).filter(k => JSON.stringify(data?.[k]) !== JSON.stringify(oldData?.[k]));
+    return alterados.some(c => CAMPOS_OMIE_RELEVANTES.includes(c));
+}
+
+async function registrarDebounceCliente(base44, clienteId) {
+    if (!clienteId) return false;
+    const recentes = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'enviar_cliente_debounce', entidade_id: clienteId }, '-created_date', 1).catch(() => []);
+    const ultimo = recentes?.[0];
+    if (ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 30 * 1000) return true;
+    await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente_debounce', entidade_tipo: 'Cliente', entidade_id: clienteId, status: 'processado' }).catch(() => {});
+    return false;
+}
+
 function limparCamposTexto(obj) {
     const limpo = {};
     for (const [key, value] of Object.entries(obj)) {
@@ -273,14 +290,19 @@ Deno.serve(async (req) => {
         }
         const body = await req.json();
         
-        // Automação de entidade envia: { event, data, old_data, payload_too_large }
-        const { event, data: cliente } = body;
+        // Automação de entidade envia: { event, data, old_data, changed_fields, payload_too_large }
+        const { event, data: cliente, old_data: oldData, changed_fields: changedFields = [] } = body;
 
         console.log('[enviarClienteOmie] Payload recebido:', JSON.stringify(body).substring(0, 500));
         console.log('[enviarClienteOmie] Event:', JSON.stringify(event));
 
-        // Se payload_too_large ou data veio vazio, buscar dados do cliente via SDK
+        // Se for update só de campo interno, ignora antes de buscar dados completos
         let clienteData = cliente;
+        if (event?.type === 'update' && !mudouCampoOmie(clienteData || {}, oldData || {}, changedFields)) {
+            return Response.json({ sucesso: true, ignorado: true, motivo: 'sem_campos_omie_alterados', cliente_id: clienteData?.id || event?.entity_id });
+        }
+
+        // Se payload_too_large ou data veio vazio, buscar dados do cliente via SDK
         if ((body.payload_too_large || !clienteData || !clienteData.razao_social) && event?.entity_id) {
             console.log('[enviarClienteOmie] Buscando cliente via SDK, entity_id:', event.entity_id);
             clienteData = await base44.asServiceRole.entities.Cliente.get(event.entity_id);
@@ -290,6 +312,11 @@ Deno.serve(async (req) => {
         if (!clienteData || (!clienteData.id && !event?.entity_id)) {
             console.log('[enviarClienteOmie] Cliente não informado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
+        }
+
+        const clienteDebounceId = clienteData.id || event?.entity_id;
+        if (await registrarDebounceCliente(base44, clienteDebounceId)) {
+            return Response.json({ sucesso: true, ignorado: true, motivo: 'debounce_30s', cliente_id: clienteDebounceId });
         }
 
         // Usar o ID do evento se não vier no data

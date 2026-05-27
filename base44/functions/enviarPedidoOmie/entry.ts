@@ -70,7 +70,7 @@ let base44Global = null;
 
 // Cache de conta corrente por execução (evita chamada repetida)
 let _contaCorrenteCache = null;
-async function resolverContaCorrente() {
+async function resolverContaCorrentePadrao() {
     if (_contaCorrenteCache) return _contaCorrenteCache;
     try {
         const cc = await omieCall(OMIE_CC_URL, {
@@ -324,8 +324,8 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     if (!res.ok) return { sucesso: false, erro: res.erro, pedido_id };
     let clientePayload = res.payload;
 
-    // Conta corrente (cache)
-    const contaCorrente = await resolverContaCorrente();
+    // Conta corrente padrão resolvida uma única vez por execução/lote
+    const contaCorrente = ctx.contaCorrentePadrao || await resolverContaCorrentePadrao();
 
     // ENVIAR
     const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
@@ -346,26 +346,9 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         }
     }
 
-    // Idempotência: pedido já existe no Omie
-    if (resultado?.faultstring && /(já cadastrado|já existe)/i.test(resultado.faultstring)) {
-        const consulta = await omieCall(OMIE_URL, {
-            call: "ConsultarPedido",
-            param: [{ codigo_pedido_integracao: pedido.id }]
-        }, { maxTentativas: 2 });
-        if (!consulta?.faultstring && consulta?.cabecalho) {
-            const codigoOmie = consulta.cabecalho.codigo_pedido || null;
-            const numeroPedidoOmie = consulta.cabecalho.numero_pedido || null;
-            const updateData = {
-                omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
-                omie_enviado: true,
-                omie_erro: null,
-                status: pedido.status === 'pendente' ? 'enviado' : pedido.status,
-                data_envio: pedido.data_envio || new Date().toISOString()
-            };
-            if (numeroPedidoOmie) updateData.numero_pedido = String(numeroPedidoOmie);
-            await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
-            return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, mensagem: 'Pedido já existia, status sincronizado' };
-        }
+    // Idempotência otimizada: se já existe, altera direto sem consulta preventiva
+    if (resultado?.faultstring && /(já cadastrado|já existe|código.*cadastrado|codigo.*cadastrado)/i.test(resultado.faultstring)) {
+        resultado = await omieCall(OMIE_URL, { call: "AlterarPedidoVenda", param: [payload] });
     }
 
     if (resultado?.faultstring) {
@@ -405,13 +388,13 @@ async function processarLotePedidos(base44, pedidosInput) {
     const resultados = [];
     let idx = 0;
     const WORKERS = 4;
+    const contaCorrentePadrao = await resolverContaCorrentePadrao();
 
     async function worker() {
         while (idx < pedidoIds.length) {
             const pedido_id = pedidoIds[idx++];
-            const r = await enviarUmPedido(base44, pedido_id);
+            const r = await enviarUmPedido(base44, pedido_id, { contaCorrentePadrao });
             resultados.push(r);
-            await sleep(280);
         }
     }
 
