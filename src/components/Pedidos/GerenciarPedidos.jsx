@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -24,7 +23,7 @@ import SelecionarEntidadeModal from './SelecionarEntidadeModal';
 import useDragSelect from './useDragSelect';
 import useColumnOrder from './useColumnOrder';
 import useColumnResize from './useColumnResize';
-import PedidoCellRenderer, { formatDate, formatCurrency } from './PedidoCellRenderer';
+import PedidoCellRenderer, { formatCurrency } from './PedidoCellRenderer';
 import BatchResultToast from './BatchResultToast';
 import BuscarClienteModal from './BuscarClienteModal';
 import LiberarPedidosModal from './LiberarPedidosModal';

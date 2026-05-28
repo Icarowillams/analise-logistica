@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, Unlock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, Lock, Unlock } from 'lucide-react';
 
 const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0);
 
