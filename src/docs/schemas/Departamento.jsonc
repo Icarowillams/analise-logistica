@@ -1,0 +1,1 @@
+{"name":"Departamento","type":"object","properties":{"nome":{"type":"string","description":"Nome do departamento"},"descricao":{"type":"string","description":"Descrição do departamento"},"status":{"type":"string","enum":["ativo","inativo"],"default":"ativo"}},"required":["nome"]}
