@@ -527,6 +527,26 @@ Deno.serve(async (req) => {
     try { body = JSON.parse(logData.payload_resposta || '{}'); } catch { body = {}; }
     const evt = body.event || body;
 
+    const topicsSilenciosos = [
+      'VendaProduto.Incluida',
+      'RecebimentoProduto.Incluido',
+      'Produto.MovimentacaoEstoque'
+    ];
+
+    if (topicsSilenciosos.includes(topic)) {
+      await base44.asServiceRole.entities.LogIntegracaoOmie.update(entityId, {
+        status: 'ignorado',
+        call: topic,
+        operacao: 'receber_webhook',
+        mensagem_erro: null,
+        payload_resposta: JSON.stringify(body).slice(0, 3000),
+        payload_enviado: JSON.stringify({ acao: 'ignorado', motivo: 'topic silencioso' }).slice(0, 3000),
+        webhook_processado_em: new Date().toISOString()
+      });
+
+      return Response.json({ sucesso: true, topic, resultado: { acao: 'ignorado', silencioso: true } }, { status: 200 });
+    }
+
     let resultado = { acao: 'ignorado' };
 
     // ROTEAMENTO
