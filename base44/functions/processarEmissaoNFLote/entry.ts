@@ -1,0 +1,208 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
+const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+let base44Global = null;
+
+async function omieCall(call, param) {
+  const url = OMIE_FAT_URL;
+  const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+  const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
+  }
+
+  let lastError = '';
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
+    });
+    const data = await res.json();
+
+    if (data.faultstring || data.faultcode) {
+      const erro = data.faultstring || 'Erro Omie';
+      const msg = String(erro).toLowerCase();
+      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('consumo indevido') || msg.includes('tente novamente mais tarde')) {
+        const payloadCb = {
+          chave: 'principal',
+          bloqueado: true,
+          bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(),
+          ultimo_erro: erro,
+          atualizado_em: new Date().toISOString()
+        };
+        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        throw new Error(erro);
+      }
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
+        lastError = erro;
+        await sleep(2500 * tentativa);
+        continue;
+      }
+      throw new Error(erro);
+    }
+
+    return data;
+  }
+  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
+}
+
+async function buscarContextoPedido(base44, codigoPedido) {
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) });
+    const p = pedidos?.[0];
+    if (!p) return {};
+    return {
+      pedido_id: p.id,
+      numero_pedido: p.numero_pedido || '',
+      cliente_id: p.cliente_id || '',
+      cliente_nome: p.cliente_nome || '',
+      carga_id: p.carga_id || '',
+      numero_carga: p.numero_carga || ''
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem) {
+  const ctx = await buscarContextoPedido(base44, codigoPedido);
+  await base44.asServiceRole.entities.LogEmissaoNF.create({
+    codigo_pedido: String(codigoPedido),
+    numero_pedido: ctx.numero_pedido,
+    cliente_id: ctx.cliente_id,
+    cliente_nome: ctx.cliente_nome,
+    carga_id: ctx.carga_id || fila.carga_id || '',
+    numero_carga: ctx.numero_carga || fila.numero_carga || '',
+    lote_id: fila.lote_id,
+    status,
+    mensagem,
+    boleto_gerado: false,
+    usuario_email: fila.usuario_email || ''
+  }).catch(() => {});
+}
+
+async function carregarFila(base44, body) {
+  const filaId = body.fila_id || body.data?.id || body.event?.entity_id;
+  if (filaId) {
+    try {
+      const fila = await base44.asServiceRole.entities.FilaEmissaoNF.get(filaId);
+      if (fila && ['processando', 'executando'].includes(fila.status)) return fila;
+    } catch { /* segue para buscar próxima */ }
+  }
+  const filas = await base44.asServiceRole.entities.FilaEmissaoNF.filter({ status: 'processando' }, '-created_date', 1);
+  return filas?.[0] || null;
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    base44Global = base44;
+    const body = await req.json().catch(() => ({}));
+    const fila = await carregarFila(base44, body);
+
+    if (!fila) {
+      return Response.json({ sucesso: true, mensagem: 'Nenhum lote pendente para processar' });
+    }
+
+    const pedidos = Array.isArray(fila.pedidos) ? fila.pedidos.map(String).filter(Boolean) : [];
+    const resultados = Array.isArray(fila.resultados) ? [...fila.resultados] : [];
+    const erros = Array.isArray(fila.erros) ? [...fila.erros] : [];
+    let processados = Number(fila.processados || 0);
+
+    await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+      status: 'executando',
+      mensagem: `Emitindo NF ${Math.min(processados + 1, pedidos.length)} de ${pedidos.length}...`,
+      atualizado_em: new Date().toISOString()
+    });
+
+    for (let i = processados; i < pedidos.length; i++) {
+      const codigoPedido = pedidos[i];
+      const t0 = Date.now();
+      try {
+        const resposta = await omieCall('FaturarPedidoVenda', { nCodPed: Number(codigoPedido) });
+        resultados.push({
+          codigo_pedido: codigoPedido,
+          sucesso: true,
+          status: 'pendente_sefaz',
+          mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ'
+        });
+
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: 'produtos/pedidovendafat',
+          call: 'FaturarPedidoVenda',
+          operacao: 'emitir_nf_lote_background',
+          status: 'sucesso',
+          duracao_ms: Date.now() - t0,
+          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
+          payload_resposta: JSON.stringify(resposta).slice(0, 800),
+          usuario_email: fila.usuario_email || ''
+        }).catch(() => {});
+
+        await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', 'Emissão acionada no Omie — aguardando retorno da SEFAZ');
+      } catch (error) {
+        const mensagem = error.message || 'Erro ao emitir NF';
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem });
+        erros.push({ codigo_pedido: codigoPedido, mensagem });
+
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: 'produtos/pedidovendafat',
+          call: 'FaturarPedidoVenda',
+          operacao: 'emitir_nf_lote_background',
+          status: 'erro',
+          duracao_ms: Date.now() - t0,
+          mensagem_erro: mensagem,
+          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
+          usuario_email: fila.usuario_email || ''
+        }).catch(() => {});
+
+        await gravarLogEmissao(base44, fila, codigoPedido, 'erro', `[OMIE] ${mensagem}`);
+
+        if (mensagem.toLowerCase().includes('bloqueada') || mensagem.toLowerCase().includes('bloqueio')) {
+          processados = i + 1;
+          await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+            processados,
+            resultados,
+            erros,
+            status: 'erro',
+            mensagem: `Processamento interrompido: ${mensagem}`,
+            atualizado_em: new Date().toISOString(),
+            concluido_em: new Date().toISOString()
+          });
+          return Response.json({ sucesso: false, fila_id: fila.id, erro: mensagem, processados });
+        }
+      }
+
+      processados = i + 1;
+      await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+        processados,
+        resultados,
+        erros,
+        mensagem: processados < pedidos.length ? `Emitindo NF ${processados + 1} de ${pedidos.length}...` : 'Finalizando emissão...',
+        atualizado_em: new Date().toISOString()
+      });
+
+      if (i < pedidos.length - 1) await sleep(3000);
+    }
+
+    const statusFinal = erros.length > 0 ? 'erro' : 'concluido';
+    await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+      status: statusFinal,
+      processados,
+      resultados,
+      erros,
+      mensagem: statusFinal === 'concluido' ? 'Lote enviado ao Omie. Aguardando retorno da SEFAZ nos logs.' : `${erros.length} pedido(s) falharam na emissão.`,
+      atualizado_em: new Date().toISOString(),
+      concluido_em: new Date().toISOString()
+    });
+
+    return Response.json({ sucesso: statusFinal === 'concluido', fila_id: fila.id, status: statusFinal, processados, erros: erros.length });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});

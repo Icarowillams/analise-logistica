@@ -1,0 +1,111 @@
+{
+  "name": "FilaEmissaoNF",
+  "type": "object",
+  "description": "Fila ass\u00edncrona para emiss\u00e3o de NF-e em lote no Omie com processamento sequencial e controle de progresso",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "emissao_nf_lote"
+      ],
+      "default": "emissao_nf_lote"
+    },
+    "lote_id": {
+      "type": "string",
+      "description": "Identificador \u00fanico do lote de emiss\u00e3o"
+    },
+    "carga_id": {
+      "type": "string",
+      "description": "ID da carga vinculada ao lote, quando houver"
+    },
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero da carga vinculada ao lote"
+    },
+    "total_pedidos": {
+      "type": "number",
+      "default": 0
+    },
+    "processados": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processando",
+        "executando",
+        "concluido",
+        "erro"
+      ],
+      "default": "processando"
+    },
+    "pedidos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lista de c\u00f3digos dos pedidos Omie a emitir"
+    },
+    "resultados": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo_pedido": {
+            "type": "string"
+          },
+          "sucesso": {
+            "type": "boolean"
+          },
+          "mensagem": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "erros": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo_pedido": {
+            "type": "string"
+          },
+          "mensagem": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "mensagem": {
+      "type": "string"
+    },
+    "usuario_email": {
+      "type": "string"
+    },
+    "iniciado_em": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "atualizado_em": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "concluido_em": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tipo",
+    "lote_id",
+    "status"
+  ]
+}

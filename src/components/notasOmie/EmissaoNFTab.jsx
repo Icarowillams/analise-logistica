@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,8 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
   const [emitindo, setEmitindo] = useState(false);
+  const [loteAtivoId, setLoteAtivoId] = useState(null);
+  const [loteNotificado, setLoteNotificado] = useState(null);
   // Só carrega após o usuário clicar em "Atualizar lista"
   const [carregamentoIniciado, setCarregamentoIniciado] = useState(false);
 
@@ -97,6 +100,29 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     staleTime: 30000
   });
 
+  const { data: filasEmissao = [] } = useQuery({
+    queryKey: ['filas-emissao-nf-emissao'],
+    queryFn: () => base44.entities.FilaEmissaoNF.list('-created_date', 10),
+    enabled: ativa,
+    refetchInterval: ativa ? 3000 : false
+  });
+
+  const filaAtiva = useMemo(() => {
+    if (loteAtivoId) return filasEmissao.find(f => f.id === loteAtivoId) || null;
+    return filasEmissao.find(f => ['processando', 'executando'].includes(f.status)) || null;
+  }, [filasEmissao, loteAtivoId]);
+
+  useEffect(() => {
+    if (!filaAtiva || !loteAtivoId || loteNotificado === loteAtivoId) return;
+    if (filaAtiva.status === 'concluido' || filaAtiva.status === 'erro') {
+      setLoteNotificado(loteAtivoId);
+      refetch();
+      if (filaAtiva.status === 'concluido') toast.success('Emissão do lote enviada ao Omie. Acompanhe a autorização no Log de Emissão.');
+      if (filaAtiva.status === 'erro') toast.error('Lote finalizado com erro. Veja os detalhes abaixo e no Log de Emissão.');
+      onEmissionComplete?.(filaAtiva.pedidos || []);
+    }
+  }, [filaAtiva, loteAtivoId, loteNotificado, refetch, onEmissionComplete]);
+
   const handleAtualizarLista = () => {
     if (!carregamentoIniciado) {
       setCarregamentoIniciado(true);
@@ -158,26 +184,10 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         codigos_pedido: codigos
       });
 
-      // Apenas mostra toast quando há resultado final (autorizada ou rejeitada).
-      // Pendentes/processamento → silencioso, usuário acompanha pelo Log de Emissão.
-      const autorizadas = data?.sucessos || 0;
-      const rejeitadas = data?.rejeitadas || 0;
-
-      if (autorizadas > 0) {
-        toast.success(
-          `${autorizadas} NF(s) autorizada(s)${data?.clientes_boleto > 0 ? ` — ${data.clientes_boleto} boleto(s) gerado(s)` : ''}. Veja o Log de Emissão.`
-        );
-      }
-      if (rejeitadas > 0) {
-        toast.error(`${rejeitadas} NF(s) rejeitada(s). Veja o motivo no Log de Emissão.`);
-      }
-      if (autorizadas === 0 && rejeitadas === 0) {
-        // Tudo em processamento — sem popup, só uma nota discreta
-        toast.message('Emissão enviada. Acompanhe o resultado no Log de Emissão.');
-      }
-
+      setLoteAtivoId(data?.fila_id || null);
+      setLoteNotificado(null);
+      toast.message(data?.mensagem || 'Faturamento iniciado em background. Acompanhe o progresso na tela.');
       setSelecionados(new Set());
-      onEmissionComplete?.(codigos.map(String));
     } catch (e) {
       toast.error('Erro ao emitir NFs: ' + e.message);
     }
@@ -202,6 +212,39 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
           </div>
         </CardContent>
       </Card>
+
+      {filaAtiva && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-blue-900">Progresso da emissão</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(() => {
+              const total = Number(filaAtiva.total_pedidos || 0);
+              const processados = Number(filaAtiva.processados || 0);
+              const pct = total > 0 ? Math.round((processados / total) * 100) : 0;
+              return (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-blue-900">
+                      {filaAtiva.status === 'concluido' ? 'Lote concluído' : filaAtiva.status === 'erro' ? 'Lote com erro' : `Emitindo NF ${Math.min(processados + 1, total)} de ${total}...`}
+                    </span>
+                    <span className="text-blue-700">{processados}/{total}</span>
+                  </div>
+                  <Progress value={pct} className="h-2" />
+                  {filaAtiva.erros?.length > 0 && (
+                    <div className="rounded-lg border border-red-200 bg-white p-2 text-xs text-red-700">
+                      {filaAtiva.erros.map((e, idx) => (
+                        <p key={idx}>Pedido {e.codigo_pedido}: {e.mensagem}</p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

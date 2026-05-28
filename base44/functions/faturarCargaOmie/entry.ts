@@ -194,8 +194,31 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    // NOTA: Geração de NF-e e boletos foi movida para a tela "Notas Omie → Emissão"
-    // (manual, individual ou em lote). Esta função NÃO emite NF nem boleto.
+    const codigosParaEmitir = pedidos
+      .filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido && !p.numero_nf)
+      .map(p => String(p.codigo_pedido));
+
+    let filaEmissao = null;
+    if (codigosParaEmitir.length > 0) {
+      const loteId = `LOTE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      filaEmissao = await base44.asServiceRole.entities.FilaEmissaoNF.create({
+        tipo: 'emissao_nf_lote',
+        lote_id: loteId,
+        carga_id,
+        numero_carga: carga.numero_carga || '',
+        total_pedidos: codigosParaEmitir.length,
+        processados: 0,
+        status: 'processando',
+        pedidos: codigosParaEmitir,
+        resultados: [],
+        erros: [],
+        mensagem: 'Faturamento iniciado em background. Acompanhe o progresso na tela.',
+        usuario_email: user.email,
+        iniciado_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString()
+      });
+    }
+
     return Response.json({
       sucesso: true,
       total: pedidos.length,
@@ -204,6 +227,10 @@ Deno.serve(async (req) => {
       skips,
       nfs_emitidas: nfsEmitidas,
       aguardando_nf: aguardandoNf,
+      fila_id: filaEmissao?.id || null,
+      lote_id: filaEmissao?.lote_id || null,
+      assincrono: !!filaEmissao,
+      mensagem: filaEmissao ? 'Faturamento iniciado em background. Acompanhe o progresso na tela.' : 'Carga faturada localmente. Não havia NF-e para emitir em background.',
       resultados
     });
   } catch (error) {

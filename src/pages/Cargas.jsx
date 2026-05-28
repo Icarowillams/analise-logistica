@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -92,6 +93,14 @@ export default function Cargas() {
     refetchOnWindowFocus: true
   });
 
+  const { data: filasEmissao = [] } = useQuery({
+    queryKey: ['filas-emissao-nf-cargas'],
+    queryFn: () => base44.entities.FilaEmissaoNF.list('-created_date', 10),
+    refetchInterval: 3000
+  });
+
+  const filasAtivas = useMemo(() => filasEmissao.filter(f => ['processando', 'executando'].includes(f.status)), [filasEmissao]);
+
   // 2️⃣ Sincroniza status com Omie em BACKGROUND (não bloqueia a UI)
   useEffect(() => {
     let cancelado = false;
@@ -164,7 +173,7 @@ export default function Cargas() {
     try {
       const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
       if (data?.error || data?.sucesso === false) throw new Error(data?.error || 'Erro ao faturar carga');
-      toast.success(`Carga ${carga.numero_carga} faturada. Agora emita a NF-e em Notas Omie → Emissão.`, { duration: 8000 });
+      toast.success(data?.mensagem || 'Faturamento iniciado em background. Acompanhe o progresso na tela.', { duration: 8000 });
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
     } catch (e) {
       toast.error(e.message);
@@ -187,7 +196,7 @@ export default function Cargas() {
         const { data } = await base44.functions.invoke('faturarCargaOmie', { carga_id: carga.id });
         if (data?.error || data?.sucesso === false) throw new Error(data?.error || `Erro ao faturar carga ${carga.numero_carga}`);
       }
-      toast.success(`${cargasFaturar.length} carga(s) faturada(s). Agora emita as NF-e em Notas Omie → Emissão.`, { duration: 8000 });
+      toast.success(`${cargasFaturar.length} carga(s) enviada(s) para faturamento em background.`, { duration: 8000 });
     } catch (e) {
       toast.error(e.message);
     }
@@ -441,6 +450,33 @@ export default function Cargas() {
           )}
         </div>
       </div>
+
+      {filasAtivas.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-blue-900">Emissão de NF-e em background</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {filasAtivas.slice(0, 3).map(fila => {
+              const total = Number(fila.total_pedidos || 0);
+              const processadosFila = Number(fila.processados || 0);
+              const pct = total > 0 ? Math.round((processadosFila / total) * 100) : 0;
+              return (
+                <div key={fila.id} className="space-y-1 rounded-lg border border-blue-200 bg-white p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-blue-900">Carga {fila.numero_carga || fila.carga_id || '-'}</span>
+                    <span className="text-blue-700">Emitindo NF {Math.min(processadosFila + 1, total)} de {total}</span>
+                  </div>
+                  <Progress value={pct} className="h-2" />
+                  {fila.erros?.length > 0 && (
+                    <p className="text-xs text-red-700">{fila.erros.length} erro(s): {fila.erros.map(e => `Pedido ${e.codigo_pedido}: ${e.mensagem}`).join(' | ')}</p>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
