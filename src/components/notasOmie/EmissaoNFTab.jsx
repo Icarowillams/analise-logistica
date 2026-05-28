@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, FileSignature, Send, AlertCircle } from 'lucide-react';
+import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -72,13 +72,22 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         ? await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigos } }, '-created_date', 500)
         : [];
       const statusPedidoLocal = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl.status]));
+      const pedidoLocalPorCodigo = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl]));
+      const logsAutorizados = codigos.length > 0
+        ? await base44.entities.LogEmissaoNF.filter({ status: 'autorizada' }, '-created_date', 500)
+        : [];
+      const logAutorizadoPorCodigo = new Map(logsAutorizados.map(l => [String(l.codigo_pedido), l]));
 
       return pedidosCarga
         .filter(p => {
           const cod = String(p.codigo_pedido);
           const e = mapaEspelho.get(cod);
+          const local = pedidoLocalPorCodigo.get(cod);
           if (e?.status_real === 'cancelada' || e?.status_real === 'denegada') return false;
           if (e?.etapa === '70' || e?.etapa === '80') return false;
+          if (e?.numero_nf || e?.status_real === 'emitida') return false;
+          if (local?.numero_nota_fiscal || local?.status_faturamento === 'faturado' || local?.faturado === true) return false;
+          if (logAutorizadoPorCodigo.has(cod)) return false;
           if (statusPedidoLocal.get(cod) === 'cancelado') return false;
           return true;
         })
@@ -92,8 +101,10 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
             nome_cliente: e.nome_cliente || p.nome_cliente || '',
             nome_fantasia: e.nome_fantasia || p.nome_fantasia || '',
             cidade: e.cidade || p.cidade || '',
-            cliente_id: e.cliente_id || p.cliente_id || ''
-          };
+            cliente_id: e.cliente_id || p.cliente_id || '',
+            numero_nf: e.numero_nf || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.numero_nota_fiscal || '',
+            ja_faturado: !!(e.numero_nf || e.status_real === 'emitida' || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.numero_nota_fiscal || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.status_faturamento === 'faturado' || logAutorizadoPorCodigo.has(String(p.codigo_pedido)))
+            };
         });
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
@@ -154,6 +165,8 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     });
   }, [espelho, busca, filtroCarga, cargaPorPedido]);
 
+  const podeSelecionar = (pedido) => !pedido.ja_faturado && !pedido.numero_nf;
+
   const todasMarcadas = pedidosFiltrados.length > 0 && pedidosFiltrados.every(p => selecionados.has(p.codigo_pedido));
   const algumaMarcada = selecionados.size > 0;
 
@@ -162,13 +175,15 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     if (todasMarcadas) {
       pedidosFiltrados.forEach(p => novo.delete(p.codigo_pedido));
     } else {
-      pedidosFiltrados.forEach(p => novo.add(p.codigo_pedido));
+      pedidosFiltrados.filter(podeSelecionar).forEach(p => novo.add(p.codigo_pedido));
     }
     setSelecionados(novo);
   };
 
   const toggleLinha = (codigo) => {
     const novo = new Set(selecionados);
+    const pedido = pedidosFiltrados.find(p => p.codigo_pedido === codigo);
+    if (pedido && !podeSelecionar(pedido)) return;
     if (novo.has(codigo)) novo.delete(codigo); else novo.add(codigo);
     setSelecionados(novo);
   };
@@ -322,7 +337,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                   return (
                     <tr key={p.codigo_pedido} className={`border-t hover:bg-slate-50/50 transition-colors ${marcado ? 'bg-amber-50/40' : ''}`}>
                       <td className="p-2 text-center">
-                        <Checkbox checked={marcado} onCheckedChange={() => toggleLinha(p.codigo_pedido)} />
+                        <Checkbox checked={marcado} disabled={!podeSelecionar(p)} onCheckedChange={() => toggleLinha(p.codigo_pedido)} />
                       </td>
                       <td className="p-2 font-medium">{p.numero_pedido}</td>
                       <td className="p-2">
@@ -338,14 +353,20 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                       <td className="p-2 text-right">{formatarValor(p.valor_total_pedido)}</td>
                       <td className="p-2 text-center">{p.quantidade_itens || 0}</td>
                       <td className="p-2 text-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => emitirIndividual(p.codigo_pedido)}
-                          disabled={emitindo}
-                        >
-                          <FileSignature className="w-4 h-4 mr-1" /> Emitir
-                        </Button>
+                        {p.ja_faturado || p.numero_nf ? (
+                          <Badge className="bg-green-100 text-green-800 border-green-300">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> NF {p.numero_nf || 'emitida'}
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => emitirIndividual(p.codigo_pedido)}
+                            disabled={emitindo}
+                          >
+                            <FileSignature className="w-4 h-4 mr-1" /> Emitir
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );

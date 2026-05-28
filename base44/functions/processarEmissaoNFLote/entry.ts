@@ -133,6 +133,11 @@ Deno.serve(async (req) => {
           mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ'
         });
 
+        const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
+        if (pedidosLocais?.[0]?.id) {
+          await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, { status_faturamento: 'processando' }).catch(() => {});
+        }
+
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedidovendafat',
           call: 'FaturarPedidoVenda',
@@ -148,6 +153,10 @@ Deno.serve(async (req) => {
       } catch (error) {
         const mensagem = error.message || 'Erro ao emitir NF';
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem });
+        const pedidosLocaisErro = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
+        if (pedidosLocaisErro?.[0]?.id) {
+          await base44.asServiceRole.entities.Pedido.update(pedidosLocaisErro[0].id, { status_faturamento: 'erro', omie_erro: mensagem }).catch(() => {});
+        }
         erros.push({ codigo_pedido: codigoPedido, mensagem });
 
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({

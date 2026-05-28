@@ -42,6 +42,18 @@
       "default": "pendente",
       "description": "Status do fluxo de venda"
     },
+    "status_faturamento": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "processando",
+        "faturado",
+        "rejeitado",
+        "erro"
+      ],
+      "default": "pendente",
+      "description": "Status espec\u00edfico da emiss\u00e3o de NF-e para bloquear reemiss\u00e3o duplicada"
+    },
     "status_logistico": {
       "type": "string",
       "enum": [

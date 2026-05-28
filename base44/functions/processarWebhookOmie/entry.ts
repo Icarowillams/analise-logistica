@@ -344,6 +344,7 @@ async function handlePedido(base44, topic, evt) {
   if (topic === 'VendaProduto.Faturada') {
     updates.status = 'faturado';
     updates.faturado = true;
+    updates.status_faturamento = 'faturado';
     updates.data_faturamento = new Date().toISOString();
     if (evt?.numero_nf) {
       updates.numero_nota_fiscal = String(evt.numero_nf);
@@ -360,6 +361,15 @@ async function handlePedido(base44, topic, evt) {
   } else if (topic === 'VendaProduto.EtapaAlterada') {
     const novoStatus = mapEtapaParaStatus(evt?.etapa);
     if (novoStatus) updates.status = novoStatus;
+    if (String(evt?.etapa || '') === '60') {
+      updates.faturado = true;
+      updates.status_faturamento = 'faturado';
+      updates.data_faturamento = updates.data_faturamento || new Date().toISOString();
+      if (evt?.numero_nf || evt?.numero_nota) {
+        updates.numero_nota_fiscal = String(evt.numero_nf || evt.numero_nota);
+        dadosCarga.numero_nf = updates.numero_nota_fiscal;
+      }
+    }
     if (evt?.etapa) dadosCarga.etapa = String(evt.etapa);
   } else if (topic === 'VendaProduto.Devolvida') {
     updates.status = 'cancelado';
@@ -445,6 +455,7 @@ async function handleNFe(base44, topic, evt) {
     const numNf = evt?.numero_nf || evt?.numero_nota;
     if (numNf) {
       updates.numero_nota_fiscal = String(numNf);
+      updates.status_faturamento = 'faturado';
       dadosCarga.numero_nf = String(numNf);
     }
     dadosCarga.etapa = '60';
@@ -466,6 +477,7 @@ async function handleNFe(base44, topic, evt) {
     // NF rejeitada/denegada: pedido FICA em etapa 60 no Omie (Faturado com rejeição).
     // Não cancelamos o Pedido local — apenas marcamos para o operador agir (corrigir e reemitir).
     updates.faturado = false;
+    updates.status_faturamento = topic === 'NFe.NotaDenegada' ? 'erro' : 'rejeitado';
     const motivo = topic === 'NFe.NotaDenegada' ? 'NF-e DENEGADA pela SEFAZ' : 'NF-e REJEITADA pela SEFAZ';
     const detalhe = evt?.xMotivo || evt?.cMensStatus || evt?.motivo || '';
     updates.omie_erro = `${motivo}${detalhe ? ' — ' + detalhe : ''}`.slice(0, 500);

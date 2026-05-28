@@ -194,9 +194,19 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const codigosParaEmitir = pedidos
-      .filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido && !p.numero_nf)
-      .map(p => String(p.codigo_pedido));
+    const codigosParaEmitir = [];
+    const errosDuplicidade = [];
+    for (const p of pedidos.filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido && !p.numero_nf)) {
+      const codigo = String(p.codigo_pedido);
+      const locais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
+      const local = locais?.[0];
+      const logsNF = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'autorizada' }, '-created_date', 1).catch(() => []);
+      if (local?.numero_nota_fiscal || local?.status_faturamento === 'faturado' || local?.faturado === true || logsNF?.[0]) {
+        errosDuplicidade.push({ codigo_pedido: codigo, mensagem: `Pedido #${local?.numero_pedido || p.numero_pedido || codigo} já foi faturado em ${new Date(local?.data_faturamento || logsNF?.[0]?.created_date || new Date()).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })}. NF: ${local?.numero_nota_fiscal || logsNF?.[0]?.numero_nf || '-'}` });
+        continue;
+      }
+      codigosParaEmitir.push(codigo);
+    }
 
     let filaEmissao = null;
     if (codigosParaEmitir.length > 0) {
@@ -211,7 +221,7 @@ Deno.serve(async (req) => {
         status: 'processando',
         pedidos: codigosParaEmitir,
         resultados: [],
-        erros: [],
+        erros: errosDuplicidade,
         mensagem: 'Faturamento iniciado em background. Acompanhe o progresso na tela.',
         usuario_email: user.email,
         iniciado_em: new Date().toISOString(),
@@ -231,6 +241,8 @@ Deno.serve(async (req) => {
       lote_id: filaEmissao?.lote_id || null,
       assincrono: !!filaEmissao,
       mensagem: filaEmissao ? 'Faturamento iniciado em background. Acompanhe o progresso na tela.' : 'Carga faturada localmente. Não havia NF-e para emitir em background.',
+      ignorados_duplicidade: errosDuplicidade?.length || 0,
+      erros_duplicidade: errosDuplicidade || [],
       resultados
     });
   } catch (error) {
