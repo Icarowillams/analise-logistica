@@ -6,6 +6,14 @@ const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SEC
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 let base44Global = null;
 
+function criarErroOmie(data, fallback = 'Erro Omie') {
+  const error = new Error(data?.faultstring || fallback);
+  error.faultstring = data?.faultstring || fallback;
+  error.faultcode = data?.faultcode || '';
+  error.omiePayload = data || null;
+  return error;
+}
+
 async function omieCall(call, param) {
   const url = OMIE_FAT_URL;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
@@ -37,14 +45,14 @@ async function omieCall(call, param) {
         };
         if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
         else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw new Error(erro);
+        throw criarErroOmie(data, erro);
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
         lastError = erro;
         await sleep(2500 * tentativa);
         continue;
       }
-      throw new Error(erro);
+      throw criarErroOmie(data, erro);
     }
 
     return data;
@@ -70,7 +78,7 @@ async function buscarContextoPedido(base44, codigoPedido) {
   }
 }
 
-async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem) {
+async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, extra = {}) {
   const ctx = await buscarContextoPedido(base44, codigoPedido);
   await base44.asServiceRole.entities.LogEmissaoNF.create({
     codigo_pedido: String(codigoPedido),
@@ -82,6 +90,11 @@ async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem) {
     lote_id: fila.lote_id,
     status,
     mensagem,
+    faultstring: extra.faultstring || '',
+    faultcode: extra.faultcode || '',
+    erro_tipo: extra.erro_tipo || '',
+    payload_enviado: extra.payload_enviado || '',
+    payload_resposta: extra.payload_resposta || '',
     boleto_gerado: false,
     usuario_email: fila.usuario_email || ''
   }).catch(() => {});
@@ -159,18 +172,29 @@ Deno.serve(async (req) => {
         }
         erros.push({ codigo_pedido: codigoPedido, mensagem });
 
+        const payloadEnviado = JSON.stringify({ nCodPed: codigoPedido });
+        const payloadResposta = error.omiePayload ? JSON.stringify(error.omiePayload) : '';
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedidovendafat',
           call: 'FaturarPedidoVenda',
           operacao: 'emitir_nf_lote_background',
-          status: 'erro',
+          status: error.faultstring ? 'erro_omie' : 'erro',
+          codigo_erro: error.faultcode || '',
           duracao_ms: Date.now() - t0,
           mensagem_erro: mensagem,
-          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
+          erro_detalhado: error.faultstring || `Erro interno: ${mensagem}`,
+          payload_enviado: payloadEnviado.slice(0, 2000),
+          payload_resposta: payloadResposta.slice(0, 5000),
           usuario_email: fila.usuario_email || ''
         }).catch(() => {});
 
-        await gravarLogEmissao(base44, fila, codigoPedido, 'erro', `[OMIE] ${mensagem}`);
+        await gravarLogEmissao(base44, fila, codigoPedido, 'erro', error.faultstring || `Erro interno: ${mensagem}`, {
+          faultstring: error.faultstring || '',
+          faultcode: error.faultcode || '',
+          erro_tipo: error.faultstring ? 'omie' : 'interno',
+          payload_enviado: payloadEnviado.slice(0, 2000),
+          payload_resposta: payloadResposta.slice(0, 5000)
+        });
 
         if (mensagem.toLowerCase().includes('bloqueada') || mensagem.toLowerCase().includes('bloqueio')) {
           processados = i + 1;

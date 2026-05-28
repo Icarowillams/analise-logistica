@@ -120,9 +120,23 @@ Deno.serve(async (req) => {
         }
 
         if (pedidoOmie.faultstring) {
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+                endpoint: 'produtos/pedido',
+                call: 'ConsultarPedido',
+                operacao: 'faturar_pedido',
+                status: 'erro_omie',
+                codigo_erro: pedidoOmie.faultcode || '',
+                mensagem_erro: pedidoOmie.faultstring,
+                erro_detalhado: pedidoOmie.faultstring,
+                payload_enviado: JSON.stringify({ codigo_pedido: codigoPedidoOmie }).slice(0, 2000),
+                payload_resposta: JSON.stringify(pedidoOmie).slice(0, 5000),
+                usuario_email: user.email
+            }).catch(() => {});
             return Response.json({
                 sucesso: false,
-                erro: 'Erro ao consultar pedido: ' + pedidoOmie.faultstring
+                erro: pedidoOmie.faultstring,
+                faultstring: pedidoOmie.faultstring,
+                faultcode: pedidoOmie.faultcode || ''
             });
         }
 
@@ -194,7 +208,19 @@ Deno.serve(async (req) => {
             const erro = resultado2.faultstring || resultado2.faultcode;
             console.error('[faturarPedidoOmie] Erro Omie Tentativa 2:', erro);
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: erro });
-            return Response.json({ sucesso: false, erro });
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+                endpoint: 'produtos/pedido',
+                call: 'AlterarPedidoVenda',
+                operacao: 'faturar_pedido',
+                status: 'erro_omie',
+                codigo_erro: resultado2.faultcode || '',
+                mensagem_erro: erro,
+                erro_detalhado: erro,
+                payload_enviado: JSON.stringify(pedidoParaAlterar).slice(0, 2000),
+                payload_resposta: JSON.stringify(resultado2).slice(0, 5000),
+                usuario_email: user.email
+            }).catch(() => {});
+            return Response.json({ sucesso: false, erro, faultstring: resultado2.faultstring || '', faultcode: resultado2.faultcode || '' });
         }
 
         // Sucesso na tentativa 2

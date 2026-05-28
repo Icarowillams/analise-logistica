@@ -188,8 +188,9 @@ Deno.serve(async (req) => {
       operacao: 'faturar_carga',
       entidade_tipo: 'Carga',
       entidade_id: carga_id,
-      status: erros > 0 ? 'warning' : 'sucesso',
+      status: erros > 0 ? 'erro_omie' : 'sucesso',
       mensagem_erro: erros > 0 ? `${erros} pedidos falharam: ${errosDetalhados}`.substring(0, 2000) : null,
+      erro_detalhado: erros > 0 ? errosDetalhados.substring(0, 2000) : null,
       payload_resposta: JSON.stringify(resultados).substring(0, 2000),
       usuario_email: user.email
     }).catch(() => {});

@@ -28,6 +28,7 @@
       "enum": [
         "sucesso",
         "erro",
+        "erro_omie",
         "warning",
         "pendente",
         "processado",
@@ -42,6 +43,10 @@
     "mensagem_erro": {
       "type": "string",
       "description": "Mensagem de erro (faultstring ou mensagem interna)"
+    },
+    "erro_detalhado": {
+      "type": "string",
+      "description": "Mensagem real detalhada do erro retornado pelo Omie ou erro t\u00e9cnico interno"
     },
     "payload_enviado": {
       "type": "string",

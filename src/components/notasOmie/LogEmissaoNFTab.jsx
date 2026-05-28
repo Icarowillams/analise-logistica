@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,6 +33,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [dataFim, setDataFim] = useState('');
   const [resolvendo, setResolvendo] = useState(false);
   const [atualizandoOmie, setAtualizandoOmie] = useState(false);
+  const [erroDetalhe, setErroDetalhe] = useState(null);
   const autoConsultaKeyRef = useRef('');
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
@@ -410,9 +412,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                     <td className="p-2 text-center"><StatusBadge status={l.status} /></td>
                     <td className="p-2 text-center font-mono text-xs">{l.codigo_sefaz || '-'}</td>
                     <td className="p-2 text-xs max-w-md">
-                      <div className={l.status === 'rejeitada' || l.status === 'erro' ? 'text-red-700' : 'text-slate-600'}>
-                        {l.mensagem || '-'}
+                      <div
+                        className={l.status === 'rejeitada' || l.status === 'erro' ? 'text-red-700' : 'text-slate-600'}
+                        title={l.faultstring || l.mensagem || ''}
+                      >
+                        {l.status === 'autorizada'
+                          ? `Autorizada${l.numero_nf ? ` — NF ${l.numero_nf}` : ''}`
+                          : (l.faultstring || l.mensagem || '-')}
                       </div>
+                      {(l.faultstring || l.payload_resposta || l.payload_enviado) && (
+                        <Button size="sm" variant="link" className="h-auto p-0 text-xs text-blue-700" onClick={() => setErroDetalhe(l)}>
+                          Ver erro completo
+                        </Button>
+                      )}
                     </td>
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
                   </tr>
@@ -422,6 +434,35 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!erroDetalhe} onOpenChange={(open) => !open && setErroDetalhe(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Erro completo da emissão</DialogTitle>
+          </DialogHeader>
+          {erroDetalhe && (
+            <div className="space-y-3 text-sm">
+              <div><b>Data/hora:</b> {erroDetalhe.created_date ? format(new Date(erroDetalhe.created_date), 'dd/MM/yyyy HH:mm') : '-'}</div>
+              <div><b>Pedido:</b> {erroDetalhe.numero_pedido || erroDetalhe.codigo_pedido}</div>
+              <div><b>faultcode:</b> <code>{erroDetalhe.faultcode || erroDetalhe.codigo_sefaz || '-'}</code></div>
+              <div>
+                <b>faultstring:</b>
+                <div className="mt-1 rounded border bg-red-50 p-3 text-red-800 whitespace-pre-wrap">
+                  {erroDetalhe.faultstring || erroDetalhe.mensagem || '-'}
+                </div>
+              </div>
+              <div>
+                <b>Payload enviado:</b>
+                <pre className="mt-1 max-h-56 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{erroDetalhe.payload_enviado || '-'}</pre>
+              </div>
+              <div>
+                <b>Resposta Omie:</b>
+                <pre className="mt-1 max-h-56 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{erroDetalhe.payload_resposta || '-'}</pre>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

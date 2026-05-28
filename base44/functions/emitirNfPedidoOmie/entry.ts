@@ -6,6 +6,14 @@ const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 let base44Global = null;
 
+function criarErroOmie(data, fallback = 'Erro Omie') {
+  const error = new Error(data?.faultstring || fallback);
+  error.faultstring = data?.faultstring || fallback;
+  error.faultcode = data?.faultcode || '';
+  error.omiePayload = data || null;
+  return error;
+}
+
 async function omieCall(call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const url = OMIE_FAT_URL;
@@ -22,10 +30,10 @@ async function omieCall(call, param, opts = {}) {
       if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
         if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
+        throw criarErroOmie(data, data.faultstring || 'API Omie bloqueada temporariamente');
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
-      throw new Error(data.faultstring || 'Erro Omie');
+      throw criarErroOmie(data, data.faultstring || 'Erro Omie');
     }
     if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
     return data;
@@ -65,13 +73,16 @@ Deno.serve(async (req) => {
         endpoint: 'produtos/pedidovendafat',
         call: callName,
         operacao: validar_apenas ? 'validar_nf' : 'emitir_nf',
-        status: 'erro',
+        status: e.faultstring ? 'erro_omie' : 'erro',
+        codigo_erro: e.faultcode || '',
         duracao_ms: Date.now() - t0,
-        mensagem_erro: e.message,
-        payload_enviado: JSON.stringify(param).substring(0, 1500),
+        mensagem_erro: e.faultstring || e.message,
+        erro_detalhado: e.faultstring || `Erro interno: ${e.message}`,
+        payload_enviado: JSON.stringify(param).substring(0, 2000),
+        payload_resposta: e.omiePayload ? JSON.stringify(e.omiePayload).substring(0, 5000) : '',
         usuario_email: user.email
       }).catch(() => {});
-      return Response.json({ sucesso: false, error: e.message }, { status: 400 });
+      return Response.json({ sucesso: false, error: e.faultstring || e.message, faultstring: e.faultstring || '', faultcode: e.faultcode || '' }, { status: 400 });
     }
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
