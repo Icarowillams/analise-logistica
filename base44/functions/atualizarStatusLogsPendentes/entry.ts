@@ -89,11 +89,16 @@ function classificarNF(nfEncontrada, codigoPedido) {
 
 // Consulta etapa atual do pedido no Omie usando apenas ConsultarPedido.
 // Não faz ListarNF amplo: se a NF/cStat vier no pedido, usa; senão mantém aguardando.
-async function consultarStatusReal(codigoPedido) {
+async function consultarStatusReal(codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {
-    const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
-    pedido = r?.pedido_venda_produto || r || {};
+    if (mockOmieResponse) {
+      console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
+      pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
+    } else {
+      const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
+      pedido = r?.pedido_venda_produto || r || {};
+    }
   } catch (e) {
     return { erro: e.message };
   }
@@ -216,7 +221,7 @@ Deno.serve(async (req) => {
     }
     if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
 
-    const { codigos_pedido, status_filtros } = body;
+    const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite2h = Date.now() - 2 * 60 * 60 * 1000;
     const LIMITE_LOGS = 5;
 
@@ -286,7 +291,7 @@ Deno.serve(async (req) => {
         }
         codigosConsultadosNestaExecucao.add(codPed);
 
-        const real = await consultarStatusReal(codPed);
+        const real = await consultarStatusReal(codPed, mock_omie_response);
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedido',
           call: 'ConsultarPedido',
