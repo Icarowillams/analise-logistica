@@ -112,8 +112,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
           const totalQtd = produtos.reduce((s, p) => s + Number(p.quantidade || 0), 0);
           const dataEmissao = fmtDate(nota.created_date || nota.data_emissao || new Date());
           const dataEntrega = fmtDate(nota.data_previsao_entrega || carga?.data_carga);
-          const cenarioFiscalLabel = nota.cenario_local_nome || nota.cenario_fiscal_nome || 'Venda Interna D1';
-          const produtosComMotivo = produtos.filter(item => item.motivo_troca_descricao || item.motivo_descricao || item.motivo || item.observacao);
+          const cenarioFiscalLabel = 'Troca (sem Omie)';
 
           return (
             <div
@@ -145,12 +144,6 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                 </tbody>
               </table>
 
-              {/* ===== AVISO D1 ===== */}
-              <div style={{ background:'#FEF3C7', border:'2px solid #D97706', marginTop:'6px', padding:'6px 10px', textAlign:'center' }}>
-                <span style={{ fontSize:'12px', fontWeight:700, color:'#92400E', textTransform:'uppercase', letterSpacing:'1px' }}>
-                  📄 NOTA D1 — VENDA INTERNA (SEM VALOR FISCAL)
-                </span>
-              </div>
 
               {/* ===== CLIENTE ===== */}
               <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
@@ -179,17 +172,13 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                     </td>
                   </tr>
                   <tr>
-                    <td colSpan="2" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                    <td colSpan="3" style={{ border:'1px solid #999', padding:'2px 5px' }}>
                       <span style={{ fontSize:'8px', color:'#555', display:'block' }}>ENDEREÇO</span>
                       <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.endereco || '-'}</span>
                     </td>
-                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>NÚMERO</span>
-                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.numero || '-'}</span>
-                    </td>
                   </tr>
                   <tr>
-                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                    <td colSpan="2" style={{ border:'1px solid #999', padding:'2px 5px' }}>
                       <span style={{ fontSize:'8px', color:'#555', display:'block' }}>BAIRRO</span>
                       <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.bairro || '-'}</span>
                     </td>
@@ -197,7 +186,15 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                       <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CIDADE</span>
                       <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.cidade || nota.cidade || '-'}</span>
                     </td>
-                    <td style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                  </tr>
+                  <tr>
+                    <td colSpan="3" style={{ border:'1px solid #999', padding:'2px 5px' }}>
+                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>NÚMERO</span>
+                      <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.numero || '-'}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan="3" style={{ border:'1px solid #999', padding:'2px 5px' }}>
                       <span style={{ fontSize:'8px', color:'#555', display:'block' }}>UF / CEP</span>
                       <span style={{ fontSize:'10px', fontWeight:500 }}>{cli.estado || '-'} / {cli.cep || '-'}</span>
                     </td>
@@ -247,14 +244,16 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                       <span style={{ fontSize:'10px', fontWeight:500 }}>{carga?.veiculo_placa || '-'}</span>
                     </td>
                   </tr>
-                  <tr>
-                    <td colSpan="4" style={{ border:'1px solid #999', padding:'2px 5px' }}>
-                      <span style={{ fontSize:'8px', color:'#555', display:'block' }}>CENÁRIO FISCAL</span>
-                      <span style={{ fontSize:'10px', fontWeight:600 }}>{cenarioFiscalLabel}</span>
-                    </td>
-                  </tr>
                 </tbody>
               </table>
+
+              {/* ===== CENÁRIO FISCAL ===== */}
+              <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
+                CENÁRIO FISCAL
+              </div>
+              <div style={{ border:'1.5px solid #000', borderTop:'none', padding:'6px', minHeight:'22px', fontSize:'10px', fontWeight:600 }}>
+                {cenarioFiscalLabel}
+              </div>
 
               {/* ===== OBSERVAÇÃO ===== */}
               <div style={{ background:'#e5e5e5', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #000', borderBottom:'none', marginTop:'8px' }}>
@@ -295,30 +294,26 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan="4" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>TOTAL GERAL</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'center' }}>TOTAL GERAL</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5' }}></td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'11px', fontWeight:700, background:'#e5e5e5', textAlign:'center' }}>{Number(totalQtd).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>{produtos.length} ite{produtos.length === 1 ? 'm' : 'ns'}</td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'13px', fontWeight:700, background:'#e5e5e5', textAlign:'right' }}>R$ {fmtMoney(totalProdutos)}</td>
                   </tr>
                   <tr>
-                    <td colSpan="6" style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>PREÇO MÉDIO</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5', textAlign:'center' }}>PREÇO MÉDIO</td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5' }}></td>
+                    <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'10px', fontWeight:700, background:'#f5f5f5' }}></td>
                     <td style={{ border:'1px solid #999', padding:'4px 6px', fontSize:'12px', fontWeight:700, background:'#f5f5f5', textAlign:'right' }}>R$ {fmtMoney3(totalQtd > 0 ? totalProdutos / totalQtd : 0)}</td>
                   </tr>
                 </tfoot>
               </table>
 
-              {produtosComMotivo.length > 0 && (
-                <>
-                  <div style={{ background:'#DCFCE7', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #16A34A', borderBottom:'none', marginTop:'8px', color:'#166534' }}>
-                    MOTIVOS DE TROCA
-                  </div>
-                  <div style={{ border:'1.5px solid #16A34A', borderTop:'none', padding:'6px', fontSize:'9px', background:'#F0FDF4', color:'#166534' }}>
-                    {produtosComMotivo.map((item, idxMotivo) => (
-                      <div key={idxMotivo}>- [{item.descricao || item.codigo_produto || 'Produto'}]: {item.motivo_troca_descricao || item.motivo_descricao || item.motivo || '-'}{item.observacao ? ` — ${item.observacao}` : ''}</div>
-                    ))}
-                  </div>
-                </>
-              )}
 
               {/* ===== RECEBIMENTO ===== */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginTop:'20px', fontSize:'9.5px' }}>
@@ -326,7 +321,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                   Recebedor (Ass. / RG)
                 </div>
                 <div style={{ borderTop:'1px solid #1e293b', paddingTop:'4px', minWidth:'180px', textAlign:'center', fontWeight:600, color:'#475569' }}>
-                  Data: ___/___/______
+                  Data: __/__/__
                 </div>
                 <div style={{ borderTop:'1px solid #1e293b', paddingTop:'4px', minWidth:'200px', textAlign:'center', fontWeight:600, color:'#475569' }}>
                   Entregador
@@ -335,7 +330,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
 
               {/* Footer */}
               <div style={{ textAlign:'center', marginTop:'10px', fontSize:'8px', color:'#888' }}>
-                Pão e Mel — Documento interno gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+                Pão e Mel - Documento interno gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
               </div>
             </div>
           );
