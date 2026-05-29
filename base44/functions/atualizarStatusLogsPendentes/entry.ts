@@ -12,11 +12,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 //   6. Se autorizada → marca boleto_gerado e dispara gerarBoletosOmie em modo auto
 //      (apenas para clientes com BOLETO BANCARIO + tipo=venda)
 //
-// body: { codigos_pedido?: [string] }  // se omitido, processa TODOS os pendentes (máx 50)
-// resposta: { sucesso, processados, autorizados, rejeitados, ainda_pendentes, resultados[] }
+// body: { codigos_pedido?: [string] }
+// Segurança Omie: processa no máximo 5 logs por execução, apenas últimas 2h, com cache/cooldown de 10min.
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 let base44Global = null;
@@ -44,6 +43,18 @@ async function omieCall(url, call, param, opts = {}) {
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || msg.includes('soap-error') || msg.includes('broken response')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
       throw new Error(data.faultstring || 'Erro Omie');
+    }
+    if (cacheMinutes > 0) {
+      const payloadCache = {
+        chave,
+        valor: data,
+        tipo: `${call}:${param?.codigo_pedido || param?.nIdPedido || 'geral'}`,
+        expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(),
+        criado_em: new Date().toISOString()
+      };
+      const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+      if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
+      else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
     }
     if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
     return data;
@@ -76,64 +87,55 @@ function classificarNF(nfEncontrada, codigoPedido) {
   return null;
 }
 
-// Faz UMA varredura de ListarNF cobrindo até 30 dias atrás e indexa por nIdPedido.
-// É MUITO mais eficiente que listar NFs uma vez por pedido pendente.
-async function indexarNFsRecentes() {
-  const map = new Map();
-  const hoje = new Date();
-  const dias = new Date(hoje.getTime() - 30 * 86400000); // 30 dias é suficiente para pendentes
-  const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-
-  let pagina = 1;
-  let totalPaginas = 1;
-  do {
-    try {
-      const nfData = await omieCall(OMIE_NF_URL, 'ListarNF', {
-        pagina,
-        registros_por_pagina: 200,
-        dEmiInicial: fmt(dias),
-        dEmiFinal: fmt(hoje)
-      }, { cacheMinutes: 10 });
-      totalPaginas = nfData.nTotPaginas || 1;
-      (nfData.nfCadastro || []).forEach(nf => {
-        const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
-        if (idPed) map.set(idPed, nf);
-      });
-      pagina++;
-      if (pagina > 5) break; // máximo 5 páginas x 200 = 1000 NFs (cobre folga)
-    } catch (e) {
-      if (/n[ãa]o existem registros/i.test(e.message)) break;
-      throw e;
-    }
-  } while (pagina <= totalPaginas);
-
-  return map;
-}
-
-// Consulta etapa atual do pedido no Omie + busca NF no índice pré-carregado
-async function consultarStatusReal(codigoPedido, nfsIndex) {
-  let etapa = '';
+// Consulta etapa atual do pedido no Omie usando apenas ConsultarPedido.
+// Não faz ListarNF amplo: se a NF/cStat vier no pedido, usa; senão mantém aguardando.
+async function consultarStatusReal(codigoPedido) {
+  let pedido;
   try {
     const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
-    etapa = String(r?.pedido_venda_produto?.cabecalho?.etapa || '');
+    pedido = r?.pedido_venda_produto || r || {};
   } catch (e) {
     return { erro: e.message };
   }
 
-  // Procura NF no índice — pode existir mesmo se etapa estiver desatualizada
-  const nf = nfsIndex.get(String(codigoPedido));
+  const cab = pedido.cabecalho || {};
+  const infoNfe = pedido.infoNfe || pedido.info_nf || pedido.informacoes_nfe || {};
+  const etapa = String(cab.etapa || '');
+  const nf = {
+    ide: {
+      cStat: infoNfe.cStat || infoNfe.cStatus || '',
+      nNF: infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || '',
+      xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || ''
+    }
+  };
   const classificada = classificarNF(nf, codigoPedido);
-
   if (classificada) return { etapa, ...classificada };
 
-  // Sem NF no índice — interpreta pela etapa
-  if (etapa === '50') {
-    return { etapa, status_real: 'rejeitada', mensagem: 'NF rejeitada — pedido voltou para etapa Faturar (50)' };
-  }
   if (etapa === '60') {
-    return { etapa, status_real: 'aguardando', mensagem: 'Etapa 60 mas NF ainda não localizada — aguardando emissão SEFAZ' };
+    return { etapa, status_real: 'aguardando', mensagem: 'Etapa 60 mas NF ainda não retornou no ConsultarPedido — aguardando emissão SEFAZ' };
   }
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
+}
+
+async function registrarCooldownConsulta(codigoPedido, valor = {}) {
+  const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
+  const payloadCache = {
+    chave,
+    valor,
+    tipo: `ConsultarPedido:${codigoPedido}`,
+    expira_em: new Date(Date.now() + 10 * 60000).toISOString(),
+    criado_em: new Date().toISOString()
+  };
+  const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+  if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
+  else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+}
+
+async function consultadoRecentemente(codigoPedido) {
+  const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
+  const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+  const cache = caches?.[0];
+  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 10 * 60 * 1000);
 }
 
 // Verifica se o pedido deve gerar boleto auto (tipo=venda + cliente BOLETO BANCARIO)
@@ -215,7 +217,8 @@ Deno.serve(async (req) => {
     if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
 
     const { codigos_pedido, status_filtros } = body;
-    const limite24h = Date.now() - 24 * 60 * 60 * 1000;
+    const limite2h = Date.now() - 2 * 60 * 60 * 1000;
+    const LIMITE_LOGS = 5;
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
@@ -232,7 +235,7 @@ Deno.serve(async (req) => {
         const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({
           codigo_pedido: String(cod)
         }, '-created_date', 5);
-        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
+        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite2h));
       }
     } else {
       // Sem códigos específicos: busca todos os pendentes em páginas até esgotar
@@ -242,7 +245,7 @@ Deno.serve(async (req) => {
         while (true) {
           const lote = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', pageSize, skip);
           const arr = Array.isArray(lote) ? lote : [];
-          logs.push(...arr.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
+          logs.push(...arr.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite2h));
           if (arr.length < pageSize) break;
           skip += pageSize;
         }
@@ -250,7 +253,7 @@ Deno.serve(async (req) => {
     }
 
     if (logs.length === 0) {
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_24h' });
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_2h' });
     }
 
     const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
@@ -259,29 +262,34 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
     }
 
-    // 2) Deduplica por codigo_pedido (logs antigos podem ter várias linhas pendentes)
-    const codigosUnicos = [...new Set(logs.map(l => String(l.codigo_pedido)))];
+    logs = logs.slice(0, LIMITE_LOGS);
+    console.log(`[atualizarStatusLogsPendentes] Processando ${logs.length} logs pendentes (limite 5)`);
 
     const resultados = [];
+    const codigosConsultadosNestaExecucao = new Set();
     const codigosParaBoleto = [];
 
-    // 3) Pré-indexa todas as NFs emitidas nos últimos 30 dias (UMA varredura só)
-    let nfsIndex;
-    try {
-      nfsIndex = await indexarNFsRecentes();
-    } catch (e) {
-      console.error('[atualizarStatusLogsPendentes] erro indexar NFs:', e.message);
-      nfsIndex = new Map();
-    }
-
-    // 4) Consulta cada pedido no Omie SEQUENCIALMENTE (preserva cota da API)
-    for (const codPed of codigosUnicos) {
+    // 3) Consulta cada log SEQUENCIALMENTE (preserva cota da API)
+    for (const logItem of logs) {
+      const codPed = String(logItem.codigo_pedido);
       const t0 = Date.now();
       try {
-        const real = await consultarStatusReal(codPed, nfsIndex);
+        if (codigosConsultadosNestaExecucao.has(codPed)) {
+          console.log(`[atualizarStatusLogsPendentes] Pedido ${codPed} ignorado - consultado há menos de 10 minutos`);
+          resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
+          continue;
+        }
+        if (await consultadoRecentemente(codPed)) {
+          console.log(`[atualizarStatusLogsPendentes] Pedido ${codPed} ignorado - consultado há menos de 10 minutos`);
+          resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
+          continue;
+        }
+        codigosConsultadosNestaExecucao.add(codPed);
+
+        const real = await consultarStatusReal(codPed);
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-          endpoint: 'produtos/pedido + produtos/nfconsultar',
-          call: 'ConsultarPedido + ListarNF',
+          endpoint: 'produtos/pedido',
+          call: 'ConsultarPedido',
           operacao: 'atualizar_log_pendente',
           status: real.erro ? 'erro' : 'sucesso',
           duracao_ms: Date.now() - t0,
@@ -294,6 +302,7 @@ Deno.serve(async (req) => {
         const logsDoPedido = logs.filter(l => String(l.codigo_pedido) === String(codPed));
 
         if (real.erro) {
+          await registrarCooldownConsulta(codPed, { erro: real.erro });
           for (const l of logsDoPedido) {
             await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem: real.erro });
           }
@@ -371,7 +380,8 @@ Deno.serve(async (req) => {
 
     return Response.json({
       sucesso: true,
-      processados: resultados.length,
+      processados: resultados.filter(r => !r.ignorado_cooldown).length,
+      ignorados_cooldown: resultados.filter(r => r.ignorado_cooldown).length,
       autorizados,
       rejeitados,
       ainda_pendentes: aindaPendentes,
