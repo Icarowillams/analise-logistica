@@ -144,6 +144,8 @@ export default function PedidoPdf({ pedidoId }) {
 
   const fmtMoney = (v) => (v || 0).toFixed(2);
   const fmtMoney3 = (v) => (v || 0).toFixed(3);
+  const tiposComMotivo = ['troca', 'devolucao', 'bonificacao'];
+  const itensComMotivo = items.filter(item => item.motivo_troca_descricao || item.motivo_descricao || item.observacao);
 
   return (
     <div className="space-y-4">
@@ -361,10 +363,10 @@ export default function PedidoPdf({ pedidoId }) {
                   <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{fmtMoney(item.valor_unitario)}</td>
                   <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right', borderBottom: (pedido.tipo === 'troca' && item.motivo_troca_descricao) ? 'none' : undefined }}>{fmtMoney(item.valor_total)}</td>
                 </tr>
-                {pedido.tipo === 'troca' && item.motivo_troca_descricao && (
+                {tiposComMotivo.includes(pedido.tipo) && (item.motivo_troca_descricao || item.motivo_descricao || item.observacao) && (
                   <tr>
                     <td colSpan="5" style={{ border:'1px solid #999', borderTop:'none', padding:'2px 5px 4px 20px', fontSize:'8px', color:'#166534', background:'#F0FDF4' }}>
-                      <strong>Motivo da troca:</strong> {item.motivo_troca_descricao}
+                      <strong>Motivo da troca:</strong> {item.motivo_troca_descricao || item.motivo_descricao || '-'}{item.observacao ? ` — ${item.observacao}` : ''}
                     </td>
                   </tr>
                 )}
@@ -384,6 +386,19 @@ export default function PedidoPdf({ pedidoId }) {
             </tr>
           </tfoot>
         </table>
+
+        {tiposComMotivo.includes(pedido.tipo) && itensComMotivo.length > 0 && (
+          <>
+            <div style={{ background:'#DCFCE7', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #16A34A', borderBottom:'none', marginTop:'8px', color:'#166534' }}>
+              MOTIVOS DE TROCA
+            </div>
+            <div style={{ border:'1.5px solid #16A34A', borderTop:'none', padding:'6px', fontSize:'9px', background:'#F0FDF4', color:'#166534' }}>
+              {itensComMotivo.map((item, idx) => (
+                <div key={idx}>- [{item.produto_nome || item.produto_descricao || item.produto_codigo || 'Produto'}]: {item.motivo_troca_descricao || item.motivo_descricao || '-'}{item.observacao ? ` — ${item.observacao}` : ''}</div>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* ===== INFO CANCELAMENTO ===== */}
         {pedido.status === 'cancelado' && (

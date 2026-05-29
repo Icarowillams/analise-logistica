@@ -113,6 +113,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
           const dataEmissao = fmtDate(nota.created_date || nota.data_emissao || new Date());
           const dataEntrega = fmtDate(nota.data_previsao_entrega || carga?.data_carga);
           const cenarioFiscalLabel = nota.cenario_local_nome || nota.cenario_fiscal_nome || 'Venda Interna D1';
+          const produtosComMotivo = produtos.filter(item => item.motivo_troca_descricao || item.motivo_descricao || item.observacao);
 
           return (
             <div
@@ -284,7 +285,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                     <tr key={i}>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.codigo_produto}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.descricao}</td>
-                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.motivo_troca_descricao || '-'}</td>
+                      <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px' }}>{item.motivo_troca_descricao || item.motivo_descricao || '-'}{item.observacao ? ` — ${item.observacao}` : ''}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{item.unidade || 'UN'}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'center' }}>{Number(item.quantidade || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
                       <td style={{ border:'1px solid #999', padding:'3px 5px', fontSize:'9px', textAlign:'right' }}>{fmtMoney(item.valor_unitario)}</td>
@@ -305,6 +306,19 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                   </tr>
                 </tfoot>
               </table>
+
+              {produtosComMotivo.length > 0 && (
+                <>
+                  <div style={{ background:'#DCFCE7', fontWeight:700, fontSize:'10px', padding:'3px 6px', border:'1.5px solid #16A34A', borderBottom:'none', marginTop:'8px', color:'#166534' }}>
+                    MOTIVOS DE TROCA
+                  </div>
+                  <div style={{ border:'1.5px solid #16A34A', borderTop:'none', padding:'6px', fontSize:'9px', background:'#F0FDF4', color:'#166534' }}>
+                    {produtosComMotivo.map((item, idxMotivo) => (
+                      <div key={idxMotivo}>- [{item.descricao || item.codigo_produto || 'Produto'}]: {item.motivo_troca_descricao || item.motivo_descricao || '-'}{item.observacao ? ` — ${item.observacao}` : ''}</div>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {/* ===== RECEBIMENTO ===== */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginTop:'20px', fontSize:'9.5px' }}>

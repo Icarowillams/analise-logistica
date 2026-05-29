@@ -4,6 +4,119 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
+const TIPOS_COM_MOTIVO = ["troca", "devolucao", "bonificacao"];
+
+function montarTextoMotivos(pedido, itens, pedidosTroca) {
+    const linhas = [];
+
+    itens.forEach((item) => {
+        const motivo = item.motivo_troca_descricao || item.motivo_descricao;
+        const observacao = item.observacao;
+        if (!motivo && !observacao) return;
+
+        const produto = item.produto_nome || item.produto_descricao || item.descricao || item.produto_codigo || "Produto";
+        let linha = `- [${produto}]: ${motivo || "Motivo não informado"}`;
+        if (observacao) linha += ` - ${observacao}`;
+        linhas.push(linha);
+    });
+
+    pedidosTroca.forEach((troca) => {
+        if (troca.motivo_descricao) linhas.push(`Motivo geral: ${troca.motivo_descricao}`);
+        if (troca.observacoes) linhas.push(`Observação geral: ${troca.observacoes}`);
+    });
+
+    if (pedido.motivo_troca || pedido.motivo_troca_descricao) {
+        linhas.push(`Motivo geral: ${pedido.motivo_troca_descricao || pedido.motivo_troca}`);
+    }
+
+    if (linhas.length === 0) return "";
+    return `MOTIVOS DE TROCA:\n${linhas.join("\n")}`;
+}
+
+async function chamarOmie(call, param) {
+    const response = await fetch(OMIE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            call,
+            app_key: OMIE_APP_KEY,
+            app_secret: OMIE_APP_SECRET,
+            param: [param]
+        })
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error(`Resposta inválida do Omie em ${call}: ${text.substring(0, 500)}`);
+    }
+
+    if (data.faultstring || data.faultcode) {
+        throw new Error(data.faultstring || data.faultcode);
+    }
+
+    return data;
+}
+
+async function injetarMotivosTrocaNoOmie(base44, pedido, codigoPedidoOmie, user) {
+    if (!TIPOS_COM_MOTIVO.includes(pedido.tipo)) return;
+
+    const itens = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: pedido.id });
+    const pedidosTroca = await base44.asServiceRole.entities.PedidoTroca.filter({ pedido_venda_id: pedido.id });
+    const textoMotivos = montarTextoMotivos(pedido, itens || [], pedidosTroca || []);
+
+    if (!textoMotivos) return;
+
+    const pedidoOmie = await chamarOmie("ConsultarPedido", { codigo_pedido: codigoPedidoOmie });
+    const pedidoData = pedidoOmie.pedido_venda_produto || pedidoOmie;
+    const obsAtual = pedidoData?.observacoes?.obs_venda || "";
+    const obsVenda = obsAtual.includes("MOTIVOS DE TROCA:")
+        ? obsAtual
+        : [obsAtual.trim(), textoMotivos].filter(Boolean).join("\n\n");
+
+    const etapaAtual = pedidoData?.cabecalho?.etapa || pedido.etapa || "10";
+    const payload = {
+        cabecalho: {
+            codigo_pedido: codigoPedidoOmie,
+            etapa: etapaAtual
+        },
+        observacoes: {
+            obs_venda: obsVenda
+        }
+    };
+
+    try {
+        const resultado = await chamarOmie("AlterarPedidoVenda", payload);
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: 'produtos/pedido',
+            call: 'AlterarPedidoVenda',
+            operacao: 'injetar_motivos_troca',
+            entidade_tipo: 'Pedido',
+            entidade_id: pedido.id,
+            status: 'sucesso',
+            payload_enviado: JSON.stringify(payload).slice(0, 2000),
+            payload_resposta: JSON.stringify(resultado).slice(0, 5000),
+            usuario_email: user.email
+        }).catch(() => {});
+    } catch (error) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: 'produtos/pedido',
+            call: 'AlterarPedidoVenda',
+            operacao: 'injetar_motivos_troca',
+            entidade_tipo: 'Pedido',
+            entidade_id: pedido.id,
+            status: 'erro_omie',
+            mensagem_erro: error.message,
+            erro_detalhado: error.message,
+            payload_enviado: JSON.stringify(payload).slice(0, 2000),
+            usuario_email: user.email
+        }).catch(() => {});
+        throw error;
+    }
+}
+
 Deno.serve(async (req) => {
     let base44 = null;
     let pedido_id = null;
@@ -47,6 +160,8 @@ Deno.serve(async (req) => {
 
         const codigoPedidoOmie = Number(pedido.omie_codigo_pedido);
         console.log('[faturarPedidoOmie] Pedido:', pedido.id, '- Código Omie:', codigoPedidoOmie, '- Etapa destino:', etapaDestino);
+
+        await injetarMotivosTrocaNoOmie(base44, pedido, codigoPedidoOmie, user);
 
         // Tentativa 1: TrocarEtapaPedido
         console.log('[faturarPedidoOmie] Tentativa 1: TrocarEtapaPedido com etapa', etapaDestino);
