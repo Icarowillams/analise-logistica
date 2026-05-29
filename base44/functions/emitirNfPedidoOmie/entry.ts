@@ -6,6 +6,10 @@ const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 let base44Global = null;
 
+function formatarDataBrasilia(isoDate) {
+  return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
 function criarErroOmie(data, fallback = 'Erro Omie') {
   const error = new Error(data?.faultstring || fallback);
   error.faultstring = data?.faultstring || fallback;
@@ -20,7 +24,7 @@ async function omieCall(call, param, opts = {}) {
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
   const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${formatarDataBrasilia(controle.bloqueado_ate)} (horário de Brasília)`);
   let lastError = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
@@ -56,6 +60,19 @@ Deno.serve(async (req) => {
 
     if (!codigo_pedido && !codigo_pedido_integracao) {
       return Response.json({ error: 'Informe codigo_pedido ou codigo_pedido_integracao' }, { status: 400 });
+    }
+
+    if (codigo_pedido) {
+      const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigo_pedido) }, '-updated_date', 1).catch(() => []);
+      const pedidoLocal = pedidosLocais?.[0];
+      if (pedidoLocal?.faturado || pedidoLocal?.status === 'faturado' || pedidoLocal?.status_faturamento === 'faturado' || pedidoLocal?.numero_nota_fiscal) {
+        return Response.json({
+          sucesso: false,
+          error: `Pedido ${pedidoLocal.numero_pedido || codigo_pedido} já foi faturado${pedidoLocal.numero_nota_fiscal ? ` com NF ${pedidoLocal.numero_nota_fiscal}` : ''}. Reemissão bloqueada para evitar duplicidade.`,
+          codigo_pedido: String(codigo_pedido),
+          numero_nf: pedidoLocal.numero_nota_fiscal || ''
+        }, { status: 400 });
+      }
     }
 
     // Parâmetros conforme doc Omie: nCodPed (integer) e cCodIntPed (string60)
