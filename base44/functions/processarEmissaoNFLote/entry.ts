@@ -138,7 +138,8 @@ Deno.serve(async (req) => {
       const codigoPedido = pedidos[i];
       const t0 = Date.now();
       try {
-        const resposta = await omieCall('FaturarPedidoVenda', { nCodPed: Number(codigoPedido) });
+        const resposta = body.mock_omie_response || await omieCall('FaturarPedidoVenda', { nCodPed: Number(codigoPedido) });
+        if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
         resultados.push({
           codigo_pedido: codigoPedido,
           sucesso: true,
