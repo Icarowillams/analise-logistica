@@ -6,6 +6,10 @@ const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SEC
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 let base44Global = null;
 
+function formatarDataBrasilia(isoDate) {
+  return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
 function criarErroOmie(data, fallback = 'Erro Omie') {
   const error = new Error(data?.faultstring || fallback);
   error.faultstring = data?.faultstring || fallback;
@@ -20,7 +24,7 @@ async function omieCall(call, param) {
   const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
+    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${formatarDataBrasilia(controle.bloqueado_ate)} (horário de Brasília)`);
   }
 
   let lastError = '';
