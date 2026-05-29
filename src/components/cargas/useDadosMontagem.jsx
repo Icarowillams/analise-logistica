@@ -133,8 +133,11 @@ export default function useDadosMontagem() {
               valor_unitario: i.valor_unitario || 0,
               valor_total: i.valor_total || 0,
               unidade: i.unidade_medida || 'UN',
-              motivo_troca_id: i.motivo_troca_id || '',
-              motivo_troca_descricao: i.motivo_troca_descricao || ''
+              motivo_troca_id: i.motivo_troca_id || i.motivo_id || '',
+              motivo_troca_descricao: i.motivo_troca_descricao || i.motivo_descricao || i.motivo || '',
+              motivo_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
+              motivo: i.motivo || i.motivo_descricao || i.motivo_troca_descricao || '',
+              observacao: i.observacao || ''
             }))
           };
         })
@@ -169,8 +172,11 @@ export default function useDadosMontagem() {
               valor_unitario: i.preco_unitario || 0,
               valor_total: i.valor_total || 0,
               unidade: i.unidade_medida || 'UN',
-              motivo_troca_id: i.motivo_id || '',
-              motivo_troca_descricao: i.motivo_descricao || ''
+              motivo_troca_id: i.motivo_id || i.motivo_troca_id || '',
+              motivo_troca_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
+              motivo_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
+              motivo: i.motivo || i.motivo_descricao || i.motivo_troca_descricao || '',
+              observacao: i.observacao || ''
             }))
           };
         })
