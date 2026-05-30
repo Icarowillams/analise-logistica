@@ -34,7 +34,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     queryFn: async () => {
       const pedidos = await base44.entities.PedidoLiberadoOmie.filter({
         etapa: '50',
-        status_real: { $nin: ['cancelada', 'rejeitada', 'denegada'] }
+        status_real: { $nin: ['rejeitada', 'denegada'] }
       }, '-sincronizado_em', 500);
 
       return pedidos
