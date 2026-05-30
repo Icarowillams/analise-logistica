@@ -7,12 +7,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, CheckCircle2, Loader2, Lock, Unlock } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0);
 
 const getCodigoCliente = (pedido) => pedido.cliente_codigo_base || pedido.cliente_codigo || pedido.codigo_cliente_omie || pedido.cliente_id || '-';
 const getNomeCliente = (pedido) => pedido.cliente_fantasia_base || pedido.cliente_nome_fantasia || pedido.cliente_nome_base || pedido.cliente_nome || '-';
-const getPedidoNumero = (pedido) => pedido.numero_pedido || pedido.id;
+const getPedidoNumero = (pedido) => formatarNumeroPedido(pedido) || pedido.id;
 
 function PedidoTable({ pedidos, showCheckbox, selectedIds, onToggle, disabled }) {
   return (

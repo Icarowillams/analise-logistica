@@ -1,5 +1,6 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
@@ -46,13 +47,6 @@ const ETAPA_OMIE_LABELS = {
   '20': { label: 'Liberados', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
   '50': { label: 'Faturar', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
   '60': { label: 'Faturado', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
-};
-
-const formatNumeroPedido = (pedido) => {
-  if (!pedido?.numero_pedido) return '-';
-  if (pedido.tipo !== 'troca') return pedido.numero_pedido;
-  const digits = String(pedido.numero_pedido).replace(/\D/g, '');
-  return `${digits.padStart(5, '0')}T`;
 };
 
 const NF_STATUS_LABELS = {
@@ -130,7 +124,7 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'numero_pedido') {
-    return <span className={`${truncClass} font-medium`}>{formatNumeroPedido(p)}</span>;
+    return <span className={`${truncClass} font-medium`}>{formatarNumeroPedido(p) || '-'}</span>;
   }
 
   if (col.id === 'total_itens') {

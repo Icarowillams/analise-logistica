@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
 import { fmtMoney, fmtDateTime, fmtInt, imprimirElemento } from './printHelper';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // Tipo de Nota: Venda / Bonificação / Troca / Devolução
 // Prioridade: tipo_operacao_fiscal (campo oficial do Pedido) > cenario_local_tipo > nome do cenário
@@ -20,14 +21,6 @@ function tipoNotaLabel(item, origem) {
   if (cenario.includes('bonif')) return 'BONIFICAÇÃO';
   if (cenario.includes('devol')) return 'DEVOLUÇÃO';
   return 'VENDA';
-}
-
-// Formata número do pedido — para trocas, troca o sufixo "D" por "T" (mesma regra de Gerenciar Pedidos)
-function formatNumeroPedidoExibicao(numero, tipoLabel) {
-  if (!numero) return '-';
-  if (tipoLabel !== 'TROCA') return numero;
-  const digits = String(numero).replace(/\D/g, '');
-  return `${digits.padStart(5, '0')}T`;
 }
 
 // Extrai código do cliente do Base44 — preferindo o código interno (não o id de integração)
@@ -392,7 +385,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                       <React.Fragment key={i}>
                         <tr>
                           <td style={{ padding: '2px 4px' }}></td>
-                          <td style={{ padding: '2px 4px' }}>{formatNumeroPedidoExibicao(l.numero_pedido, l._tipo)}</td>
+                          <td style={{ padding: '2px 4px' }}>{formatarNumeroPedido({ ...l, tipo: l._tipo === 'TROCA' ? 'troca' : l.tipo }) || '-'}</td>
                           <td style={{ padding: '2px 4px' }}>{l.numero_nf || '-'}</td>
                           <td style={{ padding: '2px 4px', fontWeight: 700 }}>{l._tipo}</td>
                           <td style={{ padding: '2px 4px' }}>1</td>
@@ -404,7 +397,7 @@ export default function RomaneioEntregaPdf({ carga }) {
                         </tr>
                         <tr>
                           <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
-                            <strong>Ped. {formatNumeroPedidoExibicao(l.numero_pedido, l._tipo)}:</strong>
+                            <strong>Ped. {formatarNumeroPedido({ ...l, tipo: l._tipo === 'TROCA' ? 'troca' : l.tipo }) || '-'}:</strong>
                             <span style={{ marginLeft: '20px' }}>Ass.:_______________________</span>
                             <span style={{ marginLeft: '14px' }}>RG.:_______________</span>
                             <span style={{ marginLeft: '14px' }}>Data:___/___/____</span>

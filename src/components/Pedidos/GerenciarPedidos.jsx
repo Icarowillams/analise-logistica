@@ -27,6 +27,7 @@ import PedidoCellRenderer, { formatCurrency } from './PedidoCellRenderer';
 import BatchResultToast from './BatchResultToast';
 import BuscarClienteModal from './BuscarClienteModal';
 import LiberarPedidosModal from './LiberarPedidosModal';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
@@ -57,13 +58,6 @@ const getLocalDateFromIso = (value) => {
   const month = parts.find(part => part.type === 'month')?.value;
   const day = parts.find(part => part.type === 'day')?.value;
   return `${year}-${month}-${day}`;
-};
-
-const formatNumeroPedidoBusca = (pedido) => {
-  if (!pedido?.numero_pedido) return '';
-  if (pedido.tipo !== 'troca') return String(pedido.numero_pedido);
-  const digits = String(pedido.numero_pedido).replace(/\D/g, '');
-  return `${digits.padStart(5, '0')}T`;
 };
 
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
@@ -378,7 +372,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const s = search.toLowerCase();
       list = list.filter(p =>
         (p.numero_pedido?.toString() || '').toLowerCase().includes(s) ||
-        formatNumeroPedidoBusca(p).toLowerCase().includes(s) ||
+        formatarNumeroPedido(p).toLowerCase().includes(s) ||
         (p.cliente_nome_base || '').toLowerCase().includes(s) ||
         (p.cliente_fantasia_base || '').toLowerCase().includes(s) ||
         (p.cliente_cpf_cnpj || '').includes(s) ||
