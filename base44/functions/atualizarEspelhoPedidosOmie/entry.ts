@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 function deveCancelar(dados) {
-  return dados?.status === 'nao_encontrado' || dados?.status === 'cancelada' || dados?.etapa === '70' || dados?.etapa === '80';
+  return dados?.status === 'nao_encontrado' || dados?.etapa === '70' || dados?.etapa === '80';
 }
 
 function deveFaturar(dados) {

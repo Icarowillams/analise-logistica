@@ -11,6 +11,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// REGRA DE EXIBIÇÃO: Apenas etapa 50 no Omie.
+// status_real é apenas indicador visual (badge) e NÃO filtra exibição.
+
 /**
  * Aba "Emissão de NF-e".
  * Lista pedidos Omie em etapa 50 (Faturar) e permite gerar a NF-e — individual ou em lote.
@@ -33,8 +36,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     queryKey: ['pedidosEmissaoNfe'],
     queryFn: async () => {
       const pedidos = await base44.entities.PedidoLiberadoOmie.filter({
-        etapa: '50',
-        status_real: { $nin: ['rejeitada', 'denegada'] }
+        etapa: '50'
       }, '-sincronizado_em', 500);
 
       return pedidos
@@ -49,6 +51,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
           cidade: p.cidade || '',
           cliente_id: p.cliente_id || '',
           numero_nf: p.numero_nf || '',
+          status_real: p.status_real || '',
           ja_faturado: false
         }));
     },
@@ -181,6 +184,20 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
 
   const formatarValor = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+  const StatusHistoricoBadge = ({ status }) => {
+    const normalized = String(status || '').toLowerCase();
+    if (!normalized || normalized === 'autorizada' || normalized === 'emitida' || normalized === 'aguardando_nf') return null;
+
+    const config = {
+      cancelada: { label: 'NF cancelada', title: 'NF anterior cancelada', className: 'bg-amber-100 text-amber-800 border-amber-300' },
+      rejeitada: { label: 'NF rejeitada', title: 'NF rejeitada — verificar no Omie', className: 'bg-red-100 text-red-800 border-red-300' },
+      denegada: { label: 'NF denegada', title: 'NF denegada', className: 'bg-red-200 text-red-900 border-red-400' }
+    }[normalized];
+
+    if (!config) return null;
+    return <Badge className={config.className} title={config.title}>{config.label}</Badge>;
+  };
+
   return (
     <div className="space-y-4">
       <Card className="border-amber-200 bg-amber-50">
@@ -306,7 +323,12 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                       <td className="p-2 text-center">
                         <Checkbox checked={marcado} disabled={!podeSelecionar(p)} onCheckedChange={() => toggleLinha(p.codigo_pedido)} />
                       </td>
-                      <td className="p-2 font-medium">{p.numero_pedido}</td>
+                      <td className="p-2 font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{p.numero_pedido}</span>
+                          <StatusHistoricoBadge status={p.status_real} />
+                        </div>
+                      </td>
                       <td className="p-2">
                         <div>{p.nome_fantasia || p.nome_cliente}</div>
                         {p.nome_fantasia && p.nome_cliente && (
