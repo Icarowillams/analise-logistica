@@ -108,7 +108,10 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         });
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
-    staleTime: 30000
+    staleTime: 0,
+    gcTime: 0,
+    cacheTime: 0,
+    refetchOnWindowFocus: true
   });
 
   const { data: filasEmissao = [] } = useQuery({
