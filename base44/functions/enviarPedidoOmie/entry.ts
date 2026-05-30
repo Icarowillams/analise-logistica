@@ -235,7 +235,7 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
         det,
         frete: { modalidade: "9" },
         informacoes_adicionais: {
-            codigo_categoria: "1.01.03",
+            codigo_categoria: "1.01.01",
             consumidor_final: "S",
             enviar_email: "N",
             codigo_conta_corrente: contaCorrente,
