@@ -116,11 +116,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         return usarEspelhoLocal();
       }
 
-      base44.functions.invoke('atualizarEspelhoPedidosOmie', {
-        resultados: etapasOmie
-      }).catch(() => {});
-
-      return pedidosCarga
+      const pedidosProntos = pedidosCarga
         .filter(p => {
           const cod = String(p.codigo_pedido);
           const omie = etapasOmie[cod];
@@ -131,6 +127,11 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
           return true;
         })
         .map(p => montarPedido(p, etapasOmie[String(p.codigo_pedido)] || {}, pedidoLocalPorCodigo.get(String(p.codigo_pedido)) || {}));
+
+      base44.functions.invoke('atualizarEspelhoPedidosOmie', { etapas: etapasOmie })
+        .catch(e => console.warn('Sync espelho falhou (ignorado):', e));
+
+      return pedidosProntos;
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
     staleTime: 0,
