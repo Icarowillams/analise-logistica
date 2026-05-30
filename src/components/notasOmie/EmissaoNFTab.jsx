@@ -73,6 +73,10 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
       });
       const etapasOmie = consultaOmie?.resultados || {};
 
+      base44.functions.invoke('atualizarEspelhoPedidosOmie', {
+        resultados: etapasOmie
+      }).catch(() => {});
+
       return pedidosCarga
         .filter(p => {
           const cod = String(p.codigo_pedido);
