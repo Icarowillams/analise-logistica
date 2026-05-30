@@ -83,7 +83,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
           const cod = String(p.codigo_pedido);
           const e = mapaEspelho.get(cod);
           const local = pedidoLocalPorCodigo.get(cod);
-          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada') return false;
+          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada' || e?.status_real === 'rejeitada') return false;
           if (e?.etapa === '70' || e?.etapa === '80') return false;
           if (e?.numero_nf || e?.status_real === 'emitida') return false;
           if (local?.numero_nota_fiscal || local?.status_faturamento === 'faturado' || local?.faturado === true) return false;
