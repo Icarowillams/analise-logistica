@@ -63,48 +63,41 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
       );
 
       const codigos = pedidosCarga.map(p => String(p.codigo_pedido));
-      const espelhoLocal = codigos.length > 0
-        ? await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigos } }, '-sincronizado_em', 500)
-        : [];
-      const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
-
       const pedidosLocais = codigos.length > 0
         ? await base44.entities.Pedido.filter({ omie_codigo_pedido: { $in: codigos } }, '-created_date', 500)
         : [];
-      const statusPedidoLocal = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl.status]));
       const pedidoLocalPorCodigo = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl]));
-      const logsAutorizados = codigos.length > 0
-        ? await base44.entities.LogEmissaoNF.filter({ status: 'autorizada' }, '-created_date', 500)
-        : [];
-      const logAutorizadoPorCodigo = new Map(logsAutorizados.map(l => [String(l.codigo_pedido), l]));
+
+      const { data: consultaOmie } = await base44.functions.invoke('consultarEtapaPedidosOmie', {
+        codigos_pedido: codigos
+      });
+      const etapasOmie = consultaOmie?.resultados || {};
 
       return pedidosCarga
         .filter(p => {
           const cod = String(p.codigo_pedido);
-          const e = mapaEspelho.get(cod);
-          const local = pedidoLocalPorCodigo.get(cod);
-          if (e?.status_real === 'cancelada' || e?.status_real === 'denegada' || e?.status_real === 'rejeitada') return false;
-          if (e?.etapa === '70' || e?.etapa === '80') return false;
-          if (e?.numero_nf || e?.status_real === 'emitida') return false;
-          if (local?.numero_nota_fiscal || local?.status_faturamento === 'faturado' || local?.faturado === true) return false;
-          if (logAutorizadoPorCodigo.has(cod)) return false;
-          if (statusPedidoLocal.get(cod) === 'cancelado') return false;
+          const omie = etapasOmie[cod];
+          if (!omie?.encontrado) return false;
+          if (omie.status === 'rejeitada' || omie.status === 'cancelada' || omie.status === 'denegada') return false;
+          if (String(omie.etapa) !== '50') return false;
+          if (omie.numero_nf) return false;
           return true;
         })
         .map(p => {
-          const e = mapaEspelho.get(String(p.codigo_pedido)) || {};
+          const omie = etapasOmie[String(p.codigo_pedido)] || {};
+          const local = pedidoLocalPorCodigo.get(String(p.codigo_pedido)) || {};
           return {
             codigo_pedido: String(p.codigo_pedido),
             numero_pedido: p.numero_pedido,
-            valor_total_pedido: p.valor_total_pedido || e.valor_total_pedido || 0,
-            quantidade_itens: p.quantidade_itens || e.quantidade_itens || 0,
-            nome_cliente: e.nome_cliente || p.nome_cliente || '',
-            nome_fantasia: e.nome_fantasia || p.nome_fantasia || '',
-            cidade: e.cidade || p.cidade || '',
-            cliente_id: e.cliente_id || p.cliente_id || '',
-            numero_nf: e.numero_nf || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.numero_nota_fiscal || '',
-            ja_faturado: !!(e.numero_nf || e.status_real === 'emitida' || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.numero_nota_fiscal || pedidoLocalPorCodigo.get(String(p.codigo_pedido))?.status_faturamento === 'faturado' || logAutorizadoPorCodigo.has(String(p.codigo_pedido)))
-            };
+            valor_total_pedido: p.valor_total_pedido || local.valor_total || 0,
+            quantidade_itens: p.quantidade_itens || 0,
+            nome_cliente: p.nome_cliente || local.cliente_nome || '',
+            nome_fantasia: p.nome_fantasia || local.cliente_nome_fantasia || '',
+            cidade: p.cidade || local.cliente_cidade || '',
+            cliente_id: p.cliente_id || local.cliente_id || '',
+            numero_nf: omie.numero_nf || '',
+            ja_faturado: false
+          };
         });
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
