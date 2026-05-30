@@ -72,7 +72,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const pendentesFiltrados = filtrarPedidos(pendentes);
   const enviadosFiltrados = filtrarPedidos(enviados);
 
-  // Sequência única para pedidos internos: troca usa "T" e D1 usa "D".
+  // Sequência única para pedidos internos: todo não fiscal usa sufixo "D".
   const getNextNumeroLocal = async (pedido) => {
     const allPedidos = await base44.entities.Pedido.list();
     const internos = allPedidos.filter(p => p.numero_pedido && /[DT]$/i.test(String(p.numero_pedido)));

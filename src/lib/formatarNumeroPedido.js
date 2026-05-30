@@ -4,16 +4,14 @@ export function formatarNumeroPedido(pedido) {
   const numeroOriginal = String(pedido.numero_pedido);
   const modeloNota = String(pedido.modelo_nota || '').toLowerCase();
   const tipo = String(pedido.tipo || '').toLowerCase();
+  const baseNumerica = numeroOriginal.replace(/\D/g, '');
 
-  if (tipo === 'troca') {
-    const baseNumerica = numeroOriginal.replace(/\D/g, '');
-    return baseNumerica ? `${baseNumerica.padStart(5, '0')}T` : numeroOriginal;
+  const numeroSemSufixo = baseNumerica || numeroOriginal;
+  const isNaoFiscal = tipo === 'troca' || (modeloNota && modeloNota !== '55');
+
+  if (isNaoFiscal) {
+    return baseNumerica ? `${baseNumerica.padStart(5, '0')}D` : `${numeroOriginal}D`;
   }
 
-  if (modeloNota === 'd1') {
-    const baseNumerica = numeroOriginal.replace(/\D/g, '');
-    return baseNumerica ? `${baseNumerica.padStart(5, '0')}D` : numeroOriginal;
-  }
-
-  return numeroOriginal;
+  return numeroSemSufixo;
 }
