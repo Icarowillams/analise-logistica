@@ -68,10 +68,53 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         : [];
       const pedidoLocalPorCodigo = new Map(pedidosLocais.map(pl => [String(pl.omie_codigo_pedido), pl]));
 
-      const { data: consultaOmie } = await base44.functions.invoke('consultarEtapaPedidosOmie', {
-        codigos_pedido: codigos
+      const montarPedido = (p, omie = {}, local = {}) => ({
+        codigo_pedido: String(p.codigo_pedido),
+        numero_pedido: p.numero_pedido,
+        valor_total_pedido: p.valor_total_pedido || local.valor_total || 0,
+        quantidade_itens: p.quantidade_itens || 0,
+        nome_cliente: p.nome_cliente || local.cliente_nome || '',
+        nome_fantasia: p.nome_fantasia || local.cliente_nome_fantasia || '',
+        cidade: p.cidade || local.cliente_cidade || '',
+        cliente_id: p.cliente_id || local.cliente_id || '',
+        numero_nf: omie.numero_nf || '',
+        ja_faturado: false
       });
-      const etapasOmie = consultaOmie?.resultados || {};
+
+      const usarEspelhoLocal = async () => {
+        const espelhoLocal = codigos.length > 0
+          ? await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigos } }, '-sincronizado_em', 500)
+          : [];
+        const mapaEspelho = new Map(espelhoLocal.map(e => [String(e.codigo_pedido), e]));
+
+        return pedidosCarga
+          .filter(p => {
+            const cod = String(p.codigo_pedido);
+            const e = mapaEspelho.get(cod);
+            if (!e) return false;
+            if (String(e.etapa) !== '50') return false;
+            if (e.numero_nf || e.status_real === 'emitida') return false;
+            if (e.status_real === 'rejeitada' || e.status_real === 'cancelada' || e.status_real === 'denegada') return false;
+            return true;
+          })
+          .map(p => montarPedido(p, mapaEspelho.get(String(p.codigo_pedido)), pedidoLocalPorCodigo.get(String(p.codigo_pedido)) || {}));
+      };
+
+      let etapasOmie = {};
+      try {
+        const { data: consultaOmie } = await base44.functions.invoke('consultarEtapaPedidosOmie', {
+          codigos_pedido: codigos
+        });
+        etapasOmie = consultaOmie?.resultados || {};
+      } catch (e) {
+        toast.error('Erro ao consultar etapas no Omie: ' + e.message);
+        return usarEspelhoLocal();
+      }
+
+      if (Object.keys(etapasOmie).length === 0) {
+        toast.warning('Consulta ao Omie não retornou pedidos. Exibindo dados do espelho local.');
+        return usarEspelhoLocal();
+      }
 
       base44.functions.invoke('atualizarEspelhoPedidosOmie', {
         resultados: etapasOmie
@@ -87,22 +130,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
           if (omie.numero_nf) return false;
           return true;
         })
-        .map(p => {
-          const omie = etapasOmie[String(p.codigo_pedido)] || {};
-          const local = pedidoLocalPorCodigo.get(String(p.codigo_pedido)) || {};
-          return {
-            codigo_pedido: String(p.codigo_pedido),
-            numero_pedido: p.numero_pedido,
-            valor_total_pedido: p.valor_total_pedido || local.valor_total || 0,
-            quantidade_itens: p.quantidade_itens || 0,
-            nome_cliente: p.nome_cliente || local.cliente_nome || '',
-            nome_fantasia: p.nome_fantasia || local.cliente_nome_fantasia || '',
-            cidade: p.cidade || local.cliente_cidade || '',
-            cliente_id: p.cliente_id || local.cliente_id || '',
-            numero_nf: omie.numero_nf || '',
-            ja_faturado: false
-          };
-        });
+        .map(p => montarPedido(p, etapasOmie[String(p.codigo_pedido)] || {}, pedidoLocalPorCodigo.get(String(p.codigo_pedido)) || {}));
     },
     enabled: ativa && carregamentoIniciado && cargas.length > 0,
     staleTime: 0,
