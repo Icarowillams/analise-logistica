@@ -4,6 +4,39 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
+let base44Global = null;
+
+// Circuit breaker: aborta se a API Omie estiver bloqueada por consumo indevido (425)
+async function checarBloqueioOmie(base44) {
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+        const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
+        err.code = 'OMIE_425';
+        err.bloqueado_ate = controle.bloqueado_ate;
+        throw err;
+    }
+    return controle;
+}
+
+// Detecta resposta 425 do Omie e abre o circuit breaker (bloqueio 30min)
+async function tratarResposta425(base44, faultstring, status) {
+    const msg = String(faultstring || '').toLowerCase();
+    if (status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
+        const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+        const controle = cb?.[0];
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+        err.code = 'OMIE_425';
+        err.bloqueado_ate = bloqueadoAte;
+        return err;
+    }
+    return null;
+}
+
 const UF_VALIDAS = new Set([
     'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
     'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC',
@@ -440,10 +473,13 @@ Deno.serve(async (req) => {
         // Retorna: códigos de integração e CPF/CNPJ de cada página
         // ====================================================================
         if (modo === "listar_omie") {
+            await checarBloqueioOmie(base44);
             console.log(`[sync] Buscando página ${pagina_omie} do Omie...`);
             const data = await buscarPaginaOmie(pagina_omie, 100);
 
             if (data.faultstring) {
+                const err425 = await tratarResposta425(base44, data.faultstring, 0);
+                if (err425) throw err425;
                 console.error('[sync] Erro Omie:', data.faultstring);
                 return Response.json({ error: data.faultstring }, { status: 500 });
             }
@@ -526,6 +562,8 @@ Deno.serve(async (req) => {
                 return Response.json({ error: 'Informe ids_para_enviar' }, { status: 400 });
             }
 
+            await checarBloqueioOmie(base44);
+
             const LOTE_MAX = 10;
             const loteIds = ids_para_enviar.slice(lote_inicio, lote_inicio + LOTE_MAX);
 
@@ -573,7 +611,22 @@ Deno.serve(async (req) => {
                         })
                     });
                     const resultado = await response.json();
-                    
+
+                    // 425 / consumo indevido → abre circuit breaker e interrompe o lote
+                    const err425 = await tratarResposta425(base44, resultado.faultstring, response.status);
+                    if (err425) {
+                        return Response.json({
+                            concluido: false,
+                            bloqueado: true,
+                            omie_bloqueada: true,
+                            bloqueado_ate: err425.bloqueado_ate,
+                            proximo_lote: lote_inicio,
+                            resumo: { total: resultados.length, sucessos: resultados.filter(r => r.sucesso).length, erros: resultados.filter(r => !r.sucesso).length },
+                            resultados,
+                            mensagem_bloqueio: err425.message
+                        }, { status: 425 });
+                    }
+
                     // Detectar bloqueio de API e parar imediatamente
                     if (resultado.faultstring && resultado.faultstring.includes('API bloqueada por consumo indevido')) {
                         resultados.push({
@@ -633,6 +686,7 @@ Deno.serve(async (req) => {
 
     } catch (error) {
         console.error('Erro:', error.message);
-        return Response.json({ error: error.message }, { status: 500 });
+        const bloqueada = error?.code === 'OMIE_425';
+        return Response.json({ error: error.message, omie_bloqueada: bloqueada, bloqueado_ate: error?.bloqueado_ate || null }, { status: bloqueada ? 425 : 500 });
     }
 });

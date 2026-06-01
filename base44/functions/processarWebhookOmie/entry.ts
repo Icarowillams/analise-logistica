@@ -122,6 +122,14 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     }
   } catch {}
 
+  // Circuit breaker — se a API Omie está bloqueada por consumo indevido (425), não consulta agora.
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controleCb = cb?.[0];
+  if (controleCb?.bloqueado && controleCb.bloqueado_ate && new Date(controleCb.bloqueado_ate) > new Date()) {
+    console.log(`[espelho] API Omie bloqueada (425) — pulando ConsultarPedido de ${omieCodigoPedido} até ${controleCb.bloqueado_ate}`);
+    return;
+  }
+
   const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
   const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
   const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
@@ -135,6 +143,16 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     const data = await res.json();
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
+      // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
+      if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
+        if (controleCb?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleCb.id, payloadCb).catch(() => {});
+        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${bloqueadoAte}.`);
+        err.code = 'OMIE_425';
+        throw err;
+      }
       if ((msg.includes('cota') || msg.includes('aguarde')) && tentativa < 3) {
         await new Promise(r => setTimeout(r, 2500 * tentativa));
         return consultar(tentativa + 1);
