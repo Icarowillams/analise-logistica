@@ -1,6 +1,7 @@
 {
   "name": "TabelaPreco",
   "type": "object",
+  "description": "Tabela de pre\u00e7os vinculada a clientes e sincronizada com o Omie",
   "properties": {
     "nome": {
       "type": "string",

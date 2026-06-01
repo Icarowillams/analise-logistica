@@ -1,6 +1,7 @@
 {
   "name": "Segmento",
   "type": "object",
+  "description": "Segmento de mercado usado para classificar e filtrar clientes",
   "properties": {
     "nome": {
       "type": "string",

@@ -1,6 +1,7 @@
 {
   "name": "UnidadeProduto",
   "type": "object",
+  "description": "Tipo/unidade de embalagem do produto (ex: CX, UN, FARDO)",
   "properties": {
     "nome": {
       "type": "string",

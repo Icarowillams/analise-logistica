@@ -1,6 +1,7 @@
 {
   "name": "SubCategoria",
   "type": "object",
+  "description": "Subcategoria de produtos vinculada a uma categoria pai",
   "properties": {
     "nome": {
       "type": "string",

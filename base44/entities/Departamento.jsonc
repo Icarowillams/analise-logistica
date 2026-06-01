@@ -1,6 +1,7 @@
 {
   "name": "Departamento",
   "type": "object",
+  "description": "Departamento organizacional ao qual os funcion\u00e1rios s\u00e3o vinculados",
   "properties": {
     "nome": {
       "type": "string",

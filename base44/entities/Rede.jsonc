@@ -1,6 +1,7 @@
 {
   "name": "Rede",
   "type": "object",
+  "description": "Rede ou franquia que agrupa clientes pertencentes ao mesmo grupo comercial",
   "properties": {
     "nome": {
       "type": "string",

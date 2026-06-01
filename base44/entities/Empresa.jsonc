@@ -1,6 +1,7 @@
 {
   "name": "Empresa",
   "type": "object",
+  "description": "Dados cadastrais e fiscais da empresa emitente usada na integra\u00e7\u00e3o com o Omie",
   "properties": {
     "codigo": {
       "type": "string",

@@ -1,6 +1,7 @@
 {
   "name": "PlanoPagamento",
   "type": "object",
+  "description": "Plano de pagamento com condi\u00e7\u00f5es de parcelamento aplicadas aos pedidos",
   "properties": {
     "nome": {
       "type": "string",

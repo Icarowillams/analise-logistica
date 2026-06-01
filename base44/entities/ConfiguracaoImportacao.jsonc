@@ -1,6 +1,7 @@
 {
   "name": "ConfiguracaoImportacao",
   "type": "object",
+  "description": "Configura\u00e7\u00e3o e controle das importa\u00e7\u00f5es de dados de apps externos (visitas, estoques, trocas)",
   "properties": {
     "app_origem_id": {
       "type": "string",

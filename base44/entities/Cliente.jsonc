@@ -1,6 +1,7 @@
 {
   "name": "Cliente",
   "type": "object",
+  "description": "Cliente comercial \u2014 base de cadastro para pedidos, faturamento Omie, log\u00edstica e roteiriza\u00e7\u00e3o",
   "properties": {
     "codigo_interno": {
       "type": "string",

@@ -1,6 +1,7 @@
 {
   "name": "UnidadeMedida",
   "type": "object",
+  "description": "Unidade de medida usada nos produtos (ex: KG, UN, CX)",
   "properties": {
     "nome": {
       "type": "string",
