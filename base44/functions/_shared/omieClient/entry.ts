@@ -175,6 +175,31 @@ export function clearOmieMemoryCache(): void {
   memoryCache.clear();
 }
 
+// Cache curto das credenciais por isolate (evita ler a entidade a cada chamada Omie).
+let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+const CREDS_CACHE_TTL_MS = 30_000;
+
+/**
+ * Resolve as credenciais Omie ativas.
+ * Prioriza a entidade ConfiguracaoOmie (registro ativo); cai para os Secrets se não houver.
+ */
+export async function getOmieCredentials(base44: Base44Client): Promise<{ appKey: string; appSecret: string }> {
+  if (_credsCache && Date.now() - _credsCache.at < CREDS_CACHE_TTL_MS) {
+    return { appKey: _credsCache.appKey, appSecret: _credsCache.appSecret };
+  }
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret), at: Date.now() };
+    return { appKey: _credsCache.appKey, appSecret: _credsCache.appSecret };
+  }
+  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  console.warn('[omieClient] Nenhuma ConfiguracaoOmie ativa — usando fallback dos Secrets.');
+  _credsCache = { appKey, appSecret, at: Date.now() };
+  return { appKey, appSecret };
+}
+
 /**
  * Executa uma chamada centralizada à API Omie com credenciais do ambiente, timeout,
  * retry exponencial para HTTP 429, circuit breaker, cache de 30 segundos e log automático.
@@ -185,8 +210,7 @@ export function clearOmieMemoryCache(): void {
  * @param options Opções da chamada; informe options.call com o método Omie, ex: "ConsultarPedido".
  */
 export async function omieCall(base44: Base44Client, endpoint: string, param: unknown, options: OmieCallOptions = {}): Promise<unknown> {
-  const appKey = Deno.env.get('OMIE_APP_KEY');
-  const appSecret = Deno.env.get('OMIE_APP_SECRET');
+  const { appKey, appSecret } = await getOmieCredentials(base44);
   const call = options.call || (typeof param === 'object' && param && 'call' in (param as Record<string, unknown>) ? String((param as Record<string, unknown>).call) : '');
 
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
@@ -313,6 +337,6 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
 if (import.meta.main) {
   Deno.serve(() => Response.json({
     arquivo: 'Cliente Omie centralizado compartilhado',
-    funcoes_exportadas: ['omieCall', 'checkCircuitBreaker', 'clearOmieMemoryCache']
+    funcoes_exportadas: ['omieCall', 'checkCircuitBreaker', 'clearOmieMemoryCache', 'getOmieCredentials']
   }));
 }

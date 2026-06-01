@@ -11,21 +11,24 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Ler secrets dentro do handler (sempre atualizado) — padrão único OMIE_APP_KEY/OMIE_APP_SECRET
-    const appKey = Deno.env.get('OMIE_APP_KEY');
-    const appSecret = Deno.env.get('OMIE_APP_SECRET');
+    // Resolve credenciais: prioriza ConfiguracaoOmie (banco), cai para Secrets se não houver.
+    const credRows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    const credAtiva = credRows?.[0];
+    const appKey = credAtiva?.app_key || Deno.env.get('OMIE_APP_KEY');
+    const appSecret = credAtiva?.app_secret || Deno.env.get('OMIE_APP_SECRET');
+    const fonteCred = credAtiva?.app_key ? 'banco' : 'secrets_fallback';
 
     if (!appKey || !appSecret) {
       return Response.json({
         ok: false,
-        error: 'OMIE_APP_KEY ou OMIE_APP_SECRET não configurados nos secrets.',
+        error: 'Credenciais Omie não configuradas (nem no banco nem nos Secrets).',
         debug: {
           has_key: !!appKey,
           has_secret: !!appSecret
         }
       });
     }
-    console.log(`[testarConexaoOmie] Conectando ao Omie com APP_KEY: ...${String(appKey).slice(-4)}`);
+    console.log(`[testarConexaoOmie] Conectando ao Omie (fonte: ${fonteCred}) com APP_KEY: ...${String(appKey).slice(-4)}`);
 
     const startedAt = Date.now();
     const res = await fetch(`${OMIE_BASE_URL}geral/empresas/`, {
@@ -75,6 +78,7 @@ Deno.serve(async (req) => {
     return Response.json({
       ok: true,
       duracao_ms,
+      fonte_credencial: fonteCred,
       empresa: {
         razao_social: empresa.razao_social,
         cnpj: empresa.cnpj,

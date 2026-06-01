@@ -29,9 +29,15 @@ function setMemoryCache(key, data) {
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429.
 // Usa endpoint /produtos/pedidovendafat/ (FaturarPedidoVenda/ValidarPedidoVenda). Lança erro estruturado em faultstring.
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) return { OMIE_APP_KEY: String(ativo.app_key), OMIE_APP_SECRET: String(ativo.app_secret) };
+  return { OMIE_APP_KEY: Deno.env.get('OMIE_APP_KEY'), OMIE_APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
+}
+
 async function omieCall(base44, call, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const { OMIE_APP_KEY, OMIE_APP_SECRET } = await resolverCredsOmie(base44);
   if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
   console.log(`[emitirNfPedidoOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_APP_KEY).slice(-4)} | método: ${call}`);
   const maxTentativas = options.maxTentativas || 3;

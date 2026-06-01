@@ -2,8 +2,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+// Credenciais resolvidas em runtime (ConfiguracaoOmie no banco, com fallback aos Secrets).
+let APP_KEY = null;
+let APP_SECRET = null;
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  APP_KEY = ativo?.app_key || Deno.env.get('OMIE_APP_KEY');
+  APP_SECRET = ativo?.app_secret || Deno.env.get('OMIE_APP_SECRET');
+}
 
 // Delay mínimo entre chamadas à API Omie (~17 req/min, dentro da cota).
 const DELAY_ENTRE_CHAMADAS_MS = 3500;
@@ -177,6 +184,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    await resolverCredsOmie(base44);
     if (!APP_KEY || !APP_SECRET) {
       return Response.json({ error: 'Credenciais Omie não configuradas' }, { status: 500 });
     }

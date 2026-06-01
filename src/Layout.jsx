@@ -176,7 +176,8 @@ export default function Layout({ children, currentPageName }) {
         icon: Shield,
         submenu: [
           { title: 'Permissões', path: 'Permissoes' },
-          { title: 'Log Gerencial', path: 'LogGerencial' }
+          { title: 'Log Gerencial', path: 'LogGerencial' },
+          { title: 'Credenciais Omie', path: 'ConfiguracaoOmie' }
         ]
       });
 
