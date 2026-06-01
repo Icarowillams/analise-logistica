@@ -109,17 +109,9 @@ Deno.serve(async (req) => {
     const nfsEmitidas = 0;
     const aguardandoNf = sucessos;
 
-    // Status local: faturar carga apenas libera a carga para a tela de Emissão NF-e.
-    const processados = resultados.length - skips;
-    let novoStatus = carga.status_carga;
-    let novaDataFat = carga.data_faturamento;
-
-    if (resultados.length > 0 && (processados === 0 || sucessos === processados)) {
-      novoStatus = 'faturada';
-      novaDataFat = new Date().toISOString();
-    } else {
-      novoStatus = 'montagem';
-    }
+    // Status local binário: faturar a carga sempre a marca como "faturada".
+    const novoStatus = 'faturada';
+    const novaDataFat = carga.data_faturamento || new Date().toISOString();
 
     // Persistir números de NF retornados nos pedidos_omie da carga + montar notas_fiscais[]
     // Sem isso o Romaneio, Boletos e impressão das NFs ficam sem número.

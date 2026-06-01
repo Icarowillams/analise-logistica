@@ -284,11 +284,11 @@ Deno.serve(async (req) => {
       const notasMudaram = JSON.stringify(notasFiscaisAtualizadas) !== JSON.stringify(carga.notas_fiscais || []);
 
       if (precisaAtualizar || notasMudaram) {
-        const todosCancelados = pedidosAtualizados.length > 0 && pedidosAtualizados.every(p => String(p.status_nf || p.status_pedido || p.status_real_omie || '').toLowerCase().includes('cancel'));
+        // status_carga é LOCAL (montagem/faturada) e NUNCA é alterado pela sincronização Omie.
+        // Aqui atualizamos apenas detalhes dos pedidos_omie e notas_fiscais para consulta/auditoria.
         await base44.asServiceRole.entities.Carga.update(carga.id, {
           pedidos_omie: pedidosAtualizados,
-          notas_fiscais: notasFiscaisAtualizadas,
-          ...(todosCancelados ? { status_carga: 'cancelada' } : {})
+          notas_fiscais: notasFiscaisAtualizadas
         });
 
         // Reflete apenas autorização fiscal nos Pedidos locais.

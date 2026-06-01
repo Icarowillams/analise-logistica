@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-async function registrarLog(base44, user, carga, statusAnterior, simular) {
+async function registrarLog(base44, user, carga, statusAnterior, statusNovo, simular) {
   await base44.asServiceRole.entities.LogGerencial.create({
     tipo_acao: 'edicao',
     entidade_tipo: 'Carga',
@@ -9,13 +9,13 @@ async function registrarLog(base44, user, carga, statusAnterior, simular) {
     entidade_descricao: `Carga ${carga.numero_carga || carga.id}`,
     usuario_email: user.email,
     usuario_nome: user.full_name || user.email,
-    descricao: `Status da carga corrigido de ${statusAnterior || '-'} para faturada — correção em massa pós-bug`,
+    descricao: `Status da carga migrado de ${statusAnterior || '-'} para ${statusNovo} — normalização para fluxo local binário`,
     dados_json: JSON.stringify({
       acao: 'correcao_status_carga',
       carga_id: carga.id,
       numero_carga: carga.numero_carga || '',
       status_anterior: statusAnterior || '',
-      status_novo: 'faturada',
+      status_novo: statusNovo,
       simular
     }),
     origem: 'backend'
@@ -35,25 +35,27 @@ Deno.serve(async (req) => {
     const limite = Number(body.limite || 5000);
     const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', limite);
 
-    const alterar = cargas.filter(carga => (carga.status_carga || '') !== 'faturada');
+    // Migração para fluxo local binário: tem data_faturamento → "faturada", senão → "montagem".
+    const statusDestino = (carga) => (carga.data_faturamento ? 'faturada' : 'montagem');
+    const alterar = cargas.filter(carga => (carga.status_carga || '') !== statusDestino(carga));
     const jaCorretas = cargas.length - alterar.length;
     const alteradas = [];
 
     for (const carga of alterar) {
       const statusAnterior = carga.status_carga || '';
+      const statusNovo = statusDestino(carga);
       alteradas.push({
         id: carga.id,
         numero_carga: carga.numero_carga || '',
         status_anterior: statusAnterior,
-        status_novo: 'faturada'
+        status_novo: statusNovo
       });
 
       if (!simular) {
         await base44.asServiceRole.entities.Carga.update(carga.id, {
-          status_carga: 'faturada',
-          data_faturamento: carga.data_faturamento || new Date().toISOString()
+          status_carga: statusNovo
         });
-        await registrarLog(base44, user, carga, statusAnterior, simular);
+        await registrarLog(base44, user, carga, statusAnterior, statusNovo, simular);
       }
     }
 
