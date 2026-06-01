@@ -4,38 +4,75 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
-async function omieCall(base44, url, call, param, opts = {}) {
-    const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
-    const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-    const controle = cb?.[0];
-    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) return { faultstring: `API Omie temporariamente bloqueada. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
-    if (cacheMinutes > 0) {
-        const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-        if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
+const memoryCache = new Map();
+function getFromMemoryCache(key, ttlMs = 30000) {
+  const entry = memoryCache.get(key);
+  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.data;
+  return null;
+}
+function setMemoryCache(key, data) {
+  memoryCache.set(key, { data, ts: Date.now() });
+}
+
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const cacheKey = `${endpoint}_${JSON.stringify(param)}`;
+  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(endpoint);
+  if (isReadOnly) {
+    const cached = getFromMemoryCache(cacheKey);
+    if (cached) return cached;
+  }
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      if (isReadOnly) setMemoryCache(cacheKey, data);
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
     }
-    let lastError = '';
-    for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] }) });
-        const data = await res.json();
-        if (data.faultstring || data.faultcode) {
-            const msg = String(data.faultstring || '').toLowerCase();
-            if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('too many') || msg.includes('try again') || msg.includes('tente novamente')) {
-                const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-                if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-                return data;
-            }
-            if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
-        }
-        if (cacheMinutes > 0) {
-            const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
-            const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-            if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
-        }
-        if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
-        return data;
-    }
-    return { faultstring: lastError || 'Máximo de tentativas Omie excedido' };
+  }
+  throw lastError;
 }
 
 function formatDateOmie(dateStr) {
@@ -120,7 +157,7 @@ Deno.serve(async (req) => {
         // ====================================================================
         console.log(`[editarPedidoOmie] Consultando pedido ${pedido.omie_codigo_pedido} no Omie...`);
         
-        const consultaResult = await omieCall(base44, OMIE_URL, "ConsultarPedido", { codigo_pedido: Number(pedido.omie_codigo_pedido) });
+        const consultaResult = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(pedido.omie_codigo_pedido) });
         
         if (consultaResult.faultstring) {
             console.error('[editarPedidoOmie] Erro ao consultar pedido no Omie:', consultaResult.faultstring);
@@ -174,7 +211,7 @@ Deno.serve(async (req) => {
         let codigoClienteIntegracao = pedido.cliente_codigo || pedido.cliente_id;
 
         const tentarConsultarCliente = async (codIntegracao) => {
-            return await omieCall(base44, OMIE_CLIENTES_URL, "ConsultarCliente", { codigo_cliente_integracao: codIntegracao });
+            return await omieCall(base44, "ConsultarCliente", { codigo_cliente_integracao: codIntegracao });
         };
 
         const isErroBloqueio = (fault) => {
@@ -207,7 +244,7 @@ Deno.serve(async (req) => {
             const cpfCnpj = (pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
             if (cpfCnpj) {
                 try {
-                    const dataCpf = await omieCall(base44, OMIE_CLIENTES_URL, "ListarClientes", { pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: cpfCnpj } });
+                    const dataCpf = await omieCall(base44, "ListarClientes", { pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: cpfCnpj } });
                     if (!dataCpf.faultstring && dataCpf.clientes_cadastro?.length > 0) {
                         codigoClienteIntegracao = dataCpf.clientes_cadastro[0].codigo_cliente_integracao;
                         clienteEncontradoOmie = true;
@@ -315,7 +352,7 @@ Deno.serve(async (req) => {
         // Buscar conta corrente
         let codigoContaCorrente = null;
         try {
-            const ccData = await omieCall(base44, "https://app.omie.com.br/api/v1/geral/contacorrente/", "ListarContasCorrentes", { pagina: 1, registros_por_pagina: 50 });
+            const ccData = await omieCall(base44, "ListarContasCorrentes", { pagina: 1, registros_por_pagina: 50 });
             if (ccData.ListarContasCorrentes?.length > 0) {
                 const contaPadrao = ccData.ListarContasCorrentes.find(c => c.cPadrao === "S") || ccData.ListarContasCorrentes[0];
                 codigoContaCorrente = contaPadrao.nCodCC;
@@ -334,7 +371,7 @@ Deno.serve(async (req) => {
 
         console.log('[editarPedidoOmie] Alterando pedido Omie:', pedido.omie_codigo_pedido, '- Cliente:', pedido.cliente_nome);
 
-        const resultado = await omieCall(base44, OMIE_URL, "AlterarPedidoVenda", pedidoOmie);
+        const resultado = await omieCall(base44, "AlterarPedidoVenda", pedidoOmie);
         console.log('[editarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 1000));
 
         if (resultado.faultstring) {

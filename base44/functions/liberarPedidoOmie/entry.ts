@@ -4,6 +4,77 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
+const memoryCache = new Map();
+function getFromMemoryCache(key, ttlMs = 30000) {
+  const entry = memoryCache.get(key);
+  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.data;
+  return null;
+}
+function setMemoryCache(key, data) {
+  memoryCache.set(key, { data, ts: Date.now() });
+}
+
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const cacheKey = `${endpoint}_${JSON.stringify(param)}`;
+  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(endpoint);
+  if (isReadOnly) {
+    const cached = getFromMemoryCache(cacheKey);
+    if (cached) return cached;
+  }
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      if (isReadOnly) setMemoryCache(cacheKey, data);
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -61,25 +132,14 @@ Deno.serve(async (req) => {
         const etapaLabel = etapaOmie === "20" ? "Pedidos Liberados" : "Pedido de Venda";
         console.log(`[liberarPedidoOmie] Alterando etapa do pedido ${codigoPedidoOmie} para ${etapaOmie} (${etapaLabel})`);
 
-        const payload = {
-            call: "TrocarEtapaPedido",
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [{
-                codigo_pedido: codigoPedidoOmie,
-                etapa: etapaOmie
-            }]
+        const param = {
+            codigo_pedido: codigoPedidoOmie,
+            etapa: etapaOmie
         };
 
-        console.log('[liberarPedidoOmie] Payload:', JSON.stringify(payload.param[0]));
+        console.log('[liberarPedidoOmie] Payload:', JSON.stringify(param));
 
-        const response = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const resultado = await response.json();
+        const resultado = await omieCall(base44, "TrocarEtapaPedido", param);
         console.log('[liberarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
 
         if (resultado.faultstring) {

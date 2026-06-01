@@ -33,31 +33,75 @@ function montarTextoMotivos(pedido, itens, pedidosTroca) {
     return `MOTIVOS DE TROCA:\n${linhas.join("\n")}`;
 }
 
-async function chamarOmie(call, param) {
-    const response = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call,
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [param]
-        })
-    });
+const memoryCache = new Map();
+function getFromMemoryCache(key, ttlMs = 30000) {
+  const entry = memoryCache.get(key);
+  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.data;
+  return null;
+}
+function setMemoryCache(key, data) {
+  memoryCache.set(key, { data, ts: Date.now() });
+}
 
-    const text = await response.text();
-    let data;
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const cacheKey = `${endpoint}_${JSON.stringify(param)}`;
+  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(endpoint);
+  if (isReadOnly) {
+    const cached = getFromMemoryCache(cacheKey);
+    if (cached) return cached;
+  }
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-        data = JSON.parse(text);
-    } catch (e) {
-        throw new Error(`Resposta inválida do Omie em ${call}: ${text.substring(0, 500)}`);
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      if (isReadOnly) setMemoryCache(cacheKey, data);
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
     }
-
-    if (data.faultstring || data.faultcode) {
-        throw new Error(data.faultstring || data.faultcode);
-    }
-
-    return data;
+  }
+  throw lastError;
 }
 
 async function injetarMotivosTrocaNoOmie(base44, pedido, codigoPedidoOmie, user) {
@@ -69,7 +113,7 @@ async function injetarMotivosTrocaNoOmie(base44, pedido, codigoPedidoOmie, user)
 
     if (!textoMotivos) return;
 
-    const pedidoOmie = await chamarOmie("ConsultarPedido", { codigo_pedido: codigoPedidoOmie });
+    const pedidoOmie = await omieCall(base44, "ConsultarPedido", { codigo_pedido: codigoPedidoOmie });
     const pedidoData = pedidoOmie.pedido_venda_produto || pedidoOmie;
     const obsAtual = pedidoData?.observacoes?.obs_venda || "";
     const obsVenda = obsAtual.includes("MOTIVOS DE TROCA:")
@@ -88,7 +132,7 @@ async function injetarMotivosTrocaNoOmie(base44, pedido, codigoPedidoOmie, user)
     };
 
     try {
-        const resultado = await chamarOmie("AlterarPedidoVenda", payload);
+        const resultado = await omieCall(base44, "AlterarPedidoVenda", payload);
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
             endpoint: 'produtos/pedido',
             call: 'AlterarPedidoVenda',
@@ -165,29 +209,11 @@ Deno.serve(async (req) => {
 
         // Tentativa 1: TrocarEtapaPedido
         console.log('[faturarPedidoOmie] Tentativa 1: TrocarEtapaPedido com etapa', etapaDestino);
-        const response1 = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "TrocarEtapaPedido",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{
-                    codigo_pedido: codigoPedidoOmie,
-                    etapa: etapaDestino
-                }]
-            })
+        const resultado1 = await omieCall(base44, "TrocarEtapaPedido", {
+            codigo_pedido: codigoPedidoOmie,
+            etapa: etapaDestino
         });
-
-        const resultado1Text = await response1.text();
-        console.log('[faturarPedidoOmie] Resposta Tentativa 1:', resultado1Text.substring(0, 2000));
-
-        let resultado1;
-        try {
-            resultado1 = JSON.parse(resultado1Text);
-        } catch (e) {
-            // continua para tentativa 2
-        }
+        console.log('[faturarPedidoOmie] Resposta Tentativa 1:', JSON.stringify(resultado1).substring(0, 2000));
 
         // Se tentativa 1 deu certo (verificar se não é mensagem de erro disfarçada)
         const descStatus1 = resultado1?.descricao_status || '';
@@ -210,29 +236,8 @@ Deno.serve(async (req) => {
         console.log('[faturarPedidoOmie] Tentativa 2: ConsultarPedido + AlterarPedidoVenda');
         
         // Consultar pedido completo no Omie
-        const consultaResp = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "ConsultarPedido",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [{ codigo_pedido: codigoPedidoOmie }]
-            })
-        });
-
-        const consultaText = await consultaResp.text();
-        console.log('[faturarPedidoOmie] ConsultarPedido resposta (primeiros 1000 chars):', consultaText.substring(0, 1000));
-        
-        let pedidoOmie;
-        try {
-            pedidoOmie = JSON.parse(consultaText);
-        } catch (e) {
-            return Response.json({
-                sucesso: false,
-                erro: 'Falha ao consultar pedido no Omie'
-            });
-        }
+        const pedidoOmie = await omieCall(base44, "ConsultarPedido", { codigo_pedido: codigoPedidoOmie });
+        console.log('[faturarPedidoOmie] ConsultarPedido resposta (primeiros 1000 chars):', JSON.stringify(pedidoOmie).substring(0, 1000));
 
         if (pedidoOmie.faultstring) {
             await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -295,29 +300,8 @@ Deno.serve(async (req) => {
         console.log('[faturarPedidoOmie] Enviando AlterarPedidoVenda com etapa:', etapaDestino);
         console.log('[faturarPedidoOmie] Payload keys:', Object.keys(pedidoParaAlterar));
         
-        const response2 = await fetch(OMIE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                call: "AlterarPedidoVenda",
-                app_key: OMIE_APP_KEY,
-                app_secret: OMIE_APP_SECRET,
-                param: [pedidoParaAlterar]
-            })
-        });
-
-        const resultado2Text = await response2.text();
-        console.log('[faturarPedidoOmie] Resposta Tentativa 2:', resultado2Text.substring(0, 2000));
-
-        let resultado2;
-        try {
-            resultado2 = JSON.parse(resultado2Text);
-        } catch (e) {
-            return Response.json({
-                sucesso: false,
-                erro: 'Resposta inválida do Omie: ' + resultado2Text.substring(0, 500)
-            });
-        }
+        const resultado2 = await omieCall(base44, "AlterarPedidoVenda", pedidoParaAlterar);
+        console.log('[faturarPedidoOmie] Resposta Tentativa 2:', JSON.stringify(resultado2).substring(0, 2000));
 
         if (resultado2.faultstring || resultado2.faultcode) {
             const erro = resultado2.faultstring || resultado2.faultcode;

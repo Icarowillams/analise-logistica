@@ -18,39 +18,86 @@ const ETAPA_NOMES = {
     '60': 'Faturado',
 };
 
-async function consultarPedidoOmie(codigoPedido) {
-    const response = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call: "ConsultarPedido",
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [{ codigo_pedido: Number(codigoPedido) }]
-        })
-    });
-    const text = await response.text();
-    console.log('[cancelarPedidoOmie] ConsultarPedido resposta:', text.substring(0, 2000));
-    let result;
-    try { result = JSON.parse(text); } catch (e) { return null; }
+const memoryCache = new Map();
+function getFromMemoryCache(key, ttlMs = 30000) {
+  const entry = memoryCache.get(key);
+  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.data;
+  return null;
+}
+function setMemoryCache(key, data) {
+  memoryCache.set(key, { data, ts: Date.now() });
+}
+
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const cacheKey = `${endpoint}_${JSON.stringify(param)}`;
+  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(endpoint);
+  if (isReadOnly) {
+    const cached = getFromMemoryCache(cacheKey);
+    if (cached) return cached;
+  }
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      if (isReadOnly) setMemoryCache(cacheKey, data);
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
+}
+
+async function consultarPedidoOmie(base44, codigoPedido) {
+    const result = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(codigoPedido) }, { skipLog: true });
+    console.log('[cancelarPedidoOmie] ConsultarPedido resposta:', JSON.stringify(result).substring(0, 2000));
     return result;
 }
 
-async function excluirPedidoOmie(codigoPedido) {
-    const response = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call: "ExcluirPedido",
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [{ codigo_pedido: Number(codigoPedido) }]
-        })
-    });
-    const text = await response.text();
-    console.log('[cancelarPedidoOmie] ExcluirPedido resposta:', text.substring(0, 1000));
-    let result;
-    try { result = JSON.parse(text); } catch (e) { return { faultstring: 'Resposta inválida do Omie' }; }
+async function excluirPedidoOmie(base44, codigoPedido) {
+    const result = await omieCall(base44, "ExcluirPedido", { codigo_pedido: Number(codigoPedido) });
+    console.log('[cancelarPedidoOmie] ExcluirPedido resposta:', JSON.stringify(result).substring(0, 1000));
     return result;
 }
 
@@ -91,7 +138,7 @@ Deno.serve(async (req) => {
             console.log('[cancelarPedidoOmie] Consultando etapa do pedido Omie:', codigoPedido);
 
             // 1. Consultar pedido no Omie para verificar a etapa
-            const consultaResult = await consultarPedidoOmie(codigoPedido);
+            const consultaResult = await consultarPedidoOmie(base44, codigoPedido);
 
             if (!consultaResult) {
                 return Response.json({
@@ -144,7 +191,7 @@ Deno.serve(async (req) => {
                 else {
                     // Etapa é cancelável — executar exclusão no Omie (API só suporta exclusão)
                     console.log(`[cancelarPedidoOmie] Etapa ${etapaAtual} permite cancelamento. Excluindo no Omie...`);
-                    const excluirResult = await excluirPedidoOmie(codigoPedido);
+                    const excluirResult = await excluirPedidoOmie(base44, codigoPedido);
 
                     if (excluirResult && !excluirResult.faultstring && !excluirResult.faultcode) {
                         omieCancelado = true;
