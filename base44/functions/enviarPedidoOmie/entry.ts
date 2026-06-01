@@ -10,6 +10,21 @@ const CONTA_CORRENTE_PADRAO = 11464371392; // Centralizado em constantes.ts
 // ============================================================
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Log de debug: grava em console + entidade LogIntegracaoOmie (transparência do fluxo)
+async function debugLog(base44, mensagem, extra = {}) {
+  console.log(mensagem);
+  try {
+    await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+      endpoint: 'enviarPedidoOmie:debug',
+      payload_envio: JSON.stringify(extra).slice(0, 2000),
+      payload_resposta: mensagem.slice(0, 2000),
+      sucesso: !extra.erro,
+      erro: extra.erro || null,
+      created_date: new Date().toISOString()
+    });
+  } catch (_) { /* silent */ }
+}
+
 async function omieCall(base44, endpoint, param, options = {}) {
   const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
@@ -261,6 +276,8 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     }
     if (!pedido) return { sucesso: false, erro: 'Pedido não encontrado', pedido_id };
 
+    await debugLog(base44, `[enviarPedidoOmie] Iniciando envio do pedido ID: ${pedido_id}, modelo_nota: ${pedido.modelo_nota}, tipo: ${pedido.tipo}`, { pedido_id, modelo_nota: pedido.modelo_nota, tipo: pedido.tipo, cliente_id: pedido.cliente_id, status: pedido.status });
+
     if (!['pendente', 'enviado', 'liberado'].includes(pedido.status)) {
         return { sucesso: false, erro: 'Status inválido para envio', pedido_id };
     }
@@ -280,7 +297,12 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         return { sucesso: false, erro: 'Data de Previsão de Entrega é obrigatória', pedido_id };
     }
     if (pedido.tipo === 'troca') {
+        await debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: tipo === 'troca'`, { pedido_id, motivo: 'troca' });
         return { sucesso: true, pedido_id, codigo_pedido_omie: null, mensagem: 'Troca não gera venda no Omie' };
+    }
+    if (pedido.modelo_nota === 'd1') {
+        await debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: modelo_nota === 'd1'`, { pedido_id, motivo: 'd1' });
+        return { sucesso: false, erro: 'Pedido modelo D1 não é enviado ao Omie (venda interna)', pedido_id };
     }
 
     // Itens
@@ -292,6 +314,14 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     let clienteBase44 = ctx.clientesPorId?.[pedido.cliente_id] || null;
     if (!clienteBase44 && pedido.cliente_id) {
         try { clienteBase44 = await base44.asServiceRole.entities.Cliente.get(pedido.cliente_id); } catch { /* ignore */ }
+    }
+
+    await debugLog(base44, `[enviarPedidoOmie] Cliente ID: ${pedido.cliente_id}, tipo_nota: ${clienteBase44?.tipo_nota}`, { cliente_id: pedido.cliente_id, tipo_nota: clienteBase44?.tipo_nota, codigo_omie: clienteBase44?.codigo_omie });
+
+    if (clienteBase44?.tipo_nota === 'D1') {
+        await debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: cliente tipo_nota === 'D1'`, { pedido_id, motivo: 'cliente_d1' });
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: 'Cliente marcado como D1 (sem NF) — não enviado ao Omie', omie_enviado: false });
+        return { sucesso: false, erro: 'Cliente marcado como D1 (sem NF) — não enviado ao Omie', pedido_id };
     }
 
     // Plano
@@ -348,6 +378,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     }
 
     if (resultado?.faultstring) {
+        await debugLog(base44, `[enviarPedidoOmie] Erro Omie: ${resultado.faultstring}`, { pedido_id, erro: resultado.faultstring, faultcode: resultado.faultcode });
         await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: resultado.faultstring, omie_enviado: false });
         return { sucesso: false, erro: resultado.faultstring, pedido_id, duracao_ms: Date.now() - t0 };
     }
@@ -372,6 +403,8 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         updateData.dados_adicionais_nf = partes.join(' | ');
     }
     await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+
+    await debugLog(base44, `[enviarPedidoOmie] Pedido enviado com sucesso, omie_id: ${codigoOmie}`, { pedido_id, omie_id: codigoOmie, numero_pedido_omie: numeroPedidoOmie });
 
     return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, duracao_ms: Date.now() - t0 };
 }

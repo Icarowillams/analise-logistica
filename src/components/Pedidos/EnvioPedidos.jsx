@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X, CheckCircle2 } from 'lucide-react';
+import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X, CheckCircle2, Cloud, HardDrive } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import PedidoPdf from './PedidoPdf';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
@@ -43,8 +44,23 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   const pedidosComCliente = useMemo(() => {
     const mapa = new Map(clientes.map(c => [c.id, c]));
-    return pedidos.map(p => ({ ...p, cliente_pendencia_financeira: !!mapa.get(p.cliente_id)?.pendencia_financeira }));
+    return pedidos.map(p => {
+      const cli = mapa.get(p.cliente_id);
+      return {
+        ...p,
+        cliente_pendencia_financeira: !!cli?.pendencia_financeira,
+        cliente_tipo_nota: cli?.tipo_nota || null
+      };
+    });
   }, [pedidos, clientes]);
+
+  // Determina destino do pedido e o motivo (para badge + tooltip)
+  const getDestino = (pedido) => {
+    if (pedido.tipo === 'troca') return { omie: false, motivo: 'Pedido do tipo Troca — registrado apenas localmente.' };
+    if (pedido.modelo_nota === 'd1') return { omie: false, motivo: 'Modelo da nota é D1 — venda interna, não vai ao Omie.' };
+    if (pedido.cliente_tipo_nota === 'D1') return { omie: false, motivo: 'Cliente está marcado como D1 (sem NF) — não vai ao Omie.' };
+    return { omie: true, motivo: 'Será enviado ao Omie como Pedido de Venda (etapa 10).' };
+  };
 
   const pendentes = pedidosComCliente.filter(p => p.status === 'pendente' && !p.data_envio);
   const enviados = pedidosComCliente.filter(p => !!p.data_envio);
@@ -348,12 +364,33 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             <p>Modelo: {modeloLabel} | Emissão: {dataEmissao}</p>
             {pedido.numero_pedido && <p>Pedido Nº: {formatarNumeroPedido(pedido)}</p>}
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 items-center">
             <Badge variant="outline" className="text-[10px]">{pedido.tipo === 'troca' ? 'Troca' : 'Pré-venda'}</Badge>
             {pedido.tipo === 'troca' && <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-700">Troca</Badge>}
             {pedido.modelo_nota === 'd1' && pedido.tipo !== 'troca' && (
               <Badge variant="outline" className="text-[10px] border-purple-300 text-purple-700">D1 — Interno (sem Omie)</Badge>
             )}
+            {(() => {
+              const destino = getDestino(pedido);
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {destino.omie ? (
+                        <Badge className="text-[10px] bg-green-600 hover:bg-green-600 cursor-help gap-1">
+                          <Cloud className="w-3 h-3" /> Omie
+                        </Badge>
+                      ) : (
+                        <Badge className="text-[10px] bg-slate-400 hover:bg-slate-400 cursor-help gap-1">
+                          <HardDrive className="w-3 h-3" /> Interno — não vai ao Omie
+                        </Badge>
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[240px] text-xs">{destino.motivo}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
           </div>
           <div className="flex gap-2 pt-2">
             {showEnviar && (
