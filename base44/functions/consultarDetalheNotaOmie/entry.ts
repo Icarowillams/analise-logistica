@@ -5,16 +5,15 @@ const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SEC
 const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';
 const PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-let base44Global = null;
 
-async function omieCall(url, call, param, opts = {}) {
+async function omieCall(base44, url, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-  const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
   if (cacheMinutes > 0) {
-    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
   let lastError = '';
@@ -25,7 +24,7 @@ async function omieCall(url, call, param, opts = {}) {
       const msg = String(data.faultstring || '').toLowerCase();
       if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
         throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('indispon')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
@@ -33,10 +32,10 @@ async function omieCall(url, call, param, opts = {}) {
     }
     if (cacheMinutes > 0) {
       const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
-      const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-      if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+      const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+      if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
     }
-    if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+    if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
     return data;
   }
   throw new Error(lastError || 'Máximo de tentativas Omie excedido');
@@ -64,7 +63,6 @@ function downloadDataUrl(content, mime) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -79,7 +77,7 @@ Deno.serve(async (req) => {
     let detalheErro = null;
 
     try {
-      detalhe = await omieCall(NF_URL, 'ConsultarNF', chaveNF, { cacheMinutes: 5 });
+      detalhe = await omieCall(base44, NF_URL, 'ConsultarNF', chaveNF, { cacheMinutes: 5 });
     } catch (e) {
       detalheErro = e.message;
     }
@@ -89,12 +87,12 @@ Deno.serve(async (req) => {
 
     const chamadas = [];
     if (nIdNfe) {
-      chamadas.push(['nfe_completa', omieCall(DFE_URL, 'ObterNfe', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
-      chamadas.push(['danfe_simplificado', omieCall(DFE_URL, 'ObterDanfeSimp', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
+      chamadas.push(['nfe_completa', omieCall(base44, DFE_URL, 'ObterNfe', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
+      chamadas.push(['danfe_simplificado', omieCall(base44, DFE_URL, 'ObterDanfeSimp', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
     }
     if (nIdPedido) {
-      chamadas.push(['pedido_pdf', omieCall(DFE_URL, 'ObterPedVenda', { nIdPed: Number(nIdPedido) }, { cacheMinutes: 5 })]);
-      chamadas.push(['pedido_completo', omieCall(PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(nIdPedido) }, { cacheMinutes: 5 })]);
+      chamadas.push(['pedido_pdf', omieCall(base44, DFE_URL, 'ObterPedVenda', { nIdPed: Number(nIdPedido) }, { cacheMinutes: 5 })]);
+      chamadas.push(['pedido_completo', omieCall(base44, PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(nIdPedido) }, { cacheMinutes: 5 })]);
     }
 
     const resultados = await Promise.allSettled(chamadas.map(([, promise]) => promise));

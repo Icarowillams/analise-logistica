@@ -4,7 +4,6 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const cache = new Map();
 const configCache = { value: false, expiresAt: 0 };
-let base44Global = null;
 
 async function getModoEconomico(base44) {
     const now = Date.now();
@@ -31,18 +30,18 @@ function setCached(key, data, modoEconomico) {
 // Retorna: títulos atrasados, em aberto, total débitos, limite de crédito, saldo disponível e se deve bloquear.
 // Substitui o antigo consultarBloqueioFinanceiro que dependia de webhook externo.
 
-async function omieCall(url, call, param, opts = {}) {
+async function omieCall(base44, url, call, param, opts = {}) {
     const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
     const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
 
-    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
         throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
     }
 
     if (cacheMinutes > 0) {
-        const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+        const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
         const cacheItem = caches?.[0];
         if (cacheItem && new Date(cacheItem.expira_em) > new Date()) return cacheItem.valor;
     }
@@ -59,8 +58,8 @@ async function omieCall(url, call, param, opts = {}) {
             const msg = String(data.faultstring || '').toLowerCase();
             if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
                 const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-                else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+                else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
                 throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
             }
             if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
@@ -73,12 +72,12 @@ async function omieCall(url, call, param, opts = {}) {
 
         if (cacheMinutes > 0) {
             const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
-            const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-            if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
-            else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+            const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+            if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
+            else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
         }
         if (logIntegration) {
-            await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
         }
         return data;
     }
@@ -88,7 +87,6 @@ async function omieCall(url, call, param, opts = {}) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        base44Global = base44;
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -138,6 +136,7 @@ Deno.serve(async (req) => {
             let p = 1, tp = 1;
             while (p <= tp) {
                 const data = await omieCall(
+                    base44,
                     "https://app.omie.com.br/api/v1/financas/pesquisartitulos/",
                     "PesquisarLancamentos",
                     { nPagina: p, nRegPorPagina: 100, cNatureza: "R", cStatus: status, cCPFCNPJCliente: cnpjLimpo },
@@ -169,6 +168,7 @@ Deno.serve(async (req) => {
         // 2. Consultar cliente no Omie para pegar limite de crédito
         let limiteCredito = 0;
         let clienteOmie = await omieCall(
+            base44,
             "https://app.omie.com.br/api/v1/geral/clientes/",
             "ListarClientes",
             { pagina: 1, registros_por_pagina: 1, clientesFiltro: { cnpj_cpf: cnpjLimpo } },
@@ -178,6 +178,7 @@ Deno.serve(async (req) => {
             limiteCredito = Number(clienteOmie.clientes_cadastro[0].valor_limite_credito || 0);
         } else if (cliente?.codigo_omie || cliente?.codigo_cliente_omie || cliente?.codigo) {
             clienteOmie = await omieCall(
+                base44,
                 "https://app.omie.com.br/api/v1/geral/clientes/",
                 "ConsultarCliente",
                 { codigo_cliente_integracao: cliente.codigo || cliente.id },
