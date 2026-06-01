@@ -25,6 +25,40 @@ function setProdutoCached(codigo, data, modoEconomico) {
     produtoCache.set(`consultarProdutoOmie:${codigo}`, { data: { ...data, origem_cache: true }, expiresAt: Date.now() + ttl });
 }
 
+// Verifica circuit breaker — lança OMIE_425 se a API estiver bloqueada
+async function checarBloqueio(base44) {
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+        const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
+        err.code = 'OMIE_425';
+        err.bloqueado_ate = controle.bloqueado_ate;
+        throw err;
+    }
+    return controle;
+}
+
+// Trata erro 425 → abre circuit breaker (30min), grava log explícito e lança OMIE_425
+async function tratar425(base44, controle, call, param, res, data) {
+    const msg = String(data.faultstring || '').toLowerCase();
+    if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: 'geral/produtos/', call, operacao: call, status: 'erro', codigo_erro: '425',
+            mensagem_erro: data.faultstring || 'HTTP 425 — consumo indevido',
+            payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
+            payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
+        }).catch(() => {});
+        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+        err.code = 'OMIE_425';
+        err.bloqueado_ate = bloqueadoAte;
+        throw err;
+    }
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -42,6 +76,9 @@ Deno.serve(async (req) => {
 
         const resultados = {};
         const modoEconomico = await getModoEconomico(base44);
+
+        // Circuit breaker — aborta antes de qualquer chamada
+        const controle = await checarBloqueio(base44);
 
         for (const codigo of codigos) {
             const cached = getProdutoCached(codigo);
@@ -63,6 +100,7 @@ Deno.serve(async (req) => {
             const data = await response.json();
 
             if (data.faultstring) {
+                await tratar425(base44, controle, 'ConsultarProduto', { codigo }, response, data);
                 resultados[codigo] = { erro: data.faultstring };
             } else {
                 resultados[codigo] = {
@@ -105,6 +143,7 @@ Deno.serve(async (req) => {
         return Response.json({ sucesso: true, resultados });
 
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        const bloqueada = error?.code === 'OMIE_425';
+        return Response.json({ error: error.message, omie_bloqueada: bloqueada, bloqueado_ate: error?.bloqueado_ate || null }, { status: bloqueada ? 425 : 500 });
     }
 });

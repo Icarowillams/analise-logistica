@@ -5,58 +5,17 @@ const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
-async function omieCall(base44, endpoint, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  
-  const body = {
-    call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
-    param: [param]
-  };
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
-      const data = await res.json();
-      
-      if (!options.skipLog) {
-        try {
-          await base44.entities.create('LogIntegracaoOmie', {
-            endpoint,
-            payload_envio: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000),
-            sucesso: !data.faultcode,
-            erro: data.faultstring || null,
-            created_date: new Date().toISOString()
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      
-      return data;
-    } catch(err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
+// Verifica circuit breaker — bloqueia faturamento se a API Omie estiver indisponível por consumo indevido (425).
+// Esta function não chama a API diretamente, mas cria a fila de emissão; abortar cedo evita enfileirar com a API bloqueada.
+async function checarBloqueioOmie(base44) {
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
+    err.code = 'OMIE_425';
+    err.bloqueado_ate = controle.bloqueado_ate;
+    throw err;
   }
-  throw lastError;
 }
 
 // Fatura uma carga: muda etapa de cada pedido da etapa atual → etapa destino (default 60 = faturar)
