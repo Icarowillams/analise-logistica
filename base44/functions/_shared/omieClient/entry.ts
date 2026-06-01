@@ -33,6 +33,28 @@ const memoryCache = new Map<string, MemoryCacheEntry>();
 const THROTTLE_MIN_INTERVAL_MS = 334; // ~3 req/s
 const lastCallAt = new Map<string, number>(); // método → timestamp da última chamada
 
+// ── Rate limiter GLOBAL por app_key ──
+// Todas as funções compartilham o mesmo app_key Omie. Para evitar que múltiplas
+// funções rodando em paralelo estourem o limite, persistimos no banco o timestamp
+// da última chamada e garantimos no mínimo GLOBAL_MIN_INTERVAL_MS entre chamadas.
+const GLOBAL_MIN_INTERVAL_MS = 1_500; // no máx ~1 chamada a cada 1,5s globalmente
+const GLOBAL_RATE_KEY = 'rate_limit_global';
+
+async function throttleGlobal(base44: Base44Client): Promise<void> {
+  try {
+    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, '-updated_date', 1).catch(() => []);
+    const row = rows?.[0];
+    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
+    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
+    if (wait > 0) await sleep(wait);
+    const payload = { chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() };
+    if (row?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, payload).catch(() => null);
+    else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => null);
+  } catch {
+    // Em caso de falha no rate limiter, não bloqueia a chamada — apenas segue.
+  }
+}
+
 // Métodos de ESCRITA: nunca cacheados e (para os críticos) executados 1 por vez (fila sequencial).
 const WRITE_METHODS = new Set([
   'IncluirPedido', 'AlterarPedidoVenda', 'AlterarPedido', 'ExcluirPedido',
@@ -244,6 +266,7 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
 
   async function executeOmieCall(): Promise<unknown> {
   await throttleByMethod(call);
+  await throttleGlobal(base44);
   const startedAt = Date.now();
   let attempts = 0;
   let lastError: Error | null = null;

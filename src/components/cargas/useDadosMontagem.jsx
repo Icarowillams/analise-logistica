@@ -217,33 +217,20 @@ export default function useDadosMontagem() {
   // Trigger manual: sincroniza espelho com Omie (etapa 20) ANTES de recarregar dados locais.
   // Garante que pedidos recém-liberados no Omie apareçam imediatamente, mesmo se o webhook atrasar.
   const recarregar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const resp = await base44.functions.invoke('sincronizarLiberadosOmieRapido', {});
-      const r = resp?.data || {};
-      if (r?.sucesso) {
-        const novos = r.criados || 0;
-        if (novos > 0) toast.success(`${novos} pedido(s) novo(s) sincronizado(s) do Omie`);
-      }
-    } catch (e) {
-      // Não bloqueia o reload local em caso de falha na sincronização
-      console.warn('[useDadosMontagem] sincronização Omie falhou:', e?.message);
-    }
+    // Carrega imediatamente do espelho local e dispara a sincronização Omie
+    // em background (fire-and-forget, silenciosa) — não bloqueia a tela.
+    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
+      .catch((e) => console.warn('[useDadosMontagem] sincronização Omie falhou:', e?.message));
     await carregar();
   }, [carregar]);
 
   useEffect(() => {
-    // No primeiro load, SINCRONIZA com o Omie antes de carregar do espelho local.
-    // Isso garante que pedidos recém-liberados no Omie apareçam mesmo quando o
-    // webhook atrasou ou não chegou ainda (espelho desatualizado).
-    (async () => {
-      try {
-        await base44.functions.invoke('sincronizarLiberadosOmieRapido', {});
-      } catch (e) {
-        console.warn('[useDadosMontagem] sincronização inicial Omie falhou:', e?.message);
-      }
-      await carregar();
-    })();
+    // A tela carrega INSTANTANEAMENTE do espelho local (PedidoLiberadoOmie).
+    // A sincronização com o Omie acontece em background, de forma silenciosa,
+    // sem bloquear o carregamento nem exibir toast.
+    carregar();
+    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
+      .catch((e) => console.warn('[useDadosMontagem] sincronização inicial Omie falhou:', e?.message));
 
     // Subscribe em tempo real — qualquer mudança nas 3 fontes reagenda refresh
     const unsubEspelho = base44.entities.PedidoLiberadoOmie.subscribe(() => agendarRefresh());
