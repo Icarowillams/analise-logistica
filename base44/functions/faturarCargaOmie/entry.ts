@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 // Verifica circuit breaker — bloqueia faturamento se a API Omie estiver indisponível por consumo indevido (425).
 // Esta function não chama a API diretamente, mas cria a fila de emissão; abortar cedo evita enfileirar com a API bloqueada.
@@ -171,40 +171,9 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const codigosParaEmitir = [];
-    const errosDuplicidade = [];
-    for (const p of pedidos.filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido && !p.numero_nf)) {
-      const codigo = String(p.codigo_pedido);
-      const locais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
-      const local = locais?.[0];
-      const logsNF = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'autorizada' }, '-created_date', 1).catch(() => []);
-      if (local?.numero_nota_fiscal || local?.status_faturamento === 'faturado' || local?.faturado === true || logsNF?.[0]) {
-        errosDuplicidade.push({ codigo_pedido: codigo, mensagem: `Pedido #${local?.numero_pedido || p.numero_pedido || codigo} já foi faturado em ${new Date(local?.data_faturamento || logsNF?.[0]?.created_date || new Date()).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })}. NF: ${local?.numero_nota_fiscal || logsNF?.[0]?.numero_nf || '-'}` });
-        continue;
-      }
-      codigosParaEmitir.push(codigo);
-    }
-
-    let filaEmissao = null;
-    if (codigosParaEmitir.length > 0) {
-      const loteId = `LOTE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      filaEmissao = await base44.asServiceRole.entities.FilaEmissaoNF.create({
-        tipo: 'emissao_nf_lote',
-        lote_id: loteId,
-        carga_id,
-        numero_carga: carga.numero_carga || '',
-        total_pedidos: codigosParaEmitir.length,
-        processados: 0,
-        status: 'processando',
-        pedidos: codigosParaEmitir,
-        resultados: [],
-        erros: errosDuplicidade,
-        mensagem: 'Faturamento iniciado em background. Acompanhe o progresso na tela.',
-        usuario_email: user.email,
-        iniciado_em: new Date().toISOString(),
-        atualizado_em: new Date().toISOString()
-      });
-    }
+    // IMPORTANTE: Faturar carga é uma operação LOCAL e SILENCIOSA.
+    // NÃO cria fila de emissão de NF nem dispara emissão em background.
+    // A emissão de NF-e é feita manualmente em "Notas Omie → Emissão".
 
     return Response.json({
       sucesso: true,
@@ -214,12 +183,7 @@ Deno.serve(async (req) => {
       skips,
       nfs_emitidas: nfsEmitidas,
       aguardando_nf: aguardandoNf,
-      fila_id: filaEmissao?.id || null,
-      lote_id: filaEmissao?.lote_id || null,
-      assincrono: !!filaEmissao,
-      mensagem: filaEmissao ? 'Faturamento iniciado em background. Acompanhe o progresso na tela.' : 'Carga faturada localmente. Não havia NF-e para emitir em background.',
-      ignorados_duplicidade: errosDuplicidade?.length || 0,
-      erros_duplicidade: errosDuplicidade || [],
+      mensagem: `Carga ${carga.numero_carga || ''} faturada com sucesso.`,
       resultados
     });
   } catch (error) {

@@ -54,10 +54,14 @@ export default function useDadosMontagem() {
         });
 
       // 1. Vendas Omie já vêm enriquecidas no espelho — Montagem só monta a partir da ETAPA 20 (Liberados)
-      //    + exclui pedidos já vinculados a outra carga ativa
+      //    Robustez absoluta: descarta etapa nula/vazia ou diferente de '20' (já movidos p/ 50/60 ou excluídos no Omie),
+      //    e exclui pedidos já vinculados a outra carga ativa.
       const vendasEnriquecidas = (espelhoOmie || [])
-        .filter(e => String(e.etapa) === '20')
-        .filter(e => !codigosEmCarga.has(String(e.codigo_pedido)))
+        .filter(e => {
+          const etapa = e?.etapa == null ? '' : String(e.etapa).trim();
+          return etapa === '20';
+        })
+        .filter(e => e?.codigo_pedido && !codigosEmCarga.has(String(e.codigo_pedido)))
         .map(e => ({
         codigo_pedido: e.codigo_pedido,
         codigo_pedido_integracao: e.codigo_pedido_integracao || '',

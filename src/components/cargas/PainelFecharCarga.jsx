@@ -213,9 +213,12 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         } catch (e) { console.warn('Falha previsão Omie:', e.message); }
 
         try {
-          await base44.functions.invoke('trocarEtapaPedidoOmie', {
-            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido, etapa: '50' }))
-          });
+          const pedidosParaTrocar = vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido, etapa: '50' }));
+          // DEBUG: confirma que SOMENTE os pedidos selecionados vão para etapa 50
+          console.log('[FecharCarga] Enviando para etapa 50 (FATURAR) — códigos:', pedidosParaTrocar.map(p => p.codigo_pedido));
+          const respTroca = await base44.functions.invoke('trocarEtapaPedidoOmie', { pedidos: pedidosParaTrocar });
+          const alterados = respTroca?.data?.resultados?.filter(r => r.sucesso).map(r => r.codigo_pedido) || [];
+          console.log('[FecharCarga] Pedidos efetivamente movidos para etapa 50:', alterados);
         } catch (e) { console.warn('Falha trocar etapa:', e.message); }
       }
 
