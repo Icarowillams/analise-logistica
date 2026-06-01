@@ -40,16 +40,31 @@ const lastCallAt = new Map<string, number>(); // método → timestamp da últim
 const GLOBAL_MIN_INTERVAL_MS = 1_500; // no máx ~1 chamada a cada 1,5s globalmente
 const GLOBAL_RATE_KEY = 'rate_limit_global';
 
+// Upsert seguro contra concorrência: sempre que houver mais de um registro com a
+// mesma chave (corrida entre execuções paralelas), mantém o mais antigo e remove
+// os demais — evitando o acúmulo de duplicados que renovava o bloqueio em loop.
+async function upsertControle(base44: Base44Client, chave: string, payload: Record<string, unknown>): Promise<void> {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave }, 'created_date', 50).catch(() => []);
+  const principal = rows?.[0];
+  if (principal?.id) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(principal.id, payload).catch(() => null);
+    // Remove qualquer duplicado remanescente da mesma chave.
+    for (const extra of (rows || []).slice(1)) {
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+    }
+  } else {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave, ...payload }).catch(() => null);
+  }
+}
+
 async function throttleGlobal(base44: Base44Client): Promise<void> {
   try {
-    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, '-updated_date', 1).catch(() => []);
+    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
     const row = rows?.[0];
     const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
     const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
     if (wait > 0) await sleep(wait);
-    const payload = { chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() };
-    if (row?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, payload).catch(() => null);
-    else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => null);
+    await upsertControle(base44, GLOBAL_RATE_KEY, { atualizado_em: new Date().toISOString() });
   } catch {
     // Em caso de falha no rate limiter, não bloqueia a chamada — apenas segue.
   }
@@ -109,18 +124,13 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: string): Promise<void> {
-  const blockedUntil = new Date(Date.now() + 5 * 60_000).toISOString();
-  const payload = {
-    chave: 'principal',
+  const blockedUntil = new Date(Date.now() + 30 * 60_000).toISOString();
+  await upsertControle(base44, 'principal', {
     bloqueado: true,
     bloqueado_ate: blockedUntil,
     ultimo_erro: errorMessage.slice(0, 500),
     atualizado_em: new Date().toISOString()
-  };
-
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  if (rows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(rows[0].id, payload);
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload);
+  });
 }
 
 async function writeLog(base44: Base44Client, data: Record<string, unknown>): Promise<void> {
@@ -169,7 +179,7 @@ async function writePersistentCache(base44: Base44Client, cacheKey: string, endp
  * Retorna o status atual e desbloqueia automaticamente quando o prazo expirou.
  */
 export async function checkCircuitBreaker(base44: Base44Client): Promise<CircuitBreakerStatus> {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
   const control = rows?.[0];
   if (!control?.bloqueado) return { blocked: false };
 

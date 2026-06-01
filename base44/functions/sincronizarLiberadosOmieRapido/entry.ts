@@ -49,7 +49,22 @@ async function omieCall(base44, creds, endpoint, param, options = {}) {
       }
       
       const data = await res.json();
-      
+
+      // Se a Omie sinalizar cota/bloqueio, ativa o circuit breaker (upsert) e aborta o loop.
+      const fault = String(data?.faultstring || '').toLowerCase();
+      if (fault.includes('cota') || fault.includes('limite') || fault.includes('aguarde') || fault.includes('bloque') || fault.includes('consumo indevido')) {
+        const bloqueadoAte = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const linhas = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 50).catch(() => []);
+        const payloadBreaker = { bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
+        if (linhas?.[0]?.id) {
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(linhas[0].id, payloadBreaker).catch(() => null);
+          for (const extra of linhas.slice(1)) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+        } else {
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', ...payloadBreaker }).catch(() => null);
+        }
+        throw new Error(`API Omie bloqueada: ${data.faultstring}`);
+      }
+
       if (!options.skipLog) {
         try {
           await base44.entities.create('LogIntegracaoOmie', {
@@ -186,6 +201,19 @@ Deno.serve(async (req) => {
     const creds = await resolverCredsOmie(base44);
     if (!creds.app_key || !creds.app_secret) {
       return Response.json({ sucesso: false, error: 'Credenciais Omie não configuradas (ConfiguracaoOmie ativa nem Secrets).' }, { status: 500 });
+    }
+
+    // Verifica o circuit breaker ANTES de qualquer chamada à API. Se bloqueado, aborta
+    // imediatamente — evita renovar o bloqueio na Omie com tentativas em loop.
+    const ctrlRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+    const ctrl = ctrlRows?.[0];
+    if (ctrl?.bloqueado) {
+      const bloqueadoAte = ctrl.bloqueado_ate ? new Date(ctrl.bloqueado_ate).getTime() : 0;
+      if (bloqueadoAte > Date.now()) {
+        return Response.json({ sucesso: false, bloqueado: true, bloqueado_ate: ctrl.bloqueado_ate, error: `API Omie bloqueada pelo circuit breaker até ${ctrl.bloqueado_ate}. Sincronização abortada.` }, { status: 200 });
+      }
+      // Prazo expirou: desbloqueia o registro existente (sem criar novo).
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     }
 
     const limite48h = Date.now() - 48 * 60 * 60 * 1000;
