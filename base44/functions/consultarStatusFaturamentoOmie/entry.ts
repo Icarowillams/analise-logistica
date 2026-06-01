@@ -5,7 +5,14 @@ const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
+const memoryCache = new Map();
+function getFromMemoryCache(key, ttlMs = 30000) { const entry = memoryCache.get(key); return entry && (Date.now() - entry.ts) < ttlMs ? entry.data : null; }
+function setMemoryCache(key, data) { memoryCache.set(key, { data, ts: Date.now() }); }
+
 async function omieCall(url, call, param, tentativa = 1) {
+  const cacheKey = `${url}|${call}|${JSON.stringify(param || {})}`;
+  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar|Obter)/.test(call);
+  if (isReadOnly && tentativa === 1) { const cached = getFromMemoryCache(cacheKey); if (cached) return cached; }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,6 +28,7 @@ async function omieCall(url, call, param, tentativa = 1) {
     }
     throw new Error(data.faultstring);
   }
+  if (isReadOnly) setMemoryCache(cacheKey, data);
   return data;
 }
 
