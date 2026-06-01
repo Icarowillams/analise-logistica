@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -17,6 +17,14 @@ export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [cooldown, setCooldown] = useState(0);
+
+  // Cooldown de 30s após cada teste para não estourar o rate limit da Omie.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((s) => (s <= 1 ? 0 : s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
   const [filtroStatus, setFiltroStatus] = useState('all');
   const [filtroCall, setFiltroCall] = useState('');
   const [logDetalhe, setLogDetalhe] = useState(null);
@@ -71,8 +79,21 @@ export default function IntegracaoOmieDashboard() {
   }, [logs, filtroStatus, filtroCall]);
 
   const testarConexao = async () => {
+    // Verifica o circuit breaker antes de chamar — se bloqueado, nem tenta.
+    try {
+      const cbRows = await base44.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1);
+      const cb = cbRows?.[0];
+      if (cb?.bloqueado && cb.bloqueado_ate && new Date(cb.bloqueado_ate) > new Date()) {
+        const ate = new Date(cb.bloqueado_ate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        toast.error(`API Omie bloqueada por rate limit. Tente após ${ate} (Brasília).`);
+        setTestResult({ ok: false, error: `API Omie bloqueada por rate limit até ${ate}.` });
+        return;
+      }
+    } catch (_) { /* se falhar a checagem, segue o fluxo normal */ }
+
     setTesting(true);
     setTestResult(null);
+    setCooldown(30);
     try {
       const res = await base44.functions.invoke('testarConexaoOmie', {});
       setTestResult(res.data);
@@ -112,9 +133,9 @@ export default function IntegracaoOmieDashboard() {
             <p className="text-sm text-neutral-500">Monitoramento e auditoria de chamadas</p>
           </div>
         </div>
-        <Button onClick={testarConexao} disabled={testing} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold">
+        <Button onClick={testarConexao} disabled={testing || cooldown > 0} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold disabled:opacity-60">
           {testing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
-          Testar Conexão
+          {testing ? 'Testando…' : cooldown > 0 ? `Aguarde ${cooldown}s` : 'Testar Conexão'}
         </Button>
       </div>
 
