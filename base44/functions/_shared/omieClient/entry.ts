@@ -29,6 +29,47 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
 const memoryCache = new Map<string, MemoryCacheEntry>();
 
+// ── Regras oficiais Omie: 240 req/min. Mantemos margem segura de 3 req/s por método. ──
+const THROTTLE_MIN_INTERVAL_MS = 334; // ~3 req/s
+const lastCallAt = new Map<string, number>(); // método → timestamp da última chamada
+
+// Métodos de ESCRITA: nunca cacheados e (para os críticos) executados 1 por vez (fila sequencial).
+const WRITE_METHODS = new Set([
+  'IncluirPedido', 'AlterarPedidoVenda', 'AlterarPedido', 'ExcluirPedido',
+  'FaturarPedidoVenda', 'EmitirNFS', 'EmitirNF', 'CancelarNF', 'CancelarPedidoVenda',
+  'CancelarPedido', 'DevolverPedido', 'TrocarEtapaPedido', 'AlterarEtapaPedido',
+  'UpsertCliente', 'IncluirCliente', 'AlterarCliente', 'ExcluirCliente',
+  'UpsertProduto', 'IncluirProduto', 'AlterarProduto', 'ExcluirProduto',
+  'AlterarPrecoItem', 'IncluirContaCorrente', 'IncluirBoleto', 'GerarBoleto'
+]);
+
+// Métodos que SÓ aceitam 1 requisição por vez (Omie rejeita paralelismo) → fila sequencial global.
+const SEQUENTIAL_METHODS = new Set([
+  'IncluirPedido', 'AlterarPedidoVenda', 'FaturarPedidoVenda',
+  'EmitirNFS', 'EmitirNF', 'CancelarNF', 'CancelarPedidoVenda', 'CancelarPedido',
+  'UpsertCliente'
+]);
+
+function isWriteMethod(call: string): boolean {
+  return WRITE_METHODS.has(call) || /^(Incluir|Alterar|Excluir|Cancelar|Emitir|Faturar|Devolver|Upsert|Gerar|Trocar)/.test(call);
+}
+
+// Fila sequencial: garante 1 execução por vez para métodos críticos de escrita.
+let sequentialChain: Promise<unknown> = Promise.resolve();
+function runSequential<T>(task: () => Promise<T>): Promise<T> {
+  const result = sequentialChain.then(task, task);
+  sequentialChain = result.catch(() => undefined);
+  return result;
+}
+
+// Throttle por método: respeita o intervalo mínimo entre chamadas do mesmo método.
+async function throttleByMethod(call: string): Promise<void> {
+  const last = lastCallAt.get(call) || 0;
+  const wait = THROTTLE_MIN_INTERVAL_MS - (Date.now() - last);
+  if (wait > 0) await sleep(wait);
+  lastCallAt.set(call, Date.now());
+}
+
 function resolveUrl(endpoint: string): string {
   if (/^https?:\/\//i.test(endpoint)) return endpoint;
   return OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
@@ -159,13 +200,25 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
   const ttlMs = options.cacheTtlMs ?? (options.cacheMinutes ? options.cacheMinutes * 60_000 : DEFAULT_CACHE_TTL_MS);
   const timeoutMs = options.timeoutMs ?? options.timeout ?? DEFAULT_TIMEOUT_MS;
   const url = resolveUrl(endpoint);
+  const writeMethod = isWriteMethod(call);
   const cacheKey = stableStringify({ endpoint, call, param });
-  const cached = memoryCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const persistentCached = await readPersistentCache(base44, cacheKey);
-  if (persistentCached !== null) return persistentCached;
+  // Cache só para LEITURA (escrita nunca é cacheada).
+  if (!writeMethod) {
+    const cached = memoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const persistentCached = await readPersistentCache(base44, cacheKey);
+    if (persistentCached !== null) return persistentCached;
+  }
 
+  // Métodos críticos de escrita: fila sequencial (1 por vez). Demais: apenas throttle por método.
+  if (SEQUENTIAL_METHODS.has(call)) {
+    return runSequential(() => executeOmieCall());
+  }
+  return executeOmieCall();
+
+  async function executeOmieCall(): Promise<unknown> {
+  await throttleByMethod(call);
   const startedAt = Date.now();
   let attempts = 0;
   let lastError: Error | null = null;
@@ -208,8 +261,10 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
         throw lastError;
       }
 
-      memoryCache.set(cacheKey, { value: data, expiresAt: Date.now() + ttlMs });
-      await writePersistentCache(base44, cacheKey, endpoint, call, data, ttlMs);
+      if (!writeMethod) {
+        memoryCache.set(cacheKey, { value: data, expiresAt: Date.now() + ttlMs });
+        await writePersistentCache(base44, cacheKey, endpoint, call, data, ttlMs);
+      }
 
       if (!options.skipLog) {
         await writeLog(base44, {
@@ -251,6 +306,7 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
   }
 
   throw lastError || new Error('Erro desconhecido na API Omie.');
+  }
 }
 
 if (import.meta.main) {

@@ -442,29 +442,26 @@ async function processarLotePedidos(base44, pedidosInput) {
         .filter(Boolean);
 
     const resultados = [];
-    let idx = 0;
-    const WORKERS = 4;
     const contaCorrentePadrao = await resolverContaCorrentePadrao(base44);
 
+    // IncluirPedido é método de ESCRITA — a Omie aceita apenas 1 por vez.
+    // Envio SEQUENCIAL (nunca paralelo) com throttle entre pedidos para respeitar o rate limit.
     let bloqueio425 = null;
-    async function worker() {
-        while (idx < pedidoIds.length && !bloqueio425) {
-            const pedido_id = pedidoIds[idx++];
-            try {
-                const r = await enviarUmPedido(base44, pedido_id, { contaCorrentePadrao });
-                resultados.push(r);
-            } catch (err) {
-                if (err.code === 'OMIE_425') {
-                    bloqueio425 = err; // para o lote — API bloqueada
-                    resultados.push({ sucesso: false, erro: err.message, pedido_id, omie_bloqueada: true });
-                    return;
-                }
-                resultados.push({ sucesso: false, erro: err.message, pedido_id });
+    for (const pedido_id of pedidoIds) {
+        if (bloqueio425) break;
+        try {
+            const r = await enviarUmPedido(base44, pedido_id, { contaCorrentePadrao });
+            resultados.push(r);
+        } catch (err) {
+            if (err.code === 'OMIE_425') {
+                bloqueio425 = err; // para o lote — API bloqueada
+                resultados.push({ sucesso: false, erro: err.message, pedido_id, omie_bloqueada: true });
+                break;
             }
+            resultados.push({ sucesso: false, erro: err.message, pedido_id });
         }
+        await sleep(400); // ~2,5 req/s entre pedidos (margem segura sob 240 req/min)
     }
-
-    await Promise.all(Array.from({ length: Math.min(WORKERS, pedidoIds.length) }, () => worker()));
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso).length;
 
