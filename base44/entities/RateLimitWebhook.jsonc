@@ -1,0 +1,24 @@
+{
+  "name": "RateLimitWebhook",
+  "type": "object",
+  "description": "Controle de rate limiting por IP para o receiver de webhooks Omie",
+  "properties": {
+    "ip": {
+      "type": "string",
+      "description": "IP de origem da requisi\u00e7\u00e3o (x-forwarded-for)"
+    },
+    "contador": {
+      "type": "number",
+      "default": 0,
+      "description": "N\u00famero de requisi\u00e7\u00f5es na janela atual"
+    },
+    "ultima_requisicao": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp ISO da \u00faltima requisi\u00e7\u00e3o contabilizada"
+    }
+  },
+  "required": [
+    "ip"
+  ]
+}
