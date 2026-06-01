@@ -223,6 +223,7 @@ Deno.serve(async (req) => {
       resultados
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    const bloqueada = error?.code === 'OMIE_425';
+    return Response.json({ error: error.message, omie_bloqueada: bloqueada, bloqueado_ate: error?.bloqueado_ate || null }, { status: bloqueada ? 425 : 500 });
   }
 });

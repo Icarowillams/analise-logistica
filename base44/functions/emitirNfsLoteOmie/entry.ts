@@ -51,6 +51,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'codigos_pedido vazio' }, { status: 400 });
     }
 
+    // Circuit breaker: não enfileira emissão se a API Omie estiver bloqueada por consumo indevido (425).
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controle = cb?.[0];
+    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+      return Response.json({
+        sucesso: false,
+        error: `API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`,
+        omie_bloqueada: true,
+        bloqueado_ate: controle.bloqueado_ate
+      }, { status: 425 });
+    }
+
     const errosDuplicidade = [];
     const codigosValidos = [];
     for (const codigo of codigosPedido) {

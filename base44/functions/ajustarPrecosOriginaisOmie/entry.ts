@@ -7,7 +7,36 @@ const OMIE_URL_TABELA = "https://app.omie.com.br/api/v1/produtos/tabelaprecos/";
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function omieCall(url, call, param) {
+// Verifica circuit breaker antes de iniciar o lote — aborta cedo se a API Omie estiver bloqueada (425).
+async function checarBloqueioOmie(base44) {
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
+    err.code = 'OMIE_425';
+    err.bloqueado_ate = controle.bloqueado_ate;
+    throw err;
+  }
+  return controle;
+}
+
+// Registra bloqueio 30min quando o Omie retorna 425/consumo indevido.
+async function registrarBloqueio425(base44, controle, faultstring) {
+  const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
+  const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
+  if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+  await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+    endpoint: 'ajustarPrecosOriginaisOmie', call: 'AlterarPrecoItem', operacao: 'ajustar_precos', status: 'erro', codigo_erro: '425',
+    mensagem_erro: faultstring || 'HTTP 425 — consumo indevido'
+  }).catch(() => {});
+  const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+  err.code = 'OMIE_425';
+  err.bloqueado_ate = bloqueadoAte;
+  return err;
+}
+
+async function omieCall(base44, controle, url, call, param) {
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -18,11 +47,16 @@ async function omieCall(url, call, param) {
             param: [param]
         })
     });
-    return await response.json();
+    const data = await response.json();
+    const msg = String(data?.faultstring || '').toLowerCase();
+    if (response.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+      throw await registrarBloqueio425(base44, controle, data.faultstring);
+    }
+    return data;
 }
 
-async function buscarProdutoOmie(codigoIntegracao) {
-    const result = await omieCall(OMIE_URL_PRODUTO, "ConsultarProduto", {
+async function buscarProdutoOmie(base44, controle, codigoIntegracao) {
+    const result = await omieCall(base44, controle, OMIE_URL_PRODUTO, "ConsultarProduto", {
         codigo_produto_integracao: codigoIntegracao
     });
     if (result.faultstring) return null;
@@ -40,6 +74,9 @@ Deno.serve(async (req) => {
 
         const body = await req.json();
         const { acao, tabela_ids, lote_inicio = 0, lote_tamanho = 5 } = body;
+
+        // Circuit breaker — aborta o lote se a API estiver bloqueada por consumo indevido (425)
+        const controle = await checarBloqueioOmie(base44);
 
         // ======================================================
         // AÇÃO 1: Definir Preço Original = R$ 1,00 para todos
@@ -68,7 +105,7 @@ Deno.serve(async (req) => {
                 }
 
                 // Buscar produto no Omie
-                const prodOmie = await buscarProdutoOmie(produto.id);
+                const prodOmie = await buscarProdutoOmie(base44, controle, produto.id);
                 await delay(1500);
 
                 if (!prodOmie) {
@@ -80,7 +117,7 @@ Deno.serve(async (req) => {
                 }
 
                 // Alterar o valor_unitario (preço original) para 1.00
-                const alterResult = await omieCall(OMIE_URL_PRODUTO, "AlterarProduto", {
+                const alterResult = await omieCall(base44, controle, OMIE_URL_PRODUTO, "AlterarProduto", {
                     codigo_produto: prodOmie.codigo_produto,
                     codigo_produto_integracao: produto.id,
                     codigo: prodOmie.codigo,
@@ -164,7 +201,7 @@ Deno.serve(async (req) => {
                 if (!produto) continue;
 
                 // Buscar nCodProd no Omie
-                const prodOmie = await buscarProdutoOmie(produto.id);
+                const prodOmie = await buscarProdutoOmie(base44, controle, produto.id);
                 await delay(1500);
 
                 if (!prodOmie) {
@@ -196,7 +233,7 @@ Deno.serve(async (req) => {
                 const percAcrescimo = Number(((valorDesejado - 1) * 100).toFixed(4));
 
                 // AlterarPrecoItem com nPercAcrescimo em vez de nValorTabela
-                const itemResult = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
+                const itemResult = await omieCall(base44, controle, OMIE_URL_TABELA, "AlterarPrecoItem", {
                     nCodTabPreco: tabela.omie_id,
                     nCodProd: nCodProd,
                     nPercAcrescimo: percAcrescimo
@@ -240,6 +277,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: `Ação "${acao}" não reconhecida` }, { status: 400 });
 
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        const bloqueada = error?.code === 'OMIE_425';
+        return Response.json({ error: error.message, omie_bloqueada: bloqueada, bloqueado_ate: error?.bloqueado_ate || null }, { status: bloqueada ? 425 : 500 });
     }
 });
