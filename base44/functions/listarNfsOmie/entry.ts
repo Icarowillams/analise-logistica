@@ -1,10 +1,21 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+
+// Resolve credenciais priorizando a ConfiguracaoOmie ativa (banco) e só caindo
+// para os Secrets se não houver config ativa. Evita usar chaves suspensas/inválidas
+// nos Secrets quando o banco tem as credenciais corretas.
+async function resolverCreds(base44) {
+  try {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
+    const cfg = configs?.[0];
+    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
+  } catch { /* fallback para secrets */ }
+  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+}
 
 async function omieCall(base44, call, param, opts = {}) {
+  const { app_key, app_secret } = await resolverCreds(base44);
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const url = OMIE_URL;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
@@ -17,7 +28,7 @@ async function omieCall(base44, call, param, opts = {}) {
   }
   let lastError = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key, app_secret, param: [param] }) });
     const data = await res.json();
     if (data.faultstring || data.faultcode) {
       const msg = String(data.faultstring || '').toLowerCase();
