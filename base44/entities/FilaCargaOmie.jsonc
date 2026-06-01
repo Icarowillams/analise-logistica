@@ -1,0 +1,83 @@
+{
+  "name": "FilaCargaOmie",
+  "type": "object",
+  "description": "Fila ass\u00edncrona de processamento Omie no fechamento de carga \u2014 1 registro por pedido, processado sequencialmente em background (trocar etapa 50 + previs\u00e3o de faturamento).",
+  "properties": {
+    "carga_id": {
+      "type": "string",
+      "description": "ID da Carga no Base44"
+    },
+    "numero_carga": {
+      "type": "string",
+      "description": "N\u00famero da carga (para exibi\u00e7\u00e3o)"
+    },
+    "pedido_id": {
+      "type": "string",
+      "description": "ID do Pedido local no Base44 (quando houver)"
+    },
+    "codigo_pedido_omie": {
+      "type": "string",
+      "description": "nCodPed do pedido na Omie"
+    },
+    "codigo_pedido_integracao": {
+      "type": "string",
+      "description": "C\u00f3digo de integra\u00e7\u00e3o do pedido na Omie"
+    },
+    "numero_pedido": {
+      "type": "string",
+      "description": "N\u00famero do pedido (para exibi\u00e7\u00e3o)"
+    },
+    "data_previsao": {
+      "type": "string",
+      "description": "Data de previs\u00e3o de faturamento a aplicar no Omie (YYYY-MM-DD)"
+    },
+    "operacao": {
+      "type": "string",
+      "enum": [
+        "faturar",
+        "emitir_nf",
+        "ambos"
+      ],
+      "default": "faturar",
+      "description": "Opera\u00e7\u00e3o a executar. 'faturar' = trocar etapa para 50 + alterar previs\u00e3o."
+    },
+    "etapa_destino": {
+      "type": "string",
+      "default": "50",
+      "description": "Etapa Omie de destino"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "processando",
+        "concluido",
+        "erro"
+      ],
+      "default": "pendente",
+      "description": "Status do processamento na fila"
+    },
+    "tentativas": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de tentativas j\u00e1 realizadas (m\u00e1x. 3)"
+    },
+    "erro_log": {
+      "type": "string",
+      "description": "Mensagem do \u00faltimo erro ao processar"
+    },
+    "processado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o registro foi conclu\u00eddo"
+    },
+    "usuario_email": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "carga_id",
+    "operacao",
+    "status"
+  ]
+}

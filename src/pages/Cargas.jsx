@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
+import StatusProcessamentoOmie from '@/components/cargas/StatusProcessamentoOmie';
 import { toast } from 'sonner';
 
 // status_carga é LOCAL e binário:
@@ -291,6 +292,17 @@ export default function Cargas() {
           <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>
         );
       }
+    },
+    {
+      key: 'processamento_omie_status',
+      label: 'Proc. Omie',
+      width: '170px',
+      render: (_, row) => (
+        <StatusProcessamentoOmie
+          carga={row}
+          onReprocessar={() => queryClient.invalidateQueries({ queryKey: ['fila-carga', row.id] })}
+        />
+      )
     },
     {
       key: 'acoes',

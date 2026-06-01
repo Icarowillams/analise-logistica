@@ -345,6 +345,23 @@
       "default": "montagem",
       "description": "Status LOCAL bin\u00e1rio da carga: montagem = em prepara\u00e7\u00e3o (ainda n\u00e3o enviada ao Omie); faturada = enviada ao Omie. O ciclo fiscal detalhado (cancelada, rejeitada, em rota, entregue) permanece no Omie e nas entidades de espelho, n\u00e3o na Carga."
     },
+    "processamento_omie_status": {
+      "type": "string",
+      "enum": [
+        "nao_iniciado",
+        "em_andamento",
+        "concluido",
+        "parcial",
+        "erro"
+      ],
+      "default": "nao_iniciado",
+      "description": "Status do processamento ass\u00edncrono na Omie (fila FilaCargaOmie): troca de etapa 50 + previs\u00e3o dos pedidos da carga."
+    },
+    "processamento_omie_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de pedidos enfileirados para processamento Omie nesta carga"
+    },
     "observacao": {
       "type": "string"
     },

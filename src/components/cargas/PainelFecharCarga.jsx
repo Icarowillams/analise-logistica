@@ -204,26 +204,36 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         }
       }
 
+      // FECHAMENTO ASSÍNCRONO: em vez de chamar a Omie agora (o que bloqueava a API
+      // com cargas grandes), enfileiramos 1 registro por pedido de venda. A função
+      // scheduled processarFilaCargaOmie processa em background, espaçado e protegido.
       if (vendas.length > 0) {
         try {
-          await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
-            pedidos: vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido })),
-            data_previsao: dataSaida
+          const itensFila = vendas.map(v => ({
+            carga_id: carga.id,
+            numero_carga: numero,
+            pedido_id: v.pedido_id || '',
+            codigo_pedido_omie: v.codigo_pedido ? String(v.codigo_pedido) : '',
+            codigo_pedido_integracao: v.codigo_pedido_integracao || '',
+            numero_pedido: v.numero_pedido || '',
+            data_previsao: dataSaida,
+            operacao: 'faturar',
+            etapa_destino: '50',
+            status: 'pendente',
+            tentativas: 0
+          }));
+          await base44.entities.FilaCargaOmie.bulkCreate(itensFila);
+          await base44.entities.Carga.update(carga.id, {
+            processamento_omie_status: 'nao_iniciado',
+            processamento_omie_total: itensFila.length
           });
-        } catch (e) { console.warn('Falha previsão Omie:', e.message); }
-
-        try {
-          const pedidosParaTrocar = vendas.map(v => ({ codigo_pedido: v.codigo_pedido, codigo_pedido_integracao: v.codigo_pedido_integracao, numero_pedido: v.numero_pedido, etapa: '50' }));
-          // DEBUG: confirma que SOMENTE os pedidos selecionados vão para etapa 50
-          console.log('[FecharCarga] Enviando para etapa 50 (FATURAR) — códigos:', pedidosParaTrocar.map(p => p.codigo_pedido));
-          const respTroca = await base44.functions.invoke('trocarEtapaPedidoOmie', { pedidos: pedidosParaTrocar });
-          const alterados = respTroca?.data?.resultados?.filter(r => r.sucesso).map(r => r.codigo_pedido) || [];
-          console.log('[FecharCarga] Pedidos efetivamente movidos para etapa 50:', alterados);
-        } catch (e) { console.warn('Falha trocar etapa:', e.message); }
+        } catch (e) { console.warn('Falha ao enfileirar processamento Omie:', e.message); }
       }
 
       if (falhasVinculo.length > 0) {
         toast.error(`Carga ${numero} criada, mas ${falhasVinculo.length} pedido(s) não tiveram status local atualizado`);
+      } else if (vendas.length > 0) {
+        toast.success(`Carga fechada com sucesso. ${vendas.length} pedidos serão processados em fila na Omie. Acompanhe o progresso na tela de Cargas.`, { duration: 8000 });
       } else {
         toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
       }
