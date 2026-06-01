@@ -2,8 +2,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+
+// Delay mínimo entre chamadas à API Omie (~17 req/min, dentro da cota).
+const DELAY_ENTRE_CHAMADAS_MS = 3500;
+
+// Erro especial para sinalizar bloqueio da API (interrompe todo o processamento).
+class OmieBloqueadaError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'OmieBloqueadaError';
+  }
+}
 
 // cStat SEFAZ:
 //   100/150 = autorizada
@@ -25,7 +36,7 @@ async function omieCall(base44, call, param, opts = {}, url = OMIE_URL) {
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new OmieBloqueadaError(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
   if (cacheMinutes > 0) {
     const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
@@ -36,10 +47,12 @@ async function omieCall(base44, call, param, opts = {}, url = OMIE_URL) {
     const data = await res.json();
     if (data.faultstring || data.faultcode) {
       const msg = String(data.faultstring || '').toLowerCase();
-      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+      const fc = String(data.faultcode || '');
+      if (res.status === 425 || fc.includes('425') || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+        // Circuit breaker: bloqueio por cota — interrompe TUDO, sem retry.
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
         if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
+        throw new OmieBloqueadaError(data.faultstring || 'API Omie bloqueada temporariamente (cota excedida)');
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('indispon')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; } // DELAY_PADRAO_RETRY
       throw new Error(data.faultstring || 'Erro Omie');
@@ -164,31 +177,50 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    if (!APP_KEY || !APP_SECRET) {
+      return Response.json({ error: 'Credenciais Omie não configuradas' }, { status: 500 });
+    }
+    console.log(`[sincronizarStatusCargasOmie] Usando APP_KEY: ...${String(APP_KEY).slice(-4)}`);
+
     const body = await req.json().catch(() => ({}));
     const listLimit = Math.min(Number(body.list_limit || 500), 500);
     const syncLimit = Math.min(Number(body.sync_limit || 50), listLimit);
     const cargaIds = Array.isArray(body.carga_ids) ? body.carga_ids : null;
+    const diasRetroativos = Number(body.dias_retroativos || 30);
 
     let cargas = await base44.asServiceRole.entities.Carga.list('-created_date', listLimit);
 
-    if (!cargaIds || cargaIds.length === 0) {
-      const limite48h = Date.now() - 48 * 60 * 60 * 1000;
-      const statusAndamento = new Set(['montagem', 'conferindo', 'liberado', 'pronta']);
-      const temTrabalho = (cargas || []).some(c => statusAndamento.has(String(c.status_carga || '').toLowerCase()) && new Date(c.created_date || c.updated_date || 0).getTime() >= limite48h);
-      if (!temTrabalho) {
-        return Response.json({ sucesso: true, cargas, sincronizadas: 0, otimizado: true, motivo: 'sem_cargas_em_andamento_48h' });
-      }
-    }
-
-    // Filtro opcional por IDs específicos (para força de atualização em massa)
+    // Filtro opcional por IDs específicos (força atualização manual, ignora demais filtros)
     if (cargaIds && cargaIds.length > 0) {
       const set = new Set(cargaIds.map(String));
       cargas = cargas.filter(c => set.has(String(c.id)));
+    } else {
+      // Sincronização SELETIVA: só cargas que realmente precisam.
+      // Ignora cargas já finalizadas (faturada/cancelada/entregue) e mais antigas que diasRetroativos.
+      const limiteData = Date.now() - diasRetroativos * 24 * 60 * 60 * 1000;
+      const statusFinalizado = new Set(['faturada', 'cancelada', 'entregue']);
+      cargas = (cargas || []).filter(c =>
+        !statusFinalizado.has(String(c.status_carga || '').toLowerCase()) &&
+        new Date(c.created_date || c.updated_date || 0).getTime() >= limiteData
+      );
+      if (cargas.length === 0) {
+        return Response.json({ sucesso: true, cargas: [], sincronizadas: 0, otimizado: true, motivo: 'sem_cargas_pendentes_no_periodo' });
+      }
     }
 
-    const cargasAtualizadas = [];
+    const totalASincronizar = Math.min(cargas.length, syncLimit);
+    console.log(`[sincronizarStatusCargasOmie] ${totalASincronizar} carga(s) a sincronizar (delay ${DELAY_ENTRE_CHAMADAS_MS}ms entre chamadas)`);
 
+    const cargasAtualizadas = [];
+    let apiBloqueada = false;
+    let erroBloqueio = '';
+
+    let indiceCarga = 0;
     for (const carga of cargas.slice(0, syncLimit)) {
+      if (apiBloqueada) { cargasAtualizadas.push(carga); continue; }
+      indiceCarga++;
+      console.log(`[sincronizarStatusCargasOmie] Processando carga ${indiceCarga}/${totalASincronizar} (${carga.numero_carga || carga.id})`);
+
       const pedidos = Array.isArray(carga.pedidos_omie) ? carga.pedidos_omie : [];
       if (pedidos.length === 0) {
         cargasAtualizadas.push(carga);
@@ -199,6 +231,7 @@ Deno.serve(async (req) => {
       const pedidosAtualizados = [];
 
       for (const pedido of pedidos) {
+        if (apiBloqueada) { pedidosAtualizados.push(pedido); continue; }
         const codigo = pedido.codigo_pedido || pedido.codigo_pedido_integracao;
         if (!codigo) {
           pedidosAtualizados.push(pedido);
@@ -224,7 +257,7 @@ Deno.serve(async (req) => {
               if (nfInfo.xMotivo) xMotivoFinal = nfInfo.xMotivo;
               if (nfInfo.classificacao) classificacao = nfInfo.classificacao;
             }
-            await new Promise(r => setTimeout(r, 250));
+            await new Promise(r => setTimeout(r, DELAY_ENTRE_CHAMADAS_MS));
           }
 
           // Caso real Omie: pedido vai para etapa 60, a NF é rejeitada e o pedido aparece como cancelado/sem NF.
@@ -258,6 +291,13 @@ Deno.serve(async (req) => {
             status_real_omie: status.cancelado ? 'Cancelado no Omie' : (statusRealLabel || undefined)
           });
         } catch (error) {
+          if (error instanceof OmieBloqueadaError) {
+            apiBloqueada = true;
+            erroBloqueio = error.message;
+            console.error(`[sincronizarStatusCargasOmie] API BLOQUEADA — interrompendo. ${error.message}`);
+            pedidosAtualizados.push(pedido);
+            break;
+          }
           if (erroPedidoExcluido(error.message)) {
             pedidosStatus.push({ excluido: true, cancelado: true, faturado: false, etapa: 'excluido' });
             pedidosAtualizados.push({
@@ -271,7 +311,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        await new Promise(r => setTimeout(r, 250));
+        if (!apiBloqueada) await new Promise(r => setTimeout(r, DELAY_ENTRE_CHAMADAS_MS));
       }
 
       // O status da carga é controlado exclusivamente por ações internas do sistema.
@@ -340,7 +380,9 @@ Deno.serve(async (req) => {
     const resto = cargas.slice(syncLimit);
 
     return Response.json({
-      sucesso: true,
+      sucesso: !apiBloqueada,
+      api_bloqueada: apiBloqueada,
+      erro_bloqueio: apiBloqueada ? erroBloqueio : undefined,
       cargas: [...cargasAtualizadas, ...resto],
       sincronizadas: cargasAtualizadas.length
     });
