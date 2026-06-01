@@ -30,6 +30,19 @@ Deno.serve(async (req) => {
     }
     console.log(`[testarConexaoOmie] Conectando ao Omie (fonte: ${fonteCred}) com APP_KEY: ...${String(appKey).slice(-4)}`);
 
+    // Circuit breaker: se a API estiver bloqueada por rate limit, NÃO testa — evita
+    // renovar o bloqueio. Informa o tempo restante imediatamente.
+    const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+    const cb = cbRows?.[0];
+    if (cb?.bloqueado && cb.bloqueado_ate && new Date(cb.bloqueado_ate) > new Date()) {
+      return Response.json({
+        ok: false,
+        bloqueado: true,
+        bloqueado_ate: cb.bloqueado_ate,
+        error: `API Omie bloqueada por rate limit. Tente novamente após ${new Date(cb.bloqueado_ate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (horário de Brasília).`
+      }, { status: 425 });
+    }
+
     const startedAt = Date.now();
     const res = await fetch(`${OMIE_BASE_URL}geral/empresas/`, {
       method: 'POST',

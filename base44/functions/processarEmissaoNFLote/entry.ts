@@ -125,6 +125,24 @@ async function carregarFila(base44, body) {
   return filas?.[0] || null;
 }
 
+// Verifica o circuit breaker persistente. Se estiver bloqueado e o prazo ainda
+// não expirou, retorna o status; se expirou, desbloqueia o registro existente.
+async function verificarCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const ctrl = rows?.[0];
+  if (!ctrl?.bloqueado) return { bloqueado: false };
+  const bloqueadoAte = ctrl.bloqueado_ate ? new Date(ctrl.bloqueado_ate).getTime() : 0;
+  if (bloqueadoAte > Date.now()) return { bloqueado: true, bloqueado_ate: ctrl.bloqueado_ate };
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  return { bloqueado: false };
+}
+
+// Valida se o código de pedido é numérico e maior que zero (evita pedidos fake/teste).
+function codigoPedidoValido(codigo) {
+  const n = Number(codigo);
+  return Number.isFinite(n) && n > 0 && /^\d+$/.test(String(codigo).trim());
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -133,6 +151,21 @@ Deno.serve(async (req) => {
 
     if (!fila) {
       return Response.json({ sucesso: true, mensagem: 'Nenhum lote pendente para processar' });
+    }
+
+    // 1) Circuit breaker: se a API Omie estiver bloqueada, NÃO processa nada.
+    // Devolve a fila para 'pendente' (pra ser retomada depois) e retorna 425.
+    const breaker = await verificarCircuitBreaker(base44);
+    if (breaker.bloqueado) {
+      await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+        status: 'pendente',
+        mensagem: 'API Omie bloqueada por rate limit — aguardando desbloqueio',
+        atualizado_em: new Date().toISOString()
+      }).catch(() => {});
+      return Response.json(
+        { error: 'API Omie bloqueada por rate limit', bloqueado_ate: breaker.bloqueado_ate },
+        { status: 425 }
+      );
     }
 
     const pedidos = Array.isArray(fila.pedidos) ? fila.pedidos.map(String).filter(Boolean) : [];
@@ -149,6 +182,18 @@ Deno.serve(async (req) => {
     for (let i = processados; i < pedidos.length; i++) {
       const codigoPedido = pedidos[i];
       const t0 = Date.now();
+
+      // Valida o código ANTES de chamar a Omie. Pedido fake/não numérico é pulado com log.
+      if (!codigoPedidoValido(codigoPedido)) {
+        const msg = `Código de pedido inválido (não numérico): "${codigoPedido}" — ignorado, Omie não foi chamada.`;
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'ignorado', mensagem: msg });
+        erros.push({ codigo_pedido: codigoPedido, mensagem: msg });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'ignorado', msg, { erro_tipo: 'validacao' });
+        processados = i + 1;
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, { processados, resultados, erros, atualizado_em: new Date().toISOString() }).catch(() => {});
+        continue;
+      }
+
       try {
         const resposta = body.mock_omie_response || await omieCall(base44, 'FaturarPedidoVenda', { nCodPed: Number(codigoPedido) });
         if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
