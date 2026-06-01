@@ -80,13 +80,11 @@ function validarCpfCnpj(doc) {
     return false;
 }
 
-let base44Global = null;
-
-async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3) {
+async function omieFetchComRetry(base44, url, payload, tentativa = 1, maxTentativas = 3) {
     const call = payload.call;
     const param = Array.isArray(payload.param) ? payload.param[0] : payload.param;
     const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) return { faultstring: `API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
 
@@ -98,7 +96,7 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3)
             const msg = String(data.faultstring || '').toLowerCase();
             if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
                 const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
                 return data;
             }
             if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
@@ -107,7 +105,7 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3)
                 continue;
             }
         }
-        await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
         return data;
     }
     return { faultstring: lastError || 'Máximo de tentativas Omie excedido' };
@@ -117,9 +115,9 @@ function isErroDuplicidadeCliente(resultado) {
     return String(resultado?.faultstring || '').toLowerCase().includes('cliente já cadastrado para o cpf/cnpj');
 }
 
-async function buscarClienteOmiePorCpfCnpj(cnpjCpf) {
+async function buscarClienteOmiePorCpfCnpj(base44, cnpjCpf) {
     if (!cnpjCpf) return null;
-    const achado = await omieFetchComRetry(OMIE_URL, {
+    const achado = await omieFetchComRetry(base44, OMIE_URL, {
         call: 'ListarClientes',
         app_key: OMIE_APP_KEY,
         app_secret: OMIE_APP_SECRET,
@@ -289,7 +287,6 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        base44Global = base44;
         const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
         const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
@@ -415,7 +412,7 @@ Deno.serve(async (req) => {
         }
         if (cnpjLimpo && (event?.type === 'update' || !codigoSalvo)) {
             try {
-                const existente = await buscarClienteOmiePorCpfCnpj(cnpjLimpo);
+                const existente = await buscarClienteOmiePorCpfCnpj(base44, cnpjLimpo);
                 if (existente?.codigo_cliente_omie) {
                     if (existente.codigo_cliente_integracao && existente.codigo_cliente_integracao !== clienteOmie.codigo_cliente_integracao) {
                         console.log('[enviarClienteOmie] Reutilizando codigo_cliente_integracao existente no Omie:', existente.codigo_cliente_integracao);
@@ -432,7 +429,7 @@ Deno.serve(async (req) => {
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
         const startedAt = Date.now();
-        const resultado = await omieFetchComRetry(OMIE_URL, {
+        const resultado = await omieFetchComRetry(base44, OMIE_URL, {
             call: "UpsertCliente",
             app_key: OMIE_APP_KEY,
             app_secret: OMIE_APP_SECRET,
@@ -445,14 +442,14 @@ Deno.serve(async (req) => {
         if (resultado.faultstring) {
             if (isErroDuplicidadeCliente(resultado) && cnpjLimpo) {
                 console.log('[enviarClienteOmie] Duplicidade detectada; consultando cliente existente e tentando alteração.');
-                const existente = await buscarClienteOmiePorCpfCnpj(cnpjLimpo);
+                const existente = await buscarClienteOmiePorCpfCnpj(base44, cnpjLimpo);
                 if (existente?.codigo_cliente_omie) {
                     if (existente.codigo_cliente_integracao) clienteOmie.codigo_cliente_integracao = existente.codigo_cliente_integracao;
                     clienteOmie.codigo_cliente_omie = Number(existente.codigo_cliente_omie);
                     await salvarCodigoOmieNoCliente(base44, clienteData.id, existente.codigo_cliente_omie);
 
                     const retryStartedAt = Date.now();
-                    const resultadoAlteracao = await omieFetchComRetry(OMIE_URL, {
+                    const resultadoAlteracao = await omieFetchComRetry(base44, OMIE_URL, {
                         call: "UpsertCliente",
                         app_key: OMIE_APP_KEY,
                         app_secret: OMIE_APP_SECRET,

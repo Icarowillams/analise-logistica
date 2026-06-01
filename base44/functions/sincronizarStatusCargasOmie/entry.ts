@@ -4,7 +4,6 @@ const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-let base44Global = null;
 
 // cStat SEFAZ:
 //   100/150 = autorizada
@@ -21,14 +20,14 @@ function classificarCStat(cStat) {
   return null;
 }
 
-async function omieCall(call, param, opts = {}, url = OMIE_URL) {
+async function omieCall(base44, call, param, opts = {}, url = OMIE_URL) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-  const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
   if (cacheMinutes > 0) {
-    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
   let lastError = '';
@@ -39,7 +38,7 @@ async function omieCall(call, param, opts = {}, url = OMIE_URL) {
       const msg = String(data.faultstring || '').toLowerCase();
       if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
         throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('indispon')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; } // DELAY_PADRAO_RETRY
@@ -47,19 +46,19 @@ async function omieCall(call, param, opts = {}, url = OMIE_URL) {
     }
     if (cacheMinutes > 0) {
       const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
-      const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-      if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+      const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+      if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
     }
-    if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+    if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
     return data;
   }
   throw new Error(lastError || 'Máximo de tentativas Omie excedido');
 }
 
 // Busca NF emitida + cStat (status SEFAZ) para um pedido específico.
-async function buscarNfPorPedido(codigoPedido) {
+async function buscarNfPorPedido(base44, codigoPedido) {
   try {
-    const data = await omieCall('ListarNF', {
+    const data = await omieCall(base44, 'ListarNF', {
       pagina: 1,
       registros_por_pagina: 50,
       nIdPedido: Number(codigoPedido)
@@ -162,7 +161,6 @@ function definirStatusCarga(pedidosStatus, statusAtual) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -208,7 +206,7 @@ Deno.serve(async (req) => {
         }
 
         try {
-          const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo) }, { cacheMinutes: 10 });
+          const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo) }, { cacheMinutes: 10 });
           const status = extrairPedido(consulta, pedido);
 
           // Fallback: se etapa 60 mas SEM cStat (ConsultarPedido não trouxe infoNfe completo),
@@ -219,7 +217,7 @@ Deno.serve(async (req) => {
           let classificacao = classificarCStat(cStatFinal);
 
           if (status.etapa === '60' && (!classificacao || !numeroNfFinal)) {
-            const nfInfo = await buscarNfPorPedido(codigo);
+            const nfInfo = await buscarNfPorPedido(base44, codigo);
             if (nfInfo) {
               if (nfInfo.numero_nf) numeroNfFinal = nfInfo.numero_nf;
               if (nfInfo.cStat) cStatFinal = nfInfo.cStat;

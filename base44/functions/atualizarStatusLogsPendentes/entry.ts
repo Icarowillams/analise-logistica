@@ -18,20 +18,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-let base44Global = null;
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
-async function omieCall(url, call, param, opts = {}) {
+async function omieCall(base44, url, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-  const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${formatarDataBrasilia(controle.bloqueado_ate)} (horário de Brasília)`);
   if (cacheMinutes > 0) {
-    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
   let lastError = '';
@@ -42,7 +41,7 @@ async function omieCall(url, call, param, opts = {}) {
       const msg = String(data.faultstring || '').toLowerCase();
       if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
         throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
       }
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || msg.includes('soap-error') || msg.includes('broken response')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
@@ -56,11 +55,11 @@ async function omieCall(url, call, param, opts = {}) {
         expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(),
         criado_em: new Date().toISOString()
       };
-      const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-      if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
-      else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+      const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+      if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
+      else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
     }
-    if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+    if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
     return data;
   }
   throw new Error(lastError || 'Máximo de tentativas Omie excedido');
@@ -93,14 +92,14 @@ function classificarNF(nfEncontrada, codigoPedido) {
 
 // Consulta etapa atual do pedido no Omie usando apenas ConsultarPedido.
 // Não faz ListarNF amplo: se a NF/cStat vier no pedido, usa; senão mantém aguardando.
-async function consultarStatusReal(codigoPedido, mockOmieResponse = null) {
+async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {
     if (mockOmieResponse) {
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
+      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
@@ -126,7 +125,7 @@ async function consultarStatusReal(codigoPedido, mockOmieResponse = null) {
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
 }
 
-async function registrarCooldownConsulta(codigoPedido, valor = {}) {
+async function registrarCooldownConsulta(base44, codigoPedido, valor = {}) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
   const payloadCache = {
     chave,
@@ -135,14 +134,14 @@ async function registrarCooldownConsulta(codigoPedido, valor = {}) {
     expira_em: new Date(Date.now() + 10 * 60000).toISOString(),
     criado_em: new Date().toISOString()
   };
-  const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-  if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
-  else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+  const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+  if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
+  else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
 }
 
-async function consultadoRecentemente(codigoPedido) {
+async function consultadoRecentemente(base44, codigoPedido) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
-  const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+  const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
   const cache = caches?.[0];
   return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 10 * 60 * 1000);
 }
@@ -212,7 +211,6 @@ async function atualizarEspelho(base44, codigoPedido, resultado) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    base44Global = base44;
     // Permite execução sem usuário autenticado quando chamada por automation (scheduled).
     // Para chamadas vindas do frontend, exige usuário; para automation, segue como 'sistema'.
     let user = null;
@@ -288,14 +286,14 @@ Deno.serve(async (req) => {
           resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
           continue;
         }
-        if (await consultadoRecentemente(codPed)) {
+        if (await consultadoRecentemente(base44, codPed)) {
           console.log(`[atualizarStatusLogsPendentes] Pedido ${codPed} ignorado - consultado há menos de 10 minutos`);
           resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
           continue;
         }
         codigosConsultadosNestaExecucao.add(codPed);
 
-        const real = await consultarStatusReal(codPed, mock_omie_response);
+        const real = await consultarStatusReal(base44, codPed, mock_omie_response);
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedido',
           call: 'ConsultarPedido',
@@ -311,7 +309,7 @@ Deno.serve(async (req) => {
         const logsDoPedido = logs.filter(l => String(l.codigo_pedido) === String(codPed));
 
         if (real.erro) {
-          await registrarCooldownConsulta(codPed, { erro: real.erro });
+          await registrarCooldownConsulta(base44, codPed, { erro: real.erro });
           for (const l of logsDoPedido) {
             await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem: real.erro });
           }

@@ -3,12 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-let base44Global = null;
 
-async function omieCall(call, param, opts = {}) {
+async function omieCall(base44, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
   const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
-  const controles = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controles = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = controles?.[0];
 
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
@@ -16,7 +15,7 @@ async function omieCall(call, param, opts = {}) {
   }
 
   if (cacheMinutes > 0) {
-    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
 
@@ -35,8 +34,8 @@ async function omieCall(call, param, opts = {}) {
       const deveBloquear = res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde');
       if (deveBloquear) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
         throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
       }
 
@@ -50,7 +49,7 @@ async function omieCall(call, param, opts = {}) {
     }
 
     if (logIntegration) {
-      await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: OMIE_URL,
         call,
         operacao: call,
@@ -213,7 +212,6 @@ async function cortarPedidoInterno(base44, pedido_id, cortes, motivo_geral, user
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -230,7 +228,7 @@ Deno.serve(async (req) => {
     // === FLUXO PEDIDO OMIE ===
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
 
-    const consulta = await omieCall('ConsultarPedido', { codigo_pedido: Number(codigo_pedido) }, { cacheMinutes: 0 });
+    const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) }, { cacheMinutes: 0 });
     const pedido = consulta.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
 
@@ -324,7 +322,7 @@ Deno.serve(async (req) => {
 
     let erroOmie = null;
     try {
-      await omieCall('AlterarPedidoVenda', {
+      await omieCall(base44, 'AlterarPedidoVenda', {
         cabecalho: {
           codigo_pedido: Number(codigo_pedido),
           etapa: pedido.cabecalho?.etapa || '10'

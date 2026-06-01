@@ -3,16 +3,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
-let base44Global = null;
 
 // Doc Omie: máximo 100 registros/página, 240 req/min (4/s), 4 simultâneas
 const REGISTROS_PAGINA = 100;
 const PARALELISMO = 3; // conservador (limite é 4 simultâneas)
 
-async function omieCall(call, param, opts = {}) {
+async function omieCall(base44, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
   const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
-  const controles = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controles = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = controles?.[0];
 
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
@@ -20,7 +19,7 @@ async function omieCall(call, param, opts = {}) {
   }
 
   if (cacheMinutes > 0) {
-    const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
 
@@ -39,8 +38,8 @@ async function omieCall(call, param, opts = {}) {
       const deveBloquear = res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde');
       if (deveBloquear) {
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
         throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
       }
 
@@ -54,7 +53,7 @@ async function omieCall(call, param, opts = {}) {
     }
 
     if (logIntegration) {
-      await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: OMIE_URL,
         call,
         operacao: call,
@@ -71,22 +70,21 @@ async function omieCall(call, param, opts = {}) {
   throw new Error(ultimoErro || 'Máximo de tentativas Omie excedido');
 }
 
-async function listarClientesOmie(pagina) {
-  return await omieCall("ListarClientes", {
+async function listarClientesOmie(base44, pagina) {
+  return await omieCall(base44, "ListarClientes", {
     pagina,
     registros_por_pagina: REGISTROS_PAGINA,
     apenas_importado_api: "N"
   }, { cacheMinutes: 0 });
 }
 
-async function processarLote(paginas) {
-  return Promise.all(paginas.map(p => listarClientesOmie(p)));
+async function processarLote(base44, paginas) {
+  return Promise.all(paginas.map(p => listarClientesOmie(base44, p)));
 }
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    base44Global = base44;
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -164,7 +162,7 @@ async function processar(base44, jobId) {
 
   // ===== 1. Buscar primeira página pra saber total =====
   await update({ status: 'buscando_omie', etapa_descricao: 'Conectando ao Omie...' });
-  const primeira = await listarClientesOmie(1);
+  const primeira = await listarClientesOmie(base44, 1);
   const totalPaginas = primeira.total_de_paginas || 1;
   const totalRegistros = primeira.total_de_registros || 0;
   const todosOmie = [...(primeira.clientes_cadastro || [])];
@@ -183,7 +181,7 @@ async function processar(base44, jobId) {
 
   for (let i = 0; i < paginasRestantes.length; i += PARALELISMO) {
     const lote = paginasRestantes.slice(i, i + PARALELISMO);
-    const resultados = await processarLote(lote);
+    const resultados = await processarLote(base44, lote);
     resultados.forEach(r => {
       if (r.clientes_cadastro) todosOmie.push(...r.clientes_cadastro);
     });

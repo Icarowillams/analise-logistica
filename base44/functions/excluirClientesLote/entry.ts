@@ -3,12 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
-let base44Global = null;
 
-async function omieCall(call, param, opts = {}) {
+async function omieCall(base44, call, param, opts = {}) {
     const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
     const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
-    const controles = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const controles = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = controles?.[0];
 
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
@@ -16,7 +15,7 @@ async function omieCall(call, param, opts = {}) {
     }
 
     if (cacheMinutes > 0) {
-        const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+        const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
         if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
     }
 
@@ -35,8 +34,8 @@ async function omieCall(call, param, opts = {}) {
             const deveBloquear = response.status === 425 || fault.includes('bloqueada') || fault.includes('bloqueio') || fault.includes('tente novamente mais tarde');
             if (deveBloquear) {
                 const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-                else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+                else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
                 return data;
             }
 
@@ -49,7 +48,7 @@ async function omieCall(call, param, opts = {}) {
         }
 
         if (logIntegration) {
-            await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({
                 endpoint: OMIE_URL,
                 call,
                 operacao: call,
@@ -85,11 +84,11 @@ function normalizarEstado(estado) {
 }
 
 // UpsertCliente com dados obrigatórios + tag Fornecedor
-async function mudarTagUpsert(clienteBase44) {
+async function mudarTagUpsert(base44, clienteBase44) {
     const cnpj = (clienteBase44.cpf_cnpj || '').replace(/[.\-\/\s]/g, '');
     const isPF = cnpj.length <= 11;
     
-    return await omieCall("UpsertCliente", {
+    return await omieCall(base44, "UpsertCliente", {
         codigo_cliente_integracao: clienteBase44.codigo || clienteBase44.id,
         razao_social: (clienteBase44.razao_social || clienteBase44.nome_fantasia || 'Cliente').substring(0, 60),
         cnpj_cpf: cnpj,
@@ -109,7 +108,6 @@ async function mudarTagUpsert(clienteBase44) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        base44Global = base44;
         const user = await base44.auth.me();
         if (user?.role !== 'admin') {
             return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -146,7 +144,7 @@ Deno.serve(async (req) => {
 
             let resultado = null;
             try {
-                resultado = await mudarTagUpsert(c);
+                resultado = await mudarTagUpsert(base44, c);
             } catch (e) {
                 resultado = { faultstring: e.message };
             }

@@ -10,20 +10,20 @@ const CONTA_CORRENTE_PADRAO = 11464371392; // Centralizado em constantes.ts
 // ============================================================
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function omieCall(url, payload, opts = {}) {
+async function omieCall(base44, url, payload, opts = {}) {
     const { maxRetries = opts.maxTentativas || 3, cacheMinutes = 0, logIntegration = true } = opts;
     const call = payload.call;
     const param = Array.isArray(payload.param) ? payload.param[0] : payload.param;
     const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
 
-    const cb = await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
         return { faultstring: `API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`, faultcode: 'CIRCUIT_OPEN' };
     }
 
     if (cacheMinutes > 0) {
-        const caches = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+        const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
         if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
     }
 
@@ -43,7 +43,7 @@ async function omieCall(url, payload, opts = {}) {
             const msg = String(data.faultstring || '').toLowerCase();
             if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
                 const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-                if (controle?.id) await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44Global.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+                if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
                 return { ...data, faultstring: data.faultstring || 'API Omie bloqueada temporariamente', faultcode: data.faultcode || 'CIRCUIT_OPEN' };
             }
             if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
@@ -55,10 +55,10 @@ async function omieCall(url, payload, opts = {}) {
 
         if (cacheMinutes > 0) {
             const payloadCache = { chave, valor: data, tipo: call, expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(), criado_em: new Date().toISOString() };
-            const existente = await base44Global.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-            if (existente?.[0]?.id) await base44Global.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44Global.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
+            const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
+            if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {}); else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
         }
-        if (logIntegration) await base44Global.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
+        if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: data?.faultstring ? 'erro' : 'sucesso', mensagem_erro: data?.faultstring || null, payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
         return data;
     }
     return { faultstring: lastError || 'Máximo de tentativas Omie excedido' };
@@ -66,14 +66,13 @@ async function omieCall(url, payload, opts = {}) {
 
 let OMIE_KEY = null;
 let OMIE_SECRET = null;
-let base44Global = null;
 
 // Cache de conta corrente por execução (evita chamada repetida)
 let _contaCorrenteCache = null;
-async function resolverContaCorrentePadrao() {
+async function resolverContaCorrentePadrao(base44) {
     if (_contaCorrenteCache) return _contaCorrenteCache;
     try {
-        const cc = await omieCall(OMIE_CC_URL, {
+        const cc = await omieCall(base44, OMIE_CC_URL, {
             call: "ListarContasCorrentes",
             param: [{ pagina: 1, registros_por_pagina: 50 }]
         }, { maxTentativas: 2 });
@@ -325,11 +324,11 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     let clientePayload = res.payload;
 
     // Conta corrente padrão resolvida uma única vez por execução/lote
-    const contaCorrente = ctx.contaCorrentePadrao || await resolverContaCorrentePadrao();
+    const contaCorrente = ctx.contaCorrentePadrao || await resolverContaCorrentePadrao(base44);
 
     // ENVIAR
     const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
-    let resultado = await omieCall(OMIE_URL, { call: "IncluirPedido", param: [payload] });
+    let resultado = await omieCall(base44, OMIE_URL, { call: "IncluirPedido", param: [payload] });
 
     // Se cliente não existe no Omie → exportar e tentar UMA VEZ MAIS
     const erroClienteNaoExiste = resultado?.faultstring && /cliente.*(não.*(localizado|encontrado|cadastrado)|invalid)/i.test(resultado.faultstring);
@@ -339,7 +338,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
             await sleep(1500); // Omie indexar
             clientePayload = { codigo_cliente_integracao: String(clienteBase44.id) };
             const payload2 = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
-            resultado = await omieCall(OMIE_URL, { call: "IncluirPedido", param: [payload2] });
+            resultado = await omieCall(base44, OMIE_URL, { call: "IncluirPedido", param: [payload2] });
         } else {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: `Cliente não estava no Omie: ${exp.erro}`, omie_enviado: false });
             return { sucesso: false, erro: `Cliente não estava no Omie: ${exp.erro}`, pedido_id };
@@ -348,7 +347,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     // Idempotência otimizada: se já existe, altera direto sem consulta preventiva
     if (resultado?.faultstring && /(já cadastrado|já existe|código.*cadastrado|codigo.*cadastrado)/i.test(resultado.faultstring)) {
-        resultado = await omieCall(OMIE_URL, { call: "AlterarPedidoVenda", param: [payload] });
+        resultado = await omieCall(base44, OMIE_URL, { call: "AlterarPedidoVenda", param: [payload] });
     }
 
     if (resultado?.faultstring) {
@@ -388,7 +387,7 @@ async function processarLotePedidos(base44, pedidosInput) {
     const resultados = [];
     let idx = 0;
     const WORKERS = 4;
-    const contaCorrentePadrao = await resolverContaCorrentePadrao();
+    const contaCorrentePadrao = await resolverContaCorrentePadrao(base44);
 
     async function worker() {
         while (idx < pedidoIds.length) {
@@ -419,7 +418,6 @@ Deno.serve(async (req) => {
     let pedido_id = null;
     try {
         base44 = createClientFromRequest(req);
-        base44Global = base44;
         OMIE_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
         OMIE_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_KEY || !OMIE_SECRET) {
