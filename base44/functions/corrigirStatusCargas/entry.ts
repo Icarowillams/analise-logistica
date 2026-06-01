@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 async function registrarLog(base44, user, carga, statusAnterior, simular) {
   await base44.asServiceRole.entities.LogGerencial.create({

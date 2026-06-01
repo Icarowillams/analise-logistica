@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const TIPOS_TROCA = new Set(['troca', 'devolucao', 'bonificacao']);
 

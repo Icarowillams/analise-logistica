@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // Redeploy trigger: usando OMIE_API_KEY e OMIE_API_SECRET - 2026-05-03
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';

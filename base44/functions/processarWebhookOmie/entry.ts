@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // 🔄 PROCESSADOR ASSÍNCRONO DE WEBHOOK
 // Disparado pela entity automation quando LogIntegracaoOmie é criado com status='pendente'.

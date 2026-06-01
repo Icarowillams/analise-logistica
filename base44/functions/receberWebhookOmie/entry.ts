@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // ⚡ WEBHOOK RECEIVER — Ultra leve (< 200ms)
 // Apenas valida e enfileira. Processamento é feito async pelo processarWebhookOmie.

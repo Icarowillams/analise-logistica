@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // ============================================================================
 // SINCRONIZAR CLIENTES CSV → BASE44 → OMIE

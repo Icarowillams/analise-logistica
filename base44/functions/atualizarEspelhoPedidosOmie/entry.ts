@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 function deveCancelar(dados) {
   return dados?.status === 'nao_encontrado' || dados?.etapa === '70' || dados?.etapa === '80';

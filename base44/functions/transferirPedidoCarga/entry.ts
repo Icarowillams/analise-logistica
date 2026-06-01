@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // Transfere um ou mais pedidos de uma carga para outra (operação LOCAL, não chama Omie)
 // body: {
