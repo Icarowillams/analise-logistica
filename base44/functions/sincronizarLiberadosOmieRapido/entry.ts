@@ -1,32 +1,41 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Resolve credenciais a partir da entidade ConfiguracaoOmie (banco), com fallback para Secrets.
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    return { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret) };
+  }
+  console.warn('[sincronizarLiberadosOmieRapido] Nenhuma ConfiguracaoOmie ativa — usando fallback das Secrets do Deno.');
+  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+}
 const normalizar = (v) => String(v || '').trim().toLowerCase();
 const somenteDigitos = (v) => String(v || '').replace(/\D/g, '');
 const valorValido = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 
-async function omieCall(base44, endpoint, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  
+async function omieCall(base44, creds, endpoint, param, options = {}) {
   const body = {
     call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
+    app_key: creds.app_key,
+    app_secret: creds.app_secret,
     param: [param]
   };
-  
+
+  // ConsultarCliente vai para /geral/clientes/; demais (ListarPedidos) para /produtos/pedido/
+  const url = /^(Consultar|Listar|Pesquisar)Cliente/i.test(endpoint) ? OMIE_CLIENTES_URL : OMIE_PEDIDO_URL;
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
   
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -63,9 +72,9 @@ async function omieCall(base44, endpoint, param, options = {}) {
   throw lastError;
 }
 
-async function consultarClienteOmie(base44, codigoCliente) {
+async function consultarClienteOmie(base44, creds, codigoCliente) {
   try {
-    const data = await omieCall(base44, 'ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) });
+    const data = await omieCall(base44, creds, 'ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) });
     return {
       codigo_omie: String(data.codigo_cliente_omie || codigoCliente),
       codigo_integracao: data.codigo_cliente_integracao || '',
@@ -173,6 +182,11 @@ Deno.serve(async (req) => {
     const { max_paginas = 10, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
     const t0 = Date.now();
 
+    const creds = await resolverCredsOmie(base44);
+    if (!creds.app_key || !creds.app_secret) {
+      return Response.json({ sucesso: false, error: 'Credenciais Omie não configuradas (ConfiguracaoOmie ativa nem Secrets).' }, { status: 500 });
+    }
+
     const limite48h = Date.now() - 48 * 60 * 60 * 1000;
     const candidatosRecentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 50).catch(() => []);
     const temTrabalhoRecente = (candidatosRecentes || []).some(p => {
@@ -197,7 +211,7 @@ Deno.serve(async (req) => {
       let pagina = 1;
       let totalPaginas = 1;
       do {
-        const data = await omieCall(base44, 'ListarPedidos', {
+        const data = await omieCall(base44, creds, 'ListarPedidos', {
           pagina,
           registros_por_pagina: 100,
           apenas_importado_api: 'N',
@@ -272,7 +286,7 @@ Deno.serve(async (req) => {
     const mapaClienteOmieFallback = new Map();
     let consultasFallback = 0;
     for (const codigo of codigosClienteFaltantes) {
-      const dados = await consultarClienteOmie(base44, codigo);
+      const dados = await consultarClienteOmie(base44, creds, codigo);
       if (dados) mapaClienteOmieFallback.set(codigo, dados);
       consultasFallback += 1;
       await delay(350);
