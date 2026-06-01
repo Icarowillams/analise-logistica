@@ -1,29 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 
-// Doc Omie: backoff em rate limit (425), erros transientes (520) e 429
-async function omieCall(call, param, tentativa = 1) {
-  const res = await fetch(OMIE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
-  });
+async function omieCall(_base44, endpoint, param, options = {}) {
+  const call = options.call;
+  const app_key = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+  const app_secret = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key, app_secret, param: [param] }) });
   const data = await res.json();
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
-    const fc = String(data.faultcode || '');
-    const isTransient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
-      || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon')
-      || fc.includes('425') || fc.includes('520') || res.status === 429;
-    if (isTransient && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 2000 * tentativa));
-      return omieCall(call, param, tentativa + 1);
-    }
-    throw new Error(data.faultstring);
-  }
+  if (data.faultstring) throw new Error(data.faultstring);
   return data;
 }
 
@@ -68,7 +53,7 @@ Deno.serve(async (req) => {
     if (apenas_pendentes) param.filtrar_apenas_titulos_em_aberto = 'S';
 
     const t0 = Date.now();
-    const data = await omieCall('ListarContasReceber', param, { cacheMinutes: 10 });
+    const data = await omieCall(base44, OMIE_URL, param, { call: 'ListarContasReceber', cacheMinutes: 10 });
     const duracao = Date.now() - t0;
 
     // Parser DD/MM/AAAA → Date

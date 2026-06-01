@@ -101,10 +101,6 @@ async function writePersistentCache(base44: Base44Client, cacheKey: string, endp
   else await base44.asServiceRole.entities.CacheOmieConsulta.create(payload).catch(() => null);
 }
 
-/**
- * Verifica o circuit breaker persistente da Omie antes de chamadas à API.
- * Retorna o status atual e desbloqueia automaticamente quando o prazo expirou.
- */
 export async function checkCircuitBreaker(base44: Base44Client): Promise<CircuitBreakerStatus> {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const control = rows?.[0];
@@ -126,24 +122,11 @@ export async function checkCircuitBreaker(base44: Base44Client): Promise<Circuit
   };
 }
 
-/**
- * Limpa o cache em memória das consultas Omie.
- * Útil para testes e para forçar nova consulta sem aguardar o TTL de 30 segundos.
- */
 export function clearOmieMemoryCache(): void {
   memoryCache.clear();
 }
 
-/**
- * Executa uma chamada centralizada à API Omie com credenciais do ambiente, timeout,
- * retry exponencial para HTTP 429, circuit breaker, cache de 30 segundos e log automático.
- *
- * @param base44 Instância Base44 criada dentro da function via createClientFromRequest(req).
- * @param endpoint Endpoint Omie relativo ou URL completa, ex: "produtos/pedido/".
- * @param param Array ou objeto enviado no campo param do payload Omie.
- * @param options Opções da chamada; informe options.call com o método Omie, ex: "ConsultarPedido".
- */
-export async function omieCall(base44: Base44Client, endpoint: string, param: unknown, options: OmieCallOptions = {}): Promise<unknown> {
+export async function omieCall(base44: Base44Client, endpoint: string, param: unknown, options: OmieCallOptions = {}): Promise<any> {
   const appKey = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
   const appSecret = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
   const call = options.call || (typeof param === 'object' && param && 'call' in (param as Record<string, unknown>) ? String((param as Record<string, unknown>).call) : '');
@@ -251,11 +234,4 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
   }
 
   throw lastError || new Error('Erro desconhecido na API Omie.');
-}
-
-if (import.meta.main) {
-  Deno.serve(() => Response.json({
-    arquivo: 'Cliente Omie centralizado compartilhado',
-    funcoes_exportadas: ['omieCall', 'checkCircuitBreaker', 'clearOmieMemoryCache']
-  }));
 }
