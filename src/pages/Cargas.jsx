@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,62 +15,20 @@ import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import { toast } from 'sonner';
 
-// Status reflete o REAL do Omie:
-//  - faturada            = TODAS as NFs autorizadas pela SEFAZ (cStat 100)
-//  - faturada_com_rejeicao = pedido(s) em etapa 60 (Faturado) mas COM NF rejeitada pela SEFAZ (cStat>=200).
-//                             No Kanban do Omie aparece com faixa VERMELHA na coluna "Faturado".
-//  - faturada_parcial    = mistura de autorizadas + rejeitadas/pendentes
-//  - aguardando_nf       = SEFAZ ainda processando, sem resposta final
-//  - montagem            = inicial / nada emitido ainda
-const FATURAVEL = ['montagem', 'faturada_parcial', 'aguardando_nf', 'faturada_com_rejeicao'];
+// status_carga é LOCAL e binário:
+//  - montagem = em preparação (ainda não enviada ao Omie)
+//  - faturada = enviada ao Omie
+// O ciclo fiscal detalhado (cancelada, rejeitada, em rota...) permanece no Omie/entidades de espelho.
+const FATURAVEL = ['montagem'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
-  aguardando_nf: 'bg-blue-100 text-blue-800',
-  faturada_com_rejeicao: 'bg-red-100 text-red-800 border border-red-300',
-  faturada_parcial: 'bg-yellow-100 text-yellow-800',
-  faturada: 'bg-green-100 text-green-800',
-  cancelada: 'bg-red-100 text-red-800',
-  excluida: 'bg-red-100 text-red-800'
+  faturada: 'bg-green-100 text-green-800'
 };
 
 const STATUS_LABEL = {
   montagem: 'montagem',
-  aguardando_nf: 'aguard. NF',
-  faturada_com_rejeicao: 'NF rejeitada',
-  faturada_parcial: 'parcial',
-  faturada: 'faturada',
-  cancelada: 'cancelada',
-  excluida: 'excluída'
-};
-
-// Calcula novo status da carga baseado no resultado real do Omie (resultados de emitirNfsLoteOmie).
-// IMPORTANTE: pedido com NF rejeitada FICA NA ETAPA 60 (Faturado) no Omie — não volta pra montagem.
-// É o estado "Faturado (NF-e rejeitada)" que o Omie mostra com faixa vermelha no Kanban.
-function calcularStatusPosEmissao(carga, resultados) {
-  const codigosOmie = (carga.pedidos_omie || [])
-    .filter(p => p.tipo_nota !== 'D1' && p.codigo_pedido)
-    .map(p => String(p.codigo_pedido));
-
-  if (codigosOmie.length === 0) return 'faturada'; // só tinha D1
-
-  const porCodigo = new Map(resultados.map(r => [String(r.codigo_pedido), r]));
-  const autorizadas = codigosOmie.filter(c => porCodigo.get(c)?.sucesso).length;
-  const rejeitadas = codigosOmie.filter(c => porCodigo.get(c)?.rejeitada).length;
-  const pendentes = codigosOmie.filter(c => porCodigo.get(c)?.pendente).length;
-
-  if (autorizadas === codigosOmie.length) return 'faturada';
-  if (rejeitadas === codigosOmie.length) return 'faturada_com_rejeicao';
-  if (pendentes === codigosOmie.length) return 'aguardando_nf';
-  if (autorizadas > 0 && (rejeitadas > 0 || pendentes > 0)) return 'faturada_parcial';
-  // resto (mistura sem autorizadas) → trata como parcial para o operador agir
-  return 'faturada_parcial';
-}
-
-const statusExibido = (carga) => {
-  const pedidos = carga.pedidos_omie || [];
-  const excluida = pedidos.length > 0 && pedidos.every(p => p.status_pedido === 'excluido_no_omie' || p.etapa === 'excluido');
-  return excluida ? 'excluida' : carga.status_carga;
+  faturada: 'faturada'
 };
 
 export default function Cargas() {
@@ -139,10 +97,7 @@ export default function Cargas() {
   const forcarSincronizacao = async () => {
     const alvos = selecionadas.length > 0
       ? selecionadas
-      : cargas
-          .filter(c => !['cancelada','excluida'].includes(statusExibido(c)))
-          .slice(0, 100)
-          .map(c => c.id);
+      : cargas.slice(0, 100).map(c => c.id);
 
     if (alvos.length === 0) {
       toast.error('Nenhuma carga para sincronizar');
@@ -340,22 +295,9 @@ export default function Cargas() {
       label: 'Status',
       width: '160px',
       render: (_, row) => {
-        const status = statusExibido(row);
-        // Coleta motivos de rejeição dos pedidos para mostrar no tooltip
-        const rejeitados = (row.pedidos_omie || []).filter(p => p.status_nf === 'rejeitada' || p.status_nf === 'denegada');
-        const temRejeicao = rejeitados.length > 0;
-        const motivos = rejeitados
-          .map(p => `Pedido ${p.numero_pedido || p.codigo_pedido}: ${p.motivo_rejeicao || p.status_real_omie || 'rejeitada'}`)
-          .join('\n');
+        const status = row.status_carga;
         return (
-          <div className="flex items-center gap-1">
-            <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>
-            {temRejeicao && (
-              <span title={motivos} className="cursor-help">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-              </span>
-            )}
-          </div>
+          <Badge className={`${STATUS_COLORS[status] || ''} text-xs`}>{STATUS_LABEL[status] || status}</Badge>
         );
       }
     },
@@ -364,22 +306,13 @@ export default function Cargas() {
       label: 'Ações',
       width: '180px',
       render: (_, row) => {
-        const podeFaturar = FATURAVEL.includes(row.status_carga);
         const emMontagem = row.status_carga === 'montagem';
-        const jaFaturada =
-          row.status_carga === 'faturada' ||
-          row.status_carga === 'faturada_parcial' ||
-          row.status_carga === 'aguardando_nf' ||
-          row.status_carga === 'faturada_com_rejeicao';
-        const labelBotao =
-          row.status_carga === 'faturada_parcial' ? 'Reemitir' :
-          row.status_carga === 'faturada_com_rejeicao' ? 'Reemitir' :
-          row.status_carga === 'aguardando_nf' ? 'Tentar' : 'Faturar';
+        const jaFaturada = row.status_carga === 'faturada';
         return (
           <div className="flex items-center gap-1">
-            {podeFaturar && (
+            {emMontagem && (
               <Button size="sm" className="h-7 px-2 text-xs" onClick={() => faturar(row)} disabled={faturando === row.id}>
-                {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : labelBotao}
+                {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Faturar'}
               </Button>
             )}
             {jaFaturada && (
