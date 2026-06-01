@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import SaudeIntegracaoOmie from '@/components/integracao/SaudeIntegracaoOmie';
+import AlertaBloqueioOmie from '@/components/integracao/AlertaBloqueioOmie';
 
 export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
@@ -116,6 +117,8 @@ export default function IntegracaoOmieDashboard() {
           Testar Conexão
         </Button>
       </div>
+
+      <AlertaBloqueioOmie />
 
       <Card className="border-emerald-200 bg-emerald-50/70">
         <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">

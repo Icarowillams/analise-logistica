@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, AlertTriangle, Webhook, Repeat, Send } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, Webhook, Repeat, Send, Shield, Lock, Key } from 'lucide-react';
 
 // Painel de saúde da integração Omie — mostra status do webhook, automations e última sincronização.
 // Lê LogIntegracaoOmie para verificar quando o webhook foi disparado pela última vez.
@@ -54,6 +54,27 @@ export default function SaudeIntegracaoOmie() {
     refetchInterval: 30000
   });
 
+  // Circuit breaker (chave 'principal') + rate limiter global (chave 'rate_limit_global')
+  const { data: controles = [] } = useQuery({
+    queryKey: ['controleCircuitBreakerOmie'],
+    queryFn: () => base44.entities.ControleCircuitBreakerOmie.list('-updated_date', 10),
+    refetchInterval: 15000
+  });
+
+  // Configuração ativa (qual app_key está em uso)
+  const { data: configsOmie = [] } = useQuery({
+    queryKey: ['configuracaoOmieSaude'],
+    queryFn: () => base44.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1),
+    refetchInterval: 30000
+  });
+
+  // Último erro do Omie
+  const { data: ultimosErros = [] } = useQuery({
+    queryKey: ['ultimoErroOmie'],
+    queryFn: () => base44.entities.LogIntegracaoOmie.filter({ status: 'erro' }, '-created_date', 1),
+    refetchInterval: 15000
+  });
+
   const saude = useMemo(() => {
     const agora = Date.now();
     const ultimas24h = logs.filter(l => agora - new Date(l.created_date).getTime() < 24 * 60 * 60 * 1000);
@@ -86,6 +107,44 @@ export default function SaudeIntegracaoOmie() {
   const statusWebhook = saude.webhookRecente ? 'ok' : (saude.ultimoWebhook ? 'warn' : 'inativo');
   const statusGeral = saude.taxaSucesso >= 95 ? 'ok' : saude.taxaSucesso >= 80 ? 'warn' : 'erro';
 
+  // ── Status da API Omie (circuit breaker + rate limiter) ──
+  const apiOmie = useMemo(() => {
+    const agora = Date.now();
+    const breaker = (controles || []).find(c => c.chave === 'principal');
+    const rate = (controles || []).find(c => c.chave === 'rate_limit_global');
+
+    const bloqueadoAte = breaker?.bloqueado_ate ? new Date(breaker.bloqueado_ate).getTime() : 0;
+    const bloqueado = Boolean(breaker?.bloqueado) && bloqueadoAte > agora;
+    const minutosAteDesbloqueio = bloqueado ? Math.max(1, Math.ceil((bloqueadoAte - agora) / 60000)) : 0;
+
+    // Rate limiter ativo se a última chamada foi há menos de 1,5s
+    const ultimaChamadaRate = rate?.atualizado_em ? new Date(rate.atualizado_em).getTime() : 0;
+    const rateAtivo = ultimaChamadaRate && (agora - ultimaChamadaRate < 1500);
+
+    const config = (configsOmie || [])[0];
+    const appKey = config?.app_key ? String(config.app_key) : '';
+    const ultimos4 = appKey ? appKey.slice(-4) : '----';
+    const origem = config ? 'banco' : 'secrets';
+
+    let status = 'ok';
+    if (bloqueado) status = 'erro';
+    else if (rateAtivo) status = 'warn';
+
+    return {
+      bloqueado,
+      minutosAteDesbloqueio,
+      ultimoErroBreaker: breaker?.ultimo_erro || '',
+      rateAtivo,
+      ultimaChamadaRate,
+      ultimos4,
+      origem,
+      configAtualizadaEm: config?.updated_date,
+      status
+    };
+  }, [controles, configsOmie]);
+
+  const ultimoErro = (ultimosErros || [])[0];
+
   return (
     <Card className="border-2 border-cyan-100">
       <CardHeader className="pb-3">
@@ -95,6 +154,28 @@ export default function SaudeIntegracaoOmie() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <StatusRow
+          icon={apiOmie.bloqueado ? Lock : Shield}
+          titulo="Status da API Omie"
+          descricao={
+            apiOmie.bloqueado
+              ? `API bloqueada por rate limit. Próxima tentativa em: ${apiOmie.minutosAteDesbloqueio} min`
+              : apiOmie.rateAtivo
+              ? 'API respondendo — rate limiter global ativo (regulando chamadas)'
+              : 'API respondendo normalmente'
+          }
+          status={apiOmie.status}
+          detalhe={`app_key ativa: ...${apiOmie.ultimos4} (origem: ${apiOmie.origem})${apiOmie.bloqueado && apiOmie.ultimoErroBreaker ? ` · ${apiOmie.ultimoErroBreaker.slice(0, 80)}` : ''}`}
+        />
+
+        <StatusRow
+          icon={Key}
+          titulo="Último erro da API Omie"
+          descricao={ultimoErro ? (ultimoErro.mensagem_erro || ultimoErro.erro_detalhado || 'Erro sem mensagem').slice(0, 120) : 'Nenhum erro registrado'}
+          status={ultimoErro ? 'warn' : 'ok'}
+          detalhe={ultimoErro ? `${formatRelativeTime(ultimoErro.created_date)} · ${ultimoErro.call || ultimoErro.endpoint || ''}` : 'Sem ocorrências de erro'}
+        />
+
         <StatusRow
           icon={Webhook}
           titulo="Webhook Omie → Base44"
