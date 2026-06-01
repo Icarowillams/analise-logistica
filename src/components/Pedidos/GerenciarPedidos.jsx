@@ -124,11 +124,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
     queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
+    staleTime: 30000,
   });
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.list(),
+    staleTime: 300000,
   });
 
   const currentUserName = useMemo(() => {
@@ -139,6 +141,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: clientesBase = [] } = useQuery({
     queryKey: ['clientes-gerenciar'],
     queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    staleTime: 300000,
   });
 
   const pedidoClienteIds = useMemo(() => [...new Set(pedidos.map(p => p.cliente_id).filter(Boolean))], [pedidos]);
@@ -162,53 +165,51 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: redes = [] } = useQuery({
     queryKey: ['redes-gerenciar'],
     queryFn: () => base44.entities.Rede.list(),
+    staleTime: 300000,
   });
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos-gerenciar'],
     queryFn: () => base44.entities.Segmento.list(),
+    staleTime: 300000,
   });
 
   const { data: rotas = [] } = useQuery({
     queryKey: ['rotas-gerenciar'],
     queryFn: () => base44.entities.Rota.list(),
+    staleTime: 300000,
   });
 
   const { data: cenariosFiscaisLocais = [] } = useQuery({
     queryKey: ['cenarios-fiscais-locais-gerenciar'],
     queryFn: () => base44.entities.CenarioFiscalLocal.list(),
+    staleTime: 300000,
   });
 
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos-gerenciar'],
     queryFn: () => base44.entities.Produto.list(),
+    staleTime: 300000,
   });
 
-  // Etapas Omie em tempo real — busca em paralelo as 4 etapas + faturados
+  // Etapas Omie — lê do ESPELHO LOCAL (PedidoLiberadoOmie), atualizado em tempo real pelos webhooks.
+  // Sem chamadas a Omie no carregamento. Ações (liberar/cancelar) continuam chamando o backend.
   const { data: omieMap = {} } = useQuery({
     queryKey: ['gerenciar-pedidos-omie-etapas'],
     queryFn: async () => {
-      const etapas = ['10', '20', '50'];
-      const resultados = await Promise.all([
-        ...etapas.map(et =>
-          base44.functions.invoke('buscarPedidosOmie', {
-            etapa: et,
-            registros_por_pagina: 100,
-            buscar_todas_paginas: true
-          }).then(r => ({ etapa: et, pedidos: r.data?.pedidos || [] })).catch(() => ({ etapa: et, pedidos: [] }))
-        ),
-        base44.functions.invoke('consultarStatusFaturamentoOmie', {
-          registros_por_pagina: 100,
-          buscar_todas_paginas: true
-        }).then(r => ({ etapa: '60', pedidos: r.data?.pedidos || [] })).catch(() => ({ etapa: '60', pedidos: [] }))
-      ]);
+      const espelho = await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
       const map = {};
-      resultados.forEach(({ etapa, pedidos }) => {
-        pedidos.forEach(p => {
-          const key = String(p.codigo_pedido);
-          map[key] = { etapa, ...p };
-          if (p.numero_pedido) map[`np:${p.numero_pedido}`] = { etapa, ...p };
-        });
+      espelho.forEach(p => {
+        const info = {
+          etapa: String(p.etapa || ''),
+          numero_pedido: p.numero_pedido,
+          numero_nf: p.numero_nf,
+          status_real: p.status_real,
+          status_label: p.status_label,
+          codigo_pedido: p.codigo_pedido
+        };
+        if (p.codigo_pedido) map[String(p.codigo_pedido)] = info;
+        if (p.numero_pedido) map[`np:${p.numero_pedido}`] = info;
       });
       return map;
     },
