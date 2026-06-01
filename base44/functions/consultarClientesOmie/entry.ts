@@ -8,6 +8,60 @@ const configCache = { value: false, expiresAt: 0 };
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
+}
+
 async function getModoEconomico(base44) {
     const now = Date.now();
     if (configCache.expiresAt > now) return configCache.value;
@@ -29,33 +83,12 @@ function setCached(key, data, modoEconomico) {
 }
 
 // Doc Omie: máx 100 reg/pág, 4 simultâneas, 240 req/min. Backoff em 425/520/429.
-async function listarClientesOmie(pagina = 1, registrosPorPagina = 100, tentativa = 0) {
-    const response = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call: "ListarClientes",
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [{
-                pagina,
-                registros_por_pagina: Math.min(registrosPorPagina, 100),
-                clientesFiltro: { }
-            }]
-        })
+async function listarClientesOmie(base44, pagina = 1, registrosPorPagina = 100) {
+    return await omieCall(base44, "ListarClientes", {
+        pagina,
+        registros_por_pagina: Math.min(registrosPorPagina, 100),
+        clientesFiltro: { }
     });
-    const data = await response.json();
-    if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        const fc = String(data.faultcode || '');
-        const isRate = msg.includes('limite de requisi') || msg.includes('cota') || msg.includes('aguarde')
-            || fc.includes('425') || fc.includes('520') || response.status === 429;
-        if (isRate && tentativa < 4) {
-            await delay(2000 * (tentativa + 1));
-            return listarClientesOmie(pagina, registrosPorPagina, tentativa + 1);
-        }
-    }
-    return data;
 }
 
 Deno.serve(async (req) => {
@@ -77,7 +110,7 @@ Deno.serve(async (req) => {
             const cacheKey = `consultarClientesOmie:listar_omie:${pag}`;
             const cached = getCached(cacheKey);
             if (cached) return Response.json({ ...cached, cache_hit: true });
-            const resultado = await listarClientesOmie(pag, 100);
+            const resultado = await listarClientesOmie(base44, pag, 100);
             
             if (resultado.faultstring) {
                 return Response.json({ error: resultado.faultstring }, { status: 400 });
@@ -124,7 +157,7 @@ Deno.serve(async (req) => {
             const PARALELISMO = 3;
 
             // Primeira página → descobre total
-            const primeira = await listarClientesOmie(1, 100);
+            const primeira = await listarClientesOmie(base44, 1, 100);
             if (primeira.faultstring) {
                 return Response.json({ error: `Erro Omie pag 1: ${primeira.faultstring}` }, { status: 400 });
             }
@@ -136,7 +169,7 @@ Deno.serve(async (req) => {
             for (let p = 2; p <= totalPaginas; p++) paginasRestantes.push(p);
             for (let i = 0; i < paginasRestantes.length; i += PARALELISMO) {
                 const lote = paginasRestantes.slice(i, i + PARALELISMO);
-                const resultados = await Promise.all(lote.map(p => listarClientesOmie(p, 100)));
+                const resultados = await Promise.all(lote.map(p => listarClientesOmie(base44, p, 100)));
                 for (const r of resultados) {
                     if (r.clientes_cadastro) todosOmie.push(...r.clientes_cadastro);
                 }

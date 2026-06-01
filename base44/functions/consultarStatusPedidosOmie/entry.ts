@@ -14,6 +14,60 @@ const ETAPA_LABELS = {
     '80': 'Cancelado',
 };
 
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -44,26 +98,13 @@ Deno.serve(async (req) => {
                 return [item.pedido_id, { etapa: null, etapa_label: 'Sem código Omie', cancelado: false, erro: true }];
             }
             try {
-                const response = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: "ConsultarPedido",
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [{ codigo_pedido: codigoPedido }]
-                    })
-                });
-                const text = await response.text();
-                let result;
-                try { result = JSON.parse(text); }
-                catch { return [item.pedido_id, { etapa: null, etapa_label: 'Erro de resposta', cancelado: false, erro: true }]; }
+                const result = await omieCall(base44, "ConsultarPedido", { codigo_pedido: codigoPedido }, { skipLog: true });
 
                 if (result.faultstring || result.faultcode) {
                     const faultMsg = (result.faultstring || '').toLowerCase();
                     const fc = String(result.faultcode || '');
                     const isRate = faultMsg.includes('limite de requisi') || faultMsg.includes('cota') || faultMsg.includes('aguarde')
-                        || fc.includes('425') || fc.includes('520') || response.status === 429;
+                        || fc.includes('425') || fc.includes('520');
                     if (isRate && tent < 3) {
                         await new Promise(r => setTimeout(r, 2000 * (tent + 1)));
                         return consultarUm(item, tent + 1);

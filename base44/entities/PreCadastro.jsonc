@@ -1,0 +1,52 @@
+{
+  "name": "PreCadastro",
+  "type": "object",
+  "description": "Solicita\u00e7\u00f5es de novos clientes feitas em campo \u2014 aguardando cadastro definitivo",
+  "properties": {
+    "nome_solicitado": {
+      "type": "string"
+    },
+    "cnpj_cpf": {
+      "type": "string"
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "endereco": {
+      "type": "string"
+    },
+    "cidade": {
+      "type": "string"
+    },
+    "vendedor_id": {
+      "type": "string"
+    },
+    "vendedor_nome": {
+      "type": "string"
+    },
+    "data_solicitacao": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "em_cadastro",
+        "cadastrado",
+        "descartado"
+      ],
+      "default": "pendente"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do Cliente ap\u00f3s cadastro definitivo"
+    },
+    "observacoes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "nome_solicitado"
+  ]
+}

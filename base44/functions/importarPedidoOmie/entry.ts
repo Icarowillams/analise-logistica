@@ -4,14 +4,58 @@ const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY"
 const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
-async function omieCall(_base44, endpoint, param, options = {}) {
-  const call = options.call;
-  const app_key = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-  const app_secret = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key, app_secret, param: [param] }) });
-  const data = await res.json();
-  if (data.faultstring) return data;
-  return data;
+async function omieCall(base44, endpoint, param, options = {}) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  
+  const body = {
+    call: endpoint,
+    app_key: OMIE_APP_KEY,
+    app_secret: OMIE_APP_SECRET,
+    param: [param]
+  };
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+  
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      const data = await res.json();
+      
+      if (!options.skipLog) {
+        try {
+          await base44.entities.create('LogIntegracaoOmie', {
+            endpoint,
+            payload_envio: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000),
+            sucesso: !data.faultcode,
+            erro: data.faultstring || null,
+            created_date: new Date().toISOString()
+          });
+        } catch(logErr) { /* silent fail */ }
+      }
+      
+      return data;
+    } catch(err) {
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
 }
 
 
@@ -50,7 +94,7 @@ Deno.serve(async (req) => {
 
         console.log(`[importarPedidoOmie] Consultando código Omie: ${codigo_pedido_omie}`);
 
-        const result = await omieCall(base44, OMIE_URL, { codigo_pedido: Number(codigo_pedido_omie) }, { call: "ConsultarPedido" });
+        const result = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(codigo_pedido_omie) });
 
         if (result.faultstring) {
             return Response.json({ sucesso: false, erro: result.faultstring });
@@ -88,7 +132,7 @@ Deno.serve(async (req) => {
         }
         if (!cliente && codigoClienteOmie) {
             try {
-                const cliOmie = await omieCall(base44, "https://app.omie.com.br/api/v1/geral/clientes/", { codigo_cliente_omie: codigoClienteOmie }, { call: "ConsultarCliente" });
+                const cliOmie = await omieCall(base44, "ConsultarCliente", { codigo_cliente_omie: codigoClienteOmie });
                 if (!cliOmie.faultstring && cliOmie.cnpj_cpf) {
                     const cpf = cliOmie.cnpj_cpf.replace(/[^\d]/g, '');
                     const todos = await base44.asServiceRole.entities.Cliente.list('-created_date', 5000);
