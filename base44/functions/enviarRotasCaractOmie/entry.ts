@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_CARACT_URL = "https://app.omie.com.br/api/v1/geral/clientescaract/";
 
 // Rate limit: 1500ms entre chamadas Omie (evita bloqueio por consumo indevido)

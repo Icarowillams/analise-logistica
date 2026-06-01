@@ -3,8 +3,8 @@
 // 2) Faz fetch do PDF no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const CR_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const BOLETO_URL = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
 

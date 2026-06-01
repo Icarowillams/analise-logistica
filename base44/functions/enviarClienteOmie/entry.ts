@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 async function logOmie(base44, payload) {
@@ -305,11 +305,12 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-        const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+        const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+        const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
-            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas.' }, { status: 500 });
+            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.' }, { status: 500 });
         }
+        console.log(`[enviarClienteOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_APP_KEY).slice(-4)}`);
         const body = await req.json();
         
         // Automação de entidade envia: { event, data, old_data, changed_fields, payload_too_large }

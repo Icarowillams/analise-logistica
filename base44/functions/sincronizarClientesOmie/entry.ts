@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 let base44Global = null;
@@ -430,6 +430,10 @@ Deno.serve(async (req) => {
         if (!user) {
             return Response.json({ error: 'Não autorizado' }, { status: 401 });
         }
+        if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
+            return Response.json({ error: 'Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.' }, { status: 500 });
+        }
+        console.log(`[sincronizarClientesOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_APP_KEY).slice(-4)}`);
 
         const body = await req.json();
         const { modo, lote_inicio = 0, ids_para_enviar = null, pagina_omie = 1, clientes_omie_acumulados = null } = body;

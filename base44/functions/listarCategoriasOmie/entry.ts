@@ -3,8 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 const OMIE_CATEGORIAS_URL = 'https://app.omie.com.br/api/v1/geral/categorias/';
 
 async function chamarOmie(payload) {
-    const appKey = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-    const appSecret = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+    const appKey = Deno.env.get('OMIE_APP_KEY');
+    const appSecret = Deno.env.get('OMIE_APP_SECRET');
 
     if (!appKey || !appSecret) {
         throw new Error('Credenciais Omie não configuradas');

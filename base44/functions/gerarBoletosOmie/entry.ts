@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
 
 async function omieCall(call, param, tentativa = 1) {

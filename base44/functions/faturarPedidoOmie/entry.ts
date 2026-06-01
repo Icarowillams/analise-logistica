@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 const TIPOS_COM_MOTIVO = ["troca", "devolucao", "bonificacao"];
@@ -45,8 +45,10 @@ function setMemoryCache(key, data) {
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 async function omieCall(base44, call, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
+  console.log(`[faturarPedidoOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_APP_KEY).slice(-4)} | método: ${call}`);
   const maxTentativas = options.maxTentativas || 3;
   const cacheKey = `${call}_${JSON.stringify(param)}`;
   const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(call);

@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function formatarDataBrasilia(isoDate) {

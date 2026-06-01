@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const cache = new Map();
 const configCache = { value: false, expiresAt: 0 };
 
@@ -32,8 +32,8 @@ function setCached(key, data, modoEconomico) {
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429. Endpoint financeiro: /geral/.
 async function omieCall(base44, call, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const maxTentativas = options.maxTentativas || 3;
   const endpointUrl = 'https://app.omie.com.br/api/v1/geral/';
 

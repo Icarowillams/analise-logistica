@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 // Endpoint pedido vs geral conforme a call
@@ -13,8 +13,8 @@ function urlParaCall(call) {
 
 // omieCall com circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429
 async function omieCall(base44, endpoint, param, options = {}) {
-  const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+  const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const url = urlParaCall(endpoint);
 
   // Circuit breaker — aborta antes de qualquer chamada

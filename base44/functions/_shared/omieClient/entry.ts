@@ -185,12 +185,13 @@ export function clearOmieMemoryCache(): void {
  * @param options Opções da chamada; informe options.call com o método Omie, ex: "ConsultarPedido".
  */
 export async function omieCall(base44: Base44Client, endpoint: string, param: unknown, options: OmieCallOptions = {}): Promise<unknown> {
-  const appKey = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+  const appKey = Deno.env.get('OMIE_APP_KEY');
+  const appSecret = Deno.env.get('OMIE_APP_SECRET');
   const call = options.call || (typeof param === 'object' && param && 'call' in (param as Record<string, unknown>) ? String((param as Record<string, unknown>).call) : '');
 
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
   if (!call) throw new Error('Informe options.call com o método Omie da chamada.');
+  console.log(`[omieClient] Conectando ao Omie com APP_KEY: ...${String(appKey).slice(-4)} | método: ${call}`);
 
   const breaker = await checkCircuitBreaker(base44);
   if (breaker.blocked) {

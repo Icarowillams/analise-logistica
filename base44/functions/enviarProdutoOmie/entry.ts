@@ -88,8 +88,8 @@ Deno.serve(async (req) => {
     let produtoData = null;
 
     try {
-        const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-        const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+        const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+        const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
         if (!OMIE_APP_KEY || !OMIE_APP_SECRET) {
             return Response.json({

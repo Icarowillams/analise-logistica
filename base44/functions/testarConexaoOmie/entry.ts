@@ -11,20 +11,21 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Ler secrets dentro do handler (sempre atualizado)
-    const appKey = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-    const appSecret = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+    // Ler secrets dentro do handler (sempre atualizado) — padrão único OMIE_APP_KEY/OMIE_APP_SECRET
+    const appKey = Deno.env.get('OMIE_APP_KEY');
+    const appSecret = Deno.env.get('OMIE_APP_SECRET');
 
     if (!appKey || !appSecret) {
       return Response.json({
         ok: false,
-        error: 'OMIE_API_KEY ou OMIE_API_SECRET não configurados nos secrets.',
+        error: 'OMIE_APP_KEY ou OMIE_APP_SECRET não configurados nos secrets.',
         debug: {
           has_key: !!appKey,
           has_secret: !!appSecret
         }
       });
     }
+    console.log(`[testarConexaoOmie] Conectando ao Omie com APP_KEY: ...${String(appKey).slice(-4)}`);
 
     const startedAt = Date.now();
     const res = await fetch(`${OMIE_BASE_URL}geral/empresas/`, {

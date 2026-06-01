@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // ENDPOINT CORRETO: pedidovendafat (Faturamento de Pedido de Venda) — diferente de /pedido/
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -30,8 +30,10 @@ function setMemoryCache(key, data) {
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429.
 // Usa endpoint /produtos/pedidovendafat/ (FaturarPedidoVenda/ValidarPedidoVenda). Lança erro estruturado em faultstring.
 async function omieCall(base44, call, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
+  console.log(`[emitirNfPedidoOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_APP_KEY).slice(-4)} | método: ${call}`);
   const maxTentativas = options.maxTentativas || 3;
   const cacheKey = `${call}_${JSON.stringify(param)}`;
   const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(call);

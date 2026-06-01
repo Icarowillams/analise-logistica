@@ -28,8 +28,9 @@ async function debugLog(base44, mensagem, extra = {}) {
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 // O endpoint base usa /produtos/pedido/ para pedidos; para chamadas gerais (contas correntes) usa /geral/.
 async function omieCall(base44, call, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
   const maxTentativas = options.maxTentativas || 3;
   // Endpoint: ListarContasCorrentes vai em /geral/; demais (pedido) em /produtos/pedido/
   const url = /ContaCorrente|Conta_corrente|ContasCorrentes/i.test(call)
@@ -484,11 +485,12 @@ Deno.serve(async (req) => {
     let pedido_id = null;
     try {
         base44 = createClientFromRequest(req);
-        OMIE_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-        OMIE_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+        OMIE_KEY = Deno.env.get("OMIE_APP_KEY");
+        OMIE_SECRET = Deno.env.get("OMIE_APP_SECRET");
         if (!OMIE_KEY || !OMIE_SECRET) {
-            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas' }, { status: 500 });
+            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.' }, { status: 500 });
         }
+        console.log(`[enviarPedidoOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_KEY).slice(-4)}`);
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
