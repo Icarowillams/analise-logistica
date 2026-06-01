@@ -1,7 +1,7 @@
 {
   "name": "Carga",
   "type": "object",
-  "description": "Carga de entrega \u2014 agrupa pedidos Omie, pedidos internos D1 e trocas atribu\u00eddos a um motorista/ve\u00edculo para faturamento e roteiriza\u00e7\u00e3o",
+  "description": "Carga de entrega \u2014 agrupa pedidos Omie, pedidos internos D1 e trocas atribu\u00eddos a um motorista/ve\u00edculo para faturamento e roteiriza\u00e7\u00e3o. O status_carga reflete apenas o fluxo LOCAL bin\u00e1rio (montagem/faturada); o rastreamento detalhado do ciclo fiscal permanece no Omie e nas entidades de espelho.",
   "properties": {
     "numero_carga": {
       "type": "string",
@@ -340,20 +340,10 @@
       "type": "string",
       "enum": [
         "montagem",
-        "fechada",
-        "conferindo",
-        "pronta",
-        "aguardando_nf",
-        "faturada_com_rejeicao",
-        "faturada_parcial",
-        "faturada",
-        "em_rota",
-        "entregue",
-        "finalizada",
-        "cancelada"
+        "faturada"
       ],
       "default": "montagem",
-      "description": "aguardando_nf = NF emitida, aguardando SEFAZ. faturada_com_rejeicao = pedido na etapa 60 (Faturado) mas TODAS as NFs foram rejeitadas pela SEFAZ (Omie mostra faixa vermelha). faturada_parcial = mistura de autorizadas + rejeitadas/pendentes. faturada = TODAS as NFs autorizadas pela SEFAZ."
+      "description": "Status LOCAL bin\u00e1rio da carga: montagem = em prepara\u00e7\u00e3o (ainda n\u00e3o enviada ao Omie); faturada = enviada ao Omie. O ciclo fiscal detalhado (cancelada, rejeitada, em rota, entregue) permanece no Omie e nas entidades de espelho, n\u00e3o na Carga."
     },
     "observacao": {
       "type": "string"
