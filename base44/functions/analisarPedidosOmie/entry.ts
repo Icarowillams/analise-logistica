@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const PEDIDOS_PADRAO = ['344', '345', '346', '326', '325', '327', '329', '330', '333', '332', '328', '331', '317', '316', '296', '295', '294', '293', '287', '283', '282', '281', '247'];
 const ETAPA_STATUS = {
