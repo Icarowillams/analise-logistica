@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, RefreshCw } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,6 @@ import { toast } from 'sonner';
 // status_carga é LOCAL e binário:
 //  - montagem = em preparação (ainda não enviada ao Omie)
 //  - faturada = enviada ao Omie
-// O ciclo fiscal detalhado (cancelada, rejeitada, em rota...) permanece no Omie/entidades de espelho.
 const FATURAVEL = ['montagem'];
 
 const STATUS_COLORS = {
@@ -38,34 +37,18 @@ export default function Cargas() {
   const [excluindo, setExcluindo] = useState(null);
   const [selecionadas, setSelecionadas] = useState([]);
   const [faturandoLote, setFaturandoLote] = useState(false);
-  const [documento, setDocumento] = useState(null); // { tipo: 'lista' | 'romaneio', carga }
+  const [documento, setDocumento] = useState(null);
   const [filtroNumero, setFiltroNumero] = useState('');
   const [filtroDataInicial, setFiltroDataInicial] = useState('');
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
-  const [sincronizando, setSincronizando] = useState(false);
 
-  // 1️⃣ Carrega cargas direto do banco — RÁPIDO (sem chamada ao Omie)
+  // Carrega cargas direto do banco local — ZERO chamadas ao Omie
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
     queryFn: () => base44.entities.Carga.list('-created_date', 500),
     refetchOnWindowFocus: true
   });
 
-  // 2️⃣ Última sincronização: pega do log mais recente
-  const { data: ultimoLog } = useQuery({
-    queryKey: ['ultima-sync-cargas'],
-    queryFn: async () => {
-      const logs = await base44.entities.LogIntegracaoOmie.filter(
-        { call: 'ConsultarPedido', operacao: 'ConsultarPedido' },
-        '-created_date', 1
-      );
-      return logs?.[0] || null;
-    },
-    staleTime: 60000
-  });
-
-  // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
-  // Aplica filtros locais por número e período de saída (data_carga).
   const cargas = useMemo(() => {
     return cargasTodas.filter(c => {
       if (filtroNumero.trim()) {
@@ -84,25 +67,6 @@ export default function Cargas() {
     setFiltroDataFinal('');
   };
   const temFiltro = !!(filtroNumero || filtroDataInicial || filtroDataFinal);
-
-  // 🔄 Dispara sincronização ASSÍNCRONA em background — não espera resposta.
-  // A sincronização roda via scheduled job; este botão apenas força uma execução extra.
-  const forcarSincronizacao = async () => {
-    setSincronizando(true);
-    toast.info('Sincronização agendada em background. Os dados serão atualizados automaticamente em alguns minutos.');
-    try {
-      // Dispara sem aguardar resposta (fire-and-forget)
-      base44.functions.invoke('sincronizarStatusCargasOmie', {
-        list_limit: 500,
-        sync_limit: 10
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['cargas'] });
-        queryClient.invalidateQueries({ queryKey: ['ultima-sync-cargas'] });
-      }).catch((e) => console.warn('[Cargas] sync background falhou:', e?.message));
-    } catch { /* ignore */ }
-    // Libera UI imediatamente
-    setTimeout(() => setSincronizando(false), 2000);
-  };
 
   const faturar = async (carga) => {
     if (!confirm(`Faturar a carga ${carga.numero_carga}?`)) return;
@@ -161,7 +125,6 @@ export default function Cargas() {
       const pedidosInternos = carga.pedidos_internos || [];
       const trocas = carga.pedidos_troca || [];
 
-      // 1) Reverter etapa no Omie: 50 → 20 (Pedido Liberado)
       if (pedidosOmie.length > 0) {
         try {
           await base44.functions.invoke('trocarEtapaPedidoOmie', {
@@ -175,7 +138,6 @@ export default function Cargas() {
         } catch (e) { console.warn('Falha reverter etapa Omie:', e.message); }
       }
 
-      // 2) Reverter pedidos locais (vendas Omie + D1 internos): voltar para liberado/pendente, sem carga
       for (const p of [...pedidosOmie, ...pedidosInternos]) {
         try {
           let pedidoId = p.pedido_id;
@@ -195,7 +157,6 @@ export default function Cargas() {
         } catch (e) { console.warn('Falha reverter pedido:', e.message); }
       }
 
-      // 3) Reverter trocas (desvincular carga/motorista)
       for (const t of trocas) {
         try {
           if (t.pedido_troca_id) {
@@ -218,7 +179,6 @@ export default function Cargas() {
         } catch (e) { console.warn('Falha reverter troca:', e.message); }
       }
 
-      // 4) Excluir carga
       await base44.entities.Carga.delete(carga.id);
       toast.success(`Carga ${carga.numero_carga} desfeita — pedidos voltaram para Liberado`);
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
@@ -348,28 +308,10 @@ export default function Cargas() {
           <Truck className="w-8 h-8 text-amber-500" />
           <div>
             <h1 className="text-2xl font-bold">Cargas</h1>
-            <p className="text-sm text-slate-500">
-              Dados do espelho local • Sync automática a cada 15 min
-              {ultimoLog?.created_date && (
-                <span className="ml-2 text-slate-400">
-                  • Última sync: {new Date(ultimoLog.created_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </p>
+            <p className="text-sm text-slate-500">Dados do espelho local</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={forcarSincronizacao}
-            disabled={sincronizando || faturandoLote}
-            variant="outline"
-            size="sm"
-            className="border-slate-300 text-slate-600 hover:bg-slate-50"
-            title="Agenda uma sincronização em background (não bloqueia a tela)"
-          >
-            {sincronizando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-            Forçar sync
-          </Button>
           {selecionadas.length > 0 && (
             <Button
               onClick={faturarLote}
