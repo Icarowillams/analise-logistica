@@ -38,6 +38,50 @@ Deno.serve(async (req) => {
 
     console.log(`[processarFilaEnvioPedidoOmie] Processando ${pendentes.length} pedidos da fila`);
 
+    // ============================================================
+    // PRÉ-CARREGAMENTO EM LOTE — evita N chamadas individuais no loop
+    // ============================================================
+    const pedidoIds = pendentes.map(p => p.pedido_id).filter(Boolean);
+    const t0Preload = Date.now();
+
+    // Buscar todos os pedidos de uma vez
+    const todosPedidos = await Promise.all(
+      pedidoIds.map(id => base44.asServiceRole.entities.Pedido.get(id).catch(() => null))
+    );
+    const pedidosPorId = {};
+    todosPedidos.forEach(p => { if (p) pedidosPorId[p.id] = p; });
+
+    // Buscar todos os itens de pedido
+    const todosItems = await Promise.all(
+      pedidoIds.map(id => base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: id }).catch(() => []))
+    );
+    const itemsPorPedido = {};
+    pedidoIds.forEach((id, idx) => { itemsPorPedido[id] = todosItems[idx] || []; });
+
+    // Coletar IDs únicos de clientes, produtos e planos
+    const clienteIds = [...new Set(Object.values(pedidosPorId).map(p => p.cliente_id).filter(Boolean))];
+    const produtoIds = [...new Set(Object.values(itemsPorPedido).flatMap(items => items.map(i => i.produto_id)).filter(Boolean))];
+    const planoIds = [...new Set(Object.values(pedidosPorId).map(p => p.plano_pagamento_id).filter(Boolean))];
+
+    // Buscar todos em paralelo
+    const [todosClientes, todosProdutos, todosPlanos, todasUnidades] = await Promise.all([
+      Promise.all(clienteIds.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))),
+      Promise.all(produtoIds.map(id => base44.asServiceRole.entities.Produto.get(id).catch(() => null))),
+      Promise.all(planoIds.map(id => base44.asServiceRole.entities.PlanoPagamento.get(id).catch(() => null))),
+      base44.asServiceRole.entities.UnidadeMedida.list().catch(() => [])
+    ]);
+
+    const clientesPorId = {};
+    todosClientes.forEach(c => { if (c) clientesPorId[c.id] = c; });
+    const produtosMap = {};
+    todosProdutos.forEach(p => { if (p) produtosMap[p.id] = p; });
+    const planosPorId = {};
+    todosPlanos.forEach(p => { if (p) planosPorId[p.id] = p; });
+    const unidadesMap = {};
+    todasUnidades.forEach(u => { if (u) unidadesMap[u.id] = u; });
+
+    console.log(`[processarFilaEnvioPedidoOmie] Pré-carregamento concluído em ${Date.now() - t0Preload}ms — ${clienteIds.length} clientes, ${produtoIds.length} produtos, ${planoIds.length} planos, ${todasUnidades.length} unidades`);
+
     const resultados = [];
 
     for (let i = 0; i < pendentes.length; i++) {
@@ -85,9 +129,10 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Chamar enviarPedidoOmie via SDK (reutiliza toda a lógica existente)
+        // Chamar enviarPedidoOmie com ctx pré-carregado (evita cold start + buscas individuais)
         const response = await base44.asServiceRole.functions.invoke('enviarPedidoOmie', {
-          pedido_id: item.pedido_id
+          pedido_id: item.pedido_id,
+          ctx: { itemsPorPedido, clientesPorId, produtosMap, planosPorId, unidadesMap }
         });
         const result = response?.data || response;
 

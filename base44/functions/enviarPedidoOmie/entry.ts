@@ -116,6 +116,9 @@ async function omieCall(base44, call, param, options = {}) {
 let OMIE_KEY = null;
 let OMIE_SECRET = null;
 
+// Cache global de unidades de medida por execução da função
+let _unidadesCache = null;
+
 // Cache de conta corrente por execução (evita chamada repetida)
 let _contaCorrenteCache = null;
 async function resolverContaCorrentePadrao(base44) {
@@ -364,19 +367,22 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         try { plano = await base44.asServiceRole.entities.PlanoPagamento.get(pedido.plano_pagamento_id); } catch { /* ignore */ }
     }
 
-    // Produtos
+    // Produtos — busca em paralelo (Promise.all ao invés de loop síncrono)
     const produtosMap = ctx.produtosMap || {};
     if (!ctx.produtosMap) {
         const produtoIds = [...new Set(items.map(i => i.produto_id))];
-        for (const pid of produtoIds) {
-            try { const p = await base44.asServiceRole.entities.Produto.get(pid); if (p) produtosMap[pid] = p; } catch { /* ignore */ }
-        }
+        const produtos = await Promise.all(
+            produtoIds.map(pid => base44.asServiceRole.entities.Produto.get(pid).catch(() => null))
+        );
+        produtos.forEach(p => { if (p) produtosMap[p.id] = p; });
     }
-    // Unidades
+    // Unidades — cache global por execução
     const unidadesMap = ctx.unidadesMap || {};
     if (!ctx.unidadesMap) {
-        const unidades = await base44.asServiceRole.entities.UnidadeMedida.list();
-        unidades.forEach(u => { unidadesMap[u.id] = u; });
+        if (!_unidadesCache) {
+            _unidadesCache = await base44.asServiceRole.entities.UnidadeMedida.list();
+        }
+        _unidadesCache.forEach(u => { unidadesMap[u.id] = u; });
     }
 
     // Resolver cliente (caminho feliz: 0 chamadas Omie)
@@ -561,7 +567,9 @@ Deno.serve(async (req) => {
         pedido_id = body.pedido_id;
         if (!pedido_id) return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
 
-        const r = await enviarUmPedido(base44, pedido_id);
+        // Aceita ctx pré-carregado do processarFilaEnvioPedidoOmie (evita buscas individuais)
+        const ctx = body.ctx || {};
+        const r = await enviarUmPedido(base44, pedido_id, ctx);
         return Response.json(r);
     } catch (error) {
         console.error('[enviarPedidoOmie] Erro geral:', error.message);
