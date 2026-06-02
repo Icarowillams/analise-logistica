@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,35 +7,36 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Loader2, AlertTriangle } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Search, Loader2, AlertTriangle, CalendarIcon, X, Truck } from 'lucide-react';
+import { format, subDays, addDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 const normalizar = (valor) => String(valor || '').trim().toUpperCase();
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
 const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
-// Gera data padrão DD/MM/AAAA (últimos 30 dias)
-const defaultDataDe = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-};
-const defaultDataAte = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 90); // 90 dias futuro para pegar A VENCER
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+const dateToBR = (d) => {
+  if (!d) return '';
+  return format(d, 'dd/MM/yyyy');
 };
 
 export default function FiltrosBoletos({ onResultado }) {
-  const [dataDe, setDataDe] = useState(defaultDataDe());
-  const [dataAte, setDataAte] = useState(defaultDataAte());
+  const [dataDe, setDataDe] = useState(() => subDays(new Date(), 30));
+  const [dataAte, setDataAte] = useState(() => addDays(new Date(), 90));
   const [filtrarPor, setFiltrarPor] = useState('E');
   const [cnpj, setCnpj] = useState('');
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
   const [cargaFiltro, setCargaFiltro] = useState(null);
+  const [cargaBusca, setCargaBusca] = useState('');
+  const [cargaLoading, setCargaLoading] = useState(false);
   const [ocultosNaoBoleto, setOcultosNaoBoleto] = useState(0);
   const [apenasClientesBoleto, setApenasClientesBoleto] = useState(false);
+  const [openDe, setOpenDe] = useState(false);
+  const [openAte, setOpenAte] = useState(false);
 
   const { data: modalidades = [] } = useQuery({
     queryKey: ['modalidades-pagamento-filtro-boletos'],
@@ -91,14 +92,17 @@ export default function FiltrosBoletos({ onResultado }) {
     return (titulos || []).filter(t => docs.has(String(t.cnpj_cpf || '').replace(/\D/g, '')));
   };
 
-  const buscar = async (carga = cargaFiltro, filtrosBusca = {}) => {
+  const buscar = useCallback(async (carga = cargaFiltro, filtrosBusca = {}) => {
     setLoading(true);
     try {
+      const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDe) || undefined;
+      const dataAteStr = filtrosBusca.dataAte || dateToBR(dataAte) || undefined;
+
       const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-        data_de: filtrosBusca.dataDe || dataDe || undefined,
-        data_ate: filtrosBusca.dataAte || dataAte || undefined,
+        data_de: dataDeStr,
+        data_ate: dataAteStr,
         filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
-        cnpj_cpf: cnpj || undefined,
+        cnpj_cpf: carga ? undefined : (cnpj || undefined),
         apenas_pendentes: false,
         registros_por_pagina: 200
       });
@@ -112,7 +116,6 @@ export default function FiltrosBoletos({ onResultado }) {
             (t.codigo_barras && String(t.codigo_barras).trim())
           );
         }
-        // Filtro de modalidade: só clientes com BOLETO BANCÁRIO
         if (apenasClientesBoleto) {
           const antes = titulosFiltrados.length;
           titulosFiltrados = titulosFiltrados.filter(isClienteBoleto);
@@ -129,100 +132,194 @@ export default function FiltrosBoletos({ onResultado }) {
       toast.error(e.message);
     }
     setLoading(false);
+  }, [cargaFiltro, dataDe, dataAte, filtrarPor, cnpj, apenasComBoleto, apenasClientesBoleto]);
+
+  const buscarCarga = async () => {
+    if (!cargaBusca.trim()) return;
+    setCargaLoading(true);
+    try {
+      const cargas = await base44.entities.Carga.filter({ numero_carga: cargaBusca.trim().padStart(3, '0') }, '-created_date', 1);
+      const carga = cargas?.[0];
+      if (!carga) {
+        toast.error(`Carga ${cargaBusca} não encontrada`);
+        setCargaLoading(false);
+        return;
+      }
+      setCargaFiltro(carga);
+      setCnpj('');
+      toast.success(`Carga ${carga.numero_carga} selecionada — ${carga.quantidade_pedidos || 0} pedido(s)`);
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setCargaLoading(false);
+  };
+
+  const limparCarga = () => {
+    setCargaFiltro(null);
+    setCargaBusca('');
   };
 
   useEffect(() => {
     const cargaId = new URLSearchParams(window.location.search).get('carga_id');
     if (!cargaId) return;
-
     const carregarCarga = async () => {
       const cargas = await base44.entities.Carga.filter({ id: cargaId }, '-created_date', 1);
       const carga = cargas?.[0];
       if (!carga) return;
       setCargaFiltro(carga);
-      let filtrosCarga = {};
+      setCargaBusca(carga.numero_carga || '');
       if (carga.data_carga) {
         const [y, m, d] = carga.data_carga.split('-');
-        const dataBr = `${d}/${m}/${y}`;
-        filtrosCarga = { dataDe: dataBr, dataAte: dataBr, filtrarPor: 'E' };
-        setDataDe(dataBr);
-        setDataAte(dataBr);
+        const dataObj = new Date(Number(y), Number(m) - 1, Number(d));
+        setDataDe(dataObj);
+        setDataAte(dataObj);
         setFiltrarPor('E');
+        const dataBr = `${d}/${m}/${y}`;
+        setTimeout(() => buscar(carga, { dataDe: dataBr, dataAte: dataBr, filtrarPor: 'E' }), 0);
+      } else {
+        setTimeout(() => buscar(carga), 0);
       }
-      setTimeout(() => buscar(carga, filtrosCarga), 0);
     };
-
     carregarCarga();
   }, []);
+
+  const qtdPedidosCarga = cargaFiltro
+    ? (cargaFiltro.pedidos_omie?.length || 0) + (cargaFiltro.pedidos_internos?.length || 0) + (cargaFiltro.pedidos_troca?.length || 0)
+    : 0;
 
   return (
     <>
       {cargaFiltro && (
         <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="py-3 text-sm text-blue-800">
-            Exibindo boletos filtrados pela carga <b>{cargaFiltro.numero_carga}</b>.
+          <CardContent className="py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <Truck className="w-4 h-4" />
+              <span>Filtrando pela carga <b>{cargaFiltro.numero_carga}</b> — {qtdPedidosCarga} pedido(s), {cargaFiltro.quantidade_clientes || 0} cliente(s)</span>
+              {cargaFiltro.data_carga && (
+                <Badge variant="outline" className="text-blue-700 border-blue-300 ml-1">
+                  {format(new Date(cargaFiltro.data_carga + 'T12:00:00'), 'dd/MM/yyyy')}
+                </Badge>
+              )}
+            </div>
+            <Button variant="ghost" size="sm" onClick={limparCarga} className="text-blue-600 hover:text-blue-800 hover:bg-blue-100">
+              <X className="w-4 h-4 mr-1" /> Limpar
+            </Button>
           </CardContent>
         </Card>
       )}
       <Card>
-      <CardContent className="pt-4">
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-          <div>
-            <Label>Filtrar por</Label>
-            <Select value={filtrarPor} onValueChange={setFiltrarPor}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="E">Emissão</SelectItem>
-                <SelectItem value="V">Vencimento</SelectItem>
-              </SelectContent>
-            </Select>
+        <CardContent className="pt-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+            <div>
+              <Label>Filtrar por</Label>
+              <Select value={filtrarPor} onValueChange={setFiltrarPor}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="E">Emissão</SelectItem>
+                  <SelectItem value="V">Vencimento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Data de</Label>
+              <Popover open={openDe} onOpenChange={setOpenDe}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal h-9">
+                    <CalendarIcon className="w-4 h-4 mr-2 text-muted-foreground" />
+                    {dataDe ? format(dataDe, 'dd/MM/yyyy') : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dataDe}
+                    onSelect={(d) => { setDataDe(d); setOpenDe(false); }}
+                    locale={ptBR}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <Label>Data até</Label>
+              <Popover open={openAte} onOpenChange={setOpenAte}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal h-9">
+                    <CalendarIcon className="w-4 h-4 mr-2 text-muted-foreground" />
+                    {dataAte ? format(dataAte, 'dd/MM/yyyy') : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dataAte}
+                    onSelect={(d) => { setDataAte(d); setOpenAte(false); }}
+                    locale={ptBR}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <Label>Nº Carga</Label>
+              <div className="flex gap-1">
+                <Input
+                  value={cargaBusca}
+                  onChange={(e) => setCargaBusca(e.target.value)}
+                  placeholder="Ex: 067"
+                  onKeyDown={(e) => e.key === 'Enter' && buscarCarga()}
+                  disabled={!!cargaFiltro}
+                />
+                {!cargaFiltro && (
+                  <Button variant="outline" size="icon" onClick={buscarCarga} disabled={cargaLoading || !cargaBusca.trim()} className="shrink-0">
+                    {cargaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div>
+              <Label>CNPJ/CPF</Label>
+              <Input
+                value={cnpj}
+                onChange={(e) => setCnpj(e.target.value)}
+                placeholder="Opcional"
+                disabled={!!cargaFiltro}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button onClick={() => buscar()} disabled={loading} className="w-full">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                Buscar
+              </Button>
+            </div>
           </div>
-          <div>
-            <Label>Data de (DD/MM/AAAA)</Label>
-            <Input value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={apenasComBoleto}
+                onChange={(e) => setApenasComBoleto(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Apenas títulos com boleto emitido
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={apenasClientesBoleto}
+                onChange={(e) => setApenasClientesBoleto(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Apenas clientes com modalidade Boleto Bancário
+            </label>
+            {ocultosNaoBoleto > 0 && (
+              <Badge className="bg-orange-100 text-orange-800 text-xs">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                {ocultosNaoBoleto} oculto(s) — outra modalidade
+              </Badge>
+            )}
           </div>
-          <div>
-            <Label>Data até (DD/MM/AAAA)</Label>
-            <Input value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
-          </div>
-          <div>
-            <Label>CNPJ/CPF (opcional)</Label>
-            <Input value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
-          </div>
-          <div className="flex items-end">
-            <Button onClick={() => buscar()} disabled={loading} className="w-full">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
-              Buscar
-            </Button>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
-          <label className="inline-flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={apenasComBoleto}
-              onChange={(e) => setApenasComBoleto(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Apenas títulos com boleto emitido
-          </label>
-          <label className="inline-flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={apenasClientesBoleto}
-              onChange={(e) => setApenasClientesBoleto(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Apenas clientes com modalidade Boleto Bancário
-          </label>
-          {ocultosNaoBoleto > 0 && (
-            <Badge className="bg-orange-100 text-orange-800 text-xs">
-              <AlertTriangle className="w-3 h-3 mr-1" />
-              {ocultosNaoBoleto} oculto(s) — outra modalidade
-            </Badge>
-          )}
-        </div>
-      </CardContent>
+        </CardContent>
       </Card>
     </>
   );

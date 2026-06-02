@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
-import { Receipt, Printer, Layers, Info } from 'lucide-react';
+import { Receipt, Printer, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import FiltrosBoletos from '@/components/boletos/FiltrosBoletos';
 import TabelaBoletos from '@/components/boletos/TabelaBoletos';
 import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
 import DiagnosticoClientesSemModalidade from '@/components/boletos/DiagnosticoClientesSemModalidade';
-import EmissaoBoletosTab from '@/components/boletos/EmissaoBoletosTab';
 import { toast } from 'sonner';
 
 export default function BoletosOmie() {
@@ -49,40 +46,20 @@ export default function BoletosOmie() {
         </div>
       </div>
 
-      <Tabs defaultValue="impressao" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="impressao">Impressão</TabsTrigger>
-          <TabsTrigger value="emissao">Emissão</TabsTrigger>
-        </TabsList>
+      <BoletosImpressaoDialog
+        open={imprimirOpen}
+        onOpenChange={setImprimirOpen}
+        titulos={titulosSelecionados}
+        modo={modoImpressao}
+      />
 
-        <TabsContent value="impressao" className="space-y-4">
-          <Card className="border-blue-200 bg-blue-50">
-            <CardContent className="py-3 flex items-start gap-2 text-sm text-blue-800">
-              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>Esta aba consulta boletos já emitidos no Omie para impressão e 2ª via.</span>
-            </CardContent>
-          </Card>
+      <DiagnosticoClientesSemModalidade />
 
-          <BoletosImpressaoDialog
-            open={imprimirOpen}
-            onOpenChange={setImprimirOpen}
-            titulos={titulosSelecionados}
-            modo={modoImpressao}
-          />
+      <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); }} />
 
-          <DiagnosticoClientesSemModalidade />
-
-          <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); }} />
-
-          {titulos.length > 0 && (
-            <TabelaBoletos titulos={titulos} selecionados={selecionados} setSelecionados={setSelecionados} />
-          )}
-        </TabsContent>
-
-        <TabsContent value="emissao">
-          <EmissaoBoletosTab />
-        </TabsContent>
-      </Tabs>
+      {titulos.length > 0 && (
+        <TabelaBoletos titulos={titulos} selecionados={selecionados} setSelecionados={setSelecionados} />
+      )}
     </div>
   );
 }
