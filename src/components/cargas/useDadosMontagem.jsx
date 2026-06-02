@@ -326,6 +326,46 @@ export default function useDadosMontagem() {
         };
       });
 
+      // ─── DEBUG CONTAGEM DETALHADA ───
+      console.log('[DEBUG CONTAGEM] ========');
+      console.log('[DEBUG CONTAGEM] vendasEnriquecidas (Omie espelho):', vendasEnriquecidas.length);
+      console.log('[DEBUG CONTAGEM] vendasLocais (NF55 liberados fora espelho):', vendasLocais.length);
+      console.log('[DEBUG CONTAGEM] d1SemItens (D1 liberados sem carga):', d1SemItens.length);
+      console.log('[DEBUG CONTAGEM] trocasSemItens (trocas aprovadas sem carga):', trocasSemItens.length);
+      console.log('[DEBUG CONTAGEM] TOTAL FASE 1:', vendasEnriquecidas.length + vendasLocais.length + d1SemItens.length + trocasSemItens.length);
+
+      // Listar todos os números de pedido
+      const todosCodigos = [
+        ...vendasEnriquecidas.map(p => `[OMIE]${p.numero_pedido || p.codigo_pedido}`),
+        ...vendasLocais.map(p => `[NF55L]${p.numero_pedido || p.codigo_pedido}`),
+        ...d1SemItens.map(p => `[D1]${p.numero_pedido}`),
+        ...trocasSemItens.map(p => `[TROCA]${p.numero_pedido}`)
+      ].sort();
+      console.log('[DEBUG CONTAGEM] Todos os pedidos na tela (' + todosCodigos.length + '):', JSON.stringify(todosCodigos));
+
+      // Verificar limites de paginação
+      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/500, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/300, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
+      if ((espelhoOmie?.length || 0) >= 500) console.warn('[DEBUG CONTAGEM] ⚠️ ESPELHO OMIE ATINGIU LIMITE DE 500!');
+      if ((todosPedidosLocais?.length || 0) >= 300) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 300!');
+
+      // Verificar pedidos cancelados excluídos
+      const canceladosExcluidos = (todosPedidosLocais || []).filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por);
+      console.log('[DEBUG CONTAGEM] Pedidos locais cancelados excluídos:', canceladosExcluidos.length, canceladosExcluidos.map(p => p.numero_pedido));
+
+      // Verificar pedidos NF55 locais que tinham omie_codigo_pedido no espelho (foram deduplicados)
+      const nf55ComOmie = (todosPedidosLocais || []).filter(p => {
+        const modelo = String(p.modelo_nota || '').trim().toLowerCase();
+        return modelo !== 'd1' && p.status === 'liberado' && !p.carga_id && p.omie_codigo_pedido;
+      });
+      const nf55NoEspelho = nf55ComOmie.filter(p => codigosNoEspelho.has(String(p.omie_codigo_pedido)));
+      const nf55SemOmie = (todosPedidosLocais || []).filter(p => {
+        const modelo = String(p.modelo_nota || '').trim().toLowerCase();
+        return modelo !== 'd1' && p.status === 'liberado' && !p.carga_id && !p.omie_codigo_pedido;
+      });
+      console.log('[DEBUG CONTAGEM] NF55 liberados total:', nf55ComOmie.length, '(no espelho:', nf55NoEspelho.length, '| fora espelho:', pedidosNf55Locais.length, ')');
+      console.log('[DEBUG CONTAGEM] NF55 liberados SEM omie_codigo_pedido (PERDIDOS!):', nf55SemOmie.length, nf55SemOmie.map(p => p.numero_pedido));
+      console.log('[DEBUG CONTAGEM] ========');
+
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
       setPedidos(pedidosFase1);
@@ -425,6 +465,7 @@ export default function useDadosMontagem() {
 
         // Atualizar pedidos com itens completos
         const pedidosFinal = [...todasVendasComItens, ...d1Completos, ...trocasCompletas];
+        console.log('[DEBUG CONTAGEM] FASE 2 FINAL: vendasOmie=' + vendasEnriquecidas.length + ' + vendasLocaisItens=' + vendasLocaisComItens.length + ' + d1Completos=' + d1Completos.length + ' + trocasCompletas=' + trocasCompletas.length + ' = ' + pedidosFinal.length);
         setPedidos(pedidosFinal);
         setCarregandoItens(false);
 
