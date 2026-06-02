@@ -115,31 +115,42 @@ export default function FiltrosBoletos({ onResultado }) {
   const filtrarTitulosPorCarga = (titulos, carga) => {
     if (!carga) return titulos;
 
-    const { numPedidos, codPedidos, nfs, codClientes } = dadosCargaParaMatch(carga);
-    const cnpjs = documentosCarga(carga);
+    const { numPedidos, codPedidos, nfs } = dadosCargaParaMatch(carga);
 
-    return (titulos || []).filter(t => {
-      const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
+    // Match estrito: apenas por pedido vinculado ou NF. SEM fallback por cliente/CNPJ.
+    const resultado = [];
+    let excluidos = 0;
+
+    (titulos || []).forEach(t => {
       const docT = String(t.numero_documento || '').replace(/\D/g, '');
-      const codClienteT = String(t.codigo_cliente || '').trim();
       const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
 
       // Prioridade 1: match exato por numero_pedido_vinculado
       if (numPedVinc) {
-        if (numPedidos.has(numPedVinc) || codPedidos.has(numPedVinc)) return true;
-        return false; // Tem pedido vinculado mas não é desta carga
+        if (numPedidos.has(numPedVinc) || codPedidos.has(numPedVinc)) {
+          resultado.push(t);
+        } else {
+          excluidos++;
+        }
+        return;
       }
       // Prioridade 2: match por NF (numero_documento normalizado)
       if (docT) {
-        if (nfs.has(docT)) return true;
-        if (numPedidos.has(docT)) return true;
-        return false;
+        if (nfs.has(docT) || numPedidos.has(docT)) {
+          resultado.push(t);
+        } else {
+          excluidos++;
+        }
+        return;
       }
-      // Prioridade 3: match genérico por codigo_cliente ou CNPJ (títulos avulsos)
-      if (codClienteT && codClientes.has(codClienteT)) return true;
-      if (cnpjT && cnpjs.has(cnpjT)) return true;
-      return false;
+      // Sem pedido vinculado e sem documento → excluir (sem fallback por cliente)
+      excluidos++;
     });
+
+    if (excluidos > 0) {
+      console.log(`[FiltrosBoletos] ${excluidos} título(s) excluído(s) por não pertencerem à carga ${carga.numero_carga}`);
+    }
+    return resultado;
   };
 
   const buscar = useCallback(async (carga = cargaFiltro, filtrosBusca = {}) => {
