@@ -477,6 +477,18 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         </div>
 
         <TabsContent value="pendentes">
+          {(() => {
+            const pendentesNaFila = filaEnvio.filter(f => f.status === 'pendente' || f.status === 'processando').length;
+            if (pendentesNaFila <= 10) return null;
+            return (
+              <Alert className="mb-4 border-amber-300 bg-amber-50">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800 text-sm font-medium">
+                  ⚠️ Fila cheia ({pendentesNaFila} pedidos aguardando). Aguarde ~10 minutos antes de enviar mais.
+                </AlertDescription>
+              </Alert>
+            );
+          })()}
           {pendentes.length > 0 && (
             <Button onClick={enviarTodos} disabled={enfileirandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
               <Send className="w-4 h-4 mr-2" />
