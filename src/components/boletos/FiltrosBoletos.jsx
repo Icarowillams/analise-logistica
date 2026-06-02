@@ -80,16 +80,54 @@ export default function FiltrosBoletos({ onResultado }) {
     return false;
   };
 
+  // Extrai CNPJs dos clientes da carga (para filtrar a busca Omie por cliente)
   const documentosCarga = (carga) => new Set([
     ...(carga?.pedidos_omie || []).flatMap(p => [p.cnpj_cpf_cliente, p.cpf_cnpj_cliente]),
     ...(carga?.pedidos_internos || []).map(p => p.cnpj_cpf_cliente),
     ...(carga?.pedidos_troca || []).map(p => p.cnpj_cpf_cliente)
   ].filter(Boolean).map(doc => String(doc).replace(/\D/g, '')));
 
+  // Extrai os números de pedido e NFs da carga para match restritivo
+  const pedidosENfsDaCarga = (carga) => {
+    if (!carga) return { pedidos: new Set(), nfs: new Set() };
+    const pedidos = new Set();
+    const nfs = new Set();
+    (carga.pedidos_omie || []).forEach(p => {
+      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
+      if (p.numero_nf) nfs.add(String(p.numero_nf).trim());
+    });
+    (carga.pedidos_internos || []).forEach(p => {
+      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
+    });
+    (carga.pedidos_troca || []).forEach(p => {
+      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
+    });
+    return { pedidos, nfs };
+  };
+
   const filtrarTitulosPorCarga = (titulos, carga) => {
+    if (!carga) return titulos;
+
+    // Passo 1: filtrar por CNPJ do cliente (pré-filtro amplo)
     const docs = documentosCarga(carga);
-    if (!carga || docs.size === 0) return titulos;
-    return (titulos || []).filter(t => docs.has(String(t.cnpj_cpf || '').replace(/\D/g, '')));
+    if (docs.size === 0) return titulos;
+    const titulosCliente = (titulos || []).filter(t => docs.has(String(t.cnpj_cpf || '').replace(/\D/g, '')));
+
+    // Passo 2: filtro restritivo por pedido/NF da carga
+    const { pedidos, nfs } = pedidosENfsDaCarga(carga);
+    if (pedidos.size === 0 && nfs.size === 0) return titulosCliente;
+
+    return titulosCliente.filter(t => {
+      const numDoc = String(t.numero_documento || '').trim();
+      const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
+      // Match por numero_pedido_vinculado do título = numero_pedido de algum pedido da carga
+      if (numPedVinc && pedidos.has(numPedVinc)) return true;
+      // Match por numero_documento do título = numero_nf de algum pedido da carga
+      if (numDoc && nfs.has(numDoc)) return true;
+      // Match por numero_documento do título = numero_pedido de algum pedido da carga
+      if (numDoc && pedidos.has(numDoc)) return true;
+      return false;
+    });
   };
 
   const buscar = useCallback(async (carga = cargaFiltro, filtrosBusca = {}) => {
@@ -124,7 +162,13 @@ export default function FiltrosBoletos({ onResultado }) {
           setOcultosNaoBoleto(0);
         }
         onResultado(titulosFiltrados);
-        toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
+        if (carga && titulosFiltrados.length === 0) {
+          toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);
+        } else if (carga) {
+          toast.success(`${titulosFiltrados.length} boleto(s) da carga ${carga.numero_carga}`);
+        } else {
+          toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
+        }
       } else {
         toast.error(data?.error || 'Erro ao buscar');
       }
