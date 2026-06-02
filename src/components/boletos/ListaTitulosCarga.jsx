@@ -1,22 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, Eye } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 
-const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
-// Status que NUNCA podem virar boleto (já encerrados negativamente)
-const STATUS_BLOQUEADOS = new Set(['CANCELADO']);
+const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
+// Status que NUNCA podem virar boleto (já encerrados)
+const STATUS_BLOQUEADOS = new Set(['CANCELADO', 'LIQUIDADO', 'PAGO']);
 
 const formatarValor = (v) =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+const base64ToUint8Array = (b64) => {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+};
+
 export default function ListaTitulosCarga({ titulos = [], loading, selecionados, setSelecionados }) {
-  // Elegível = qualquer título que ainda não tem boleto e não foi cancelado.
-  // Mantemos "RECEBIDO" elegível pois o Omie pode gerar boleto retroativo.
+  const [verLoading, setVerLoading] = useState(null);
+
+  const verBoleto = async (t) => {
+    setVerLoading(t.codigo_lancamento);
+    try {
+      const { data } = await base44.functions.invoke('baixarPdfBoletoOmie', {
+        codigo_lancamento: t.codigo_lancamento,
+        url_boleto: t.url_boleto || undefined
+      });
+      if (!data?.sucesso) throw new Error(data?.error || 'Não foi possível obter o boleto');
+      const bytes = base64ToUint8Array(data.pdf_base64);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setVerLoading(null);
+  };
+  // Elegível = qualquer título que não está cancelado/liquidado/pago.
+  // Títulos com boleto já gerado também são elegíveis (para reimpressão).
   const elegiveis = titulos.filter(t => {
     const status = String(t.status_titulo || '').toUpperCase();
-    const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
-    return !STATUS_BLOQUEADOS.has(status) && !jaTemBoleto;
+    return !STATUS_BLOQUEADOS.has(status);
   });
 
   const todosMarcados =
@@ -81,7 +110,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
             const status = String(t.status_titulo || '').toUpperCase();
             const aberto = STATUS_ABERTOS.has(status);
             const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
-            const elegivel = !STATUS_BLOQUEADOS.has(status) && !jaTemBoleto;
+            const elegivel = !STATUS_BLOQUEADOS.has(status);
             const k = String(t.codigo_lancamento);
             const marcado = selecionados.has(k);
 
@@ -100,14 +129,35 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                 <td className="p-2">{t.data_vencimento || '—'}</td>
                 <td className="p-2 text-right">{formatarValor(t.valor_documento)}</td>
                 <td className="p-2">
-                  <Badge className={aberto ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'}>
+                  <Badge className={
+                    (status === 'ATRASADO' || status === 'VENCIDO') ? 'bg-red-100 text-red-800' :
+                    aberto ? 'bg-blue-100 text-blue-800' :
+                    STATUS_BLOQUEADOS.has(status) ? 'bg-gray-200 text-gray-800' :
+                    'bg-gray-200 text-gray-800'
+                  }>
                     {status || '—'}
                   </Badge>
                 </td>
                 <td className="p-2">
-                  {jaTemBoleto
-                    ? <Badge className="bg-green-100 text-green-800">{t.numero_boleto}</Badge>
-                    : <span className="text-slate-400">—</span>}
+                  {jaTemBoleto ? (
+                    <div className="flex items-center gap-1">
+                      <Badge className="bg-green-100 text-green-800">{t.numero_boleto || 'Sim'}</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1"
+                        onClick={() => verBoleto(t)}
+                        disabled={verLoading === t.codigo_lancamento}
+                        title="Ver/Reimprimir boleto"
+                      >
+                        {verLoading === t.codigo_lancamento
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Eye className="w-3 h-3" />}
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </td>
               </tr>
             );

@@ -132,7 +132,7 @@ export default function EmissaoBoletosTab() {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: formatarDataBr(inicio),
           data_ate: formatarDataBr(hoje),
-          filtrar_por_data: 'E',
+          filtrar_por_data: 'V',
           apenas_pendentes: true,
           pagina,
           registros_por_pagina: 100
@@ -153,7 +153,6 @@ export default function EmissaoBoletosTab() {
         const jaTemBoleto = !!(titulo.numero_boleto || titulo.url_boleto || titulo.codigo_barras || titulo.boleto_gerado);
         if (jaTemBoleto) {
           ocultosComBoleto += 1;
-          return;
         }
 
         const clienteBoleto = encontrarClienteBoleto(titulo, pedido);
@@ -167,15 +166,19 @@ export default function EmissaoBoletosTab() {
           nome_fantasia: clienteBoleto.nome_fantasia || pedido.nome_fantasia || '',
           nome_cliente: titulo.nome_cliente || pedido.nome_cliente || clienteBoleto.nome_fantasia || clienteBoleto.razao_social,
           cnpj_cpf: titulo.cnpj_cpf || pedido.cnpj_cpf_cliente,
-          modalidade_pagamento_nome: 'BOLETO BANCARIO'
+          modalidade_pagamento_nome: 'BOLETO BANCARIO',
+          ja_tem_boleto: jaTemBoleto
         });
       });
 
+      const semBoleto = titulosDaCarga.filter(t => !t.ja_tem_boleto).length;
+      const comBoleto = titulosDaCarga.filter(t => t.ja_tem_boleto).length;
       return {
         titulos: titulosDaCarga,
-        totalCarga: titulosDaCarga.length + ocultosComBoleto + ocultosSemModalidade,
-        ocultosComBoleto,
-        ocultosSemModalidade
+        totalCarga: titulosDaCarga.length + ocultosSemModalidade,
+        ocultosComBoleto: comBoleto,
+        ocultosSemModalidade,
+        semBoleto
       };
     },
     enabled: !!cargaSelecionada && !loadingClientes,

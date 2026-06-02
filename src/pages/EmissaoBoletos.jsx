@@ -46,13 +46,13 @@ export default function EmissaoBoletos() {
     queryFn: async () => {
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 90 * 86400000);
+      const inicio = new Date(hoje.getTime() - 365 * 86400000);
       let acumulados = [];
       for (let pag = 1; pag <= 10; pag++) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: fmt(inicio),
           data_ate: fmt(hoje),
-          filtrar_por_data: 'E',
+          filtrar_por_data: 'V',
           apenas_pendentes: true,
           pagina: pag,
           registros_por_pagina: 100
@@ -150,7 +150,7 @@ export default function EmissaoBoletos() {
       // Janela: 90 dias atrás até hoje (cobre folga p/ NFs emitidas semanas antes).
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 90 * 86400000);
+      const inicio = new Date(hoje.getTime() - 365 * 86400000);
       const fim = hoje;
 
       // Varre até 5 páginas (500 títulos) — suficiente p/ uma carga
@@ -159,8 +159,8 @@ export default function EmissaoBoletos() {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: fmt(inicio),
           data_ate: fmt(fim),
-          filtrar_por_data: 'E',
-          apenas_pendentes: false,
+          filtrar_por_data: 'V',
+          apenas_pendentes: true,
           pagina: pag,
           registros_por_pagina: 100
         });
@@ -198,6 +198,7 @@ export default function EmissaoBoletos() {
       if (filtroStatus !== 'todos') {
         const st = String(t.status_titulo || '').toUpperCase();
         if (filtroStatus === 'aberto' && st !== 'ABERTO') return false;
+        if (filtroStatus === 'atrasado' && st !== 'ATRASADO' && st !== 'VENCIDO') return false;
         if (filtroStatus === 'recebido' && st !== 'RECEBIDO') return false;
       }
       return true;
@@ -340,8 +341,9 @@ export default function EmissaoBoletos() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
-                    <SelectItem value="aberto">Apenas em aberto</SelectItem>
-                    <SelectItem value="recebido">Apenas recebidos</SelectItem>
+                    <SelectItem value="aberto">Em aberto</SelectItem>
+                    <SelectItem value="atrasado">Atrasados</SelectItem>
+                    <SelectItem value="recebido">Recebidos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

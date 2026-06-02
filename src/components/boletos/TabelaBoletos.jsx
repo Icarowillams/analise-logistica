@@ -33,7 +33,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
   // Selecionável se: em aberto (para gerar boleto) OU já tem boleto emitido (para imprimir)
   const isElegivel = (t) => {
     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
-    if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO' || st === 'RECEBIDO') return false;
+    if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO') return false;
     return true;
   };
 
@@ -117,9 +117,10 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                 <td className="p-2 text-center">
                   {(() => {
                     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
-                    if (st === 'PAGO' || st === 'LIQUIDADO' || st === 'RECEBIDO') return <Badge className="bg-emerald-100 text-emerald-800">Liquidado</Badge>;
+                    if (st === 'PAGO' || st === 'LIQUIDADO') return <Badge className="bg-emerald-100 text-emerald-800">Liquidado</Badge>;
                     if (st === 'CANCELADO') return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>;
                     if (st === 'PARCIAL') return <Badge className="bg-amber-100 text-amber-800">Parcial</Badge>;
+                    if (st === 'ATRASADO' || st === 'VENCIDO') return <Badge className="bg-red-100 text-red-800">Atrasado</Badge>;
                     if (t.numero_boleto) return <Badge className="bg-blue-100 text-blue-800">Boleto Emitido</Badge>;
                     return <Badge variant="outline">Em Aberto</Badge>;
                   })()}
