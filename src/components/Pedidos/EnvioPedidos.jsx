@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X, CheckCircle2, Cloud, HardDrive } from 'lucide-react';
+import { Send, Search, FileText, ShoppingCart, Pencil, Trash2, Loader2, AlertCircle, X, CheckCircle2, Cloud, HardDrive, RefreshCw, Clock } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import PedidoPdf from './PedidoPdf';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import StatusFilaEnvio from './StatusFilaEnvio';
 
 export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const queryClient = useQueryClient();
@@ -21,11 +22,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const [filtroPeriodoInicio, setFiltroPeriodoInicio] = useState('');
   const [filtroPeriodoFim, setFiltroPeriodoFim] = useState('');
   const [filtroCodCliente, setFiltroCodCliente] = useState('');
-  const [enviandoTodos, setEnviandoTodos] = useState(false);
-  const [enviandoIds, setEnviandoIds] = useState(new Set()); // dedup: múltiplos pedidos podem estar enviando
+  const [enviandoIds, setEnviandoIds] = useState(new Set());
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
-  const [progressoLote, setProgressoLote] = useState(null); // { total, processados, sucessos, erros }
-  const [erroLoteDetalhes, setErroLoteDetalhes] = useState([]); // lista de erros do último lote
+  const [enfileirandoTodos, setEnfileirandoTodos] = useState(false);
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
@@ -41,6 +40,44 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     queryKey: ['clientes-envio-pedidos'],
     queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
   });
+
+  // Fila de envio — buscar itens ativos (pendente/processando) + recentes concluídos/erro
+  const { data: filaEnvio = [] } = useQuery({
+    queryKey: ['fila-envio-pedido-omie', vendedor.id],
+    queryFn: async () => {
+      const [pendentes, processando, recentes] = await Promise.all([
+        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'pendente' }, 'created_date', 100),
+        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'processando' }, 'created_date', 50),
+        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'concluido' }, '-created_date', 50)
+      ]);
+      const erros = await base44.entities.FilaEnvioPedidoOmie.filter({ status: 'erro' }, '-created_date', 50);
+      return [...pendentes, ...processando, ...recentes, ...erros];
+    },
+    refetchInterval: 10000 // poll a cada 10s para atualizar status
+  });
+
+  // Mapa rápido: pedido_id → item da fila mais recente
+  const filaPorPedido = useMemo(() => {
+    const mapa = {};
+    // Ordenar por created_date desc para pegar o mais recente
+    const sorted = [...filaEnvio].sort((a, b) => (b.created_date || '').localeCompare(a.created_date || ''));
+    for (const item of sorted) {
+      if (!mapa[item.pedido_id]) mapa[item.pedido_id] = item;
+    }
+    return mapa;
+  }, [filaEnvio]);
+
+  // Subscription em tempo real para atualizar a fila
+  useEffect(() => {
+    const unsub = base44.entities.FilaEnvioPedidoOmie.subscribe((event) => {
+      queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
+      // Se concluído, invalidar pedidos também
+      if (event.type === 'update' && event.data?.status === 'concluido') {
+        queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      }
+    });
+    return unsub;
+  }, [queryClient]);
 
   const pedidosComCliente = useMemo(() => {
     const mapa = new Map(clientes.map(c => [c.id, c]));
@@ -103,13 +140,12 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   // Pedido é tratado internamente (sem Omie) se for troca OU se modelo da nota for D1
   const isInterno = (pedido) => pedido.tipo === 'troca' || pedido.modelo_nota === 'd1';
 
-  // Executa o envio efetivo (chamado após gate de bloqueio financeiro, quando aplicável)
+  // Executa o envio efetivo — internos são síncronos, externos vão para a fila
   const executarEnvio = async (pedido) => {
     if (enviandoIds.has(pedido.id)) return;
     setEnviandoIds(prev => new Set(prev).add(pedido.id));
     try {
       if (isInterno(pedido)) {
-        // Trocas e D1: gerar número sequencial local com sufixo correto.
         const numero = await getNextNumeroLocal(pedido);
         await base44.entities.Pedido.update(pedido.id, {
           status: 'enviado',
@@ -117,44 +153,30 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
           data_envio: new Date().toISOString(),
           omie_erro: null
         });
-
         const tipoLabel = pedido.tipo === 'troca' ? 'Troca' : 'Pedido D1';
         toast.success(`${tipoLabel} #${numero} registrado com sucesso!`);
       } else {
-        // Vendas: enviar ao Omie PRIMEIRO, só marcar como enviado se der sucesso
-        let omieOk = false;
-        let erroMsg = '';
-        let numeroPedidoOmie = null;
-        try {
-          const response = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
-          const result = response.data;
-          if (result.sucesso) {
-            omieOk = true;
-            numeroPedidoOmie = result.numero_pedido_omie;
-          } else {
-            erroMsg = result.erro || 'Erro desconhecido no Omie';
-          }
-        } catch (omieErr) {
-          // Axios lança exceção em status 4xx — extrair mensagem do corpo
-          const errData = omieErr?.response?.data;
-          erroMsg = errData?.erro || errData?.error || errData?.sucesso === false && errData?.erro || omieErr.message || 'Falha na comunicação com o Omie';
-        }
-
-        if (omieOk) {
-          if (pedido.cliente_id) base44.functions.invoke('consultarBloqueioFinanceiroOmie', { cliente_id: pedido.cliente_id }).catch(() => {});
-          // Backend já atualiza o pedido localmente, apenas garantir status
-          toast.success(`Pedido ${numeroPedidoOmie ? '#' + numeroPedidoOmie : ''} enviado ao Omie com sucesso!`);
+        // Verificar se já está na fila
+        const jaTemNaFila = filaEnvio.some(f => f.pedido_id === pedido.id && (f.status === 'pendente' || f.status === 'processando'));
+        if (jaTemNaFila) {
+          toast.info('Este pedido já está na fila de envio');
         } else {
-          await base44.entities.Pedido.update(pedido.id, {
-            omie_erro: erroMsg
+          await base44.entities.FilaEnvioPedidoOmie.create({
+            pedido_id: pedido.id,
+            numero_pedido: pedido.numero_pedido || '',
+            cliente_nome: pedido.cliente_nome || '',
+            vendedor_id: vendedor.id,
+            operacao: 'enviar',
+            status: 'pendente',
+            tentativas: 0
           });
-          toast.error(`Erro ao enviar pedido ao Omie: ${erroMsg}`);
+          queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
+          toast.success('Pedido enfileirado para envio ao Omie. O processamento ocorre em background.');
         }
       }
-
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     } catch (err) {
-      toast.error('Erro ao enviar pedido: ' + err.message);
+      toast.error('Erro ao enfileirar pedido: ' + err.message);
     } finally {
       setEnviandoIds(prev => { const n = new Set(prev); n.delete(pedido.id); return n; });
     }
@@ -169,25 +191,19 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     return executarEnvio(pedido);
   };
 
-  const CHUNK_SIZE = 50; // processa de 50 em 50 (uma chamada de lote por chunk)
-
+  // ========== ENVIAR TODOS via FILA ASSÍNCRONA ==========
   const enviarTodos = async () => {
     if (pendentes.length === 0) return;
-    setEnviandoTodos(true);
-    setErroLoteDetalhes([]);
+    setEnfileirandoTodos(true);
 
     // Separar internos (D1/Troca) dos que vão pro Omie
     const internos = pendentes.filter(p => isInterno(p));
     const externos = pendentes.filter(p => !isInterno(p) && p.data_previsao_entrega);
     const semData = pendentes.filter(p => !isInterno(p) && !p.data_previsao_entrega);
 
-    let sucessoCount = 0;
-    let erroCount = semData.length;
-    const erroDetalhes = semData.map(p => ({ cliente: p.cliente_nome, erro: 'Sem Data de Previsão de Entrega' }));
+    let internosSucesso = 0;
 
-    setProgressoLote({ total: pendentes.length, processados: 0, sucessos: 0, erros: erroCount });
-
-    // 1. Internos (rápido, local) — sequência única com sufixo correto
+    // 1. Internos (rápido, local) — continua síncrono pois não vai ao Omie
     for (const pedido of internos) {
       const numero = await getNextNumeroLocal(pedido);
       await base44.entities.Pedido.update(pedido.id, {
@@ -196,58 +212,59 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         data_envio: new Date().toISOString(),
         omie_erro: null
       });
-      sucessoCount++;
-      setProgressoLote(prev => ({ ...prev, processados: prev.processados + 1, sucessos: prev.sucessos + 1 }));
+      internosSucesso++;
     }
 
-    // 2. Externos em lotes paralelos (workers no backend)
-    for (let i = 0; i < externos.length; i += CHUNK_SIZE) {
-      const chunk = externos.slice(i, i + CHUNK_SIZE);
-      try {
-        const response = await base44.functions.invoke('enviarPedidoOmie', {
-          pedidos: chunk.map(p => ({ id: p.id }))
-        });
-        const data = response.data;
-        if (data?.sucesso) {
-          sucessoCount += data.sucessos;
-          erroCount += data.erros;
-          (data.resultados || []).forEach(r => {
-            if (!r.sucesso) {
-              const ped = chunk.find(p => p.id === r.pedido_id);
-              erroDetalhes.push({ cliente: ped?.cliente_nome || r.pedido_id, erro: r.erro });
-            }
-          });
-          setProgressoLote(prev => ({
-            total: pendentes.length,
-            processados: prev.processados + chunk.length,
-            sucessos: prev.sucessos + data.sucessos,
-            erros: prev.erros + data.erros
-          }));
-        } else {
-          erroCount += chunk.length;
-          chunk.forEach(p => erroDetalhes.push({ cliente: p.cliente_nome, erro: data?.erro || 'Falha no lote' }));
-          setProgressoLote(prev => ({ ...prev, processados: prev.processados + chunk.length, erros: prev.erros + chunk.length }));
-        }
-      } catch (err) {
-        erroCount += chunk.length;
-        const msg = err?.response?.data?.erro || err.message || 'Falha no lote';
-        chunk.forEach(p => erroDetalhes.push({ cliente: p.cliente_nome, erro: msg }));
-        setProgressoLote(prev => ({ ...prev, processados: prev.processados + chunk.length, erros: prev.erros + chunk.length }));
-      }
+    // 2. Externos: enfileirar na FilaEnvioPedidoOmie (evitar duplicatas)
+    const pedidosIdsJaNaFila = new Set(
+      filaEnvio
+        .filter(f => f.status === 'pendente' || f.status === 'processando')
+        .map(f => f.pedido_id)
+    );
+
+    const aEnfileirar = externos.filter(p => !pedidosIdsJaNaFila.has(p.id));
+    const jaNaFila = externos.length - aEnfileirar.length;
+
+    if (aEnfileirar.length > 0) {
+      const registros = aEnfileirar.map(p => ({
+        pedido_id: p.id,
+        numero_pedido: p.numero_pedido || '',
+        cliente_nome: p.cliente_nome || '',
+        vendedor_id: vendedor.id,
+        operacao: 'enviar',
+        status: 'pendente',
+        tentativas: 0,
+        usuario_email: ''
+      }));
+      await base44.entities.FilaEnvioPedidoOmie.bulkCreate(registros);
     }
 
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    setErroLoteDetalhes(erroDetalhes);
+    queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
 
-    if (erroCount > 0 && sucessoCount > 0) {
-      toast.warning(`${sucessoCount} enviados, ${erroCount} com erro`);
-    } else if (erroCount > 0 && sucessoCount === 0) {
-      toast.error(`Nenhum pedido enviado. ${erroCount} com erro`);
-    } else {
-      toast.success(`${sucessoCount} pedidos enviados com sucesso!`);
+    const msgs = [];
+    if (internosSucesso > 0) msgs.push(`${internosSucesso} interno(s) registrado(s)`);
+    if (aEnfileirar.length > 0) msgs.push(`${aEnfileirar.length} pedido(s) enfileirado(s) para envio ao Omie`);
+    if (jaNaFila > 0) msgs.push(`${jaNaFila} já estavam na fila`);
+    if (semData.length > 0) msgs.push(`${semData.length} sem data de previsão (ignorados)`);
+
+    toast.success(msgs.join('. ') + '. O processamento ocorre em background.');
+
+    setEnfileirandoTodos(false);
+  };
+
+  // Reprocessar erros
+  const reprocessarErros = async () => {
+    const erros = filaEnvio.filter(f => f.status === 'erro' && (f.tentativas || 0) < 3);
+    if (erros.length === 0) {
+      toast.info('Nenhum erro reprocessável (todos já atingiram 3 tentativas)');
+      return;
     }
-    setEnviandoTodos(false);
-    setTimeout(() => setProgressoLote(null), 4000);
+    for (const item of erros) {
+      await base44.entities.FilaEnvioPedidoOmie.update(item.id, { status: 'pendente', erro_log: null });
+    }
+    queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
+    toast.success(`${erros.length} pedido(s) reenfileirado(s) para reprocessamento`);
   };
 
   const excluirPedido = async (pedido) => {
@@ -325,8 +342,13 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             {pedido.status === 'enviado' && (
               <Badge className="bg-green-500 shrink-0 ml-2">Enviado</Badge>
             )}
-            {pedido.status === 'pendente' && !pedido.omie_erro && (
+            {pedido.status === 'pendente' && !pedido.omie_erro && !filaPorPedido[pedido.id] && (
               <Badge className="bg-amber-500 shrink-0 ml-2">Pendente</Badge>
+            )}
+            {pedido.status === 'pendente' && !pedido.omie_erro && filaPorPedido[pedido.id] && (
+              <span className="shrink-0 ml-2">
+                <StatusFilaEnvio filaItem={filaPorPedido[pedido.id]} />
+              </span>
             )}
             {pedido.status === 'pendente' && pedido.omie_erro && (
               <Badge className="bg-red-500 shrink-0 ml-2">Erro Omie</Badge>
@@ -398,8 +420,16 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
                 <Button size="sm" variant="outline" onClick={() => onEditPedido(pedido.id)} className="text-xs">
                   <Pencil className="w-3 h-3 mr-1" /> Editar
                 </Button>
-                <Button size="sm" onClick={() => enviarPedido(pedido)} disabled={enviandoIds.has(pedido.id) || enviandoTodos} className="text-xs bg-green-600 hover:bg-green-700">
-                  <Send className="w-3 h-3 mr-1" /> {enviandoIds.has(pedido.id) ? 'Enviando...' : 'Enviar'}
+                <Button 
+                  size="sm" 
+                  onClick={() => enviarPedido(pedido)} 
+                  disabled={enviandoIds.has(pedido.id) || enfileirandoTodos || (filaPorPedido[pedido.id] && (filaPorPedido[pedido.id].status === 'pendente' || filaPorPedido[pedido.id].status === 'processando'))} 
+                  className="text-xs bg-green-600 hover:bg-green-700"
+                >
+                  <Send className="w-3 h-3 mr-1" /> 
+                  {enviandoIds.has(pedido.id) ? 'Enfileirando...' : 
+                   filaPorPedido[pedido.id]?.status === 'pendente' ? 'Na fila' :
+                   filaPorPedido[pedido.id]?.status === 'processando' ? 'Enviando...' : 'Enviar'}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setPdfPedidoId(pedido.id)} className="text-xs">
                   <FileText className="w-3 h-3 mr-1" /> PDF
@@ -448,41 +478,51 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
         <TabsContent value="pendentes">
           {pendentes.length > 0 && (
-            <Button onClick={enviarTodos} disabled={enviandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
+            <Button onClick={enviarTodos} disabled={enfileirandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
               <Send className="w-4 h-4 mr-2" />
-              {enviandoTodos ? 'Enviando lote...' : `Enviar Todos (${pendentes.length})`}
+              {enfileirandoTodos ? 'Enfileirando...' : `Enviar Todos (${pendentes.length})`}
             </Button>
           )}
-          {progressoLote && (
-            <div className="mb-4 p-3 bg-slate-50 border rounded-lg space-y-2">
-              <div className="flex justify-between text-xs font-medium">
-                <span>{progressoLote.processados}/{progressoLote.total} processados</span>
-                <span>
-                  <CheckCircle2 className="w-3 h-3 inline text-green-600" /> {progressoLote.sucessos} ·{' '}
-                  <AlertCircle className="w-3 h-3 inline text-red-600" /> {progressoLote.erros}
-                </span>
+          {/* Painel de status da fila */}
+          {(() => {
+            const nFila = filaEnvio.filter(f => f.status === 'pendente').length;
+            const nProcessando = filaEnvio.filter(f => f.status === 'processando').length;
+            const nErros = filaEnvio.filter(f => f.status === 'erro').length;
+            if (nFila === 0 && nProcessando === 0 && nErros === 0) return null;
+            return (
+              <div className="mb-4 p-3 bg-slate-50 border rounded-lg space-y-2">
+                <div className="flex flex-wrap justify-between items-center text-xs font-medium gap-2">
+                  <div className="flex items-center gap-3">
+                    {nFila > 0 && (
+                      <span className="flex items-center gap-1 text-amber-700">
+                        <Clock className="w-3 h-3" /> {nFila} na fila
+                      </span>
+                    )}
+                    {nProcessando > 0 && (
+                      <span className="flex items-center gap-1 text-blue-700">
+                        <Loader2 className="w-3 h-3 animate-spin" /> {nProcessando} enviando
+                      </span>
+                    )}
+                    {nErros > 0 && (
+                      <span className="flex items-center gap-1 text-red-700">
+                        <AlertCircle className="w-3 h-3" /> {nErros} com erro
+                      </span>
+                    )}
+                  </div>
+                  {nErros > 0 && (
+                    <Button size="sm" variant="outline" onClick={reprocessarErros} className="text-xs h-7">
+                      <RefreshCw className="w-3 h-3 mr-1" /> Reprocessar erros
+                    </Button>
+                  )}
+                </div>
+                {(nFila > 0 || nProcessando > 0) && (
+                  <p className="text-[11px] text-slate-500">
+                    Os pedidos são enviados automaticamente em background, um por vez, a cada 5 segundos.
+                  </p>
+                )}
               </div>
-              <Progress value={(progressoLote.processados / Math.max(1, progressoLote.total)) * 100} className="h-2" />
-            </div>
-          )}
-          {erroLoteDetalhes.length > 0 && !enviandoTodos && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="w-4 h-4" />
-              <AlertDescription>
-                <details>
-                  <summary className="cursor-pointer font-semibold text-sm">
-                    {erroLoteDetalhes.length} pedido(s) com erro — clique para ver
-                  </summary>
-                  <ul className="mt-2 space-y-1 text-xs max-h-40 overflow-y-auto">
-                    {erroLoteDetalhes.map((e, i) => (
-                      <li key={i}><strong>{e.cliente}:</strong> {e.erro}</li>
-                    ))}
-                  </ul>
-                  <button onClick={() => setErroLoteDetalhes([])} className="text-xs underline mt-2">Limpar</button>
-                </details>
-              </AlertDescription>
-            </Alert>
-          )}
+            );
+          })()}
           {pendentesFiltrados.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
               <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
