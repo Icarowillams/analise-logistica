@@ -129,7 +129,7 @@ export default function useDadosMontagem() {
       await sleep(isRetry ? 3000 : 1500);
 
       const espelhoOmie = await fetchWithRetry(() =>
-        base44.entities.PedidoLiberadoOmie.list('-created_date', 200)
+        base44.entities.PedidoLiberadoOmie.list('-created_date', 500)
       );
       await sleep(300);
 
@@ -168,21 +168,22 @@ export default function useDadosMontagem() {
 
       // Códigos em carga ativa
       const codigosEmCarga = new Set();
-      (carP || []).filter(c => c.status_carga !== 'cancelada').forEach(c => {
+      (carP || []).filter(c => c.status_carga === 'faturada').forEach(c => {
         (c.pedidos_omie || []).forEach(p => {
           if (p?.codigo_pedido) codigosEmCarga.add(String(p.codigo_pedido));
         });
       });
 
-      // Vendas Omie etapa 20
+      // Vendas Omie etapas 10 e 20
+      const ETAPAS_PERMITIDAS = ['10', '20'];
       const vendasEnriquecidas = (espelhoOmie || [])
-        .filter(e => String(e?.etapa ?? '').trim() === '20')
+        .filter(e => ETAPAS_PERMITIDAS.includes(String(e?.etapa ?? '').trim()))
         .filter(e => e?.codigo_pedido && !codigosEmCarga.has(String(e.codigo_pedido)))
         .map(montarVendaOmie);
 
       // D1 disponíveis (sem itens ainda)
       const d1Disponiveis = (todosPedidosLocais || []).filter(p =>
-        String(p.modelo_nota || '').toLowerCase() === 'd1' && p.status === 'liberado' && !p.carga_id
+        String(p.modelo_nota || '').trim().toLowerCase() === 'd1' && p.status === 'liberado' && !p.carga_id
       );
 
       // Trocas disponíveis (sem itens ainda)
