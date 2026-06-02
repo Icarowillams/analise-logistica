@@ -1,11 +1,343 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
-const INTERVALO_ENTRE_PEDIDOS_MS = 3000; // 3s entre pedidos (era 5s)
-const MAX_PEDIDOS_POR_RODADA = 3; // 3 pedidos por rodada (era 5) — menor lote, mais frequente
+const INTERVALO_ENTRE_PEDIDOS_MS = 500; // 0.5s entre pedidos = 2 req/s (seguro sob 240 req/min)
+const MAX_PEDIDOS_POR_RODADA = 10;      // 10 pedidos por rodada
 
+const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
+const CONTA_CORRENTE_PADRAO = 11464371392;
+
+// ============================================================
+// HELPERS OMIE (copiados de enviarPedidoOmie para evitar functions.invoke)
+// ============================================================
+
+function debugLog(base44, mensagem, extra = {}) {
+  console.log(mensagem);
+  base44.asServiceRole.entities.LogIntegracaoOmie.create({
+    endpoint: 'processarFila:debug',
+    payload_envio: JSON.stringify(extra).slice(0, 2000),
+    payload_resposta: mensagem.slice(0, 2000),
+    sucesso: !extra.erro,
+    erro: extra.erro || null,
+    created_date: new Date().toISOString()
+  }).catch(() => {});
+}
+
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) return { OMIE_APP_KEY: String(ativo.app_key), OMIE_APP_SECRET: String(ativo.app_secret) };
+  return { OMIE_APP_KEY: Deno.env.get('OMIE_APP_KEY'), OMIE_APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
+}
+
+async function omieCall(base44, call, param, options = {}) {
+  const { OMIE_APP_KEY, OMIE_APP_SECRET } = await resolverCredsOmie(base44);
+  if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas.');
+  const maxTentativas = options.maxTentativas || 3;
+  const url = /ContaCorrente|Conta_corrente|ContasCorrentes/i.test(call)
+    ? 'https://app.omie.com.br/api/v1/geral/contacorrente/'
+    : OMIE_URL;
+
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    const err = new Error(`API Omie bloqueada. Desbloqueio: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
+    err.code = 'OMIE_425';
+    err.bloqueado_ate = controle.bloqueado_ate;
+    throw err;
+  }
+
+  const body = { call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] };
+  let lastError = '';
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (data.faultstring || data.faultcode) {
+        const msg = String(data.faultstring || '').toLowerCase();
+        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+          const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
+          const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425', atualizado_em: new Date().toISOString() };
+          if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
+          else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+          base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: url, call, operacao: call, status: 'erro', codigo_erro: '425',
+            mensagem_erro: data.faultstring || 'HTTP 425',
+            payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
+            payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
+          }).catch(() => {});
+          const err = new Error(`API Omie bloqueada (HTTP 425). Desbloqueio: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+          err.code = 'OMIE_425';
+          err.bloqueado_ate = bloqueadoAte;
+          throw err;
+        }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('indispon')) {
+          lastError = data.faultstring;
+          if (tentativa < maxTentativas) { await sleep(2500 * tentativa); continue; }
+        }
+        return data;
+      }
+
+      if (!options.skipLog) {
+        base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: url, call, operacao: call, status: 'sucesso',
+          payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
+          payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
+        }).catch(() => {});
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.code === 'OMIE_425') throw err;
+      lastError = err.message;
+      if (tentativa < maxTentativas) await sleep(1000 * Math.pow(2, tentativa));
+    }
+  }
+  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
+}
+
+let _contaCorrenteCache = null;
+async function resolverContaCorrentePadrao(base44) {
+  if (_contaCorrenteCache) return _contaCorrenteCache;
+  try {
+    const cc = await omieCall(base44, "ListarContasCorrentes", { pagina: 1, registros_por_pagina: 50 }, { maxTentativas: 2 });
+    const lista = cc?.ListarContasCorrentes || cc?.conta_corrente_lista || [];
+    if (lista.length > 0) {
+      const padrao = lista.find(c => c.cPadrao === "S" || c.padrao === "S") || lista[0];
+      _contaCorrenteCache = padrao.nCodCC || padrao.codigo || CONTA_CORRENTE_PADRAO;
+      return _contaCorrenteCache;
+    }
+  } catch { /* ignore */ }
+  _contaCorrenteCache = CONTA_CORRENTE_PADRAO;
+  return _contaCorrenteCache;
+}
+
+function formatDateOmie(dateStr) {
+  if (!dateStr) return new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
+  const s = String(dateStr).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, d] = s.split('T')[0].split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return s;
+}
+
+function gerarParcelas(plano, valorTotal) {
+  const numParcelas = plano?.numero_parcelas || 1;
+  const diasPrimeira = plano?.dias_primeira_parcela || 30;
+  const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
+  const parcelas = [];
+  const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Recife' });
+  const [yy, mm, dd] = hojeStr.split('-').map(Number);
+  for (let i = 0; i < numParcelas; i++) {
+    const diasOffset = diasPrimeira + (i * 30);
+    const dataVenc = new Date(Date.UTC(yy, mm - 1, dd));
+    dataVenc.setUTCDate(dataVenc.getUTCDate() + diasOffset);
+    const d = String(dataVenc.getUTCDate()).padStart(2, '0');
+    const m = String(dataVenc.getUTCMonth() + 1).padStart(2, '0');
+    const y = dataVenc.getUTCFullYear();
+    let valor = valorParcela;
+    if (i === numParcelas - 1) {
+      const totalAnterior = parcelas.reduce((s, p) => s + p.valor, 0);
+      valor = Math.round((valorTotal - totalAnterior) * 100) / 100;
+    }
+    parcelas.push({ numero_parcela: i + 1, data_vencimento: `${d}/${m}/${y}`, percentual: Math.round((100 / numParcelas) * 100) / 100, valor });
+  }
+  return parcelas;
+}
+
+async function resolverClienteOmie(base44, pedido, clienteBase44) {
+  if (clienteBase44?.codigo_omie) {
+    return { ok: true, payload: { codigo_cliente: Number(clienteBase44.codigo_omie) }, fonte: 'local_codigo_omie' };
+  }
+  const codIntegracao = pedido.cliente_codigo || pedido.cliente_id;
+  if (codIntegracao) {
+    return { ok: true, payload: { codigo_cliente_integracao: String(codIntegracao) }, fonte: 'local_codigo_integracao', precisaValidar: !clienteBase44?.codigo_omie };
+  }
+  return { ok: false, erro: 'Cliente sem identificação para o Omie' };
+}
+
+async function exportarClienteSeNecessario(base44, clienteBase44) {
+  if (!clienteBase44) return { ok: false, erro: 'Cliente Base44 inexistente' };
+  if (clienteBase44.tipo_nota === 'D1') return { ok: false, erro: 'Cliente marcado como D1' };
+  const r = await base44.asServiceRole.functions.invoke('enviarClienteOmie', {
+    event: { type: 'auto_pedido', entity_id: clienteBase44.id },
+    data: clienteBase44
+  });
+  const d = r?.data || r;
+  if (!d?.sucesso) return { ok: false, erro: d?.erro || 'Falha exportando cliente' };
+  return { ok: true, codigo_omie: d.codigo_omie };
+}
+
+function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente }) {
+  const dataPrevisao = formatDateOmie(pedido.data_previsao_entrega);
+  const det = items.map((item) => {
+    const prod = produtosMap[item.produto_id] || {};
+    const unidade = prod.unidade_medida_id ? unidadesMap[prod.unidade_medida_id] : null;
+    const unidadeStr = unidade?.nome || 'UN';
+    const infAdic = { peso_bruto: (prod.peso || 0) * item.quantidade, peso_liquido: (prod.peso || 0) * item.quantidade };
+    if (pedido.numero_pedido_compra) {
+      infAdic.numero_pedido_compra = pedido.numero_pedido_compra;
+      infAdic.dados_adicionais_item = `Pedido de Compra: ${pedido.numero_pedido_compra}`;
+    }
+    const produtoRef = prod.codigo_omie ? { codigo_produto: Number(prod.codigo_omie) } : { codigo_produto_integracao: item.produto_id };
+    return {
+      ide: { codigo_item_integracao: item.id },
+      inf_adic: infAdic,
+      produto: { ...produtoRef, descricao: item.produto_nome || prod.nome || '', ncm: prod.ncm || '', quantidade: item.quantidade, valor_unitario: item.valor_unitario, tipo_desconto: "V", valor_desconto: 0, unidade: unidadeStr }
+    };
+  });
+  const parcelas = gerarParcelas(plano, pedido.valor_total || 0);
+  const dadosAdicNf = pedido.dados_adicionais_nf || '';
+  const cabecalho = { codigo_pedido_integracao: pedido.id, ...clientePayload, data_previsao: dataPrevisao, etapa: "10", codigo_parcela: "999", quantidade_itens: items.length };
+  if (pedido.cenario_fiscal_codigo && !isNaN(Number(pedido.cenario_fiscal_codigo)) && Number(pedido.cenario_fiscal_codigo) > 0) {
+    cabecalho.codigo_cenario_impostos = String(pedido.cenario_fiscal_codigo);
+  }
+  const payload = {
+    cabecalho, det, frete: { modalidade: "9" },
+    informacoes_adicionais: {
+      codigo_categoria: "1.01.01", consumidor_final: "S", enviar_email: "N", codigo_conta_corrente: contaCorrente,
+      ...(pedido.numero_pedido_compra ? { numero_pedido_cliente: pedido.numero_pedido_compra } : {}),
+      ...(dadosAdicNf ? { dados_adicionais_nf: dadosAdicNf } : {})
+    }
+  };
+  if (parcelas.length > 0) payload.lista_parcelas = { parcela: parcelas };
+  return payload;
+}
+
+// ============================================================
+// CORE: envia 1 pedido (autocontido, sem functions.invoke)
+// ============================================================
+async function enviarUmPedido(base44, pedido_id, ctx = {}) {
+  const t0 = Date.now();
+  const pedido = ctx.pedido || await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+  if (!pedido) return { sucesso: false, erro: 'Pedido não encontrado', pedido_id };
+
+  debugLog(base44, `[fila] Iniciando envio pedido ${pedido_id}, modelo=${pedido.modelo_nota}, tipo=${pedido.tipo}`, { pedido_id });
+
+  if (!['pendente', 'enviado', 'liberado'].includes(pedido.status)) return { sucesso: false, erro: 'Status inválido para envio', pedido_id };
+  if (pedido.omie_enviado && pedido.omie_codigo_pedido) return { sucesso: true, pedido_id, codigo_pedido_omie: pedido.omie_codigo_pedido, numero_pedido_omie: pedido.numero_pedido, mensagem: 'Já enviado' };
+  if (!pedido.data_previsao_entrega) return { sucesso: false, erro: 'Data de Previsão obrigatória', pedido_id };
+  if (pedido.tipo === 'troca') return { sucesso: true, pedido_id, codigo_pedido_omie: null, mensagem: 'Troca não gera venda no Omie' };
+  if (pedido.modelo_nota === 'd1') return { sucesso: false, erro: 'Pedido D1 não enviado ao Omie', pedido_id };
+
+  const items = ctx.items || ctx.itemsPorPedido?.[pedido_id] || await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id });
+  if (items.length === 0) return { sucesso: false, erro: 'Pedido sem itens', pedido_id };
+
+  let clienteBase44 = ctx.cliente || ctx.clientesPorId?.[pedido.cliente_id] || null;
+  if (!clienteBase44 && pedido.cliente_id) clienteBase44 = await base44.asServiceRole.entities.Cliente.get(pedido.cliente_id).catch(() => null);
+
+  if (clienteBase44?.tipo_nota === 'D1') {
+    await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: 'Cliente D1 — não enviado', omie_enviado: false });
+    return { sucesso: false, erro: 'Cliente D1 — não enviado ao Omie', pedido_id };
+  }
+
+  let plano = ctx.plano || ctx.planosPorId?.[pedido.plano_pagamento_id] || null;
+  if (!plano && pedido.plano_pagamento_id) plano = await base44.asServiceRole.entities.PlanoPagamento.get(pedido.plano_pagamento_id).catch(() => null);
+
+  const produtosMap = ctx.produtosMap || {};
+  if (!ctx.produtosMap) {
+    const pids = [...new Set(items.map(i => i.produto_id))];
+    const prods = await Promise.all(pids.map(pid => base44.asServiceRole.entities.Produto.get(pid).catch(() => null)));
+    prods.forEach(p => { if (p) produtosMap[p.id] = p; });
+  }
+
+  const unidadesMap = ctx.unidadesMap || {};
+  if (!ctx.unidadesMap) {
+    const uns = await base44.asServiceRole.entities.UnidadeMedida.list().catch(() => []);
+    uns.forEach(u => { unidadesMap[u.id] = u; });
+  }
+
+  let res = await resolverClienteOmie(base44, pedido, clienteBase44);
+  if (!res.ok) return { sucesso: false, erro: res.erro, pedido_id };
+  let clientePayload = res.payload;
+
+  const contaCorrente = ctx.contaCorrentePadrao || await resolverContaCorrentePadrao(base44);
+  const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
+  let resultado = await omieCall(base44, "IncluirPedido", payload);
+
+  // Cliente não existe → exportar e retry
+  if (resultado?.faultstring && /cliente.*(não.*(localizado|encontrado|cadastrado)|invalid)/i.test(resultado.faultstring) && clienteBase44) {
+    const exp = await exportarClienteSeNecessario(base44, clienteBase44);
+    if (exp.ok) {
+      await sleep(1500);
+      clientePayload = { codigo_cliente_integracao: String(clienteBase44.id) };
+      resultado = await omieCall(base44, "IncluirPedido", montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente }));
+    } else {
+      await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: `Cliente não no Omie: ${exp.erro}`, omie_enviado: false });
+      return { sucesso: false, erro: `Cliente não no Omie: ${exp.erro}`, pedido_id };
+    }
+  }
+
+  // Já existe → alterar
+  if (resultado?.faultstring && /(já cadastrado|já existe|código.*cadastrado|codigo.*cadastrado)/i.test(resultado.faultstring)) {
+    resultado = await omieCall(base44, "AlterarPedidoVenda", payload);
+  }
+
+  // Redundante → consultar
+  if (resultado?.faultstring && /redundan/i.test(resultado.faultstring)) {
+    try {
+      const consulta = await omieCall(base44, "ConsultarPedido", { codigo_pedido_integracao: pedido.id }, { maxTentativas: 2 });
+      if (consulta?.pedido_venda_produto?.cabecalho?.codigo_pedido) {
+        resultado = { codigo_pedido: consulta.pedido_venda_produto.cabecalho.codigo_pedido, numero_pedido: consulta.pedido_venda_produto.cabecalho.numero_pedido };
+      }
+    } catch {
+      const pedidoAtual = await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+      if (pedidoAtual?.omie_codigo_pedido) {
+        resultado = { codigo_pedido: pedidoAtual.omie_codigo_pedido, numero_pedido: pedidoAtual.numero_pedido };
+      }
+    }
+  }
+
+  if (resultado?.faultstring) {
+    const pedidoAtual = await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+    if (pedidoAtual?.omie_codigo_pedido) {
+      await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: resultado.faultstring, omie_enviado: true });
+      console.log(`[PERF] Pedido ${pedido_id}: ${Date.now() - t0}ms | sucesso: true (já existia)`);
+      return { sucesso: true, pedido_id, codigo_pedido_omie: pedidoAtual.omie_codigo_pedido, numero_pedido_omie: pedidoAtual.numero_pedido, duracao_ms: Date.now() - t0 };
+    }
+    await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: resultado.faultstring, omie_enviado: false });
+    console.log(`[PERF] Pedido ${pedido_id}: ${Date.now() - t0}ms | sucesso: false`);
+    return { sucesso: false, erro: resultado.faultstring, pedido_id, duracao_ms: Date.now() - t0 };
+  }
+
+  const codigoOmie = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
+  const numeroPedidoOmie = resultado.numero_pedido || resultado.numero_pedido_omie || null;
+  const updateData = {
+    omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
+    omie_enviado: true, omie_erro: null,
+    status: pedido.status === 'pendente' ? 'enviado' : pedido.status,
+    data_envio: pedido.data_envio || new Date().toISOString()
+  };
+  if (numeroPedidoOmie) {
+    updateData.numero_pedido = String(numeroPedidoOmie);
+    const dadosAtuais = pedido.dados_adicionais_nf || '';
+    const semPrefixo = dadosAtuais.replace(/^Pedido Nº: .+?(\s*\|\s*|$)/, '').trim();
+    const partes = [`Pedido Nº: ${numeroPedidoOmie}`];
+    if (semPrefixo) partes.push(semPrefixo);
+    updateData.dados_adicionais_nf = partes.join(' | ');
+  }
+  await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+
+  console.log(`[PERF] Pedido ${pedido_id}: ${Date.now() - t0}ms | sucesso: true`);
+  return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, duracao_ms: Date.now() - t0 };
+}
+
+// ============================================================
+// ENTRY POINT — processamento da fila (autocontido)
+// ============================================================
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -14,21 +346,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // 1) Verificar circuit breaker ANTES de tudo
+    // Circuit breaker
     const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
       .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-      console.log(`[processarFilaEnvioPedidoOmie] Circuit breaker ATIVO até ${controle.bloqueado_ate}. Abortando.`);
-      return Response.json({
-        sucesso: true,
-        mensagem: 'Circuit breaker ativo — abortando rodada',
-        bloqueado_ate: controle.bloqueado_ate,
-        processados: 0
-      });
+      console.log(`[processarFila] Circuit breaker ATIVO até ${controle.bloqueado_ate}. Abortando.`);
+      return Response.json({ sucesso: true, mensagem: 'Circuit breaker ativo', bloqueado_ate: controle.bloqueado_ate, processados: 0 });
     }
 
-    // 2) Buscar registros pendentes na fila
+    // Buscar pendentes
     const pendentes = await base44.asServiceRole.entities.FilaEnvioPedidoOmie
       .filter({ status: 'pendente' }, 'created_date', MAX_PEDIDOS_POR_RODADA);
 
@@ -36,34 +363,34 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0 });
     }
 
-    console.log(`[processarFilaEnvioPedidoOmie] Processando ${pendentes.length} pedidos da fila`);
+    const t0 = Date.now();
+    console.log(`[processarFila] Processando ${pendentes.length} pedidos da fila`);
 
     // ============================================================
-    // PRÉ-CARREGAMENTO EM LOTE — evita N chamadas individuais no loop
+    // PRÉ-CARREGAMENTO EM LOTE (antes do loop)
     // ============================================================
     const pedidoIds = pendentes.map(p => p.pedido_id).filter(Boolean);
-    const t0Preload = Date.now();
 
-    // Buscar todos os pedidos de uma vez
+    // Buscar todos os pedidos em paralelo
     const todosPedidos = await Promise.all(
       pedidoIds.map(id => base44.asServiceRole.entities.Pedido.get(id).catch(() => null))
     );
-    const pedidosPorId = {};
-    todosPedidos.forEach(p => { if (p) pedidosPorId[p.id] = p; });
+    const pedidosMap = {};
+    todosPedidos.forEach(p => { if (p) pedidosMap[p.id] = p; });
 
-    // Buscar todos os itens de pedido
+    // Buscar todos os itens em paralelo
     const todosItems = await Promise.all(
       pedidoIds.map(id => base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: id }).catch(() => []))
     );
     const itemsPorPedido = {};
     pedidoIds.forEach((id, idx) => { itemsPorPedido[id] = todosItems[idx] || []; });
 
-    // Coletar IDs únicos de clientes, produtos e planos
-    const clienteIds = [...new Set(Object.values(pedidosPorId).map(p => p.cliente_id).filter(Boolean))];
+    // IDs únicos
+    const clienteIds = [...new Set(Object.values(pedidosMap).map(p => p.cliente_id).filter(Boolean))];
     const produtoIds = [...new Set(Object.values(itemsPorPedido).flatMap(items => items.map(i => i.produto_id)).filter(Boolean))];
-    const planoIds = [...new Set(Object.values(pedidosPorId).map(p => p.plano_pagamento_id).filter(Boolean))];
+    const planoIds = [...new Set(Object.values(pedidosMap).map(p => p.plano_pagamento_id).filter(Boolean))];
 
-    // Buscar todos em paralelo
+    // Buscar clientes, produtos, planos e unidades em paralelo
     const [todosClientes, todosProdutos, todosPlanos, todasUnidades] = await Promise.all([
       Promise.all(clienteIds.map(id => base44.asServiceRole.entities.Cliente.get(id).catch(() => null))),
       Promise.all(produtoIds.map(id => base44.asServiceRole.entities.Produto.get(id).catch(() => null))),
@@ -80,18 +407,33 @@ Deno.serve(async (req) => {
     const unidadesMap = {};
     todasUnidades.forEach(u => { if (u) unidadesMap[u.id] = u; });
 
-    console.log(`[processarFilaEnvioPedidoOmie] Pré-carregamento concluído em ${Date.now() - t0Preload}ms — ${clienteIds.length} clientes, ${produtoIds.length} produtos, ${planoIds.length} planos, ${todasUnidades.length} unidades`);
+    // Conta corrente (uma vez)
+    const contaCorrentePadrao = await resolverContaCorrentePadrao(base44);
 
+    console.log(`[processarFila] Pré-carregamento: ${Date.now() - t0}ms — ${clienteIds.length} clientes, ${produtoIds.length} produtos, ${planoIds.length} planos`);
+
+    // ============================================================
+    // LOOP DE ENVIO (dados pré-carregados, chamada direta)
+    // ============================================================
     const resultados = [];
 
     for (let i = 0; i < pendentes.length; i++) {
       const item = pendentes[i];
+      const pedido = pedidosMap[item.pedido_id];
+
+      if (!pedido) {
+        await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+          status: 'erro', erro_log: 'Pedido não encontrado', processado_em: new Date().toISOString()
+        });
+        resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Pedido não encontrado' });
+        continue;
+      }
 
       // Re-verificar circuit breaker a cada pedido
       const cbCheck = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
         .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
       if (cbCheck?.[0]?.bloqueado && cbCheck[0].bloqueado_ate && new Date(cbCheck[0].bloqueado_ate) > new Date()) {
-        console.log(`[processarFilaEnvioPedidoOmie] Circuit breaker ativou durante processamento. Abortando restante.`);
+        console.log(`[processarFila] Circuit breaker ativou durante processamento. Abortando restante.`);
         break;
       }
 
@@ -102,77 +444,54 @@ Deno.serve(async (req) => {
       });
 
       try {
-        // Verificar idempotência: pedido já enviado?
-        let pedido;
-        try {
-          pedido = await base44.asServiceRole.entities.Pedido.get(item.pedido_id);
-        } catch {
-          await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: 'erro',
-            erro_log: 'Pedido não encontrado no Base44',
-            processado_em: new Date().toISOString()
-          });
-          resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Pedido não encontrado' });
-          continue;
-        }
-
+        // Idempotência
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-          // Já enviado — marcar como concluído
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: 'concluido',
-            codigo_pedido_omie: pedido.omie_codigo_pedido,
-            numero_pedido_omie: pedido.numero_pedido,
-            processado_em: new Date().toISOString(),
-            erro_log: null
+            status: 'concluido', codigo_pedido_omie: pedido.omie_codigo_pedido,
+            numero_pedido_omie: pedido.numero_pedido, processado_em: new Date().toISOString(), erro_log: null
           });
           resultados.push({ pedido_id: item.pedido_id, sucesso: true, mensagem: 'Já estava enviado' });
           continue;
         }
 
-        // Chamar enviarPedidoOmie com ctx pré-carregado (evita cold start + buscas individuais)
-        const response = await base44.asServiceRole.functions.invoke('enviarPedidoOmie', {
-          pedido_id: item.pedido_id,
-          ctx: { itemsPorPedido, clientesPorId, produtosMap, planosPorId, unidadesMap }
+        // Chamar enviarUmPedido DIRETAMENTE com ctx completo (sem functions.invoke)
+        const result = await enviarUmPedido(base44, item.pedido_id, {
+          pedido,
+          items: itemsPorPedido[item.pedido_id] || [],
+          cliente: clientesPorId[pedido.cliente_id],
+          plano: planosPorId[pedido.plano_pagamento_id],
+          produtosMap,
+          unidadesMap,
+          contaCorrentePadrao
         });
-        const result = response?.data || response;
 
         if (result?.sucesso) {
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: 'concluido',
-            codigo_pedido_omie: result.codigo_pedido_omie || null,
+            status: 'concluido', codigo_pedido_omie: result.codigo_pedido_omie || null,
             numero_pedido_omie: result.numero_pedido_omie || null,
-            processado_em: new Date().toISOString(),
-            erro_log: null
+            processado_em: new Date().toISOString(), erro_log: null
           });
           resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: result.codigo_pedido_omie });
         } else {
           const erro = result?.erro || 'Erro desconhecido';
           const tentativas = (item.tentativas || 0) + 1;
 
-          // Verificação de segurança: mesmo com erro, se o pedido já tem código Omie,
-          // tratar como sucesso (evita omie_enviado=false para pedidos que já existem)
-          let pedidoVerif;
-          try { pedidoVerif = await base44.asServiceRole.entities.Pedido.get(item.pedido_id); } catch { /* ignore */ }
-          if (pedidoVerif?.omie_codigo_pedido) {
-            console.log(`[processarFilaEnvioPedidoOmie] Pedido ${item.pedido_id} retornou erro mas já tem código Omie ${pedidoVerif.omie_codigo_pedido} — tratando como sucesso`);
-            if (!pedidoVerif.omie_enviado) {
+          // Se o pedido já tem código Omie, tratar como sucesso
+          if (pedido.omie_codigo_pedido) {
+            if (!pedido.omie_enviado) {
               await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { omie_enviado: true, omie_erro: null });
             }
             await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-              status: 'concluido',
-              codigo_pedido_omie: pedidoVerif.omie_codigo_pedido,
-              numero_pedido_omie: pedidoVerif.numero_pedido,
-              processado_em: new Date().toISOString(),
-              erro_log: null
+              status: 'concluido', codigo_pedido_omie: pedido.omie_codigo_pedido,
+              numero_pedido_omie: pedido.numero_pedido, processado_em: new Date().toISOString(), erro_log: null
             });
-            resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: pedidoVerif.omie_codigo_pedido, mensagem: 'Recuperado via verificação local' });
+            resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: pedido.omie_codigo_pedido, mensagem: 'Recuperado' });
             continue;
           }
 
           const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: novoStatus,
-            erro_log: erro,
+            status: novoStatus, erro_log: erro,
             processado_em: novoStatus === 'erro' ? new Date().toISOString() : null
           });
           resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro, tentativas });
@@ -181,10 +500,8 @@ Deno.serve(async (req) => {
         const erro = err?.message || 'Erro interno';
         const tentativas = (item.tentativas || 0) + 1;
         const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
-        
-        // Se for bloqueio 403/425/429 OU suspensão → abortar o restante e abrir circuit breaker
         const isBloqueio = /403|425|429|bloqueada|bloqueio|consumo indevido|suspens|inválida|invalida|suspended|rate.?limit/i.test(erro);
-        
+
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
           status: isBloqueio ? 'pendente' : novoStatus,
           erro_log: erro,
@@ -194,29 +511,22 @@ Deno.serve(async (req) => {
         resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro });
 
         if (isBloqueio) {
-          console.log(`[processarFilaEnvioPedidoOmie] Bloqueio detectado: ${erro}. Abrindo circuit breaker e abortando restante.`);
-          // Abrir circuit breaker por 2 horas
+          console.log(`[processarFila] Bloqueio detectado: ${erro}. Abrindo circuit breaker.`);
           const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
             .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
           const cbPayload = {
-            chave: 'principal',
-            bloqueado: true,
+            chave: 'principal', bloqueado: true,
             bloqueado_ate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            ultimo_erro: erro,
-            atualizado_em: new Date().toISOString()
+            ultimo_erro: erro, atualizado_em: new Date().toISOString()
           };
-          if (cbRows?.[0]?.id) {
-            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows[0].id, cbPayload).catch(() => {});
-          } else {
-            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(cbPayload).catch(() => {});
-          }
+          if (cbRows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows[0].id, cbPayload).catch(() => {});
+          else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(cbPayload).catch(() => {});
           break;
         }
       }
 
       // Aguardar intervalo entre pedidos (exceto último)
       if (i < pendentes.length - 1) {
-        console.log(`[processarFilaEnvioPedidoOmie] Aguardando ${INTERVALO_ENTRE_PEDIDOS_MS / 1000}s antes do próximo...`);
         await sleep(INTERVALO_ENTRE_PEDIDOS_MS);
       }
     }
@@ -224,17 +534,11 @@ Deno.serve(async (req) => {
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso).length;
 
-    console.log(`[processarFilaEnvioPedidoOmie] Rodada concluída: ${sucessos} sucessos, ${erros} erros de ${resultados.length} processados`);
+    console.log(`[PERF] Fila concluída: ${pendentes.length} pedidos em ${Date.now() - t0}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
 
-    return Response.json({
-      sucesso: true,
-      processados: resultados.length,
-      sucessos,
-      erros,
-      resultados
-    });
+    return Response.json({ sucesso: true, processados: resultados.length, sucessos, erros, resultados });
   } catch (error) {
-    console.error('[processarFilaEnvioPedidoOmie] Erro fatal:', error.message);
+    console.error('[processarFila] Erro fatal:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

@@ -28,22 +28,23 @@ export default function useDadosMontagem() {
   // Função única que reconstrói todos os pedidos a partir das fontes locais
   const carregar = useCallback(async () => {
     try {
-      const [motP, veiP, carP, espelhoOmie, todosPedidosLocais, trocasAprovadas, clientes, rotas] = await Promise.all([
+      // Carregamento em 2 fases para evitar rate limit (8 chamadas simultâneas estourava)
+      const [motP, veiP, carP, rotas] = await Promise.all([
         base44.entities.Motorista.list('-created_date', 500),
         base44.entities.Veiculo.list('-created_date', 500),
         base44.entities.Carga.list('-created_date', 500),
-        base44.entities.PedidoLiberadoOmie.list('-created_date', 5000),
-        base44.entities.Pedido.list('-created_date', 1000),
-        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500),
-        base44.entities.Cliente.list('-created_date', 5000),
         base44.entities.Rota.list('-created_date', 500)
+      ]);
+      const [espelhoOmie, todosPedidosLocais, trocasAprovadas] = await Promise.all([
+        base44.entities.PedidoLiberadoOmie.list('-created_date', 500),
+        base44.entities.Pedido.list('-created_date', 1000),
+        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
       ]);
 
       setMotoristas(motP.filter(m => m.status === 'ativo'));
       setVeiculos(veiP.filter(v => v.ativo !== false));
       setCargas(carP);
 
-      const clientesMap = new Map((clientes || []).map(c => [c.id, c]));
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
 
       // Conjunto de códigos de pedido Omie já vinculados a alguma carga ATIVA (não cancelada)
@@ -98,12 +99,25 @@ export default function useDadosMontagem() {
         tipo_operacao: e.tipo_operacao || 'venda'
       }));
 
-      // 2. Pedidos D1 internos (mesma lógica de antes)
+      // 2. Pedidos D1 internos
       const pedidosD1Locais = (todosPedidosLocais || []).filter(p => {
         const modelo = String(p.modelo_nota || '').toLowerCase();
         return modelo === 'd1' && p.status === 'liberado';
       });
       const d1Disponiveis = pedidosD1Locais.filter(p => !p.carga_id);
+
+      // 2b. Trocas
+      const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
+
+      // Buscar APENAS os clientes necessários (D1 + trocas) em vez de 5000
+      const clienteIdsNecessarios = [...new Set([
+        ...d1Disponiveis.map(p => p.cliente_id),
+        ...trocasDisponiveis.map(t => t.cliente_id)
+      ].filter(Boolean))];
+      const clientesNecessarios = clienteIdsNecessarios.length > 0
+        ? await Promise.all(clienteIdsNecessarios.map(id => base44.entities.Cliente.get(id).catch(() => null)))
+        : [];
+      const clientesMap = new Map(clientesNecessarios.filter(Boolean).map(c => [c.id, c]));
 
       const d1ComItens = await Promise.all(
         d1Disponiveis.map(async (p) => {
@@ -152,8 +166,7 @@ export default function useDadosMontagem() {
         })
       );
 
-      // 3. Trocas (mesma lógica de antes)
-      const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
+      // 3. Trocas
       const trocasComItens = await Promise.all(
         trocasDisponiveis.map(async (t) => {
           const itens = await base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: t.id });
