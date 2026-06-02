@@ -150,7 +150,37 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.bloqueado_ate });
     }
 
-    // TIMEOUT: Limpar itens travados em "processando" há mais de 10 minutos
+    // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS ANTES DE PROCESSAR NOVOS PEDIDOS ═══
+    // Isso garante que cargas concluídas no ciclo anterior sejam marcadas ANTES do timeout
+    const cargasEmAndamento = await base44.asServiceRole.entities.Carga.filter(
+      { processamento_omie_status: 'em_andamento' }, '-updated_date', 100
+    ).catch(() => []);
+    const cargasParciais = await base44.asServiceRole.entities.Carga.filter(
+      { processamento_omie_status: 'parcial' }, '-updated_date', 50
+    ).catch(() => []);
+
+    const cargasPreAtualizar = [...cargasEmAndamento, ...cargasParciais];
+    if (cargasPreAtualizar.length > 0) {
+      console.log(`[STATUS] Atualizando status de ${cargasPreAtualizar.length} cargas antes do processamento...`);
+      for (const c of cargasPreAtualizar) {
+        await atualizarStatusCarga(base44, c.id);
+      }
+    }
+
+    // Cargas nao_iniciado que têm itens na fila → marcar como em_andamento
+    const cargasNaoIniciadas = await base44.asServiceRole.entities.Carga.filter(
+      { processamento_omie_status: 'nao_iniciado' }, '-updated_date', 50
+    ).catch(() => []);
+    for (const c of cargasNaoIniciadas) {
+      const temFila = await base44.asServiceRole.entities.FilaCargaOmie.filter(
+        { carga_id: c.id, status: 'pendente' }, '-created_date', 1
+      ).catch(() => []);
+      if (temFila.length > 0) {
+        await atualizarStatusCarga(base44, c.id);
+      }
+    }
+
+    // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══
     const TIMEOUT_MS = 10 * 60 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
@@ -167,10 +197,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── LIMPEZA DE ÓRFÃOS: Antes de processar, identificar cargas deletadas e cancelar em batch ──
+    // ═══ PASSO 3: LIMPEZA DE ÓRFÃOS ═══
     const todosPendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 200).catch(() => []);
     if (!todosPendentes.length) {
-      return Response.json({ sucesso: true, processados: 0, mensagem: 'Nenhum item pendente na fila' });
+      return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasPreAtualizar.length, mensagem: 'Nenhum item pendente na fila' });
     }
 
     // Agrupar por carga_id para verificar existência em batch
@@ -278,37 +308,12 @@ Deno.serve(async (req) => {
       if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
     }
 
-    // ── ATUALIZAR STATUS DE TODAS AS CARGAS RELEVANTES ──
-    // 1) Cargas tocadas neste ciclo
-    // 2) Cargas com status em_andamento/parcial (para detectar conclusão)
-    // 3) Cargas com itens pendentes na fila (para refletir que estão na fila)
-    const cargasEmAndamento = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'em_andamento' }, '-updated_date', 100
-    ).catch(() => []);
-    const cargasParciais = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'parcial' }, '-updated_date', 50
-    ).catch(() => []);
-    const cargasNaoIniciadas = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'nao_iniciado' }, '-updated_date', 50
-    ).catch(() => []);
-
-    // Verificar quais nao_iniciadas têm itens na fila
-    const cargasParaAtualizar = new Set([...cargasAfetadas]);
-    for (const c of [...cargasEmAndamento, ...cargasParciais]) {
-      cargasParaAtualizar.add(c.id);
-    }
-    for (const c of cargasNaoIniciadas) {
-      const temFila = await base44.asServiceRole.entities.FilaCargaOmie.filter(
-        { carga_id: c.id, status: 'pendente' }, '-created_date', 1
-      ).catch(() => []);
-      if (temFila.length > 0) cargasParaAtualizar.add(c.id);
-    }
-
-    for (const carga_id of cargasParaAtualizar) {
+    // ═══ PASSO FINAL: Atualizar status das cargas tocadas NESTE ciclo ═══
+    for (const carga_id of cargasAfetadas) {
       await atualizarStatusCarga(base44, carga_id);
     }
 
-    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_atualizadas: cargasParaAtualizar.size });
+    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizar.length, cargas_ciclo_atualizadas: cargasAfetadas.size });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
