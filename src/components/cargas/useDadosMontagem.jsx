@@ -248,7 +248,6 @@ export default function useDadosMontagem() {
         tags_cliente: [],
         motorista_padrao_id: null,
         rota_id: p.rota_id || null,
-        rota_id: p.rota_id || null,
         rota_nome: (p.rota_id && rotasMap.get(p.rota_id)) || p.rota_nome || 'Sem Rota',
         rota_cliente: (p.rota_id && rotasMap.get(p.rota_id)) || p.rota_nome || 'Sem Rota',
         vendedor_id: p.vendedor_id || null,
@@ -293,19 +292,22 @@ export default function useDadosMontagem() {
       console.log('[DEBUG MC] ===== FIM CARREGAMENTO =====');
 
       // Montar D1s e Trocas sem itens (produtos vazio, quantidade 0)
-      const d1SemItens = d1Disponiveis.map(p => ({
-        codigo_pedido: `D1-${p.id}`, pedido_id: p.id, numero_pedido: p.numero_pedido,
-        codigo_cliente: p.cliente_id, codigo_cliente_cod: p.cliente_codigo || '',
-        cliente_id: p.cliente_id,
-        nome_cliente: p.cliente_nome || '', nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
-        cidade: p.cliente_cidade || '',
-        rota_nome: p.rota_nome || 'Sem Rota', rota_cliente: p.rota_nome || 'Sem Rota',
-        quantidade_itens: 0, valor_total_pedido: p.valor_total || 0,
-        vendedor_nome: p.vendedor_nome || '', observacoes: p.observacoes || '',
-        tipo: 'd1', tipo_operacao_fiscal: p.tipo || 'venda', tipo_nota: 'D1', modelo_nota: 'd1',
-        cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
-        produtos: []
-      }));
+      const d1SemItens = d1Disponiveis.map(p => {
+        const rotaNomeD1 = (p.rota_id && rotasMap.get(p.rota_id)) || p.rota_nome || 'Sem Rota';
+        return {
+          codigo_pedido: `D1-${p.id}`, pedido_id: p.id, numero_pedido: p.numero_pedido,
+          codigo_cliente: p.cliente_id, codigo_cliente_cod: p.cliente_codigo || '',
+          cliente_id: p.cliente_id,
+          nome_cliente: p.cliente_nome || '', nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
+          cidade: p.cliente_cidade || '',
+          rota_nome: rotaNomeD1, rota_cliente: rotaNomeD1,
+          quantidade_itens: 0, valor_total_pedido: p.valor_total || 0,
+          vendedor_nome: p.vendedor_nome || '', observacoes: p.observacoes || '',
+          tipo: 'd1', tipo_operacao_fiscal: p.tipo || 'venda', tipo_nota: 'D1', modelo_nota: 'd1',
+          cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
+          produtos: []
+        };
+      });
 
       const trocasSemItens = trocasDisponiveis.map(t => {
         const cliente = trocaClientesMap.get(t.cliente_id);
@@ -391,14 +393,16 @@ export default function useDadosMontagem() {
         const d1Completos = d1SemItens.map(p => {
           const itens = itensPedido[p.pedido_id] || [];
           const cliente = clientesMap.get(p.cliente_id);
-          const rotaNome = p.rota_nome || (cliente?.rota_id ? rotasMap.get(cliente.rota_id) : '') || 'Sem Rota';
+          const rotaNomeD1 = (p.rota_nome && p.rota_nome !== 'Sem Rota')
+            ? p.rota_nome
+            : (cliente?.rota_id ? (rotasMap.get(cliente.rota_id) || 'Sem Rota') : 'Sem Rota');
           return {
             ...p,
             codigo_cliente_cod: p.codigo_cliente_cod || cliente?.codigo_interno || cliente?.codigo_integracao || '',
             nome_cliente: p.nome_cliente || cliente?.razao_social || '',
             nome_fantasia: p.nome_fantasia || cliente?.nome_fantasia || p.nome_cliente || cliente?.razao_social || '',
             cidade: p.cidade || cliente?.cidade || '',
-            rota_nome: rotaNome, rota_cliente: rotaNome,
+            rota_nome: rotaNomeD1, rota_cliente: rotaNomeD1,
             quantidade_itens: itens.length,
             produtos: itens.map(i => montarItemProduto(i, 'pedido'))
           };
