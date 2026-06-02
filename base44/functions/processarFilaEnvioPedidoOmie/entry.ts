@@ -103,6 +103,27 @@ Deno.serve(async (req) => {
         } else {
           const erro = result?.erro || 'Erro desconhecido';
           const tentativas = (item.tentativas || 0) + 1;
+
+          // Verificação de segurança: mesmo com erro, se o pedido já tem código Omie,
+          // tratar como sucesso (evita omie_enviado=false para pedidos que já existem)
+          let pedidoVerif;
+          try { pedidoVerif = await base44.asServiceRole.entities.Pedido.get(item.pedido_id); } catch { /* ignore */ }
+          if (pedidoVerif?.omie_codigo_pedido) {
+            console.log(`[processarFilaEnvioPedidoOmie] Pedido ${item.pedido_id} retornou erro mas já tem código Omie ${pedidoVerif.omie_codigo_pedido} — tratando como sucesso`);
+            if (!pedidoVerif.omie_enviado) {
+              await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { omie_enviado: true, omie_erro: null });
+            }
+            await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+              status: 'concluido',
+              codigo_pedido_omie: pedidoVerif.omie_codigo_pedido,
+              numero_pedido_omie: pedidoVerif.numero_pedido,
+              processado_em: new Date().toISOString(),
+              erro_log: null
+            });
+            resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: pedidoVerif.omie_codigo_pedido, mensagem: 'Recuperado via verificação local' });
+            continue;
+          }
+
           const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
             status: novoStatus,

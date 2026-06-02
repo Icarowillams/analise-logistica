@@ -411,8 +411,46 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         resultado = await omieCall(base44, "AlterarPedidoVenda", payload);
     }
 
+    // REDUNDANT: Omie retorna erro de "consumo redundante" quando a mesma chamada
+    // é feita em intervalo curto. Se isso acontece, o pedido PODE já ter sido criado
+    // com sucesso na tentativa anterior. Consultar no Omie antes de marcar como erro.
+    if (resultado?.faultstring && /redundan/i.test(resultado.faultstring)) {
+        await debugLog(base44, `[enviarPedidoOmie] REDUNDANT detectado — consultando Omie para verificar se pedido foi criado`, { pedido_id });
+        try {
+            const consulta = await omieCall(base44, "ConsultarPedido", {
+                codigo_pedido_integracao: pedido.id
+            }, { maxTentativas: 2 });
+            if (consulta?.pedido_venda_produto?.cabecalho?.codigo_pedido) {
+                // Pedido existe no Omie — tratar como sucesso
+                resultado = {
+                    codigo_pedido: consulta.pedido_venda_produto.cabecalho.codigo_pedido,
+                    numero_pedido: consulta.pedido_venda_produto.cabecalho.numero_pedido
+                };
+                await debugLog(base44, `[enviarPedidoOmie] REDUNDANT resolvido: pedido encontrado no Omie com código ${resultado.codigo_pedido}`, { pedido_id, codigo_omie: resultado.codigo_pedido });
+            }
+        } catch (consultaErr) {
+            await debugLog(base44, `[enviarPedidoOmie] Falha ao consultar pedido após REDUNDANT: ${consultaErr.message}`, { pedido_id, erro: consultaErr.message });
+            // Se a consulta falhou, manter o erro original mas verificar se o pedido
+            // já tem código Omie salvo localmente (de tentativa anterior)
+            const pedidoAtual = await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+            if (pedidoAtual?.omie_codigo_pedido) {
+                resultado = {
+                    codigo_pedido: pedidoAtual.omie_codigo_pedido,
+                    numero_pedido: pedidoAtual.numero_pedido
+                };
+                await debugLog(base44, `[enviarPedidoOmie] REDUNDANT resolvido via registro local: código Omie ${resultado.codigo_pedido}`, { pedido_id });
+            }
+        }
+    }
+
     if (resultado?.faultstring) {
         await debugLog(base44, `[enviarPedidoOmie] Erro Omie: ${resultado.faultstring}`, { pedido_id, erro: resultado.faultstring, faultcode: resultado.faultcode });
+        // Se o pedido já tem código Omie salvo, não marcar omie_enviado como false
+        const pedidoAtual = await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+        if (pedidoAtual?.omie_codigo_pedido) {
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: resultado.faultstring, omie_enviado: true });
+            return { sucesso: true, pedido_id, codigo_pedido_omie: pedidoAtual.omie_codigo_pedido, numero_pedido_omie: pedidoAtual.numero_pedido, mensagem: `Pedido já existia no Omie (erro ignorado: ${resultado.faultstring})`, duracao_ms: Date.now() - t0 };
+        }
         await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: resultado.faultstring, omie_enviado: false });
         return { sucesso: false, erro: resultado.faultstring, pedido_id, duracao_ms: Date.now() - t0 };
     }
@@ -529,7 +567,15 @@ Deno.serve(async (req) => {
         console.error('[enviarPedidoOmie] Erro geral:', error.message);
         const bloqueada = error?.code === 'OMIE_425';
         if (base44 && pedido_id) {
-            try { await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: bloqueada ? error.message : `Erro interno: ${error.message}`, omie_enviado: false }); } catch { /* ignore */ }
+            try {
+                // Nunca forçar omie_enviado=false se o pedido já tem código Omie
+                const pedCheck = await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
+                const jaTemCodigo = !!pedCheck?.omie_codigo_pedido;
+                await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+                    omie_erro: bloqueada ? error.message : `Erro interno: ${error.message}`,
+                    omie_enviado: jaTemCodigo ? true : false
+                });
+            } catch { /* ignore */ }
         }
         return Response.json({ sucesso: false, erro: error.message, omie_bloqueada: bloqueada, bloqueado_ate: error?.bloqueado_ate || null }, { status: bloqueada ? 425 : 500 });
     }
