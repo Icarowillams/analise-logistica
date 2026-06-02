@@ -280,6 +280,14 @@ export default function useDadosMontagem() {
       // Trocas disponíveis (sem itens ainda)
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
       console.log('[DEBUG MC] Trocas após excluir já em cargas:', trocasDisponiveis.length);
+
+      // Buscar clientes das trocas para obter rota (Promise.all paralelo)
+      const trocaClienteIds = [...new Set(trocasDisponiveis.map(t => t.cliente_id).filter(Boolean))];
+      const trocaClientesArr = trocaClienteIds.length > 0
+        ? await Promise.all(trocaClienteIds.map(id => fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null)))
+        : [];
+      const trocaClientesMap = new Map(trocaClientesArr.filter(Boolean).map(c => [c.id, c]));
+
       console.log('[DEBUG MC] TOTAL FINAL:', todasVendas.length + d1Disponiveis.length + trocasDisponiveis.length,
         '(Omie:', vendasEnriquecidas.length, '| NF55 local:', vendasLocais.length, '| D1:', d1Disponiveis.length, '| Troca:', trocasDisponiveis.length, ')');
       console.log('[DEBUG MC] ===== FIM CARREGAMENTO =====');
@@ -299,15 +307,22 @@ export default function useDadosMontagem() {
         produtos: []
       }));
 
-      const trocasSemItens = trocasDisponiveis.map(t => ({
-        codigo_pedido: `TROCA-${t.id}`, pedido_troca_id: t.id, numero_pedido: t.numero_troca,
-        codigo_cliente: t.cliente_id, cliente_id: t.cliente_id,
-        nome_cliente: t.cliente_nome || '', nome_fantasia: t.cliente_nome || '',
-        cidade: '', rota_nome: 'Sem Rota', rota_cliente: 'Sem Rota',
-        quantidade_itens: 0, valor_total_pedido: t.valor_total || 0,
-        vendedor_nome: t.vendedor_nome || '', observacoes: t.observacoes || '',
-        tipo: 'troca', tipo_nota: '', produtos: []
-      }));
+      const trocasSemItens = trocasDisponiveis.map(t => {
+        const cliente = trocaClientesMap.get(t.cliente_id);
+        const rotaId = cliente?.rota_id;
+        const rotaNome = rotaId ? (rotasMap.get(rotaId) || 'Sem Rota') : 'Sem Rota';
+        return {
+          codigo_pedido: `TROCA-${t.id}`, pedido_troca_id: t.id, numero_pedido: t.numero_troca,
+          codigo_cliente: t.cliente_id, cliente_id: t.cliente_id,
+          nome_cliente: t.cliente_nome || cliente?.razao_social || '',
+          nome_fantasia: cliente?.nome_fantasia || t.cliente_nome || cliente?.razao_social || '',
+          cidade: cliente?.cidade || '',
+          rota_nome: rotaNome, rota_cliente: rotaNome,
+          quantidade_itens: 0, valor_total_pedido: t.valor_total || 0,
+          vendedor_nome: t.vendedor_nome || '', observacoes: t.observacoes || '',
+          tipo: 'troca', tipo_nota: '', produtos: []
+        };
+      });
 
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
@@ -327,14 +342,12 @@ export default function useDadosMontagem() {
       if (temD1 || temTrocas || temNf55Local) {
         setCarregandoItens(true);
 
-        // Buscar clientes necessários em sequencial
-        const clienteIds = [...new Set([
-          ...d1SemItens.map(p => p.cliente_id),
-          ...trocasSemItens.map(t => t.cliente_id)
-        ].filter(Boolean))];
+        // Buscar clientes dos D1 (trocas já foram buscados na Fase 1)
+        const d1ClienteIds = [...new Set(d1SemItens.map(p => p.cliente_id).filter(Boolean))];
 
-        const clientesMap = new Map();
-        for (const id of clienteIds) {
+        const clientesMap = new Map(trocaClientesMap);
+        for (const id of d1ClienteIds) {
+          if (clientesMap.has(id)) continue;
           await sleep(100);
           const c = await fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null);
           if (c) clientesMap.set(c.id, c);
