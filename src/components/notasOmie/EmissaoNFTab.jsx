@@ -174,7 +174,8 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
       toast.message(data?.mensagem || 'Faturamento iniciado em background. Acompanhe o progresso na tela.');
       setSelecionados(new Set());
     } catch (e) {
-      toast.error('Erro ao emitir NFs: ' + e.message);
+      const msg = e?.response?.data?.error || e?.response?.data?.mensagem || e.message;
+      toast.error('Erro ao emitir NFs: ' + msg);
     }
     setEmitindo(false);
   };
