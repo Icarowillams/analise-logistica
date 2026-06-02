@@ -331,14 +331,20 @@ async function handlePedido(base44, topic, evt) {
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
 
   // 🔄 ESPELHO OPERAÇÃO: manter PedidoLiberadoOmie em tempo real (etapas 10/20/50/60)
-  // - Cancelamento/exclusão/devolução → remove
+  // - Cancelamento/exclusão/devolução → remove (exceto bonificação com NF autorizada)
   // - Faturada → upsert (vai pra etapa 60)
   // - EtapaAlterada / Incluida / Alterada → upsert (decide etapa via ConsultarPedido)
   let espelhoAcao = null;
   try {
-    if (topic === 'VendaProduto.Cancelada' || topic === 'VendaProduto.Excluida' || topic === 'VendaProduto.Devolvida') {
+    if (topic === 'VendaProduto.Excluida' || topic === 'VendaProduto.Devolvida') {
       await removerDoEspelho(base44, codigoPedido);
       espelhoAcao = 'removido';
+    } else if (topic === 'VendaProduto.Cancelada') {
+      // ⚠️ BONIFICAÇÃO: o Omie marca como "cancelado" após emitir NF.
+      // NÃO remover espelho nem cancelar pedido se tiver NF autorizada.
+      // A verificação de NF é feita no handler principal abaixo.
+      // Por ora, NÃO removemos do espelho — o handler decide.
+      espelhoAcao = 'cancelada_verificar_nf';
     } else if (
       topic === 'VendaProduto.Faturada' ||
       topic === 'VendaProduto.EtapaAlterada' ||
@@ -370,12 +376,71 @@ async function handlePedido(base44, topic, evt) {
     }
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
-  } else if (topic === 'VendaProduto.Cancelada' || topic === 'VendaProduto.Excluida') {
+  } else if (topic === 'VendaProduto.Excluida') {
     updates.status = 'cancelado';
     updates.data_cancelamento = new Date().toISOString();
-    updates.motivo_cancelamento = `Cancelado/excluído no Omie (${topic})`;
-    dadosCarga.etapa = topic === 'VendaProduto.Excluida' ? 'excluido' : '80';
+    updates.motivo_cancelamento = `Excluído no Omie (${topic})`;
+    dadosCarga.etapa = 'excluido';
     dadosCarga.status_pedido = 'cancelado';
+  } else if (topic === 'VendaProduto.Cancelada') {
+    // ⚠️ BONIFICAÇÃO: o Omie marca como "cancelado" após emitir NF (encerramento de fluxo).
+    // Verificar se existe NF autorizada antes de cancelar.
+    const isBonificacao = pedido.tipo === 'bonificacao';
+    let nfAutorizada = false;
+    let numeroNfBonif = null;
+
+    if (isBonificacao) {
+      console.log(`[webhook] Pedido ${pedido.numero_pedido} é BONIFICAÇÃO — verificando NF antes de cancelar...`);
+      try {
+        const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
+        const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+        const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+        const nfRes = await fetch(NF_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ nIdPedido: Number(codigoPedido) }] })
+        });
+        const nfData = await nfRes.json();
+        if (nfData?.ide?.nNF) {
+          const dCan = String(nfData.ide?.dCan || '').trim();
+          const cDeneg = String(nfData.ide?.cDeneg || '').trim();
+          if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
+            nfAutorizada = true;
+            numeroNfBonif = String(nfData.ide.nNF);
+          }
+        }
+      } catch (e) {
+        console.warn(`[webhook] Erro ao consultar NF da bonificação ${pedido.numero_pedido}: ${e.message}`);
+      }
+    }
+
+    if (isBonificacao && nfAutorizada) {
+      // NF autorizada — sincronizar como faturado, NÃO cancelar
+      console.log(`[webhook] Bonificação ${pedido.numero_pedido} com NF ${numeroNfBonif} AUTORIZADA — sincronizando como faturado`);
+      updates.status = 'faturado';
+      updates.faturado = true;
+      updates.status_faturamento = 'faturado';
+      updates.numero_nota_fiscal = numeroNfBonif;
+      updates.data_faturamento = pedido.data_faturamento || new Date().toISOString();
+      dadosCarga.etapa = '60';
+      dadosCarga.status_pedido = 'faturado';
+      dadosCarga.numero_nf = numeroNfBonif;
+      // Atualizar espelho em vez de remover
+      try {
+        await upsertEspelho(base44, codigoPedido, numeroNfBonif);
+      } catch (e) {
+        console.warn(`[webhook] Erro ao atualizar espelho da bonificação: ${e.message}`);
+      }
+    } else {
+      // Cancelamento real
+      updates.status = 'cancelado';
+      updates.data_cancelamento = new Date().toISOString();
+      updates.motivo_cancelamento = `Cancelado no Omie (${topic})`;
+      dadosCarga.etapa = '80';
+      dadosCarga.status_pedido = 'cancelado';
+      // Remover do espelho
+      try { await removerDoEspelho(base44, codigoPedido); } catch {}
+    }
   } else if (topic === 'VendaProduto.EtapaAlterada') {
     const novoStatus = mapEtapaParaStatus(evt?.etapa);
     if (novoStatus) updates.status = novoStatus;
