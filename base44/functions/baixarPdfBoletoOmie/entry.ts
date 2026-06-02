@@ -1,7 +1,7 @@
 // Baixa o PDF de um boleto Omie a partir do codigo_lancamento.
 // 1) Chama ObterBoleto (financas/contareceber) para obter cLinkBoleto.
 // 2) Faz fetch do PDF no servidor (evita CORS) e devolve em base64.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');

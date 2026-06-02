@@ -1,7 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
-const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
+// Endpoint correto para boletos: contareceberboleto (NÃO contareceber)
+const OMIE_URL_BOLETO = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
+const OMIE_URL_CR = 'https://app.omie.com.br/api/v1/financas/contareceber/';
+const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 
 let _creds = null;
 async function resolverCreds(base44) {
@@ -15,22 +17,25 @@ async function resolverCreds(base44) {
   return _creds;
 }
 
-async function omieCall(base44, call, param, tentativa = 1) {
+async function omieCall(url, base44, call, param, tentativa = 1) {
   const { app_key, app_secret } = await resolverCreds(base44);
-  const res = await fetch(OMIE_URL, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ call, app_key, app_secret, param: [param] })
   });
   const data = await res.json();
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
+
+  // Detectar erros — Omie pode retornar faultstring OU { status: "error", message: "..." }
+  const faultMsg = data.faultstring || (data.status === 'error' ? data.message : null);
+  if (faultMsg) {
+    const msg = String(faultMsg).toLowerCase();
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
     if (isRate && tentativa < 5) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(base44, call, param, tentativa + 1);
+      return omieCall(url, base44, call, param, tentativa + 1);
     }
-    throw new Error(data.faultstring);
+    throw new Error(faultMsg);
   }
   return data;
 }
@@ -44,7 +49,7 @@ async function listarTitulosDoPedido(base44, codigoPedido) {
   let pagina = 1;
   const registrosPorPagina = 100;
   while (true) {
-    const data = await omieCall(base44, 'ListarContasReceber', {
+    const data = await omieCall(OMIE_URL_CR, base44, 'ListarContasReceber', {
       pagina,
       registros_por_pagina: registrosPorPagina,
       apenas_importado_api: 'N',
@@ -79,29 +84,48 @@ async function gerarBoletosTitulos(base44, titulos, idContaCorrente) {
     }
 
     try {
-      const param = { codigo_lancamento: Number(codigo) };
-      if (idContaCorrente) param.id_conta_corrente = Number(idContaCorrente);
-      const data = await omieCall(base44, 'GerarBoleto', param);
-      const numBoleto = data.numero_boleto || data.nNumBoleto || '';
-      const codBarras = data.codigo_barras || data.cCodBarras || '';
-      const linkBoleto = data.link_boleto || data.cLinkBoleto || '';
+      // Endpoint correto: contareceberboleto, método GerarBoleto, parâmetro nCodTitulo
+      const param = { nCodTitulo: Number(codigo) };
+      console.log('[GerarBoleto] Enviando para', codigo, ':', JSON.stringify(param));
+      const data = await omieCall(OMIE_URL_BOLETO, base44, 'GerarBoleto', param);
+      console.log('[GerarBoleto] Resposta Omie para', codigo, ':', JSON.stringify(data));
+
+      // Verificar status de erro retornado pela Omie
+      const codStatus = String(data.cCodStatus || '0');
+      if (codStatus !== '0' && codStatus !== '') {
+        resultados.push({
+          codigo_lancamento: codigo,
+          sucesso: false,
+          mensagem: data.cDesStatus || `Erro Omie (status ${codStatus})`,
+          resposta_omie: data
+        });
+        continue;
+      }
+
+      const numBoleto = data.cNumBoleto || '';
+      const codBarras = data.cCodBarras || '';
+      const linkBoleto = data.cLinkBoleto || '';
+      const numBancario = data.cNumBancario || '';
       const sucessoReal = !!(String(numBoleto).trim() || String(codBarras).trim() || String(linkBoleto).trim());
+
       resultados.push({
         codigo_lancamento: codigo,
         sucesso: sucessoReal,
         numero_boleto: numBoleto,
         codigo_barras: codBarras,
-        linha_digitavel: data.linha_digitavel || data.cLinDig || '',
+        linha_digitavel: '', // GerarBoleto não retorna linha digitável
         link_boleto: linkBoleto,
-        mensagem: sucessoReal ? 'Boleto gerado' : 'Omie respondeu sem gerar boleto'
+        numero_bancario: numBancario,
+        data_emissao_boleto: data.dDtEmBol || '',
+        mensagem: sucessoReal ? 'Boleto gerado com sucesso' : 'Omie respondeu sem dados de boleto — verifique a conta corrente/convênio bancário no Omie'
       });
     } catch (err) {
-      const msg = err.message.toLowerCase();
+      const msg = err.message || '';
       resultados.push({
         codigo_lancamento: codigo,
         sucesso: false,
-        skip: msg.includes('liquidado') || msg.includes('baixado') || msg.includes('cancelado'),
-        mensagem: err.message
+        skip: msg.toLowerCase().includes('liquidado') || msg.toLowerCase().includes('baixado') || msg.toLowerCase().includes('cancelado'),
+        mensagem: msg
       });
     }
     await new Promise(r => setTimeout(r, 1500));
@@ -138,7 +162,7 @@ Deno.serve(async (req) => {
     const skips = resultados.filter(r => r.skip).length;
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-      endpoint: 'financas/contareceber',
+      endpoint: 'financas/contareceberboleto',
       call: 'GerarBoleto',
       operacao: origem === 'auto' ? 'gerar_boletos_auto' : 'gerar_boletos_lote',
       status: erros > 0 ? 'warning' : 'sucesso',

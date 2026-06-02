@@ -227,9 +227,24 @@ export default function EmissaoBoletosTab() {
       const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: codigos });
       if (data?.sucesso) {
         setResultado(data);
-        if ((data.sucessos || 0) > 0) toast.success(`${data.sucessos} boleto(s) emitido(s) com sucesso`);
-        if ((data.erros || 0) > 0) toast.error(`${data.erros} boleto(s) falharam — veja o detalhe abaixo`);
-        setSelecionados(new Set());
+        const qtdSucesso = data.sucessos || 0;
+        const qtdErros = data.erros || 0;
+        if (qtdSucesso > 0) toast.success(`${qtdSucesso} boleto(s) emitido(s) com sucesso`);
+        if (qtdErros > 0) toast.error(`${qtdErros} boleto(s) falharam — veja o detalhe abaixo`);
+
+        // Só limpa seleção dos títulos que foram gerados com sucesso
+        // Títulos com erro continuam selecionados para nova tentativa
+        if (qtdSucesso > 0) {
+          const codigosSucesso = new Set(
+            (data.resultados || []).filter(r => r.sucesso).map(r => String(r.codigo_lancamento))
+          );
+          setSelecionados(prev => {
+            const novo = new Set(prev);
+            codigosSucesso.forEach(c => novo.delete(c));
+            return novo;
+          });
+        }
+        // Sempre recarrega a lista para refletir status atualizado
         queryClient.invalidateQueries({ queryKey: ['titulos-emissao-boletos-carga', cargaId] });
       } else {
         toast.error(data?.error || 'Erro ao emitir boletos');
