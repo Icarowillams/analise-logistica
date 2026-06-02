@@ -3,8 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
-const LOTE = 15;
-const DELAY_ENTRE_PEDIDOS_MS = 1500;
+const LOTE = 25;
+const DELAY_ENTRE_PEDIDOS_MS = 800;
 
 async function resolverCreds(base44) {
   try {
@@ -112,7 +112,7 @@ async function processarFaturar(base44, item) {
     await omieCall(base44, 'AlterarPedidoVenda', {
       cabecalho: { ...idParam, data_previsao: dataOmie }
     });
-    await sleep(1200);
+    await sleep(600);
   }
 
   // 2) Trocar etapa para destino (50)
@@ -167,17 +167,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Cargas nao_iniciado que têm itens na fila → marcar como em_andamento
+    // Cargas nao_iniciado que têm itens na fila → recalcular status (pode já estar concluída)
     const cargasNaoIniciadas = await base44.asServiceRole.entities.Carga.filter(
       { processamento_omie_status: 'nao_iniciado' }, '-updated_date', 50
     ).catch(() => []);
     for (const c of cargasNaoIniciadas) {
       const temFila = await base44.asServiceRole.entities.FilaCargaOmie.filter(
-        { carga_id: c.id, status: 'pendente' }, '-created_date', 1
+        { carga_id: c.id }, '-created_date', 1
       ).catch(() => []);
       if (temFila.length > 0) {
         await atualizarStatusCarga(base44, c.id);
       }
+    }
+
+    // Cargas processando que não têm itens "processando" na fila → recalcular
+    const cargasProcessando = await base44.asServiceRole.entities.Carga.filter(
+      { processamento_omie_status: 'processando' }, '-updated_date', 50
+    ).catch(() => []);
+    for (const c of cargasProcessando) {
+      await atualizarStatusCarga(base44, c.id);
     }
 
     // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══
