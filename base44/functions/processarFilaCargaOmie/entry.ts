@@ -91,8 +91,14 @@ async function processarFaturar(base44, item) {
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
+    // Omie exige DD/MM/AAAA — converter de YYYY-MM-DD se necessário
+    let dataOmie = item.data_previsao;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataOmie)) {
+      const [y, m, d] = dataOmie.split('-');
+      dataOmie = `${d}/${m}/${y}`;
+    }
     await omieCall(base44, 'AlterarPedidoVenda', {
-      cabecalho: { ...idParam, data_previsao: item.data_previsao }
+      cabecalho: { ...idParam, data_previsao: dataOmie }
     });
     await sleep(1200);
   }
