@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,9 @@ import DataTable from '@/components/ui/DataTable';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import DocumentosCargaModal from '@/components/cargas/documentos/DocumentosCargaModal';
 import StatusProcessamentoOmie from '@/components/cargas/StatusProcessamentoOmie';
+import SoltarCargaDialog from '@/components/cargas/SoltarCargaDialog';
+import EditarCargaModal from '@/components/cargas/EditarCargaModal';
+import TransferirPedidosCargaModal from '@/components/cargas/TransferirPedidosCargaModal';
 import { toast } from 'sonner';
 
 // status_carga é LOCAL e binário:
@@ -38,6 +41,9 @@ export default function Cargas() {
   const [selecionadas, setSelecionadas] = useState([]);
   const [faturandoLote, setFaturandoLote] = useState(false);
   const [documento, setDocumento] = useState(null);
+  const [soltando, setSoltando] = useState(null);
+  const [editando, setEditando] = useState(null);
+  const [transferindo, setTransferindo] = useState(null);
   const [filtroNumero, setFiltroNumero] = useState('');
   const [filtroDataInicial, setFiltroDataInicial] = useState('');
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
@@ -320,12 +326,13 @@ export default function Cargas() {
     {
       key: 'acoes',
       label: 'Ações',
-      width: '180px',
+      width: '260px',
       render: (_, row) => {
         const emMontagem = row.status_carga === 'montagem';
         const jaFaturada = row.status_carga === 'faturada';
+        const temPedidos = (row.pedidos_omie?.length || 0) + (row.pedidos_internos?.length || 0) + (row.pedidos_troca?.length || 0) > 0;
         return (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             {emMontagem && (
               <Button size="sm" className="h-7 px-2 text-xs" onClick={() => faturar(row)} disabled={faturando === row.id}>
                 {faturando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Faturar'}
@@ -350,6 +357,22 @@ export default function Cargas() {
             {jaFaturada && (row.pedidos_internos || []).length > 0 && (
               <Button size="icon" variant="outline" onClick={() => abrirDocumento('notad1', row)} title="Imprimir Notas D1 (venda interna)" className="h-7 w-7 border-amber-300 text-amber-700 hover:bg-amber-50">
                 <FileSignature className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {/* Contingência: Editar motorista/veículo/rota */}
+            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setEditando(row)} title="Editar motorista/veículo/rota">
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            {/* Contingência: Transferir pedidos */}
+            {temPedidos && (
+              <Button size="icon" variant="outline" className="h-7 w-7 border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setTransferindo(row)} title="Transferir pedidos para outra carga">
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {/* Contingência: Soltar carga */}
+            {temPedidos && !cargaEmProcessamento(row) && (
+              <Button size="icon" variant="outline" className="h-7 w-7 border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => setSoltando(row)} title="Soltar carga — liberar todos os pedidos">
+                <Unlock className="w-3.5 h-3.5" />
               </Button>
             )}
             {emMontagem && (
@@ -473,6 +496,27 @@ export default function Cargas() {
         onOpenChange={() => setDocumento(null)}
         tipo={documento?.tipo}
         carga={documento?.carga}
+      />
+
+      <SoltarCargaDialog
+        open={!!soltando}
+        onOpenChange={() => setSoltando(null)}
+        carga={soltando}
+        onSolto={() => queryClient.invalidateQueries({ queryKey: ['cargas'] })}
+      />
+
+      <EditarCargaModal
+        open={!!editando}
+        onOpenChange={() => setEditando(null)}
+        carga={editando}
+        onSalvo={() => queryClient.invalidateQueries({ queryKey: ['cargas'] })}
+      />
+
+      <TransferirPedidosCargaModal
+        open={!!transferindo}
+        onOpenChange={() => setTransferindo(null)}
+        carga={transferindo}
+        onTransferido={() => queryClient.invalidateQueries({ queryKey: ['cargas'] })}
       />
     </div>
   );
