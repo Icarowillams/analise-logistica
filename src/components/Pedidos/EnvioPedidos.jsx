@@ -157,7 +157,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         toast.success(`${tipoLabel} #${numero} registrado com sucesso!`);
       } else {
         // Verificar se já está na fila
-        const jaTemNaFila = filaEnvio.some(f => f.pedido_id === pedido.id && (f.status === 'pendente' || f.status === 'processando'));
+        const jaTemNaFila = filaEnvio.some(f => f.pedido_id === pedido.id && (f.status === 'pendente' || f.status === 'processando' || f.status === 'erro'));
         if (jaTemNaFila) {
           toast.info('Este pedido já está na fila de envio');
         } else {
@@ -218,7 +218,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     // 2. Externos: enfileirar na FilaEnvioPedidoOmie (evitar duplicatas)
     const pedidosIdsJaNaFila = new Set(
       filaEnvio
-        .filter(f => f.status === 'pendente' || f.status === 'processando')
+        .filter(f => f.status === 'pendente' || f.status === 'processando' || f.status === 'erro')
         .map(f => f.pedido_id)
     );
 
