@@ -51,6 +51,11 @@ async function omieCall(base44, call, param) {
     if (data.faultstring || data.faultcode) {
       const erro = data.faultstring || 'Erro Omie';
       const msg = String(erro).toLowerCase();
+      // Suspensão / chave inválida → breaker 2h
+      if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
+        await abrirBreaker(base44, erro);
+        const e = new Error(erro); e.bloqueio = true; throw e;
+      }
       if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         await abrirBreaker(base44, erro);
         const e = new Error(erro); e.bloqueio = true; throw e;

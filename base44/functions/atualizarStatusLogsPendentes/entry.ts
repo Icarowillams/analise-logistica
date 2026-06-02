@@ -16,15 +16,30 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 // Segurança Omie: processa no máximo 5 logs por execução, apenas últimas 2h, com cache/cooldown de 10min.
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+
+// Credenciais resolvidas dentro do handler (não no nível do módulo) para usar ConfiguracaoOmie do banco.
+// Fallback para env vars caso não haja config ativa.
+let _creds = null;
+async function resolverCreds(base44) {
+  if (_creds) return _creds;
+  try {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
+    const cfg = configs?.[0];
+    if (cfg?.app_key && cfg?.app_secret) {
+      _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret };
+      return _creds;
+    }
+  } catch { /* fallback */ }
+  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+  return _creds;
+}
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 async function omieCall(base44, url, call, param, opts = {}) {
-  const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
+  const { maxRetries = 2, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 2 } : opts;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
@@ -33,18 +48,25 @@ async function omieCall(base44, url, call, param, opts = {}) {
     const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
+  const creds = await resolverCreds(base44);
   let lastError = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] }) });
     const data = await res.json();
     if (data.faultstring || data.faultcode) {
       const msg = String(data.faultstring || '').toLowerCase();
-      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+      // Suspensão / chave inválida → abre breaker por 2h e aborta
+      if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 120 * 60000).toISOString(), ultimo_erro: data.faultstring || 'App suspenso/chave inválida', atualizado_em: new Date().toISOString() };
         if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
+        const e = new Error(data.faultstring || 'API Omie suspensa'); e.suspensao = true; throw e;
       }
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || msg.includes('soap-error') || msg.includes('broken response')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 2500 * tentativa)); continue; }
+      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde') || msg.includes('consumo indevido')) {
+        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 60 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
+        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        const e = new Error(data.faultstring || 'API Omie bloqueada temporariamente'); e.bloqueio = true; throw e;
+      }
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || msg.includes('soap-error') || msg.includes('broken response')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 3000 * tentativa)); continue; }
       throw new Error(data.faultstring || 'Erro Omie');
     }
     if (cacheMinutes > 0) {
@@ -99,7 +121,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 10 });
+      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 30 });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
@@ -143,7 +165,7 @@ async function consultadoRecentemente(base44, codigoPedido) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
   const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
   const cache = caches?.[0];
-  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 10 * 60 * 1000);
+  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 30 * 60 * 1000);
 }
 
 // Verifica se o pedido deve gerar boleto auto (tipo=venda + cliente BOLETO BANCARIO)
@@ -225,7 +247,8 @@ Deno.serve(async (req) => {
 
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite2h = Date.now() - 2 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 5;
+    const LIMITE_LOGS = 3; // Reduzido de 5→3 para proteger cota Omie
+    const DELAY_ENTRE_CONSULTAS_MS = 3000; // 3s entre cada ConsultarPedido
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
@@ -263,10 +286,11 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_2h' });
     }
 
+    // Debounce aumentado de 5min→15min para reduzir carga na API Omie
     const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
     const ultimo = ultimosProcessamentos?.[0];
-    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 5 * 60 * 1000) {
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
+    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 15 * 60 * 1000) {
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_15min' });
     }
 
     logs = logs.slice(0, LIMITE_LOGS);
@@ -276,7 +300,8 @@ Deno.serve(async (req) => {
     const codigosConsultadosNestaExecucao = new Set();
     const codigosParaBoleto = [];
 
-    // 3) Consulta cada log SEQUENCIALMENTE (preserva cota da API)
+    // 3) Consulta cada log SEQUENCIALMENTE com delay obrigatório entre chamadas
+    let chamadaIndex = 0;
     for (const logItem of logs) {
       const codPed = String(logItem.codigo_pedido);
       const t0 = Date.now();
@@ -363,9 +388,20 @@ Deno.serve(async (req) => {
           boleto_disparado: deveBoleto
         });
       } catch (e) {
+        // Suspensão ou bloqueio → PARAR IMEDIATAMENTE, não consultar mais nada
+        if (e.suspensao || e.bloqueio) {
+          console.error(`[atualizarStatusLogsPendentes] API Omie ${e.suspensao ? 'SUSPENSA' : 'BLOQUEADA'} — abortando restante do lote. Erro: ${e.message}`);
+          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: e.message, abortado: true });
+          break;
+        }
         resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: e.message });
       }
 
+      // Delay obrigatório entre consultas (não no último)
+      chamadaIndex++;
+      if (chamadaIndex < logs.length) {
+        await new Promise(r => setTimeout(r, DELAY_ENTRE_CONSULTAS_MS));
+      }
     }
 
     // 4) Dispara boletos automáticos para autorizadas (cliente BOLETO + tipo=venda)

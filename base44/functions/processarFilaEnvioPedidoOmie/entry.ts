@@ -4,7 +4,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
 const INTERVALO_ENTRE_PEDIDOS_MS = 5000;
-const MAX_PEDIDOS_POR_RODADA = 10;
+const MAX_PEDIDOS_POR_RODADA = 5; // Reduzido de 10→5 para proteger cota Omie
 
 Deno.serve(async (req) => {
   try {
@@ -137,8 +137,8 @@ Deno.serve(async (req) => {
         const tentativas = (item.tentativas || 0) + 1;
         const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
         
-        // Se for bloqueio 425, abortar o restante
-        const isBloqueio = /425|bloqueada|bloqueio|consumo indevido/i.test(erro);
+        // Se for bloqueio 425 OU suspensão → abortar o restante
+        const isBloqueio = /425|bloqueada|bloqueio|consumo indevido|suspens|inválida|invalida|suspended/i.test(erro);
         
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
           status: isBloqueio ? 'pendente' : novoStatus,
