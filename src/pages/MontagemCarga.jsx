@@ -10,7 +10,7 @@ import MontagemFiltros, { filtrosIniciaisMontagem } from '@/components/cargas/Mo
 import { filtrarPedidosMontagem, getOpcoesMontagem } from '@/components/cargas/montagemUtils';
 
 export default function MontagemCarga() {
-  const { loading, pedidos, motoristas, veiculos, cargas, recarregar } = useDadosMontagem();
+  const { loading, pedidos, motoristas, veiculos, cargas, recarregar, carregandoItens } = useDadosMontagem();
   const [selecionados, setSelecionados] = useState([]);
   const [filtros, setFiltros] = useState(filtrosIniciaisMontagem);
 
@@ -39,7 +39,15 @@ export default function MontagemCarga() {
           </div>
         ) : (
           <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
-            <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} />
+            <div className="relative">
+              <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} />
+              {carregandoItens && (
+                <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-white/90 px-3 py-1.5 rounded-full shadow text-xs text-slate-500 z-10">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Carregando itens dos pedidos...
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-1 gap-4">
               <PainelFecharCarga
                 pedidos={pedidos}
