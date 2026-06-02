@@ -5,10 +5,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // ═══════════════════════════════════════════════════════════════
 // Verifica pedidos com status "faturado" ou "liberado" no local
 // que podem ter sido cancelados no Omie sem notificação por webhook.
+// ⚠️ BONIFICAÇÕES: o Omie marca bonificações como "cancelado" na API
+// após emitir a NF (encerramento de fluxo comercial), mas a NF é VÁLIDA.
+// Antes de cancelar localmente, consulta a NF do pedido.
 // Roda a cada 30 min (automação agendada).
 // ═══════════════════════════════════════════════════════════════
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const LOTE = 20; // Pedidos por ciclo
 const DELAY_ENTRE_CONSULTAS_MS = 600;
@@ -32,21 +36,16 @@ async function circuitBreakerBloqueado(base44) {
   return false;
 }
 
-async function consultarPedidoOmie(base44, codigoPedido) {
+async function omieCallRaw(base44, url, call, param) {
   const { app_key, app_secret } = await resolverCreds(base44);
-  const res = await fetch(OMIE_PEDIDO_URL, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      call: 'ConsultarPedido',
-      app_key, app_secret,
-      param: [{ codigo_pedido: Number(codigoPedido) }]
-    })
+    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
   });
   const data = await res.json();
   if (data.faultstring) {
     const msg = String(data.faultstring).toLowerCase();
-    // Rate limit / bloqueio → abortar
     if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead')) {
       const e = new Error(data.faultstring); e.bloqueio = true; throw e;
     }
@@ -55,7 +54,32 @@ async function consultarPedidoOmie(base44, codigoPedido) {
     }
     throw new Error(data.faultstring);
   }
+  return data;
+}
+
+async function consultarPedidoOmie(base44, codigoPedido) {
+  const data = await omieCallRaw(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
   return data.pedido_venda_produto || data;
+}
+
+// Consulta NF vinculada a um pedido Omie. Retorna { autorizada, numero_nf } ou null.
+async function consultarNfDoPedido(base44, codigoPedido) {
+  try {
+    const data = await omieCallRaw(base44, OMIE_NF_URL, 'ConsultarNF', { nIdPedido: Number(codigoPedido) });
+    if (!data?.ide?.nNF) return null;
+    const dCan = String(data.ide?.dCan || '').trim();
+    const cDeneg = String(data.ide?.cDeneg || '').trim();
+    const cancelada = dCan && dCan !== '';
+    const denegada = cDeneg === 'S' || cDeneg === 'D';
+    return {
+      autorizada: !cancelada && !denegada,
+      numero_nf: String(data.ide.nNF),
+      chave_nfe: data.compl?.cChaveNFe || '',
+      data_emissao: data.ide?.dEmi || ''
+    };
+  } catch {
+    return null; // NF não encontrada ou erro de consulta
+  }
 }
 
 Deno.serve(async (req) => {
