@@ -26,7 +26,7 @@ const dateToBR = (d) => {
 export default function FiltrosBoletos({ onResultado }) {
   const [dataDe, setDataDe] = useState(() => subDays(new Date(), 30));
   const [dataAte, setDataAte] = useState(() => addDays(new Date(), 90));
-  const [filtrarPor, setFiltrarPor] = useState('E');
+  const [filtrarPor, setFiltrarPor] = useState('V');
   const [cnpj, setCnpj] = useState('');
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -156,8 +156,15 @@ export default function FiltrosBoletos({ onResultado }) {
   const buscar = useCallback(async (carga = cargaFiltro, filtrosBusca = {}) => {
     setLoading(true);
     try {
-      const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDe) || undefined;
-      const dataAteStr = filtrosBusca.dataAte || dateToBR(dataAte) || undefined;
+      // Quando buscar por carga, expandir range de datas para garantir cobertura
+      let dataDeEfetiva = dataDe;
+      let dataAteEfetiva = dataAte;
+      if (carga && !filtrosBusca.dataDe) {
+        dataDeEfetiva = subDays(new Date(), 120);
+        dataAteEfetiva = addDays(new Date(), 120);
+      }
+      const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDeEfetiva) || undefined;
+      const dataAteStr = filtrosBusca.dataAte || dateToBR(dataAteEfetiva) || undefined;
 
       const { data } = await base44.functions.invoke('listarContasReceberOmie', {
         data_de: dataDeStr,
