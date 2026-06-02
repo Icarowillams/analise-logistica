@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,7 @@ export default function Cargas() {
   const [filtroNumero, setFiltroNumero] = useState('');
   const [filtroDataInicial, setFiltroDataInicial] = useState('');
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
+  const [processandoFila, setProcessandoFila] = useState(false);
 
   // Carrega cargas direto do banco local — ZERO chamadas ao Omie
   // Padrão: últimos 60 dias. staleTime evita refetches excessivos.
@@ -255,6 +256,24 @@ export default function Cargas() {
     setExcluindo(null);
   };
 
+  const processarFilaAgora = async () => {
+    setProcessandoFila(true);
+    try {
+      const { data } = await base44.functions.invoke('processarFilaCargaOmie', {});
+      const msg = data?.orfaos_limpos
+        ? `${data.processados} processados, ${data.orfaos_limpos} órfãos limpos`
+        : `${data.processados} pedidos processados`;
+      toast.success(msg);
+      queryClient.invalidateQueries({ queryKey: ['cargas'] });
+      queryClient.invalidateQueries({ queryKey: ['fila-carga-batch'] });
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setProcessandoFila(false);
+  };
+
+  const temPendentesNaFila = todosItensFila.some(i => i.status === 'pendente' || i.status === 'processando');
+
   const abrirNotas = (carga) => {
     navigate(`/NotasOmie?carga_id=${carga.id}`);
   };
@@ -411,6 +430,17 @@ export default function Cargas() {
           </div>
         </div>
         <div className="flex gap-2">
+          {temPendentesNaFila && (
+            <Button
+              onClick={processarFilaAgora}
+              disabled={processandoFila}
+              variant="outline"
+              className="border-amber-400 text-amber-700 hover:bg-amber-50"
+            >
+              {processandoFila ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+              Processar Fila Agora
+            </Button>
+          )}
           {selecionadas.length > 0 && (
             <Button
               onClick={faturarLote}

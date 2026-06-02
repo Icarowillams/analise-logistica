@@ -3,8 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
-const LOTE = 5;
-const DELAY_ENTRE_PEDIDOS_MS = 5000;
+const LOTE = 15;
+const DELAY_ENTRE_PEDIDOS_MS = 1500;
 
 async function resolverCreds(base44) {
   try {
