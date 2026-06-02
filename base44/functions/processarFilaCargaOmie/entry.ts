@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -167,9 +167,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── LIMPEZA DE ÓRFÃOS: Antes de processar, identificar cargas deletadas e cancelar em batch ──
+    const todosPendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 200).catch(() => []);
+    if (!todosPendentes.length) {
+      return Response.json({ sucesso: true, processados: 0, mensagem: 'Nenhum item pendente na fila' });
+    }
+
+    // Agrupar por carga_id para verificar existência em batch
+    const cargaIds = [...new Set(todosPendentes.map(i => i.carga_id).filter(Boolean))];
+    const cargasDeletadas = new Set();
+    for (const cid of cargaIds) {
+      try {
+        const existe = await base44.asServiceRole.entities.Carga.filter({ id: cid }, '-created_date', 1);
+        if (!existe || existe.length === 0) cargasDeletadas.add(cid);
+      } catch {
+        cargasDeletadas.add(cid);
+      }
+    }
+
+    // Cancelar TODOS os itens de cargas deletadas de uma vez
+    let orfaosLimpos = 0;
+    if (cargasDeletadas.size > 0) {
+      const orfaos = todosPendentes.filter(i => cargasDeletadas.has(i.carga_id));
+      for (const item of orfaos) {
+        await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+          status: 'erro',
+          erro_log: 'Carga excluída — item cancelado automaticamente',
+          processado_em: new Date().toISOString()
+        }).catch(() => {});
+      }
+      orfaosLimpos = orfaos.length;
+      console.log(`[FILA] Limpando ${orfaosLimpos} itens órfãos de ${cargasDeletadas.size} carga(s) deletada(s): ${[...cargasDeletadas].join(', ')}`);
+    }
+
+    // Agora buscar os pendentes reais (cargas válidas) para processar
     const pendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', LOTE).catch(() => []);
     if (!pendentes.length) {
-      return Response.json({ sucesso: true, processados: 0, mensagem: 'Nenhum item pendente na fila' });
+      return Response.json({ sucesso: true, processados: 0, orfaos_limpos: orfaosLimpos, mensagem: orfaosLimpos > 0 ? `${orfaosLimpos} itens órfãos limpos, nenhum pendente restante` : 'Nenhum item pendente na fila' });
     }
 
     console.log(`[FILA] Iniciando processamento de ${pendentes.length} itens:`, pendentes.map(i => ({ pedido: i.numero_pedido, carga: i.numero_carga, status: i.status, tentativas: i.tentativas })));
@@ -182,23 +216,6 @@ Deno.serve(async (req) => {
     for (let i = 0; i < pendentes.length; i++) {
       const item = pendentes[i];
       cargasAfetadas.add(item.carga_id);
-
-      // PROTEÇÃO: Verificar se a carga ainda existe antes de processar
-      try {
-        const cargas = await base44.asServiceRole.entities.Carga.filter({ id: item.carga_id }, '-created_date', 1);
-        if (!cargas || cargas.length === 0) {
-          console.log(`[FILA] Carga ${item.carga_id} não existe mais. Cancelando item ${item.numero_pedido}.`);
-          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
-            status: 'erro',
-            erro_log: 'Carga excluída durante processamento — item cancelado automaticamente',
-            processado_em: new Date().toISOString()
-          }).catch(() => {});
-          processados++;
-          continue;
-        }
-      } catch (e) {
-        console.warn(`[FILA] Falha ao verificar carga ${item.carga_id}:`, e.message);
-      }
 
       await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
 
