@@ -143,10 +143,29 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.bloqueado_ate });
     }
 
+    // TIMEOUT: Limpar itens travados em "processando" há mais de 10 minutos
+    const TIMEOUT_MS = 10 * 60 * 1000;
+    const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
+    for (const item of travados) {
+      const updatedAt = new Date(item.updated_date).getTime();
+      if (Date.now() - updatedAt > TIMEOUT_MS) {
+        const tentativas = Number(item.tentativas || 0) + 1;
+        const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
+        await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+          status: novoStatus,
+          tentativas,
+          erro_log: `Timeout: travado em "processando" por mais de 10 minutos (tentativa ${tentativas})`
+        }).catch(() => {});
+        console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
+      }
+    }
+
     const pendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', LOTE).catch(() => []);
     if (!pendentes.length) {
       return Response.json({ sucesso: true, processados: 0, mensagem: 'Nenhum item pendente na fila' });
     }
+
+    console.log(`[FILA] Iniciando processamento de ${pendentes.length} itens:`, pendentes.map(i => ({ pedido: i.numero_pedido, carga: i.numero_carga, status: i.status, tentativas: i.tentativas })));
 
     const cargasAfetadas = new Set();
     let processados = 0;
@@ -201,6 +220,7 @@ Deno.serve(async (req) => {
           processados++;
         }
       } catch (e) {
+        console.error(`[FILA ERRO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}):`, e.message);
         const tentativas = Number(item.tentativas || 0) + 1;
         const novoStatus = (e.bloqueio || tentativas >= MAX_TENTATIVAS) ? (e.bloqueio ? 'pendente' : 'erro') : 'pendente';
         await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
