@@ -3,20 +3,27 @@
 // faz o fetch no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';
 
+async function getCredenciais(base44) {
+  const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: configs[0].app_key, app_secret: configs[0].app_secret };
+  const key = Deno.env.get('OMIE_APP_KEY');
+  const secret = Deno.env.get('OMIE_APP_SECRET');
+  if (key && secret) return { app_key: key, app_secret: secret };
+  throw new Error('Credenciais Omie não configuradas');
+}
+
 async function omieCall(base44, url, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
-  const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
+  const creds = await getCredenciais(base44);
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
   let lastError = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] }) });
     const data = await res.json();
     if (data.faultstring || data.faultcode) {
       const msg = String(data.faultstring || '').toLowerCase();
