@@ -3,8 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
-const INTERVALO_ENTRE_PEDIDOS_MS = 5000;
-const MAX_PEDIDOS_POR_RODADA = 5; // Reduzido de 10→5 para proteger cota Omie
+const INTERVALO_ENTRE_PEDIDOS_MS = 3000; // 3s entre pedidos (era 5s)
+const MAX_PEDIDOS_POR_RODADA = 3; // 3 pedidos por rodada (era 5) — menor lote, mais frequente
 
 Deno.serve(async (req) => {
   try {
@@ -137,8 +137,8 @@ Deno.serve(async (req) => {
         const tentativas = (item.tentativas || 0) + 1;
         const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
         
-        // Se for bloqueio 425 OU suspensão → abortar o restante
-        const isBloqueio = /425|bloqueada|bloqueio|consumo indevido|suspens|inválida|invalida|suspended/i.test(erro);
+        // Se for bloqueio 403/425/429 OU suspensão → abortar o restante e abrir circuit breaker
+        const isBloqueio = /403|425|429|bloqueada|bloqueio|consumo indevido|suspens|inválida|invalida|suspended|rate.?limit/i.test(erro);
         
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
           status: isBloqueio ? 'pendente' : novoStatus,
@@ -149,7 +149,22 @@ Deno.serve(async (req) => {
         resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro });
 
         if (isBloqueio) {
-          console.log(`[processarFilaEnvioPedidoOmie] Bloqueio 425 detectado. Abortando restante.`);
+          console.log(`[processarFilaEnvioPedidoOmie] Bloqueio detectado: ${erro}. Abrindo circuit breaker e abortando restante.`);
+          // Abrir circuit breaker por 2 horas
+          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+            .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+          const cbPayload = {
+            chave: 'principal',
+            bloqueado: true,
+            bloqueado_ate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+            ultimo_erro: erro,
+            atualizado_em: new Date().toISOString()
+          };
+          if (cbRows?.[0]?.id) {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows[0].id, cbPayload).catch(() => {});
+          } else {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(cbPayload).catch(() => {});
+          }
           break;
         }
       }
