@@ -195,10 +195,20 @@ export default function useDadosMontagem() {
       );
       console.log('[DEBUG MC] Vendas Omie após filtro de etapa:', vendasBruto.length);
 
-      const vendasSemCarga = vendasBruto.filter(e =>
-        e?.codigo_pedido && !codigosEmCarga.has(String(e.codigo_pedido))
+      // Mapear pedidos locais cancelados pelo codigo_pedido_omie
+      const codigosCancelados = new Set(
+        (todosPedidosLocais || [])
+          .filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por)
+          .map(p => String(p.omie_codigo_pedido || ''))
+          .filter(Boolean)
       );
-      console.log('[DEBUG MC] Vendas Omie após excluir já em cargas:', vendasSemCarga.length);
+
+      const vendasSemCarga = vendasBruto.filter(e =>
+        e?.codigo_pedido &&
+        !codigosEmCarga.has(String(e.codigo_pedido)) &&
+        !codigosCancelados.has(String(e.codigo_pedido))
+      );
+      console.log('[DEBUG MC] Vendas Omie após excluir cargas e cancelados:', vendasSemCarga.length, '(cancelados excluídos:', codigosCancelados.size, ')');
 
       const vendasEnriquecidas = vendasSemCarga.map(montarVendaOmie);
 
@@ -213,6 +223,8 @@ export default function useDadosMontagem() {
         return modelo !== 'd1' &&
                p.status === 'liberado' &&
                !p.carga_id &&
+               !p.data_cancelamento &&
+               !p.cancelado_por &&
                p.omie_codigo_pedido &&
                !codigosNoEspelho.has(String(p.omie_codigo_pedido)) &&
                !codigosEmCarga.has(String(p.omie_codigo_pedido));
