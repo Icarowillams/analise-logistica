@@ -51,17 +51,18 @@ export default function Cargas() {
     refetchOnWindowFocus: true
   });
 
-  // 2️⃣ Sincroniza status com Omie em BACKGROUND (não bloqueia a UI)
-  useEffect(() => {
-    let cancelado = false;
-    base44.functions.invoke('sincronizarStatusCargasOmie', { list_limit: 500, sync_limit: 50 })
-      .then(() => {
-        if (!cancelado) queryClient.invalidateQueries({ queryKey: ['cargas'] });
-      })
-      .catch((e) => console.warn('[Cargas] sync Omie em background falhou:', e?.message));
-    return () => { cancelado = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 2️⃣ Última sincronização: pega do log mais recente
+  const { data: ultimoLog } = useQuery({
+    queryKey: ['ultima-sync-cargas'],
+    queryFn: async () => {
+      const logs = await base44.entities.LogIntegracaoOmie.filter(
+        { call: 'ConsultarPedido', operacao: 'ConsultarPedido' },
+        '-created_date', 1
+      );
+      return logs?.[0] || null;
+    },
+    staleTime: 60000
+  });
 
   // Exibe todas as cargas criadas (inclusive em montagem), para permitir faturamento a qualquer momento.
   // Aplica filtros locais por número e período de saída (data_carga).
@@ -84,33 +85,23 @@ export default function Cargas() {
   };
   const temFiltro = !!(filtroNumero || filtroDataInicial || filtroDataFinal);
 
-  // 🔄 FORÇA sincronização em massa — reconsulta no Omie e reclassifica cStat (autorizada/rejeitada/denegada/cancelada).
-  // Se houver seleção, sincroniza apenas as selecionadas; senão sincroniza as cargas filtradas/visíveis.
+  // 🔄 Dispara sincronização ASSÍNCRONA em background — não espera resposta.
+  // A sincronização roda via scheduled job; este botão apenas força uma execução extra.
   const forcarSincronizacao = async () => {
-    const alvos = selecionadas.length > 0
-      ? selecionadas
-      : cargas.slice(0, 100).map(c => c.id);
-
-    if (alvos.length === 0) {
-      toast.error('Nenhuma carga para sincronizar');
-      return;
-    }
-
     setSincronizando(true);
-    const toastId = toast.loading(`Reconsultando ${alvos.length} carga(s) no Omie…`);
+    toast.info('Sincronização agendada em background. Os dados serão atualizados automaticamente em alguns minutos.');
     try {
-      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
-        carga_ids: alvos,
+      // Dispara sem aguardar resposta (fire-and-forget)
+      base44.functions.invoke('sincronizarStatusCargasOmie', {
         list_limit: 500,
-        sync_limit: alvos.length
-      });
-      if (data?.error) throw new Error(data.error);
-      toast.success(`${data?.sincronizadas || 0} carga(s) atualizada(s) com status real do Omie`, { id: toastId, duration: 8000 });
-      queryClient.invalidateQueries({ queryKey: ['cargas'] });
-    } catch (e) {
-      toast.error(`Falha ao sincronizar: ${e.message}`, { id: toastId });
-    }
-    setSincronizando(false);
+        sync_limit: 10
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['cargas'] });
+        queryClient.invalidateQueries({ queryKey: ['ultima-sync-cargas'] });
+      }).catch((e) => console.warn('[Cargas] sync background falhou:', e?.message));
+    } catch { /* ignore */ }
+    // Libera UI imediatamente
+    setTimeout(() => setSincronizando(false), 2000);
   };
 
   const faturar = async (carga) => {
@@ -357,7 +348,14 @@ export default function Cargas() {
           <Truck className="w-8 h-8 text-amber-500" />
           <div>
             <h1 className="text-2xl font-bold">Cargas</h1>
-            <p className="text-sm text-slate-500">Cargas com status consultado direto no Omie</p>
+            <p className="text-sm text-slate-500">
+              Dados do espelho local • Sync automática a cada 15 min
+              {ultimoLog?.created_date && (
+                <span className="ml-2 text-slate-400">
+                  • Última sync: {new Date(ultimoLog.created_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -365,14 +363,12 @@ export default function Cargas() {
             onClick={forcarSincronizacao}
             disabled={sincronizando || faturandoLote}
             variant="outline"
-            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-            title={selecionadas.length > 0
-              ? `Reconsultar status real no Omie das ${selecionadas.length} carga(s) selecionada(s)`
-              : 'Reconsultar status real no Omie das cargas visíveis (máx. 100)'}
+            size="sm"
+            className="border-slate-300 text-slate-600 hover:bg-slate-50"
+            title="Agenda uma sincronização em background (não bloqueia a tela)"
           >
             {sincronizando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-            Atualizar status Omie
-            {selecionadas.length > 0 ? ` (${selecionadas.length})` : ''}
+            Forçar sync
           </Button>
           {selecionadas.length > 0 && (
             <Button

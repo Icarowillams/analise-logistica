@@ -192,7 +192,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const listLimit = Math.min(Number(body.list_limit || 500), 500);
-    const syncLimit = Math.min(Number(body.sync_limit || 50), listLimit);
+    // Máximo absoluto de 10 cargas por execução para evitar rate limit (cada carga = N chamadas × N pedidos)
+    const syncLimit = Math.min(Number(body.sync_limit || 10), 10);
     const cargaIds = Array.isArray(body.carga_ids) ? body.carga_ids : null;
     const diasRetroativos = Number(body.dias_retroativos || 30);
 
