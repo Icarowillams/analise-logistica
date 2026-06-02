@@ -1,17 +1,48 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
-// Hook central da tela de Montagem de Carga (otimizado via espelho local).
-//
-// TODAS as chamadas são 100% sequenciais com sleep(200ms) entre cada uma
-// para NUNCA estourar o rate limit do Base44 no frontend.
-// SEM subscribe — refresh apenas manual (botão "Recarregar").
+// ─── CACHE sessionStorage (5 min TTL) ───
+const CACHE_KEY = 'montagem_carga_v2';
+const CACHE_TTL = 5 * 60 * 1000;
 
-const SYNC_COOLDOWN_MS = 2 * 60 * 1000;
-let lastSyncTimestamp = 0;
+function getCache() {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { data, timestamp } = JSON.parse(raw);
+    if (Date.now() - timestamp < CACHE_TTL) return data;
+  } catch {}
+  return null;
+}
 
+function setCache(data) {
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+  } catch {}
+}
+
+// ─── SLEEP ───
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ─── FETCH COM RETRY + BACKOFF ───
+async function fetchWithRetry(fn, retries = 3, delay = 1500) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || '';
+      const isRateLimit = /rate.?limit|too many requests|429/i.test(msg);
+      if (isRateLimit && i < retries - 1) {
+        console.warn(`[MontagemCarga] Rate limit, retry ${i + 1}/${retries} em ${delay}ms...`);
+        await sleep(delay);
+        delay *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 export default function useDadosMontagem() {
   const [loading, setLoading] = useState(true);
@@ -19,32 +50,67 @@ export default function useDadosMontagem() {
   const [motoristas, setMotoristas] = useState([]);
   const [veiculos, setVeiculos] = useState([]);
   const [cargas, setCargas] = useState([]);
+  const retryTimerRef = useRef(null);
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (isRetry = false) => {
+    // ─── CACHE: mostrar dados imediatos se existirem ───
+    if (!isRetry) {
+      const cached = getCache();
+      if (cached && cached.pedidos?.length > 0) {
+        setPedidos(cached.pedidos);
+        setMotoristas(cached.motoristas || []);
+        setVeiculos(cached.veiculos || []);
+        setCargas(cached.cargas || []);
+        setLoading(false);
+        // continua para atualizar em background (sem loading)
+      }
+    }
+
     try {
-      // ─── FASE 1: entidades pequenas (sequencial + sleep) ───
-      const motP = await base44.entities.Motorista.list('-created_date', 500);
-      await sleep(200);
-      const veiP = await base44.entities.Veiculo.list('-created_date', 500);
-      await sleep(200);
-      const carP = await base44.entities.Carga.list('-created_date', 500);
-      await sleep(200);
-      const rotas = await base44.entities.Rota.list('-created_date', 500);
-      await sleep(200);
+      // ─── FASE 1: Delay inicial de 2s para estabilizar layout ───
+      await sleep(isRetry ? 3000 : 2000);
 
-      // ─── FASE 2: entidades grandes (sequencial + sleep) ───
-      const espelhoOmie = await base44.entities.PedidoLiberadoOmie.list('-created_date', 200);
-      await sleep(200);
-      const todosPedidosLocais = await base44.entities.Pedido.list('-created_date', 300);
-      await sleep(200);
-      const trocasAprovadas = await base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500);
-      await sleep(200);
+      // ─── FASE 2: Dados principais (pedidos) ───
+      const espelhoOmie = await fetchWithRetry(() =>
+        base44.entities.PedidoLiberadoOmie.list('-created_date', 200)
+      );
+      await sleep(300);
 
-      setMotoristas(motP.filter(m => m.status === 'ativo'));
-      setVeiculos(veiP.filter(v => v.ativo !== false));
-      setCargas(carP);
+      const todosPedidosLocais = await fetchWithRetry(() =>
+        base44.entities.Pedido.list('-created_date', 300)
+      );
+      await sleep(300);
+
+      const trocasAprovadas = await fetchWithRetry(() =>
+        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
+      );
+      await sleep(300);
+
+      const rotas = await fetchWithRetry(() =>
+        base44.entities.Rota.list('-created_date', 500)
+      );
+      await sleep(300);
 
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
+
+      // ─── FASE 3: Dados complementares (motoristas, veículos, cargas) ───
+      const motP = await fetchWithRetry(() =>
+        base44.entities.Motorista.list('-created_date', 500)
+      );
+      await sleep(300);
+
+      const veiP = await fetchWithRetry(() =>
+        base44.entities.Veiculo.list('-created_date', 500)
+      );
+      await sleep(300);
+
+      const carP = await fetchWithRetry(() =>
+        base44.entities.Carga.list('-created_date', 500)
+      );
+      await sleep(300);
+
+      const motoristasAtivos = motP.filter(m => m.status === 'ativo');
+      const veiculosAtivos = veiP.filter(v => v.ativo !== false);
 
       // Códigos de pedido Omie já em carga ativa
       const codigosEmCarga = new Set();
@@ -56,12 +122,9 @@ export default function useDadosMontagem() {
           });
         });
 
-      // ─── 1. Vendas Omie (etapa 20 do espelho) ───
+      // ─── 1. Vendas Omie (etapa 20) ───
       const vendasEnriquecidas = (espelhoOmie || [])
-        .filter(e => {
-          const etapa = e?.etapa == null ? '' : String(e.etapa).trim();
-          return etapa === '20';
-        })
+        .filter(e => String(e?.etapa ?? '').trim() === '20')
         .filter(e => e?.codigo_pedido && !codigosEmCarga.has(String(e.codigo_pedido)))
         .map(e => ({
           codigo_pedido: e.codigo_pedido,
@@ -94,16 +157,14 @@ export default function useDadosMontagem() {
         }));
 
       // ─── 2. Pedidos D1 internos ───
-      const pedidosD1Locais = (todosPedidosLocais || []).filter(p => {
-        const modelo = String(p.modelo_nota || '').toLowerCase();
-        return modelo === 'd1' && p.status === 'liberado';
-      });
-      const d1Disponiveis = pedidosD1Locais.filter(p => !p.carga_id);
+      const d1Disponiveis = (todosPedidosLocais || []).filter(p =>
+        String(p.modelo_nota || '').toLowerCase() === 'd1' && p.status === 'liberado' && !p.carga_id
+      );
 
-      // ─── 2b. Trocas ───
+      // ─── 3. Trocas ───
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
 
-      // ─── FASE 3: Buscar clientes necessários — SEQUENCIAL com sleep ───
+      // ─── FASE 4: Clientes necessários — SEQUENCIAL com sleep ───
       const clienteIdsNecessarios = [...new Set([
         ...d1Disponiveis.map(p => p.cliente_id),
         ...trocasDisponiveis.map(t => t.cliente_id)
@@ -111,47 +172,35 @@ export default function useDadosMontagem() {
 
       const clientesMap = new Map();
       for (const id of clienteIdsNecessarios) {
-        const c = await base44.entities.Cliente.get(id).catch(() => null);
+        const c = await fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null);
         if (c) clientesMap.set(c.id, c);
-        await sleep(100);
+        await sleep(150);
       }
 
-      // ─── FASE 4: Buscar itens D1 — SEQUENCIAL com sleep ───
+      // ─── FASE 5: Itens D1 — SEQUENCIAL com sleep ───
       const d1ComItens = [];
       for (const p of d1Disponiveis) {
-        const itens = await base44.entities.PedidoItem.filter({ pedido_id: p.id });
-        await sleep(100);
+        const itens = await fetchWithRetry(() => base44.entities.PedidoItem.filter({ pedido_id: p.id })).catch(() => []);
+        await sleep(150);
         const cliente = clientesMap.get(p.cliente_id);
-        const codigoCliente = p.cliente_codigo || cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || '';
+        const codigoCliente = p.cliente_codigo || cliente?.codigo_interno || cliente?.codigo_integracao || '';
         const rotaNome = p.rota_nome || (cliente?.rota_id ? rotasMap.get(cliente.rota_id) : '') || 'Sem Rota';
         d1ComItens.push({
-          codigo_pedido: `D1-${p.id}`,
-          pedido_id: p.id,
-          numero_pedido: p.numero_pedido,
-          codigo_cliente: p.cliente_id,
-          codigo_cliente_cod: codigoCliente,
+          codigo_pedido: `D1-${p.id}`, pedido_id: p.id, numero_pedido: p.numero_pedido,
+          codigo_cliente: p.cliente_id, codigo_cliente_cod: codigoCliente,
           cliente_id: p.cliente_id,
           nome_cliente: p.cliente_nome || cliente?.razao_social || '',
           nome_fantasia: p.cliente_nome_fantasia || cliente?.nome_fantasia || p.cliente_nome || cliente?.razao_social || '',
           cidade: p.cliente_cidade || cliente?.cidade || '',
-          rota_nome: rotaNome,
-          rota_cliente: rotaNome,
-          quantidade_itens: itens.length,
-          valor_total_pedido: p.valor_total || 0,
-          vendedor_nome: p.vendedor_nome || '',
-          observacoes: p.observacoes || '',
-          tipo: 'd1',
-          tipo_operacao_fiscal: p.tipo || 'venda',
-          tipo_nota: 'D1',
-          modelo_nota: 'd1',
+          rota_nome: rotaNome, rota_cliente: rotaNome,
+          quantidade_itens: itens.length, valor_total_pedido: p.valor_total || 0,
+          vendedor_nome: p.vendedor_nome || '', observacoes: p.observacoes || '',
+          tipo: 'd1', tipo_operacao_fiscal: p.tipo || 'venda', tipo_nota: 'D1', modelo_nota: 'd1',
           cenario_fiscal_nome: p.cenario_local_nome || p.cenario_fiscal_nome || '',
           produtos: itens.map(i => ({
-            codigo_produto: i.produto_codigo || '',
-            descricao: i.produto_nome || '',
-            quantidade: i.quantidade || 0,
-            valor_unitario: i.valor_unitario || 0,
-            valor_total: i.valor_total || 0,
-            unidade: i.unidade_medida || 'UN',
+            codigo_produto: i.produto_codigo || '', descricao: i.produto_nome || '',
+            quantidade: i.quantidade || 0, valor_unitario: i.valor_unitario || 0,
+            valor_total: i.valor_total || 0, unidade: i.unidade_medida || 'UN',
             motivo_troca_id: i.motivo_troca_id || i.motivo_id || '',
             motivo_troca_descricao: i.motivo_troca_descricao || i.motivo_descricao || i.motivo || '',
             motivo_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
@@ -161,35 +210,26 @@ export default function useDadosMontagem() {
         });
       }
 
-      // ─── FASE 5: Buscar itens Trocas — SEQUENCIAL com sleep ───
+      // ─── FASE 6: Itens Trocas — SEQUENCIAL com sleep ───
       const trocasComItens = [];
       for (const t of trocasDisponiveis) {
-        const itens = await base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: t.id });
-        await sleep(100);
+        const itens = await fetchWithRetry(() => base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: t.id })).catch(() => []);
+        await sleep(150);
+        const cliente = clientesMap.get(t.cliente_id);
         trocasComItens.push({
-          codigo_pedido: `TROCA-${t.id}`,
-          pedido_troca_id: t.id,
-          numero_pedido: t.numero_troca,
-          codigo_cliente: t.cliente_id,
-          cliente_id: t.cliente_id,
-          nome_cliente: t.cliente_nome || '',
-          nome_fantasia: t.cliente_nome || '',
-          cidade: '',
-          rota_nome: 'Sem Rota',
-          rota_cliente: 'Sem Rota',
-          quantidade_itens: itens.length,
-          valor_total_pedido: t.valor_total || 0,
-          vendedor_nome: t.vendedor_nome || '',
-          observacoes: t.observacoes || '',
-          tipo: 'troca',
-          tipo_nota: '',
+          codigo_pedido: `TROCA-${t.id}`, pedido_troca_id: t.id, numero_pedido: t.numero_troca,
+          codigo_cliente: t.cliente_id, cliente_id: t.cliente_id,
+          nome_cliente: t.cliente_nome || '', nome_fantasia: cliente?.nome_fantasia || cliente?.razao_social || t.cliente_nome || '',
+          cidade: cliente?.cidade || '',
+          rota_nome: cliente?.rota_id ? (rotasMap.get(cliente.rota_id) || 'Sem Rota') : 'Sem Rota',
+          rota_cliente: cliente?.rota_id ? (rotasMap.get(cliente.rota_id) || 'Sem Rota') : 'Sem Rota',
+          quantidade_itens: itens.length, valor_total_pedido: t.valor_total || 0,
+          vendedor_nome: t.vendedor_nome || '', observacoes: t.observacoes || '',
+          tipo: 'troca', tipo_nota: '',
           produtos: itens.map(i => ({
-            codigo_produto: i.produto_codigo || '',
-            descricao: i.produto_nome || '',
-            quantidade: i.quantidade || 0,
-            valor_unitario: i.preco_unitario || 0,
-            valor_total: i.valor_total || 0,
-            unidade: i.unidade_medida || 'UN',
+            codigo_produto: i.produto_codigo || '', descricao: i.produto_nome || '',
+            quantidade: i.quantidade || 0, valor_unitario: i.preco_unitario || 0,
+            valor_total: i.valor_total || 0, unidade: i.unidade_medida || 'UN',
             motivo_troca_id: i.motivo_id || i.motivo_troca_id || '',
             motivo_troca_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
             motivo_descricao: i.motivo_descricao || i.motivo_troca_descricao || i.motivo || '',
@@ -199,49 +239,64 @@ export default function useDadosMontagem() {
         });
       }
 
-      // Enriquecer trocas com dados do cliente
-      trocasComItens.forEach(t => {
-        const c = clientesMap.get(t.cliente_id);
-        if (c) {
-          t.nome_fantasia = c.nome_fantasia || c.razao_social || t.nome_cliente;
-          t.cidade = c.cidade || '';
-          t.rota_nome = c.rota_id ? (rotasMap.get(c.rota_id) || 'Sem Rota') : 'Sem Rota';
-          t.rota_cliente = t.rota_nome;
-        }
+      // ─── Montar resultado final e cachear ───
+      const pedidosFinal = [...vendasEnriquecidas, ...d1ComItens, ...trocasComItens];
+
+      setPedidos(pedidosFinal);
+      setMotoristas(motoristasAtivos);
+      setVeiculos(veiculosAtivos);
+      setCargas(carP);
+      setLoading(false);
+
+      setCache({
+        pedidos: pedidosFinal,
+        motoristas: motoristasAtivos,
+        veiculos: veiculosAtivos,
+        cargas: carP
       });
 
-      setPedidos([...vendasEnriquecidas, ...d1ComItens, ...trocasComItens]);
     } catch (e) {
-      const msg = e?.response?.data?.error || e.message;
+      const msg = e?.response?.data?.error || e.message || '';
+      const isRateLimit = /rate.?limit|too many requests|429/i.test(msg);
+
+      if (isRateLimit) {
+        console.warn('[MontagemCarga] Rate limit após retries, tentando novamente em 5s...');
+        // Usar cache se disponível, senão manter loading
+        const cached = getCache();
+        if (cached && cached.pedidos?.length > 0) {
+          setPedidos(cached.pedidos);
+          setMotoristas(cached.motoristas || []);
+          setVeiculos(cached.veiculos || []);
+          setCargas(cached.cargas || []);
+          setLoading(false);
+        }
+        // Retry silencioso em 5s
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => carregar(true), 5000);
+        return;
+      }
+
       toast.error('[MontagemCarga] Erro ao carregar: ' + msg);
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  // Sincronização Omie com cooldown de 2 min.
-  const sincronizarComCooldown = useCallback(() => {
-    const agora = Date.now();
-    if (agora - lastSyncTimestamp < SYNC_COOLDOWN_MS) return;
-    lastSyncTimestamp = agora;
-    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
-      .catch((e) => console.warn('[useDadosMontagem] sincronização Omie falhou:', e?.message));
-  }, []);
-
-  // Refresh manual
+  // Refresh manual — único lugar que chama sincronizarLiberadosOmieRapido
   const recarregar = useCallback(async () => {
+    sessionStorage.removeItem(CACHE_KEY);
     setLoading(true);
-    sincronizarComCooldown();
+    // Sincronizar Omie só no refresh manual
+    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
+      .catch((e) => console.warn('[useDadosMontagem] sync Omie falhou:', e?.message));
     await carregar();
-  }, [carregar, sincronizarComCooldown]);
+  }, [carregar]);
 
   useEffect(() => {
-    // Delay inicial de 500ms para deixar o layout terminar suas queries primeiro
-    const timer = setTimeout(() => {
-      carregar();
-      sincronizarComCooldown();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [carregar, sincronizarComCooldown]);
+    carregar();
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, [carregar]);
 
   return { loading, pedidos, motoristas, veiculos, cargas, recarregar };
 }
