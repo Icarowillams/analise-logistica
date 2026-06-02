@@ -113,8 +113,9 @@ Deno.serve(async (req) => {
     // Pós-filtro: apenas status (CNPJ + data já foram aplicados pela própria API do Omie via
     // filtrar_por_cpf_cnpj / filtrar_por_(emissao|data)_de|ate). Refiltrar aqui pelo CNPJ
     // bruto NÃO funciona porque o Omie nem sempre devolve cpf_cnpj_cliente no resultado.
+    const STATUS_EXCLUIR = new Set(['LIQUIDADO', 'PAGO', 'CANCELADO', 'RECEBIDO']);
     const titulosRaw = (data.conta_receber_cadastro || []).filter(t => {
-      if (apenas_pendentes && t.status_titulo && t.status_titulo !== 'ABERTO') return false;
+      if (apenas_pendentes && t.status_titulo && STATUS_EXCLUIR.has(t.status_titulo.toUpperCase())) return false;
       return true;
     });
     // Mantém parser pra eventual uso futuro — silenciado abaixo

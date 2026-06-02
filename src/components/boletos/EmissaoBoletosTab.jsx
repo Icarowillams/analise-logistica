@@ -125,7 +125,7 @@ export default function EmissaoBoletosTab() {
       if (pedidos.length === 0) return { titulos: [], totalCarga: 0, ocultosComBoleto: 0, ocultosSemModalidade: 0 };
 
       const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 90 * 86400000);
+      const inicio = new Date(hoje.getTime() - 365 * 86400000);
       let acumulados = [];
 
       for (let pagina = 1; pagina <= 10; pagina++) {
