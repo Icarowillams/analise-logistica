@@ -87,45 +87,57 @@ export default function FiltrosBoletos({ onResultado }) {
     ...(carga?.pedidos_troca || []).map(p => p.cnpj_cpf_cliente)
   ].filter(Boolean).map(doc => String(doc).replace(/\D/g, '')));
 
-  // Extrai os números de pedido e NFs da carga para match restritivo
-  const pedidosENfsDaCarga = (carga) => {
-    if (!carga) return { pedidos: new Set(), nfs: new Set() };
-    const pedidos = new Set();
+  // Extrai números de pedido, códigos de pedido, NFs e códigos de cliente da carga
+  // (mesma lógica usada em EmissaoBoletos que funciona corretamente)
+  const dadosCargaParaMatch = (carga) => {
+    if (!carga) return { numPedidos: new Set(), codPedidos: new Set(), nfs: new Set(), codClientes: new Set() };
+    const numPedidos = new Set();
+    const codPedidos = new Set();
     const nfs = new Set();
+    const codClientes = new Set();
     (carga.pedidos_omie || []).forEach(p => {
-      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
-      if (p.numero_nf) nfs.add(String(p.numero_nf).trim());
+      if (p.numero_pedido) numPedidos.add(String(p.numero_pedido).trim());
+      if (p.codigo_pedido) codPedidos.add(String(p.codigo_pedido).trim());
+      const nf = String(p.numero_nf || '').replace(/\D/g, '');
+      if (nf) nfs.add(nf);
+      const cod = String(p.codigo_cliente || '').trim();
+      if (cod) codClientes.add(cod);
     });
     (carga.pedidos_internos || []).forEach(p => {
-      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
+      if (p.numero_pedido) numPedidos.add(String(p.numero_pedido).trim());
     });
     (carga.pedidos_troca || []).forEach(p => {
-      if (p.numero_pedido) pedidos.add(String(p.numero_pedido).trim());
+      if (p.numero_pedido) numPedidos.add(String(p.numero_pedido).trim());
     });
-    return { pedidos, nfs };
+    return { numPedidos, codPedidos, nfs, codClientes };
   };
 
   const filtrarTitulosPorCarga = (titulos, carga) => {
     if (!carga) return titulos;
 
-    // Passo 1: filtrar por CNPJ do cliente (pré-filtro amplo)
-    const docs = documentosCarga(carga);
-    if (docs.size === 0) return titulos;
-    const titulosCliente = (titulos || []).filter(t => docs.has(String(t.cnpj_cpf || '').replace(/\D/g, '')));
+    const { numPedidos, codPedidos, nfs, codClientes } = dadosCargaParaMatch(carga);
+    const cnpjs = documentosCarga(carga);
 
-    // Passo 2: filtro restritivo por pedido/NF da carga
-    const { pedidos, nfs } = pedidosENfsDaCarga(carga);
-    if (pedidos.size === 0 && nfs.size === 0) return titulosCliente;
-
-    return titulosCliente.filter(t => {
-      const numDoc = String(t.numero_documento || '').trim();
+    return (titulos || []).filter(t => {
+      const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
+      const docT = String(t.numero_documento || '').replace(/\D/g, '');
+      const codClienteT = String(t.codigo_cliente || '').trim();
       const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
-      // Match por numero_pedido_vinculado do título = numero_pedido de algum pedido da carga
-      if (numPedVinc && pedidos.has(numPedVinc)) return true;
-      // Match por numero_documento do título = numero_nf de algum pedido da carga
-      if (numDoc && nfs.has(numDoc)) return true;
-      // Match por numero_documento do título = numero_pedido de algum pedido da carga
-      if (numDoc && pedidos.has(numDoc)) return true;
+
+      // Prioridade 1: match exato por numero_pedido_vinculado
+      if (numPedVinc) {
+        if (numPedidos.has(numPedVinc) || codPedidos.has(numPedVinc)) return true;
+        return false; // Tem pedido vinculado mas não é desta carga
+      }
+      // Prioridade 2: match por NF (numero_documento normalizado)
+      if (docT) {
+        if (nfs.has(docT)) return true;
+        if (numPedidos.has(docT)) return true;
+        return false;
+      }
+      // Prioridade 3: match genérico por codigo_cliente ou CNPJ (títulos avulsos)
+      if (codClienteT && codClientes.has(codClienteT)) return true;
+      if (cnpjT && cnpjs.has(cnpjT)) return true;
       return false;
     });
   };
