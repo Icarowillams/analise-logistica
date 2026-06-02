@@ -8,10 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Receipt, Loader2, Search, RefreshCw } from 'lucide-react';
+import { Receipt, Loader2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import ListaTitulosCarga from '@/components/boletos/ListaTitulosCarga';
 import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoletos';
+
+const normalizar = (valor) => String(valor || '').trim().toUpperCase();
+const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
+const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
 // Página de Emissão Manual de Boletos por Carga
 // Fluxo:
@@ -31,6 +35,52 @@ export default function EmissaoBoletos() {
   const [apenasComVinculo, setApenasComVinculo] = useState(true);
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('todos');
+
+  // Modalidades e clientes para filtro por modalidade BOLETO BANCÁRIO
+  const { data: modalidades = [] } = useQuery({
+    queryKey: ['modalidades-pagamento-emissao'],
+    queryFn: () => base44.entities.ModalidadePagamento.list(),
+    refetchOnWindowFocus: false
+  });
+
+  const { data: clientesBase = [], isLoading: loadingClientes } = useQuery({
+    queryKey: ['clientes-modalidade-emissao'],
+    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
+    refetchOnWindowFocus: false
+  });
+
+  const modalidadeBoletoIds = useMemo(() => {
+    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
+    modalidades.forEach(m => {
+      const nome = normalizar(m.nome).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
+    });
+    return ids;
+  }, [modalidades]);
+
+  const clientesBoletoMap = useMemo(() => {
+    const porCodigoOmie = new Map();
+    const porCnpj = new Map();
+    clientesBase.forEach(cliente => {
+      if (!modalidadeBoletoIds.has(cliente.modalidade_pagamento_id)) return;
+      [cliente.codigo_omie, cliente.codigo_cliente_omie].forEach(codigo => {
+        const key = String(codigo || '').trim();
+        if (key) porCodigoOmie.set(key, cliente);
+      });
+      const cnpj = somenteNumeros(cliente.cnpj_cpf);
+      if (cnpj) porCnpj.set(cnpj, cliente);
+    });
+    return { porCodigoOmie, porCnpj };
+  }, [clientesBase, modalidadeBoletoIds]);
+
+  const isClienteBoleto = (titulo) => {
+    const codigos = [titulo.codigo_cliente];
+    for (const codigo of codigos) {
+      if (clientesBoletoMap.porCodigoOmie.has(String(codigo || '').trim())) return true;
+    }
+    if (clientesBoletoMap.porCnpj.has(somenteNumeros(titulo.cnpj_cpf))) return true;
+    return false;
+  };
 
   // Lista as cargas (faturadas têm prioridade — são as que precisam de boleto)
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
@@ -169,6 +219,7 @@ export default function EmissaoBoletos() {
         if (pag >= (data.total_de_paginas || 1)) break;
       }
 
+      let ocultosNaoBoleto = 0;
       const titulos = acumulados.filter(t => {
         const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
         const docT = String(t.numero_documento || '').replace(/\D/g, '');
@@ -177,15 +228,22 @@ export default function EmissaoBoletos() {
         const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
         const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
         const baseNf = nfsCarga.size > 0 && docT && nfsCarga.has(docT);
-        return baseCodCli || baseCnpj || baseNf;
+        if (!(baseCodCli || baseCnpj || baseNf)) return false;
+        // Filtro de modalidade: só exibe se o cliente tem modalidade BOLETO BANCÁRIO
+        if (!isClienteBoleto(t)) {
+          ocultosNaoBoleto++;
+          return false;
+        }
+        return true;
       });
-      return { titulos };
+      return { titulos, ocultosNaoBoleto };
     },
-    enabled: !!cargaSelecionada,
+    enabled: !!cargaSelecionada && !loadingClientes,
     refetchOnWindowFocus: false
   });
 
   const titulosTodos = titulosResp?.titulos || [];
+  const ocultosNaoBoleto = titulosResp?.ocultosNaoBoleto || 0;
   const titulos = useMemo(() => {
     const termo = filtroCliente.trim().toLowerCase();
     return titulosTodos.filter(t => {
@@ -355,13 +413,19 @@ export default function EmissaoBoletos() {
                 Apenas títulos com NF/Pedido vinculado
               </label>
             </div>
-            {apenasComVinculo && ocultos > 0 && (
-              <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
+              {apenasComVinculo && ocultos > 0 && (
                 <Badge variant="outline" className="text-xs">
                   {ocultos} título(s) avulso(s) ocultado(s)
                 </Badge>
-              </div>
-            )}
+              )}
+              {ocultosNaoBoleto > 0 && (
+                <Badge className="bg-orange-100 text-orange-800 text-xs">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  {ocultosNaoBoleto} título(s) oculto(s) — cliente sem modalidade Boleto Bancário
+                </Badge>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

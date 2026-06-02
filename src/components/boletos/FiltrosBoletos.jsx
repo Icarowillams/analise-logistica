@@ -1,12 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+
+const normalizar = (valor) => String(valor || '').trim().toUpperCase();
+const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
+const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
 export default function FiltrosBoletos({ onResultado }) {
   const [dataDe, setDataDe] = useState('');
@@ -16,6 +22,50 @@ export default function FiltrosBoletos({ onResultado }) {
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
   const [cargaFiltro, setCargaFiltro] = useState(null);
+  const [ocultosNaoBoleto, setOcultosNaoBoleto] = useState(0);
+  const [apenasClientesBoleto, setApenasClientesBoleto] = useState(true);
+
+  const { data: modalidades = [] } = useQuery({
+    queryKey: ['modalidades-pagamento-filtro-boletos'],
+    queryFn: () => base44.entities.ModalidadePagamento.list(),
+    refetchOnWindowFocus: false
+  });
+
+  const { data: clientesBase = [] } = useQuery({
+    queryKey: ['clientes-modalidade-filtro-boletos'],
+    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
+    refetchOnWindowFocus: false
+  });
+
+  const modalidadeBoletoIds = useMemo(() => {
+    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
+    modalidades.forEach(m => {
+      const nome = normalizar(m.nome).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
+    });
+    return ids;
+  }, [modalidades]);
+
+  const clientesBoletoMap = useMemo(() => {
+    const porCodigoOmie = new Map();
+    const porCnpj = new Map();
+    clientesBase.forEach(cliente => {
+      if (!modalidadeBoletoIds.has(cliente.modalidade_pagamento_id)) return;
+      [cliente.codigo_omie, cliente.codigo_cliente_omie].forEach(codigo => {
+        const key = String(codigo || '').trim();
+        if (key) porCodigoOmie.set(key, cliente);
+      });
+      const cn = somenteNumeros(cliente.cnpj_cpf);
+      if (cn) porCnpj.set(cn, cliente);
+    });
+    return { porCodigoOmie, porCnpj };
+  }, [clientesBase, modalidadeBoletoIds]);
+
+  const isClienteBoleto = (titulo) => {
+    if (clientesBoletoMap.porCodigoOmie.has(String(titulo.codigo_cliente || '').trim())) return true;
+    if (clientesBoletoMap.porCnpj.has(somenteNumeros(titulo.cnpj_cpf))) return true;
+    return false;
+  };
 
   const documentosCarga = (carga) => new Set([
     ...(carga?.pedidos_omie || []).flatMap(p => [p.cnpj_cpf_cliente, p.cpf_cnpj_cliente]),
@@ -44,6 +94,14 @@ export default function FiltrosBoletos({ onResultado }) {
         let titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
         if (apenasComBoleto) {
           titulosFiltrados = titulosFiltrados.filter(t => t.boleto_gerado || t.numero_boleto || t.url_boleto || t.codigo_barras);
+        }
+        // Filtro de modalidade: só clientes com BOLETO BANCÁRIO
+        if (apenasClientesBoleto) {
+          const antes = titulosFiltrados.length;
+          titulosFiltrados = titulosFiltrados.filter(isClienteBoleto);
+          setOcultosNaoBoleto(antes - titulosFiltrados.length);
+        } else {
+          setOcultosNaoBoleto(0);
         }
         onResultado(titulosFiltrados);
         toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
@@ -121,17 +179,31 @@ export default function FiltrosBoletos({ onResultado }) {
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-3 text-sm">
-          <input
-            type="checkbox"
-            id="apenas-com-boleto"
-            checked={apenasComBoleto}
-            onChange={(e) => setApenasComBoleto(e.target.checked)}
-            className="w-4 h-4"
-          />
-          <label htmlFor="apenas-com-boleto" className="cursor-pointer">
-            Mostrar apenas títulos com boleto emitido
+        <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={apenasComBoleto}
+              onChange={(e) => setApenasComBoleto(e.target.checked)}
+              className="w-4 h-4"
+            />
+            Apenas títulos com boleto emitido
           </label>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={apenasClientesBoleto}
+              onChange={(e) => setApenasClientesBoleto(e.target.checked)}
+              className="w-4 h-4"
+            />
+            Apenas clientes com modalidade Boleto Bancário
+          </label>
+          {ocultosNaoBoleto > 0 && (
+            <Badge className="bg-orange-100 text-orange-800 text-xs">
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              {ocultosNaoBoleto} oculto(s) — outra modalidade
+            </Badge>
+          )}
         </div>
       </CardContent>
       </Card>
