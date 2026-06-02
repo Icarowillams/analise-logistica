@@ -56,12 +56,16 @@ export default function Layout({ children, currentPageName }) {
 
   const { data: permissoes = [] } = useQuery({
     queryKey: ['permissoes'],
-    queryFn: () => base44.entities.Permissao.list()
+    queryFn: () => base44.entities.Permissao.list(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false
   });
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
-    queryFn: () => base44.entities.Vendedor.list()
+    queryFn: () => base44.entities.Vendedor.list(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false
   });
 
   useEffect(() => {

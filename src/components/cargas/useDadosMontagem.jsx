@@ -4,17 +4,14 @@ import { toast } from 'sonner';
 
 // Hook central da tela de Montagem de Carga (otimizado via espelho local).
 //
-// Arquitetura:
-//   - Vendas Omie (etapa 20) → lidas de PedidoLiberadoOmie (espelho mantido por webhook + backup 1h)
-//   - Pedidos D1 internos    → Pedido (modelo_nota=d1, status=liberado, sem carga_id)
-//   - Trocas                 → PedidoTroca (status=aprovado, sem carga_id)
-//   - SEM subscribe — refresh apenas manual (botão "Recarregar")
-//
-// TODAS as chamadas são sequenciais (for...of) para NUNCA estourar rate limit.
+// TODAS as chamadas são 100% sequenciais com sleep(200ms) entre cada uma
+// para NUNCA estourar o rate limit do Base44 no frontend.
+// SEM subscribe — refresh apenas manual (botão "Recarregar").
 
-// Cooldown global: impede que a sincronização Omie seja chamada mais de 1x a cada 2 minutos.
 const SYNC_COOLDOWN_MS = 2 * 60 * 1000;
 let lastSyncTimestamp = 0;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 export default function useDadosMontagem() {
   const [loading, setLoading] = useState(true);
@@ -25,16 +22,23 @@ export default function useDadosMontagem() {
 
   const carregar = useCallback(async () => {
     try {
-      // ─── FASE 1: entidades pequenas (sequencial) ───
+      // ─── FASE 1: entidades pequenas (sequencial + sleep) ───
       const motP = await base44.entities.Motorista.list('-created_date', 500);
+      await sleep(200);
       const veiP = await base44.entities.Veiculo.list('-created_date', 500);
+      await sleep(200);
       const carP = await base44.entities.Carga.list('-created_date', 500);
+      await sleep(200);
       const rotas = await base44.entities.Rota.list('-created_date', 500);
+      await sleep(200);
 
-      // ─── FASE 2: entidades grandes (sequencial) ───
-      const espelhoOmie = await base44.entities.PedidoLiberadoOmie.list('-created_date', 300);
-      const todosPedidosLocais = await base44.entities.Pedido.list('-created_date', 500);
+      // ─── FASE 2: entidades grandes (sequencial + sleep) ───
+      const espelhoOmie = await base44.entities.PedidoLiberadoOmie.list('-created_date', 200);
+      await sleep(200);
+      const todosPedidosLocais = await base44.entities.Pedido.list('-created_date', 300);
+      await sleep(200);
       const trocasAprovadas = await base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500);
+      await sleep(200);
 
       setMotoristas(motP.filter(m => m.status === 'ativo'));
       setVeiculos(veiP.filter(v => v.ativo !== false));
@@ -99,7 +103,7 @@ export default function useDadosMontagem() {
       // ─── 2b. Trocas ───
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
 
-      // ─── FASE 3: Buscar clientes necessários — SEQUENCIAL ───
+      // ─── FASE 3: Buscar clientes necessários — SEQUENCIAL com sleep ───
       const clienteIdsNecessarios = [...new Set([
         ...d1Disponiveis.map(p => p.cliente_id),
         ...trocasDisponiveis.map(t => t.cliente_id)
@@ -109,12 +113,14 @@ export default function useDadosMontagem() {
       for (const id of clienteIdsNecessarios) {
         const c = await base44.entities.Cliente.get(id).catch(() => null);
         if (c) clientesMap.set(c.id, c);
+        await sleep(100);
       }
 
-      // ─── FASE 4: Buscar itens D1 — SEQUENCIAL ───
+      // ─── FASE 4: Buscar itens D1 — SEQUENCIAL com sleep ───
       const d1ComItens = [];
       for (const p of d1Disponiveis) {
         const itens = await base44.entities.PedidoItem.filter({ pedido_id: p.id });
+        await sleep(100);
         const cliente = clientesMap.get(p.cliente_id);
         const codigoCliente = p.cliente_codigo || cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || '';
         const rotaNome = p.rota_nome || (cliente?.rota_id ? rotasMap.get(cliente.rota_id) : '') || 'Sem Rota';
@@ -155,10 +161,11 @@ export default function useDadosMontagem() {
         });
       }
 
-      // ─── FASE 5: Buscar itens Trocas — SEQUENCIAL ───
+      // ─── FASE 5: Buscar itens Trocas — SEQUENCIAL com sleep ───
       const trocasComItens = [];
       for (const t of trocasDisponiveis) {
         const itens = await base44.entities.ItemPedidoTroca.filter({ pedido_troca_id: t.id });
+        await sleep(100);
         trocasComItens.push({
           codigo_pedido: `TROCA-${t.id}`,
           pedido_troca_id: t.id,
@@ -206,7 +213,7 @@ export default function useDadosMontagem() {
       setPedidos([...vendasEnriquecidas, ...d1ComItens, ...trocasComItens]);
     } catch (e) {
       const msg = e?.response?.data?.error || e.message;
-      toast.error('Erro ao carregar dados: ' + msg);
+      toast.error('[MontagemCarga] Erro ao carregar: ' + msg);
     }
     setLoading(false);
   }, []);
@@ -228,8 +235,12 @@ export default function useDadosMontagem() {
   }, [carregar, sincronizarComCooldown]);
 
   useEffect(() => {
-    carregar();
-    sincronizarComCooldown();
+    // Delay inicial de 500ms para deixar o layout terminar suas queries primeiro
+    const timer = setTimeout(() => {
+      carregar();
+      sincronizarComCooldown();
+    }, 500);
+    return () => clearTimeout(timer);
   }, [carregar, sincronizarComCooldown]);
 
   return { loading, pedidos, motoristas, veiculos, cargas, recarregar };
