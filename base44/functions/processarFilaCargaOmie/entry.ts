@@ -159,6 +159,18 @@ Deno.serve(async (req) => {
         const jaFeito = await jaEstaNaEtapa(base44, item);
         if (jaFeito) {
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
+          // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
+          if (item.codigo_pedido_omie) {
+            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+              { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
+            ).catch(() => []);
+            if (espelhos?.[0] && String(espelhos[0].etapa) !== String(item.etapa_destino || '50')) {
+              await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+                etapa: String(item.etapa_destino || '50'),
+                sincronizado_em: new Date().toISOString()
+              }).catch(() => {});
+            }
+          }
           processados++;
         } else {
           await processarFaturar(base44, item);
@@ -166,6 +178,20 @@ Deno.serve(async (req) => {
           // Atualiza pedido local (etapa logística avança)
           if (item.pedido_id) {
             await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {});
+          }
+          // Atualiza espelho PedidoLiberadoOmie para refletir a nova etapa imediatamente
+          // (evita race condition com a reconciliação agendada)
+          if (item.codigo_pedido_omie) {
+            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+              { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
+            ).catch(() => []);
+            if (espelhos?.[0]) {
+              await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+                etapa: String(item.etapa_destino || '50'),
+                data_previsao: item.data_previsao || espelhos[0].data_previsao,
+                sincronizado_em: new Date().toISOString()
+              }).catch(() => {});
+            }
           }
           processados++;
         }
