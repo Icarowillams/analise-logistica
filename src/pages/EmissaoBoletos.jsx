@@ -97,11 +97,12 @@ export default function EmissaoBoletos() {
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
       const inicio = new Date(hoje.getTime() - 365 * 86400000);
+      const futuro = new Date(hoje.getTime() + 90 * 86400000);
       let acumulados = [];
       for (let pag = 1; pag <= 10; pag++) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: fmt(inicio),
-          data_ate: fmt(hoje),
+          data_ate: fmt(futuro),
           filtrar_por_data: 'V',
           apenas_pendentes: true,
           pagina: pag,
@@ -201,7 +202,7 @@ export default function EmissaoBoletos() {
       const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
       const inicio = new Date(hoje.getTime() - 365 * 86400000);
-      const fim = hoje;
+      const fim = new Date(hoje.getTime() + 90 * 86400000);
 
       // Varre até 5 páginas (500 títulos) — suficiente p/ uma carga
       let acumulados = [];
@@ -220,15 +221,37 @@ export default function EmissaoBoletos() {
       }
 
       let ocultosNaoBoleto = 0;
+      // Conjunto dos números de pedidos desta carga para matching preciso
+      const numPedidosCarga = new Set(
+        pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean)
+      );
+      const codPedidosCarga = new Set(
+        pedidos.map(p => String(p.codigo_pedido || '').trim()).filter(Boolean)
+      );
+
       const titulos = acumulados.filter(t => {
         const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
         const docT = String(t.numero_documento || '').replace(/\D/g, '');
-        // Omie devolve codigo_cliente como number — normaliza pra string
         const codClienteT = String(t.codigo_cliente || '').trim();
-        const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
-        const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
-        const baseNf = nfsCarga.size > 0 && docT && nfsCarga.has(docT);
-        if (!(baseCodCli || baseCnpj || baseNf)) return false;
+        const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
+
+        // Prioridade 1: match exato por numero_pedido_vinculado
+        if (numPedVinc) {
+          if (numPedidosCarga.has(numPedVinc) || codPedidosCarga.has(numPedVinc)) {
+            // Match preciso — pertence a esta carga
+          } else {
+            return false; // Tem pedido vinculado mas não é desta carga
+          }
+        } else if (docT) {
+          // Prioridade 2: match por NF
+          const baseNf = nfsCarga.size > 0 && nfsCarga.has(docT);
+          if (!baseNf) return false;
+        } else {
+          // Prioridade 3: match genérico por cliente (só para títulos avulsos)
+          const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
+          const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
+          if (!(baseCodCli || baseCnpj)) return false;
+        }
         // Filtro de modalidade: só exibe se o cliente tem modalidade BOLETO BANCÁRIO
         if (!isClienteBoleto(t)) {
           ocultosNaoBoleto++;

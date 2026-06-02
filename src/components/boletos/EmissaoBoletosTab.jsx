@@ -101,19 +101,35 @@ export default function EmissaoBoletosTab() {
     const docTitulo = somenteNumeros(titulo.numero_documento);
     const numPedVinculado = String(titulo.numero_pedido_vinculado || '').trim();
 
-    return pedidos.find(p => {
-      const porCodigo = codTitulo && (
-        String(p.codigo_cliente || '').trim() === codTitulo ||
-        String(p.codigo_cliente_cod || '').trim() === codTitulo
-      );
-      const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
-      const porNf = docTitulo && somenteNumeros(p.numero_nf) === docTitulo;
-      const porPedido = numPedVinculado && (
+    // Prioridade 1: match exato por numero_pedido_vinculado (mais confiável — identifica o pedido específico)
+    if (numPedVinculado) {
+      const matchPedido = pedidos.find(p =>
         String(p.numero_pedido || '').trim() === numPedVinculado ||
         String(p.codigo_pedido || '').trim() === numPedVinculado
       );
-      return porCodigo || porCnpj || porNf || porPedido;
-    });
+      if (matchPedido) return matchPedido;
+    }
+
+    // Prioridade 2: match por número da NF (identifica a nota específica)
+    if (docTitulo) {
+      const matchNf = pedidos.find(p => somenteNumeros(p.numero_nf) === docTitulo);
+      if (matchNf) return matchNf;
+    }
+
+    // Prioridade 3: match por codigo_cliente ou CNPJ (mais genérico — pode casar com pedidos de outras cargas do mesmo cliente)
+    // Só usa se NÃO tem numero_pedido_vinculado (títulos avulsos/manuais)
+    if (!numPedVinculado && !docTitulo) {
+      return pedidos.find(p => {
+        const porCodigo = codTitulo && (
+          String(p.codigo_cliente || '').trim() === codTitulo ||
+          String(p.codigo_cliente_cod || '').trim() === codTitulo
+        );
+        const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
+        return porCodigo || porCnpj;
+      });
+    }
+
+    return null;
   };
 
   const { data: consultaTitulos, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
@@ -126,12 +142,13 @@ export default function EmissaoBoletosTab() {
 
       const hoje = new Date();
       const inicio = new Date(hoje.getTime() - 365 * 86400000);
+      const futuro = new Date(hoje.getTime() + 90 * 86400000);
       let acumulados = [];
 
       for (let pagina = 1; pagina <= 10; pagina++) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: formatarDataBr(inicio),
-          data_ate: formatarDataBr(hoje),
+          data_ate: formatarDataBr(futuro),
           filtrar_por_data: 'V',
           apenas_pendentes: true,
           pagina,
