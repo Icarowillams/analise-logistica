@@ -46,6 +46,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Toaster } from '@/components/ui/sonner';
+import StatusOmieIndicator from '@/components/layout/StatusOmieIndicator';
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -265,14 +266,17 @@ export default function Layout({ children, currentPageName }) {
           <span className="text-cyan-200">+</span>
           <img src="https://media.base44.com/images/public/69cec8f0ff370a0c3a2d6d78/7be826633_image.png" alt="Omie" className="h-7 w-7 rounded-full bg-white" />
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="text-white hover:bg-neutral-800 h-9 w-9"
-        >
-          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <StatusOmieIndicator compact />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="text-white hover:bg-neutral-800 h-9 w-9"
+          >
+            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+        </div>
       </div>
 
       {/* Sidebar */}
@@ -298,8 +302,9 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </div>
 
-        {/* User Info & Logout */}
-        <div className="px-4 py-3 border-b border-neutral-700/50">
+        {/* Status Omie + User Info & Logout */}
+        <div className="px-4 py-3 border-b border-neutral-700/50 space-y-2">
+          <StatusOmieIndicator />
           <div className="flex items-center justify-between">
             <div className="text-sm text-neutral-400 truncate flex-1 mr-2">
               {currentUser?.email}
