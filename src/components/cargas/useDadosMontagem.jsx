@@ -12,6 +12,11 @@ import { toast } from 'sonner';
 //
 // Mantém EXATAMENTE a mesma forma final de cada pedido (compatível com PedidosPorRota, ProdutosConsolidados, etc).
 
+// Cooldown global: impede que a sincronização Omie seja chamada mais de 1x a cada 2 minutos,
+// mesmo quando múltiplas instâncias do hook existem ou a tela re-monta.
+const SYNC_COOLDOWN_MS = 2 * 60 * 1000;
+let lastSyncTimestamp = 0;
+
 export default function useDadosMontagem() {
   const [loading, setLoading] = useState(true);
   const [pedidos, setPedidos] = useState([]);
@@ -214,23 +219,27 @@ export default function useDadosMontagem() {
     refreshTimer.current = setTimeout(() => { carregar(); }, 600);
   }, [carregar]);
 
-  // Trigger manual: sincroniza espelho com Omie (etapa 20) ANTES de recarregar dados locais.
-  // Garante que pedidos recém-liberados no Omie apareçam imediatamente, mesmo se o webhook atrasar.
-  const recarregar = useCallback(async () => {
-    // Carrega imediatamente do espelho local e dispara a sincronização Omie
-    // em background (fire-and-forget, silenciosa) — não bloqueia a tela.
+  // Dispara sincronização Omie apenas se o cooldown de 2 min expirou.
+  const sincronizarComCooldown = useCallback(() => {
+    const agora = Date.now();
+    if (agora - lastSyncTimestamp < SYNC_COOLDOWN_MS) return;
+    lastSyncTimestamp = agora;
     base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
       .catch((e) => console.warn('[useDadosMontagem] sincronização Omie falhou:', e?.message));
+  }, []);
+
+  // Trigger manual: carrega do espelho local e dispara sincronização Omie com cooldown.
+  const recarregar = useCallback(async () => {
+    sincronizarComCooldown();
     await carregar();
-  }, [carregar]);
+  }, [carregar, sincronizarComCooldown]);
 
   useEffect(() => {
     // A tela carrega INSTANTANEAMENTE do espelho local (PedidoLiberadoOmie).
     // A sincronização com o Omie acontece em background, de forma silenciosa,
     // sem bloquear o carregamento nem exibir toast.
     carregar();
-    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
-      .catch((e) => console.warn('[useDadosMontagem] sincronização inicial Omie falhou:', e?.message));
+    sincronizarComCooldown();
 
     // Subscribe em tempo real — qualquer mudança nas 3 fontes reagenda refresh
     const unsubEspelho = base44.entities.PedidoLiberadoOmie.subscribe(() => agendarRefresh());
