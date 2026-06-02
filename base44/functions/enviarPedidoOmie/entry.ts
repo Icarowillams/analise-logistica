@@ -483,10 +483,12 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     debugLog(base44, `[enviarPedidoOmie] Pedido enviado com sucesso, omie_id: ${codigoOmie}`, { pedido_id, omie_id: codigoOmie, numero_pedido_omie: numeroPedidoOmie });
 
+    console.log(`[PERF] Pedido ${pedido_id}: ${Date.now() - t0}ms | sucesso: true`);
     return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, duracao_ms: Date.now() - t0 };
 }
 
 async function processarLotePedidos(base44, pedidosInput) {
+    const t0 = Date.now();
     const pedidoIds = pedidosInput
         .map(p => typeof p === 'string' ? p : (p?.id || p?.pedido_id))
         .filter(Boolean);
@@ -514,6 +516,8 @@ async function processarLotePedidos(base44, pedidosInput) {
     }
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso).length;
+
+    console.log(`[PERF] Lote concluído: ${pedidoIds.length} pedidos em ${Date.now() - t0}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
 
     return {
         sucesso: true,
