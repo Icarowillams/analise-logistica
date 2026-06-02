@@ -97,7 +97,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+      const res = await fetch('https://app.omie.com.br/api/v1/geral/clientes/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
