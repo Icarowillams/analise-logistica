@@ -7,15 +7,28 @@ function formatDatePt(value) {
 
 async function verificarJaFaturado(base44, codigoPedido) {
   const codigo = String(codigoPedido);
-  const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1);
-  const pedido = pedidos?.[0];
-  if (pedido?.numero_nota_fiscal || pedido?.status_faturamento === 'faturado' || pedido?.faturado === true) {
+
+  // 1. Verificar se já existe NF emitida no espelho PedidoLiberadoOmie (fonte mais confiável)
+  const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
+  const espelho = espelhos?.[0];
+  if (espelho?.etapa === '60' && espelho?.numero_nf) {
     return {
       bloqueado: true,
-      mensagem: `Pedido #${pedido.numero_pedido || codigo} já foi faturado em ${formatDatePt(pedido.data_faturamento || pedido.updated_date)}. NF: ${pedido.numero_nota_fiscal || '-'}`
+      mensagem: `Pedido #${espelho.numero_pedido || codigo} já possui NF emitida: ${espelho.numero_nf}. Etapa 60 no Omie.`
     };
   }
 
+  // 2. Verificar se o Pedido local tem NF real preenchida (não apenas flags de status)
+  const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
+  const pedido = pedidos?.[0];
+  if (pedido?.numero_nota_fiscal) {
+    return {
+      bloqueado: true,
+      mensagem: `Pedido #${pedido.numero_pedido || codigo} já foi faturado em ${formatDatePt(pedido.data_faturamento || pedido.updated_date)}. NF: ${pedido.numero_nota_fiscal}`
+    };
+  }
+
+  // 3. Verificar log de emissão autorizada pela SEFAZ
   const logsNF = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'autorizada' }, '-created_date', 1).catch(() => []);
   if (logsNF?.[0]) {
     return {
@@ -24,15 +37,8 @@ async function verificarJaFaturado(base44, codigoPedido) {
     };
   }
 
-  const logs = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ call: 'FaturarPedidoVenda', status: 'sucesso' }, '-created_date', 50).catch(() => []);
-  const log = logs.find(l => String(l.payload_enviado || '').includes(codigo));
-  if (log) {
-    return {
-      bloqueado: true,
-      mensagem: `Pedido #${pedido?.numero_pedido || codigo} já possui emissão registrada em ${formatDatePt(log.created_date)}. NF: ${pedido?.numero_nota_fiscal || '-'}`
-    };
-  }
-
+  // NÃO bloquear baseado apenas em flags locais (faturado, status_faturamento) nem em logs genéricos de FaturarPedidoVenda,
+  // pois esses são setados pelo fechamento de carga antes da emissão real da NF.
   return { bloqueado: false };
 }
 
