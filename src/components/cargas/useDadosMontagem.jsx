@@ -136,7 +136,7 @@ export default function useDadosMontagem() {
       await sleep(300);
 
       const todosPedidosLocais = await fetchWithRetry(() =>
-        base44.entities.Pedido.list('-created_date', 300)
+        base44.entities.Pedido.list('-created_date', 1000)
       );
       console.log('[DEBUG MC] Total Pedido local:', todosPedidosLocais?.length || 0);
       await sleep(300);
@@ -215,18 +215,22 @@ export default function useDadosMontagem() {
       // ─── Pedidos NF55 locais liberados que NÃO estão no espelho ───
       // Captura pedidos que foram enviados ao Omie mas cujo webhook
       // ainda não criou o registro PedidoLiberadoOmie
+      // TAMBÉM captura pedidos NF55 liberados que ainda não têm omie_codigo_pedido
       const codigosNoEspelho = new Set(
         (espelhoOmie || []).map(e => String(e.codigo_pedido)).filter(Boolean)
       );
       const pedidosNf55Locais = (todosPedidosLocais || []).filter(p => {
         const modelo = String(p.modelo_nota || '').trim().toLowerCase();
-        return modelo !== 'd1' &&
-               p.status === 'liberado' &&
-               !p.carga_id &&
-               !p.data_cancelamento &&
-               !p.cancelado_por &&
-               p.omie_codigo_pedido &&
-               !codigosNoEspelho.has(String(p.omie_codigo_pedido)) &&
+        if (modelo === 'd1') return false;
+        if (p.status !== 'liberado') return false;
+        if (p.carga_id) return false;
+        if (p.data_cancelamento || p.cancelado_por) return false;
+
+        // Pedido sem omie_codigo_pedido — ainda não enviado ao Omie, mas liberado
+        if (!p.omie_codigo_pedido) return true;
+
+        // Pedido com omie_codigo_pedido — incluir apenas se NÃO está no espelho e NÃO em carga
+        return !codigosNoEspelho.has(String(p.omie_codigo_pedido)) &&
                !codigosEmCarga.has(String(p.omie_codigo_pedido));
       });
       console.log('[DEBUG MC] Pedidos NF55 locais liberados FORA do espelho:', pedidosNf55Locais.length);
@@ -344,9 +348,9 @@ export default function useDadosMontagem() {
       console.log('[DEBUG CONTAGEM] Todos os pedidos na tela (' + todosCodigos.length + '):', JSON.stringify(todosCodigos));
 
       // Verificar limites de paginação
-      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/500, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/300, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
+      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/500, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/1000, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
       if ((espelhoOmie?.length || 0) >= 500) console.warn('[DEBUG CONTAGEM] ⚠️ ESPELHO OMIE ATINGIU LIMITE DE 500!');
-      if ((todosPedidosLocais?.length || 0) >= 300) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 300!');
+      if ((todosPedidosLocais?.length || 0) >= 1000) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 1000!');
 
       // Verificar pedidos cancelados excluídos
       const canceladosExcluidos = (todosPedidosLocais || []).filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por);
