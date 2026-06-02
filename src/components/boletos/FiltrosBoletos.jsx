@@ -14,16 +14,28 @@ const normalizar = (valor) => String(valor || '').trim().toUpperCase();
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
 const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
+// Gera data padrão DD/MM/AAAA (últimos 30 dias)
+const defaultDataDe = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+};
+const defaultDataAte = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 90); // 90 dias futuro para pegar A VENCER
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+};
+
 export default function FiltrosBoletos({ onResultado }) {
-  const [dataDe, setDataDe] = useState('');
-  const [dataAte, setDataAte] = useState('');
+  const [dataDe, setDataDe] = useState(defaultDataDe());
+  const [dataAte, setDataAte] = useState(defaultDataAte());
   const [filtrarPor, setFiltrarPor] = useState('E');
   const [cnpj, setCnpj] = useState('');
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
   const [cargaFiltro, setCargaFiltro] = useState(null);
   const [ocultosNaoBoleto, setOcultosNaoBoleto] = useState(0);
-  const [apenasClientesBoleto, setApenasClientesBoleto] = useState(true);
+  const [apenasClientesBoleto, setApenasClientesBoleto] = useState(false);
 
   const { data: modalidades = [] } = useQuery({
     queryKey: ['modalidades-pagamento-filtro-boletos'],
@@ -93,7 +105,12 @@ export default function FiltrosBoletos({ onResultado }) {
       if (data?.sucesso) {
         let titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
         if (apenasComBoleto) {
-          titulosFiltrados = titulosFiltrados.filter(t => t.boleto_gerado || t.numero_boleto || t.url_boleto || t.codigo_barras);
+          titulosFiltrados = titulosFiltrados.filter(t =>
+            t.boleto_gerado ||
+            (t.numero_boleto && String(t.numero_boleto).trim()) ||
+            (t.url_boleto && String(t.url_boleto).trim()) ||
+            (t.codigo_barras && String(t.codigo_barras).trim())
+          );
         }
         // Filtro de modalidade: só clientes com BOLETO BANCÁRIO
         if (apenasClientesBoleto) {

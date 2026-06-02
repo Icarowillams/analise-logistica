@@ -96,6 +96,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
               <th className="p-2 text-left">Vencimento</th>
               <th className="p-2 text-right">Valor</th>
               <th className="p-2 text-center">Status</th>
+              <th className="p-2 text-center">Nº Boleto</th>
               <th className="p-2 text-center">Ver</th>
             </tr>
           </thead>
@@ -125,23 +126,30 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                     return <Badge variant="outline">Em Aberto</Badge>;
                   })()}
                 </td>
+                <td className="p-2 text-center font-mono text-xs">
+                  {t.numero_boleto ? t.numero_boleto : '-'}
+                </td>
                 <td className="p-2 text-center">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => verBoleto(t)}
-                    disabled={verLoading === t.codigo_lancamento || !isElegivel(t)}
-                    title="Abrir boleto em nova aba"
-                  >
-                    {verLoading === t.codigo_lancamento
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <><Eye className="w-4 h-4 mr-1" />Ver</>}
-                  </Button>
+                  {(t.boleto_gerado || t.numero_boleto) ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => verBoleto(t)}
+                      disabled={verLoading === t.codigo_lancamento}
+                      title="Abrir boleto em nova aba"
+                    >
+                      {verLoading === t.codigo_lancamento
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <><Eye className="w-4 h-4 mr-1" />Ver</>}
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-slate-400">Sem boleto</span>
+                  )}
                 </td>
               </tr>
             ))}
             {filtrados.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
             )}
           </tbody>
         </table>
