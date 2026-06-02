@@ -203,6 +203,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     return nfs.filter(nf =>
       String(nf.cNumero || '').toLowerCase().includes(termo) ||
       String(nf.cRazao || '').toLowerCase().includes(termo) ||
+      String(nf.cNomeFantasia || '').toLowerCase().includes(termo) ||
       String(nf.cCPFCNPJDest || '').toLowerCase().includes(termo) ||
       String(nf.cChaveNFe || '').toLowerCase().includes(termo)
     );
@@ -339,7 +340,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                     <th className="p-2 text-left font-semibold">Nº NF</th>
                     <th className="p-2 text-left font-semibold">Série</th>
                     <th className="p-2 text-left font-semibold">Emissão</th>
-                    <th className="p-2 text-left font-semibold">Cliente</th>
+                    <th className="p-2 text-left font-semibold">Cliente (Fantasia)</th>
                     <th className="p-2 text-left font-semibold">CNPJ/CPF</th>
                     <th className="p-2 text-left font-semibold">Nº Carga</th>
                     <th className="p-2 text-right font-semibold">Valor</th>
@@ -363,7 +364,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                         <td className="p-2">{nf.cNumero}</td>
                         <td className="p-2">{nf.cSerie}</td>
                         <td className="p-2">{nf.dEmiNF}</td>
-                        <td className="p-2">{nf.cRazao}</td>
+                        <td className="p-2" title={nf.cRazao}>{nf.cNomeFantasia || nf.cRazao}</td>
                         <td className="p-2">{nf.cCPFCNPJDest}</td>
                         <td className="p-2">
                           {cargasPorNf[String(nf.cNumero || '').replace(/\D/g, '')] ? (

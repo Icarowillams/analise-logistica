@@ -78,6 +78,8 @@ export default function Operacao() {
     if (t) {
       r = lista.filter(p =>
         (p.numero_pedido || '').toString().toLowerCase().includes(t) ||
+        (p.nome_fantasia || '').toLowerCase().includes(t) ||
+        (p.nome_cliente || '').toLowerCase().includes(t) ||
         (p.cliente_nome || '').toLowerCase().includes(t) ||
         (p.cliente_cpf_cnpj || '').includes(t) ||
         (p.numero_nf || '').toString().includes(t) ||

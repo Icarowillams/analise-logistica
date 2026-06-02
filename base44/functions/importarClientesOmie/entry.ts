@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -103,10 +103,18 @@ Deno.serve(async (req) => {
         continue;
       }
       if (String(match.codigo_omie || '') === codigoOmie) {
+        // Mesmo já vinculado, atualizar nome_fantasia se estiver vazio no Base44 mas preenchido no Omie
+        const nfOmie = (cOmie.nome_fantasia || '').trim();
+        if (nfOmie && !match.nome_fantasia) {
+          atualizacoes.push({ id: match.id, codigo_omie: codigoOmie, nome_fantasia: nfOmie });
+        }
         jaVinculados++;
         continue;
       }
-      atualizacoes.push({ id: match.id, codigo_omie: codigoOmie });
+      const nfOmie2 = (cOmie.nome_fantasia || '').trim();
+      const upd = { id: match.id, codigo_omie: codigoOmie };
+      if (nfOmie2 && !match.nome_fantasia) upd.nome_fantasia = nfOmie2;
+      atualizacoes.push(upd);
     }
 
     // 4. Gravar — sequencial com retry em 429 (rate limit Base44)
@@ -131,7 +139,9 @@ Deno.serve(async (req) => {
 
     if (!apenas_simular && atualizacoes.length > 0) {
       for (const up of atualizacoes) {
-        const ok = await updateComRetry(up.id, { codigo_omie: up.codigo_omie });
+        const payload = { codigo_omie: up.codigo_omie };
+        if (up.nome_fantasia) payload.nome_fantasia = up.nome_fantasia;
+        const ok = await updateComRetry(up.id, payload);
         if (ok) vinculados++;
         await delay(120); // throttle: ~8 req/s, bem abaixo do limite
       }

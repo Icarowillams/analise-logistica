@@ -145,9 +145,10 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'cliente_nome') {
+    const nomeExibir = p.cliente_fantasia_base || p.cliente_nome_base || '-';
     return (
       <span className="block truncate" title={p.cliente_nome_base || ''}>
-        {p.cliente_nome_base || '-'}
+        {nomeExibir}
         {p.cliente_pendencia_financeira && <Badge className="ml-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-800">Pendência Financeira</Badge>}
       </span>
     );

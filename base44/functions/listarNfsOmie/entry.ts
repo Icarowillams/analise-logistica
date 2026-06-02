@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
       dInutNF: nf.ide?.dInut || null,
       cDeneg: nf.ide?.cDeneg || null,
       cRazao: nf.nfDestInt?.cRazao || nf.cRazao,
+      cNomeFantasia: nf.nfDestInt?.cNomeFantasia || nf.nfDestInt?.nome_fantasia || '',
       cCPFCNPJDest: nf.nfDestInt?.cnpj_cpf || nf.cCPFCNPJDest,
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
       cStatus: derivarStatus(nf), // 'autorizada' | 'cancelada' | 'denegada' | 'inutilizada' | 'pendente'

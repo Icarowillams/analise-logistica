@@ -99,12 +99,20 @@ export default function EmissaoBoletosTab() {
     const codTitulo = String(titulo.codigo_cliente || '').trim();
     const cnpjTitulo = somenteNumeros(titulo.cnpj_cpf);
     const docTitulo = somenteNumeros(titulo.numero_documento);
+    const numPedVinculado = String(titulo.numero_pedido_vinculado || '').trim();
 
     return pedidos.find(p => {
-      const porCodigo = codTitulo && String(p.codigo_cliente || '').trim() === codTitulo;
+      const porCodigo = codTitulo && (
+        String(p.codigo_cliente || '').trim() === codTitulo ||
+        String(p.codigo_cliente_cod || '').trim() === codTitulo
+      );
       const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
       const porNf = docTitulo && somenteNumeros(p.numero_nf) === docTitulo;
-      return porCodigo || porCnpj || porNf;
+      const porPedido = numPedVinculado && (
+        String(p.numero_pedido || '').trim() === numPedVinculado ||
+        String(p.codigo_pedido || '').trim() === numPedVinculado
+      );
+      return porCodigo || porCnpj || porNf || porPedido;
     });
   };
 
@@ -156,6 +164,7 @@ export default function EmissaoBoletosTab() {
 
         titulosDaCarga.push({
           ...titulo,
+          nome_fantasia: clienteBoleto.nome_fantasia || pedido.nome_fantasia || '',
           nome_cliente: titulo.nome_cliente || pedido.nome_cliente || clienteBoleto.nome_fantasia || clienteBoleto.razao_social,
           cnpj_cpf: titulo.cnpj_cpf || pedido.cnpj_cpf_cliente,
           modalidade_pagamento_nome: 'BOLETO BANCARIO'

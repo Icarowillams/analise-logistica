@@ -94,7 +94,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                     <span className="text-slate-300">—</span>
                   )}
                 </td>
-                <td className="p-2">{t.nome_cliente || '—'}</td>
+                <td className="p-2">{t.nome_fantasia || t.nome_cliente || '—'}</td>
                 <td className="p-2">{t.numero_pedido_vinculado || '—'}</td>
                 <td className="p-2">{t.numero_documento || '—'}</td>
                 <td className="p-2">{t.data_vencimento || '—'}</td>

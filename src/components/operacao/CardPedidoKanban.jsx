@@ -37,8 +37,8 @@ export default function CardPedidoKanban({
         )}
       </div>
 
-      <div className="font-bold text-sm text-slate-800 truncate mt-1" title={pedido.cliente_nome}>
-        {pedido.cliente_nome || `Cliente ${pedido.codigo_cliente}`}
+      <div className="font-bold text-sm text-slate-800 truncate mt-1" title={pedido.nome_fantasia || pedido.cliente_nome}>
+        {pedido.nome_fantasia || pedido.cliente_nome || `Cliente ${pedido.codigo_cliente}`}
       </div>
 
       {(pedido.cliente_cidade || pedido.rota_nome) && (

@@ -23,6 +23,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
     if (!filtro) return titulos;
     const f = filtro.toLowerCase();
     return titulos.filter(t =>
+      (t.nome_fantasia || '').toLowerCase().includes(f) ||
       (t.nome_cliente || '').toLowerCase().includes(f) ||
       (t.cnpj_cpf || '').toLowerCase().includes(f) ||
       (t.numero_documento || '').toLowerCase().includes(f)
@@ -108,7 +109,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                     disabled={!isElegivel(t)}
                   />
                 </td>
-                <td className="p-2">{t.nome_cliente || '-'}</td>
+                <td className="p-2">{t.nome_fantasia || t.nome_cliente || '-'}</td>
                 <td className="p-2 font-mono">{t.numero_documento}</td>
                 <td className="p-2">{t.numero_parcela}</td>
                 <td className="p-2">{t.data_vencimento}</td>

@@ -1,15 +1,26 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL']);
 
-async function omieCall(call, param, tentativa = 1) {
+let _creds = null;
+async function resolverCreds(base44) {
+  if (_creds) return _creds;
+  try {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
+    const cfg = configs?.[0];
+    if (cfg?.app_key && cfg?.app_secret) { _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret }; return _creds; }
+  } catch { /* fallback */ }
+  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+  return _creds;
+}
+
+async function omieCall(base44, call, param, tentativa = 1) {
+  const { app_key, app_secret } = await resolverCreds(base44);
   const res = await fetch(OMIE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
+    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
   });
   const data = await res.json();
   if (data.faultstring) {
@@ -17,14 +28,14 @@ async function omieCall(call, param, tentativa = 1) {
     const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
     if (isRate && tentativa < 5) {
       await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(call, param, tentativa + 1);
+      return omieCall(base44, call, param, tentativa + 1);
     }
     throw new Error(data.faultstring);
   }
   return data;
 }
 
-async function listarTitulosDoPedido(codigoPedido) {
+async function listarTitulosDoPedido(base44, codigoPedido) {
   const titulos = [];
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - 30 * 86400000);
@@ -33,7 +44,7 @@ async function listarTitulosDoPedido(codigoPedido) {
   let pagina = 1;
   const registrosPorPagina = 100;
   while (true) {
-    const data = await omieCall('ListarContasReceber', {
+    const data = await omieCall(base44, 'ListarContasReceber', {
       pagina,
       registros_por_pagina: registrosPorPagina,
       apenas_importado_api: 'N',
@@ -50,7 +61,7 @@ async function listarTitulosDoPedido(codigoPedido) {
   return titulos;
 }
 
-async function gerarBoletosTitulos(titulos, idContaCorrente) {
+async function gerarBoletosTitulos(base44, titulos, idContaCorrente) {
   const resultados = [];
   for (const titulo of titulos) {
     const codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento || titulo;
@@ -70,7 +81,7 @@ async function gerarBoletosTitulos(titulos, idContaCorrente) {
     try {
       const param = { codigo_lancamento: Number(codigo) };
       if (idContaCorrente) param.id_conta_corrente = Number(idContaCorrente);
-      const data = await omieCall('GerarBoleto', param);
+      const data = await omieCall(base44, 'GerarBoleto', param);
       const numBoleto = data.numero_boleto || data.nNumBoleto || '';
       const codBarras = data.codigo_barras || data.cCodBarras || '';
       const linkBoleto = data.link_boleto || data.cLinkBoleto || '';
@@ -113,7 +124,7 @@ Deno.serve(async (req) => {
     if (origem === 'auto') {
       const codigosPedido = pedidos.map(p => p.codigo_pedido || p).filter(Boolean);
       for (const codigoPedido of codigosPedido) {
-        const titulosPedido = await listarTitulosDoPedido(codigoPedido);
+        const titulosPedido = await listarTitulosDoPedido(base44, codigoPedido);
         titulosParaGerar.push(...titulosPedido.map(t => ({ ...t, codigo_pedido: codigoPedido })));
       }
     } else {
@@ -121,7 +132,7 @@ Deno.serve(async (req) => {
       titulosParaGerar = titulos;
     }
 
-    const resultados = await gerarBoletosTitulos(titulosParaGerar, id_conta_corrente);
+    const resultados = await gerarBoletosTitulos(base44, titulosParaGerar, id_conta_corrente);
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso && !r.skip).length;
     const skips = resultados.filter(r => r.skip).length;

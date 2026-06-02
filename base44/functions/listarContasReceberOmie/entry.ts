@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
@@ -134,6 +134,7 @@ Deno.serve(async (req) => {
       status_titulo: t.status_titulo || 'ABERTO',
       cnpj_cpf: t.cpf_cnpj_cliente,
       nome_cliente: t.nome_cliente,
+      nome_fantasia: t.nome_fantasia || '',
       id_conta_corrente: t.id_conta_corrente,
       // boleto.cGerado === 'S' indica que o boleto foi efetivamente gerado no Omie
       boleto_gerado: t.boleto?.cGerado === 'S',
@@ -185,7 +186,8 @@ Deno.serve(async (req) => {
           const c = clientesMap.get(String(enr.codigo_cliente)) ||
                     clientesPorCnpj.get(String(enr.cnpj_cpf || '').replace(/\D/g, ''));
           if (c) {
-            enr.nome_cliente = c.nome_fantasia || c.razao_social || enr.nome_cliente;
+            enr.nome_cliente = c.razao_social || c.nome_fantasia || enr.nome_cliente;
+            enr.nome_fantasia = c.nome_fantasia || '';
             if (!enr.cnpj_cpf) enr.cnpj_cpf = c.cnpj_cpf;
           }
         }
