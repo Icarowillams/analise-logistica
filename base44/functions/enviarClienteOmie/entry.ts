@@ -272,6 +272,12 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
         // --- Inatividade ---
         inativo: (clienteData.status || 'ativo').toLowerCase() === 'inativo' ? "S" : "N",
 
+        // --- Bloqueio de faturamento ---
+        // REGRA DE NEGÓCIO: O controle de bloqueio financeiro é 100% interno do Base44.
+        // O Omie NUNCA deve bloquear um cliente para faturamento.
+        // Sempre enviar "N" para garantir que o Omie não tenha clientes bloqueados.
+        bloquear_faturamento: "N",
+
         // --- Tags (código do cliente) ---
         tags: clienteData.codigo ? [{ tag: `COD:${clienteData.codigo}` }] : [],
 
@@ -290,7 +296,7 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
 
     // Remover campos vazios para não sobrescrever dados no Omie com strings vazias
     // Mantemos sempre: codigo_cliente_integracao, razao_social, pessoa_fisica, contribuinte, inativo
-    const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual'];
+    const camposSempreEnviar = ['codigo_cliente_integracao', 'razao_social', 'pessoa_fisica', 'contribuinte', 'inativo', 'inscricao_estadual', 'bloquear_faturamento'];
     
     for (const [key, value] of Object.entries(clienteOmie)) {
         if (camposSempreEnviar.includes(key)) continue;
