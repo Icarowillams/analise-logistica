@@ -410,7 +410,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
 
     // Se o pedido já foi enviado ao Omie, sincronizar alterações
-    if (pedidoId && existingPedido?.omie_enviado && existingPedido?.omie_codigo_pedido) {
+    if (pedidoId && existingPedido?.omie_codigo_pedido) {
       try {
         const resp = await base44.functions.invoke('editarPedidoOmie', { pedido_id: savedPedidoId });
         const result = resp.data;
