@@ -147,10 +147,41 @@ export default function Cargas() {
     setSelecionadas(prev => prev.length === faturaveis.length ? [] : faturaveis);
   };
 
+  // Verifica se a carga tem fila de processamento Omie ativa
+  const cargaEmProcessamento = (carga) => {
+    const procStatus = carga.processamento_omie_status;
+    return ['em_andamento'].includes(procStatus) ||
+      (procStatus === 'parcial' && (carga.processamento_omie_total || 0) > 0);
+  };
+
+  // Cancela itens pendentes/processando da fila antes de excluir
+  const cancelarFilaCarga = async (cargaId) => {
+    const itens = await base44.entities.FilaCargaOmie.filter({ carga_id: cargaId }, '-created_date', 500);
+    const ativos = itens.filter(i => ['pendente', 'processando'].includes(i.status));
+    for (const item of ativos) {
+      await base44.entities.FilaCargaOmie.update(item.id, {
+        status: 'erro',
+        erro_log: 'Cancelado: carga excluída pelo usuário'
+      });
+    }
+    return ativos.length;
+  };
+
   const excluir = async () => {
     if (!excluindo) return;
     try {
       const carga = excluindo;
+
+      // PROTEÇÃO: Se carga está em processamento Omie, cancelar fila primeiro
+      if (cargaEmProcessamento(carga)) {
+        const cancelados = await cancelarFilaCarga(carga.id);
+        if (cancelados > 0) {
+          toast.info(`${cancelados} item(ns) da fila cancelados antes da exclusão.`);
+        }
+        // Atualiza status da carga para refletir o cancelamento
+        await base44.entities.Carga.update(carga.id, { processamento_omie_status: 'erro' });
+      }
+
       const pedidosOmie = carga.pedidos_omie || [];
       const pedidosInternos = carga.pedidos_internos || [];
       const trocas = carga.pedidos_troca || [];
@@ -322,8 +353,22 @@ export default function Cargas() {
               </Button>
             )}
             {emMontagem && (
-              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setExcluindo(row)} title="Desfazer carga (apenas se não faturada)">
-                <Trash2 className="w-3.5 h-3.5" />
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-7 w-7"
+                onClick={() => {
+                  if (cargaEmProcessamento(row)) {
+                    if (!confirm(`Esta carga está com processamento Omie em andamento.\nA fila será cancelada antes da exclusão.\n\nDeseja continuar?`)) return;
+                  }
+                  setExcluindo(row);
+                }}
+                title={cargaEmProcessamento(row)
+                  ? 'Carga em processamento — a fila será cancelada antes da exclusão'
+                  : 'Desfazer carga (apenas se não faturada)'
+                }
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${cargaEmProcessamento(row) ? 'text-amber-500' : ''}`} />
               </Button>
             )}
           </div>

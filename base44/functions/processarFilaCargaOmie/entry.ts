@@ -51,12 +51,19 @@ async function omieCall(base44, call, param) {
     if (data.faultstring || data.faultcode) {
       const erro = data.faultstring || 'Erro Omie';
       const msg = String(erro).toLowerCase();
-      // Suspensão / chave inválida → breaker 2h
+      const faultcode = String(data.faultcode || '').toLowerCase();
+      // MISUSE_API_PROCESS → breaker imediato 30min
+      if (faultcode.includes('misuse') || msg.includes('misuse') || msg.includes('consumo indevido')) {
+        console.error(`[FILA] MISUSE_API_PROCESS detectado! Bloqueando por 30 min.`);
+        await abrirBreaker(base44, `MISUSE: ${erro}`);
+        const e = new Error(erro); e.bloqueio = true; throw e;
+      }
+      // Suspensão / chave inválida → breaker 30min
       if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
         await abrirBreaker(base44, erro);
         const e = new Error(erro); e.bloqueio = true; throw e;
       }
-      if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
+      if (res.status === 425 || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
         await abrirBreaker(base44, erro);
         const e = new Error(erro); e.bloqueio = true; throw e;
       }
@@ -175,6 +182,23 @@ Deno.serve(async (req) => {
     for (let i = 0; i < pendentes.length; i++) {
       const item = pendentes[i];
       cargasAfetadas.add(item.carga_id);
+
+      // PROTEÇÃO: Verificar se a carga ainda existe antes de processar
+      try {
+        const cargas = await base44.asServiceRole.entities.Carga.filter({ id: item.carga_id }, '-created_date', 1);
+        if (!cargas || cargas.length === 0) {
+          console.log(`[FILA] Carga ${item.carga_id} não existe mais. Cancelando item ${item.numero_pedido}.`);
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+            status: 'erro',
+            erro_log: 'Carga excluída durante processamento — item cancelado automaticamente',
+            processado_em: new Date().toISOString()
+          }).catch(() => {});
+          processados++;
+          continue;
+        }
+      } catch (e) {
+        console.warn(`[FILA] Falha ao verificar carga ${item.carga_id}:`, e.message);
+      }
 
       await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
 

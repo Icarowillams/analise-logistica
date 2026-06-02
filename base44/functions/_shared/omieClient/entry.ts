@@ -309,11 +309,25 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
 
-      if (!response.ok || data?.faultstring) {
+      if (!response.ok || data?.faultstring || data?.faultcode) {
         const message = data?.faultstring || `Erro HTTP ${response.status} na API Omie.`;
+        const faultcode = data?.faultcode || '';
         lastError = new Error(message);
         const lower = message.toLowerCase();
-        if (lower.includes('cota') || lower.includes('limite') || lower.includes('aguarde') || lower.includes('bloque')) {
+        const faultLower = String(faultcode).toLowerCase();
+
+        // MISUSE_API_PROCESS → bloqueio imediato de 30min, sem retry
+        if (faultLower.includes('misuse_api_process') || faultLower.includes('misuse') ||
+            lower.includes('consumo indevido') || lower.includes('misuse')) {
+          console.error(`[omieClient] MISUSE_API_PROCESS detectado! Bloqueando por 30 min.`);
+          await setCircuitBreakerBlocked(base44, `MISUSE_API_PROCESS: ${message}`);
+          throw lastError;
+        }
+
+        // Bloqueio genérico por rate limit / suspensão
+        if (lower.includes('cota') || lower.includes('limite') || lower.includes('aguarde') ||
+            lower.includes('bloque') || lower.includes('suspended') || lower.includes('suspens') ||
+            response.status === 403 || response.status === 425) {
           await setCircuitBreakerBlocked(base44, message);
         }
         throw lastError;
