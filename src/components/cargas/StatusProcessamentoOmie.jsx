@@ -14,20 +14,22 @@ const CONFIG = {
   erro: { label: 'Erro', cls: 'bg-red-100 text-red-700' }
 };
 
-export default function StatusProcessamentoOmie({ carga, onReprocessar }) {
+export default function StatusProcessamentoOmie({ carga, onReprocessar, itensFila }) {
   const status = carga.processamento_omie_status || 'nao_iniciado';
   const cfg = CONFIG[status] || CONFIG.nao_iniciado;
   const total = carga.processamento_omie_total || 0;
 
-  // Só busca itens da fila quando há processamento relevante a exibir.
   const precisaDetalhe = ['em_andamento', 'parcial', 'erro'].includes(status);
-  const { data: itens = [] } = useQuery({
+
+  // Usa itens passados via prop (batch) — fallback para query individual se não fornecidos
+  const { data: itensFallback = [] } = useQuery({
     queryKey: ['fila-carga', carga.id],
     queryFn: () => base44.entities.FilaCargaOmie.filter({ carga_id: carga.id }, '-created_date', 500),
-    enabled: precisaDetalhe,
+    enabled: precisaDetalhe && !itensFila,
     refetchInterval: status === 'em_andamento' ? 15000 : false
   });
 
+  const itens = itensFila || itensFallback;
   const concluidos = itens.filter(i => i.status === 'concluido').length;
   const comErro = itens.filter(i => i.status === 'erro');
 

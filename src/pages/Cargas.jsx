@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -43,11 +43,41 @@ export default function Cargas() {
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
 
   // Carrega cargas direto do banco local — ZERO chamadas ao Omie
+  // Padrão: últimos 60 dias. staleTime evita refetches excessivos.
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
-    queryFn: () => base44.entities.Carga.list('-created_date', 500),
-    refetchOnWindowFocus: true
+    queryFn: () => base44.entities.Carga.list('-created_date', 200),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false
   });
+
+  // Batch: carrega TODOS os itens de fila de cargas em andamento/erro/parcial em UMA query
+  const cargasComFilaIds = useMemo(() =>
+    cargasTodas.filter(c => ['em_andamento', 'parcial', 'erro'].includes(c.processamento_omie_status)).map(c => c.id),
+    [cargasTodas]
+  );
+  const { data: todosItensFila = [] } = useQuery({
+    queryKey: ['fila-carga-batch', cargasComFilaIds.join(',')],
+    queryFn: async () => {
+      if (cargasComFilaIds.length === 0) return [];
+      // Busca todos os itens de fila de uma vez
+      const itens = await base44.entities.FilaCargaOmie.filter({}, '-created_date', 500);
+      return itens.filter(i => cargasComFilaIds.includes(i.carga_id));
+    },
+    enabled: cargasComFilaIds.length > 0,
+    staleTime: 15 * 1000,
+    refetchInterval: cargasComFilaIds.length > 0 ? 15000 : false
+  });
+
+  // Mapa pré-computado: carga_id → itens da fila
+  const filaMap = useMemo(() => {
+    const map = {};
+    for (const item of todosItensFila) {
+      if (!map[item.carga_id]) map[item.carga_id] = [];
+      map[item.carga_id].push(item);
+    }
+    return map;
+  }, [todosItensFila]);
 
   const cargas = useMemo(() => {
     return cargasTodas.filter(c => {
@@ -251,7 +281,8 @@ export default function Cargas() {
       render: (_, row) => (
         <StatusProcessamentoOmie
           carga={row}
-          onReprocessar={() => queryClient.invalidateQueries({ queryKey: ['fila-carga', row.id] })}
+          itensFila={filaMap[row.id]}
+          onReprocessar={() => queryClient.invalidateQueries({ queryKey: ['fila-carga-batch'] })}
         />
       )
     },
