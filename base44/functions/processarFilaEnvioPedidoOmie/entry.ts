@@ -17,11 +17,11 @@ function debugLog(base44, mensagem, extra = {}) {
   console.log(mensagem);
   base44.asServiceRole.entities.LogIntegracaoOmie.create({
     endpoint: 'processarFila:debug',
-    payload_envio: JSON.stringify(extra).slice(0, 2000),
-    payload_resposta: mensagem.slice(0, 2000),
-    sucesso: !extra.erro,
-    erro: extra.erro || null,
-    created_date: new Date().toISOString()
+    call: 'processarFila:debug',
+    operacao: 'processarFila',
+    status: extra.erro ? 'erro' : 'sucesso',
+    payload_enviado: JSON.stringify(extra).slice(0, 2000),
+    payload_resposta: mensagem.slice(0, 2000)
   }).catch(() => {});
 }
 
@@ -447,8 +447,8 @@ Deno.serve(async (req) => {
         // Idempotência
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: 'concluido', codigo_pedido_omie: pedido.omie_codigo_pedido,
-            numero_pedido_omie: pedido.numero_pedido, processado_em: new Date().toISOString(), erro_log: null
+            status: 'concluido', codigo_pedido_omie: String(pedido.omie_codigo_pedido),
+            numero_pedido_omie: pedido.numero_pedido ? String(pedido.numero_pedido) : null, processado_em: new Date().toISOString(), erro_log: null
           });
           resultados.push({ pedido_id: item.pedido_id, sucesso: true, mensagem: 'Já estava enviado' });
           continue;
@@ -467,8 +467,8 @@ Deno.serve(async (req) => {
 
         if (result?.sucesso) {
           await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: 'concluido', codigo_pedido_omie: result.codigo_pedido_omie || null,
-            numero_pedido_omie: result.numero_pedido_omie || null,
+            status: 'concluido', codigo_pedido_omie: result.codigo_pedido_omie ? String(result.codigo_pedido_omie) : null,
+            numero_pedido_omie: result.numero_pedido_omie ? String(result.numero_pedido_omie) : null,
             processado_em: new Date().toISOString(), erro_log: null
           });
           resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: result.codigo_pedido_omie });
@@ -482,8 +482,8 @@ Deno.serve(async (req) => {
               await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { omie_enviado: true, omie_erro: null });
             }
             await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-              status: 'concluido', codigo_pedido_omie: pedido.omie_codigo_pedido,
-              numero_pedido_omie: pedido.numero_pedido, processado_em: new Date().toISOString(), erro_log: null
+              status: 'concluido', codigo_pedido_omie: String(pedido.omie_codigo_pedido),
+              numero_pedido_omie: pedido.numero_pedido ? String(pedido.numero_pedido) : null, processado_em: new Date().toISOString(), erro_log: null
             });
             resultados.push({ pedido_id: item.pedido_id, sucesso: true, codigo: pedido.omie_codigo_pedido, mensagem: 'Recuperado' });
             continue;
