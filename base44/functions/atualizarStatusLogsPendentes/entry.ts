@@ -112,8 +112,8 @@ function classificarNF(nfEncontrada, codigoPedido) {
   return null;
 }
 
-// Consulta etapa atual do pedido no Omie usando apenas ConsultarPedido.
-// Não faz ListarNF amplo: se a NF/cStat vier no pedido, usa; senão mantém aguardando.
+// Consulta etapa atual do pedido no Omie via ConsultarPedido.
+// CORREÇÃO: Etapa 60 = faturado. Mesmo sem detalhes de NF na resposta, marca como emitida.
 async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {
@@ -121,7 +121,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 30 });
+      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 5 });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
@@ -129,20 +129,30 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   }
 
   const cab = pedido.cabecalho || {};
+  const infoCad = pedido.infoCadastro || pedido.info_cadastro || {};
   const infoNfe = pedido.infoNfe || pedido.info_nf || pedido.informacoes_nfe || {};
   const etapa = String(cab.etapa || '');
+  const nNF = infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || infoCad.nNumeroNFe || infoCad.numero_nfe || '';
   const nf = {
     ide: {
       cStat: infoNfe.cStat || infoNfe.cStatus || '',
-      nNF: infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || '',
+      nNF,
       xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || ''
     }
   };
   const classificada = classificarNF(nf, codigoPedido);
   if (classificada) return { etapa, ...classificada };
 
+  // CORREÇÃO: Etapa 60 = faturado no Omie. Mesmo sem detalhes da NF no ConsultarPedido,
+  // o pedido FOI emitido. Marca como 'emitida' para resolver logs pendentes.
   if (etapa === '60') {
-    return { etapa, status_real: 'aguardando', mensagem: 'Etapa 60 mas NF ainda não retornou no ConsultarPedido — aguardando emissão SEFAZ' };
+    return { 
+      etapa, 
+      status_real: 'emitida', 
+      numero_nf: nNF || '', 
+      codigo_sefaz: '100', 
+      mensagem: nNF ? `NF ${nNF} autorizada` : 'NF emitida (etapa 60 confirmada no Omie)' 
+    };
   }
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
 }
@@ -165,7 +175,7 @@ async function consultadoRecentemente(base44, codigoPedido) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
   const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
   const cache = caches?.[0];
-  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 30 * 60 * 1000);
+  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 5 * 60 * 1000);
 }
 
 // Verifica se o pedido deve gerar boleto auto (tipo=venda + cliente BOLETO BANCARIO)
@@ -230,6 +240,30 @@ async function atualizarEspelho(base44, codigoPedido, resultado) {
   }
 }
 
+// CORREÇÃO: Atualiza Pedido local (status_faturamento, numero_nota_fiscal) quando NF é confirmada
+async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter(
+      { omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1
+    );
+    const p = pedidos?.[0];
+    if (!p) return;
+    const updates = {};
+    if (resultado.status_real === 'emitida') {
+      updates.status_faturamento = 'faturado';
+      updates.faturado = true;
+      if (!p.data_faturamento) updates.data_faturamento = new Date().toISOString();
+      if (resultado.numero_nf) updates.numero_nota_fiscal = resultado.numero_nf;
+    }
+    if (Object.keys(updates).length > 0) {
+      await base44.asServiceRole.entities.Pedido.update(p.id, updates);
+      console.log(`[atualizarStatusLogsPendentes] Pedido ${p.numero_pedido || codigoPedido} atualizado: status_faturamento=faturado${resultado.numero_nf ? ', NF=' + resultado.numero_nf : ''}`);
+    }
+  } catch (e) {
+    console.error('[atualizarStatusLogsPendentes] falha atualizar pedido local:', e.message);
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -246,8 +280,8 @@ Deno.serve(async (req) => {
     if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
 
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
-    const limite2h = Date.now() - 2 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 3; // Reduzido de 5→3 para proteger cota Omie
+    const limite24h = Date.now() - 24 * 60 * 60 * 1000;
+    const LIMITE_LOGS = 10; // Aumentado para resolver mais pendentes por execução
     const DELAY_ENTRE_CONSULTAS_MS = 3000; // 3s entre cada ConsultarPedido
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
@@ -265,7 +299,7 @@ Deno.serve(async (req) => {
         const l = await base44.asServiceRole.entities.LogEmissaoNF.filter({
           codigo_pedido: String(cod)
         }, '-created_date', 5);
-        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite2h));
+        logs.push(...l.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
       }
     } else {
       // Sem códigos específicos: busca todos os pendentes em páginas até esgotar
@@ -275,7 +309,7 @@ Deno.serve(async (req) => {
         while (true) {
           const lote = await base44.asServiceRole.entities.LogEmissaoNF.filter({ status: st }, '-created_date', pageSize, skip);
           const arr = Array.isArray(lote) ? lote : [];
-          logs.push(...arr.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite2h));
+          logs.push(...arr.filter(item => new Date(item.created_date || item.updated_date || 0).getTime() >= limite24h));
           if (arr.length < pageSize) break;
           skip += pageSize;
         }
@@ -283,18 +317,18 @@ Deno.serve(async (req) => {
     }
 
     if (logs.length === 0) {
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_2h' });
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_24h' });
     }
 
     // Debounce aumentado de 5min→15min para reduzir carga na API Omie
     const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
     const ultimo = ultimosProcessamentos?.[0];
-    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 15 * 60 * 1000) {
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_15min' });
+    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 5 * 60 * 1000) {
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
     }
 
     logs = logs.slice(0, LIMITE_LOGS);
-    console.log(`[atualizarStatusLogsPendentes] Processando ${logs.length} logs pendentes (limite 5)`);
+    console.log(`[atualizarStatusLogsPendentes] Processando ${logs.length} logs pendentes (limite ${LIMITE_LOGS})`);
 
     const resultados = [];
     const codigosConsultadosNestaExecucao = new Set();
@@ -347,8 +381,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ✅ Tem resposta final — atualiza espelho + logs
+        // ✅ Tem resposta final — atualiza espelho + pedido local + logs
         await atualizarEspelho(base44, codPed, real);
+        if (real.status_real === 'emitida') {
+          await atualizarPedidoLocal(base44, codPed, real);
+        }
         let novoStatus;
         if (real.status_real === 'emitida') novoStatus = 'autorizada';
         else if (real.status_real === 'rejeitada' || real.status_real === 'cancelada' || real.status_real === 'denegada') novoStatus = 'rejeitada';

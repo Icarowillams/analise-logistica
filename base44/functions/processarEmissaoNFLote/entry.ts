@@ -92,6 +92,21 @@ async function buscarContextoPedido(base44, codigoPedido) {
 }
 
 async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, extra = {}) {
+  // CORREÇÃO: evitar duplicatas — se já existe log "pendente" para este pedido, atualiza em vez de criar novo
+  if (status === 'pendente') {
+    const existentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+      { codigo_pedido: String(codigoPedido), status: 'pendente' }, '-created_date', 1
+    ).catch(() => []);
+    if (existentes?.[0]) {
+      await base44.asServiceRole.entities.LogEmissaoNF.update(existentes[0].id, {
+        lote_id: fila.lote_id,
+        mensagem,
+        usuario_email: fila.usuario_email || ''
+      }).catch(() => {});
+      return;
+    }
+  }
+
   const ctx = await buscarContextoPedido(base44, codigoPedido);
   await base44.asServiceRole.entities.LogEmissaoNF.create({
     codigo_pedido: String(codigoPedido),
