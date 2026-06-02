@@ -171,6 +171,17 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[liberarPedidoOmie] Pedido ${codigoPedidoOmie} movido para ${etapaLabel} no Omie com sucesso!`);
+
+        // Atualiza o Pedido local para refletir a etapa no Omie (não depende do frontend)
+        if (etapaOmie === "20") {
+          await base44.asServiceRole.entities.Pedido.update(pedido_id, {
+            status: 'liberado',
+            data_liberacao: new Date().toISOString(),
+            liberado_por: user.email,
+            liberado_por_nome: user.full_name || user.email
+          }).catch(e => console.warn('[liberarPedidoOmie] Falha ao atualizar status local:', e.message));
+        }
+
         return Response.json({ sucesso: true, mensagem: `Pedido movido para ${etapaLabel} no Omie` });
 
     } catch (error) {
