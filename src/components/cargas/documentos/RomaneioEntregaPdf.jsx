@@ -124,10 +124,18 @@ export default function RomaneioEntregaPdf({ carga }) {
     });
 
     pedidosCarga.forEach(p => {
-      const info = p.numero_nota_fiscal ? { numero_nf: p.numero_nota_fiscal, status: 'autorizada', etapa: p.etapa || '' } : null;
-      if (!info) return;
-      if (p.omie_codigo_pedido && !m.has(String(p.omie_codigo_pedido))) m.set(String(p.omie_codigo_pedido), info);
-      if (p.id && !m.has(String(p.id))) m.set(String(p.id), info);
+      if (!p.numero_nota_fiscal) return;
+      const info = { numero_nf: p.numero_nota_fiscal, status: 'autorizada', etapa: p.etapa || '' };
+      if (p.omie_codigo_pedido) {
+        const key = String(p.omie_codigo_pedido);
+        const atual = m.get(key) || {};
+        m.set(key, { ...atual, ...info, numero_nf: atual.numero_nf || p.numero_nota_fiscal });
+      }
+      if (p.id) {
+        const key = String(p.id);
+        const atual = m.get(key) || {};
+        m.set(key, { ...atual, ...info, numero_nf: atual.numero_nf || p.numero_nota_fiscal });
+      }
     });
 
     return m;
