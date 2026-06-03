@@ -10,7 +10,7 @@ import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 // Prioridade: tipo_operacao_fiscal (campo oficial do Pedido) > cenario_local_tipo > nome do cenário
 function tipoNotaLabel(item, origem) {
   if (origem === 'troca') return 'TROCA';
-  const tipoFiscal = String(item.tipo_operacao_fiscal || item.cenario_local_tipo || item.tipo || '').toLowerCase();
+  const tipoFiscal = String(item.tipo_operacao_fiscal || item.cenario_local_tipo || item.tipo_operacao || item.tipo || '').toLowerCase();
   if (tipoFiscal === 'troca') return 'TROCA';
   if (tipoFiscal === 'bonificacao' || tipoFiscal === 'bonificação') return 'BONIFICAÇÃO';
   if (tipoFiscal === 'devolucao' || tipoFiscal === 'devolução') return 'DEVOLUÇÃO';

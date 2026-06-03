@@ -70,7 +70,8 @@ function montarVendaOmie(e) {
     valor_total_pedido: e.valor_total_pedido || 0,
     produtos: e.produtos || [],
     tipo: 'venda',
-    tipo_operacao: e.tipo_operacao || 'venda'
+    tipo_operacao: e.tipo_operacao || 'venda',
+    tipo_operacao_fiscal: e.tipo_operacao_fiscal || e.tipo_operacao || e.cenario_local_tipo || 'venda'
   };
 }
 
