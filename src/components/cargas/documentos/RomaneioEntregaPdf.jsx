@@ -219,7 +219,7 @@ export default function RomaneioEntregaPdf({ carga }) {
     const resolverExtras = (p, cliente, tipo) => {
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
       if (tipo === 'BONIFICAÇÃO' || tipo === 'TROCA') {
-        return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'COBRANÇA DE:', vendedor_nome_cliente: vendedorCliente?.nome || '' };
+        return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'COBRANÇA D', vendedor_nome_cliente: vendedorCliente?.nome || '' };
       }
       const modalidade = cliente?.modalidade_pagamento_id ? modalidadesMap.get(cliente.modalidade_pagamento_id) : null;
       return {
