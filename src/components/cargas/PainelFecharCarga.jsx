@@ -75,6 +75,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         valor_total_pedido: v.valor_total_pedido || 0,
         quantidade_itens: v.quantidade_itens || 0,
         tags_cliente: v.tags_cliente || [],
+        tipo_operacao_fiscal: v.tipo_operacao_fiscal || v.cenario_local_tipo || 'venda',
+        cenario_fiscal_nome: v.cenario_fiscal_nome || v.cenario_local_nome || '',
         produtos: v.produtos || []
       }));
 
