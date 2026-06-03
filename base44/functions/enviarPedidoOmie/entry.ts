@@ -263,7 +263,15 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
 
     // dados_adicionais_nf: já incluímos placeholder; Omie preenche {nrPedido} se existir, senão fica vazio
     // Como não temos o número do pedido ainda, usamos o pedido.dados_adicionais_nf direto
-    const dadosAdicNf = pedido.dados_adicionais_nf || '';
+    const identificacaoCliente = [
+        pedido.cliente_nome_fantasia || pedido.cliente_nome || '',
+        pedido.cliente_codigo || ''
+    ].filter(Boolean).join(' - ');
+    const dadosAdicNfOriginal = pedido.dados_adicionais_nf || '';
+    const jaTemIdentificacao = identificacaoCliente && dadosAdicNfOriginal.startsWith(identificacaoCliente);
+    const dadosAdicNf = identificacaoCliente
+        ? (jaTemIdentificacao ? dadosAdicNfOriginal : [identificacaoCliente, dadosAdicNfOriginal].filter(Boolean).join(' | '))
+        : dadosAdicNfOriginal;
 
     const cabecalho = {
         codigo_pedido_integracao: pedido.id,
