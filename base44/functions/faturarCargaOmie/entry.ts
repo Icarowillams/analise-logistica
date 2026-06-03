@@ -44,6 +44,48 @@ Deno.serve(async (req) => {
     const pedidos = carga.pedidos_omie || [];
     const resultados = [];
 
+    // 🛡️ ENRIQUECIMENTO OBRIGATÓRIO antes de faturar: cada pedido_omie precisa ter
+    // codigo_pedido, cnpj_cpf_cliente, nome_cliente e valor_total. Se faltar, buscamos
+    // no cadastro local de Cliente; se ainda assim não preencher, ABORTAMOS o fechamento.
+    const pedidosIncompletos = [];
+    for (const p of pedidos) {
+      if (p.tipo_nota === 'D1') continue; // D1 não emite NF — não exige enriquecimento fiscal
+      if (!p.codigo_pedido) {
+        pedidosIncompletos.push({ numero_pedido: p.numero_pedido || '(sem número)', faltando: 'codigo_pedido' });
+        continue;
+      }
+      if (!p.cnpj_cpf_cliente || !p.nome_cliente) {
+        let cliente = null;
+        if (p.cliente_id) {
+          cliente = await base44.asServiceRole.entities.Cliente.get(p.cliente_id).catch(() => null);
+        }
+        if (!cliente && p.codigo_cliente) {
+          const porOmie = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: String(p.codigo_cliente) }, '-updated_date', 1).catch(() => []);
+          cliente = porOmie?.[0] || null;
+        }
+        if (cliente) {
+          if (!p.cnpj_cpf_cliente) p.cnpj_cpf_cliente = cliente.cnpj_cpf || '';
+          if (!p.nome_cliente) p.nome_cliente = cliente.razao_social || cliente.nome_fantasia || '';
+          if (!p.nome_fantasia) p.nome_fantasia = cliente.nome_fantasia || '';
+          if (!p.cliente_id) p.cliente_id = cliente.id;
+        }
+      }
+      const faltando = [];
+      if (!p.cnpj_cpf_cliente) faltando.push('cnpj_cpf_cliente');
+      if (!p.nome_cliente) faltando.push('nome_cliente');
+      if (p.valor_total_pedido === undefined || p.valor_total_pedido === null) faltando.push('valor_total');
+      if (faltando.length > 0) {
+        pedidosIncompletos.push({ numero_pedido: p.numero_pedido || p.codigo_pedido, faltando: faltando.join(', ') });
+      }
+    }
+    if (pedidosIncompletos.length > 0) {
+      const detalhe = pedidosIncompletos.map(p => `Pedido ${p.numero_pedido} (faltando: ${p.faltando})`).join(' | ');
+      return Response.json({
+        error: `Não é possível fechar a carga: dados obrigatórios faltando. ${detalhe}`,
+        pedidos_incompletos: pedidosIncompletos
+      }, { status: 422 });
+    }
+
     // ATENÇÃO: Esta função NÃO altera etapa no Omie e NÃO emite NF.
     // Ela apenas marca a carga/pedidos como faturados localmente para liberar a tela "Notas Omie → Emissão".
     for (const p of pedidos) {
@@ -78,10 +120,13 @@ Deno.serve(async (req) => {
     for (const r of resultados) {
       if (r.numero_nf) mapaNfPorPedido.set(String(r.codigo_pedido), String(r.numero_nf));
     }
-    const pedidosOmieAtualizados = (carga.pedidos_omie || []).map(p => {
+    // 🛡️ REGRA IMUTÁVEL: numero_nf preenchido NUNCA é apagado. Só preenchemos quando o
+    // valor local está vazio E o Omie retornou um número válido. Usamos os pedidos já
+    // enriquecidos acima (variável `pedidos`) para não perder cnpj/nome resolvidos.
+    const pedidosOmieAtualizados = pedidos.map(p => {
       const nfNova = mapaNfPorPedido.get(String(p.codigo_pedido));
-      if (nfNova) {
-        return { ...p, numero_nf: nfNova };
+      if (nfNova && !p.numero_nf) {
+        return { ...p, numero_nf: String(nfNova) };
       }
       return p;
     });

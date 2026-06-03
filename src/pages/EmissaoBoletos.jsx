@@ -12,6 +12,7 @@ import { Receipt, Loader2, Search, RefreshCw, AlertTriangle } from 'lucide-react
 import { toast } from 'sonner';
 import ListaTitulosCarga from '@/components/boletos/ListaTitulosCarga';
 import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoletos';
+import PendenciasVinculoCarga from '@/components/boletos/PendenciasVinculoCarga';
 
 const normalizar = (valor) => String(valor || '').trim().toUpperCase();
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
@@ -221,37 +222,23 @@ export default function EmissaoBoletos() {
       }
 
       let ocultosNaoBoleto = 0;
-      // Conjunto dos números de pedidos desta carga para matching preciso
-      const numPedidosCarga = new Set(
-        pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean)
-      );
-      const codPedidosCarga = new Set(
-        pedidos.map(p => String(p.codigo_pedido || '').trim()).filter(Boolean)
-      );
+
+      // 🎯 MATCHING HARDENING — ordem de prioridade:
+      //   1. numero_documento do título == numero_nf do pedido (match exato por NF)
+      //   2. codigo_cliente_omie do título == codigo_cliente do pedido
+      //   3. cnpj_cpf do título == cnpj_cpf_cliente do pedido
+      const tituloCasaCarga = (t) => {
+        const docT = String(t.numero_documento || '').replace(/\D/g, '');
+        if (docT && nfsCarga.has(docT)) return true; // P1
+        const codClienteT = String(t.codigo_cliente || '').trim();
+        if (codClienteT && codigosClienteCarga.has(codClienteT)) return true; // P2
+        const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
+        if (cnpjT && cnpjsCarga.has(cnpjT)) return true; // P3
+        return false;
+      };
 
       const titulos = acumulados.filter(t => {
-        const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
-        const docT = String(t.numero_documento || '').replace(/\D/g, '');
-        const codClienteT = String(t.codigo_cliente || '').trim();
-        const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
-
-        // Prioridade 1: match exato por numero_pedido_vinculado
-        if (numPedVinc) {
-          if (numPedidosCarga.has(numPedVinc) || codPedidosCarga.has(numPedVinc)) {
-            // Match preciso — pertence a esta carga
-          } else {
-            return false; // Tem pedido vinculado mas não é desta carga
-          }
-        } else if (docT) {
-          // Prioridade 2: match por NF
-          const baseNf = nfsCarga.size > 0 && nfsCarga.has(docT);
-          if (!baseNf) return false;
-        } else {
-          // Prioridade 3: match genérico por cliente (só para títulos avulsos)
-          const baseCodCli = codigosClienteCarga.size > 0 && codClienteT && codigosClienteCarga.has(codClienteT);
-          const baseCnpj = cnpjsCarga.size > 0 && cnpjT && cnpjsCarga.has(cnpjT);
-          if (!(baseCodCli || baseCnpj)) return false;
-        }
+        if (!tituloCasaCarga(t)) return false;
         // Filtro de modalidade: só exibe se o cliente tem modalidade BOLETO BANCÁRIO
         if (!isClienteBoleto(t)) {
           ocultosNaoBoleto++;
@@ -259,7 +246,26 @@ export default function EmissaoBoletos() {
         }
         return true;
       });
-      return { titulos, ocultosNaoBoleto };
+
+      // 🔴 PENDÊNCIAS DE VÍNCULO:
+      //  - nfSemTitulo: pedido COM numero_nf mas nenhum título com numero_documento == numero_nf
+      //  - semNf: pedido SEM numero_nf preenchido (aguardando emissão / espelho incompleto)
+      const docsTitulos = new Set(
+        acumulados.map(t => String(t.numero_documento || '').replace(/\D/g, '')).filter(Boolean)
+      );
+      const nfSemTitulo = [];
+      const semNf = [];
+      pedidos.forEach(p => {
+        if (p.tipo_nota === 'D1') return; // D1 não emite NF — não é pendência de boleto
+        const nf = String(p.numero_nf || '').replace(/\D/g, '');
+        if (nf) {
+          if (!docsTitulos.has(nf)) nfSemTitulo.push(p);
+        } else {
+          semNf.push(p);
+        }
+      });
+
+      return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf };
     },
     enabled: !!cargaSelecionada && !loadingClientes,
     refetchOnWindowFocus: false
@@ -267,6 +273,8 @@ export default function EmissaoBoletos() {
 
   const titulosTodos = titulosResp?.titulos || [];
   const ocultosNaoBoleto = titulosResp?.ocultosNaoBoleto || 0;
+  const nfSemTitulo = titulosResp?.nfSemTitulo || [];
+  const semNf = titulosResp?.semNf || [];
   const titulos = useMemo(() => {
     const termo = filtroCliente.trim().toLowerCase();
     return titulosTodos.filter(t => {
@@ -486,6 +494,10 @@ export default function EmissaoBoletos() {
             />
           </CardContent>
         </Card>
+      )}
+
+      {cargaSelecionada && !loadingTitulos && (
+        <PendenciasVinculoCarga nfSemTitulo={nfSemTitulo} semNf={semNf} />
       )}
 
       {resultado && (

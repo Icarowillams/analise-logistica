@@ -300,6 +300,8 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
 }
 
 // Atualiza pedido dentro da carga e recalcula status da carga
+// 🛡️ INTEGRIDADE: numero_nf já preenchido NUNCA é sobrescrito com vazio/null.
+//    Toda atualização de numero_nf gera log "atualizacao_espelho_carga_nf".
 async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados) {
   if (!omieCodigoPedido) return;
   const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
@@ -309,7 +311,26 @@ async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados
     const idx = pedidos.findIndex(p => String(p.codigo_pedido) === String(omieCodigoPedido));
     if (idx === -1) continue;
 
-    const novosPedidos = pedidos.map((p, i) => i === idx ? { ...p, ...dadosAtualizados } : p);
+    const pedidoAtual = pedidos[idx];
+    const nfAtual = String(pedidoAtual.numero_nf || '').trim();
+    const nfNova = String(dadosAtualizados.numero_nf || '').trim();
+
+    // Clona os dados a aplicar; protege numero_nf de ser apagado.
+    const dadosSeguros = { ...dadosAtualizados };
+    let nfFoiVinculada = false;
+    if ('numero_nf' in dadosAtualizados) {
+      if (!nfNova) {
+        // Tentativa de apagar a NF — ignorada se já havia NF preenchida.
+        delete dadosSeguros.numero_nf;
+      } else if (nfAtual && nfAtual !== nfNova) {
+        // Só troca para outro número válido (nunca para vazio).
+        nfFoiVinculada = true;
+      } else if (!nfAtual) {
+        nfFoiVinculada = true;
+      }
+    }
+
+    const novosPedidos = pedidos.map((p, i) => i === idx ? { ...p, ...dadosSeguros } : p);
     const novoStatus = recalcularStatusCarga(novosPedidos, carga.status_carga);
 
     const updates = { pedidos_omie: novosPedidos };
@@ -318,6 +339,27 @@ async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados
 
     await base44.asServiceRole.entities.Carga.update(carga.id, updates);
     console.log(`[processarWebhookOmie] Carga ${carga.numero_carga} → status: ${novoStatus} (pedido ${omieCodigoPedido} atualizado)`);
+
+    // Log da vinculação de NF no espelho da carga.
+    if (nfFoiVinculada) {
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'webhook',
+        call: 'atualizacao_espelho_carga_nf',
+        operacao: 'atualizacao_espelho_carga_nf',
+        entidade_tipo: 'Carga',
+        entidade_id: carga.id,
+        status: 'sucesso',
+        payload_resposta: JSON.stringify({
+          carga_id: carga.id,
+          numero_carga: carga.numero_carga,
+          pedido_id: omieCodigoPedido,
+          numero_pedido: pedidoAtual.numero_pedido || '',
+          numero_nf: nfNova,
+          campos_alterados: Object.keys(dadosSeguros),
+          motivo: 'NF vinculada ao pedido no espelho da carga via webhook'
+        }).slice(0, 2000)
+      }).catch(() => {});
+    }
     return; // pedido só pode estar em 1 carga
   }
 }

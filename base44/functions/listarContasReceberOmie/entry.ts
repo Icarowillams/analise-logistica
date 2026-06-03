@@ -2,14 +2,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
+// Resolve credenciais OBRIGATORIAMENTE da entidade ConfiguracaoOmie (banco).
+// Igual a enviarPedidoOmie/consultarClientesOmie — não usa mais Deno.env diretamente.
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  const app_key = ativo?.app_key || Deno.env.get('OMIE_APP_KEY');
+  const app_secret = ativo?.app_secret || Deno.env.get('OMIE_APP_SECRET');
+  return { app_key, app_secret };
+}
+
 async function omieCall(base44, endpoint, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  
+  const { app_key, app_secret } = options.creds || await resolverCredsOmie(base44);
+
   const body = {
     call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
+    app_key,
+    app_secret,
     param: [param]
   };
   
@@ -64,6 +73,11 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const creds = await resolverCredsOmie(base44);
+    if (!creds.app_key || !creds.app_secret) {
+      return Response.json({ error: 'Credenciais Omie não configuradas (ConfiguracaoOmie ativa nem Secrets).' }, { status: 500 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const {
       data_de,
@@ -97,7 +111,7 @@ Deno.serve(async (req) => {
     if (apenas_pendentes) param.filtrar_apenas_titulos_em_aberto = 'S';
 
     const t0 = Date.now();
-    const data = await omieCall(base44, 'ListarContasReceber', param, { cacheMinutes: 10 });
+    const data = await omieCall(base44, 'ListarContasReceber', param, { cacheMinutes: 10, creds });
     const duracao = Date.now() - t0;
 
     // Parser DD/MM/AAAA → Date

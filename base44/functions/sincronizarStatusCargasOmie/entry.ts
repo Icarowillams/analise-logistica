@@ -289,11 +289,15 @@ Deno.serve(async (req) => {
             ? `${cStatFinal ? `[${cStatFinal}] ` : ''}${xMotivoFinal || classificacao}`.slice(0, 200)
             : null;
 
+          // 🛡️ REGRA IMUTÁVEL: numero_nf já preenchido NUNCA é apagado.
+          // Só atualiza se houver um número válido novo; senão mantém o que já existe localmente.
+          const nfPreservada = String(numeroNfFinal || '').trim() || String(pedido.numero_nf || '').trim() || '';
+
           pedidosAtualizados.push({
             ...pedido,
             etapa: status.etapa || pedido.etapa,
             status_pedido: status.cancelado ? 'cancelado' : (status.status_pedido || pedido.status_pedido),
-            numero_nf: numeroNfFinal,
+            numero_nf: nfPreservada,
             cstat_sefaz: cStatFinal || undefined,
             status_nf: status.cancelado ? 'cancelada' : (classificacao || undefined),
             motivo_rejeicao: ['rejeitada','denegada'].includes(classificacao) ? statusRealLabel : undefined,
