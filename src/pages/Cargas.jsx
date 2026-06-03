@@ -114,6 +114,18 @@ export default function Cargas() {
   };
   const temFiltro = !!(filtroNumero || filtroDataInicial || filtroDataFinal);
 
+  const extrairMensagemErro = (e) => {
+    // Captura mensagem detalhada do backend (422 ou qualquer status)
+    const respData = e?.response?.data || e?.data;
+    if (respData?.error) return respData.error;
+    if (respData?.pedidos_incompletos?.length > 0) {
+      return respData.pedidos_incompletos.map(p => `Pedido ${p.numero_pedido}: falta ${p.faltando}`).join('\n');
+    }
+    const msg = e?.message || 'Erro desconhecido';
+    if (msg.includes('status code')) return `Erro no servidor. Tente novamente ou contate o suporte.`;
+    return msg;
+  };
+
   const faturar = async (carga) => {
     if (!confirm(`Faturar a carga ${carga.numero_carga}?`)) return;
 
@@ -124,7 +136,7 @@ export default function Cargas() {
       toast.success(data?.mensagem || `Carga ${carga.numero_carga} faturada com sucesso.`);
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
     } catch (e) {
-      toast.error(e.message);
+      toast.error(extrairMensagemErro(e), { duration: 8000 });
     }
     setFaturando(null);
   };
@@ -146,7 +158,7 @@ export default function Cargas() {
       }
       toast.success(`${cargasFaturar.length} carga(s) faturada(s) com sucesso.`);
     } catch (e) {
-      toast.error(e.message);
+      toast.error(extrairMensagemErro(e), { duration: 8000 });
     }
 
     queryClient.invalidateQueries({ queryKey: ['cargas'] });

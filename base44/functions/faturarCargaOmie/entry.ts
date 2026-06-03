@@ -44,46 +44,53 @@ Deno.serve(async (req) => {
     const pedidos = carga.pedidos_omie || [];
     const resultados = [];
 
-    // 🛡️ ENRIQUECIMENTO OBRIGATÓRIO antes de faturar: cada pedido_omie precisa ter
-    // codigo_pedido, cnpj_cpf_cliente, nome_cliente e valor_total. Se faltar, buscamos
-    // no cadastro local de Cliente; se ainda assim não preencher, ABORTAMOS o fechamento.
-    const pedidosIncompletos = [];
+    // ENRIQUECIMENTO BEST-EFFORT: tenta preencher campos vazios, mas NUNCA bloqueia o faturamento.
+    const avisosCampos = [];
     for (const p of pedidos) {
-      if (p.tipo_nota === 'D1') continue; // D1 não emite NF — não exige enriquecimento fiscal
-      if (!p.codigo_pedido) {
-        pedidosIncompletos.push({ numero_pedido: p.numero_pedido || '(sem número)', faltando: 'codigo_pedido' });
-        continue;
-      }
+      if (p.tipo_nota === 'D1') continue;
+
+      // Tentar preencher cnpj/nome via Cliente local
       if (!p.cnpj_cpf_cliente || !p.nome_cliente) {
-        let cliente = null;
-        if (p.cliente_id) {
-          cliente = await base44.asServiceRole.entities.Cliente.get(p.cliente_id).catch(() => null);
-        }
-        if (!cliente && p.codigo_cliente) {
-          const porOmie = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: String(p.codigo_cliente) }, '-updated_date', 1).catch(() => []);
-          cliente = porOmie?.[0] || null;
-        }
-        if (cliente) {
-          if (!p.cnpj_cpf_cliente) p.cnpj_cpf_cliente = cliente.cnpj_cpf || '';
-          if (!p.nome_cliente) p.nome_cliente = cliente.razao_social || cliente.nome_fantasia || '';
-          if (!p.nome_fantasia) p.nome_fantasia = cliente.nome_fantasia || '';
-          if (!p.cliente_id) p.cliente_id = cliente.id;
-        }
+        try {
+          let cliente = null;
+          if (p.cliente_id) {
+            cliente = await base44.asServiceRole.entities.Cliente.get(p.cliente_id).catch(() => null);
+          }
+          if (!cliente && p.codigo_cliente) {
+            const porOmie = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: String(p.codigo_cliente) }, '-updated_date', 1).catch(() => []);
+            cliente = porOmie?.[0] || null;
+          }
+          if (cliente) {
+            if (!p.cnpj_cpf_cliente) p.cnpj_cpf_cliente = cliente.cnpj_cpf || '';
+            if (!p.nome_cliente) p.nome_cliente = cliente.razao_social || cliente.nome_fantasia || '';
+            if (!p.nome_fantasia) p.nome_fantasia = cliente.nome_fantasia || '';
+            if (!p.cliente_id) p.cliente_id = cliente.id;
+          }
+        } catch { /* fallback silencioso */ }
       }
+
+      // Registrar avisos (sem bloquear)
       const faltando = [];
+      if (!p.codigo_pedido) faltando.push('codigo_pedido');
       if (!p.cnpj_cpf_cliente) faltando.push('cnpj_cpf_cliente');
       if (!p.nome_cliente) faltando.push('nome_cliente');
-      if (p.valor_total_pedido === undefined || p.valor_total_pedido === null) faltando.push('valor_total');
       if (faltando.length > 0) {
-        pedidosIncompletos.push({ numero_pedido: p.numero_pedido || p.codigo_pedido, faltando: faltando.join(', ') });
+        avisosCampos.push({ numero_pedido: p.numero_pedido || p.codigo_pedido || '(sem id)', faltando: faltando.join(', ') });
       }
     }
-    if (pedidosIncompletos.length > 0) {
-      const detalhe = pedidosIncompletos.map(p => `Pedido ${p.numero_pedido} (faltando: ${p.faltando})`).join(' | ');
-      return Response.json({
-        error: `Não é possível fechar a carga: dados obrigatórios faltando. ${detalhe}`,
-        pedidos_incompletos: pedidosIncompletos
-      }, { status: 422 });
+    // Registrar avisos em log, mas NUNCA bloquear
+    if (avisosCampos.length > 0) {
+      const detalhe = avisosCampos.map(p => `Pedido ${p.numero_pedido} (sem: ${p.faltando})`).join(' | ');
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'produtos/pedido',
+        call: 'faturarCarga_enriquecimento',
+        operacao: 'faturar_carga',
+        entidade_tipo: 'Carga',
+        entidade_id: carga_id,
+        status: 'warning',
+        mensagem_erro: `Campos faltando (não bloqueante): ${detalhe}`.substring(0, 2000),
+        usuario_email: user.email
+      }).catch(() => {});
     }
 
     // ATENÇÃO: Esta função NÃO altera etapa no Omie e NÃO emite NF.
