@@ -174,11 +174,22 @@ export default function useDadosMontagem() {
 
       // Códigos em carga ativa
       const codigosEmCarga = new Set();
-      (carP || []).filter(c => c.status_carga === 'faturada').forEach(c => {
-        (c.pedidos_omie || []).forEach(p => {
-          if (p?.codigo_pedido) codigosEmCarga.add(String(p.codigo_pedido));
+      const idsInternosEmCarga = new Set();
+      const idsTrocasEmCarga = new Set();
+
+      (carP || [])
+        .filter(c => c.status_carga === 'faturada' || c.status_carga === 'montagem')
+        .forEach(c => {
+          (c.pedidos_omie || []).forEach(p => {
+            if (p?.codigo_pedido) codigosEmCarga.add(String(p.codigo_pedido));
+          });
+          (c.pedidos_internos || []).forEach(p => {
+            if (p?.pedido_id) idsInternosEmCarga.add(String(p.pedido_id));
+          });
+          (c.pedidos_troca || []).forEach(p => {
+            if (p?.pedido_troca_id) idsTrocasEmCarga.add(String(p.pedido_troca_id));
+          });
         });
-      });
       console.log('[DEBUG MC] Pedidos já em cargas faturadas:', codigosEmCarga.size);
 
       // Log distribuição de etapas no espelho
@@ -190,7 +201,7 @@ export default function useDadosMontagem() {
       console.log('[DEBUG MC] Distribuição de etapas no espelho:', JSON.stringify(etapasContagem));
 
       // Vendas Omie etapas 10 e 20
-      const ETAPAS_PERMITIDAS = ['10', '20'];
+      const ETAPAS_PERMITIDAS = ['10', '20', '50'];
       const vendasBruto = (espelhoOmie || []).filter(e =>
         ETAPAS_PERMITIDAS.includes(String(e?.etapa ?? '').trim())
       );
@@ -278,11 +289,11 @@ export default function useDadosMontagem() {
         return acc;
       }, {})));
 
-      const d1Disponiveis = d1Todos.filter(p => p.status === 'liberado' && !p.carga_id);
+      const d1Disponiveis = d1Todos.filter(p => p.status === 'liberado' && !p.carga_id && !idsInternosEmCarga.has(String(p.id)));
       console.log('[DEBUG MC] D1 após filtros (status=liberado, sem carga):', d1Disponiveis.length);
 
       // Trocas disponíveis (sem itens ainda)
-      const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id);
+      const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id && !idsTrocasEmCarga.has(String(t.id)));
       console.log('[DEBUG MC] Trocas após excluir já em cargas:', trocasDisponiveis.length);
 
       // Buscar clientes das trocas para obter rota (Promise.all paralelo)
