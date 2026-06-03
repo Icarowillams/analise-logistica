@@ -170,6 +170,7 @@ function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedi
     nome_fantasia: fantasia,
     cidade: cliente?.cidade || pedidoLocal?.cliente_cidade || clienteOmieFallback?.cidade || pedidoOmie.cidade || '',
     tipo_nota: cliente?.tipo_nota || pedidoLocal?.modelo_nota || '55',
+    tipo_operacao: pedidoLocal?.cenario_local_tipo || '',
     tags_cliente: cliente?.tags || [],
     motorista_padrao_id: cliente?.motorista_id || null,
     rota_id: cliente?.rota_id || pedidoLocal?.rota_id || null,
