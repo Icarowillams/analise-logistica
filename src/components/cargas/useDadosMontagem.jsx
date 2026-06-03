@@ -174,15 +174,9 @@ export default function useDadosMontagem() {
 
       // Códigos em carga ativa
       const codigosEmCarga = new Set();
-      (carP || []).filter(c => c.status_carga === 'faturada' || c.status_carga === 'montagem').forEach(c => {
+      (carP || []).filter(c => c.status_carga === 'faturada').forEach(c => {
         (c.pedidos_omie || []).forEach(p => {
           if (p?.codigo_pedido) codigosEmCarga.add(String(p.codigo_pedido));
-        });
-        (c.pedidos_internos || []).forEach(p => {
-          if (p?.pedido_id) codigosEmCarga.add(String(p.pedido_id));
-        });
-        (c.pedidos_troca || []).forEach(p => {
-          if (p?.pedido_troca_id) codigosEmCarga.add(String(p.pedido_troca_id));
         });
       });
       console.log('[DEBUG MC] Pedidos já em cargas faturadas:', codigosEmCarga.size);
