@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 // REGRA DE EXIBIÇÃO: Apenas etapa 50 no Omie.
@@ -25,6 +25,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState(new Set());
   const [emitindo, setEmitindo] = useState(false);
+  const [sincronizandoCarga, setSincronizandoCarga] = useState(false);
   const [loteAtivoId, setLoteAtivoId] = useState(null);
   const [loteNotificado, setLoteNotificado] = useState(null);
   // Só carrega após o usuário clicar em "Atualizar lista"
@@ -183,6 +184,33 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
   const emitirIndividual = (codigo) => emitirSelecionados([codigo]);
   const emitirLote = () => emitirSelecionados(Array.from(selecionados));
 
+  // Sincroniza o espelho local APENAS dos pedidos da carga filtrada (consulta cada um no Omie).
+  // Útil quando o webhook não atualizou e os pedidos da carga não aparecem na lista.
+  const sincronizarEspelhoCarga = async () => {
+    const numero = filtroCarga.trim();
+    if (!numero) {
+      toast.warning('Informe o Nº da Carga para sincronizar.');
+      return;
+    }
+    setSincronizandoCarga(true);
+    try {
+      const { data } = await base44.functions.invoke('sincronizarEspelhoCarga', { numero_carga: numero });
+      if (data?.sucesso) {
+        toast.success(data.mensagem || 'Espelho da carga sincronizado.');
+        if (!carregamentoIniciado) setCarregamentoIniciado(true);
+        else refetch();
+      } else if (data?.omie_bloqueada) {
+        toast.error('API Omie temporariamente bloqueada. Tente novamente mais tarde.');
+      } else {
+        toast.error('Erro ao sincronizar: ' + (data?.error || 'desconhecido'));
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.error || e.message;
+      toast.error('Erro ao sincronizar: ' + msg);
+    }
+    setSincronizandoCarga(false);
+  };
+
   const formatarValor = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
   const StatusHistoricoBadge = ({ status }) => {
@@ -260,13 +288,30 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
               <Label>Nº Carga</Label>
               <Input value={filtroCarga} onChange={(e) => setFiltroCarga(e.target.value)} placeholder="Ex: 009" />
             </div>
-            <div className="flex items-end">
-              <Button onClick={handleAtualizarLista} variant="outline" disabled={isLoading} className="w-full">
+            <div className="flex items-end gap-2">
+              <Button onClick={handleAtualizarLista} variant="outline" disabled={isLoading} className="flex-1">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
                 Atualizar lista
               </Button>
             </div>
           </div>
+
+          {filtroCarga.trim() && (
+            <div className="mb-4 flex items-center justify-between gap-3 p-3 rounded-lg border border-cyan-200 bg-cyan-50">
+              <div className="text-sm text-cyan-900">
+                Pedidos da carga <b>{filtroCarga.trim()}</b> não aparecem? Sincronize o espelho local desta carga direto do Omie.
+              </div>
+              <Button
+                onClick={sincronizarEspelhoCarga}
+                disabled={sincronizandoCarga}
+                variant="outline"
+                className="border-cyan-300 text-cyan-800 hover:bg-cyan-100 whitespace-nowrap"
+              >
+                {sincronizandoCarga ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Sincronizar espelho da carga
+              </Button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-slate-600">
