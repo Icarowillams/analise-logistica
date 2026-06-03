@@ -182,6 +182,15 @@ export default function RomaneioEntregaPdf({ carga }) {
     if (!carga) return [];
     const out = [];
     const resolverExtras = (p, cliente) => {
+      const tipoFiscal = String(p.tipo_operacao_fiscal || p.cenario_local_tipo || '').toLowerCase();
+      if (tipoFiscal === 'bonificacao' || tipoFiscal === 'bonificação') {
+        const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
+        return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'BONIFICAÇÃO', vendedor_nome_cliente: vendedorCliente?.nome || '' };
+      }
+      if (tipoFiscal === 'troca') {
+        const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
+        return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'TROCA', vendedor_nome_cliente: vendedorCliente?.nome || '' };
+      }
       const modalidade = cliente?.modalidade_pagamento_id ? modalidadesMap.get(cliente.modalidade_pagamento_id) : null;
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
       return {
