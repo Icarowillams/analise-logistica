@@ -11,9 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
+import AtualizacaoMassaPainel from '@/components/clientes/AtualizacaoMassaPainel';
 
 export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const [selectedClienteId, setSelectedClienteId] = useState(null);
+  const [selectedBulkIds, setSelectedBulkIds] = useState(new Set());
   const [filters, setFilters] = useState({
     vendedor_ids: [],
     supervisor_ids: [],
@@ -238,7 +240,46 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Tipo de Nota', value: selectedCliente ? ((selectedCliente.tipo_nota || '55') === 'D1' ? 'D1 — Sem NF (interno)' : '55 — NF-e') : '-' },
   ];
 
+  const allFilteredIds = useMemo(() => filteredClientes.map(c => c.id), [filteredClientes]);
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedBulkIds.has(id));
+  const someSelected = allFilteredIds.some(id => selectedBulkIds.has(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedBulkIds(new Set());
+    } else {
+      setSelectedBulkIds(new Set(allFilteredIds));
+    }
+  };
+
+  const toggleSelectOne = (id) => {
+    setSelectedBulkIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const columns = [
+    {
+      key: '_select',
+      label: '',
+      width: '44px',
+      renderHeader: () => (
+        <Checkbox
+          checked={allSelected}
+          indeterminate={someSelected && !allSelected}
+          onCheckedChange={toggleSelectAll}
+        />
+      ),
+      render: (_, row) => (
+        <Checkbox
+          checked={selectedBulkIds.has(row.id)}
+          onCheckedChange={() => toggleSelectOne(row.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       key: 'codigo_interno',
       label: 'Código',
@@ -651,6 +692,14 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
           </Card>
         </div>
       </div>
+
+      <AtualizacaoMassaPainel
+        selectedIds={[...selectedBulkIds]}
+        onClear={() => setSelectedBulkIds(new Set())}
+        vendedores={vendedoresAll}
+        modalidades={modalidadesPagamento}
+        rotas={rotas}
+      />
     </div>
   );
 }
