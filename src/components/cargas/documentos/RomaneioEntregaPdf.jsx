@@ -44,19 +44,19 @@ export default function RomaneioEntregaPdf({ carga }) {
   const empresa = empresas[0] || {};
 
   // Carrega clientes para resolver código interno a partir do cliente_id
-  const { data: clientes = [] } = useQuery({
+  const { data: clientes = [], isLoading: isLoadingClientes } = useQuery({
     queryKey: ['clientes-romaneio'],
     queryFn: () => base44.entities.Cliente.list('-created_date', 10000)
   });
 
   // Carrega modalidades de pagamento para resolver a cobrança a partir do cliente
-  const { data: modalidades = [] } = useQuery({
+  const { data: modalidades = [], isLoading: isLoadingModalidades } = useQuery({
     queryKey: ['modalidades-romaneio'],
     queryFn: () => base44.entities.ModalidadePagamento.list()
   });
 
   // Carrega vendedores para resolver o nome a partir do vendedor_id do cliente
-  const { data: vendedores = [] } = useQuery({
+  const { data: vendedores = [], isLoading: isLoadingVendedores } = useQuery({
     queryKey: ['vendedores-romaneio'],
     queryFn: () => base44.entities.Vendedor.list('-created_date', 5000)
   });
@@ -71,7 +71,7 @@ export default function RomaneioEntregaPdf({ carga }) {
   });
 
   // Carrega TODOS os pedidos da carga (faturados) para pegar numero_nota_fiscal atualizado
-  const { data: pedidosCarga = [] } = useQuery({
+  const { data: pedidosCarga = [], isLoading: isLoadingPedidosCarga } = useQuery({
     queryKey: ['pedidos-carga-romaneio', carga?.id],
     queryFn: () => carga?.id
       ? base44.entities.Pedido.filter({ carga_id: carga.id })
@@ -167,10 +167,25 @@ export default function RomaneioEntregaPdf({ carga }) {
     return m;
   }, [clientes]);
 
+  // Index por codigo_cliente_omie para resolver via código Omie do snapshot
+  const clientesPorCodigoOmie = useMemo(() => {
+    const m = new Map();
+    clientes.forEach(c => {
+      const codOmie = String(c.codigo_cliente_omie || c.codigo_omie || '').trim();
+      if (codOmie) m.set(codOmie, c);
+    });
+    return m;
+  }, [clientes]);
+
+  const isReady = !isLoadingClientes && !isLoadingModalidades && !isLoadingVendedores && !isLoadingPedidosCarga;
+
   const resolverCliente = (p) => {
     if (p.cliente_id && clientesMap.has(p.cliente_id)) return clientesMap.get(p.cliente_id);
     const cod = String(p.codigo_cliente_cod || p.codigo_cliente_integracao || '').trim();
     if (cod && clientesPorCodigo.has(cod)) return clientesPorCodigo.get(cod);
+    if (cod && clientesPorCodigoOmie.has(cod)) return clientesPorCodigoOmie.get(cod);
+    const codCliente = String(p.codigo_cliente || '').trim();
+    if (codCliente && clientesPorCodigoOmie.has(codCliente)) return clientesPorCodigoOmie.get(codCliente);
     return null;
   };
 
@@ -334,8 +349,8 @@ export default function RomaneioEntregaPdf({ carga }) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Printer className="w-4 h-4 mr-2" /> Imprimir / PDF
+        <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!isReady}>
+          <Printer className="w-4 h-4 mr-2" /> {isReady ? 'Imprimir / PDF' : 'Carregando dados...'}
         </Button>
       </div>
 
