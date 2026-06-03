@@ -200,7 +200,15 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
     };
   });
   const parcelas = gerarParcelas(plano, pedido.valor_total || 0);
-  const dadosAdicNf = pedido.dados_adicionais_nf || '';
+  const identificacaoCliente = [
+    pedido.cliente_nome_fantasia || pedido.cliente_nome || '',
+    pedido.cliente_codigo || ''
+  ].filter(Boolean).join(' - ');
+  const dadosAdicNfOriginal = pedido.dados_adicionais_nf || '';
+  const jaTemIdentificacao = identificacaoCliente && dadosAdicNfOriginal.startsWith(identificacaoCliente);
+  const dadosAdicNf = identificacaoCliente
+    ? (jaTemIdentificacao ? dadosAdicNfOriginal : [identificacaoCliente, dadosAdicNfOriginal].filter(Boolean).join(' | '))
+    : dadosAdicNfOriginal;
   const cabecalho = { codigo_pedido_integracao: pedido.id, ...clientePayload, data_previsao: dataPrevisao, etapa: "10", codigo_parcela: "999", quantidade_itens: items.length };
   if (pedido.cenario_fiscal_codigo && !isNaN(Number(pedido.cenario_fiscal_codigo)) && Number(pedido.cenario_fiscal_codigo) > 0) {
     cabecalho.codigo_cenario_impostos = String(pedido.cenario_fiscal_codigo);
