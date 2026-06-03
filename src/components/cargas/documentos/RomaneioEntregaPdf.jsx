@@ -177,6 +177,18 @@ export default function RomaneioEntregaPdf({ carga }) {
     return m;
   }, [clientes]);
 
+  // Mapa do tipo de operação real (cenario_local_tipo) por código Omie e por id do Pedido.
+  // Recupera o tipo correto de cargas antigas cujo snapshot gravou tipo_operacao_fiscal: 'venda'.
+  const tipoPorCodigoPedido = useMemo(() => {
+    const m = new Map();
+    pedidosCarga.forEach(p => {
+      const tipo = p.cenario_local_tipo || '';
+      if (p.omie_codigo_pedido) m.set(String(p.omie_codigo_pedido), tipo);
+      if (p.id) m.set(String(p.id), tipo);
+    });
+    return m;
+  }, [pedidosCarga]);
+
   const isReady = !isLoadingClientes && !isLoadingModalidades && !isLoadingVendedores && !isLoadingPedidosCarga;
 
   const resolverCliente = (p) => {
@@ -238,7 +250,8 @@ export default function RomaneioEntregaPdf({ carga }) {
       const nfInfo = resolverInfoNF(p, 'omie');
       if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
-      const tipo = tipoNotaLabel(p, 'omie');
+      const tipoOperacaoReal = tipoPorCodigoPedido.get(String(p.codigo_pedido)) || p.tipo_operacao_fiscal || p.tipo_operacao || '';
+      const tipo = tipoNotaLabel({ ...p, tipo_operacao_fiscal: tipoOperacaoReal }, 'omie');
       out.push({
         ...p,
         _origem: 'omie',
@@ -278,7 +291,7 @@ export default function RomaneioEntregaPdf({ carga }) {
       });
     });
     return out;
-  }, [carga, clientesMap, clientesPorCodigo, modalidadesMap, vendedoresMap, cancelados, nfPorCodigoOmie]);
+  }, [carga, clientesMap, clientesPorCodigo, modalidadesMap, vendedoresMap, cancelados, nfPorCodigoOmie, tipoPorCodigoPedido]);
 
   // Agrupar por cliente (mesmo cliente → 1 bloco com várias linhas de pedido)
   // Chave priorizada: código do cliente (consistente entre Venda/Troca/Bonificação)
