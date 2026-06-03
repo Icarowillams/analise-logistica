@@ -156,6 +156,7 @@ export default function EmissaoBoletosTab() {
 
       let ocultosComBoleto = 0;
       let ocultosSemModalidade = 0;
+      const clientesSemModalidade = new Set();
       const titulosDaCarga = [];
 
       acumulados.forEach(titulo => {
@@ -170,6 +171,7 @@ export default function EmissaoBoletosTab() {
         const clienteBoleto = encontrarClienteBoleto(titulo, pedido);
         if (!clienteBoleto) {
           ocultosSemModalidade += 1;
+          clientesSemModalidade.add(titulo.nome_cliente || pedido?.nome_cliente || titulo.cnpj_cpf || 'desconhecido');
           return;
         }
 
@@ -190,6 +192,7 @@ export default function EmissaoBoletosTab() {
         totalCarga: titulosDaCarga.length + ocultosSemModalidade,
         ocultosComBoleto: comBoleto,
         ocultosSemModalidade,
+        clientesSemModalidade: [...clientesSemModalidade],
         semBoleto
       };
     },
@@ -309,7 +312,19 @@ export default function EmissaoBoletosTab() {
               <div className="md:col-span-2 flex flex-wrap gap-2">
                 <Badge className="bg-amber-100 text-amber-800">{titulos.length} pronto(s) para boleto</Badge>
                 {(consultaTitulos?.ocultosComBoleto || 0) > 0 && <Badge variant="outline">{consultaTitulos.ocultosComBoleto} já tinham boleto</Badge>}
-                {(consultaTitulos?.ocultosSemModalidade || 0) > 0 && <Badge variant="outline">{consultaTitulos.ocultosSemModalidade} sem modalidade boleto</Badge>}
+                {(consultaTitulos?.ocultosSemModalidade || 0) > 0 && (
+                  <details className="inline-block">
+                    <summary className="cursor-pointer">
+                      <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50">{consultaTitulos.ocultosSemModalidade} sem modalidade boleto</Badge>
+                    </summary>
+                    <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm space-y-1 max-h-40 overflow-y-auto">
+                      {(consultaTitulos.clientesSemModalidade || []).map((nome, i) => (
+                        <div key={i} className="text-red-800">• {nome}</div>
+                      ))}
+                      <p className="text-xs text-red-600 mt-2 pt-2 border-t border-red-200">Corrija em Clientes → campo Modalidade de pagamento</p>
+                    </div>
+                  </details>
+                )}
               </div>
             </div>
 
