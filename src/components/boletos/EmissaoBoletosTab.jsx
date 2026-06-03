@@ -116,20 +116,15 @@ export default function EmissaoBoletosTab() {
       if (matchNf) return matchNf;
     }
 
-    // Prioridade 3: match por codigo_cliente ou CNPJ (mais genérico — pode casar com pedidos de outras cargas do mesmo cliente)
-    // Só usa se NÃO tem numero_pedido_vinculado (títulos avulsos/manuais)
-    if (!numPedVinculado && !docTitulo) {
-      return pedidos.find(p => {
-        const porCodigo = codTitulo && (
-          String(p.codigo_cliente || '').trim() === codTitulo ||
-          String(p.codigo_cliente_cod || '').trim() === codTitulo
-        );
-        const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
-        return porCodigo || porCnpj;
-      });
-    }
-
-    return null;
+    // Prioridade 3: match por codigo_cliente ou CNPJ (fallback final para qualquer título não resolvido acima)
+    return pedidos.find(p => {
+      const porCodigo = codTitulo && (
+        String(p.codigo_cliente || '').trim() === codTitulo ||
+        String(p.codigo_cliente_cod || '').trim() === codTitulo
+      );
+      const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
+      return porCodigo || porCnpj;
+    }) || null;
   };
 
   const { data: consultaTitulos, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
