@@ -13,5 +13,10 @@ export function formatarNumeroPedido(pedido) {
     return baseNumerica ? `${baseNumerica.padStart(5, '0')}D` : `${numeroOriginal}D`;
   }
 
+  // Remove zeros à esquerda apenas se for numérico puro
+  if (/^\d+$/.test(numeroSemSufixo)) {
+    return String(Number(numeroSemSufixo)) || '0';
+  }
+
   return numeroSemSufixo;
 }
