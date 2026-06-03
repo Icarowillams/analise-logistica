@@ -47,6 +47,7 @@ export default function Cargas() {
   const [filtroNumero, setFiltroNumero] = useState('');
   const [filtroDataInicial, setFiltroDataInicial] = useState('');
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
+  const [abaAtiva, setAbaAtiva] = useState('montagem');
   const [processandoFila, setProcessandoFila] = useState(false);
 
   // Carrega cargas direto do banco local — ZERO chamadas ao Omie
@@ -86,7 +87,7 @@ export default function Cargas() {
     return map;
   }, [todosItensFila]);
 
-  const cargas = useMemo(() => {
+  const cargasFiltradas = useMemo(() => {
     return cargasTodas.filter(c => {
       if (filtroNumero.trim()) {
         const termo = filtroNumero.trim().toLowerCase();
@@ -97,6 +98,14 @@ export default function Cargas() {
       return true;
     });
   }, [cargasTodas, filtroNumero, filtroDataInicial, filtroDataFinal]);
+
+  const totalMontagem = useMemo(() => cargasFiltradas.filter(c => c.status_carga === 'montagem').length, [cargasFiltradas]);
+  const totalFaturadas = useMemo(() => cargasFiltradas.filter(c => c.status_carga === 'faturada').length, [cargasFiltradas]);
+
+  const cargas = useMemo(
+    () => cargasFiltradas.filter(c => c.status_carga === abaAtiva),
+    [cargasFiltradas, abaAtiva]
+  );
 
   const limparFiltros = () => {
     setFiltroNumero('');
@@ -497,6 +506,23 @@ export default function Cargas() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex gap-2">
+        <Button
+          variant={abaAtiva === 'montagem' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('montagem')}
+          className={abaAtiva === 'montagem' ? '' : 'text-slate-600'}
+        >
+          Em Montagem ({totalMontagem})
+        </Button>
+        <Button
+          variant={abaAtiva === 'faturada' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('faturada')}
+          className={abaAtiva === 'faturada' ? 'bg-green-600 hover:bg-green-700' : 'text-slate-600'}
+        >
+          Faturadas ({totalFaturadas})
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
