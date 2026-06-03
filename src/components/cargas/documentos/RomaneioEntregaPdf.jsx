@@ -401,7 +401,9 @@ export default function RomaneioEntregaPdf({ carga }) {
                 <tbody>
                   <tr style={{ fontWeight: 700, background: '#fafafa' }}>
                     <td colSpan="10" style={{ padding: '3px 4px' }}>
-                      {grupo.codigo_cliente_display} - {grupo.nome_fantasia || grupo.nome_cliente}
+                      {grupo.pedidos.every(p => p._tipo === 'TROCA' || p._tipo === 'BONIFICAÇÃO')
+                        ? (grupo.nome_fantasia || grupo.nome_cliente)
+                        : `${grupo.codigo_cliente_display} - ${grupo.nome_fantasia || grupo.nome_cliente}`}
                       {grupo.nome_fantasia && grupo.nome_cliente && grupo.nome_fantasia !== grupo.nome_cliente ? <span style={{ fontWeight: 400, fontSize: '8.5px', color: '#555' }}> &nbsp;|&nbsp; Razão: {grupo.nome_cliente}</span> : null}
                       {grupo.cidade_cliente ? <span style={{ fontWeight: 400, fontSize: '8.5px', color: '#555' }}> &nbsp;|&nbsp; Cidade: {grupo.cidade_cliente}</span> : null}
                     </td>
