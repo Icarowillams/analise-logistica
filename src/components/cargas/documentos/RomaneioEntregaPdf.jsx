@@ -204,18 +204,12 @@ export default function RomaneioEntregaPdf({ carga }) {
   const linhas = useMemo(() => {
     if (!carga) return [];
     const out = [];
-    const resolverExtras = (p, cliente) => {
-      const tipoFiscal = String(p.tipo_operacao_fiscal || p.cenario_local_tipo || '').toLowerCase();
-      if (tipoFiscal === 'bonificacao' || tipoFiscal === 'bonificação') {
-        const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
-        return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'COBRANÇA DE:', vendedor_nome_cliente: vendedorCliente?.nome || '' };
-      }
-      if (tipoFiscal === 'troca') {
-        const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
+    const resolverExtras = (p, cliente, tipo) => {
+      const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
+      if (tipo === 'BONIFICAÇÃO' || tipo === 'TROCA') {
         return { cidade_cliente: cliente?.cidade || p.cidade || '', cobranca_nome: 'COBRANÇA DE:', vendedor_nome_cliente: vendedorCliente?.nome || '' };
       }
       const modalidade = cliente?.modalidade_pagamento_id ? modalidadesMap.get(cliente.modalidade_pagamento_id) : null;
-      const vendedorCliente = cliente?.vendedor_id ? vendedoresMap.get(cliente.vendedor_id) : null;
       return {
         cidade_cliente: cliente?.cidade || p.cidade || '',
         cobranca_nome: modalidade?.nome || p.cobranca || '',
@@ -244,13 +238,14 @@ export default function RomaneioEntregaPdf({ carga }) {
       const nfInfo = resolverInfoNF(p, 'omie');
       if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
+      const tipo = tipoNotaLabel(p, 'omie');
       out.push({
         ...p,
         _origem: 'omie',
-        _tipo: tipoNotaLabel(p, 'omie'),
+        _tipo: tipo,
         numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
-        ...resolverExtras(p, cliente)
+        ...resolverExtras(p, cliente, tipo)
       });
     });
     (carga.pedidos_internos || []).forEach(p => {
@@ -258,13 +253,14 @@ export default function RomaneioEntregaPdf({ carga }) {
       const nfInfo = resolverInfoNF(p, 'interno');
       if (!nfInfo.deveExibir) return;
       const cliente = resolverCliente(p);
+      const tipo = tipoNotaLabel(p, 'interno');
       out.push({
         ...p,
         _origem: 'interno',
-        _tipo: tipoNotaLabel(p, 'interno'),
+        _tipo: tipo,
         numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
-        ...resolverExtras(p, cliente)
+        ...resolverExtras(p, cliente, tipo)
       });
     });
     (carga.pedidos_troca || []).forEach(p => {
@@ -278,7 +274,7 @@ export default function RomaneioEntregaPdf({ carga }) {
         _tipo: 'TROCA',
         numero_nf: nfInfo.numero_nf,
         codigo_cliente_display: getCodigoClienteBase(p, cliente),
-        ...resolverExtras(p, cliente)
+        ...resolverExtras(p, cliente, 'TROCA')
       });
     });
     return out;
