@@ -269,6 +269,17 @@ async function duplicarUm(base44, entrada, user, vendedorAtual) {
     .replace(/^Pedido Nº: .+?(\s*\|\s*|$)/, '')
     .trim();
 
+  const identificacaoCliente = [
+    clienteLocal.nome_fantasia || clienteLocal.razao_social || '',
+    clienteLocal.codigo_interno || clienteLocal.codigo_omie || ''
+  ].filter(Boolean).join(' - ');
+
+  const dadosAdicionaisFinal = identificacaoCliente
+    ? (dadosAdicionaisOriginais.startsWith(identificacaoCliente)
+        ? dadosAdicionaisOriginais
+        : [identificacaoCliente, dadosAdicionaisOriginais].filter(Boolean).join(' | '))
+    : dadosAdicionaisOriginais;
+
   const novoPedido = await base44.asServiceRole.entities.Pedido.create({
     tipo: tipoPedido,
     origem: 'sistema',
@@ -300,7 +311,7 @@ async function duplicarUm(base44, entrada, user, vendedorAtual) {
     cenario_fiscal_nome: cenarioLocal?.cenario_omie_nome || cenarioLocal?.nome || pedidoLocalOriginal?.cenario_fiscal_nome || '',
     data_previsao_entrega: dateOmieToIso(firstDefined(pedidoLocalOriginal?.data_previsao_entrega, cab.data_previsao, espelhoOriginal?.data_previsao)),
     numero_pedido_compra: firstDefined(pedidoLocalOriginal?.numero_pedido_compra, info.numero_pedido_cliente, ''),
-    dados_adicionais_nf: dadosAdicionaisOriginais,
+    dados_adicionais_nf: dadosAdicionaisFinal,
     total_itens: itensCriar.length,
     valor_total: valorTotal,
     valor_desconto: pedidoLocalOriginal?.valor_desconto || 0,
