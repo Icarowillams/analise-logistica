@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil, Play } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil, Play, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import StatusProcessamentoOmie from '@/components/cargas/StatusProcessamentoOmie
 import SoltarCargaDialog from '@/components/cargas/SoltarCargaDialog';
 import EditarCargaModal from '@/components/cargas/EditarCargaModal';
 import TransferirPedidosCargaModal from '@/components/cargas/TransferirPedidosCargaModal';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 // status_carga é LOCAL e binário:
@@ -49,6 +50,9 @@ export default function Cargas() {
   const [filtroDataFinal, setFiltroDataFinal] = useState('');
   const [abaAtiva, setAbaAtiva] = useState('montagem');
   const [processandoFila, setProcessandoFila] = useState(false);
+  const [modalPrevisao, setModalPrevisao] = useState({ open: false, carga: null });
+  const [novaPrevisao, setNovaPrevisao] = useState('');
+  const [salvandoPrevisao, setSalvandoPrevisao] = useState(false);
 
   // Carrega cargas direto do banco local — ZERO chamadas ao Omie
   // Padrão: últimos 60 dias. staleTime evita refetches excessivos.
@@ -311,6 +315,34 @@ export default function Cargas() {
     });
   }, [cargasTodas, todosItensFila]);
 
+  const alterarPrevisaoCarga = async () => {
+    if (!novaPrevisao || !modalPrevisao.carga) return;
+    setSalvandoPrevisao(true);
+    try {
+      const pedidos = (modalPrevisao.carga.pedidos_omie || [])
+        .filter(p => p.codigo_pedido)
+        .map(p => ({
+          codigo_pedido: p.codigo_pedido,
+          codigo_pedido_integracao: p.codigo_pedido_integracao || '',
+          numero_pedido: p.numero_pedido || ''
+        }));
+      const { data } = await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
+        pedidos,
+        data_previsao: novaPrevisao
+      });
+      const ok = (data?.resultados || []).filter(r => r.sucesso).length;
+      const fail = (data?.resultados || []).filter(r => !r.sucesso).length;
+      if (fail === 0) toast.success(`Previsão atualizada em ${ok} pedido(s) no Omie`);
+      else toast.warning(`${ok} atualizados, ${fail} com erro`);
+      setModalPrevisao({ open: false, carga: null });
+      setNovaPrevisao('');
+      queryClient.invalidateQueries({ queryKey: ['cargas'] });
+    } catch (e) {
+      toast.error('Erro ao atualizar previsão: ' + e.message);
+    }
+    setSalvandoPrevisao(false);
+  };
+
   const abrirNotas = (carga) => {
     navigate(`/NotasOmie?carga_id=${carga.id}`);
   };
@@ -413,6 +445,12 @@ export default function Cargas() {
             {jaFaturada && (row.pedidos_internos || []).length > 0 && (
               <Button size="icon" variant="outline" onClick={() => abrirDocumento('notad1', row)} title="Imprimir Notas D1 (venda interna)" className="h-7 w-7 border-amber-300 text-amber-700 hover:bg-amber-50">
                 <FileSignature className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {/* Previsão de entrega em lote */}
+            {(row.pedidos_omie || []).length > 0 && (
+              <Button size="icon" variant="outline" className="h-7 w-7 border-cyan-300 text-cyan-700 hover:bg-cyan-50" onClick={() => { setModalPrevisao({ open: true, carga: row }); setNovaPrevisao(''); }} title="Alterar previsão de entrega dos pedidos">
+                <CalendarDays className="w-3.5 h-3.5" />
               </Button>
             )}
             {/* Contingência: Editar motorista/veículo/rota */}
@@ -614,6 +652,32 @@ export default function Cargas() {
         carga={transferindo}
         onTransferido={() => queryClient.invalidateQueries({ queryKey: ['cargas'] })}
       />
+      <Dialog open={modalPrevisao.open} onOpenChange={(v) => setModalPrevisao(s => ({ ...s, open: v }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Previsão de Entrega — Carga {modalPrevisao.carga?.numero_carga}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-slate-500">
+              Altera a data de previsão de entrega de todos os
+              {' '}{(modalPrevisao.carga?.pedidos_omie || []).length} pedido(s) desta carga no Omie.
+            </p>
+            <div>
+              <Label>Nova data de previsão</Label>
+              <Input type="date" value={novaPrevisao} onChange={e => setNovaPrevisao(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalPrevisao({ open: false, carga: null })}>
+              Cancelar
+            </Button>
+            <Button onClick={alterarPrevisaoCarga} disabled={!novaPrevisao || salvandoPrevisao}>
+              {salvandoPrevisao && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Atualizar no Omie
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
