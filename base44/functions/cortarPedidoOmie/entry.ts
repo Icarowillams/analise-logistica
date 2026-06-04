@@ -431,7 +431,9 @@ Deno.serve(async (req) => {
         if (pedidoLocal) {
           await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
             valor_total: novoValorTotal,
-            total_itens: novoTotalItens
+            total_itens: novoTotalItens,
+            valor_desconto: Number(cab?.valor_desconto || 0),
+            valor_frete: Number(cab?.valor_frete || 0)
           });
 
           // 2) Atualizar PedidoItem locais (sincronizar com itens do Omie)
