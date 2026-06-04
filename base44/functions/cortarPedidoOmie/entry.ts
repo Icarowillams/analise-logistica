@@ -407,100 +407,83 @@ Deno.serve(async (req) => {
     // Refletir corte na Carga local (espelho!)
     const cargaAtualizada = await refletirCorteNaCargaLocal(base44, codigo_pedido, cortes, false, null);
 
-    // Sincronizar Pedido local, PedidoItem e PedidoLiberadoOmie após corte (fonte da verdade: Omie)
+    // Sincronizar Pedido local, PedidoItem e PedidoLiberadoOmie após corte (100% LOCAL, sem reconsultar Omie)
     if (!erroOmie) {
       try {
-        // Invalidar cache em memória para forçar consulta real ao Omie
-        const cacheKeyInvalidar = `ConsultarPedido_${JSON.stringify({ codigo_pedido: Number(codigo_pedido) })}`;
-        memoryCache.delete(cacheKeyInvalidar);
-
-        // Aguardar Omie processar a alteração antes de consultar
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        const pedidoAtualizado = await omieCall(
-          base44,
-          'ConsultarPedido',
-          { codigo_pedido: Number(codigo_pedido) },
-          { cacheMinutes: 0 }
-        );
-
-        const cab = pedidoAtualizado?.pedido_venda_produto?.cabecalho;
-        const detOmie = pedidoAtualizado?.pedido_venda_produto?.det || [];
-        const novoValorTotal = Number(cab?.valor_total_pedido || 0);
-        const novoTotalItens = detOmie.length;
-
-        // Log de diagnóstico: valor antes vs depois para detectar cache stale
-        const valorAnterior = Number(pedido.cabecalho?.valor_total_pedido || 0);
-        console.log(`[cortarPedidoOmie] Pedido ${codigo_pedido}: valorAnterior=${valorAnterior}, novoValorOmie=${novoValorTotal}, itensAntes=${itensAtuais.length}, itensDepois=${novoTotalItens}`);
-        // Se Omie retornou o mesmo valor (cache stale), usar os itens que JÁ ENVIAMOS no AlterarPedidoVenda
-        let detFinal = detOmie;
-        let valorFinal = novoValorTotal;
-        let totalItensFinal = novoTotalItens;
-
-        if (novoValorTotal === valorAnterior && logs.length > 0) {
-          console.warn(`[cortarPedidoOmie] ALERTA: Omie retornou mesmo valor após corte! Usando itens enviados no AlterarPedidoVenda.`);
-          // Recalcular a partir do array novosItens que foi enviado ao Omie
-          detFinal = novosItens;
-          valorFinal = novosItens.reduce((s, i) => s + (Number(i.produto?.quantidade || 0) * Number(i.produto?.valor_unitario || 0)), 0);
-          totalItensFinal = novosItens.length;
-          console.log(`[cortarPedidoOmie] Valores recalculados localmente: valorFinal=${valorFinal}, itensFinal=${totalItensFinal}`);
-        }
-
-        // 1) Atualizar Pedido local
+        // 1) Buscar Pedido local pelo codigo_pedido Omie
         const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter(
           { omie_codigo_pedido: String(codigo_pedido) }, '-created_date', 1
         );
         const pedidoLocal = pedidosLocais?.[0];
 
         if (pedidoLocal) {
-          await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
-            valor_total: valorFinal,
-            valor_total_pedido: valorFinal,
-            total_itens: totalItensFinal,
-            valor_desconto: Number(cab?.valor_desconto || 0),
-            valor_frete: Number(cab?.valor_frete || 0)
-          });
-
-          // 2) Atualizar PedidoItem locais (sincronizar com itens do Omie)
+          // 2) Buscar PedidoItem locais
           const itensLocais = await base44.asServiceRole.entities.PedidoItem.filter(
             { pedido_id: pedidoLocal.id }
           );
 
-          // Mapear itens por codigo_produto
-          const itensOmieMap = new Map();
-          for (const d of detFinal) {
-            const cod = String(d.produto?.codigo_produto || '');
-            const codInt = String(d.produto?.codigo_produto_integracao || '');
-            itensOmieMap.set(cod, d);
-            if (codInt) itensOmieMap.set(codInt, d);
+          // 3) Buscar Produtos para resolver codigo_omie → produto_id
+          //    Pegar apenas os produtos dos cortes para minimizar consulta
+          const codigosOmieDosCortes = cortes.map(c => String(c.codigo_produto));
+          const todosProdutos = await base44.asServiceRole.entities.Produto.list('-created_date', 2000);
+          
+          // Mapa: codigo_omie → Produto.id
+          const omieParaProdutoId = new Map();
+          for (const prod of todosProdutos) {
+            if (prod.codigo_omie) {
+              omieParaProdutoId.set(String(prod.codigo_omie), prod.id);
+            }
           }
 
-          for (const itemLocal of itensLocais) {
-            const codLocal = String(itemLocal.produto_codigo || '');
-            const itemOmie = itensOmieMap.get(codLocal);
+          // 4) Aplicar cortes nos PedidoItem
+          for (const corte of cortes) {
+            const codOmie = String(corte.codigo_produto);
+            const produtoId = omieParaProdutoId.get(codOmie);
+            const novaQtd = Number(corte.nova_quantidade);
 
-            if (!itemOmie) {
-              // Item removido no corte — deletar localmente
+            // Buscar PedidoItem por produto_id OU por produto_codigo (fallback)
+            const itemLocal = itensLocais.find(il =>
+              (produtoId && String(il.produto_id) === String(produtoId)) ||
+              String(il.produto_codigo) === codOmie
+            );
+
+            if (!itemLocal) {
+              console.warn(`[cortarPedidoOmie] PedidoItem não encontrado para codigo_omie=${codOmie}, produto_id=${produtoId}`);
+              continue;
+            }
+
+            if (novaQtd === 0) {
               await base44.asServiceRole.entities.PedidoItem.delete(itemLocal.id);
             } else {
-              // Item existe — atualizar quantidade e valores
-              const novaQtd = Number(itemOmie.produto?.quantidade || 0);
-              const novoUnit = Number(itemOmie.produto?.valor_unitario || 0);
+              const valUnit = Number(itemLocal.valor_unitario || 0);
               await base44.asServiceRole.entities.PedidoItem.update(itemLocal.id, {
                 quantidade: novaQtd,
-                valor_unitario: novoUnit,
-                valor_total: novaQtd * novoUnit
+                valor_total: novaQtd * valUnit
               });
             }
           }
+
+          // 5) Recalcular Pedido.valor_total a partir dos PedidoItem restantes
+          const itensRestantes = await base44.asServiceRole.entities.PedidoItem.filter(
+            { pedido_id: pedidoLocal.id }
+          );
+          const novoValorTotal = itensRestantes.reduce((s, il) => s + Number(il.valor_total || 0), 0);
+          const novoTotalItens = itensRestantes.length;
+
+          await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
+            valor_total: novoValorTotal,
+            total_itens: novoTotalItens
+          });
+
+          console.log(`[cortarPedidoOmie] Pedido local ${pedidoLocal.id} atualizado: valor_total=${novoValorTotal}, total_itens=${novoTotalItens}`);
         }
 
-        // 3) Atualizar PedidoLiberadoOmie (espelho)
+        // 6) Atualizar PedidoLiberadoOmie (espelho) usando novosItens já calculados
         const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
           { codigo_pedido: String(codigo_pedido) }, '-created_date', 1
         );
         if (espelhos.length > 0) {
-          const novosProdutos = detFinal.map(d => ({
+          const novosProdutosEspelho = novosItens.map(d => ({
             codigo_produto: String(d.produto?.codigo_produto || ''),
             codigo_produto_integracao: String(d.produto?.codigo_produto_integracao || ''),
             descricao: d.produto?.descricao || '',
@@ -509,26 +492,40 @@ Deno.serve(async (req) => {
             valor_total: Number(d.produto?.quantidade || 0) * Number(d.produto?.valor_unitario || 0),
             unidade: d.produto?.unidade || 'UN'
           }));
+          const valorEspelho = novosProdutosEspelho.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+
           await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-            valor_total_pedido: valorFinal,
-            quantidade_itens: totalItensFinal,
-            produtos: novosProdutos,
+            valor_total_pedido: valorEspelho,
+            quantidade_itens: novosItens.length,
+            produtos: novosProdutosEspelho,
             sincronizado_em: new Date().toISOString()
           });
         }
-        // Log de sincronização bem-sucedida
+
+        // Log de sincronização local bem-sucedida
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedido',
-          call: 'ConsultarPedido',
+          call: 'LOCAL_SYNC',
           operacao: 'cortar_pedido_sincronizar_valores',
           entidade_tipo: 'Pedido',
           entidade_id: String(codigo_pedido),
           status: 'sucesso',
-          mensagem_erro: `Corte aplicado e valores sincronizados. Pedido.valor_total: R$ ${valorFinal} (itens: ${totalItensFinal}). Fonte: ${novoValorTotal === valorAnterior ? 'RECALCULO_LOCAL' : 'OMIE_REAL'}`,
+          mensagem_erro: `Corte aplicado localmente. Pedido/PedidoItem/Espelho atualizados sem reconsulta Omie. Fonte: LOCAL_DIRETO`,
           usuario_email: user.email
         }).catch(() => {});
       } catch (errSinc) {
-        console.warn('Corte OK no Omie mas falhou ao sincronizar dados locais:', errSinc.message);
+        console.warn('[cortarPedidoOmie] Corte OK no Omie mas falhou ao sincronizar dados locais:', errSinc.message);
+        // Log do erro para auditoria
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: 'produtos/pedido',
+          call: 'LOCAL_SYNC',
+          operacao: 'cortar_pedido_sincronizar_valores',
+          entidade_tipo: 'Pedido',
+          entidade_id: String(codigo_pedido),
+          status: 'erro',
+          mensagem_erro: `Erro na sincronização local pós-corte: ${errSinc.message}`,
+          usuario_email: user.email
+        }).catch(() => {});
       }
     }
 
