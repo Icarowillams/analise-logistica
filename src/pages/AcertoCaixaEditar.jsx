@@ -26,6 +26,8 @@ export default function AcertoCaixaEditar() {
 
   const [modalNaoEntregue, setModalNaoEntregue] = useState({ open: false, index: null, loading: false });
   const saveTimer = useRef(null);
+  const saveInProgress = useRef(false);
+  const pendingSave = useRef(null);
 
   const { data: acerto, isLoading } = useQuery({
     queryKey: ['acerto', acertoId],
@@ -69,22 +71,36 @@ export default function AcertoCaixaEditar() {
     return { total: notas.length, ent, ne, pe, dif, rec };
   }, [notas]);
 
-  // Auto-save com debounce
+  // Auto-save com debounce + mutex para evitar race condition
   const agendarSalvar = (novasNotas, novaObs) => {
+    pendingSave.current = { notas: novasNotas, obs: novaObs ?? obs };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      if (saveInProgress.current) {
+        agendarSalvar(pendingSave.current.notas, pendingSave.current.obs);
+        return;
+      }
+      const { notas: notasParaSalvar, obs: obsParaSalvar } = pendingSave.current;
+      pendingSave.current = null;
+      saveInProgress.current = true;
       setSalvando(true);
-      const valor_total_recebido = novasNotas.reduce((s, n) => s + Number(n.valor_recebido || 0), 0);
-      const valor_total_diferenca = novasNotas.reduce((s, n) => s + Number(n.diferenca || 0), 0);
+      const valor_total_recebido = notasParaSalvar.reduce((s, n) => s + Number(n.valor_recebido || 0), 0);
+      const valor_total_diferenca = notasParaSalvar.reduce((s, n) => s + Number(n.diferenca || 0), 0);
       try {
         await base44.entities.AcertoCaixa.update(acertoId, {
-          notas: novasNotas,
-          observacao_geral: novaObs ?? obs,
+          notas: notasParaSalvar,
+          observacao_geral: obsParaSalvar,
           valor_total_recebido,
           valor_total_diferenca
         });
-      } catch (e) { toast.error('Erro ao salvar: ' + e.message); }
+      } catch (e) {
+        toast.error('Erro ao salvar: ' + e.message);
+      }
+      saveInProgress.current = false;
       setSalvando(false);
+      if (pendingSave.current) {
+        agendarSalvar(pendingSave.current.notas, pendingSave.current.obs);
+      }
     }, 1000);
   };
 
