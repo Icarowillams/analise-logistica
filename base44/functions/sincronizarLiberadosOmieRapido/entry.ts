@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { max_paginas = 3, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
+    const { max_paginas = 8, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
     const MAX_FALLBACK_CLIENTES = 10; // limite duro de ConsultarCliente por execução
     const t0 = Date.now();
 
@@ -236,6 +236,8 @@ Deno.serve(async (req) => {
       return { status_real: 'aguardando_nf', status_label: 'Aguardando NF' };
     };
 
+    console.log(`[sincronizarLiberadosOmieRapido] max_paginas=${max_paginas}, etapas=${etapas.join(',')}, origem=${origem}`);
+
     const todosOmie = [];
     for (const etapaAtual of etapas) {
       let pagina = 1;
@@ -251,6 +253,9 @@ Deno.serve(async (req) => {
           throw e;
         });
         if (!data) break;
+        if (Number(data.total_de_paginas || 1) > max_paginas) {
+          console.warn(`[sincronizarLiberadosOmieRapido] ⚠️ Etapa ${etapaAtual}: Omie tem ${data.total_de_paginas} páginas mas limite é ${max_paginas}. Pedidos além da página ${max_paginas} não serão sincronizados.`);
+        }
         totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas));
         const lote = (data.pedido_venda_produto || [])
           .map((p) => {
