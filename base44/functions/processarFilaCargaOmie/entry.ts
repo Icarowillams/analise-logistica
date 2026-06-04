@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     }
 
     // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══
-    const TIMEOUT_MS = 10 * 60 * 1000;
+    const TIMEOUT_MS = 3 * 60 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
       const updatedAt = new Date(item.updated_date).getTime();

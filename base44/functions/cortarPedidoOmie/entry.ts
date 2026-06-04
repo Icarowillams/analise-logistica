@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
     // Detecção precisa de cancelamento (NÃO usa JSON.stringify — pegaria histórico)
     const flagCancelado = pedido?.infoCadastro?.cancelado;
     const etapaAtual = String(pedido?.cabecalho?.etapa || '');
-    if (flagCancelado === 'S' || etapaAtual === '99') {
+    if (flagCancelado === 'S' || etapaAtual === '99' || etapaAtual.toLowerCase().includes('cancelado')) {
       return Response.json({ error: 'Pedido cancelado: não é permitido editar ou ajustar.' }, { status: 400 });
     }
 
