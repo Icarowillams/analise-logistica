@@ -131,13 +131,13 @@ export default function useDadosMontagem() {
       await sleep(isRetry ? 3000 : 1500);
 
       const espelhoOmie = await fetchWithRetry(() =>
-        base44.entities.PedidoLiberadoOmie.list('-created_date', 500)
+        base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)
       );
       console.log('[DEBUG MC] Total no espelho Omie:', espelhoOmie?.length || 0);
       await sleep(300);
 
       const todosPedidosLocais = await fetchWithRetry(() =>
-        base44.entities.Pedido.list('-created_date', 1000)
+        base44.entities.Pedido.list('-created_date', 3000)
       );
       console.log('[DEBUG MC] Total Pedido local:', todosPedidosLocais?.length || 0);
       await sleep(300);
@@ -360,9 +360,9 @@ export default function useDadosMontagem() {
       console.log('[DEBUG CONTAGEM] Todos os pedidos na tela (' + todosCodigos.length + '):', JSON.stringify(todosCodigos));
 
       // Verificar limites de paginação
-      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/500, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/1000, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
-      if ((espelhoOmie?.length || 0) >= 500) console.warn('[DEBUG CONTAGEM] ⚠️ ESPELHO OMIE ATINGIU LIMITE DE 500!');
-      if ((todosPedidosLocais?.length || 0) >= 1000) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 1000!');
+      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/2000, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/3000, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
+      if ((espelhoOmie?.length || 0) >= 2000) console.warn('[DEBUG CONTAGEM] ⚠️ ESPELHO OMIE ATINGIU LIMITE DE 2000!');
+      if ((todosPedidosLocais?.length || 0) >= 3000) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 3000!');
 
       // Verificar pedidos cancelados excluídos
       const canceladosExcluidos = (todosPedidosLocais || []).filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por);
