@@ -303,7 +303,19 @@ Deno.serve(async (req) => {
       );
 
       if (!corte) {
-        novosItens.push(item);
+        novosItens.push({
+          ide: {
+            codigo_item_integracao: item.ide?.codigo_item_integracao || ''
+          },
+          produto: {
+            codigo_produto: item.produto?.codigo_produto || '',
+            codigo_produto_integracao: item.produto?.codigo_produto_integracao || '',
+            descricao: item.produto?.descricao || '',
+            quantidade: item.produto?.quantidade || 0,
+            valor_unitario: item.produto?.valor_unitario || 0,
+            unidade: item.produto?.unidade || 'UN'
+          }
+        });
         continue;
       }
 
@@ -340,8 +352,17 @@ Deno.serve(async (req) => {
 
       if (qtdNova > 0) {
         novosItens.push({
-          ...item,
-          produto: { ...item.produto, quantidade: qtdNova }
+          ide: {
+            codigo_item_integracao: item.ide?.codigo_item_integracao || ''
+          },
+          produto: {
+            codigo_produto: item.produto?.codigo_produto || '',
+            codigo_produto_integracao: item.produto?.codigo_produto_integracao || '',
+            descricao: item.produto?.descricao || '',
+            quantidade: qtdNova,
+            valor_unitario: item.produto?.valor_unitario || 0,
+            unidade: item.produto?.unidade || 'UN'
+          }
         });
       }
     }
@@ -351,6 +372,7 @@ Deno.serve(async (req) => {
       await omieCall(base44, 'AlterarPedidoVenda', {
         cabecalho: {
           codigo_pedido: Number(codigo_pedido),
+          codigo_cliente_integracao: String(pedido.cabecalho?.codigo_pedido_integracao || codigo_pedido),
           etapa: pedido.cabecalho?.etapa || '10'
         },
         det: novosItens
