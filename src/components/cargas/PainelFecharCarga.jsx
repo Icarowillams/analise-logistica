@@ -69,6 +69,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         codigo_cliente_integracao: v.codigo_cliente_integracao || '',
         codigo_cliente_cod: v.codigo_cliente_cod || '',
         cnpj_cpf_cliente: v.cnpj_cpf_cliente || '',
+        numero_nf: v.numero_nf || '',
         nome_cliente: v.nome_cliente,
         nome_fantasia: v.nome_fantasia,
         cidade: v.cidade,

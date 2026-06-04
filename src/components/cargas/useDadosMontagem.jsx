@@ -75,6 +75,7 @@ function montarVendaOmie(e) {
     vendedor_nome: e.vendedor_nome || '',
     data_previsao: e.data_previsao || '',
     etapa: e.etapa || '20',
+    numero_nf: e.numero_nf || '',
     quantidade_itens: e.quantidade_itens || 0,
     valor_total_pedido: e.valor_total_pedido || 0,
     produtos: e.produtos || [],
