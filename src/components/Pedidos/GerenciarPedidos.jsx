@@ -278,12 +278,23 @@ export default function GerenciarPedidos({ onEditPedido }) {
         || clientesLookup.byNome.get(normalizeKey(p.cliente_nome_fantasia));
       const codigo = p.cliente_codigo || getClienteCodigo(cliente);
       return (!p.cliente_codigo && codigo) ? { id: p.id, codigo } : null;
-    }).filter(Boolean).slice(0, 100);
+    }).filter(Boolean);
 
     if (updates.length === 0) return;
-    Promise.all(updates.map(u => base44.entities.Pedido.update(u.id, { cliente_codigo: u.codigo })))
-      .then(() => queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }))
-      .catch(() => {});
+    const LOTE = 20;
+    const executar = async () => {
+      for (let i = 0; i < updates.length; i += LOTE) {
+        const lote = updates.slice(i, i + LOTE);
+        await Promise.all(
+          lote.map(u => base44.entities.Pedido.update(u.id, { cliente_codigo: u.codigo }))
+        ).catch(() => {});
+        if (i + LOTE < updates.length) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    };
+    executar();
   }, [pedidos, clientes, clientesLookup, queryClient]);
 
   const pedidosComVendedorCliente = useMemo(() => {
