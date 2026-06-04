@@ -17,10 +17,13 @@ import { PDFDocument } from 'pdf-lib';
  *
  * Não redireciona para portal do Omie — o backend baixa o PDF e devolve em base64.
  */
-export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo = 'individual' }) {
-  const [tipoLoading, setTipoLoading] = useState(null); // 'pdf' | 'xml' | 'json' | null
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  const fechar = () => { setTipoLoading(null); onOpenChange(false); };
+export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo = 'individual' }) {
+  const [tipoLoading, setTipoLoading] = useState(null);
+  const [progresso, setProgresso] = useState({ atual: 0, total: 0 });
+
+  const fechar = () => { setTipoLoading(null); setProgresso({ atual: 0, total: 0 }); onOpenChange(false); };
 
   const baixarBlob = (nome, blob) => {
     const link = document.createElement('a');
@@ -65,26 +68,46 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
 
   const handlePdf = async () => {
     setTipoLoading('pdf');
+    const total = nfs.length;
+    setProgresso({ atual: 0, total });
+    const falhas = [];
+
     try {
       if (modo === 'individual') {
-        // Um PDF por NF
-        for (const nf of nfs) {
-          const bytes = await fetchPdfBytes(nf);
-          baixarBlob(`nfe-${nf.cNumero || 'omie'}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
+        for (let i = 0; i < nfs.length; i++) {
+          const nf = nfs[i];
+          setProgresso({ atual: i + 1, total });
+          try {
+            const bytes = await fetchPdfBytes(nf);
+            if (!bytes || bytes.length === 0) { falhas.push(nf.cNumero || '?'); continue; }
+            baixarBlob(`nfe-${nf.cNumero || 'omie'}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
+          } catch { falhas.push(nf.cNumero || '?'); }
+          if (i < nfs.length - 1) await sleep(500);
         }
-        toast.success(`${nfs.length} PDF(s) gerado(s)`);
+        const ok = total - falhas.length;
+        if (ok > 0) toast.success(`${ok} PDF(s) gerado(s)`);
+        if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) não baixadas: ${falhas.join(', ')}`);
+        if (ok === 0) toast.error('Nenhuma NF pôde ser baixada.');
       } else {
-        // Mescla tudo em 1 PDF
         const merged = await PDFDocument.create();
-        for (const nf of nfs) {
-          const bytes = await fetchPdfBytes(nf);
-          const src = await PDFDocument.load(bytes);
-          const pages = await merged.copyPages(src, src.getPageIndices());
-          pages.forEach(p => merged.addPage(p));
+        for (let i = 0; i < nfs.length; i++) {
+          const nf = nfs[i];
+          setProgresso({ atual: i + 1, total });
+          try {
+            const bytes = await fetchPdfBytes(nf);
+            if (!bytes || bytes.length === 0) { falhas.push(nf.cNumero || '?'); continue; }
+            const src = await PDFDocument.load(bytes);
+            const pages = await merged.copyPages(src, src.getPageIndices());
+            pages.forEach(p => merged.addPage(p));
+          } catch { falhas.push(nf.cNumero || '?'); }
+          if (i < nfs.length - 1) await sleep(500);
         }
+        const ok = total - falhas.length;
+        if (ok === 0) { toast.error('Nenhuma NF pôde ser baixada.'); setTipoLoading(null); return; }
         const out = await merged.save();
-        baixarBlob(`nfes-agrupadas-${nfs.length}.pdf`, new Blob([out], { type: 'application/pdf' }));
-        toast.success(`PDF agrupado com ${nfs.length} NF(s) gerado`);
+        baixarBlob(`nfes-agrupadas-${ok}.pdf`, new Blob([out], { type: 'application/pdf' }));
+        toast.success(`PDF agrupado com ${ok} de ${total} NF(s) gerado`);
+        if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) ignoradas: ${falhas.join(', ')}`);
       }
       fechar();
     } catch (e) {
@@ -141,6 +164,21 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
           </DialogTitle>
           <DialogDescription>{descricao}</DialogDescription>
         </DialogHeader>
+
+        {tipoLoading && progresso.total > 0 && (
+          <div className="pt-2 space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span>Baixando NF {progresso.atual} de {progresso.total}...</span>
+              <span>{Math.round((progresso.atual / progresso.total) * 100)}%</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div
+                className="bg-cyan-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(progresso.atual / progresso.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2 pt-2">
           <Button
