@@ -28,3 +28,12 @@ dist-ssr
 *.sw?
 
 .env
+
+# Gerado automaticamente
+package-lock.json
+
+# Documentação interna
+src/docs/
+
+# Suites de teste internas
+src/components/testes/
