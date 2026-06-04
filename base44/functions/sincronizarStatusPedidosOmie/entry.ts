@@ -1,8 +1,35 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
+const OMIE_NF_URL = "https://app.omie.com.br/api/v1/produtos/nfconsultar/";
+
+async function resolverCreds(base44) {
+  try {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
+    const cfg = configs?.[0];
+    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
+  } catch { /* fallback secrets */ }
+  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+}
+
+async function consultarNfDoPedido(base44, codigoPedido) {
+  try {
+    const { app_key, app_secret } = await resolverCreds(base44);
+    const res = await fetch(OMIE_NF_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call: 'ConsultarNF', app_key, app_secret, param: [{ nIdPedido: Number(codigoPedido) }] })
+    });
+    const data = await res.json();
+    if (!data?.ide?.nNF) return null;
+    const dCan = String(data.ide?.dCan || '').trim();
+    const cDeneg = String(data.ide?.cDeneg || '').trim();
+    return {
+      autorizada: !dCan && cDeneg !== 'S' && cDeneg !== 'D',
+      numero_nf: String(data.ide.nNF)
+    };
+  } catch { return null; }
+}
 
 // NOVA VERSÃO: Consulta APENAS pedidos com status 'faturado' para detectar cancelamentos no Omie.
 // Todos os outros status (pendente, liberado, montagem) são controlados pelo Logístico Control via webhook.
@@ -15,6 +42,8 @@ Deno.serve(async (req) => {
         if (user?.role !== 'admin') {
             return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
+
+        const { app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET } = await resolverCreds(base44);
 
         // Buscar APENAS pedidos faturados que foram enviados ao Omie (sem trocas)
         const pedidosFaturados = await base44.asServiceRole.entities.Pedido.filter({ status: 'faturado', omie_enviado: true });
@@ -79,15 +108,30 @@ Deno.serve(async (req) => {
                     const cancelado = result.pedido_venda_produto.infoCadastro?.cancelado;
                     
                     if (cancelado === 'S' || etapa === '80') {
-                        console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} cancelado no Omie (etapa: ${etapa}, cancelado: ${cancelado})`);
-                        await base44.asServiceRole.entities.Pedido.update(pedido.id, {
-                            status: 'cancelado',
-                            motivo_cancelamento: 'Cancelado no Omie (sincronização automática)',
-                            data_cancelamento: new Date().toISOString(),
-                            cancelado_por: 'sistema',
-                            cancelado_por_nome: 'Sincronização Automática'
-                        });
-                        atualizados++;
+                        // ⚠️ BUG FIX: Verificar NF autorizada antes de cancelar
+                        const nfInfo = await consultarNfDoPedido(base44, pedido.omie_codigo_pedido);
+                        await new Promise(r => setTimeout(r, 400));
+
+                        if (nfInfo?.autorizada) {
+                            console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} marcado cancelado no Omie MAS tem NF ${nfInfo.numero_nf} autorizada — mantendo como faturado`);
+                            await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+                                status: 'faturado',
+                                faturado: true,
+                                status_faturamento: 'faturado',
+                                numero_nota_fiscal: nfInfo.numero_nf,
+                                data_faturamento: pedido.data_faturamento || new Date().toISOString()
+                            });
+                        } else {
+                            console.log(`[sincronizarStatusPedidos] Pedido #${String(pedido.numero_pedido || '')} cancelado no Omie (etapa: ${etapa}, cancelado: ${cancelado})`);
+                            await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+                                status: 'cancelado',
+                                motivo_cancelamento: 'Cancelado no Omie (sincronização automática)',
+                                data_cancelamento: new Date().toISOString(),
+                                cancelado_por: 'sistema',
+                                cancelado_por_nome: 'Sincronização Automática'
+                            });
+                            atualizados++;
+                        }
                     }
                     // Não precisa verificar outros status — se está faturado no banco e no Omie, tudo certo
                 }

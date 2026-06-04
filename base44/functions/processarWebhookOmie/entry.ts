@@ -440,46 +440,91 @@ async function handlePedido(base44, topic, evt) {
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
   } else if (topic === 'VendaProduto.Excluida') {
-    updates.status = 'cancelado';
-    updates.data_cancelamento = new Date().toISOString();
-    updates.motivo_cancelamento = `Excluído no Omie (${topic})`;
-    dadosCarga.etapa = 'excluido';
-    dadosCarga.status_pedido = 'cancelado';
+    // ⚠️ BUG FIX: Antes de cancelar, verificar se existe NF autorizada.
+    // O Omie pode marcar como "excluído" após encerramento de fluxo, mas a NF continua válida.
+    let nfAutorizadaExcluida = false;
+    let numeroNfExcluida = null;
+    try {
+      const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
+      const APP_KEY_NF = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+      const APP_SECRET_NF = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+      const nfRes = await fetch(NF_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY_NF, app_secret: APP_SECRET_NF, param: [{ nIdPedido: Number(codigoPedido) }] })
+      });
+      const nfData = await nfRes.json();
+      if (nfData?.ide?.nNF) {
+        const dCan = String(nfData.ide?.dCan || '').trim();
+        const cDeneg = String(nfData.ide?.cDeneg || '').trim();
+        if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
+          nfAutorizadaExcluida = true;
+          numeroNfExcluida = String(nfData.ide.nNF);
+        }
+      }
+    } catch (e) {
+      console.warn(`[webhook] Erro ao consultar NF do pedido excluído ${pedido.numero_pedido}: ${e.message}`);
+    }
+
+    if (nfAutorizadaExcluida) {
+      // NF autorizada encontrada — NÃO cancelar, sincronizar como faturado
+      console.log(`[webhook] VendaProduto.Excluida ignorada para ${pedido.numero_pedido} — NF ${numeroNfExcluida} autorizada`);
+      updates.status = 'faturado';
+      updates.faturado = true;
+      updates.status_faturamento = 'faturado';
+      updates.numero_nota_fiscal = numeroNfExcluida;
+      updates.data_faturamento = pedido.data_faturamento || new Date().toISOString();
+      dadosCarga.etapa = '60';
+      dadosCarga.status_pedido = 'faturado';
+      dadosCarga.numero_nf = numeroNfExcluida;
+      try { await upsertEspelho(base44, codigoPedido, numeroNfExcluida); } catch {}
+      // Log de proteção
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'webhook', call: 'VendaProduto.Excluida', operacao: 'protecao_nf_autorizada',
+        entidade_tipo: 'Pedido', entidade_id: pedido.id, status: 'sucesso',
+        mensagem_erro: `VendaProduto.Excluida ignorada — NF ${numeroNfExcluida} autorizada encontrada`,
+        payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, numero_nf: numeroNfExcluida }).slice(0, 2000)
+      }).catch(() => {});
+    } else {
+      updates.status = 'cancelado';
+      updates.data_cancelamento = new Date().toISOString();
+      updates.motivo_cancelamento = `Excluído no Omie (${topic})`;
+      dadosCarga.etapa = 'excluido';
+      dadosCarga.status_pedido = 'cancelado';
+    }
   } else if (topic === 'VendaProduto.Cancelada') {
-    // ⚠️ BONIFICAÇÃO: o Omie marca como "cancelado" após emitir NF (encerramento de fluxo).
-    // Verificar se existe NF autorizada antes de cancelar.
-    const isBonificacao = pedido.tipo === 'bonificacao';
+    // Verificar se existe NF autorizada antes de cancelar (qualquer tipo de pedido).
     let nfAutorizada = false;
     let numeroNfBonif = null;
 
-    if (isBonificacao) {
-      console.log(`[webhook] Pedido ${pedido.numero_pedido} é BONIFICAÇÃO — verificando NF antes de cancelar...`);
-      try {
-        const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-        const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-        const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-        const nfRes = await fetch(NF_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ nIdPedido: Number(codigoPedido) }] })
-        });
-        const nfData = await nfRes.json();
-        if (nfData?.ide?.nNF) {
-          const dCan = String(nfData.ide?.dCan || '').trim();
-          const cDeneg = String(nfData.ide?.cDeneg || '').trim();
-          if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
-            nfAutorizada = true;
-            numeroNfBonif = String(nfData.ide.nNF);
-          }
+    // ⚠️ BUG FIX: Verificar NF para TODOS os pedidos (não só bonificações).
+    // O Omie marca pedidos como "cancelado" após encerrar fluxo, mas a NF pode estar válida.
+    console.log(`[webhook] Pedido ${pedido.numero_pedido} (tipo=${pedido.tipo}) — VendaProduto.Cancelada — verificando NF antes de cancelar...`);
+    try {
+      const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
+      const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+      const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+      const nfRes = await fetch(NF_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ nIdPedido: Number(codigoPedido) }] })
+      });
+      const nfData = await nfRes.json();
+      if (nfData?.ide?.nNF) {
+        const dCan = String(nfData.ide?.dCan || '').trim();
+        const cDeneg = String(nfData.ide?.cDeneg || '').trim();
+        if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
+          nfAutorizada = true;
+          numeroNfBonif = String(nfData.ide.nNF);
         }
-      } catch (e) {
-        console.warn(`[webhook] Erro ao consultar NF da bonificação ${pedido.numero_pedido}: ${e.message}`);
       }
+    } catch (e) {
+      console.warn(`[webhook] Erro ao consultar NF do pedido ${pedido.numero_pedido}: ${e.message}`);
     }
 
-    if (isBonificacao && nfAutorizada) {
+    if (nfAutorizada) {
       // NF autorizada — sincronizar como faturado, NÃO cancelar
-      console.log(`[webhook] Bonificação ${pedido.numero_pedido} com NF ${numeroNfBonif} AUTORIZADA — sincronizando como faturado`);
+      console.log(`[webhook] Pedido ${pedido.numero_pedido} (tipo=${pedido.tipo}) com NF ${numeroNfBonif} AUTORIZADA — sincronizando como faturado (VendaProduto.Cancelada ignorada)`);
       updates.status = 'faturado';
       updates.faturado = true;
       updates.status_faturamento = 'faturado';
@@ -492,7 +537,7 @@ async function handlePedido(base44, topic, evt) {
       try {
         await upsertEspelho(base44, codigoPedido, numeroNfBonif);
       } catch (e) {
-        console.warn(`[webhook] Erro ao atualizar espelho da bonificação: ${e.message}`);
+        console.warn(`[webhook] Erro ao atualizar espelho do pedido: ${e.message}`);
       }
     } else {
       // Cancelamento real

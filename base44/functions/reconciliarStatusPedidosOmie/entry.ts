@@ -126,7 +126,36 @@ Deno.serve(async (req) => {
         const cancelado = cab.cancelado === true || cab.cancelado === 'S' || etapaOmie === 'cancelado';
 
         if (cancelado && pedido.status !== 'cancelado') {
-          // DIVERGÊNCIA DETECTADA: cancelado no Omie, ativo no local
+          // ⚠️ BUG FIX: Antes de cancelar, verificar se existe NF autorizada.
+          // O Omie pode reportar cancelado === true mas ter NF válida (ex: bonificações, encerramento de fluxo).
+          const nfInfo = await consultarNfDoPedido(base44, pedido.omie_codigo_pedido);
+          await sleep(DELAY_ENTRE_CONSULTAS_MS);
+
+          if (nfInfo?.autorizada) {
+            // NF autorizada — NÃO cancelar, restaurar/manter como faturado
+            console.log(`[RECONCILIAÇÃO] Pedido ${pedido.numero_pedido} marcado cancelado no Omie MAS tem NF ${nfInfo.numero_nf} autorizada — sincronizando como faturado`);
+            await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+              status: 'faturado',
+              faturado: true,
+              status_faturamento: 'faturado',
+              numero_nota_fiscal: nfInfo.numero_nf,
+              data_faturamento: pedido.data_faturamento || new Date().toISOString()
+            });
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+              endpoint: 'reconciliacao', call: 'protecao_nf_autorizada', operacao: 'reconciliar_status',
+              entidade_tipo: 'Pedido', entidade_id: pedido.id, status: 'sucesso',
+              mensagem_erro: `Reconciliação: cancelamento ignorado — NF ${nfInfo.numero_nf} autorizada`,
+              payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, numero_nf: nfInfo.numero_nf }).slice(0, 2000)
+            }).catch(() => {});
+            detalhes.push({
+              pedido_id: pedido.id, numero_pedido: pedido.numero_pedido, tipo: pedido.tipo,
+              carga: pedido.numero_carga, acao: 'protegido_nf_autorizada', numero_nf: nfInfo.numero_nf
+            });
+            verificados++;
+            continue;
+          }
+
+          // DIVERGÊNCIA REAL: cancelado no Omie sem NF autorizada
           console.log(`[RECONCILIAÇÃO] Pedido ${pedido.numero_pedido} (Omie ${pedido.omie_codigo_pedido}) CANCELADO no Omie, local status=${pedido.status}`);
 
           await base44.asServiceRole.entities.Pedido.update(pedido.id, {
