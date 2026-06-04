@@ -491,6 +491,17 @@ Deno.serve(async (req) => {
             sincronizado_em: new Date().toISOString()
           });
         }
+        // Log de sincronização bem-sucedida
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: 'produtos/pedido',
+          call: 'ConsultarPedido',
+          operacao: 'cortar_pedido_sincronizar_valores',
+          entidade_tipo: 'Pedido',
+          entidade_id: String(codigo_pedido),
+          status: 'sucesso',
+          mensagem_erro: `Corte aplicado e valores sincronizados. Pedido.valor_total: R$ ${novoValorTotal} (itens: ${novoTotalItens})`,
+          usuario_email: user.email
+        }).catch(() => {});
       } catch (errSinc) {
         console.warn('Corte OK no Omie mas falhou ao sincronizar dados locais:', errSinc.message);
       }
