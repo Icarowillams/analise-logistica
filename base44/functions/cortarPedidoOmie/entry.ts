@@ -455,6 +455,7 @@ Deno.serve(async (req) => {
         if (pedidoLocal) {
           await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
             valor_total: valorFinal,
+            valor_total_pedido: valorFinal,
             total_itens: totalItensFinal,
             valor_desconto: Number(cab?.valor_desconto || 0),
             valor_frete: Number(cab?.valor_frete || 0)
