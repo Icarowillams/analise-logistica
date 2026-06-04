@@ -158,6 +158,50 @@ Deno.serve(async (req) => {
       erro_omie: erroOmie
     });
 
+    if (status !== 'erro') {
+      // 1. Atualiza o Pedido local
+      const pedidosLocais = await base44.asServiceRole.entities.Pedido
+        .filter({ omie_codigo_pedido: String(codigo_pedido) }, '-updated_date', 1)
+        .catch(() => []);
+      const pedidoLocal = pedidosLocais?.[0];
+      if (pedidoLocal?.id) {
+        await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
+          status: 'cancelado',
+          data_cancelamento: new Date().toISOString(),
+          cancelado_por: origem,
+          cancelado_por_nome: user.full_name || user.email
+        }).catch(() => {});
+      }
+
+      // 2. Atualiza o espelho PedidoLiberadoOmie
+      const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie
+        .filter({ codigo_pedido: String(codigo_pedido) }, '-updated_date', 1)
+        .catch(() => []);
+      const espelho = espelhos?.[0];
+      if (espelho?.id) {
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelho.id, {
+          status_real: 'cancelada',
+          etapa: '80'
+        }).catch(() => {});
+      }
+
+      // 3. Atualiza o snapshot da carga (se o pedido tiver carga_id)
+      const cargaId = pedidoLocal?.carga_id;
+      if (cargaId) {
+        const carga = await base44.asServiceRole.entities.Carga.get(cargaId).catch(() => null);
+        if (carga) {
+          const novosPedidos = (carga.pedidos_omie || []).map(p =>
+            String(p.codigo_pedido) === String(codigo_pedido)
+              ? { ...p, cancelado: true, numero_nf: p.numero_nf || '' }
+              : p
+          );
+          await base44.asServiceRole.entities.Carga.update(cargaId, {
+            pedidos_omie: novosPedidos
+          }).catch(() => {});
+        }
+      }
+    }
+
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedidovendafat',
       call: 'CancelarPedidoVenda',
