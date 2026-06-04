@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeftRight, Loader2, Truck, Search, X } from 'lucide-react';
+import { ArrowLeftRight, Loader2, Truck, Search, X, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -41,23 +41,12 @@ export default function TransferenciaTab() {
   const { data: cargas = [], isFetching: sincronizandoCargas } = useQuery({
     queryKey: ['cargas', 'transferencia'],
     queryFn: async () => {
-      // 1) Atualiza status + numero_nf direto no Omie (cargas faturadas/em_rota)
-      try {
-        await base44.functions.invoke('sincronizarStatusCargasOmie', { list_limit: 200, sync_limit: 50 });
-      } catch (e) {
-        console.warn('Falha ao sincronizar status das cargas:', e.message);
-      }
-      // 2) Lê o estado atualizado
       const todas = await base44.entities.Carga.filter(
         { status_carga: { $in: ['faturada', 'em_rota'] } },
         '-data_carga',
         500
       );
-      return todas.filter(c => {
-        const pedidos = c.pedidos_omie || [];
-        if (pedidos.length === 0) return false;
-        return pedidos.some(p => String(p.etapa || '').trim() === '60');
-      });
+      return todas.filter(c => (c.pedidos_omie || []).length > 0);
     },
     staleTime: 60_000
   });
@@ -67,7 +56,7 @@ export default function TransferenciaTab() {
   // Pedidos da carga origem — APENAS faturados (etapa 60), filtrados pela busca
   const pedidosOrigem = useMemo(() => {
     if (!cargaOrigem) return [];
-    const lista = (cargaOrigem.pedidos_omie || []).filter(p => String(p.etapa || '').trim() === '60');
+    const lista = cargaOrigem.pedidos_omie || [];
     const termo = filtroPedido.trim().toLowerCase();
     return lista.filter(p => {
       if (termo) {
@@ -164,12 +153,22 @@ export default function TransferenciaTab() {
               <ArrowLeftRight className="w-5 h-5 text-indigo-500" />
               Transferência entre Cargas
             </span>
-            {sincronizandoCargas && (
-              <span className="text-xs font-normal text-slate-500 flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Sincronizando NFs com Omie...
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {sincronizandoCargas && (
+                <span className="text-xs font-normal text-slate-500 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Carregando...
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['cargas', 'transferencia'] })}
+                disabled={sincronizandoCargas}
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
