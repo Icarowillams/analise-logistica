@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { checkCircuitBreaker, omieCall as omieCallCentral } from '../_shared/omieClient/entry.ts';
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -6,75 +7,34 @@ const MAX_TENTATIVAS = 3;
 const LOTE = 25;
 const DELAY_ENTRE_PEDIDOS_MS = 800;
 
-async function resolverCreds(base44) {
+function marcarErroBloqueio(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  const bloqueio =
+    msg.includes('circuit breaker') ||
+    msg.includes('temporariamente bloqueada') ||
+    msg.includes('http 425') ||
+    msg.includes('misuse') ||
+    msg.includes('consumo indevido') ||
+    msg.includes('suspens') ||
+    msg.includes('bloquead') ||
+    msg.includes('chave de acesso está inválida');
+
+  if (bloqueio) error.bloqueio = true;
+  return error;
+}
+
+async function omieCall(base44, call, param, entityId = '') {
   try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback secrets */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
-
-// Verifica o circuit breaker persistente. Bloqueado e dentro do prazo → aborta.
-async function circuitBreakerBloqueado(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const ctrl = rows?.[0];
-  if (ctrl?.bloqueado && ctrl.bloqueado_ate && new Date(ctrl.bloqueado_ate) > new Date()) {
-    return { bloqueado: true, bloqueado_ate: ctrl.bloqueado_ate, controle: ctrl };
-  }
-  if (ctrl?.bloqueado && ctrl.bloqueado_ate && new Date(ctrl.bloqueado_ate) <= new Date()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
-  }
-  return { bloqueado: false };
-}
-
-// Abre o circuit breaker por 30min ao detectar bloqueio explícito da Omie.
-async function abrirBreaker(base44, erro) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const ctrl = rows?.[0];
-  const payload = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: String(erro).slice(0, 500), atualizado_em: new Date().toISOString() };
-  if (ctrl?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, payload).catch(() => {});
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
-}
-
-// Chamada Omie com retry para erros transitórios. Lança erro com .bloqueio=true em bloqueio explícito.
-async function omieCall(base44, call, param) {
-  const { app_key, app_secret } = await resolverCreds(base44);
-  let lastError = '';
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    const res = await fetch(OMIE_PEDIDO_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call, app_key, app_secret, param: [param] })
+    return await omieCallCentral(base44, OMIE_PEDIDO_URL, param, {
+      call,
+      operation: 'processar_fila_carga_omie',
+      entityType: 'FilaCargaOmie',
+      entityId,
+      throwOnFault: true
     });
-    const data = await res.json();
-    if (data.faultstring || data.faultcode) {
-      const erro = data.faultstring || 'Erro Omie';
-      const msg = String(erro).toLowerCase();
-      const faultcode = String(data.faultcode || '').toLowerCase();
-      // MISUSE_API_PROCESS → breaker imediato 30min
-      if (faultcode.includes('misuse') || msg.includes('misuse') || msg.includes('consumo indevido')) {
-        console.error(`[FILA] MISUSE_API_PROCESS detectado! Bloqueando por 30 min.`);
-        await abrirBreaker(base44, `MISUSE: ${erro}`);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      // Suspensão / chave inválida → breaker 30min
-      if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
-        await abrirBreaker(base44, erro);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      if (res.status === 425 || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
-        await abrirBreaker(base44, erro);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
-        lastError = erro; await sleep(2500 * tentativa); continue;
-      }
-      throw new Error(erro);
-    }
-    return data;
+  } catch (error) {
+    throw marcarErroBloqueio(error instanceof Error ? error : new Error(String(error)));
   }
-  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
 }
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
@@ -85,13 +45,14 @@ async function jaEstaNaEtapa(base44, item) {
     if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
     else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
     else return false;
-    const resp = await omieCall(base44, 'ConsultarPedido', param);
+
+    const resp = await omieCall(base44, 'ConsultarPedido', param, item.id);
     const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
     const destino = String(item.etapa_destino || '50');
     return etapa && Number(etapa) >= Number(destino);
   } catch (e) {
-    if (e.bloqueio) throw e; // propaga bloqueio
-    return false; // qualquer outro erro de consulta: segue para processar normalmente
+    if (e.bloqueio) throw e;
+    return false;
   }
 }
 
@@ -101,28 +62,24 @@ async function processarFaturar(base44, item) {
   if (item.codigo_pedido_omie) idParam.codigo_pedido = Number(item.codigo_pedido_omie);
   if (item.codigo_pedido_integracao) idParam.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
 
-  // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
-    // Omie exige DD/MM/AAAA — converter de YYYY-MM-DD se necessário
     let dataOmie = item.data_previsao;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataOmie)) {
       const [y, m, d] = dataOmie.split('-');
       dataOmie = `${d}/${m}/${y}`;
     }
-    await omieCall(base44, 'AlterarPedidoVenda', {
-      cabecalho: { ...idParam, data_previsao: dataOmie }
-    });
+    await omieCall(base44, 'AlterarPedidoVenda', { cabecalho: { ...idParam, data_previsao: dataOmie } }, item.id);
     await sleep(600);
   }
 
-  // 2) Trocar etapa para destino (50)
-  await omieCall(base44, 'TrocarEtapaPedido', { ...idParam, etapa: String(item.etapa_destino || '50') });
+  await omieCall(base44, 'TrocarEtapaPedido', { ...idParam, etapa: String(item.etapa_destino || '50') }, item.id);
 }
 
 // Recalcula o status de processamento da carga a partir dos itens da fila.
 async function atualizarStatusCarga(base44, carga_id) {
   const itens = await base44.asServiceRole.entities.FilaCargaOmie.filter({ carga_id }, '-created_date', 500).catch(() => []);
   if (!itens.length) return;
+
   const total = itens.length;
   const concluidos = itens.filter(i => i.status === 'concluido').length;
   const erros = itens.filter(i => i.status === 'erro').length;
@@ -144,14 +101,12 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Circuit breaker: se bloqueado, aborta toda a execução — tenta na próxima rodada.
-    const breaker = await circuitBreakerBloqueado(base44);
-    if (breaker.bloqueado) {
-      return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.bloqueado_ate });
+    const breaker = await checkCircuitBreaker(base44);
+    if (breaker.blocked) {
+      return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
 
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS ANTES DE PROCESSAR NOVOS PEDIDOS ═══
-    // Isso garante que cargas concluídas no ciclo anterior sejam marcadas ANTES do timeout
     const cargasEmAndamento = await base44.asServiceRole.entities.Carga.filter(
       { processamento_omie_status: 'em_andamento' }, '-updated_date', 100
     ).catch(() => []);
@@ -167,7 +122,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Cargas nao_iniciado que têm itens na fila → recalcular status (pode já estar concluída)
     const cargasNaoIniciadas = await base44.asServiceRole.entities.Carga.filter(
       { processamento_omie_status: 'nao_iniciado' }, '-updated_date', 50
     ).catch(() => []);
@@ -180,7 +134,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Cargas processando que não têm itens "processando" na fila → recalcular
     const cargasProcessando = await base44.asServiceRole.entities.Carga.filter(
       { processamento_omie_status: 'processando' }, '-updated_date', 50
     ).catch(() => []);
@@ -188,7 +141,7 @@ Deno.serve(async (req) => {
       await atualizarStatusCarga(base44, c.id);
     }
 
-    // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══
+    // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" ═══
     const TIMEOUT_MS = 3 * 60 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
@@ -201,7 +154,6 @@ Deno.serve(async (req) => {
           tentativas,
           erro_log: `Timeout: travado em "processando" por mais de 10 minutos (tentativa ${tentativas})`
         }).catch(() => {});
-        console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
       }
     }
 
@@ -211,7 +163,6 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasPreAtualizar.length, mensagem: 'Nenhum item pendente na fila' });
     }
 
-    // Agrupar por carga_id para verificar existência em batch
     const cargaIds = [...new Set(todosPendentes.map(i => i.carga_id).filter(Boolean))];
     const cargasDeletadas = new Set();
     for (const cid of cargaIds) {
@@ -223,7 +174,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Cancelar TODOS os itens de cargas deletadas de uma vez
     let orfaosLimpos = 0;
     if (cargasDeletadas.size > 0) {
       const orfaos = todosPendentes.filter(i => cargasDeletadas.has(i.carga_id));
@@ -235,22 +185,17 @@ Deno.serve(async (req) => {
         }).catch(() => {});
       }
       orfaosLimpos = orfaos.length;
-      console.log(`[FILA] Limpando ${orfaosLimpos} itens órfãos de ${cargasDeletadas.size} carga(s) deletada(s): ${[...cargasDeletadas].join(', ')}`);
     }
 
-    // Agora buscar os pendentes reais (cargas válidas) para processar
     const pendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', LOTE).catch(() => []);
     if (!pendentes.length) {
       return Response.json({ sucesso: true, processados: 0, orfaos_limpos: orfaosLimpos, mensagem: orfaosLimpos > 0 ? `${orfaosLimpos} itens órfãos limpos, nenhum pendente restante` : 'Nenhum item pendente na fila' });
     }
 
-    console.log(`[FILA] Iniciando processamento de ${pendentes.length} itens:`, pendentes.map(i => ({ pedido: i.numero_pedido, carga: i.numero_carga, status: i.status, tentativas: i.tentativas })));
-
     const cargasAfetadas = new Set();
     let processados = 0;
     let interrompido = false;
 
-    // Processa SEQUENCIALMENTE (1 por vez, nunca em paralelo).
     for (let i = 0; i < pendentes.length; i++) {
       const item = pendentes[i];
       cargasAfetadas.add(item.carga_id);
@@ -258,11 +203,10 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
 
       try {
-        // Idempotência: se já está na etapa destino, conclui sem reprocessar.
         const jaFeito = await jaEstaNaEtapa(base44, item);
         if (jaFeito) {
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
-          // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
+
           if (item.codigo_pedido_omie) {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
               { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
@@ -278,12 +222,11 @@ Deno.serve(async (req) => {
         } else {
           await processarFaturar(base44, item);
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
-          // Atualiza pedido local (etapa logística avança)
+
           if (item.pedido_id) {
             await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {});
           }
-          // Atualiza espelho PedidoLiberadoOmie para refletir a nova etapa imediatamente
-          // (evita race condition com a reconciliação agendada)
+
           if (item.codigo_pedido_omie) {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
               { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
@@ -308,15 +251,15 @@ Deno.serve(async (req) => {
           erro_log: String(e.message).slice(0, 1000)
         }).catch(() => {});
 
-        // Bloqueio Omie → aborta o restante do lote, retoma na próxima rodada.
-        if (e.bloqueio) { interrompido = true; break; }
+        if (e.bloqueio) {
+          interrompido = true;
+          break;
+        }
       }
 
-      // Delay entre pedidos (não no último).
       if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
     }
 
-    // ═══ PASSO FINAL: Atualizar status das cargas tocadas NESTE ciclo ═══
     for (const carga_id of cargasAfetadas) {
       await atualizarStatusCarga(base44, carga_id);
     }
