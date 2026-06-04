@@ -407,6 +407,35 @@ Deno.serve(async (req) => {
     // Refletir corte na Carga local (espelho!)
     const cargaAtualizada = await refletirCorteNaCargaLocal(base44, codigo_pedido, cortes, false, null);
 
+    // Sincronizar Pedido local após corte bem-sucedido no Omie
+    if (!erroOmie) {
+      try {
+        // Buscar pedido local vinculado ao codigo_pedido Omie
+        const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter(
+          { omie_codigo_pedido: String(codigo_pedido) },
+          '-created_date',
+          1
+        );
+
+        if (pedidosLocais.length > 0) {
+          const pedidoLocal = pedidosLocais[0];
+
+          // Recalcular valor total a partir dos logs gerados no corte
+          const novoValorTotal = logs.reduce((soma, log) => {
+            return soma + Number(log.valor_novo || 0);
+          }, 0);
+
+          // Atualizar Pedido local com novos valores
+          await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
+            valor_total: novoValorTotal
+          });
+        }
+      } catch (errSincPedido) {
+        // Não falha a operação, apenas loga o erro
+        console.warn('Aviso: corte OK no Omie mas falhou ao sincronizar Pedido local:', errSincPedido.message);
+      }
+    }
+
     return Response.json({ sucesso: true, itens_alterados: logs.length, logs, carga_atualizada: cargaAtualizada });
   } catch (error) {
     const bloqueada = error?.code === 'OMIE_425';
