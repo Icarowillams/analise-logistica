@@ -211,7 +211,7 @@ export default function useDadosMontagem() {
       console.log('[DEBUG MC] Distribuição de etapas no espelho:', JSON.stringify(etapasContagem));
 
       // Vendas Omie etapas 10 e 20
-      const ETAPAS_PERMITIDAS = ['10', '20', '50'];
+      const ETAPAS_PERMITIDAS = ['20', '50']; // Apenas Liberados (20) e Em montagem (50)
       const vendasBruto = (espelhoOmie || []).filter(e =>
         ETAPAS_PERMITIDAS.includes(String(e?.etapa ?? '').trim())
       );
