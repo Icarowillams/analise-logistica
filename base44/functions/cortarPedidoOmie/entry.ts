@@ -410,6 +410,10 @@ Deno.serve(async (req) => {
     // Sincronizar Pedido local, PedidoItem e PedidoLiberadoOmie após corte (fonte da verdade: Omie)
     if (!erroOmie) {
       try {
+        // Invalidar cache em memória para forçar consulta real ao Omie
+        const cacheKeyInvalidar = `ConsultarPedido_${JSON.stringify({ codigo_pedido: Number(codigo_pedido) })}`;
+        memoryCache.delete(cacheKeyInvalidar);
+
         // Aguardar Omie processar a alteração antes de consultar
         await new Promise(resolve => setTimeout(resolve, 3000));
 
@@ -425,6 +429,23 @@ Deno.serve(async (req) => {
         const novoValorTotal = Number(cab?.valor_total_pedido || 0);
         const novoTotalItens = detOmie.length;
 
+        // Log de diagnóstico: valor antes vs depois para detectar cache stale
+        const valorAnterior = Number(pedido.cabecalho?.valor_total_pedido || 0);
+        console.log(`[cortarPedidoOmie] Pedido ${codigo_pedido}: valorAnterior=${valorAnterior}, novoValorOmie=${novoValorTotal}, itensAntes=${itensAtuais.length}, itensDepois=${novoTotalItens}`);
+        // Se Omie retornou o mesmo valor (cache stale), usar os itens que JÁ ENVIAMOS no AlterarPedidoVenda
+        let detFinal = detOmie;
+        let valorFinal = novoValorTotal;
+        let totalItensFinal = novoTotalItens;
+
+        if (novoValorTotal === valorAnterior && logs.length > 0) {
+          console.warn(`[cortarPedidoOmie] ALERTA: Omie retornou mesmo valor após corte! Usando itens enviados no AlterarPedidoVenda.`);
+          // Recalcular a partir do array novosItens que foi enviado ao Omie
+          detFinal = novosItens;
+          valorFinal = novosItens.reduce((s, i) => s + (Number(i.produto?.quantidade || 0) * Number(i.produto?.valor_unitario || 0)), 0);
+          totalItensFinal = novosItens.length;
+          console.log(`[cortarPedidoOmie] Valores recalculados localmente: valorFinal=${valorFinal}, itensFinal=${totalItensFinal}`);
+        }
+
         // 1) Atualizar Pedido local
         const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter(
           { omie_codigo_pedido: String(codigo_pedido) }, '-created_date', 1
@@ -433,8 +454,8 @@ Deno.serve(async (req) => {
 
         if (pedidoLocal) {
           await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
-            valor_total: novoValorTotal,
-            total_itens: novoTotalItens,
+            valor_total: valorFinal,
+            total_itens: totalItensFinal,
             valor_desconto: Number(cab?.valor_desconto || 0),
             valor_frete: Number(cab?.valor_frete || 0)
           });
@@ -444,9 +465,9 @@ Deno.serve(async (req) => {
             { pedido_id: pedidoLocal.id }
           );
 
-          // Mapear itens do Omie por codigo_produto
+          // Mapear itens por codigo_produto
           const itensOmieMap = new Map();
-          for (const d of detOmie) {
+          for (const d of detFinal) {
             const cod = String(d.produto?.codigo_produto || '');
             const codInt = String(d.produto?.codigo_produto_integracao || '');
             itensOmieMap.set(cod, d);
@@ -478,7 +499,7 @@ Deno.serve(async (req) => {
           { codigo_pedido: String(codigo_pedido) }, '-created_date', 1
         );
         if (espelhos.length > 0) {
-          const novosProdutos = detOmie.map(d => ({
+          const novosProdutos = detFinal.map(d => ({
             codigo_produto: String(d.produto?.codigo_produto || ''),
             codigo_produto_integracao: String(d.produto?.codigo_produto_integracao || ''),
             descricao: d.produto?.descricao || '',
@@ -488,8 +509,8 @@ Deno.serve(async (req) => {
             unidade: d.produto?.unidade || 'UN'
           }));
           await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-            valor_total_pedido: novoValorTotal,
-            quantidade_itens: novoTotalItens,
+            valor_total_pedido: valorFinal,
+            quantidade_itens: totalItensFinal,
             produtos: novosProdutos,
             sincronizado_em: new Date().toISOString()
           });
@@ -502,7 +523,7 @@ Deno.serve(async (req) => {
           entidade_tipo: 'Pedido',
           entidade_id: String(codigo_pedido),
           status: 'sucesso',
-          mensagem_erro: `Corte aplicado e valores sincronizados. Pedido.valor_total: R$ ${novoValorTotal} (itens: ${novoTotalItens})`,
+          mensagem_erro: `Corte aplicado e valores sincronizados. Pedido.valor_total: R$ ${valorFinal} (itens: ${totalItensFinal}). Fonte: ${novoValorTotal === valorAnterior ? 'RECALCULO_LOCAL' : 'OMIE_REAL'}`,
           usuario_email: user.email
         }).catch(() => {});
       } catch (errSinc) {
