@@ -372,7 +372,8 @@ Deno.serve(async (req) => {
       await omieCall(base44, 'AlterarPedidoVenda', {
         cabecalho: {
           codigo_pedido: Number(codigo_pedido),
-          codigo_cliente_integracao: String(pedido.cabecalho?.codigo_pedido_integracao || codigo_pedido),
+          codigo_pedido_integracao: String(pedido.cabecalho?.codigo_pedido_integracao || ''),
+          codigo_cliente: Number(pedido.cabecalho?.codigo_cliente || 0),
           etapa: pedido.cabecalho?.etapa || '10'
         },
         det: novosItens
