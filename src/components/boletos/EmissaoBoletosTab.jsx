@@ -140,19 +140,48 @@ export default function EmissaoBoletosTab() {
       const futuro = new Date(hoje.getTime() + 90 * 86400000);
       let acumulados = [];
 
-      for (let pagina = 1; pagina <= 10; pagina++) {
-        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de: formatarDataBr(inicio),
-          data_ate: formatarDataBr(futuro),
-          filtrar_por_data: 'V',
-          apenas_pendentes: true,
-          pagina,
-          registros_por_pagina: 100
-        });
-        if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos no Omie');
-        acumulados = acumulados.concat(data.titulos || []);
-        if (pagina >= (data.total_de_paginas || 1)) break;
+      const cnpjsUnicos = [...new Set(
+        pedidos
+          .map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, ''))
+          .filter(c => c.length >= 11)
+      )];
+
+      if (cnpjsUnicos.length > 0) {
+        for (const cnpj of cnpjsUnicos) {
+          for (let pagina = 1; pagina <= 5; pagina++) {
+            const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+              data_de: formatarDataBr(inicio),
+              data_ate: formatarDataBr(futuro),
+              filtrar_por_data: 'V',
+              cnpj_cpf: cnpj,
+              apenas_pendentes: true,
+              pagina,
+              registros_por_pagina: 100
+            });
+            if (!data?.sucesso) break;
+            acumulados = acumulados.concat(data.titulos || []);
+            if (pagina >= (data.total_de_paginas || 1)) break;
+          }
+        }
+      } else {
+        for (let pagina = 1; pagina <= 10; pagina++) {
+          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+            data_de: formatarDataBr(inicio),
+            data_ate: formatarDataBr(futuro),
+            filtrar_por_data: 'V',
+            apenas_pendentes: true,
+            pagina,
+            registros_por_pagina: 100
+          });
+          if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos no Omie');
+          acumulados = acumulados.concat(data.titulos || []);
+          if (pagina >= (data.total_de_paginas || 1)) break;
+        }
       }
+
+      acumulados = acumulados.filter((t, idx, arr) =>
+        arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === idx
+      );
 
       let ocultosComBoleto = 0;
       let ocultosSemModalidade = 0;
