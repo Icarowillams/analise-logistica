@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,31 +7,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, LockKeyhole, Truck } from 'lucide-react';
+import { Loader2, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
 
-// Gera o próximo número de carga a partir de uma sequência PERSISTENTE (ContadorCarga).
-// Importante: nunca decrementa, mesmo se a última carga for cancelada ou excluída.
-// Fallback: se o contador ainda não existir, inicializa a partir do maior número já usado nas cargas.
-async function gerarNumeroCarga(cargas) {
-  const contadores = await base44.entities.ContadorCarga.filter({ chave: 'global' }, '-created_date', 1);
-  let contador = contadores?.[0];
-
-  if (!contador) {
-    const numeros = (cargas || [])
-      .map(c => parseInt((c.numero_carga || '').replace(/\D/g, ''), 10))
-      .filter(n => !isNaN(n) && n < 10000);
-    const base = numeros.length ? Math.max(...numeros) : 0;
-    contador = await base44.entities.ContadorCarga.create({ chave: 'global', ultimo_numero: base });
-  }
-
-  const proximo = (contador.ultimo_numero || 0) + 1;
-  await base44.entities.ContadorCarga.update(contador.id, { ultimo_numero: proximo });
-  return String(proximo).padStart(3, '0');
+function formatPedidoConflito(pedido) {
+  const numero = pedido.numero_pedido || pedido.codigo_pedido || pedido.pedido_id || pedido.pedido_troca_id || 'sem_numero';
+  const cliente = pedido.nome_cliente || pedido.nome_fantasia || 'cliente não identificado';
+  return `${numero} (${cliente})`;
 }
 
-export default function PainelFecharCarga({ pedidos, selecionados, motoristas, veiculos, cargas, onSuccess }) {
+export default function PainelFecharCarga({ pedidos, selecionados, motoristas, veiculos, cargas: _cargas, onSuccess }) {
   const navigate = useNavigate();
   const hoje = new Date().toISOString().slice(0, 10);
   const [motoristaId, setMotoristaId] = useState('');
@@ -57,6 +43,44 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
     setSalvando(true);
     try {
+      const cargasAbertas = await base44.entities.Carga.filter({ status_carga: 'montagem' }, '-created_date', 300);
+      const conflitos = [];
+
+      for (const cargaAberta of (cargasAbertas || [])) {
+        const numeroCargaAberta = cargaAberta.numero_carga || 'sem_numero';
+
+        for (const pedido of pedidosSel) {
+          const tipo = String(pedido.tipo || 'venda').toLowerCase();
+          let emOutraCarga = false;
+
+          if (tipo === 'troca') {
+            emOutraCarga = Boolean((cargaAberta.pedidos_troca || []).some((p) =>
+              (pedido.pedido_troca_id && String(p.pedido_troca_id || '') === String(pedido.pedido_troca_id)) ||
+              (pedido.pedido_id && String(p.pedido_id || '') === String(pedido.pedido_id)) ||
+              (pedido.numero_pedido && String(p.numero_pedido || '') === String(pedido.numero_pedido))
+            ));
+          } else if (tipo === 'd1') {
+            emOutraCarga = Boolean((cargaAberta.pedidos_internos || []).some((p) =>
+              (pedido.pedido_id && String(p.pedido_id || '') === String(pedido.pedido_id)) ||
+              (pedido.numero_pedido && String(p.numero_pedido || '') === String(pedido.numero_pedido))
+            ));
+          } else {
+            emOutraCarga = Boolean((cargaAberta.pedidos_omie || []).some((p) =>
+              (pedido.codigo_pedido && String(p.codigo_pedido || '') === String(pedido.codigo_pedido)) ||
+              (pedido.numero_pedido && String(p.numero_pedido || '') === String(pedido.numero_pedido))
+            ));
+          }
+
+          if (emOutraCarga) {
+            conflitos.push(`${formatPedidoConflito(pedido)} já está na carga ${numeroCargaAberta}`);
+          }
+        }
+      }
+
+      if (conflitos.length > 0) {
+        const msg = conflitos.slice(0, 5).join('; ');
+        throw new Error(`Pedido(s) já alocado(s) em outra carga em aberto. ${msg}${conflitos.length > 5 ? ' ...' : ''}`);
+      }
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
@@ -117,9 +141,17 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       let carga = null;
       let numero = null;
       for (let tentativa = 0; tentativa < 10; tentativa++) {
-        numero = await gerarNumeroCarga(cargas);
-        const existentes = await base44.entities.Carga.filter({ numero_carga: numero }, '-created_date', 2);
-        if (existentes.length > 0) continue;
+        const respostaNumero = await base44.functions.invoke('gerarNumeroCargaAtomico', { chave: 'global' });
+        const dataNumero = respostaNumero?.data || respostaNumero || {};
+        if (!dataNumero?.sucesso || !dataNumero?.numero_carga) {
+          throw new Error(dataNumero?.error || 'Falha ao gerar número de carga atomicamente.');
+        }
+
+        numero = String(dataNumero.numero_carga);
+        const existentes = await base44.entities.Carga.filter({ numero_carga: numero }, '-created_date', 1);
+        if (existentes.length > 0) {
+          continue;
+        }
 
         carga = await base44.entities.Carga.create({
           numero_carga: numero,
@@ -141,11 +173,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           observacao: obs,
           observacoes: obs
         });
-
-        const duplicadas = await base44.entities.Carga.filter({ numero_carga: numero }, '-created_date', 10);
-        if (duplicadas.length <= 1 || duplicadas[0]?.id === carga.id) break;
-        await base44.entities.Carga.delete(carga.id).catch(() => {});
-        carga = null;
+        break;
       }
 
       if (!carga) {
