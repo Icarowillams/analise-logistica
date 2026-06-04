@@ -6,9 +6,18 @@ import { toast } from 'sonner';
 const CACHE_KEY = 'montagem_carga_v3';
 const CACHE_TTL = 5 * 60 * 1000;
 
+function getUserCacheKey() {
+  try {
+    const raw = localStorage.getItem('base44_user') ||
+                sessionStorage.getItem('base44_user') || '';
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.email || parsed?.id || 'anon';
+  } catch { return 'anon'; }
+}
+
 function getCache() {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = sessionStorage.getItem(CACHE_KEY + '_' + getUserCacheKey());
     if (!raw) return null;
     const { data, timestamp } = JSON.parse(raw);
     if (Date.now() - timestamp < CACHE_TTL) return data;
@@ -18,7 +27,7 @@ function getCache() {
 
 function setCache(data) {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+    sessionStorage.setItem(CACHE_KEY + '_' + getUserCacheKey(), JSON.stringify({ timestamp: Date.now(), data }));
   } catch {}
 }
 
