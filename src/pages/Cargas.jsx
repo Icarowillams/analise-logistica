@@ -295,6 +295,22 @@ export default function Cargas() {
 
   const temPendentesNaFila = todosItensFila.some(i => i.status === 'pendente' || i.status === 'processando');
 
+  const cargasTravadas = useMemo(() => {
+    const DEZ_MINUTOS = 10 * 60 * 1000;
+    return cargasTodas.filter(c => {
+      if (c.processamento_omie_status !== 'processando' &&
+          c.processamento_omie_status !== 'em_andamento') return false;
+      const itensDestaCarga = todosItensFila.filter(i =>
+        i.carga_id === c.id && i.status === 'processando'
+      );
+      if (itensDestaCarga.length === 0) return false;
+      const maisAntigo = Math.min(
+        ...itensDestaCarga.map(i => new Date(i.updated_date || i.created_date).getTime())
+      );
+      return Date.now() - maisAntigo > DEZ_MINUTOS;
+    });
+  }, [cargasTodas, todosItensFila]);
+
   const abrirNotas = (carga) => {
     navigate(`/NotasOmie?carga_id=${carga.id}`);
   };
@@ -474,6 +490,18 @@ export default function Cargas() {
           )}
         </div>
       </div>
+
+      {cargasTravadas.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2 text-sm text-amber-800">
+          <span className="font-semibold">⚠️ Atenção:</span>
+          {cargasTravadas.length === 1
+            ? `A carga ${cargasTravadas[0].numero_carga} está travada em processamento há mais de 10 minutos.`
+            : `${cargasTravadas.length} cargas estão travadas em processamento há mais de 10 minutos.`}
+          <span className="ml-1 text-amber-700">
+            Aguarde o desbloqueio automático ou contate o suporte.
+          </span>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
