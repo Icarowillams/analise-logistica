@@ -319,8 +319,8 @@ Deno.serve(async (req) => {
 
         const parcelas = gerarParcelas(plano, pedido.valor_total || 0, dataBase);
 
-        let etapa = "10";
-        if (pedido.status === 'liberado') etapa = "50";
+        const etapaReal = String(pedidoOmieAtual?.cabecalho?.etapa || '10').trim();
+        const etapa = etapaReal || "10";
 
         const pedidoOmie = {
             cabecalho: {

@@ -420,7 +420,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
           toast.warning(`Pedido salvo, mas erro ao atualizar no Omie: ${result.erro}`);
         }
       } catch (omieErr) {
-        toast.warning('Pedido salvo localmente, mas falhou ao sincronizar com Omie');
+        toast.error('Erro ao atualizar pedido no Omie. Verifique em Gerenciar Pedidos.');
       }
     } else {
       toast.success('Pedido salvo com sucesso!');
