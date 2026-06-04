@@ -99,10 +99,23 @@ Deno.serve(async (req) => {
       atualizado_em: new Date().toISOString()
     });
 
-    await Promise.all(codigosValidos.map(async (codigo) => {
-      const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
-      if (pedidos?.[0]?.id) await base44.asServiceRole.entities.Pedido.update(pedidos[0].id, { status_faturamento: 'processando' }).catch(() => {});
-    }));
+    const LOTE = 5;
+    for (let i = 0; i < codigosValidos.length; i += LOTE) {
+      const lote = codigosValidos.slice(i, i + LOTE);
+      await Promise.all(lote.map(async (codigo) => {
+        const pedidos = await base44.asServiceRole.entities.Pedido
+          .filter({ omie_codigo_pedido: codigo }, '-updated_date', 1)
+          .catch(() => []);
+        if (pedidos?.[0]?.id) {
+          await base44.asServiceRole.entities.Pedido
+            .update(pedidos[0].id, { status_faturamento: 'processando' })
+            .catch(() => {});
+        }
+      }));
+      if (i + LOTE < codigosValidos.length) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
 
     return Response.json({
       sucesso: true,
