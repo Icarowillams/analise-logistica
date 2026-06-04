@@ -410,6 +410,9 @@ Deno.serve(async (req) => {
     // Sincronizar Pedido local, PedidoItem e PedidoLiberadoOmie após corte (fonte da verdade: Omie)
     if (!erroOmie) {
       try {
+        // Aguardar Omie processar a alteração antes de consultar
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
         const pedidoAtualizado = await omieCall(
           base44,
           'ConsultarPedido',
