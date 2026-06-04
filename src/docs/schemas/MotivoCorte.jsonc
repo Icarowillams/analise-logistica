@@ -1,1 +1,0 @@
-{"name":"MotivoCorte","type":"object","description":"Motivos pré-cadastrados para corte de produtos em pedidos/cargas","properties":{"descricao":{"type":"string","description":"Descrição do motivo de corte"}},"required":["descricao"]}

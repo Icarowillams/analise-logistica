@@ -1,1 +1,0 @@
-{"name":"UnidadeMedida","type":"object","properties":{"nome":{"type":"string","description":"Nome da unidade de medida (ex: KG, UN, CX)"}},"required":["nome"]}

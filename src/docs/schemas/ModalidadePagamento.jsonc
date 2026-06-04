@@ -1,1 +1,0 @@
-{"name":"ModalidadePagamento","type":"object","properties":{"nome":{"type":"string","description":"Nome da modalidade de pagamento"},"descricao":{"type":"string","description":"Descrição da modalidade de pagamento"},"status":{"type":"string","enum":["ativo","inativo"],"default":"ativo","description":"Status da modalidade"}},"required":["nome"]}
