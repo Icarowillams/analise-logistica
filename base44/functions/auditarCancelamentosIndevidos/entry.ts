@@ -52,12 +52,51 @@ async function consultarNfDoPedido(app_key, app_secret, codigoPedido) {
   }
 }
 
+async function verificarCircuitBreaker(base44) {
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controle = cb?.[0];
+  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
+    return { bloqueado: true, bloqueado_ate: controle.bloqueado_ate, id: controle.id };
+  }
+  return { bloqueado: false, id: controle?.id || null };
+}
+
+async function ativarCircuitBreaker(base44, controleId, faultstring) {
+  const bloqueadoAte = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const payload = {
+    chave: 'principal',
+    bloqueado: true,
+    bloqueado_ate: bloqueadoAte,
+    ultimo_erro: faultstring || 'HTTP 425 consumo indevido (auditoria)',
+    atualizado_em: new Date().toISOString()
+  };
+  if (controleId) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleId, payload).catch(() => {});
+  } else {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
+  }
+  return bloqueadoAte;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
+    // ── Verificar circuit breaker ANTES de começar ──
+    const cb = await verificarCircuitBreaker(base44);
+    if (cb.bloqueado) {
+      console.warn(`[AUDITORIA] Circuit breaker ativo — bloqueado até ${cb.bloqueado_ate}`);
+      return Response.json({
+        sucesso: false,
+        motivo: 'circuit_breaker_ativo',
+        bloqueado_ate: cb.bloqueado_ate,
+        mensagem: `API Omie bloqueada até ${new Date(cb.bloqueado_ate).toLocaleString('pt-BR')}. Tente novamente após o desbloqueio.`
+      });
     }
 
     const { app_key, app_secret } = await resolverCreds(base44);
@@ -84,6 +123,7 @@ Deno.serve(async (req) => {
     let semNf = 0;
     let nfCancelada = 0;
     let erros = 0;
+    let bloqueadoAte = null;
     const restauradosList = [];
     const errosList = [];
 
@@ -141,13 +181,25 @@ Deno.serve(async (req) => {
           nfCancelada++;
         }
 
-        // Rate limit
-        await sleep(500);
+        // Rate limit — 300ms entre chamadas (padrão do sistema)
+        await sleep(300);
 
       } catch (e) {
         if (e.bloqueio) {
-          console.error(`[AUDITORIA] API Omie bloqueada — abortando`);
-          errosList.push({ motivo: 'API bloqueada por consumo indevido', abortado: true });
+          // ── Persistir circuit breaker na entidade ──
+          bloqueadoAte = await ativarCircuitBreaker(base44, cb.id, e.message);
+          console.error(`[AUDITORIA] API Omie bloqueada — circuit breaker ativado até ${bloqueadoAte}`);
+
+          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: 'auditoria',
+            call: 'auditarCancelamentosIndevidos',
+            operacao: 'auditoria_cancelamentos',
+            status: 'erro',
+            codigo_erro: '425',
+            mensagem_erro: `Circuit breaker ativado após ${verificados} verificações — bloqueado até ${bloqueadoAte}`,
+            usuario_email: user.email
+          }).catch(() => {});
+
           break;
         }
         if (e.retry) {
@@ -162,20 +214,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    const totalRestantes = pedidos.length - verificados;
+    const concluiu = !bloqueadoAte && totalRestantes === 0;
+
     const resumo = {
-      sucesso: true,
+      sucesso: concluiu,
+      parcial: !concluiu && verificados > 0,
       total_cancelados_encontrados: pedidos.length,
       verificados,
       restaurados,
       sem_nf: semNf,
       nf_cancelada_ou_denegada: nfCancelada,
       erros,
+      restantes: totalRestantes,
       restaurados_lista: restauradosList,
       erros_lista: errosList,
-      valor_total_restaurado: restauradosList.reduce((s, r) => s + (r.valor_total || 0), 0)
+      valor_total_restaurado: restauradosList.reduce((s, r) => s + (r.valor_total || 0), 0),
+      ...(bloqueadoAte ? { motivo: 'circuit_breaker_ativado', bloqueado_ate: bloqueadoAte } : {})
     };
 
-    console.log(`[AUDITORIA] Concluído: ${verificados} verificados, ${restaurados} restaurados, ${semNf} sem NF, ${nfCancelada} NF cancelada/denegada, ${erros} erros`);
+    console.log(`[AUDITORIA] Concluído: ${verificados} verificados, ${restaurados} restaurados, ${semNf} sem NF, ${nfCancelada} NF cancelada/denegada, ${erros} erros, ${totalRestantes} restantes`);
 
     return Response.json(resumo);
   } catch (error) {
