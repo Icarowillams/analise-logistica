@@ -101,30 +101,43 @@ export default function EmissaoBoletosTab() {
     const docTitulo = somenteNumeros(titulo.numero_documento);
     const numPedVinculado = String(titulo.numero_pedido_vinculado || '').trim();
 
-    // Prioridade 1: match exato por numero_pedido_vinculado (mais confiável — identifica o pedido específico)
+    let pedidoMatch = null;
+
+    // Prioridade 1: match exato por numero_pedido_vinculado
     if (numPedVinculado) {
-      const matchPedido = pedidos.find(p =>
+      pedidoMatch = pedidos.find(p =>
         String(p.numero_pedido || '').trim() === numPedVinculado ||
         String(p.codigo_pedido || '').trim() === numPedVinculado
       );
-      if (matchPedido) return matchPedido;
     }
 
-    // Prioridade 2: match por número da NF (identifica a nota específica)
-    if (docTitulo) {
-      const matchNf = pedidos.find(p => somenteNumeros(p.numero_nf) === docTitulo);
-      if (matchNf) return matchNf;
+    // Prioridade 2: match por número da NF
+    if (!pedidoMatch && docTitulo) {
+      pedidoMatch = pedidos.find(p => somenteNumeros(p.numero_nf) === docTitulo);
     }
 
-    // Prioridade 3: match por codigo_cliente ou CNPJ (fallback final para qualquer título não resolvido acima)
-    return pedidos.find(p => {
-      const porCodigo = codTitulo && (
-        String(p.codigo_cliente || '').trim() === codTitulo ||
-        String(p.codigo_cliente_cod || '').trim() === codTitulo
-      );
-      const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
-      return porCodigo || porCnpj;
-    }) || null;
+    // Prioridade 3: match por codigo_cliente ou CNPJ — só se NF do título bate com alguma NF da carga
+    if (!pedidoMatch && docTitulo) {
+      const nfsDaCarga = new Set(pedidos.map(p => somenteNumeros(p.numero_nf)).filter(Boolean));
+      if (nfsDaCarga.has(docTitulo)) {
+        pedidoMatch = pedidos.find(p => {
+          const porCodigo = codTitulo && (
+            String(p.codigo_cliente || '').trim() === codTitulo ||
+            String(p.codigo_cliente_cod || '').trim() === codTitulo
+          );
+          const porCnpj = cnpjTitulo && somenteNumeros(p.cnpj_cpf_cliente) === cnpjTitulo;
+          return porCodigo || porCnpj;
+        });
+      }
+    }
+
+    if (!pedidoMatch) return null;
+
+    // Filtro: rejeitar pedidos que não são venda (bonificação, troca, devolução)
+    const tipo = (pedidoMatch.tipo_operacao || pedidoMatch.tipo_nota || 'venda').toLowerCase();
+    if (tipo !== 'venda') return null;
+
+    return pedidoMatch;
   };
 
   const { data: consultaTitulos, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({

@@ -223,17 +223,52 @@ export default function EmissaoBoletos() {
 
       let ocultosNaoBoleto = 0;
 
-      // 🎯 MATCHING HARDENING — ordem de prioridade:
-      //   1. numero_documento do título == numero_nf do pedido (match exato por NF)
-      //   2. codigo_cliente_omie do título == codigo_cliente do pedido
-      //   3. cnpj_cpf do título == cnpj_cpf_cliente do pedido
+      // Mapa tipo_operacao por numero_pedido para filtrar bonificações
+      const tipoOperacaoPorPedido = new Map();
+      pedidos.forEach(p => {
+        const num = String(p.numero_pedido || '').trim();
+        if (num) tipoOperacaoPorPedido.set(num, (p.tipo_operacao || p.tipo_nota || 'venda'));
+      });
+
+      // 🎯 MATCHING HARDENING v2 — vincula título ao pedido específico da carga
+      //   Prioridade 1: numero_pedido_vinculado do título == numero_pedido do pedido
+      //   Prioridade 2: numero_documento do título == numero_nf do pedido (match por NF)
+      //   Prioridade 3: codigo_cliente / cnpj (fallback — só se NF do título bate com NF da carga)
+      //   Filtro: exclui títulos cujo pedido vinculado é bonificação/troca/devolução
       const tituloCasaCarga = (t) => {
+        // P1: match por numero_pedido_vinculado
+        const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
+        if (numPedVinc) {
+          const pedidoMatch = pedidos.find(p =>
+            String(p.numero_pedido || '').trim() === numPedVinc ||
+            String(p.codigo_pedido || '').trim() === numPedVinc
+          );
+          if (pedidoMatch) {
+            const tipo = pedidoMatch.tipo_operacao || pedidoMatch.tipo_nota || 'venda';
+            if (tipo !== 'venda') return false; // bonificação/troca → exclui
+            return true;
+          }
+        }
+
+        // P2: match por NF
         const docT = String(t.numero_documento || '').replace(/\D/g, '');
-        if (docT && nfsCarga.has(docT)) return true; // P1
+        if (docT && nfsCarga.has(docT)) {
+          // Verifica tipo do pedido dono dessa NF
+          const pedidoNf = pedidos.find(p => String(p.numero_nf || '').replace(/\D/g, '') === docT);
+          if (pedidoNf) {
+            const tipo = pedidoNf.tipo_operacao || pedidoNf.tipo_nota || 'venda';
+            if (tipo !== 'venda') return false;
+          }
+          return true;
+        }
+
+        // P3: match por codigo_cliente ou CNPJ — só aceita se há NF correspondente na carga
         const codClienteT = String(t.codigo_cliente || '').trim();
-        if (codClienteT && codigosClienteCarga.has(codClienteT)) return true; // P2
         const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
-        if (cnpjT && cnpjsCarga.has(cnpjT)) return true; // P3
+        const clienteCasa = (codClienteT && codigosClienteCarga.has(codClienteT)) ||
+                            (cnpjT && cnpjsCarga.has(cnpjT));
+        if (clienteCasa && docT && nfsCarga.has(docT)) return true;
+
         return false;
       };
 
