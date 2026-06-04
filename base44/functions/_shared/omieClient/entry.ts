@@ -10,6 +10,8 @@ type OmieCallOptions = {
   operation?: string;
   entityType?: string;
   entityId?: string;
+  throwOnFault?: boolean;
+  retryDelaysMs?: number[];
 };
 
 type MemoryCacheEntry = {
@@ -26,7 +28,8 @@ type CircuitBreakerStatus = {
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 15_000;
-const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
+const DEFAULT_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
+const CIRCUIT_BREAKER_BLOCK_MS = 30 * 60_000;
 const memoryCache = new Map<string, MemoryCacheEntry>();
 
 // ── Regras oficiais Omie: 240 req/min. Mantemos margem segura de 3 req/s por método. ──
@@ -48,7 +51,6 @@ async function upsertControle(base44: Base44Client, chave: string, payload: Reco
   const principal = rows?.[0];
   if (principal?.id) {
     await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(principal.id, payload).catch(() => null);
-    // Remove qualquer duplicado remanescente da mesma chave.
     for (const extra of (rows || []).slice(1)) {
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
     }
@@ -123,8 +125,50 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getBackoffDelay(attempt: number, retryDelaysMs?: number[]): number {
+  const delays = retryDelaysMs?.length ? retryDelaysMs : DEFAULT_RETRY_DELAYS_MS;
+  const idx = Math.min(attempt, delays.length - 1);
+  const base = delays[idx] || delays[delays.length - 1] || 1_000;
+  const jitter = Math.floor(Math.random() * 250);
+  return base + jitter;
+}
+
+function isRetryableError(status: number, message: string, faultcode = ''): boolean {
+  const lower = String(message || '').toLowerCase();
+  const faultLower = String(faultcode || '').toLowerCase();
+  if ([408, 409, 425, 429, 500, 502, 503, 504].includes(Number(status))) return true;
+  return (
+    lower.includes('timeout') ||
+    lower.includes('temporariamente indispon') ||
+    lower.includes('aguarde') ||
+    lower.includes('cota') ||
+    lower.includes('limite') ||
+    lower.includes('rate limit') ||
+    faultLower.includes('timeout') ||
+    faultLower.includes('temporar')
+  );
+}
+
+function isBlockingError(status: number, message: string, faultcode = ''): boolean {
+  const lower = String(message || '').toLowerCase();
+  const faultLower = String(faultcode || '').toLowerCase();
+  return (
+    status === 425 ||
+    status === 403 ||
+    faultLower.includes('misuse_api_process') ||
+    faultLower.includes('misuse') ||
+    lower.includes('consumo indevido') ||
+    lower.includes('misuse') ||
+    lower.includes('suspended') ||
+    lower.includes('suspens') ||
+    lower.includes('bloquead') ||
+    lower.includes('aplicativo está suspenso') ||
+    lower.includes('chave de acesso está inválida')
+  );
+}
+
 async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: string): Promise<void> {
-  const blockedUntil = new Date(Date.now() + 30 * 60_000).toISOString();
+  const blockedUntil = new Date(Date.now() + CIRCUIT_BREAKER_BLOCK_MS).toISOString();
   await upsertControle(base44, 'principal', {
     bloqueado: true,
     bloqueado_ate: blockedUntil,
@@ -172,6 +216,15 @@ async function writePersistentCache(base44: Base44Client, cacheKey: string, endp
   const rows = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: cacheKey }, '-created_date', 1).catch(() => []);
   if (rows?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(rows[0].id, payload).catch(() => null);
   else await base44.asServiceRole.entities.CacheOmieConsulta.create(payload).catch(() => null);
+}
+
+function parseResponseBody(text: string): any {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { _raw: text };
+  }
 }
 
 /**
@@ -234,12 +287,8 @@ export async function getOmieCredentials(base44: Base44Client): Promise<{ appKey
 
 /**
  * Executa uma chamada centralizada à API Omie com credenciais do ambiente, timeout,
- * retry exponencial para HTTP 429, circuit breaker, cache de 30 segundos e log automático.
- *
- * @param base44 Instância Base44 criada dentro da function via createClientFromRequest(req).
- * @param endpoint Endpoint Omie relativo ou URL completa, ex: "produtos/pedido/".
- * @param param Array ou objeto enviado no campo param do payload Omie.
- * @param options Opções da chamada; informe options.call com o método Omie, ex: "ConsultarPedido".
+ * retry exponencial para rate limit/erros transitórios, circuit breaker, cache de 30 segundos
+ * e log automático em LogIntegracaoOmie.
  */
 export async function omieCall(base44: Base44Client, endpoint: string, param: unknown, options: OmieCallOptions = {}): Promise<unknown> {
   const { appKey, appSecret } = await getOmieCredentials(base44);
@@ -247,11 +296,26 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
 
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.');
   if (!call) throw new Error('Informe options.call com o método Omie da chamada.');
-  console.log(`[omieClient] Conectando ao Omie com APP_KEY: ...${String(appKey).slice(-4)} | método: ${call}`);
 
   const breaker = await checkCircuitBreaker(base44);
   if (breaker.blocked) {
-    throw new Error(`API Omie temporariamente bloqueada pelo circuit breaker até ${breaker.blockedUntil || 'prazo indefinido'}. Último erro: ${breaker.lastError || 'não informado'}`);
+    const blockedError = `API Omie temporariamente bloqueada pelo circuit breaker até ${breaker.blockedUntil || 'prazo indefinido'}. Último erro: ${breaker.lastError || 'não informado'}`;
+    if (!options.skipLog) {
+      await writeLog(base44, {
+        endpoint,
+        call,
+        operacao: options.operation || 'omie_call',
+        entidade_tipo: options.entityType,
+        entidade_id: options.entityId,
+        status: 'erro',
+        codigo_erro: 'CIRCUIT_BREAKER_OPEN',
+        mensagem_erro: blockedError,
+        payload_enviado: JSON.stringify({ endpoint, call, param }),
+        duracao_ms: 0,
+        tentativas: 0
+      });
+    }
+    throw new Error(blockedError);
   }
 
   const ttlMs = options.cacheTtlMs ?? (options.cacheMinutes ? options.cacheMinutes * 60_000 : DEFAULT_CACHE_TTL_MS);
@@ -260,7 +324,6 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
   const writeMethod = isWriteMethod(call);
   const cacheKey = stableStringify({ endpoint, call, param });
 
-  // Cache só para LEITURA (escrita nunca é cacheada).
   if (!writeMethod) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
@@ -268,116 +331,128 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
     if (persistentCached !== null) return persistentCached;
   }
 
-  // Métodos críticos de escrita: fila sequencial (1 por vez). Demais: apenas throttle por método.
   if (SEQUENTIAL_METHODS.has(call)) {
     return runSequential(() => executeOmieCall());
   }
   return executeOmieCall();
 
   async function executeOmieCall(): Promise<unknown> {
-  await throttleByMethod(call);
-  await throttleGlobal(base44);
-  const startedAt = Date.now();
-  let attempts = 0;
-  let lastError: Error | null = null;
-  const payload = { call, app_key: appKey, app_secret: appSecret, param: Array.isArray(param) ? param : [param] };
+    await throttleByMethod(call);
+    await throttleGlobal(base44);
+    const startedAt = Date.now();
+    let attempts = 0;
+    let lastError: Error | null = null;
+    const payload = { call, app_key: appKey, app_secret: appSecret, param: Array.isArray(param) ? param : [param] };
 
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    attempts = attempt + 1;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const retryDelays = options.retryDelaysMs?.length ? options.retryDelaysMs : DEFAULT_RETRY_DELAYS_MS;
+    for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+      attempts = attempt + 1;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timer);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
 
-      if (response.status === 429) {
-        lastError = new Error('Rate limit Omie (HTTP 429).');
-        if (attempt < RETRY_DELAYS_MS.length) {
-          await sleep(RETRY_DELAYS_MS[attempt]);
-          continue;
-        }
-        await setCircuitBreakerBlocked(base44, lastError.message);
-        throw lastError;
-      }
+        const text = await response.text();
+        const data = parseResponseBody(text);
+        const message = String(data?.faultstring || data?.error || data?.message || `Erro HTTP ${response.status} na API Omie.`);
+        const faultcode = String(data?.faultcode || '');
+        const hasFault = Boolean(data?.faultstring || data?.faultcode);
 
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
-
-      if (!response.ok || data?.faultstring || data?.faultcode) {
-        const message = data?.faultstring || `Erro HTTP ${response.status} na API Omie.`;
-        const faultcode = data?.faultcode || '';
-        lastError = new Error(message);
-        const lower = message.toLowerCase();
-        const faultLower = String(faultcode).toLowerCase();
-
-        // MISUSE_API_PROCESS → bloqueio imediato de 30min, sem retry
-        if (faultLower.includes('misuse_api_process') || faultLower.includes('misuse') ||
-            lower.includes('consumo indevido') || lower.includes('misuse')) {
-          console.error(`[omieClient] MISUSE_API_PROCESS detectado! Bloqueando por 30 min.`);
-          await setCircuitBreakerBlocked(base44, `MISUSE_API_PROCESS: ${message}`);
-          throw lastError;
-        }
-
-        // Bloqueio genérico por rate limit / suspensão
-        if (lower.includes('cota') || lower.includes('limite') || lower.includes('aguarde') ||
-            lower.includes('bloque') || lower.includes('suspended') || lower.includes('suspens') ||
-            response.status === 403 || response.status === 425) {
+        // HTTP 425 deve bloquear imediatamente (além de 403 e sinais de MISUSE/suspensão)
+        if (isBlockingError(response.status, message, faultcode)) {
           await setCircuitBreakerBlocked(base44, message);
         }
-        throw lastError;
-      }
 
-      if (!writeMethod) {
-        memoryCache.set(cacheKey, { value: data, expiresAt: Date.now() + ttlMs });
-        await writePersistentCache(base44, cacheKey, endpoint, call, data, ttlMs);
-      }
+        if (!response.ok || hasFault) {
+          const shouldRetry = isRetryableError(response.status, message, faultcode) && attempt < retryDelays.length;
+          if (shouldRetry) {
+            await sleep(getBackoffDelay(attempt, retryDelays));
+            continue;
+          }
 
-      if (!options.skipLog) {
-        await writeLog(base44, {
-          endpoint,
-          call,
-          operacao: options.operation || 'omie_call',
-          entidade_tipo: options.entityType,
-          entidade_id: options.entityId,
-          status: 'sucesso',
-          payload_enviado: JSON.stringify({ endpoint, call, param }),
-          payload_resposta: JSON.stringify(data),
-          duracao_ms: Date.now() - startedAt,
-          tentativas: attempts
-        });
-      }
+          if (!options.skipLog) {
+            await writeLog(base44, {
+              endpoint,
+              call,
+              operacao: options.operation || 'omie_call',
+              entidade_tipo: options.entityType,
+              entidade_id: options.entityId,
+              status: 'erro',
+              codigo_erro: faultcode || String(response.status || ''),
+              mensagem_erro: message,
+              payload_enviado: JSON.stringify({ endpoint, call, param }),
+              payload_resposta: JSON.stringify(data || {}),
+              duracao_ms: Date.now() - startedAt,
+              tentativas: attempts
+            });
+          }
 
-      return data;
-    } catch (error) {
-      clearTimeout(timer);
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (lastError.name === 'AbortError') lastError = new Error(`Timeout de ${timeoutMs}ms ao chamar a API Omie.`);
-      if (attempt < RETRY_DELAYS_MS.length && lastError.message.includes('HTTP 429')) continue;
-      break;
+          if (hasFault && options.throwOnFault === false) {
+            return data;
+          }
+
+          throw new Error(message);
+        }
+
+        if (!writeMethod) {
+          memoryCache.set(cacheKey, { value: data, expiresAt: Date.now() + ttlMs });
+          await writePersistentCache(base44, cacheKey, endpoint, call, data, ttlMs);
+        }
+
+        if (!options.skipLog) {
+          await writeLog(base44, {
+            endpoint,
+            call,
+            operacao: options.operation || 'omie_call',
+            entidade_tipo: options.entityType,
+            entidade_id: options.entityId,
+            status: 'sucesso',
+            payload_enviado: JSON.stringify({ endpoint, call, param }),
+            payload_resposta: JSON.stringify(data),
+            duracao_ms: Date.now() - startedAt,
+            tentativas: attempts
+          });
+        }
+
+        return data;
+      } catch (error) {
+        clearTimeout(timer);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (lastError.name === 'AbortError') lastError = new Error(`Timeout de ${timeoutMs}ms ao chamar a API Omie.`);
+
+        const retryable = isRetryableError(0, lastError.message) && attempt < retryDelays.length;
+        if (retryable) {
+          await sleep(getBackoffDelay(attempt, retryDelays));
+          continue;
+        }
+        break;
+      }
     }
-  }
 
-  if (!options.skipLog) {
-    await writeLog(base44, {
-      endpoint,
-      call,
-      operacao: options.operation || 'omie_call',
-      status: 'erro',
-      mensagem_erro: lastError?.message || 'Erro desconhecido na API Omie',
-      erro_detalhado: lastError?.stack || lastError?.message || '',
-      payload_enviado: JSON.stringify({ endpoint, call, param }),
-      duracao_ms: Date.now() - startedAt,
-      tentativas: attempts
-    });
-  }
+    if (!options.skipLog) {
+      await writeLog(base44, {
+        endpoint,
+        call,
+        operacao: options.operation || 'omie_call',
+        entidade_tipo: options.entityType,
+        entidade_id: options.entityId,
+        status: 'erro',
+        mensagem_erro: lastError?.message || 'Erro desconhecido na API Omie',
+        erro_detalhado: lastError?.stack || lastError?.message || '',
+        payload_enviado: JSON.stringify({ endpoint, call, param }),
+        duracao_ms: Date.now() - startedAt,
+        tentativas: attempts
+      });
+    }
 
-  throw lastError || new Error('Erro desconhecido na API Omie.');
+    throw lastError || new Error('Erro desconhecido na API Omie.');
   }
 }
 

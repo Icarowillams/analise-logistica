@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { checkCircuitBreaker, omieCall as omieCallCentral } from '../_shared/omieClient/entry.ts';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -25,86 +26,43 @@ function debugLog(base44, mensagem, extra = {}) {
   }).catch(() => {});
 }
 
-async function resolverCredsOmie(base44) {
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) return { OMIE_APP_KEY: String(ativo.app_key), OMIE_APP_SECRET: String(ativo.app_secret) };
-  return { OMIE_APP_KEY: Deno.env.get('OMIE_APP_KEY'), OMIE_APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
+function isErroBloqueioOmie(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('circuit breaker') ||
+    msg.includes('temporariamente bloqueada') ||
+    msg.includes('http 425') ||
+    msg.includes('misuse') ||
+    msg.includes('consumo indevido') ||
+    msg.includes('suspens') ||
+    msg.includes('bloquead') ||
+    msg.includes('chave de acesso está inválida')
+  );
 }
 
 async function omieCall(base44, call, param, options = {}) {
-  const { OMIE_APP_KEY, OMIE_APP_SECRET } = await resolverCredsOmie(base44);
-  if (!OMIE_APP_KEY || !OMIE_APP_SECRET) throw new Error('Credenciais Omie não configuradas.');
-  const maxTentativas = options.maxTentativas || 3;
   const url = /ContaCorrente|Conta_corrente|ContasCorrentes/i.test(call)
     ? 'https://app.omie.com.br/api/v1/geral/contacorrente/'
     : OMIE_URL;
 
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    const err = new Error(`API Omie bloqueada. Desbloqueio: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
-    err.code = 'OMIE_425';
-    err.bloqueado_ate = controle.bloqueado_ate;
+  try {
+    return await omieCallCentral(base44, url, param, {
+      call,
+      skipLog: options.skipLog,
+      timeoutMs: options.timeout || 15000,
+      operation: options.operation || 'processar_fila_envio_pedido_omie',
+      entityType: options.entityType || 'FilaEnvioPedidoOmie',
+      entityId: options.entityId,
+      throwOnFault: options.throwOnFault ?? false
+    });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    if (isErroBloqueioOmie(err)) {
+      err.code = 'OMIE_BLOCKED';
+      err.bloqueio = true;
+    }
     throw err;
   }
-
-  const body = { call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] };
-  let lastError = '';
-  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-
-      if (data.faultstring || data.faultcode) {
-        const msg = String(data.faultstring || '').toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-          const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
-          const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425', atualizado_em: new Date().toISOString() };
-          if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-          else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-          base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: url, call, operacao: call, status: 'erro', codigo_erro: '425',
-            mensagem_erro: data.faultstring || 'HTTP 425',
-            payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
-            payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
-          }).catch(() => {});
-          const err = new Error(`API Omie bloqueada (HTTP 425). Desbloqueio: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
-          err.code = 'OMIE_425';
-          err.bloqueado_ate = bloqueadoAte;
-          throw err;
-        }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('indispon')) {
-          lastError = data.faultstring;
-          if (tentativa < maxTentativas) { await sleep(2500 * tentativa); continue; }
-        }
-        return data;
-      }
-
-      if (!options.skipLog) {
-        base44.asServiceRole.entities.LogIntegracaoOmie.create({
-          endpoint: url, call, operacao: call, status: 'sucesso',
-          payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
-          payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
-        }).catch(() => {});
-      }
-      return data;
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.code === 'OMIE_425') throw err;
-      lastError = err.message;
-      if (tentativa < maxTentativas) await sleep(1000 * Math.pow(2, tentativa));
-    }
-  }
-  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
 }
 
 let _contaCorrenteCache = null;
@@ -354,13 +312,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Circuit breaker
-    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-      .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-    const controle = cb?.[0];
-    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-      console.log(`[processarFila] Circuit breaker ATIVO até ${controle.bloqueado_ate}. Abortando.`);
-      return Response.json({ sucesso: true, mensagem: 'Circuit breaker ativo', bloqueado_ate: controle.bloqueado_ate, processados: 0 });
+    // Circuit breaker centralizado
+    const breaker = await checkCircuitBreaker(base44);
+    if (breaker.blocked) {
+      console.log(`[processarFila] Circuit breaker ATIVO até ${breaker.blockedUntil}. Abortando.`);
+      return Response.json({ sucesso: true, mensagem: 'Circuit breaker ativo', bloqueado_ate: breaker.blockedUntil, processados: 0 });
     }
 
     // Buscar pendentes
@@ -437,10 +393,9 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Re-verificar circuit breaker a cada pedido
-      const cbCheck = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-        .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-      if (cbCheck?.[0]?.bloqueado && cbCheck[0].bloqueado_ate && new Date(cbCheck[0].bloqueado_ate) > new Date()) {
+      // Re-verificar circuit breaker centralizado a cada pedido
+      const breakerCheck = await checkCircuitBreaker(base44);
+      if (breakerCheck.blocked) {
         console.log(`[processarFila] Circuit breaker ativou durante processamento. Abortando restante.`);
         break;
       }
@@ -519,16 +474,7 @@ Deno.serve(async (req) => {
         resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro });
 
         if (isBloqueio) {
-          console.log(`[processarFila] Bloqueio detectado: ${erro}. Abrindo circuit breaker.`);
-          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-            .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-          const cbPayload = {
-            chave: 'principal', bloqueado: true,
-            bloqueado_ate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            ultimo_erro: erro, atualizado_em: new Date().toISOString()
-          };
-          if (cbRows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows[0].id, cbPayload).catch(() => {});
-          else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(cbPayload).catch(() => {});
+          console.log(`[processarFila] Bloqueio detectado: ${erro}. Circuit breaker já é gerenciado centralmente no omieClient.`);
           break;
         }
       }
