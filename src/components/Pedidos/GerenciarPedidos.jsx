@@ -150,8 +150,19 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryKey: ['clientes-dos-pedidos-gerenciar', pedidoClienteIds.join('|')],
     queryFn: async () => {
       if (pedidoClienteIds.length === 0) return [];
-      const listas = await Promise.all(pedidoClienteIds.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1)));
-      return listas.flat();
+      const LOTE = 20;
+      const resultado = [];
+      for (let i = 0; i < pedidoClienteIds.length; i += LOTE) {
+        const lote = pedidoClienteIds.slice(i, i + LOTE);
+        const listas = await Promise.all(
+          lote.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1))
+        );
+        resultado.push(...listas.flat());
+        if (i + LOTE < pedidoClienteIds.length) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+      return resultado;
     },
     enabled: pedidoClienteIds.length > 0,
   });
