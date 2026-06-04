@@ -1,0 +1,1 @@
+{"name":"TabelaPreco","type":"object","properties":{"nome":{"type":"string","description":"Nome da tabela de preços"},"status":{"type":"string","enum":["ativo","inativo"],"default":"ativo"},"omie_id":{"type":"number","description":"nCodTabPreco do Omie (vinculação)"},"omie_cod_int":{"type":"string","description":"cCodIntTabPreco do Omie"}},"required":["nome"]}

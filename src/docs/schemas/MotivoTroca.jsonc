@@ -1,0 +1,1 @@
+{"name":"MotivoTroca","type":"object","properties":{"descricao":{"type":"string","description":"Descrição da ocorrência"}},"required":["descricao"]}

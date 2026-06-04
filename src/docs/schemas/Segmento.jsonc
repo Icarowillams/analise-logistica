@@ -1,0 +1,1 @@
+{"name":"Segmento","type":"object","properties":{"nome":{"type":"string","description":"Nome do segmento"},"descricao":{"type":"string","description":"Descrição do segmento"}},"required":["nome"]}

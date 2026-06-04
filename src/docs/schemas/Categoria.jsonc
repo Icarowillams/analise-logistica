@@ -1,0 +1,1 @@
+{"name":"Categoria","type":"object","properties":{"nome":{"type":"string","description":"Nome da categoria"},"descricao":{"type":"string","description":"Descrição da categoria"},"status":{"type":"string","enum":["ativo","inativo"],"default":"ativo"}},"required":["nome"]}
