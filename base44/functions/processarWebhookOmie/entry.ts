@@ -304,7 +304,28 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
 //    Toda atualização de numero_nf gera log "atualizacao_espelho_carga_nf".
 async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados) {
   if (!omieCodigoPedido) return;
-  const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
+
+  // ESTRATÉGIA 1 — busca direta via Pedido.carga_id (O(1), sem scan)
+  let cargaAlvo = null;
+  const pedidosLocais = await base44.asServiceRole.entities.Pedido
+    .filter({ omie_codigo_pedido: String(omieCodigoPedido) }, '-created_date', 1)
+    .catch(() => []);
+  const cargaId = pedidosLocais?.[0]?.carga_id;
+  if (cargaId) {
+    cargaAlvo = await base44.asServiceRole.entities.Carga.get(cargaId).catch(() => null);
+  }
+
+  // ESTRATÉGIA 2 — fallback: filtrar cargas ativas (montagem/faturada), nunca todas
+  let cargas;
+  if (cargaAlvo) {
+    cargas = [cargaAlvo];
+  } else {
+    const [cargasMontagem, cargasFaturadas] = await Promise.all([
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'montagem' }, '-created_date', 500).catch(() => []),
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 500).catch(() => [])
+    ]);
+    cargas = [...cargasMontagem, ...cargasFaturadas];
+  }
 
   for (const carga of cargas) {
     const pedidos = Array.isArray(carga.pedidos_omie) ? carga.pedidos_omie : [];
