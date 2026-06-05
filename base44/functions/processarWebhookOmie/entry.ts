@@ -587,11 +587,13 @@ async function handlePedido(base44, topic, evt) {
 }
 
 // 🤖 Dispara geração automática de boleto para um pedido (best-effort, não bloqueia)
+// 🐛 FIX: Referenciava 'gerarBoletosAutoPedidos' que NÃO EXISTE — corrigido para 'gerarBoletosOmie' (origem=auto)
 async function gerarBoletoAuto(base44, codigoPedido) {
   if (!codigoPedido) return;
   try {
-    await base44.functions.invoke('gerarBoletosAutoPedidos', {
-      codigos_pedido: [String(codigoPedido)]
+    await base44.functions.invoke('gerarBoletosOmie', {
+      origem: 'auto',
+      pedidos: [{ codigo_pedido: String(codigoPedido) }]
     });
   } catch (e) {
     console.error(`[gerarBoletoAuto] erro pedido ${codigoPedido}:`, e.message);

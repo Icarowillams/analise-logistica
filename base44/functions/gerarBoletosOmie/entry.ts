@@ -5,16 +5,15 @@ const OMIE_URL_BOLETO = 'https://app.omie.com.br/api/v1/financas/contareceberbol
 const OMIE_URL_CR = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 
-let _creds = null;
+// 🐛 FIX: Removido cache global _creds — credenciais são resolvidas dinamicamente por request
+// Evita warm-start com creds expiradas/suspensas em Deno Deploy
 async function resolverCreds(base44) {
-  if (_creds) return _creds;
   try {
     const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
     const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) { _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret }; return _creds; }
+    if (cfg?.app_key && cfg?.app_secret) return { app_key: String(cfg.app_key), app_secret: String(cfg.app_secret) };
   } catch { /* fallback */ }
-  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-  return _creds;
+  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
 }
 
 async function omieCall(url, base44, call, param, tentativa = 1) {
@@ -40,30 +39,61 @@ async function omieCall(url, base44, call, param, tentativa = 1) {
   return data;
 }
 
+// 🐛 FIX: A API ListarContasReceber NÃO retorna nCodPedido no payload.
+// Agora usamos ConsultarPedidoOmie para obter CNPJ + NF do pedido,
+// depois ListarContasReceber com filtro por CNPJ e casamos por numero_documento (NF).
 async function listarTitulosDoPedido(base44, codigoPedido) {
-  const titulos = [];
-  const hoje = new Date();
-  const inicio = new Date(hoje.getTime() - 30 * 86400000);
   const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - 365 * 86400000);
+  const futuro = new Date(hoje.getTime() + 90 * 86400000);
 
-  let pagina = 1;
-  const registrosPorPagina = 100;
-  while (true) {
+  // 1) Buscar o pedido no Base44 para obter o CNPJ do cliente e número da NF
+  let cnpj = null;
+  let numNf = null;
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1);
+    const pedido = pedidos?.[0];
+    if (pedido) {
+      cnpj = String(pedido.cliente_cpf_cnpj || '').replace(/\D/g, '');
+      numNf = pedido.numero_nota_fiscal ? String(pedido.numero_nota_fiscal).replace(/\D/g, '') : null;
+    }
+  } catch { /* fallback sem cnpj */ }
+
+  if (!cnpj) {
+    console.warn('[listarTitulosDoPedido] Pedido', codigoPedido, 'sem CNPJ — não é possível buscar títulos');
+    return [];
+  }
+
+  // 2) Listar contas a receber filtradas por CNPJ + vencimento
+  let acumulados = [];
+  for (let pag = 1; pag <= 5; pag++) {
     const data = await omieCall(OMIE_URL_CR, base44, 'ListarContasReceber', {
-      pagina,
-      registros_por_pagina: registrosPorPagina,
+      pagina: pag,
+      registros_por_pagina: 100,
       apenas_importado_api: 'N',
-      filtrar_por_emissao_de: fmt(inicio),
-      filtrar_por_emissao_ate: fmt(hoje)
+      filtrar_por_data_de: fmt(inicio),
+      filtrar_por_data_ate: fmt(futuro),
+      filtrar_por_cpf_cnpj: cnpj,
+      filtrar_apenas_titulos_em_aberto: 'S'
     });
     const lista = data?.conta_receber_cadastro || [];
-    titulos.push(...lista.filter(t => String(t.nCodPedido || '') === String(codigoPedido)));
-    if (lista.length < registrosPorPagina) break;
-    pagina++;
+    acumulados.push(...lista);
+    if (pag >= (data?.total_de_paginas || 1)) break;
     await new Promise(r => setTimeout(r, 300));
   }
 
-  return titulos;
+  // 3) Se tem NF, filtrar por numero_documento (match com número da NF)
+  if (numNf) {
+    const comNf = acumulados.filter(t => {
+      const doc = String(t.numero_documento || '').replace(/\D/g, '');
+      return doc === numNf;
+    });
+    if (comNf.length > 0) return comNf;
+  }
+
+  // 4) Fallback: retornar todos os títulos em aberto do cliente (melhor que nada)
+  return acumulados;
 }
 
 async function gerarBoletosTitulos(base44, titulos, idContaCorrente) {

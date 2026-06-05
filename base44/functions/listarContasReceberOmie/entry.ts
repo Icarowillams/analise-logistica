@@ -22,11 +22,11 @@ async function omieCall(base44, endpoint, param, options = {}) {
     param: [param]
   };
   
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
+  // 🐛 FIX: AbortController movido para DENTRO de cada tentativa — evita timeout compartilhado
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
     try {
       const res = await fetch(OMIE_URL, {
         method: 'POST',
@@ -45,7 +45,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
       
       if (!options.skipLog) {
         try {
-          await base44.entities.create('LogIntegracaoOmie', {
+          await base44.asServiceRole.entities.LogIntegracaoOmie.create( {
             endpoint,
             payload_envio: JSON.stringify(param).slice(0, 2000),
             payload_resposta: JSON.stringify(data).slice(0, 2000),
@@ -58,6 +58,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
       
       return data;
     } catch(err) {
+      clearTimeout(timeoutId);
       lastError = err;
       if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
     }
@@ -174,12 +175,13 @@ Deno.serve(async (req) => {
         .filter(t => !t.nome_cliente && t.codigo_cliente)
         .map(t => String(t.codigo_cliente)))];
 
+      // 🐛 FIX: SDK Base44 não suporta operador $in — buscar cada cliente individualmente
       let clientesMap = new Map();
-      if (codigosClienteFaltando.length > 0) {
-        const clientes = await base44.asServiceRole.entities.Cliente.filter({
-          codigo_omie: { $in: codigosClienteFaltando }
-        });
-        clientesMap = new Map(clientes.map(c => [String(c.codigo_omie), c]));
+      for (const codigo of codigosClienteFaltando.slice(0, 50)) {
+        try {
+          const encontrados = await base44.asServiceRole.entities.Cliente.filter({ codigo_omie: codigo }, '-created_date', 1);
+          if (encontrados?.[0]) clientesMap.set(String(encontrados[0].codigo_omie), encontrados[0]);
+        } catch { /* ignore */ }
       }
 
       // Tenta resolver documento/cliente também pelo CNPJ quando faltar

@@ -3,10 +3,16 @@
 // 2) Faz fetch do PDF no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+// 🐛 FIX: Credenciais movidas para resolverCredsOmie (evita warm-start com creds suspensas)
 const CR_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const BOLETO_URL = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
+
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) return { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret) };
+  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+}
 
 async function omieCall(base44, url, call, param, opts = {}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
@@ -18,9 +24,10 @@ async function omieCall(base44, url, call, param, opts = {}) {
     const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
+  const creds = await resolverCredsOmie(base44);
   let lastError = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] }) });
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] }) });
     const data = await res.json();
     if (data.faultstring || data.faultcode) {
       const msg = String(data.faultstring || '').toLowerCase();

@@ -34,13 +34,19 @@ export default function DiagnosticoClientesSemModalidade() {
       const clientesIds = [...new Set(logsRecentes.map(l => l.cliente_id).filter(Boolean))];
       if (clientesIds.length === 0) return { sem_modalidade: [], com_modalidade: 0 };
 
-      const clientes = await base44.entities.Cliente.filter({ id: { $in: clientesIds } }, '-created_date', 500);
+      // 🐛 FIX: SDK Base44 não suporta $in — buscar todos e filtrar em memória
+      const todosClientes = await base44.entities.Cliente.list('-created_date', 5000);
+      const clienteIdsSet = new Set(clientesIds);
+      const clientes = todosClientes.filter(c => clienteIdsSet.has(c.id));
       const clientesMap = new Map(clientes.map(c => [c.id, c]));
 
       const modalidadesIds = [...new Set(clientes.map(c => c.modalidade_pagamento_id).filter(Boolean))];
-      const modalidades = modalidadesIds.length > 0
-        ? await base44.entities.ModalidadePagamento.filter({ id: { $in: modalidadesIds } })
+      // 🐛 FIX: SDK Base44 não suporta $in — buscar todas e filtrar em memória
+      const todasModalidades = modalidadesIds.length > 0
+        ? await base44.entities.ModalidadePagamento.list()
         : [];
+      const modalidadeIdsSet = new Set(modalidadesIds);
+      const modalidades = todasModalidades.filter(m => modalidadeIdsSet.has(m.id));
       const modalidadesMap = new Map(modalidades.map(m => [m.id, m]));
 
       const semModalidade = [];
