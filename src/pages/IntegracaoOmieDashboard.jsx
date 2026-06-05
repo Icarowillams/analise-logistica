@@ -33,7 +33,7 @@ export default function IntegracaoOmieDashboard() {
     queryKey: ['logsOmie'],
     queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 200),
     refetchInterval: 10000,
-    staleTime: 30 * 1000 // Exceção: painel de monitoramento precisa de dados quase em tempo real.
+    staleTime: 0, // Painel de monitoramento — sempre busca dados frescos ao invalidar
   });
 
   const { data: configSistema = { modo_economico: false }, isLoading: loadingConfig } = useQuery({
@@ -84,11 +84,24 @@ export default function IntegracaoOmieDashboard() {
     const isPreview = window.location.hostname.includes('preview-sandbox') || window.location.hostname.includes('preview--');
     if (isPreview) {
       const appId = '69cec8f0ff370a0c3a2d6d78';
-      const prodUrl = `https://${appId}.base44.app/api/apps/${appId}/functions/${name}`;
-      const token = localStorage.getItem('base44_access_token') || sessionStorage.getItem('base44_access_token');
+      const slug = 'analise-comercial-copy-3a2d6d78';
+      const prodUrl = `https://${slug}.base44.app/api/apps/${appId}/functions/${name}`;
+      // Tentar todas as chaves onde o Base44 pode guardar o token de sessão
+      const token = (
+        localStorage.getItem('base44_access_token') ||
+        localStorage.getItem('access_token') ||
+        localStorage.getItem('sb-token') ||
+        sessionStorage.getItem('base44_access_token') ||
+        sessionStorage.getItem('access_token') ||
+        ''
+      );
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const r = await fetch(prodUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(text || `HTTP ${r.status}`);
+      }
       const data = await r.json();
       return { data };
     }
@@ -280,7 +293,7 @@ export default function IntegracaoOmieDashboard() {
               onChange={e => setFiltroCall(e.target.value)}
               className="max-w-xs"
             />
-            <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['logsOmie'] })}>
+            <Button variant="outline" onClick={() => qc.refetchQueries({ queryKey: ['logsOmie'] })}>
               <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
             </Button>
           </div>
