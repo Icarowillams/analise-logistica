@@ -1,64 +1,37 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-// ✅ ITEM 7: _shared/omieClient
-import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
-// Resolve credenciais OBRIGATORIAMENTE da entidade ConfiguracaoOmie (banco).
-// Igual a enviarPedidoOmie/consultarClientesOmie — não usa mais Deno.env diretamente.
-// ✅ resolverCreds → _shared/omieClient
+// ── Credenciais Omie (inline) ──
+let _credsCache = null;
+async function resolverCredsOmie(base44) {
+  if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    _credsCache = { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret), at: Date.now() };
+    return _credsCache;
+  }
+  _credsCache = { app_key: Deno.env.get('OMIE_APP_KEY') || '', app_secret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
+  return _credsCache;
+}
 
-// ✅ omieCall local → wrapper _shared/omieClient
-async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
-  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
-  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
-  return omieCallShared(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
-}) {
-  const { app_key, app_secret } = options.creds || await resolverCredsOmie(base44);
-
-  const body = {
-    call: endpoint,
-    app_key,
-    app_secret,
-    param: [param]
-  };
-  
-  // 🐛 FIX: AbortController movido para DENTRO de cada tentativa — evita timeout compartilhado
+// ── omieCall inline ──
+async function omieCall(base44, call, param, options = {}) {
+  const creds = options.creds || await resolverCredsOmie(base44);
+  const body = { call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] };
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
     try {
-      const res = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
+      const res = await fetch(OMIE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
       clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
+      if (res.status === 429) { await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); continue; }
       const data = await res.json();
-      
-      if (!options.skipLog) {
-        try {
-          await base44.asServiceRole.entities.LogIntegracaoOmie.create( {
-            endpoint,
-            payload_envio: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000),
-            sucesso: !data.faultcode,
-            erro: data.faultstring || null,
-            created_date: new Date().toISOString()
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      
+      if (data.faultstring) throw new Error(data.faultstring);
       return data;
-    } catch(err) {
+    } catch (err) {
       clearTimeout(timeoutId);
       lastError = err;
       if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
