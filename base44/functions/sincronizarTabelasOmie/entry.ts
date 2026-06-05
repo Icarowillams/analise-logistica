@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -11,17 +13,11 @@ async function logOmie(base44, payload) {
   try { await base44.asServiceRole.entities.LogIntegracaoOmie.create(payload); } catch (_) {}
 }
 
-async function omieCall(url, call, param) {
-  const startedAt = Date.now();
-  console.log(`[OMIE] ${call}`, JSON.stringify(param).substring(0, 200));
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
-  });
-  const data = await response.json();
-  if (data.faultstring) console.log(`[OMIE] ERRO ${call}: ${data.faultstring}`);
-  return { data, duracao_ms: Date.now() - startedAt };
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'geral/tabelaprecos/', param, { call: callOrEndpoint });
 }
 
 async function listarTabelasOmie() {

@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // 🔄 ATUALIZA logs de emissão NF que ficaram "pendentes" consultando ATIVAMENTE o Omie.
 //
@@ -20,100 +22,19 @@ const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 // Credenciais resolvidas dentro do handler (não no nível do módulo) para usar ConfiguracaoOmie do banco.
 // Fallback para env vars caso não haja config ativa.
 let _creds = null;
-async function resolverCreds(base44) {
-  if (_creds) return _creds;
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) {
-      _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret };
-      return _creds;
-    }
-  } catch { /* fallback */ }
-  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-  return _creds;
-}
+// ✅ resolverCreds removida
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
-async function omieCall(base44, url, call, param, opts = {}) {
-  const { maxRetries = 2, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 2 } : opts;
-  const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${formatarDataBrasilia(controle.bloqueado_ate)} (horário de Brasília)`);
-  if (cacheMinutes > 0) {
-    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-    if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
-  }
-  const creds = await resolverCreds(base44);
-  let lastError = '';
-  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] }) });
-    const data = await res.json();
-    if (data.faultstring || data.faultcode) {
-      const msg = String(data.faultstring || '').toLowerCase();
-      // Suspensão / chave inválida → abre breaker por 2h e aborta
-      if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 120 * 60000).toISOString(), ultimo_erro: data.faultstring || 'App suspenso/chave inválida', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        const e = new Error(data.faultstring || 'API Omie suspensa'); e.suspensao = true; throw e;
-      }
-      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde') || msg.includes('consumo indevido')) {
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 60 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {}); else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        const e = new Error(data.faultstring || 'API Omie bloqueada temporariamente'); e.bloqueio = true; throw e;
-      }
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon') || msg.includes('soap-error') || msg.includes('broken response')) { lastError = data.faultstring; await new Promise(r => setTimeout(r, 3000 * tentativa)); continue; }
-      throw new Error(data.faultstring || 'Erro Omie');
-    }
-    if (cacheMinutes > 0) {
-      const payloadCache = {
-        chave,
-        valor: data,
-        tipo: `${call}:${param?.codigo_pedido || param?.nIdPedido || 'geral'}`,
-        expira_em: new Date(Date.now() + cacheMinutes * 60000).toISOString(),
-        criado_em: new Date().toISOString()
-      };
-      const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-      if (existente?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(existente[0].id, payloadCache).catch(() => {});
-      else await base44.asServiceRole.entities.CacheOmieConsulta.create(payloadCache).catch(() => {});
-    }
-    if (logIntegration) await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: call, status: 'sucesso', payload_enviado: JSON.stringify(param || {}).slice(-500), payload_resposta: JSON.stringify(data || {}).slice(-500) }).catch(() => {});
-    return data;
-  }
-  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrCall) {
+  if (typeof optsOrCall === 'object') return omieCallShared(base44, callOrEndpoint, param, optsOrCall || {});
+  if (typeof optsOrCall === 'string') return omieCallShared(base44, callOrEndpoint, param, { call: optsOrCall });
+  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
-// Classifica uma NF retornada pelo Omie em status_real + mensagem
-function classificarNF(nfEncontrada, codigoPedido) {
-  if (!nfEncontrada) return null;
-  const cStat = String(nfEncontrada.ide?.cStat || nfEncontrada.cStatus || '');
-  const numNf = nfEncontrada.ide?.nNF || nfEncontrada.cNumero || '';
-  const xMotivo = nfEncontrada.ide?.xMotivo || nfEncontrada.cMotivo || '';
-
-  if (cStat === '100' || cStat === '150') {
-    return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} autorizada` };
-  }
-  if (cStat === '101' || cStat === '135') {
-    return { status_real: 'cancelada', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
-  }
-  if (['110', '301', '302', '205'].includes(cStat)) {
-    return { status_real: 'denegada', codigo_sefaz: cStat, mensagem: `NF denegada (${cStat})${xMotivo ? ' — ' + xMotivo : ''}` };
-  }
-  if (cStat && Number(cStat) >= 200) {
-    return { status_real: 'rejeitada', codigo_sefaz: cStat, mensagem: `NF rejeitada [SEFAZ ${cStat}]${xMotivo ? ' — ' + xMotivo : ''}` };
-  }
-  if (numNf) {
-    return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: cStat || '100', mensagem: `NF ${numNf}` };
-  }
-  return null;
-}
-
-// Consulta etapa atual do pedido no Omie via ConsultarPedido.
-// CORREÇÃO: Etapa 60 = faturado. Mesmo sem detalhes de NF na resposta, marca como emitida.
 async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {

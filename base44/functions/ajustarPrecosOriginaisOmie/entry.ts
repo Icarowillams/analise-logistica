@@ -1,7 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY") || Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET") || Deno.env.get("OMIE_APP_SECRET");
+const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const OMIE_URL_PRODUTO = "https://app.omie.com.br/api/v1/geral/produtos/";
 const OMIE_URL_TABELA = "https://app.omie.com.br/api/v1/produtos/tabelaprecos/";
 
@@ -36,23 +38,11 @@ async function registrarBloqueio425(base44, controle, faultstring) {
   return err;
 }
 
-async function omieCall(base44, controle, url, call, param) {
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            call,
-            app_key: OMIE_APP_KEY,
-            app_secret: OMIE_APP_SECRET,
-            param: [param]
-        })
-    });
-    const data = await response.json();
-    const msg = String(data?.faultstring || '').toLowerCase();
-    if (response.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-      throw await registrarBloqueio425(base44, controle, data.faultstring);
-    }
-    return data;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
 async function buscarProdutoOmie(base44, controle, codigoIntegracao) {

@@ -1,40 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '');
 
-async function omieCall(call, param, maxTentativas = 4) {
-  const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-  const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
-  let ultimoErro = null;
-  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
-    try {
-      const res = await fetch(OMIE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
-      });
-      const data = await res.json();
-      if (data.faultstring) {
-        const fs = String(data.faultstring);
-        const fc = String(data.faultcode || '');
-        const isTransient = /Internal Error|PBB|timeout|Gateway|indispon|limite de requisi|cota|aguarde/i.test(fs)
-          || fc.includes('425') || fc.includes('520') || res.status === 429;
-        if (isTransient) {
-          ultimoErro = fs;
-          await delay(2000 * tentativa);
-          continue;
-        }
-      }
-      return data;
-    } catch (e) {
-      ultimoErro = e.message;
-      await delay(2000 * tentativa);
-    }
-  }
-  return { faultstring: ultimoErro || 'Falha após múltiplas tentativas' };
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'geral/clientes/', param, { call: callOrEndpoint });
 }
 
 /**

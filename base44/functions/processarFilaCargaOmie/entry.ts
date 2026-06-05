@@ -1,80 +1,23 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: migrado para _shared/omieClient — circuit breaker, throttle, retry, timeout, log centralizados
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
-const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+// ✅ OMIE_PEDIDO_URL removida — gerenciada pelo _shared/omieClient
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
 const LOTE = 25;
 const DELAY_ENTRE_PEDIDOS_MS = 800;
 
-async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback secrets */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds removido — getOmieCredentials do _shared/omieClient usado via omieCallShared
 
-// Verifica o circuit breaker persistente. Bloqueado e dentro do prazo → aborta.
-async function circuitBreakerBloqueado(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const ctrl = rows?.[0];
-  if (ctrl?.bloqueado && ctrl.bloqueado_ate && new Date(ctrl.bloqueado_ate) > new Date()) {
-    return { bloqueado: true, bloqueado_ate: ctrl.bloqueado_ate, controle: ctrl };
-  }
-  if (ctrl?.bloqueado && ctrl.bloqueado_ate && new Date(ctrl.bloqueado_ate) <= new Date()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
-  }
-  return { bloqueado: false };
-}
+// ✅ circuitBreakerBloqueado removido — checkCircuitBreaker do _shared/omieClient
 
-// Abre o circuit breaker por 30min ao detectar bloqueio explícito da Omie.
-async function abrirBreaker(base44, erro) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const ctrl = rows?.[0];
-  const payload = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: String(erro).slice(0, 500), atualizado_em: new Date().toISOString() };
-  if (ctrl?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, payload).catch(() => {});
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
-}
+// ✅ abrirBreaker removido — setCircuitBreakerBlocked do _shared/omieClient
 
-// Chamada Omie com retry para erros transitórios. Lança erro com .bloqueio=true em bloqueio explícito.
+// ✅ omieCall local removida — usa omieCallShared do _shared/omieClient
+// Wrapper local que adapta a assinatura (call, param) para o padrão (base44, endpoint, param, { call })
 async function omieCall(base44, call, param) {
-  const { app_key, app_secret } = await resolverCreds(base44);
-  let lastError = '';
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    const res = await fetch(OMIE_PEDIDO_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call, app_key, app_secret, param: [param] })
-    });
-    const data = await res.json();
-    if (data.faultstring || data.faultcode) {
-      const erro = data.faultstring || 'Erro Omie';
-      const msg = String(erro).toLowerCase();
-      const faultcode = String(data.faultcode || '').toLowerCase();
-      // MISUSE_API_PROCESS → breaker imediato 30min
-      if (faultcode.includes('misuse') || msg.includes('misuse') || msg.includes('consumo indevido')) {
-        console.error(`[FILA] MISUSE_API_PROCESS detectado! Bloqueando por 30 min.`);
-        await abrirBreaker(base44, `MISUSE: ${erro}`);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      // Suspensão / chave inválida → breaker 30min
-      if (msg.includes('suspens') || msg.includes('inválida') || msg.includes('invalida') || msg.includes('suspended') || res.status === 403) {
-        await abrirBreaker(base44, erro);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      if (res.status === 425 || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde')) {
-        await abrirBreaker(base44, erro);
-        const e = new Error(erro); e.bloqueio = true; throw e;
-      }
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
-        lastError = erro; await sleep(2500 * tentativa); continue;
-      }
-      throw new Error(erro);
-    }
-    return data;
-  }
-  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
+  return omieCallShared(base44, 'produtos/pedido/', param, { call, skipLog: false });
 }
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
@@ -145,47 +88,33 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Circuit breaker: se bloqueado, aborta toda a execução — tenta na próxima rodada.
-    const breaker = await circuitBreakerBloqueado(base44);
-    if (breaker.bloqueado) {
-      return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.bloqueado_ate });
+    const breaker = await checkCircuitBreaker(base44);
+    if (breaker.blocked) {
+      return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
 
-    // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS ANTES DE PROCESSAR NOVOS PEDIDOS ═══
-    // Isso garante que cargas concluídas no ciclo anterior sejam marcadas ANTES do timeout
-    const cargasEmAndamento = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'em_andamento' }, '-updated_date', 100
-    ).catch(() => []);
-    const cargasParciais = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'parcial' }, '-updated_date', 50
-    ).catch(() => []);
+    // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
+    // 🐛 FIX item4: era 4 queries sequenciais + N loops com 1 query por carga (N+1).
+    // Agora: 2 queries em paralelo + filtro em memória + Promise.all para recalcular.
+    {
+      const [cargasIntermediarias, filaItens] = await Promise.all([
+        base44.asServiceRole.entities.Carga.list('-updated_date', 300).catch(() => []),
+        base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 500).catch(() => [])
+      ]);
+      const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'nao_iniciado', 'processando']);
+      const cargaIdsComFila = new Set(filaItens.filter(i => i.status === 'pendente').map(i => i.carga_id));
 
-    const cargasPreAtualizar = [...cargasEmAndamento, ...cargasParciais];
-    if (cargasPreAtualizar.length > 0) {
-      console.log(`[STATUS] Atualizando status de ${cargasPreAtualizar.length} cargas antes do processamento...`);
-      for (const c of cargasPreAtualizar) {
-        await atualizarStatusCarga(base44, c.id);
+      const cargasParaAtualizar = cargasIntermediarias.filter(c => {
+        if (!STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return false;
+        // nao_iniciado: só recalcula se tem itens pendentes na fila
+        if (c.processamento_omie_status === 'nao_iniciado') return cargaIdsComFila.has(c.id);
+        return true;
+      });
+
+      if (cargasParaAtualizar.length > 0) {
+        console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo (antes era sequencial com N+1 queries)`);
+        await Promise.all(cargasParaAtualizar.map(c => atualizarStatusCarga(base44, c.id)));
       }
-    }
-
-    // Cargas nao_iniciado que têm itens na fila → recalcular status (pode já estar concluída)
-    const cargasNaoIniciadas = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'nao_iniciado' }, '-updated_date', 50
-    ).catch(() => []);
-    for (const c of cargasNaoIniciadas) {
-      const temFila = await base44.asServiceRole.entities.FilaCargaOmie.filter(
-        { carga_id: c.id }, '-created_date', 1
-      ).catch(() => []);
-      if (temFila.length > 0) {
-        await atualizarStatusCarga(base44, c.id);
-      }
-    }
-
-    // Cargas processando que não têm itens "processando" na fila → recalcular
-    const cargasProcessando = await base44.asServiceRole.entities.Carga.filter(
-      { processamento_omie_status: 'processando' }, '-updated_date', 50
-    ).catch(() => []);
-    for (const c of cargasProcessando) {
-      await atualizarStatusCarga(base44, c.id);
     }
 
     // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══

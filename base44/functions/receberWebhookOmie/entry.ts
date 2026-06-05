@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
     }
 
     // Validação extra: app_key
-    const appKeyEsperada = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
+    const appKeyEsperada = Deno.env.get('OMIE_APP_KEY');
     if (appKey && appKeyEsperada && appKey !== appKeyEsperada) {
       return Response.json({ error: 'app_key inválida' }, { status: 401 });
     }

@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -31,7 +33,12 @@ function setCached(key, data, modoEconomico) {
 // Substitui o antigo consultarBloqueioFinanceiro que dependia de webhook externo.
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429. Endpoint financeiro: /geral/.
-async function omieCall(base44, call, param, options = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
+}) {
   const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const maxTentativas = options.maxTentativas || 3;

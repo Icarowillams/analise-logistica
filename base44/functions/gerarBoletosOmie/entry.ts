@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // Endpoint correto para boletos: contareceberboleto (NÃO contareceber)
 const OMIE_URL_BOLETO = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
@@ -7,36 +9,13 @@ const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'V
 
 // 🐛 FIX: Removido cache global _creds — credenciais são resolvidas dinamicamente por request
 // Evita warm-start com creds expiradas/suspensas em Deno Deploy
-async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: String(cfg.app_key), app_secret: String(cfg.app_secret) };
-  } catch { /* fallback */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds → _shared/omieClient
 
-async function omieCall(url, base44, call, param, tentativa = 1) {
-  const { app_key, app_secret } = await resolverCreds(base44);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
-  });
-  const data = await res.json();
-
-  // Detectar erros — Omie pode retornar faultstring OU { status: "error", message: "..." }
-  const faultMsg = data.faultstring || (data.status === 'error' ? data.message : null);
-  if (faultMsg) {
-    const msg = String(faultMsg).toLowerCase();
-    const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRate && tentativa < 5) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(url, base44, call, param, tentativa + 1);
-    }
-    throw new Error(faultMsg);
-  }
-  return data;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
 }
 
 // 🐛 FIX: A API ListarContasReceber NÃO retorna nCodPedido no payload.

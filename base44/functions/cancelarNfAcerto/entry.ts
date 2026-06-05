@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // ENDPOINTS (doc oficial Omie):
 // - /produtos/pedido/        → ConsultarPedido     (param: { codigo_pedido })
@@ -11,28 +13,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 //   nfDestInt.cnpj_cpf   → CNPJ/CPF do destinatário
 //   total.ICMSTot.vNF    → valor total da NF
 
-const APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
-async function omieCall(endpoint, call, param, tentativa = 1) {
-  const res = await fetch(`https://app.omie.com.br/api/v1/${endpoint}/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
-    const fc = String(data.faultcode || '');
-    const transient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')
-      || msg.includes('limite de requisi') || msg.includes('timeout') || msg.includes('indispon')
-      || fc.includes('425') || fc.includes('520') || res.status === 429;
-    if (transient && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 2000 * tentativa));
-      return omieCall(endpoint, call, param, tentativa + 1);
-    }
-  }
-  return data;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }

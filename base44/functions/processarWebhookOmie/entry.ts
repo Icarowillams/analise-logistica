@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7
+import { omieCall as omieCallShared } from '../_shared/omieClient/entry.ts';
 
 // 🔄 PROCESSADOR ASSÍNCRONO DE WEBHOOK
 // Disparado pela entity automation quando LogIntegracaoOmie é criado com status='pendente'.
@@ -130,16 +132,7 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     return;
   }
 
-  const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-  const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-
-  const consultar = async (tentativa = 1) => {
-    const res = await fetch(OMIE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarPedido', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ codigo_pedido: Number(omieCodigoPedido) }] })
-    });
+  const consultaResp = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
     const data = await res.json();
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
@@ -446,13 +439,7 @@ async function handlePedido(base44, topic, evt) {
     let numeroNfExcluida = null;
     try {
       const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-      const APP_KEY_NF = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-      const APP_SECRET_NF = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-      const nfRes = await fetch(NF_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY_NF, app_secret: APP_SECRET_NF, param: [{ nIdPedido: Number(codigoPedido) }] })
-      });
+      const nfResp1 = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
       const nfData = await nfRes.json();
       if (nfData?.ide?.nNF) {
         const dCan = String(nfData.ide?.dCan || '').trim();
@@ -502,13 +489,7 @@ async function handlePedido(base44, topic, evt) {
     console.log(`[webhook] Pedido ${pedido.numero_pedido} (tipo=${pedido.tipo}) — VendaProduto.Cancelada — verificando NF antes de cancelar...`);
     try {
       const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-      const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-      const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
-      const nfRes = await fetch(NF_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call: 'ConsultarNF', app_key: APP_KEY, app_secret: APP_SECRET, param: [{ nIdPedido: Number(codigoPedido) }] })
-      });
+      const nfResp2 = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
       const nfData = await nfRes.json();
       if (nfData?.ide?.nNF) {
         const dCan = String(nfData.ide?.dCan || '').trim();

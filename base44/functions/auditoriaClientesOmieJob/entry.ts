@@ -1,14 +1,23 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_API_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_API_SECRET");
+// 🐛 FIX item1+2: credenciais movidas para resolverCredsOmie() — evita top-level warm-start
+//   e corrige OMIE_API_KEY → OMIE_APP_KEY (nome correto do secret)
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
+
+// ✅ resolverCreds → _shared/omieClient
 
 // Doc Omie: máximo 100 registros/página, 240 req/min (4/s), 4 simultâneas
 const REGISTROS_PAGINA = 100;
 const PARALELISMO = 3; // conservador (limite é 4 simultâneas)
 
-async function omieCall(base44, call, param, opts = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'geral/clientes/', param, { call: callOrEndpoint });
+}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
   const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
   const controles = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
@@ -23,14 +32,19 @@ async function omieCall(base44, call, param, opts = {}) {
     if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
   }
 
+  const { app_key, app_secret } = await resolverCredsOmie(base44);
   let ultimoErro = '';
   for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
     const inicio = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(OMIE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+      body: JSON.stringify({ call, app_key, app_secret, param: [param] }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     const data = await res.json();
 
     if (data.faultstring || data.faultcode) {

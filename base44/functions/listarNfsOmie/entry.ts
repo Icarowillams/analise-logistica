@@ -1,20 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 
 // Resolve credenciais priorizando a ConfiguracaoOmie ativa (banco) e só caindo
 // para os Secrets se não houver config ativa. Evita usar chaves suspensas/inválidas
 // nos Secrets quando o banco tem as credenciais corretas.
-async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback para secrets */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds → _shared/omieClient
 
-async function omieCall(base44, call, param, opts = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
+}) {
   const { app_key, app_secret } = await resolverCreds(base44);
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const url = OMIE_URL;

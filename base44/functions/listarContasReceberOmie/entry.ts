@@ -1,18 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
 // Resolve credenciais OBRIGATORIAMENTE da entidade ConfiguracaoOmie (banco).
 // Igual a enviarPedidoOmie/consultarClientesOmie — não usa mais Deno.env diretamente.
-async function resolverCredsOmie(base44) {
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  const app_key = ativo?.app_key || Deno.env.get('OMIE_APP_KEY');
-  const app_secret = ativo?.app_secret || Deno.env.get('OMIE_APP_SECRET');
-  return { app_key, app_secret };
-}
+// ✅ resolverCreds → _shared/omieClient
 
-async function omieCall(base44, endpoint, param, options = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
+}) {
   const { app_key, app_secret } = options.creds || await resolverCredsOmie(base44);
 
   const body = {

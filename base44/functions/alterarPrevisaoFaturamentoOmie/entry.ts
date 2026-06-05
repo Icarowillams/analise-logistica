@@ -1,26 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
-async function omieCall(call, param, tentativa = 1) {
-  const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  const res = await fetch(OMIE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] })
-  });
-  const data = await res.json();
-  if (data.faultstring) {
-    const msg = data.faultstring.toLowerCase();
-    const isRate = msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || res.status === 429;
-    if (isRate && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return omieCall(call, param, tentativa + 1);
-    }
-    throw new Error(data.faultstring);
-  }
-  return data;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
 // Converte "YYYY-MM-DD" → "DD/MM/YYYY"

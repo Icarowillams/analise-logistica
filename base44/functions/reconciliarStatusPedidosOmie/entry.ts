@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // ═══════════════════════════════════════════════════════════════
 // RECONCILIAÇÃO PERIÓDICA: Pedidos locais vs Omie
@@ -17,14 +19,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const LOTE = 20; // Pedidos por ciclo
 const DELAY_ENTRE_CONSULTAS_MS = 600;
 
-async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback secrets */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds removida
 
 async function circuitBreakerBloqueado(base44) {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie

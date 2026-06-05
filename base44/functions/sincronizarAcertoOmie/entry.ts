@@ -1,22 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 async function consultarPedido(base44, codigoPedido, tentativa = 1) {
   // Usa credenciais do banco (ConfiguracaoOmie) com fallback para env
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
-  const OMIE_KEY = (ativo?.app_key ? String(ativo.app_key) : null) || Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_SECRET = (ativo?.app_secret ? String(ativo.app_secret) : null) || Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
-
-  const res = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      call: 'ConsultarPedido',
-      app_key: OMIE_KEY,
-      app_secret: OMIE_SECRET,
-      param: [{ codigo_pedido: Number(codigoPedido) }]
-    })
-  });
+  const res = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
   const data = await res.json().catch(() => ({}));
   const fs = String(data?.faultstring || '').toLowerCase();
   const transient = fs.includes('cota') || fs.includes('aguarde') || fs.includes('limite de requisi') || res.status === 429;

@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // 🐛 FIX: Credenciais top-level removidas — omieCall já usa resolverCredsOmie dinâmico
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
@@ -11,7 +13,12 @@ function urlParaCall(call) {
 }
 
 // omieCall com circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429
-async function omieCall(base44, endpoint, param, options = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
+}) {
   const APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const url = urlParaCall(endpoint);

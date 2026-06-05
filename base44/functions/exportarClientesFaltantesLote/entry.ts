@@ -1,36 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 
-async function omieCall(appKey, appSecret, endpoint, param) {
-  const body = {
-    call: endpoint,
-    app_key: appKey,
-    app_secret: appSecret,
-    param: [param]
-  };
-
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
-        continue;
-      }
-
-      return await res.json();
-    } catch (err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'geral/clientes/', param, { call: callOrEndpoint });
 }
 
 function normalizarCpfCnpj(doc) {

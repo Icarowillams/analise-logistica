@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
@@ -12,112 +14,11 @@ function setMemoryCache(key, data) {
   memoryCache.set(key, { data, ts: Date.now() });
 }
 
-async function omieCall(base44, endpoint, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  const cacheKey = `${endpoint}_${JSON.stringify(param)}`;
-  const isReadOnly = /^(Listar|Consultar|Pesquisar|Buscar)/.test(endpoint);
-  if (isReadOnly) {
-    const cached = getFromMemoryCache(cacheKey);
-    if (cached) return cached;
-  }
-  
-  const body = {
-    call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
-    param: [param]
-  };
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
-      const data = await res.json();
-      
-      if (!options.skipLog) {
-        try {
-          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: OMIE_URL,
-            call: endpoint,
-            operacao: endpoint,
-            status: data.faultcode ? 'erro' : 'sucesso',
-            mensagem_erro: data.faultstring || null,
-            payload_enviado: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000)
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      if (isReadOnly) setMemoryCache(cacheKey, data);
-      
-      return data;
-    } catch(err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
-}
-
-function formatDateOmie(dateStr) {
-    if (!dateStr) {
-        const now = new Date();
-        const d = String(now.getDate()).padStart(2, '0');
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const y = now.getFullYear();
-        return `${d}/${m}/${y}`;
-    }
-    if (dateStr.includes('-')) {
-        const [y, m, d] = dateStr.split('T')[0].split('-');
-        return `${d}/${m}/${y}`;
-    }
-    return dateStr;
-}
-
-function gerarParcelas(plano, valorTotal, dataBase) {
-    const numParcelas = plano?.numero_parcelas || 1;
-    const diasPrimeira = plano?.dias_primeira_parcela || 30;
-    const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
-    
-    const parcelas = [];
-    for (let i = 0; i < numParcelas; i++) {
-        const diasOffset = diasPrimeira + (i * 30);
-        const dataVenc = new Date(dataBase);
-        dataVenc.setDate(dataVenc.getDate() + diasOffset);
-        
-        const d = String(dataVenc.getDate()).padStart(2, '0');
-        const m = String(dataVenc.getMonth() + 1).padStart(2, '0');
-        const y = dataVenc.getFullYear();
-
-        let valor = valorParcela;
-        if (i === numParcelas - 1) {
-            const totalAnterior = parcelas.reduce((s, p) => s + p.valor, 0);
-            valor = Math.round((valorTotal - totalAnterior) * 100) / 100;
-        }
-
-        parcelas.push({
-            numero_parcela: i + 1,
-            data_vencimento: `${d}/${m}/${y}`,
-            percentual: Math.round((100 / numParcelas) * 100) / 100,
-            valor
-        });
-    }
-    return parcelas;
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrCall) {
+  if (typeof optsOrCall === 'object') return omieCallShared(base44, callOrEndpoint, param, optsOrCall || {});
+  if (typeof optsOrCall === 'string') return omieCallShared(base44, callOrEndpoint, param, { call: optsOrCall });
+  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
 Deno.serve(async (req) => {

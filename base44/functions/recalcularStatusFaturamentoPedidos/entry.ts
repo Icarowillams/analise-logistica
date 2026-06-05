@@ -7,8 +7,8 @@ function fmt(d) {
 }
 
 async function listarNfsRecentes(dias) {
-  const APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
+  const APP_KEY = Deno.env.get('OMIE_APP_KEY');
+  const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - Number(dias || 30) * 86400000);
   const nfs = [];

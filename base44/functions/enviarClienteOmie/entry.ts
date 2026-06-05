@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
@@ -80,62 +82,11 @@ function validarCpfCnpj(doc) {
     return false;
 }
 
-async function omieCall(base44, endpoint, param, options = {}) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  
-  const body = {
-    call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
-    param: [param]
-  };
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch('https://app.omie.com.br/api/v1/geral/clientes/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
-      const data = await res.json();
-      
-      if (!options.skipLog) {
-        try {
-          await base44.entities.create('LogIntegracaoOmie', {
-            endpoint,
-            payload_envio: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000),
-            sucesso: !data.faultcode,
-            erro: data.faultstring || null,
-            created_date: new Date().toISOString()
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      
-      return data;
-    } catch(err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
-}
-
-function isErroDuplicidadeCliente(resultado) {
-    return String(resultado?.faultstring || '').toLowerCase().includes('cliente já cadastrado para o cpf/cnpj');
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrCall) {
+  if (typeof optsOrCall === 'object') return omieCallShared(base44, callOrEndpoint, param, optsOrCall || {});
+  if (typeof optsOrCall === 'string') return omieCallShared(base44, callOrEndpoint, param, { call: optsOrCall });
+  return omieCallShared(base44, 'geral/clientes/', param, { call: callOrEndpoint });
 }
 
 async function buscarClienteOmiePorCpfCnpj(base44, cnpjCpf) {

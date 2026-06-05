@@ -45,12 +45,12 @@ Deno.serve(async (req) => {
     const pedidos = carga.pedidos_omie || [];
     const resultados = [];
 
-    // ENRIQUECIMENTO BEST-EFFORT: tenta preencher campos vazios, mas NUNCA bloqueia o faturamento.
+    // ENRIQUECIMENTO BEST-EFFORT: paralelo (Promise.all) — N awaits sequenciais → 1 rodada paralela
+    // 🐛 FIX otimização: com 50 usuários e cargas de 20-30 pedidos, loop sequencial virava gargalo
     const avisosCampos = [];
-    for (const p of pedidos) {
-      if (p.tipo_nota === 'D1') continue;
+    await Promise.all(pedidos.map(async (p) => {
+      if (p.tipo_nota === 'D1') return;
 
-      // Tentar preencher cnpj/nome via Cliente local
       if (!p.cnpj_cpf_cliente || !p.nome_cliente) {
         try {
           let cliente = null;
@@ -70,7 +70,6 @@ Deno.serve(async (req) => {
         } catch { /* fallback silencioso */ }
       }
 
-      // Registrar avisos (sem bloquear)
       const faltando = [];
       if (!p.codigo_pedido) faltando.push('codigo_pedido');
       if (!p.cnpj_cpf_cliente) faltando.push('cnpj_cpf_cliente');
@@ -78,7 +77,7 @@ Deno.serve(async (req) => {
       if (faltando.length > 0) {
         avisosCampos.push({ numero_pedido: p.numero_pedido || p.codigo_pedido || '(sem id)', faltando: faltando.join(', ') });
       }
-    }
+    }));
     // Registrar avisos em log, mas NUNCA bloquear
     if (avisosCampos.length > 0) {
       const detalhe = avisosCampos.map(p => `Pedido ${p.numero_pedido} (sem: ${p.faltando})`).join(' | ');

@@ -2,6 +2,8 @@
 // Usa ObterNfe (endpoint produtos/dfedocs) com nIdNfe para obter cPdf (URL do DANFE),
 // faz o fetch no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';
@@ -15,7 +17,12 @@ async function getCredenciais(base44) {
   throw new Error('Credenciais Omie não configuradas');
 }
 
-async function omieCall(base44, url, call, param, opts = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
+}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const creds = await getCredenciais(base44);
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);

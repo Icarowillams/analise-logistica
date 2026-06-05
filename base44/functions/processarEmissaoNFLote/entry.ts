@@ -1,18 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: migrado para _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Resolve credenciais priorizando a ConfiguracaoOmie ativa (banco) e só caindo
-// para os Secrets se não houver config ativa. Evita usar chaves suspensas/inválidas.
-async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback para secrets */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds removida — _shared/omieClient.getOmieCredentials
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -26,51 +19,9 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
   return error;
 }
 
+// ✅ omieCall local removida — wrapper para _shared/omieClient
 async function omieCall(base44, call, param) {
-  const url = OMIE_FAT_URL;
-  const { app_key, app_secret } = await resolverCreds(base44);
-  const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${formatarDataBrasilia(controle.bloqueado_ate)} (horário de Brasília)`);
-  }
-
-  let lastError = '';
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call, app_key, app_secret, param: [param] })
-    });
-    const data = await res.json();
-
-    if (data.faultstring || data.faultcode) {
-      const erro = data.faultstring || 'Erro Omie';
-      const msg = String(erro).toLowerCase();
-      if (res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('consumo indevido') || msg.includes('tente novamente mais tarde')) {
-        const payloadCb = {
-          chave: 'principal',
-          bloqueado: true,
-          bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(),
-          ultimo_erro: erro,
-          atualizado_em: new Date().toISOString()
-        };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw criarErroOmie(data, erro);
-      }
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('timeout') || msg.includes('indispon')) {
-        lastError = erro;
-        await sleep(2500 * tentativa);
-        continue;
-      }
-      throw criarErroOmie(data, erro);
-    }
-
-    return data;
-  }
-  throw new Error(lastError || 'Máximo de tentativas Omie excedido');
+  return omieCallShared(base44, 'produtos/pedidovendafat/', param, { call });
 }
 
 async function buscarContextoPedido(base44, codigoPedido) {

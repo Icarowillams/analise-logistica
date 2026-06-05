@@ -2,19 +2,21 @@
 // 1) Chama ObterBoleto (financas/contareceber) para obter cLinkBoleto.
 // 2) Faz fetch do PDF no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+// ✅ ITEM 7: _shared/omieClient
+import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 // 🐛 FIX: Credenciais movidas para resolverCredsOmie (evita warm-start com creds suspensas)
 const CR_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const BOLETO_URL = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
 
-async function resolverCredsOmie(base44) {
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) return { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret) };
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-}
+// ✅ resolverCreds → _shared/omieClient
 
-async function omieCall(base44, url, call, param, opts = {}) {
+// ✅ omieCall local → wrapper _shared/omieClient
+async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
+  if (typeof optsOrUndef === 'object' && optsOrUndef !== null) return omieCallShared(base44, callOrEndpoint, param, optsOrUndef);
+  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, {});
+  return omieCallShared(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
+}) {
   const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3 } : opts;
   const chave = `${url}|${call}|${JSON.stringify(param || {})}`;
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
