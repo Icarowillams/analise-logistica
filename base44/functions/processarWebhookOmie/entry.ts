@@ -568,6 +568,10 @@ async function handlePedido(base44, topic, evt) {
     updates.motivo_cancelamento = 'Pedido devolvido no Omie';
     dadosCarga.etapa = '80';
     dadosCarga.status_pedido = 'devolvido';
+  } else if (topic === 'VendaProduto.Alterada' || topic === 'VendaProduto.Incluida') {
+    // Esses topics já fazem upsert do espelho (PedidoLiberadoOmie) acima.
+    // O Pedido local não precisa de atualização — apenas confirma que foi processado.
+    return { acao: 'espelho_atualizado', pedido_id: pedido.id, espelho: espelhoAcao, motivo: `${topic} — espelho sincronizado, pedido local sem alteração` };
   } else {
     return { acao: 'ignorado', motivo: `topic ${topic} sem handler` };
   }
@@ -735,7 +739,6 @@ Deno.serve(async (req) => {
     const evt = body.event || body;
 
     const topicsSilenciosos = [
-      'VendaProduto.Incluida',
       'RecebimentoProduto.Incluido',
       'Produto.MovimentacaoEstoque'
     ];
