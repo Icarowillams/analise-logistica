@@ -78,6 +78,23 @@ export default function IntegracaoOmieDashboard() {
     });
   }, [logs, filtroStatus, filtroCall]);
 
+  // Invoca função backend compatível com preview-sandbox e produção.
+  // No preview, o SDK bloqueia chamadas a functions — usamos fetch direto para o app publicado.
+  const invokeFunction = async (name, body = {}) => {
+    const isPreview = window.location.hostname.includes('preview-sandbox') || window.location.hostname.includes('preview--');
+    if (isPreview) {
+      const appId = '69cec8f0ff370a0c3a2d6d78';
+      const prodUrl = `https://${appId}.base44.app/api/apps/${appId}/functions/${name}`;
+      const token = localStorage.getItem('base44_access_token') || sessionStorage.getItem('base44_access_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const r = await fetch(prodUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+      const data = await r.json();
+      return { data };
+    }
+    return base44.functions.invoke(name, body);
+  };
+
   const testarConexao = async () => {
     // Verifica o circuit breaker antes de chamar — se bloqueado, nem tenta.
     try {
@@ -95,7 +112,7 @@ export default function IntegracaoOmieDashboard() {
     setTestResult(null);
     setCooldown(30);
     try {
-      const res = await base44.functions.invoke('testarConexaoOmie', {});
+      const res = await invokeFunction('testarConexaoOmie', {});
       setTestResult(res.data);
       if (res.data?.ok) {
         toast.success('✅ Conexão Omie OK!');
@@ -104,7 +121,6 @@ export default function IntegracaoOmieDashboard() {
       }
       qc.invalidateQueries({ queryKey: ['logsOmie'] });
     } catch (e) {
-      // Axios joga erro quando status != 2xx — precisamos ler o payload para ver o diagnóstico
       const payload = e?.response?.data || { ok: false, error: e.message };
       setTestResult(payload);
       toast.error('❌ ' + (payload.error || e.message));
