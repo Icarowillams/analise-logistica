@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     const startedAt = Date.now();
     let json: any;
     try {
-      // ✅ Correto: endpoint='geral/empresas/', call em options
+      // ✅ Correto: endpoint='geral/empresas/', call em options — v2
       json = await omieCall(base44, 'geral/empresas/', { pagina: 1, registros_por_pagina: 1, apenas_importado_api: 'N' }, {
         call: 'ListarEmpresas',
         operation: 'testar_conexao'
