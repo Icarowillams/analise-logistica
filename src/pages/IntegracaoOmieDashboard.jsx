@@ -124,7 +124,7 @@ export default function IntegracaoOmieDashboard() {
 
     setTesting(true);
     setTestResult(null);
-    setCooldown(30);
+    setCooldown(35);
     try {
       const res = await invokeFunction('testarConexaoOmie', {});
       setTestResult(res.data);

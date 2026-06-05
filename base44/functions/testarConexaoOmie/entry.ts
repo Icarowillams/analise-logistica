@@ -1,10 +1,13 @@
-// deploy v5 — 2026-06-05 — self-contained (sem imports locais) + log de sucesso
+// deploy v6 — 2026-06-05 — self-contained + log de sucesso + cache anti-REDUNDANT
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const DEFAULT_TIMEOUT_MS = 15000;
 
 let _credsCache = null;
+// Cache do resultado do teste para evitar erro REDUNDANT do Omie (mesmo payload em < 30s)
+let _testCache: { result: unknown; at: number } | null = null;
+const TEST_CACHE_TTL_MS = 30_000; // Omie exige mínimo ~20s entre chamadas idênticas
 async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
@@ -55,6 +58,11 @@ Deno.serve(async (req) => {
         error: 'Credenciais Omie não configuradas.',
         debug: { appKey_presente: !!appKey, appSecret_presente: !!appSecret }
       });
+    }
+
+    // Retornar resultado em cache se chamada em menos de 30s (evita REDUNDANT do Omie)
+    if (_testCache && Date.now() - _testCache.at < TEST_CACHE_TTL_MS) {
+      return Response.json({ ..._testCache.result as any, cached: true, cache_age_ms: Date.now() - _testCache.at });
     }
 
     const startedAt = Date.now();
@@ -118,6 +126,20 @@ Deno.serve(async (req) => {
 
     // ✅ Log de sucesso — estava faltando na v4
     const empresa = data?.empresas_cadastro?.[0] || {};
+
+    // Cachear resultado por 30s para evitar REDUNDANT em cliques seguidos
+    const successResult = {
+      ok: true,
+      duracao_ms,
+      empresa: {
+        razao_social: empresa.razao_social,
+        cnpj: empresa.cnpj,
+        nome_fantasia: empresa.nome_fantasia
+      },
+      total_empresas: data?.total_de_registros || 0
+    };
+    _testCache = { result: successResult, at: Date.now() };
+
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'geral/empresas',
       call: 'ListarEmpresas',
@@ -128,16 +150,7 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    return Response.json({
-      ok: true,
-      duracao_ms,
-      empresa: {
-        razao_social: empresa.razao_social,
-        cnpj: empresa.cnpj,
-        nome_fantasia: empresa.nome_fantasia
-      },
-      total_empresas: data?.total_de_registros || 0
-    });
+    return Response.json(successResult);
   } catch (error) {
     return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
