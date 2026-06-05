@@ -1,34 +1,101 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-// ✅ ITEM 7: migrado para _shared/omieClient
-import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
-// 🐛 FIX: Credenciais REMOVIDAS do top-level do módulo (risco em Deno Deploy warm starts).
-// resolverCredsOmie lê dinamicamente do banco a cada chamada, com fallback para env vars.
-const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ✅ resolverCreds removida — _shared/omieClient
+const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
+const DEFAULT_TIMEOUT_MS = 15000;
+const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
-const memoryCache = new Map();
-function getFromMemoryCache(key, ttlMs = 30000) {
-  const entry = memoryCache.get(key);
-  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.data;
-  return null;
+let _credsCache = null;
+async function getOmieCredentials(base44) {
+  if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret), at: Date.now() };
+    return _credsCache;
+  }
+  _credsCache = { appKey: Deno.env.get('OMIE_APP_KEY') || '', appSecret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
+  return _credsCache;
 }
-function setMemoryCache(key, data) {
-  memoryCache.set(key, { data, ts: Date.now() });
+
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const control = rows?.[0];
+  if (!control?.bloqueado) return { blocked: false };
+  const blockedUntil = control.bloqueado_ate ? new Date(control.bloqueado_ate).getTime() : 0;
+  if (blockedUntil && blockedUntil <= Date.now()) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(control.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
+    return { blocked: false };
+  }
+  return { blocked: true, blockedUntil: control.bloqueado_ate, lastError: control.ultimo_erro };
 }
 
-// omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
-// ✅ resolverCreds removida — _shared/omieClient
+async function setCircuitBreakerBlocked(base44, errorMessage) {
+  const blockedUntil = new Date(Date.now() + 30 * 60000).toISOString();
+  const payload = { chave: 'principal', bloqueado: true, bloqueado_ate: blockedUntil, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  if (rows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(rows[0].id, payload).catch(() => {});
+  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
+}
 
-// ✅ omieCall local removida — wrapper para _shared/omieClient  
+async function omieCallDirect(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+
+  const breaker = await checkCircuitBreaker(base44);
+  if (breaker.blocked) throw new Error(`API Omie bloqueada até ${breaker.blockedUntil || '?'}. Erro: ${breaker.lastError || 'n/a'}`);
+
+  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const body = { call, app_key: appKey, app_secret: appSecret, param: Array.isArray(param) ? param : [param] };
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+      clearTimeout(timer);
+      if (response.status === 429) {
+        lastError = new Error('Rate limit Omie (HTTP 429).');
+        if (attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); continue; }
+        await setCircuitBreakerBlocked(base44, lastError.message);
+        throw lastError;
+      }
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok || data?.faultstring || data?.faultcode) {
+        const msg = data?.faultstring || `Erro HTTP ${response.status}`;
+        const lower = msg.toLowerCase();
+        const faultLower = String(data?.faultcode || '').toLowerCase();
+        if (faultLower.includes('misuse') || lower.includes('consumo indevido') || lower.includes('misuse')) {
+          await setCircuitBreakerBlocked(base44, `MISUSE: ${msg}`);
+        } else if (lower.includes('cota') || lower.includes('limite') || lower.includes('bloque') || lower.includes('suspended') || response.status === 403 || response.status === 425) {
+          await setCircuitBreakerBlocked(base44, msg);
+        }
+        return data;
+      }
+      return data;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (lastError.name === 'AbortError') lastError = new Error(`Timeout de ${timeoutMs}ms.`);
+      if (attempt < RETRY_DELAYS_MS.length && lastError.message.includes('429')) continue;
+      break;
+    }
+  }
+  throw lastError || new Error('Erro desconhecido na API Omie.');
+}
+
 async function omieCall(base44, ...args) {
-  // Detecta chamada (base44, call, param) ou (base44, endpoint, param, opts)
   const [callOrEndpoint, param, opts] = args;
   if (opts !== undefined || (typeof callOrEndpoint === 'string' && callOrEndpoint.includes('/'))) {
-    return omieCallShared(base44, callOrEndpoint, param, opts || {});
+    return omieCallDirect(base44, callOrEndpoint, param, opts || {});
   }
-  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
+  return omieCallDirect(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
 Deno.serve(async (req) => {
