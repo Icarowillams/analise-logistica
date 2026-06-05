@@ -1,7 +1,7 @@
 {
   "type": "github",
   "scopes": [
-    "repo:status",
+    "repo",
     "read:org"
   ]
 }
