@@ -11,8 +11,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 //   nfDestInt.cnpj_cpf   → CNPJ/CPF do destinatário
 //   total.ICMSTot.vNF    → valor total da NF
 
-const APP_KEY = Deno.env.get('OMIE_API_KEY');
-const APP_SECRET = Deno.env.get('OMIE_API_SECRET');
+const APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
 
 async function omieCall(endpoint, call, param, tentativa = 1) {
   const res = await fetch(`https://app.omie.com.br/api/v1/${endpoint}/`, {

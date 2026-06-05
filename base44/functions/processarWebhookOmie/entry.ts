@@ -700,14 +700,18 @@ async function handleFinanceiro(base44, topic, evt) {
 // === HANDLER PRINCIPAL (entity automation payload) ===
 
 Deno.serve(async (req) => {
+  // 🐛 FIX: payload e entityId declarados fora do try para uso no catch
+  // (req.json() só pode ser chamado UMA vez — stream é consumido)
+  let payload = {};
+  let entityId = null;
   try {
     const base44 = createClientFromRequest(req);
-    const payload = await req.json().catch(() => ({}));
+    payload = await req.json().catch(() => ({}));
 
     // Entity automation envia: { event: {type, entity_name, entity_id}, data: {...} }
     const eventType = payload?.event?.type;
     const entityName = payload?.event?.entity_name;
-    const entityId = payload?.event?.entity_id;
+    entityId = payload?.event?.entity_id;
     let logData = payload?.data;
 
     // Só processa criação de LogIntegracaoOmie
@@ -787,11 +791,9 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[processarWebhookOmie] Erro:', error.message);
 
-    // Marca log como erro
+    // 🐛 FIX: usa payload e entityId já extraídos no início (sem chamar req.json() de novo)
     try {
       const base44 = createClientFromRequest(req);
-      const payload = await req.json().catch(() => ({}));
-      const entityId = payload?.event?.entity_id;
       if (entityId) {
         await base44.asServiceRole.entities.LogIntegracaoOmie.update(entityId, {
           status: 'erro',
@@ -799,7 +801,9 @@ Deno.serve(async (req) => {
           webhook_processado_em: new Date().toISOString()
         });
       }
-    } catch {}
+    } catch (catchErr) {
+      console.error('[processarWebhookOmie] Falha ao marcar log como erro:', catchErr.message);
+    }
 
     return Response.json({ error: error.message }, { status: 500 });
   }

@@ -367,13 +367,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 🐛 FIX 2: codigo_pedido_integracao — gerar fallback se vazio (pedidos manuais do Omie não têm)
+    const codigoPedidoIntegracao = String(pedido.cabecalho?.codigo_pedido_integracao || '').trim();
+    const codigoPedidoIntegracaoFinal = codigoPedidoIntegracao || `PED-${codigo_pedido}`;
+
+    // 🐛 FIX 3: codigo_cliente — garantir que é numérico (Omie exige Number).
+    // Se vier como ObjectId do Base44 (string hex), resolver via cliente local ou usar codigo_cliente do Omie.
+    let codigoClienteOmie = pedido.cabecalho?.codigo_cliente;
+    if (!codigoClienteOmie || isNaN(Number(codigoClienteOmie)) || Number(codigoClienteOmie) === 0) {
+      // Tentar resolver pelo cliente local (já buscado acima por CNPJ)
+      const codigoFallback = clienteLocal?.codigo_omie || clienteLocal?.codigo_cliente_omie || clienteLocal?.codigo_interno;
+      if (codigoFallback && !isNaN(Number(codigoFallback)) && Number(codigoFallback) > 0) {
+        codigoClienteOmie = Number(codigoFallback);
+        console.log(\`[cortarPedidoOmie] codigo_cliente resolvido via cliente local: \${codigoClienteOmie}\`);
+      } else {
+        // Último recurso: buscar pelo codigo_integracao do pedido via API Omie
+        console.warn(\`[cortarPedidoOmie] codigo_cliente inválido: \${pedido.cabecalho?.codigo_cliente} — tentando usar codigo_cliente_integracao\`);
+        codigoClienteOmie = 0; // Omie usará o codigo_cliente_integracao como fallback
+      }
+    } else {
+      codigoClienteOmie = Number(codigoClienteOmie);
+    }
+
     let erroOmie = null;
     try {
       await omieCall(base44, 'AlterarPedidoVenda', {
         cabecalho: {
           codigo_pedido: Number(codigo_pedido),
-          codigo_pedido_integracao: String(pedido.cabecalho?.codigo_pedido_integracao || ''),
-          codigo_cliente: Number(pedido.cabecalho?.codigo_cliente || 0),
+          codigo_pedido_integracao: codigoPedidoIntegracaoFinal,
+          codigo_cliente: codigoClienteOmie,
+          codigo_cliente_integracao: String(pedido.cabecalho?.codigo_cliente_integracao || clienteLocal?.codigo_integracao || clienteLocal?.id || ''),
           etapa: pedido.cabecalho?.etapa || '10'
         },
         det: novosItens

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_KEY = Deno.env.get('OMIE_API_KEY');
-const OMIE_SECRET = Deno.env.get('OMIE_API_SECRET');
+const OMIE_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
+const OMIE_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
 
 async function consultarPedido(codigoPedido, tentativa = 1) {
   const res = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {

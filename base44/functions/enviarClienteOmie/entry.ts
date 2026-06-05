@@ -422,6 +422,26 @@ Deno.serve(async (req) => {
             return Response.json({ sucesso: false, erro, cliente_id: clienteData.id });
         }
 
+        // 🐛 FIX 4: Validar campos obrigatórios do Omie ANTES de enviar
+        // O Omie rejeita clientes sem estado, cidade, CEP ou CNPJ/CPF.
+        const camposFaltantes = [];
+        if (!clienteOmie.cnpj_cpf) camposFaltantes.push('CPF/CNPJ');
+        if (!clienteOmie.estado) camposFaltantes.push('Estado');
+        if (!clienteOmie.cidade) camposFaltantes.push('Cidade');
+        if (!clienteOmie.cep) camposFaltantes.push('CEP');
+        if (!clienteOmie.razao_social || clienteOmie.razao_social === 'Cliente sem nome') camposFaltantes.push('Razão Social');
+        
+        if (camposFaltantes.length > 0) {
+            const erro = \`Campos obrigatórios não preenchidos: \${camposFaltantes.join(', ')}. Preencha o cadastro do cliente antes de sincronizar com o Omie.\`;
+            console.warn('[enviarClienteOmie]', erro, '- Cliente:', clienteData.razao_social || clienteData.id);
+            await logOmie(base44, {
+                endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente',
+                entidade_tipo: 'Cliente', entidade_id: clienteData.id,
+                status: 'erro', mensagem_erro: erro, tentativas: 0
+            });
+            return Response.json({ sucesso: false, erro, cliente_id: clienteData.id, campos_faltantes: camposFaltantes });
+        }
+
         // Pré-consulta por CNPJ em updates ou quando ainda não há código Omie salvo.
         const cnpjLimpo = clienteOmie.cnpj_cpf;
         const codigoSalvo = clienteData.codigo_cliente_omie || clienteData.codigo_omie;

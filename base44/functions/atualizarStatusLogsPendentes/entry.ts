@@ -327,17 +327,31 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
     }
 
-    logs = logs.slice(0, LIMITE_LOGS);
-    console.log(`[atualizarStatusLogsPendentes] Processando ${logs.length} logs pendentes (limite ${LIMITE_LOGS})`);
+    // 🐛 FIX 5: Deduplicar logs por codigo_pedido ANTES de iterar.
+    // Sem isso, 10 logs do mesmo pedido = 10 chamadas ConsultarPedido = rate limit.
+    // Agora: 1 consulta por pedido, resultado aplicado a todos os logs daquele pedido.
+    const logsPorPedido = new Map();
+    for (const log of logs) {
+      const cod = String(log.codigo_pedido);
+      if (!logsPorPedido.has(cod)) logsPorPedido.set(cod, []);
+      logsPorPedido.get(cod).push(log);
+    }
+    // Limitar a LIMITE_LOGS pedidos ÚNICOS (não logs)
+    const codigosUnicos = [...logsPorPedido.keys()].slice(0, LIMITE_LOGS);
+    // Reconstruct logs list preserving all logs but limited to unique pedidos
+    logs = [];
+    for (const cod of codigosUnicos) {
+      logs.push(...logsPorPedido.get(cod));
+    }
+    console.log(\`[atualizarStatusLogsPendentes] Processando \${logs.length} logs de \${codigosUnicos.length} pedidos únicos (limite \${LIMITE_LOGS} pedidos)\`);
 
     const resultados = [];
     const codigosConsultadosNestaExecucao = new Set();
     const codigosParaBoleto = [];
 
-    // 3) Consulta cada log SEQUENCIALMENTE com delay obrigatório entre chamadas
+    // 3) Consulta cada PEDIDO ÚNICO sequencialmente com delay obrigatório entre chamadas
     let chamadaIndex = 0;
-    for (const logItem of logs) {
-      const codPed = String(logItem.codigo_pedido);
+    for (const codPed of codigosUnicos) {
       const t0 = Date.now();
       try {
         if (codigosConsultadosNestaExecucao.has(codPed)) {
@@ -365,7 +379,7 @@ Deno.serve(async (req) => {
           usuario_email: user.email
         }).catch(() => {});
 
-        const logsDoPedido = logs.filter(l => String(l.codigo_pedido) === String(codPed));
+        const logsDoPedido = logsPorPedido.get(codPed) || [];
 
         if (real.erro) {
           await registrarCooldownConsulta(base44, codPed, { erro: real.erro });
@@ -436,7 +450,7 @@ Deno.serve(async (req) => {
 
       // Delay obrigatório entre consultas (não no último)
       chamadaIndex++;
-      if (chamadaIndex < logs.length) {
+      if (chamadaIndex < codigosUnicos.length) {
         await new Promise(r => setTimeout(r, DELAY_ENTRE_CONSULTAS_MS));
       }
     }
