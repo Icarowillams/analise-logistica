@@ -35,6 +35,7 @@ export default function FiltrosBoletos({ onResultado }) {
   const [cargaLoading, setCargaLoading] = useState(false);
   const [ocultosNaoBoleto, setOcultosNaoBoleto] = useState(0);
   const [apenasClientesBoleto, setApenasClientesBoleto] = useState(false);
+  const [nfFiltro, setNfFiltro] = useState('');
   const [openDe, setOpenDe] = useState(false);
   const [openAte, setOpenAte] = useState(false);
 
@@ -235,6 +236,13 @@ export default function FiltrosBoletos({ onResultado }) {
           (t.codigo_barras && String(t.codigo_barras).trim())
         );
       }
+      if (nfFiltro.trim()) {
+        const nfBusca = nfFiltro.trim().replace(/\D/g, '');
+        titulosFiltrados = titulosFiltrados.filter(t => {
+          const doc = String(t.numero_documento || '').replace(/\D/g, '');
+          return doc.includes(nfBusca);
+        });
+      }
       if (apenasClientesBoleto) {
         const antes = titulosFiltrados.length;
         titulosFiltrados = titulosFiltrados.filter(isClienteBoleto);
@@ -331,7 +339,7 @@ export default function FiltrosBoletos({ onResultado }) {
       )}
       <Card>
         <CardContent className="pt-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
             <div>
               <Label>Filtrar por</Label>
               <Select value={filtrarPor} onValueChange={setFiltrarPor}>
@@ -398,6 +406,15 @@ export default function FiltrosBoletos({ onResultado }) {
                   </Button>
                 )}
               </div>
+            </div>
+            <div>
+              <Label>Nº NF</Label>
+              <Input
+                value={nfFiltro}
+                onChange={(e) => setNfFiltro(e.target.value)}
+                placeholder="Ex: 12345"
+                onKeyDown={(e) => e.key === 'Enter' && buscar()}
+              />
             </div>
             <div>
               <Label>CNPJ/CPF</Label>
