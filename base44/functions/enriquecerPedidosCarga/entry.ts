@@ -1,7 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
-const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
 const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -10,6 +8,8 @@ const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
 const valorValido = (valor) => valor !== undefined && valor !== null && String(valor).trim() !== '';
 
 async function consultarClienteOmie(codigoClienteOmie) {
+  const OMIE_APP_KEY = Deno.env.get('OMIE_API_KEY') || Deno.env.get('OMIE_APP_KEY');
+  const OMIE_APP_SECRET = Deno.env.get('OMIE_API_SECRET') || Deno.env.get('OMIE_APP_SECRET');
   if (!OMIE_APP_KEY || !OMIE_APP_SECRET || !codigoClienteOmie) return null;
 
   const response = await fetch(OMIE_CLIENTES_URL, {

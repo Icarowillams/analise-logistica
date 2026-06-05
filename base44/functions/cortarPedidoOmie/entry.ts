@@ -1,8 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 const memoryCache = new Map();
 function getFromMemoryCache(key, ttlMs = 30000) {
@@ -96,7 +94,12 @@ async function omieCall(base44, call, param, options = {}) {
 // Retorna { id, numero, pedidoNaCarga } para reaproveitar dados de cliente já carregados no snapshot
 async function localizarCargaDoPedido(base44, codigoPedidoOmie, isInterno, pedidoIdInterno) {
   try {
-    const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
+    // Buscar apenas cargas ativas (montagem/faturada) em vez de todas
+    const [cargasMontagem, cargasFaturadas] = await Promise.all([
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'montagem' }, '-created_date', 200).catch(() => []),
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200).catch(() => [])
+    ]);
+    const cargas = [...cargasMontagem, ...cargasFaturadas];
     for (const carga of cargas) {
       const arr = isInterno ? (carga.pedidos_internos || []) : (carga.pedidos_omie || []);
       const pedidoNaCarga = arr.find(p => isInterno
@@ -111,7 +114,12 @@ async function localizarCargaDoPedido(base44, codigoPedidoOmie, isInterno, pedid
 // Atualiza Carga.pedidos_omie / pedidos_internos local: aplica novas quantidades
 async function refletirCorteNaCargaLocal(base44, codigoPedidoOmie, cortes, isInterno, pedidoIdInterno) {
   try {
-    const cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 200);
+    // Buscar apenas cargas ativas (montagem/faturada) em vez de todas
+    const [cargasMont, cargasFat] = await Promise.all([
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'montagem' }, '-created_date', 200).catch(() => []),
+      base44.asServiceRole.entities.Carga.filter({ status_carga: 'faturada' }, '-created_date', 200).catch(() => [])
+    ]);
+    const cargas = [...cargasMont, ...cargasFat];
     for (const carga of cargas) {
       let modificou = false;
       let pedidosArray = isInterno ? (carga.pedidos_internos || []) : (carga.pedidos_omie || []);
@@ -379,10 +387,10 @@ Deno.serve(async (req) => {
       const codigoFallback = clienteLocal?.codigo_omie || clienteLocal?.codigo_cliente_omie || clienteLocal?.codigo_interno;
       if (codigoFallback && !isNaN(Number(codigoFallback)) && Number(codigoFallback) > 0) {
         codigoClienteOmie = Number(codigoFallback);
-        console.log(\`[cortarPedidoOmie] codigo_cliente resolvido via cliente local: \${codigoClienteOmie}\`);
+        console.log(`[cortarPedidoOmie] codigo_cliente resolvido via cliente local: ${codigoClienteOmie}`);
       } else {
         // Último recurso: buscar pelo codigo_integracao do pedido via API Omie
-        console.warn(\`[cortarPedidoOmie] codigo_cliente inválido: \${pedido.cabecalho?.codigo_cliente} — tentando usar codigo_cliente_integracao\`);
+        console.warn(`[cortarPedidoOmie] codigo_cliente inválido: ${pedido.cabecalho?.codigo_cliente} — tentando usar codigo_cliente_integracao`);
         codigoClienteOmie = 0; // Omie usará o codigo_cliente_integracao como fallback
       }
     } else {

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ============================================================================
 // ESPELHAR BASE44 → OMIE
@@ -12,8 +12,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 //   excluir_omie → Exclui do Omie clientes que não existem no Base44
 // ============================================================================
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -29,6 +27,8 @@ function erroEhRateLimit(resultado) {
 }
 
 async function chamarOmieComRetry(callName, param, maxRetries = 2) {
+    const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+    const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
             method: "POST",
@@ -149,13 +149,15 @@ Deno.serve(async (req) => {
         // LISTAR OMIE — Lista clientes do Omie paginado
         // =====================================================================
         if (etapa === 'listar_omie') {
+            const OMIE_APP_KEY2 = Deno.env.get("OMIE_APP_KEY");
+            const OMIE_APP_SECRET2 = Deno.env.get("OMIE_APP_SECRET");
             const response = await fetch(OMIE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     call: "ListarClientes",
-                    app_key: OMIE_APP_KEY,
-                    app_secret: OMIE_APP_SECRET,
+                    app_key: OMIE_APP_KEY2,
+                    app_secret: OMIE_APP_SECRET2,
                     param: [{ pagina: pagina_omie, registros_por_pagina: 500 }]
                 })
             });

@@ -141,8 +141,7 @@ Deno.serve(async (req) => {
 
     let user = null;
     try { user = await base44.auth.me(); } catch { user = null; }
-    if (!user && origem !== 'auto') return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!user) user = { email: 'sistema@automation' };
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     let titulosParaGerar = [];
     if (origem === 'auto') {

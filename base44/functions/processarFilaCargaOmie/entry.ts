@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
           status: novoStatus,
           tentativas,
-          erro_log: `Timeout: travado em "processando" por mais de 10 minutos (tentativa ${tentativas})`
+          erro_log: `Timeout: travado em "processando" por mais de 3 minutos (tentativa ${tentativas})`
         }).catch(() => {});
         console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
       }

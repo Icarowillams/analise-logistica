@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ============================================================================
 // SINCRONIZAR CLIENTES CSV → BASE44 → OMIE
@@ -13,8 +13,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 //   enviar_omie → Envia um lote de clientes do Base44 para o Omie via UpsertCliente
 // ============================================================================
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 // === MAPEAMENTOS ===
@@ -187,6 +185,8 @@ function buildClienteData(row, lookups) {
 // === OMIE ===
 
 async function chamarOmieComRetry(callName, param, maxRetries = 2) {
+    const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+    const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
             method: "POST",

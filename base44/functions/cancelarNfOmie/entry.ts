@@ -1,12 +1,10 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Endpoints Omie:
 // - /produtos/pedido/ → ConsultarPedido (consulta dados do pedido)
 // - /produtos/pedidovendafat/ → CancelarPedidoVenda (cancela NF faturada)
 const OMIE_URL_PEDIDO = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_URL_FAT = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 const memoryCache = new Map();
 function getFromMemoryCache(key, ttlMs = 30000) {

@@ -1,7 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 const memoryCache = new Map();
@@ -37,7 +35,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch('https://app.omie.com.br/api/v1/geral/', {
+      const res = await fetch(OMIE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -54,13 +52,14 @@ async function omieCall(base44, endpoint, param, options = {}) {
       
       if (!options.skipLog) {
         try {
-          await base44.entities.create('LogIntegracaoOmie', {
-            endpoint,
-            payload_envio: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000),
-            sucesso: !data.faultcode,
-            erro: data.faultstring || null,
-            created_date: new Date().toISOString()
+          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: OMIE_URL,
+            call: endpoint,
+            operacao: endpoint,
+            status: data.faultcode ? 'erro' : 'sucesso',
+            mensagem_erro: data.faultstring || null,
+            payload_enviado: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000)
           });
         } catch(logErr) { /* silent fail */ }
       }

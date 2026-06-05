@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
@@ -67,13 +67,14 @@ async function omieCall(base44, creds, endpoint, param, options = {}) {
 
       if (!options.skipLog) {
         try {
-          await base44.entities.create('LogIntegracaoOmie', {
-            endpoint,
-            payload_envio: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000),
-            sucesso: !data.faultcode,
-            erro: data.faultstring || null,
-            created_date: new Date().toISOString()
+          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: url,
+            call: endpoint,
+            operacao: endpoint,
+            status: data.faultcode ? 'erro' : 'sucesso',
+            mensagem_erro: data.faultstring || null,
+            payload_enviado: JSON.stringify(param).slice(0, 2000),
+            payload_resposta: JSON.stringify(data).slice(0, 2000)
           });
         } catch(logErr) { /* silent fail */ }
       }

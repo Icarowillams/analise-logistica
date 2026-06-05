@@ -1,13 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '');
 
 async function omieCall(call, param, maxTentativas = 4) {
+  const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
+  const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
   let ultimoErro = null;
   for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
     try {
