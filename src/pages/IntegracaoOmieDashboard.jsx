@@ -16,6 +16,7 @@ import AlertaBloqueioOmie from '@/components/integracao/AlertaBloqueioOmie';
 export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
   const [testing, setTesting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [cooldown, setCooldown] = useState(0);
 
@@ -293,8 +294,18 @@ export default function IntegracaoOmieDashboard() {
               onChange={e => setFiltroCall(e.target.value)}
               className="max-w-xs"
             />
-            <Button variant="outline" onClick={() => qc.refetchQueries({ queryKey: ['logsOmie'] })}>
-              <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
+            <Button
+              variant="outline"
+              disabled={refreshing}
+              onClick={async () => {
+                setRefreshing(true);
+                await qc.refetchQueries({ queryKey: ['logsOmie'] });
+                setRefreshing(false);
+                toast.success('Logs atualizados!');
+              }}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Atualizando…' : 'Atualizar'}
             </Button>
           </div>
 
