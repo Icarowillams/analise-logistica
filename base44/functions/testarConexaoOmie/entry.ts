@@ -1,4 +1,4 @@
-// deploy v4 — 2026-06-05 — self-contained (sem imports locais)
+// deploy v5 — 2026-06-05 — self-contained (sem imports locais) + log de sucesso
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
@@ -53,10 +53,7 @@ Deno.serve(async (req) => {
       return Response.json({
         ok: false,
         error: 'Credenciais Omie não configuradas.',
-        debug: {
-          appKey_presente: !!appKey,
-          appSecret_presente: !!appSecret
-        }
+        debug: { appKey_presente: !!appKey, appSecret_presente: !!appSecret }
       });
     }
 
@@ -119,7 +116,18 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: errorMsg, code: data.faultcode || null, duracao_ms });
     }
 
+    // ✅ Log de sucesso — estava faltando na v4
     const empresa = data?.empresas_cadastro?.[0] || {};
+    await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+      endpoint: 'geral/empresas',
+      call: 'ListarEmpresas',
+      operacao: 'testar_conexao',
+      status: 'sucesso',
+      duracao_ms,
+      tentativas: 1,
+      usuario_email: user.email
+    }).catch(() => {});
+
     return Response.json({
       ok: true,
       duracao_ms,
