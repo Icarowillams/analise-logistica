@@ -1,19 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-// ✅ ITEM 7: migrado para _shared/omieClient
-import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
-const INTERVALO_ENTRE_PEDIDOS_MS = 500; // 0.5s entre pedidos = 2 req/s (seguro sob 240 req/min)
-const MAX_PEDIDOS_POR_RODADA = 10;      // 10 pedidos por rodada
+const INTERVALO_ENTRE_PEDIDOS_MS = 500;
+const MAX_PEDIDOS_POR_RODADA = 10;
 
-const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
+const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const CONTA_CORRENTE_PADRAO = 11464371392;
-
-// ============================================================
-// HELPERS OMIE (copiados de enviarPedidoOmie para evitar functions.invoke)
-// ============================================================
 
 function debugLog(base44, mensagem, extra = {}) {
   console.log(mensagem);
@@ -27,16 +21,49 @@ function debugLog(base44, mensagem, extra = {}) {
   }).catch(() => {});
 }
 
-// ✅ resolverCreds removida — _shared/omieClient
-
-// ✅ omieCall local removida — wrapper para _shared/omieClient  
-async function omieCall(base44, ...args) {
-  // Detecta chamada (base44, call, param) ou (base44, endpoint, param, opts)
-  const [callOrEndpoint, param, opts] = args;
-  if (opts !== undefined || (typeof callOrEndpoint === 'string' && callOrEndpoint.includes('/'))) {
-    return omieCallShared(base44, callOrEndpoint, param, opts || {});
+// Resolve credenciais Omie: prioriza ConfiguracaoOmie ativa, fallback para secrets
+let _credsCache = null;
+async function resolverCredsOmie(base44) {
+  if (_credsCache) return _credsCache;
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret) };
+    return _credsCache;
   }
-  return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
+  _credsCache = { appKey: Deno.env.get('OMIE_APP_KEY') || '', appSecret: Deno.env.get('OMIE_APP_SECRET') || '' };
+  return _credsCache;
+}
+
+// omieCall inline — chamada direta à API Omie sem dependência de _shared
+async function omieCall(base44, ...args) {
+  const [callOrEndpoint, param, opts] = args;
+  const call = (opts?.call) || (typeof callOrEndpoint === 'string' && !callOrEndpoint.includes('/') ? callOrEndpoint : '');
+  const endpoint = (typeof callOrEndpoint === 'string' && callOrEndpoint.includes('/')) ? callOrEndpoint : 'produtos/pedido/';
+  const url = OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  
+  const { appKey, appSecret } = await resolverCredsOmie(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  
+  const payload = { call, app_key: appKey, app_secret: appSecret, param: Array.isArray(param) ? param : [param] };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: controller.signal
+  });
+  clearTimeout(timer);
+  
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  
+  if (data?.faultstring || data?.faultcode) {
+    return data; // retorna com faultstring para tratamento pelo caller
+  }
+  return data;
 }
 
 async function resolverContaCorrentePadrao(base44) {
@@ -429,25 +456,33 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
-          await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-            status: novoStatus, erro_log: erro,
-            processado_em: novoStatus === 'erro' ? new Date().toISOString() : null
-          });
+          if (tentativas >= MAX_TENTATIVAS) {
+            // Remover da fila — o erro já está salvo no Pedido.omie_erro
+            await base44.asServiceRole.entities.FilaEnvioPedidoOmie.delete(item.id);
+            console.log(`[processarFila] Pedido ${item.pedido_id} removido da fila após ${tentativas} tentativas`);
+          } else {
+            await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+              status: 'pendente', erro_log: erro, processado_em: null
+            });
+          }
           resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro, tentativas });
         }
       } catch (err) {
         const erro = err?.message || 'Erro interno';
         const tentativas = (item.tentativas || 0) + 1;
-        const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
         const isBloqueio = /403|425|429|bloqueada|bloqueio|consumo indevido|suspens|inválida|invalida|suspended|rate.?limit/i.test(erro);
 
-        await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-          status: isBloqueio ? 'pendente' : novoStatus,
-          erro_log: erro,
-          tentativas: isBloqueio ? (item.tentativas || 0) : tentativas,
-          processado_em: (!isBloqueio && novoStatus === 'erro') ? new Date().toISOString() : null
-        });
+        if (!isBloqueio && tentativas >= MAX_TENTATIVAS) {
+          await base44.asServiceRole.entities.FilaEnvioPedidoOmie.delete(item.id);
+          console.log(`[processarFila] Pedido ${item.pedido_id} removido da fila após ${tentativas} tentativas (catch)`);
+        } else {
+          await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+            status: 'pendente',
+            erro_log: erro,
+            tentativas: isBloqueio ? (item.tentativas || 0) : tentativas,
+            processado_em: null
+          });
+        }
         resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro });
 
         if (isBloqueio) {
