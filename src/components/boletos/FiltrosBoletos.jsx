@@ -156,51 +156,99 @@ export default function FiltrosBoletos({ onResultado }) {
   const buscar = useCallback(async (carga = cargaFiltro, filtrosBusca = {}) => {
     setLoading(true);
     try {
-      // Quando buscar por carga, expandir range de datas para garantir cobertura
-      let dataDeEfetiva = dataDe;
-      let dataAteEfetiva = dataAte;
-      if (carga && !filtrosBusca.dataDe) {
-        dataDeEfetiva = subDays(new Date(), 120);
-        dataAteEfetiva = addDays(new Date(), 120);
-      }
-      const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDeEfetiva) || undefined;
-      const dataAteStr = filtrosBusca.dataAte || dateToBR(dataAteEfetiva) || undefined;
+      let acumulados = [];
 
-      const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-        data_de: dataDeStr,
-        data_ate: dataAteStr,
-        filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
-        cnpj_cpf: carga ? undefined : (cnpj || undefined),
-        apenas_pendentes: false,
-        registros_por_pagina: 200
-      });
-      if (data?.sucesso) {
-        let titulosFiltrados = filtrarTitulosPorCarga(data.titulos || [], carga);
-        if (apenasComBoleto) {
-          titulosFiltrados = titulosFiltrados.filter(t =>
-            t.boleto_gerado ||
-            (t.numero_boleto && String(t.numero_boleto).trim()) ||
-            (t.url_boleto && String(t.url_boleto).trim()) ||
-            (t.codigo_barras && String(t.codigo_barras).trim())
-          );
-        }
-        if (apenasClientesBoleto) {
-          const antes = titulosFiltrados.length;
-          titulosFiltrados = titulosFiltrados.filter(isClienteBoleto);
-          setOcultosNaoBoleto(antes - titulosFiltrados.length);
+      if (carga) {
+        // BUSCA POR CARGA: sequencial por CNPJ + filtro de emissão
+        // Resolve rate limit silencioso do Omie e garante cobertura completa
+        const pedidos = carga.pedidos_omie || [];
+        const cnpjsUnicos = [...new Set(
+          pedidos
+            .map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, ''))
+            .filter(c => c.length >= 11)
+        )];
+
+        // Determinar range de emissão baseado na data da carga
+        let dataDeStr, dataAteStr;
+        if (filtrosBusca.dataDe) {
+          dataDeStr = filtrosBusca.dataDe;
+          dataAteStr = filtrosBusca.dataAte;
+        } else if (carga.data_carga) {
+          // Usa data da carga como referência (±7 dias de margem)
+          const [y, m, d] = carga.data_carga.split('-');
+          const dataCarga = new Date(Number(y), Number(m) - 1, Number(d));
+          const margem7antes = new Date(dataCarga.getTime() - 7 * 86400000);
+          const margem7depois = new Date(dataCarga.getTime() + 7 * 86400000);
+          dataDeStr = dateToBR(margem7antes);
+          dataAteStr = dateToBR(margem7depois);
         } else {
-          setOcultosNaoBoleto(0);
+          dataDeStr = dateToBR(subDays(new Date(), 30));
+          dataAteStr = dateToBR(addDays(new Date(), 7));
         }
-        onResultado(titulosFiltrados);
-        if (carga && titulosFiltrados.length === 0) {
-          toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);
-        } else if (carga) {
-          toast.success(`${titulosFiltrados.length} boleto(s) da carga ${carga.numero_carga}`);
-        } else {
-          toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
+
+        // Busca sequencial: 1 CNPJ por vez para evitar rate limit do Omie
+        for (const cpfCnpj of cnpjsUnicos) {
+          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+            data_de: dataDeStr,
+            data_ate: dataAteStr,
+            filtrar_por_data: filtrosBusca.filtrarPor || 'E',
+            cnpj_cpf: cpfCnpj,
+            apenas_pendentes: false,
+            registros_por_pagina: 100
+          });
+          if (data?.sucesso && data.titulos?.length > 0) {
+            acumulados = acumulados.concat(data.titulos);
+          }
         }
+
+        // Dedup por codigo_lancamento
+        acumulados = acumulados.filter((t, idx, arr) =>
+          arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === idx
+        );
       } else {
-        toast.error(data?.error || 'Erro ao buscar');
+        // BUSCA GENÉRICA (sem carga): mantém comportamento original
+        const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDe) || undefined;
+        const dataAteStr = filtrosBusca.dataAte || dateToBR(dataAte) || undefined;
+
+        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+          data_de: dataDeStr,
+          data_ate: dataAteStr,
+          filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
+          cnpj_cpf: cnpj || undefined,
+          apenas_pendentes: false,
+          registros_por_pagina: 200
+        });
+        if (!data?.sucesso) {
+          toast.error(data?.error || 'Erro ao buscar');
+          setLoading(false);
+          return;
+        }
+        acumulados = data.titulos || [];
+      }
+
+      let titulosFiltrados = filtrarTitulosPorCarga(acumulados, carga);
+      if (apenasComBoleto) {
+        titulosFiltrados = titulosFiltrados.filter(t =>
+          t.boleto_gerado ||
+          (t.numero_boleto && String(t.numero_boleto).trim()) ||
+          (t.url_boleto && String(t.url_boleto).trim()) ||
+          (t.codigo_barras && String(t.codigo_barras).trim())
+        );
+      }
+      if (apenasClientesBoleto) {
+        const antes = titulosFiltrados.length;
+        titulosFiltrados = titulosFiltrados.filter(isClienteBoleto);
+        setOcultosNaoBoleto(antes - titulosFiltrados.length);
+      } else {
+        setOcultosNaoBoleto(0);
+      }
+      onResultado(titulosFiltrados);
+      if (carga && titulosFiltrados.length === 0) {
+        toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);
+      } else if (carga) {
+        toast.success(`${titulosFiltrados.length} boleto(s) da carga ${carga.numero_carga}`);
+      } else {
+        toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
       }
     } catch (e) {
       toast.error(e.message);
