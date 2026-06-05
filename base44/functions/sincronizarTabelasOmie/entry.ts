@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
 const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");

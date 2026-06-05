@@ -159,10 +159,13 @@ Deno.serve(async (req) => {
           omie_codigo_pedido: String(r.codigo_pedido)
         });
         for (const pl of pedidosLocais) {
+          // 🐛 FIX: status: 'montagem' — aguardando emissão real da NF.
+          // status_faturamento: 'pendente' — permite filtro correto na tela de emissão de NF.
+          // Só marca 'faturado' de verdade após NF emitida (emitirNfPedidoOmie).
           await base44.asServiceRole.entities.Pedido.update(pl.id, {
-            faturado: true,
-            data_faturamento: new Date().toISOString(),
-            status: 'faturado'
+            faturado: false,
+            status: 'montagem',
+            status_faturamento: 'pendente'
           });
         }
       } catch { /* não bloqueia o fluxo */ }
@@ -179,10 +182,12 @@ Deno.serve(async (req) => {
       ];
       for (const pedidoId of idsInternos) {
         try {
+          // Pedidos internos (D1/Bonificação) não emitem NF — podem ser marcados como faturados
           await base44.asServiceRole.entities.Pedido.update(pedidoId, {
             faturado: true,
             data_faturamento: new Date().toISOString(),
-            status: 'faturado'
+            status: 'faturado',
+            status_faturamento: 'faturado'
           });
         } catch { /* não bloqueia o fluxo */ }
       }
@@ -199,7 +204,8 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.Pedido.update(pl.id, {
               faturado: true,
               data_faturamento: new Date().toISOString(),
-              status: 'faturado'
+              status: 'faturado',
+              status_faturamento: 'faturado'
             });
           }
         } catch { /* não bloqueia o fluxo */ }

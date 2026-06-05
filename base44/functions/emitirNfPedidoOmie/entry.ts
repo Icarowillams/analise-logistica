@@ -1,9 +1,15 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ENDPOINT CORRETO: pedidovendafat (Faturamento de Pedido de Venda) — diferente de /pedido/
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+
+// 🐛 FIX: Credenciais removidas do top-level — resolvidas dinamicamente pelo handler
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) return { APP_KEY: String(ativo.app_key), APP_SECRET: String(ativo.app_secret) };
+  return { APP_KEY: Deno.env.get('OMIE_APP_KEY'), APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
+}
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -118,6 +124,8 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    // 🐛 FIX: Credenciais resolvidas dentro do handler — evita uso de creds stale em warm starts
+    const { APP_KEY, APP_SECRET } = await resolverCredsOmie(base44);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // 🔄 ATUALIZA logs de emissão NF que ficaram "pendentes" consultando ATIVAMENTE o Omie.
 //

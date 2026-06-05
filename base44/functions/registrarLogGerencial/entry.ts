@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Função utilitária para registrar logs gerenciais a partir do frontend.
 // Pode ser chamada de qualquer página para gravar uma ação.

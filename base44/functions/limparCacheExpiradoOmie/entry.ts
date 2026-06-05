@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // 🧹 Limpeza automática diária (03:00) — idempotente.
 // - CacheOmieConsulta: remove com created_date < hoje-7d

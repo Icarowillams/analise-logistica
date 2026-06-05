@@ -20,9 +20,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'];
 
 export default function Dashboard() {
+  // 🐛 FIX: entidades corretas — Pedido (não Venda) e PedidoTroca (não Troca)
   const { data: vendas = [], isLoading: loadingVendas } = useQuery({
-    queryKey: ['vendas'],
-    queryFn: () => base44.entities.Venda.list('-data', 1000)
+    queryKey: ['pedidos_dashboard'],
+    queryFn: () => base44.entities.Pedido.filter({ tipo: 'venda' }, '-created_date', 1000)
   });
 
   const { data: clientes = [], isLoading: loadingClientes } = useQuery({
@@ -36,13 +37,14 @@ export default function Dashboard() {
   });
 
   const { data: trocas = [], isLoading: loadingTrocas } = useQuery({
-    queryKey: ['trocas'],
-    queryFn: () => base44.entities.Troca.list('-data', 1000)
+    queryKey: ['trocas_dashboard'],
+    queryFn: () => base44.entities.PedidoTroca.list('-created_date', 500)
   });
 
   const isLoading = loadingVendas || loadingClientes || loadingVendedores || loadingTrocas;
 
   // Cálculos
+  // KPIs — Pedido.valor_total e status já existem
   const totalVendas = vendas.reduce((sum, v) => sum + (v.valor_total || 0), 0);
   const clientesAtivos = clientes.filter(c => c.status === 'ativo').length;
   const vendedoresAtivos = vendedores.filter(v => v.status === 'ativo').length;
@@ -52,8 +54,10 @@ export default function Dashboard() {
   const vendasPorMes = React.useMemo(() => {
     const grouped = {};
     vendas.forEach(v => {
-      if (!v.data) return;
-      const month = v.data.substring(0, 7);
+      // 🐛 FIX: Pedido usa created_date, não campo 'data'
+      const dataRef = v.data_faturamento || v.created_date;
+      if (!dataRef) return;
+      const month = dataRef.substring(0, 7);
       if (!grouped[month]) grouped[month] = 0;
       grouped[month] += v.valor_total || 0;
     });
@@ -83,10 +87,11 @@ export default function Dashboard() {
   // Vendas por produto
   const vendasPorProduto = React.useMemo(() => {
     const grouped = {};
+    // 🐛 FIX: Pedido não tem produto_nome direto — agrupar por vendedor/rota para gráfico de pizza
     vendas.forEach(v => {
-      const nome = v.produto_nome || 'Desconhecido';
+      const nome = v.rota_nome || v.vendedor_nome || 'Sem rota';
       if (!grouped[nome]) grouped[nome] = 0;
-      grouped[nome] += v.quantidade || 0;
+      grouped[nome] += v.valor_total || 0;
     });
     return Object.entries(grouped)
       .sort(([, a], [, b]) => b - a)
@@ -184,7 +189,7 @@ export default function Dashboard() {
 
         <Card className="border-0 shadow-lg">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-800">Top 5 Produtos</CardTitle>
+            <CardTitle className="text-lg font-semibold text-slate-800">Top 5 Rotas/Vendedores</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={320}>

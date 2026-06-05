@@ -1,7 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+// 🐛 FIX: Credenciais top-level removidas — omieCall já usa resolverCredsOmie dinâmico
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 // Endpoint pedido vs geral conforme a call
@@ -150,8 +149,14 @@ Deno.serve(async (req) => {
                 const cliOmie = await omieCall(base44, "ConsultarCliente", { codigo_cliente_omie: codigoClienteOmie });
                 if (!cliOmie.faultstring && cliOmie.cnpj_cpf) {
                     const cpf = cliOmie.cnpj_cpf.replace(/[^\d]/g, '');
-                    const todos = await base44.asServiceRole.entities.Cliente.list('-created_date', 5000);
-                    cliente = todos.find(c => (c.cpf_cnpj || '').replace(/[^\d]/g, '') === cpf);
+                    // 🐛 FIX: usar filter por cnpj_cpf em vez de list(5000) — evita timeout com >1000 clientes
+                    const porCnpj = await base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: cliOmie.cnpj_cpf }).catch(() => []);
+                    cliente = porCnpj[0] || null;
+                    // Fallback: busca por cnpj sem formatação se não encontrou
+                    if (!cliente && cpf) {
+                      const porCnpjAlt = await base44.asServiceRole.entities.Cliente.filter({ cnpj_cpf: cpf }).catch(() => []);
+                      cliente = porCnpjAlt[0] || null;
+                    }
                     if (cliente) console.log(`[importarPedidoOmie] Cliente por CPF/CNPJ: ${cliente.razao_social}`);
                 }
             } catch (e) { console.log(`[importarPedidoOmie] Erro busca cliente Omie: ${e.message}`); }

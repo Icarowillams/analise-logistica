@@ -1,7 +1,7 @@
 // Baixa o PDF do DANFE de uma NF-e do Omie.
 // Usa ObterNfe (endpoint produtos/dfedocs) com nIdNfe para obter cPdf (URL do DANFE),
 // faz o fetch no servidor (evita CORS) e devolve em base64.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';

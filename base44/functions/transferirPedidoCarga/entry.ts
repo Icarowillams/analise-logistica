@@ -82,12 +82,16 @@ Deno.serve(async (req) => {
       }
 
       if (codigosOmie.size > 0) {
-        const codArr = Array.from(codigosOmie);
-        const produtosBase = await base44.asServiceRole.entities.Produto.filter({ codigo_omie: { $in: codArr } }, '-created_date', 1000);
+        // 🐛 FIX: Base44 SDK não suporta operador $in — buscar cada produto individualmente
         const pesoMap = new Map();
-        produtosBase.forEach(pr => {
-          if (pr.codigo_omie) pesoMap.set(String(pr.codigo_omie), { peso: pr.peso || 0, volume: pr.volume_m3 || 0 });
-        });
+        for (const cod of codigosOmie) {
+          if (!cod) continue;
+          try {
+            const encontrados = await base44.asServiceRole.entities.Produto.filter({ codigo_omie: cod }, '-created_date', 1).catch(() => []);
+            const pr = encontrados?.[0];
+            if (pr) pesoMap.set(cod, { peso: pr.peso || 0, volume: pr.volume_m3 || 0 });
+          } catch (_) { /* ignora falha individual */ }
+        }
         for (const [cod, item] of produtosMap.entries()) {
           const dados = pesoMap.get(cod);
           if (dados) {

@@ -1,8 +1,15 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+// 🐛 FIX: Credenciais REMOVIDAS do top-level do módulo (risco em Deno Deploy warm starts).
+// resolverCredsOmie lê dinamicamente do banco a cada chamada, com fallback para env vars.
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
+
+async function resolverCredsOmie(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) return { OMIE_APP_KEY: String(ativo.app_key), OMIE_APP_SECRET: String(ativo.app_secret) };
+  return { OMIE_APP_KEY: Deno.env.get('OMIE_APP_KEY'), OMIE_APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
+}
 
 const memoryCache = new Map();
 function getFromMemoryCache(key, ttlMs = 30000) {
@@ -111,8 +118,9 @@ Deno.serve(async (req) => {
         // demais usuários precisam ter `permissoes_pedidos.enviar_pedido` ativo
         // (mesma permissão que já controla envio ao Omie).
         if (user.role !== 'admin') {
-            const allVendedores = await base44.asServiceRole.entities.Vendedor.list();
-            const vendedor = allVendedores.find(v => v.email?.toLowerCase() === user.email?.toLowerCase());
+            // 🐛 FIX: Vendedor.list() sem limite pode não retornar todos — filter por email é O(1)
+            const vendedoresPorEmail = await base44.asServiceRole.entities.Vendedor.filter({ email: user.email }).catch(() => []);
+            const vendedor = vendedoresPorEmail[0] || null;
             if (!vendedor) {
                 return Response.json({ error: 'Funcionário não encontrado no cadastro' }, { status: 403 });
             }

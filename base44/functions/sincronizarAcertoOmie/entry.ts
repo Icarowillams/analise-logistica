@@ -1,8 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-async function consultarPedido(codigoPedido, tentativa = 1) {
-  const OMIE_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
-  const OMIE_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+async function consultarPedido(base44, codigoPedido, tentativa = 1) {
+  // Usa credenciais do banco (ConfiguracaoOmie) com fallback para env
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  const OMIE_KEY = (ativo?.app_key ? String(ativo.app_key) : null) || Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
+  const OMIE_SECRET = (ativo?.app_secret ? String(ativo.app_secret) : null) || Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
+
   const res = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -18,7 +22,7 @@ async function consultarPedido(codigoPedido, tentativa = 1) {
   const transient = fs.includes('cota') || fs.includes('aguarde') || fs.includes('limite de requisi') || res.status === 429;
   if (transient && tentativa < 4) {
     await new Promise(r => setTimeout(r, 3000 * tentativa));
-    return consultarPedido(codigoPedido, tentativa + 1);
+    return consultarPedido(base44, codigoPedido, tentativa + 1);
   }
   return data;
 }
@@ -45,7 +49,7 @@ Deno.serve(async (req) => {
       if (!nota.codigo_pedido) continue;
       if (nota.status_entrega === 'nao_entregue' && (nota.motivo_cancelamento || '').toLowerCase().includes('cancelada no omie')) continue;
 
-      const data = await consultarPedido(nota.codigo_pedido);
+      const data = await consultarPedido(base44, nota.codigo_pedido);
       const fs = (data?.faultstring || '').toLowerCase();
       const ped = data?.pedido_venda_produto || {};
       const etapa = ped?.cabecalho?.etapa || '';
@@ -72,14 +76,22 @@ Deno.serve(async (req) => {
       valor_total_diferenca
     };
 
-    // Se a carga foi cancelada no Omie, finaliza o acerto automaticamente
+    // 🐛 FIX: Carga.status_carga só aceita 'montagem' ou 'faturada' (enum binário).
+    // O valor 'cancelada' NUNCA existirá na entidade — a condição anterior era código morto.
+    // Agora detectamos cancelamento real verificando se TODAS as notas foram canceladas no Omie.
     let autoFinalizado = false;
-    if (acerto.status_acerto === 'em_andamento' && acerto.carga_id) {
-      const carga = await base44.asServiceRole.entities.Carga.get(acerto.carga_id).catch(() => null);
-      if (carga?.status_carga === 'cancelada') {
+    if (acerto.status_acerto === 'em_andamento') {
+      const totalNotas = notas.length;
+      const notasCanceladas = notas.filter(n =>
+        n.status_entrega === 'nao_entregue' &&
+        (n.motivo_cancelamento || '').toLowerCase().includes('cancelada no omie')
+      ).length;
+
+      // Auto-finaliza se: todas as notas foram canceladas no Omie OU não há notas (carga vazia)
+      if (totalNotas > 0 && notasCanceladas === totalNotas) {
         updates.status_acerto = 'finalizado';
         updates.finalizado_em = new Date().toISOString();
-        updates.finalizado_por = 'auto-sync (carga cancelada no Omie)';
+        updates.finalizado_por = 'auto-sync (todas as notas canceladas no Omie)';
         autoFinalizado = true;
       }
     }

@@ -1,7 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+// 🐛 FIX: Credenciais removidas do top-level — resolvidas dinamicamente dentro do omieCall
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 const TIPOS_COM_MOTIVO = ["troca", "devolucao", "bonificacao"];

@@ -112,10 +112,9 @@ async function omieCall(base44, call, param, options = {}) {
   throw new Error(lastError || 'Máximo de tentativas Omie excedido');
 }
 
-let OMIE_KEY = null;
-let OMIE_SECRET = null;
-
 // Cache global de unidades de medida por execução da função
+// 🐛 FIX: variáveis OMIE_KEY/OMIE_SECRET globais removidas — eram sempre null (código morto).
+// Credenciais são resolvidas dinamicamente via resolverCredsOmie() dentro do omieCall.
 let _unidadesCache = null;
 
 // Cache de conta corrente por execução (evita chamada repetida)
