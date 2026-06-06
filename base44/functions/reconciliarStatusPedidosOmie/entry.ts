@@ -32,24 +32,10 @@ async function circuitBreakerBloqueado(base44) {
 }
 
 async function omieCallRaw(base44, url, call, param) {
-  const { app_key, app_secret } = await resolverCreds(base44);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
-  });
-  const data = await res.json();
-  if (data.faultstring) {
-    const msg = String(data.faultstring).toLowerCase();
-    if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead')) {
-      const e = new Error(data.faultstring); e.bloqueio = true; throw e;
-    }
-    if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')) {
-      const e = new Error(data.faultstring); e.retry = true; throw e;
-    }
-    throw new Error(data.faultstring);
-  }
-  return data;
+  // Extrai o endpoint relativo da URL completa do Omie
+  // Ex: 'https://app.omie.com.br/api/v1/produtos/pedido/' → 'produtos/pedido/'
+  const endpoint = url.replace('https://app.omie.com.br/api/v1/', '');
+  return omieCallShared(base44, endpoint, param, { call });
 }
 
 async function consultarPedidoOmie(base44, codigoPedido) {

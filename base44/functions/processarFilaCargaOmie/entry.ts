@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
     // 🐛 FIX item4: era 4 queries sequenciais + N loops com 1 query por carga (N+1).
     // Agora: 2 queries em paralelo + filtro em memória + Promise.all para recalcular.
+    let cargasPreAtualizadasCount = 0;
     {
       const [cargasIntermediarias, filaItens] = await Promise.all([
         base44.asServiceRole.entities.Carga.list('-updated_date', 300).catch(() => []),
@@ -111,6 +112,7 @@ Deno.serve(async (req) => {
         return true;
       });
 
+      cargasPreAtualizadasCount = cargasParaAtualizar.length;
       if (cargasParaAtualizar.length > 0) {
         console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo (antes era sequencial com N+1 queries)`);
         await Promise.all(cargasParaAtualizar.map(c => atualizarStatusCarga(base44, c.id)));
@@ -137,7 +139,7 @@ Deno.serve(async (req) => {
     // ═══ PASSO 3: LIMPEZA DE ÓRFÃOS ═══
     const todosPendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 200).catch(() => []);
     if (!todosPendentes.length) {
-      return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasParaAtualizar.length, mensagem: 'Nenhum item pendente na fila' });
+      return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Nenhum item pendente na fila' });
     }
 
     // Agrupar por carga_id para verificar existência em batch
@@ -250,7 +252,7 @@ Deno.serve(async (req) => {
       await atualizarStatusCarga(base44, carga_id);
     }
 
-    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasParaAtualizar.length, cargas_ciclo_atualizadas: cargasAfetadas.size });
+    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

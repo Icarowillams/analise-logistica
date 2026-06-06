@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     const maxCargas = Math.min(Number(body.max_cargas || 30), 50);
 
     let cargas = await base44.asServiceRole.entities.Carga.list('-created_date', 500);
-    const STATUS_ALVO = new Set(['faturada', 'nf_emitida']);
+    const STATUS_ALVO = new Set(['faturada']); // enum Carga: 'montagem' | 'faturada' (nf_emitida não existe)
     if (cargaIdFiltro) {
       cargas = cargas.filter(c => String(c.id) === String(cargaIdFiltro));
     } else if (numeroCargaFiltro) {

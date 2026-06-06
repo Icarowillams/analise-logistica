@@ -35,6 +35,41 @@ async function omieCall(base44, callOrEndpoint, param, optsOrCall) {
   return omieCallShared(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 
+
+// Classifica o status de uma NF com base no cStat da SEFAZ
+function classificarNF(nf, codigoPedido) {
+  const cStat = String(nf?.ide?.cStat || '').trim();
+  const nNF = String(nf?.ide?.nNF || '').trim();
+  const xMotivo = String(nf?.ide?.xMotivo || '').trim();
+  if (!cStat && !nNF) return null; // Sem dados suficientes para classificar
+
+  const cStatNum = Number(cStat) || 0;
+
+  // 100 = Autorizada
+  if (cStat === '100' || cStat === '150') {
+    return { status_real: 'emitida', numero_nf: nNF, codigo_sefaz: cStat, mensagem: nNF ? `NF ${nNF} autorizada` : 'NF autorizada pela SEFAZ' };
+  }
+  // 101 = Cancelamento homologado
+  if (cStat === '101') {
+    return { status_real: 'cancelada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF ${nNF || codigoPedido} cancelada [SEFAZ ${cStat}]` };
+  }
+  // 110, 301, 302, 205 = Denegada
+  if (['110', '301', '302', '205'].includes(cStat)) {
+    return { status_real: 'denegada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF denegada [SEFAZ ${cStat}] ${xMotivo}`.trim() };
+  }
+  // 135 = Evento registrado (não é rejeição)
+  if (cStat === '135') return null;
+  // cStat >= 200 e não é um dos acima = Rejeitada
+  if (cStatNum >= 200) {
+    return { status_real: 'rejeitada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF rejeitada [SEFAZ ${cStat}] ${xMotivo}`.trim() };
+  }
+  // Se tem nNF mas sem cStat definitivo → provavelmente autorizada
+  if (nNF) {
+    return { status_real: 'emitida', numero_nf: nNF, codigo_sefaz: cStat || '100', mensagem: `NF ${nNF} autorizada` };
+  }
+  return null;
+}
+
 async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {
@@ -42,7 +77,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(base44, OMIE_PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) }, { cacheMinutes: 5 });
+      const r = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
