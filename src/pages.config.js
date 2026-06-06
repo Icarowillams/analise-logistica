@@ -15,6 +15,7 @@ import CenariosFiscaisLocais from './pages/CenariosFiscaisLocais';
 import Clientes from './pages/Clientes';
 import ConfiguracaoOmie from './pages/ConfiguracaoOmie';
 import ConsultaClientes from './pages/ConsultaClientes';
+import CommitsGithub from './pages/CommitsGithub';
 import ControlePedidosTroca from './pages/ControlePedidosTroca';
 import ControlePedidosVenda from './pages/ControlePedidosVenda';
 import Dashboard from './pages/Dashboard';
@@ -71,6 +72,7 @@ export const PAGES = {
     "Clientes": Clientes,
     "ConfiguracaoOmie": ConfiguracaoOmie,
     "ConsultaClientes": ConsultaClientes,
+    "CommitsGithub": CommitsGithub,
     "ControlePedidosTroca": ControlePedidosTroca,
     "ControlePedidosVenda": ControlePedidosVenda,
     "Dashboard": Dashboard,

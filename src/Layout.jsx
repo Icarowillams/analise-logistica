@@ -198,6 +198,12 @@ export default function Layout({ children, currentPageName }) {
         icon: Settings,
         path: 'IntegracaoOmieDashboard'
       });
+
+      allMenuItems.push({
+        title: 'Commits GitHub',
+        icon: ScrollText,
+        path: 'CommitsGithub'
+      });
     }
 
     return allMenuItems.map(item => {
