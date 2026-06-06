@@ -92,12 +92,12 @@ Deno.serve(async (req) => {
     // 1) Pedidos etapa 60
     let pedidosData;
     try {
-      pedidosData = await omieCall(OMIE_PEDIDO_URL, 'ListarPedidos', {
+      pedidosData = await omieCall(base44, 'produtos/pedido/', {
         pagina,
         registros_por_pagina,
         apenas_importado_api: 'N',
         etapa: '60'
-      });
+      }, { call: 'ListarPedidos' });
     } catch (e) {
       if (/n[ãa]o existem registros/i.test(e.message)) {
         return Response.json({ sucesso: true, pedidos: [] });
@@ -130,12 +130,12 @@ Deno.serve(async (req) => {
     let totalPaginas = 1;
     do {
       try {
-        const nfData = await omieCall(OMIE_NF_URL, 'ListarNF', {
+        const nfData = await omieCall(base44, 'produtos/nfconsultar/', {
           pagina: paginaNf,
           registros_por_pagina: 200,
           dEmiInicial: fmt(dias90),
           dEmiFinal: fmt(hoje)
-        });
+        }, { call: 'ListarNF' });
         totalPaginas = nfData.nTotPaginas || 1;
         (nfData.nfCadastro || []).forEach(nf => {
           const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');

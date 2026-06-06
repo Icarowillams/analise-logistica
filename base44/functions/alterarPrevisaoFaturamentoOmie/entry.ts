@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       if (p.codigo_pedido_integracao) cabecalho.codigo_pedido_integracao = String(p.codigo_pedido_integracao);
 
       try {
-        const data = await omieCall('AlterarPedidoVenda', { cabecalho });
+        const data = await omieCall(base44, 'produtos/pedido/', { cabecalho }, { call: 'AlterarPedidoVenda' });
         const ok = data.cCodStatus === '0' || data.cCodStatus === 0;
 
         if (ok && p.codigo_pedido) {

@@ -80,14 +80,14 @@ async function logOmie(base44, payload) {
 }
 
 
-async function listarTabelasOmie() {
+async function listarTabelasOmie(base44) {
   const todasTabelas = [];
   let pagina = 1;
   let totalPaginas = 1;
   while (pagina <= totalPaginas) {
-    const { data } = await omieCall(OMIE_URL_TABELA, "ListarTabelasPreco", {
+    const data = await omieCall(base44, 'produtos/tabelaprecos/', {
       nPagina: pagina, nRegPorPagina: 50
-    });
+    }, { call: 'ListarTabelasPreco' });
     await delay(1000);
     if (data.faultstring) throw new Error(`Erro ao listar tabelas Omie: ${data.faultstring}`);
     totalPaginas = data.nTotPaginas || 1;
@@ -97,7 +97,7 @@ async function listarTabelasOmie() {
   return todasTabelas;
 }
 
-async function listarItensTabela(nCodTabPreco, cCodIntTabPreco) {
+async function listarItensTabela(base44, nCodTabPreco, cCodIntTabPreco) {
   const todosItens = [];
   let pagina = 1;
   let totalPaginas = 1;
@@ -105,7 +105,7 @@ async function listarItensTabela(nCodTabPreco, cCodIntTabPreco) {
     const param = { nPagina: pagina, nRegPorPagina: 50 };
     if (nCodTabPreco) param.nCodTabPreco = nCodTabPreco;
     if (cCodIntTabPreco) param.cCodIntTabPreco = cCodIntTabPreco;
-    const { data } = await omieCall(OMIE_URL_TABELA, "ListarTabelaItens", param);
+    const data = await omieCall(base44, 'produtos/tabelaprecos/', param, { call: 'ListarTabelaItens' });
     await delay(1000);
     if (data.faultstring) {
       if (/nenhum/i.test(data.faultstring)) return [];
@@ -118,8 +118,8 @@ async function listarItensTabela(nCodTabPreco, cCodIntTabPreco) {
   return todosItens;
 }
 
-async function consultarProdutoOmiePorId(nCodProd) {
-  const { data } = await omieCall(OMIE_URL_PRODUTO, "ConsultarProduto", { codigo_produto: nCodProd });
+async function consultarProdutoOmiePorId(base44, nCodProd) {
+  const data = await omieCall(base44, 'geral/produtos/', { codigo_produto: nCodProd }, { call: 'ConsultarProduto' });
   if (data.faultstring) return null;
   return data;
 }
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
     // IMPORTAR TABELAS DO OMIE → BASE44
     // ==========================================
     if (acao === "importar_tabelas") {
-      const tabelasOmie = await listarTabelasOmie();
+      const tabelasOmie = await listarTabelasOmie(base44);
       const tabelasBase44 = await base44.asServiceRole.entities.TabelaPreco.list();
       const resultados = [];
       let criadas = 0, atualizadas = 0;
@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
 
       // Verificar se já existe no Omie
       if (!nCodTabPreco) {
-        const { data: consulta } = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
+        const consulta = await omieCall(base44, 'produtos/tabelaprecos/', { cCodIntTabPreco: codInt }, { call: 'ConsultarTabelaPreco' });
         await delay(1000);
         if (!consulta.faultstring) nCodTabPreco = consulta.nCodTabPreco;
       }
@@ -218,22 +218,23 @@ Deno.serve(async (req) => {
       if (nCodTabPreco) payload.nCodTabPreco = nCodTabPreco;
 
       const callUsada = nCodTabPreco ? "AlterarTabelaPreco" : "IncluirTabelaPreco";
-      let { data: tabelaResult, duracao_ms } = await omieCall(OMIE_URL_TABELA, callUsada, payload);
+      const t0_tab = Date.now();
+      let tabelaResult = await omieCall(base44, 'produtos/tabelaprecos/', payload, { call: callUsada });
+      let duracao_ms = Date.now() - t0_tab;
       await delay(1500);
 
       // Tabela obsoleta no Omie — recriar
       if (tabelaResult.faultstring && nCodTabPreco &&
           /não cadastrada|nao cadastrada/i.test(tabelaResult.faultstring)) {
         delete payload.nCodTabPreco;
-        const r = await omieCall(OMIE_URL_TABELA, "IncluirTabelaPreco", payload);
-        tabelaResult = r.data;
+        tabelaResult = await omieCall(base44, 'produtos/tabelaprecos/', payload, { call: 'IncluirTabelaPreco' });
         await delay(1500);
         nCodTabPreco = null;
       }
 
       // Já cadastrada — buscar ID
       if (tabelaResult.faultstring && /já cadastrad/i.test(tabelaResult.faultstring)) {
-        const { data: c } = await omieCall(OMIE_URL_TABELA, "ConsultarTabelaPreco", { cCodIntTabPreco: codInt });
+        const c = await omieCall(base44, 'produtos/tabelaprecos/', { cCodIntTabPreco: codInt }, { call: 'ConsultarTabelaPreco' });
         await delay(1000);
         if (!c.faultstring) {
           nCodTabPreco = c.nCodTabPreco;
@@ -268,9 +269,9 @@ Deno.serve(async (req) => {
       });
 
       // Popular produtos padrão e ativar
-      await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt });
+      await omieCall(base44, 'produtos/tabelaprecos/', { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt }, { call: 'AtualizarProdutos' });
       await delay(3000);
-      await omieCall(OMIE_URL_TABELA, "AtivarTabelaPreco", { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt });
+      await omieCall(base44, 'produtos/tabelaprecos/', { nCodTabPreco: omieIdFinal, cCodIntTabPreco: codInt }, { call: 'AtivarTabelaPreco' });
       await delay(2000);
 
       await logOmie(base44, {
@@ -340,33 +341,32 @@ Deno.serve(async (req) => {
         if (valorAtual <= 0 && isAuxiliar) valorAtual = 0.01;
 
         // Tentar AlterarPrecoItem
-        let { data: itemResult } = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
-          nCodTabPreco: omieIdTabela, nCodProd, nValorTabela: Number(valorAtual.toFixed(2))
-        });
+        let itemResult = await omieCall(base44, 'produtos/tabelaprecos/', {
+             nCodTabPreco: omieIdTabela, nCodProd, nValorTabela: Number(valorAtual.toFixed(2))
+          }, { call: 'AlterarPrecoItem' });
         await delay(1200);
 
         // Se produto não está na tabela, incluir e tentar novamente
         if (itemResult.faultstring &&
             /não encontrado|não localizado|nao encontrado|não cadastrado na Tabela|nao cadastrado na Tabela/i.test(itemResult.faultstring)) {
 
-          const { data: inclResult } = await omieCall(OMIE_URL_TABELA, "IncluirProdutoTabPreco", {
+          const inclResult = await omieCall(base44, 'produtos/tabelaprecos/', {
             nCodTabPreco: omieIdTabela, nCodProd
-          });
+          }, { call: 'IncluirProdutoTabPreco' });
           await delay(1500);
 
           if (inclResult.faultstring && !/já cadastrad/i.test(inclResult.faultstring)) {
             // Fallback: AtualizarProdutos (re-sincroniza toda a tabela)
             const codIntTabela = (tabela.omie_cod_int || `TP${tabela.id}`).substring(0, 20);
-            await omieCall(OMIE_URL_TABELA, "AtualizarProdutos", {
+            await omieCall(base44, 'produtos/tabelaprecos/', {
               nCodTabPreco: omieIdTabela, cCodIntTabPreco: codIntTabela
-            });
+            }, { call: 'AtualizarProdutos' });
             await delay(2500);
           }
 
-          const retry = await omieCall(OMIE_URL_TABELA, "AlterarPrecoItem", {
+          itemResult = await omieCall(base44, 'produtos/tabelaprecos/', {
             nCodTabPreco: omieIdTabela, nCodProd, nValorTabela: Number(valorAtual.toFixed(2))
-          });
-          itemResult = retry.data;
+          }, { call: 'AlterarPrecoItem' });
           await delay(1500);
         }
 
@@ -413,7 +413,9 @@ Deno.serve(async (req) => {
       if (tabela.omie_id) param.nCodTabPreco = tabela.omie_id;
       if (tabela.omie_cod_int) param.cCodIntTabPreco = tabela.omie_cod_int;
 
-      const { data: result, duracao_ms } = await omieCall(OMIE_URL_TABELA, "ExcluirTabelaPreco", param);
+      const t0_excl = Date.now();
+      const result = await omieCall(base44, 'produtos/tabelaprecos/', param, { call: 'ExcluirTabelaPreco' });
+      const duracao_ms_excl = Date.now() - t0_excl;
       await delay(1000);
 
       await logOmie(base44, {
@@ -421,7 +423,7 @@ Deno.serve(async (req) => {
         operacao: 'excluir_tabela', entidade_tipo: 'TabelaPreco', entidade_id: tabela.id,
         status: result.faultstring ? 'erro' : 'sucesso',
         codigo_erro: result.faultcode, mensagem_erro: result.faultstring,
-        duracao_ms, usuario_email: user.email
+        duracao_ms: duracao_ms_excl, usuario_email: user.email
       });
 
       if (result.faultstring) return Response.json({ sucesso: false, erro: result.faultstring });
@@ -446,7 +448,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: "Tabela não vinculada ao Omie" }, { status: 400 });
       }
 
-      const itensOmie = await listarItensTabela(tabela.omie_id, tabela.omie_cod_int);
+      const itensOmie = await listarItensTabela(base44, tabela.omie_id, tabela.omie_cod_int);
       const [precosBase44, produtos] = await Promise.all([
         base44.asServiceRole.entities.PrecoProduto.filter({ tabela_id: tabela.id }),
         base44.asServiceRole.entities.Produto.list()
@@ -465,7 +467,7 @@ Deno.serve(async (req) => {
 
         // Fallback: consultar Omie para pegar codigo_produto_integracao
         if (!produtoBase44) {
-          const prodOmie = await consultarProdutoOmiePorId(nCodProd);
+          const prodOmie = await consultarProdutoOmiePorId(base44, nCodProd);
           await delay(800);
           if (prodOmie?.codigo_produto_integracao) {
             produtoBase44 = produtos.find(p => p.id === prodOmie.codigo_produto_integracao);

@@ -179,10 +179,10 @@ Deno.serve(async (req) => {
       // Pré-consulta por CNPJ para resolver duplicidades
       const cnpj = payload.cnpj_cpf;
       try {
-        const existente = await omieCall(OMIE_APP_KEY, OMIE_APP_SECRET, 'ListarClientes', {
+        const existente = await omieCall(base44, 'geral/clientes/', {
           pagina: 1, registros_por_pagina: 1, apenas_importado_api: 'N',
           clientesFiltro: { cnpj_cpf: cnpj }
-        });
+        }, { call: 'ListarClientes' });
         const cli = existente?.clientes_cadastro?.[0];
         if (cli?.codigo_cliente_omie) {
           payload.codigo_cliente_omie = Number(cli.codigo_cliente_omie);
@@ -194,20 +194,20 @@ Deno.serve(async (req) => {
         }
       } catch (_) { /* segue sem pré-consulta */ }
 
-      const resultado = await omieCall(OMIE_APP_KEY, OMIE_APP_SECRET, 'UpsertCliente', payload);
+      const resultado = await omieCall(base44, 'geral/clientes/', payload, { call: 'UpsertCliente' });
 
       if (resultado.faultstring) {
         // Tentar resolver duplicidade
         if (String(resultado.faultstring).toLowerCase().includes('cliente já cadastrado para o cpf/cnpj')) {
-          const existente = await omieCall(OMIE_APP_KEY, OMIE_APP_SECRET, 'ListarClientes', {
+          const existente = await omieCall(base44, 'geral/clientes/', {
             pagina: 1, registros_por_pagina: 1, apenas_importado_api: 'N',
             clientesFiltro: { cnpj_cpf: cnpj }
-          });
+          }, { call: 'ListarClientes' });
           const cli = existente?.clientes_cadastro?.[0];
           if (cli?.codigo_cliente_omie) {
             payload.codigo_cliente_omie = Number(cli.codigo_cliente_omie);
             if (cli.codigo_cliente_integracao) payload.codigo_cliente_integracao = cli.codigo_cliente_integracao;
-            const retry = await omieCall(OMIE_APP_KEY, OMIE_APP_SECRET, 'UpsertCliente', payload);
+            const retry = await omieCall(base44, 'geral/clientes/', payload, { call: 'UpsertCliente' });
             if (!retry.faultstring) {
               const cod = cli.codigo_cliente_omie;
               await base44.asServiceRole.entities.Cliente.update(c.id, { codigo_omie: String(cod), codigo_cliente_omie: String(cod) });

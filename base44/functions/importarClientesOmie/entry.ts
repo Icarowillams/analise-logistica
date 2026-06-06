@@ -96,9 +96,9 @@ Deno.serve(async (req) => {
     const { pagina = 1, apenas_simular = false } = body;
 
     // 1. Buscar UMA página do Omie (Doc Omie: máx 100 reg/página)
-    const data = await omieCall("ListarClientes", {
+    const data = await omieCall(base44, 'geral/clientes/', {
       pagina, registros_por_pagina: 100, apenas_importado_api: "N"
-    });
+    }, { call: 'ListarClientes' });
     if (data.faultstring) throw new Error(`Omie ListarClientes: ${data.faultstring}`);
 
     const clientesOmie = data.clientes_cadastro || [];

@@ -77,13 +77,13 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 
 // Lista produtos do Omie com paginação
-async function listarProdutosOmie() {
+async function listarProdutosOmie(base44) {
   const todos = [];
   let pagina = 1, total = 1;
   while (pagina <= total) {
-    const data = await omieCall(OMIE_URL_PRODUTO, "ListarProdutos", {
+    const data = await omieCall(base44, 'geral/produtos/', {
       pagina, registros_por_pagina: 50, apenas_importado_api: "N", filtrar_apenas_omiepdv: "N"
-    });
+    }, { call: 'ListarProdutos' });
     await delay(1100);
     if (data.faultstring) throw new Error(`ListarProdutos: ${data.faultstring}`);
     total = data.total_de_paginas || 1;
@@ -93,11 +93,11 @@ async function listarProdutosOmie() {
   return todos;
 }
 
-async function listarTabelasOmie() {
+async function listarTabelasOmie(base44) {
   const todas = [];
   let pagina = 1, total = 1;
   while (pagina <= total) {
-    const data = await omieCall(OMIE_URL_TABELA, "ListarTabelasPreco", { nPagina: pagina, nRegPorPagina: 50 });
+    const data = await omieCall(base44, 'produtos/tabelaprecos/', { nPagina: pagina, nRegPorPagina: 50 }, { call: 'ListarTabelasPreco' });
     await delay(1100);
     if (data.faultstring) throw new Error(`ListarTabelasPreco: ${data.faultstring}`);
     total = data.nTotPaginas || 1;
@@ -107,13 +107,13 @@ async function listarTabelasOmie() {
   return todas;
 }
 
-async function listarItensTabela(nCodTabPreco) {
+async function listarItensTabela(base44, nCodTabPreco) {
   const todos = [];
   let pagina = 1, total = 1;
   while (pagina <= total) {
-    const data = await omieCall(OMIE_URL_TABELA, "ListarTabelaItens", {
+    const data = await omieCall(base44, 'produtos/tabelaprecos/', {
       nPagina: pagina, nRegPorPagina: 50, nCodTabPreco
-    });
+    }, { call: 'ListarTabelaItens' });
     await delay(1100);
     if (data.faultstring) {
       if (/nenhum/i.test(data.faultstring)) return [];
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
     // ETAPA 1: Vincular produtos (grava codigo_omie nos Produtos)
     // ============================================================
     if (etapa === "produtos") {
-      const produtosOmie = await listarProdutosOmie();
+      const produtosOmie = await listarProdutosOmie(base44);
       const produtosBase44 = await base44.asServiceRole.entities.Produto.list('', 10000);
 
       let vinculados = 0, naoEncontrados = 0;
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
     // ETAPA 2: Vincular tabelas (grava omie_id nas TabelaPreco)
     // ============================================================
     if (etapa === "tabelas") {
-      const tabelasOmie = await listarTabelasOmie();
+      const tabelasOmie = await listarTabelasOmie(base44);
       const tabelasBase44 = await base44.asServiceRole.entities.TabelaPreco.list('', 1000);
 
       let vinculadas = 0, criadas = 0;
@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
       let totalCriados = 0, totalAtualizados = 0, totalIgnorados = 0;
 
       for (const tabela of tabelasVinculadas) {
-        const itens = await listarItensTabela(tabela.omie_id);
+        const itens = await listarItensTabela(base44, tabela.omie_id);
 
         // Opcional: limpar preços antigos desta tabela (para espelhar 100% o Omie)
         if (limpar_antes) {

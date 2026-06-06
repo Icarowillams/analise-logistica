@@ -75,8 +75,8 @@ const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 const TAMANHO_LOTE_OMIE = 50;
 
 
-async function chamarOmie(base44, call, param) {
-  return await omieCall(base44, call, param, { cacheMinutes: 15 });
+async function chamarOmie(base44, callName, param) {
+  return await omieCall(base44, 'geral/clientes/', param, { call: callName });
 }
 
 async function incluirIndividual(base44, payload, cliente) {

@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
     const t0 = Date.now();
     let resposta;
     try {
-      resposta = await omieCall(base44, callName, param);
+      resposta = await omieCall(base44, 'produtos/pedidovendafat/', param, { call: callName });
     } catch (e) {
       if (e.code === 'OMIE_425') throw e; // propaga bloqueio ao catch externo
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({

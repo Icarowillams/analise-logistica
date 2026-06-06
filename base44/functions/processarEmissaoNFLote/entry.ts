@@ -191,6 +191,8 @@ Deno.serve(async (req) => {
       return Response.json(
         { error: 'API Omie bloqueada por rate limit', bloqueado_ate: breaker.bloqueado_ate },
         { status: 425 }
+      );
+    }
 
     const pedidos = Array.isArray(fila.pedidos) ? fila.pedidos.map(String).filter(Boolean) : [];
     const resultados = Array.isArray(fila.resultados) ? [...fila.resultados] : [];
@@ -219,7 +221,7 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const resposta = body.mock_omie_response || await omieCall(base44, 'FaturarPedidoVenda', { nCodPed: Number(codigoPedido) });
+        const resposta = body.mock_omie_response || await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
         if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
         resultados.push({
           codigo_pedido: codigoPedido,

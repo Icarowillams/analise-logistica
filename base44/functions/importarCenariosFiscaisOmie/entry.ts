@@ -80,14 +80,14 @@ async function logOmie(base44, payload) {
 }
 
 
-async function listarTodosCenarios() {
+async function listarTodosCenarios(base44) {
   const registros = [];
   let pagina = 1;
   let totalPaginas = 1;
   while (pagina <= totalPaginas) {
-    const { data } = await omieCall(OMIE_URL_CENARIOS, "ListarCenarios", {
+    const data = await omieCall(base44, 'geral/cenarios/', {
       nPagina: pagina, nRegPorPagina: 50
-    });
+    }, { call: 'ListarCenarios' });
     await delay(800);
     if (data.faultstring) throw new Error(`ListarCenarios: ${data.faultstring}`);
     totalPaginas = data.nTotPaginas || 1;
@@ -97,14 +97,14 @@ async function listarTodosCenarios() {
   return registros;
 }
 
-async function listarTodasEtapas() {
+async function listarTodasEtapas(base44) {
   const registros = [];
   let pagina = 1;
   let totalPaginas = 1;
   while (pagina <= totalPaginas) {
-    const { data } = await omieCall(OMIE_URL_ETAPAS, "ListarEtapasFaturamento", {
+    const data = await omieCall(base44, 'produtos/etapafat/', {
       pagina, registros_por_pagina: 50
-    });
+    }, { call: 'ListarEtapasFaturamento' });
     await delay(800);
     if (data.faultstring) {
       if (/nenhum/i.test(data.faultstring)) return registros;
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
     let cenariosOmie = [];
     let cenariosErro = null;
     try {
-      cenariosOmie = await listarTodosCenarios();
+      cenariosOmie = await listarTodosCenarios(base44);
     } catch (err) {
       const msg = (err.message || '').toLowerCase();
       if (msg.includes('chave de acesso') || msg.includes('não preenchida') || msg.includes('nao preenchida')) {
@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
     // IMPORTAR ETAPAS DE FATURAMENTO (achatar estrutura aninhada)
     // Omie retorna: [{ cCodOperacao, cDescOperacao, etapas: [{cCodigo, cDescricao, cInativo}] }]
     // ==========================================
-    const operacoesOmie = await listarTodasEtapas();
+    const operacoesOmie = await listarTodasEtapas(base44);
     const etapasFlat = [];
     for (const op of operacoesOmie) {
       if (!op?.cCodOperacao || !Array.isArray(op.etapas)) continue;

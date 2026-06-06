@@ -106,9 +106,9 @@ async function registrarBloqueio425(base44, controle, faultstring) {
 
 
 async function buscarProdutoOmie(base44, controle, codigoIntegracao) {
-    const result = await omieCall(base44, controle, OMIE_URL_PRODUTO, "ConsultarProduto", {
+    const result = await omieCall(base44, 'geral/produtos/', {
         codigo_produto_integracao: codigoIntegracao
-    });
+    }, { call: 'ConsultarProduto' });
     if (result.faultstring) return null;
     return result;
 }
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
                 }
 
                 // Alterar o valor_unitario (preço original) para 1.00
-                const alterResult = await omieCall(base44, controle, OMIE_URL_PRODUTO, "AlterarProduto", {
+                const alterResult = await omieCall(base44, 'geral/produtos/', {
                     codigo_produto: prodOmie.codigo_produto,
                     codigo_produto_integracao: produto.id,
                     codigo: prodOmie.codigo,
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
                     unidade: prodOmie.unidade || "UN",
                     ncm: prodOmie.ncm || "19059090",
                     valor_unitario: 1.00
-                });
+                }, { call: 'AlterarProduto' });
                 await delay(2000);
 
                 if (alterResult.faultstring) {
@@ -283,11 +283,11 @@ Deno.serve(async (req) => {
                 const percAcrescimo = Number(((valorDesejado - 1) * 100).toFixed(4));
 
                 // AlterarPrecoItem com nPercAcrescimo em vez de nValorTabela
-                const itemResult = await omieCall(base44, controle, OMIE_URL_TABELA, "AlterarPrecoItem", {
+                const itemResult = await omieCall(base44, 'produtos/tabelaprecos/', {
                     nCodTabPreco: tabela.omie_id,
                     nCodProd: nCodProd,
                     nPercAcrescimo: percAcrescimo
-                });
+                }, { call: 'AlterarPrecoItem' });
                 await delay(2000);
 
                 const sucesso = !itemResult.faultstring;
