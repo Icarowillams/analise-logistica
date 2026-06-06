@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // 🔄 ATUALIZA logs de emissão NF que ficaram "pendentes" consultando ATIVAMENTE o Omie.
 //
@@ -208,7 +208,7 @@ async function cancelarPedidoLocal(base44, codigoPedido, motivo, user) {
 async function atualizarEspelho(base44, codigoPedido, resultado) {
   try {
     const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
-      { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1
+      { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1);
     const esp = espelhos?.[0];
     if (!esp) return;
     await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
@@ -228,7 +228,7 @@ async function atualizarEspelho(base44, codigoPedido, resultado) {
 async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
   try {
     const pedidos = await base44.asServiceRole.entities.Pedido.filter(
-      { omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1
+      { omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1);
     const p = pedidos?.[0];
     if (!p) return;
     const updates = {};
