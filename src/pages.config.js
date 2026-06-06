@@ -28,6 +28,8 @@ import Segmentos from './pages/Segmentos';
 import TabelasPreco from './pages/TabelasPreco';
 import TestesOmie from './pages/TestesOmie';
 import UnidadesMedida from './pages/UnidadesMedida';
+import EnviarRotasOmie from './pages/EnviarRotasOmie';
+import PreCadastros from './pages/PreCadastros';
 import __Layout from './Layout.jsx';
 
 
@@ -58,6 +60,8 @@ export const PAGES = {
     "TabelasPreco": TabelasPreco,
     "TestesOmie": TestesOmie,
     "UnidadesMedida": UnidadesMedida,
+    "EnviarRotasOmie": EnviarRotasOmie,
+    "PreCadastros": PreCadastros,
 }
 
 export const pagesConfig = {

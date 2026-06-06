@@ -252,7 +252,7 @@ export default function Clientes() {
   const processarTrocasSemCadastro = async (cliente) => {
     try {
       // Buscar todas as trocas sem cliente cadastrado que tenham o código deste cliente
-      const todasTrocas = await base44.entities.Troca.list('-data', 5000);
+      const todasTrocas = await base44.entities.PedidoTroca.list('-data_troca', 5000);
       const trocasParaAtualizar = todasTrocas.filter(t => 
         (!t.cliente_id || t.cliente_nome?.includes('Cliente Não Cadastrado')) &&
         t.cliente_nome?.includes(`Cliente Não Cadastrado: ${cliente.codigo_interno || cliente.codigo_integracao}`)
@@ -264,7 +264,7 @@ export default function Clientes() {
         
         // Atualizar cada troca
         for (const troca of trocasParaAtualizar) {
-          await base44.entities.Troca.update(troca.id, {
+          await base44.entities.PedidoTroca.update(troca.id, {
             cliente_id: cliente.id,
             cliente_nome: cliente.razao_social || cliente.nome_fantasia,
             vendedor_id: cliente.vendedor_id || '',

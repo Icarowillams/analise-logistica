@@ -132,12 +132,11 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     return;
   }
 
-  const consultaResp = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
-    const data = await res.json();
+  const data = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
       // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
-      if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
+      if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
         const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
         const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
         if (controleCb?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleCb.id, payloadCb).catch(() => {});
@@ -438,9 +437,7 @@ async function handlePedido(base44, topic, evt) {
     let nfAutorizadaExcluida = false;
     let numeroNfExcluida = null;
     try {
-      const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-      const nfResp1 = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
-      const nfData = await nfRes.json();
+      const nfData = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
       if (nfData?.ide?.nNF) {
         const dCan = String(nfData.ide?.dCan || '').trim();
         const cDeneg = String(nfData.ide?.cDeneg || '').trim();
@@ -488,9 +485,7 @@ async function handlePedido(base44, topic, evt) {
     // O Omie marca pedidos como "cancelado" após encerrar fluxo, mas a NF pode estar válida.
     console.log(`[webhook] Pedido ${pedido.numero_pedido} (tipo=${pedido.tipo}) — VendaProduto.Cancelada — verificando NF antes de cancelar...`);
     try {
-      const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-      const nfResp2 = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
-      const nfData = await nfRes.json();
+      const nfData = await omieCallShared(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
       if (nfData?.ide?.nNF) {
         const dCan = String(nfData.ide?.dCan || '').trim();
         const cDeneg = String(nfData.ide?.cDeneg || '').trim();
