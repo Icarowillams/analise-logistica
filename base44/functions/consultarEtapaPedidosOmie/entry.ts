@@ -1,8 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -22,19 +19,13 @@ function extrairNumeroNf(pedido) {
   return match?.[1] ? String(match[1]).trim() : '';
 }
 
-async function consultarEtapa(codigoPedido) {
-  const response = await fetch(OMIE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      call: 'ConsultarPedido',
-      app_key: OMIE_APP_KEY,
-      app_secret: OMIE_APP_SECRET,
-      param: [{ codigo_pedido: Number(codigoPedido) }]
-    })
-  });
-
-  const data = await response.json();
+async function consultarEtapa(base44, codigoPedido) {
+  let data;
+  try {
+    data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
+  } catch (e) {
+    data = { faultstring: e.message };
+  }
 
   if (data?.faultstring || data?.faultcode) {
     const msg = String(data.faultstring || '').toLowerCase();
@@ -67,6 +58,43 @@ async function consultarEtapa(codigoPedido) {
   };
 }
 
+async function getOmieCredentials(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    if (rows.length > 0) return { appKey: rows[0].omie_app_key, appSecret: rows[0].omie_app_secret };
+  } catch (_) { /* ignore */ }
+  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  return { appKey, appSecret };
+}
+
+async function checkCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  if (rows.length > 0 && rows[0].bloqueado) {
+    const ate = new Date(rows[0].bloqueado_ate || 0);
+    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
+  }
+}
+
+async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  await checkCircuitBreaker(base44);
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  const call = options.call || endpoint;
+  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
+  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
+  }
+  return resp.json();
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -87,12 +115,11 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < codigos.length; i++) {
       const codigo = codigos[i];
-      resultados[codigo] = await consultarEtapa(codigo);
+      resultados[codigo] = await consultarEtapa(base44, codigo);
       if (i < codigos.length - 1) await delay(200);
     }
 
     return Response.json({ sucesso: true, resultados });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
-  }
 });

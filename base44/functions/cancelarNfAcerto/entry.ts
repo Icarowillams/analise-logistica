@@ -1,72 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-
-// ═══ omieClient inline (auto-contido) ═══
-const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
-
-async function getOmieCredentials(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = cfg?.omie_app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.omie_app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
-}
-
-async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  const c = rows?.[0];
-  if (!c?.bloqueado) return { blocked: false };
-  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
-    return { blocked: false };
-  }
-  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
-}
-
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  const call = options.call || '';
-  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
-  if (!call) throw new Error('Informe options.call com o método Omie.');
-  const cb = await checkCircuitBreaker(base44);
-  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
-  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
-  let lastErr = '';
-  for (let i = 0; i <= RETRIES.length; i++) {
-    try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
-      clearTimeout(tid);
-      const data = await res.json();
-      if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          throw new Error(data.faultstring);
-        }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
-        throw new Error(data.faultstring);
-      }
-      if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
-      }
-      return data;
-    } catch (e: any) {
-      lastErr = e.message;
-      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
-      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
-      throw new Error(lastErr);
-    }
-  }
-  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
-}
-// ═══ fim omieClient inline ═══
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
 // ENDPOINTS (doc oficial Omie):
 // - /produtos/pedido/        → ConsultarPedido     (param: { codigo_pedido })
@@ -79,12 +11,48 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 //   nfDestInt.cnpj_cpf   → CNPJ/CPF do destinatário
 //   total.ICMSTot.vNF    → valor total da NF
 
-const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-
+const APP_KEY = Deno.env.get('OMIE_APP_KEY') || Deno.env.get('OMIE_API_KEY');
+const APP_SECRET = Deno.env.get('OMIE_APP_SECRET') || Deno.env.get('OMIE_API_SECRET');
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 function dataBR(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }
+
+async function getOmieCredentials(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    if (rows.length > 0) return { appKey: rows[0].omie_app_key, appSecret: rows[0].omie_app_secret };
+  } catch (_) { /* ignore */ }
+  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  return { appKey, appSecret };
+}
+
+async function checkCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  if (rows.length > 0 && rows[0].bloqueado) {
+    const ate = new Date(rows[0].bloqueado_ate || 0);
+    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
+  }
+}
+
+async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  await checkCircuitBreaker(base44);
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  const call = options.call || endpoint;
+  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
+  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
+  }
+  return resp.json();
+}
 
 Deno.serve(async (req) => {
   try {
@@ -169,6 +137,26 @@ Deno.serve(async (req) => {
     }
 
     // ───────────────────────────────────────────────────────────
+    // 2.5) Trocar etapa para "não entregue" (se configurado)
+    //      Lê etapa_nao_entregue da ConfiguracaoSistema
+    // ───────────────────────────────────────────────────────────
+    let etapaTrocada = false;
+    try {
+      const configs = await base44.asServiceRole.entities.ConfiguracaoSistema.filter({ chave: 'global' }, '-updated_date', 1).catch(() => []);
+      const etapaNaoEntregue = configs?.[0]?.etapa_nao_entregue || '70';
+      if (etapaNaoEntregue) {
+        await omieCall(base44, 'produtos/pedido/', {
+          codigo_pedido: Number(codigo_pedido),
+          etapa: etapaNaoEntregue
+        }, { call: 'TrocarEtapaPedido' });
+        etapaTrocada = true;
+        console.log(`[cancelarNfAcerto] Pedido ${codigo_pedido} movido para etapa ${etapaNaoEntregue}`);
+      }
+    } catch (etapaErr) {
+      console.warn(`[cancelarNfAcerto] Falha ao trocar etapa: ${etapaErr.message} — prosseguindo com cancelamento`);
+    }
+
+    // ───────────────────────────────────────────────────────────
     // 3) CancelarPedidoVenda
     //    (doc: /produtos/pedidovendafat/ CancelarPedidoVenda { nCodPed })
     // ───────────────────────────────────────────────────────────
@@ -191,7 +179,8 @@ Deno.serve(async (req) => {
       sucesso: true,
       numero_nf: numeroNf,
       data_previsao: dataPrev,
-      mensagem: 'Pedido cancelado no Omie' + (numeroNf ? ` (NF ${numeroNf})` : '')
+      etapa_trocada: etapaTrocada,
+      mensagem: 'Pedido cancelado no Omie' + (numeroNf ? ` (NF ${numeroNf})` : '') + (etapaTrocada ? ' — etapa atualizada para não entregue' : '')
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

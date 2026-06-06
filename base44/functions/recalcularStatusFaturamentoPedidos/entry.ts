@@ -1,37 +1,70 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 
 function fmt(d) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-async function listarNfsRecentes(dias) {
-  const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+async function listarNfsRecentes(base44, dias) {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - Number(dias || 30) * 86400000);
   const nfs = [];
   for (let pagina = 1; pagina <= 10; pagina++) {
-    const res = await fetch(OMIE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        call: 'ListarNF',
-        app_key: APP_KEY,
-        app_secret: APP_SECRET,
-        param: [{ pagina, registros_por_pagina: 100, dEmiInicial: fmt(inicio), dEmiFinal: fmt(hoje) }]
-      })
-    });
-    const data = await res.json();
+    let data;
+    try {
+      data = await omieCall(base44, 'produtos/nfconsultar/', {
+        pagina, registros_por_pagina: 100, dEmiInicial: fmt(inicio), dEmiFinal: fmt(hoje)
+      }, { call: 'ListarNF' });
+    } catch (e) {
+      if (/n[ãa]o existem registros/i.test(e.message)) break;
+      throw e;
+    }
     if (data.faultstring) {
       if (/n[ãa]o existem registros/i.test(data.faultstring)) break;
       throw new Error(data.faultstring);
     }
     nfs.push(...(data.nfCadastro || []));
     if (pagina >= (data.nTotPaginas || 1)) break;
+    await new Promise(r => setTimeout(r, 1200));
   }
   return nfs;
+}
+
+async function getOmieCredentials(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    if (rows.length > 0) return { appKey: rows[0].omie_app_key, appSecret: rows[0].omie_app_secret };
+  } catch (_) { /* ignore */ }
+  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  return { appKey, appSecret };
+}
+
+async function checkCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  if (rows.length > 0 && rows[0].bloqueado) {
+    const ate = new Date(rows[0].bloqueado_ate || 0);
+    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
+  }
+}
+
+async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  await checkCircuitBreaker(base44);
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  const call = options.call || endpoint;
+  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
+  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
+  }
+  return resp.json();
 }
 
 Deno.serve(async (req) => {
@@ -45,7 +78,7 @@ Deno.serve(async (req) => {
     const limite = body.limite || 500;
     const pedidos = await base44.asServiceRole.entities.Pedido.list('-updated_date', limite);
     const candidatos = pedidos.filter(p => p.omie_codigo_pedido && p.status_faturamento !== 'faturado' && !p.numero_nota_fiscal);
-    const nfs = await listarNfsRecentes(dias);
+    const nfs = await listarNfsRecentes(base44, dias);
     const nfPorPedido = new Map();
 
     nfs.forEach(nf => {

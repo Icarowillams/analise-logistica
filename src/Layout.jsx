@@ -102,6 +102,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Categorias', path: 'Categorias' },
           { title: 'Tabelas de Preço', path: 'TabelasPreco' },
           { title: 'Clientes', path: 'Clientes' },
+          { title: 'Consulta de Clientes', path: 'ConsultaClientes' },
+          { title: 'Vendedores', path: 'Vendedores' },
           { title: 'Segmentos', path: 'Segmentos' },
           { title: 'Redes', path: 'Redes' },
           { title: 'Ocorrências - Motivos', path: 'MotivosTroca' },
@@ -125,7 +127,9 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Consultar Pedidos', path: 'Pedidos' },
           { title: 'Emissão de Pedidos', path: 'EmissaoPedidos' },
           { title: 'Gerenciar Pedidos', path: 'GerenciarPedidosPage' },
-          { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' }
+          { title: 'Enviar Rotas Omie', path: 'EnviarRotasOmie' },
+          { title: 'Controle Pedidos Venda', path: 'ControlePedidosVenda' },
+          { title: 'Controle Pedidos Troca', path: 'ControlePedidosTroca' }
         ]
       },
       {
@@ -182,7 +186,9 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Permissões', path: 'Permissoes' },
           { title: 'Log Gerencial', path: 'LogGerencial' },
-          { title: 'Credenciais Omie', path: 'ConfiguracaoOmie' }
+          { title: 'Credenciais Omie', path: 'ConfiguracaoOmie' },
+          { title: 'Sincronizar Clientes CSV', path: 'sincronizarclientescsv' },
+          { title: 'Sincronizar Clientes Omie', path: 'SincronizarClienteOmie' }
         ]
       });
 
@@ -190,12 +196,6 @@ export default function Layout({ children, currentPageName }) {
         title: 'Integração Omie',
         icon: Settings,
         path: 'IntegracaoOmieDashboard'
-      });
-
-      allMenuItems.push({
-        title: 'Commits GitHub',
-        icon: ScrollText,
-        path: 'CommitsGithub'
       });
     }
 

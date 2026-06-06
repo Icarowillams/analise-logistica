@@ -1,74 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
 
-// ═══ omieClient inline (auto-contido) ═══
-const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
-
-async function getOmieCredentials(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = cfg?.omie_app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.omie_app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
-}
-
-async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  const c = rows?.[0];
-  if (!c?.bloqueado) return { blocked: false };
-  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
-    return { blocked: false };
-  }
-  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
-}
-
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  const call = options.call || '';
-  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
-  if (!call) throw new Error('Informe options.call com o método Omie.');
-  const cb = await checkCircuitBreaker(base44);
-  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
-  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
-  let lastErr = '';
-  for (let i = 0; i <= RETRIES.length; i++) {
-    try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
-      clearTimeout(tid);
-      const data = await res.json();
-      if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          throw new Error(data.faultstring);
-        }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
-        throw new Error(data.faultstring);
-      }
-      if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
-      }
-      return data;
-    } catch (e: any) {
-      lastErr = e.message;
-      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
-      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
-      throw new Error(lastErr);
-    }
-  }
-  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
-}
-// ═══ fim omieClient inline ═══
-
-// ✅ ITEM 7
 // 🔄 ATUALIZA logs de emissão NF que ficaram "pendentes" consultando ATIVAMENTE o Omie.
 //
 // Quando o webhook NFe.NotaAutorizada/Rejeitada não chega (ou demora demais),
@@ -89,46 +20,51 @@ const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 // Credenciais resolvidas dentro do handler (não no nível do módulo) para usar ConfiguracaoOmie do banco.
 // Fallback para env vars caso não haja config ativa.
 let _creds = null;
+async function resolverCreds(base44) {
+  if (_creds) return _creds;
+  try {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
+    const cfg = configs?.[0];
+    if (cfg?.app_key && cfg?.app_secret) {
+      _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret };
+      return _creds;
+    }
+  } catch { /* fallback */ }
+  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+  return _creds;
+}
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+// Classifica uma NF retornada pelo Omie em status_real + mensagem
+function classificarNF(nfEncontrada, codigoPedido) {
+  if (!nfEncontrada) return null;
+  const cStat = String(nfEncontrada.ide?.cStat || nfEncontrada.cStatus || '');
+  const numNf = nfEncontrada.ide?.nNF || nfEncontrada.cNumero || '';
+  const xMotivo = nfEncontrada.ide?.xMotivo || nfEncontrada.cMotivo || '';
 
-// Classifica o status de uma NF com base no cStat da SEFAZ
-function classificarNF(nf, codigoPedido) {
-  const cStat = String(nf?.ide?.cStat || '').trim();
-  const nNF = String(nf?.ide?.nNF || '').trim();
-  const xMotivo = String(nf?.ide?.xMotivo || '').trim();
-  if (!cStat && !nNF) return null; // Sem dados suficientes para classificar
-
-  const cStatNum = Number(cStat) || 0;
-
-  // 100 = Autorizada
   if (cStat === '100' || cStat === '150') {
-    return { status_real: 'emitida', numero_nf: nNF, codigo_sefaz: cStat, mensagem: nNF ? `NF ${nNF} autorizada` : 'NF autorizada pela SEFAZ' };
+    return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} autorizada` };
   }
-  // 101 = Cancelamento homologado
-  if (cStat === '101') {
-    return { status_real: 'cancelada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF ${nNF || codigoPedido} cancelada [SEFAZ ${cStat}]` };
+  if (cStat === '101' || cStat === '135') {
+    return { status_real: 'cancelada', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
   }
-  // 110, 301, 302, 205 = Denegada
   if (['110', '301', '302', '205'].includes(cStat)) {
-    return { status_real: 'denegada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF denegada [SEFAZ ${cStat}] ${xMotivo}`.trim() };
+    return { status_real: 'denegada', codigo_sefaz: cStat, mensagem: `NF denegada (${cStat})${xMotivo ? ' — ' + xMotivo : ''}` };
   }
-  // 135 = Evento registrado (não é rejeição)
-  if (cStat === '135') return null;
-  // cStat >= 200 e não é um dos acima = Rejeitada
-  if (cStatNum >= 200) {
-    return { status_real: 'rejeitada', numero_nf: nNF, codigo_sefaz: cStat, mensagem: `NF rejeitada [SEFAZ ${cStat}] ${xMotivo}`.trim() };
+  if (cStat && Number(cStat) >= 200) {
+    return { status_real: 'rejeitada', codigo_sefaz: cStat, mensagem: `NF rejeitada [SEFAZ ${cStat}]${xMotivo ? ' — ' + xMotivo : ''}` };
   }
-  // Se tem nNF mas sem cStat definitivo → provavelmente autorizada
-  if (nNF) {
-    return { status_real: 'emitida', numero_nf: nNF, codigo_sefaz: cStat || '100', mensagem: `NF ${nNF} autorizada` };
+  if (numNf) {
+    return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: cStat || '100', mensagem: `NF ${numNf}` };
   }
   return null;
 }
 
+// Consulta etapa atual do pedido no Omie via ConsultarPedido.
+// CORREÇÃO: Etapa 60 = faturado. Mesmo sem detalhes de NF na resposta, marca como emitida.
 async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
   let pedido;
   try {
@@ -136,7 +72,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
+      const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido', cacheMinutes: 5 });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
@@ -148,10 +84,9 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   const infoNfe = pedido.infoNfe || pedido.info_nf || pedido.informacoes_nfe || {};
   const etapa = String(cab.etapa || '');
   const nNF = infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || infoCad.nNumeroNFe || infoCad.numero_nfe || '';
-  const cStatConsulta = infoNfe.cStat || infoNfe.cStatus || '';
   const nf = {
     ide: {
-      cStat: cStatConsulta,
+      cStat: infoNfe.cStat || infoNfe.cStatus || '',
       nNF,
       xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || ''
     }
@@ -159,39 +94,50 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   const classificada = classificarNF(nf, codigoPedido);
   if (classificada) return { etapa, ...classificada };
 
-  // Etapa 60 sem cStat no ConsultarPedido → buscar NF real via nfconsultar para obter cStat da SEFAZ
+  // CORREÇÃO: Etapa 60 = faturado no Omie, mas precisamos verificar o cStat real.
+  // Sem cStat do ConsultarPedido, buscamos via ListarNF para não assumir "autorizada" cegamente.
   if (etapa === '60') {
     try {
-      const nfData = await omieCall(base44, 'produtos/nfconsultar/', {
-        nPagina: 1, nRegPorPagina: 5,
-        cDetalhar: 'S',
-        lApenasResumo: 'N',
-        tpNF: '1',
-        nfeFiltro: { nCodPed: Number(codigoPedido) }
-      }, { call: 'ListarNF', skipLog: true });
-      const nfs = nfData?.nfCadastro || [];
-      // Procurar a NF mais recente deste pedido
-      for (const nfItem of nfs) {
-        const ide = nfItem?.ide || {};
-        const cStatNf = String(ide.cStat || '').trim();
-        const nNfReal = String(ide.nNF || '').trim();
-        if (!cStatNf && !nNfReal) continue;
-        const classificadaNf = classificarNF({ ide }, codigoPedido);
-        if (classificadaNf) {
-          console.log(`[atualizarStatusLogsPendentes] Pedido ${codigoPedido} etapa 60: NF ${nNfReal} cStat=${cStatNf} → ${classificadaNf.status_real}`);
-          return { etapa, ...classificadaNf };
-        }
+      const nfsResp = await omieCall(base44, 'produtos/nfconsultar/', {
+        nPagina: 1,
+        nRegPorPagina: 10,
+        nCodPed: Number(codigoPedido)
+      }, { call: 'ListarNF', cacheMinutes: 5 });
+
+      const nfsList = nfsResp?.nfCadastro || [];
+      if (nfsList.length > 0) {
+        // Pega a NF mais recente
+        const nfReal = nfsList[nfsList.length - 1];
+        const cStatReal = String(nfReal?.infProt?.cStat || nfReal?.cStat || '');
+        const nNfReal = String(nfReal?.nNF || nfReal?.infNFe?.nNF || nNF || '');
+        const xMotivoReal = nfReal?.infProt?.xMotivo || '';
+
+        const classificadaReal = classificarNF({ cStat: cStatReal, nNF: nNfReal, xMotivo: xMotivoReal }, codigoPedido);
+        if (classificadaReal) return { etapa, ...classificadaReal };
+
+        // Se ListarNF retornou dados mas classificarNF não reconhece o cStat
+        return {
+          etapa,
+          status_real: cStatReal === '100' ? 'emitida' : 'aguardando',
+          numero_nf: nNfReal,
+          codigo_sefaz: cStatReal,
+          mensagem: cStatReal === '100' 
+            ? `NF ${nNfReal} autorizada (cStat=100 via ListarNF)`
+            : `NF em processamento (cStat=${cStatReal || '?'})`
+        };
       }
-      // Se ListarNF retornou resultados mas sem cStat definido → aguardando processamento SEFAZ
-      if (nfs.length > 0) {
-        const nfNuResumo = String(nfs[0]?.ide?.nNF || '').trim();
-        return { etapa, status_real: 'aguardando_nf', numero_nf: nfNuResumo, mensagem: `NF ${nfNuResumo || '?'} em processamento na SEFAZ (sem cStat definido)` };
-      }
-    } catch (e) {
-      console.warn(`[atualizarStatusLogsPendentes] Falha ao consultar NF do pedido ${codigoPedido}: ${e.message}`);
+    } catch (nfErr) {
+      console.warn(`[atualizarStatusLogsPendentes] ListarNF falhou para pedido ${codigoPedido}: ${nfErr.message}`);
     }
-    // Sem NF encontrada na consulta → aguardando emissão
-    return { etapa, status_real: 'aguardando_nf', numero_nf: nNF || '', mensagem: nNF ? `Pedido etapa 60 com NF ${nNF} — aguardando confirmação SEFAZ` : 'Pedido etapa 60 — aguardando NF da SEFAZ' };
+
+    // Fallback: ListarNF falhou ou não retornou NFs — marca como aguardando
+    return {
+      etapa,
+      status_real: 'aguardando',
+      numero_nf: nNF || '',
+      codigo_sefaz: '',
+      mensagem: `Pedido na etapa 60 mas sem NF confirmada pela SEFAZ`
+    };
   }
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
 }
@@ -263,7 +209,6 @@ async function atualizarEspelho(base44, codigoPedido, resultado) {
   try {
     const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
       { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1
-    );
     const esp = espelhos?.[0];
     if (!esp) return;
     await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
@@ -284,7 +229,6 @@ async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
   try {
     const pedidos = await base44.asServiceRole.entities.Pedido.filter(
       { omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1
-    );
     const p = pedidos?.[0];
     if (!p) return;
     const updates = {};
@@ -301,6 +245,43 @@ async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
   } catch (e) {
     console.error('[atualizarStatusLogsPendentes] falha atualizar pedido local:', e.message);
   }
+}
+
+async function getOmieCredentials(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    if (rows.length > 0) return { appKey: rows[0].omie_app_key, appSecret: rows[0].omie_app_secret };
+  } catch (_) { /* ignore */ }
+  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  return { appKey, appSecret };
+}
+
+async function checkCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  if (rows.length > 0 && rows[0].bloqueado) {
+    const ate = new Date(rows[0].bloqueado_ate || 0);
+    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
+  }
+}
+
+async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  await checkCircuitBreaker(base44);
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  const call = options.call || endpoint;
+  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
+  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
+  }
+  return resp.json();
 }
 
 Deno.serve(async (req) => {
@@ -510,6 +491,7 @@ Deno.serve(async (req) => {
     const autorizados = resultados.filter(r => r.novo_status === 'autorizada').length;
     const rejeitados = resultados.filter(r => r.novo_status === 'rejeitada').length;
     const aindaPendentes = resultados.filter(r => r.ainda_pendente).length;
+
 
     return Response.json({
       sucesso: true,
