@@ -68,28 +68,10 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-async function resolverCredsOmie(base44: any) {
-  const c = await getOmieCredentials(base44);
-  APP_KEY = c.appKey; APP_SECRET = c.appSecret;
-}
-
-// ✅ ITEM 7
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
-// Credenciais resolvidas em runtime (ConfiguracaoOmie no banco, com fallback aos Secrets).
-let APP_KEY = null;
-let APP_SECRET = null;
 
 // Delay mínimo entre chamadas à API Omie (~17 req/min, dentro da cota).
 const DELAY_ENTRE_CHAMADAS_MS = 3500;
 
-// Erro especial para sinalizar bloqueio da API (interrompe todo o processamento).
-class OmieBloqueadaError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'OmieBloqueadaError';
-  }
-}
 
 // cStat SEFAZ:
 //   100/150 = autorizada
@@ -215,11 +197,11 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await resolverCredsOmie(base44);
-    if (!APP_KEY || !APP_SECRET) {
+    const { appKey: _ak, appSecret: _as } = await getOmieCredentials(base44);
+    if (!_ak || !_as) {
       return Response.json({ error: 'Credenciais Omie não configuradas' }, { status: 500 });
     }
-    console.log(`[sincronizarStatusCargasOmie] Usando APP_KEY: ...${String(APP_KEY).slice(-4)}`);
+    console.log(`[sincronizarStatusCargasOmie] Usando APP_KEY: ...${String(_ak).slice(-4)}`);
 
     const body = await req.json().catch(() => ({}));
     const listLimit = Math.min(Number(body.list_limit || 500), 500);
