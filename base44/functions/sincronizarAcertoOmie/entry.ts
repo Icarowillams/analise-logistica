@@ -3,18 +3,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
 async function consultarPedido(base44, codigoPedido, tentativa = 1) {
-  // Usa credenciais do banco (ConfiguracaoOmie) com fallback para env
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  const res = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
-  const data = await res.json().catch(() => ({}));
-  const fs = String(data?.faultstring || '').toLowerCase();
-  const transient = fs.includes('cota') || fs.includes('aguarde') || fs.includes('limite de requisi') || res.status === 429;
-  if (transient && tentativa < 4) {
-    await new Promise(r => setTimeout(r, 3000 * tentativa));
-    return consultarPedido(base44, codigoPedido, tentativa + 1);
+  try {
+    const data = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
+    return data;
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    const transient = msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite de requisi') || msg.includes('429') || msg.includes('timeout');
+    if (transient && tentativa < 4) {
+      await new Promise(r => setTimeout(r, 3000 * tentativa));
+      return consultarPedido(base44, codigoPedido, tentativa + 1);
+    }
+    throw err;
   }
-  return data;
 }
 
 // Sincroniza notas do AcertoCaixa com o status atual no Omie.

@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     // 1) ConsultarPedido — pega CNPJ do cliente e valor total
     //    (doc: /produtos/pedido/ ConsultarPedido { codigo_pedido })
     // ───────────────────────────────────────────────────────────
-    const consulta = await omieCall('produtos/pedido', 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
+    const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido' });
     if (consulta.faultstring) {
       const fs = consulta.faultstring.toLowerCase();
       if (fs.includes('cancelad') || fs.includes('excluíd') || fs.includes('excluid') || fs.includes('não encontrad') || fs.includes('nao encontrad')) {
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
       for (let pagina = 1; pagina <= 5; pagina++) {
         param.pagina = pagina;
-        const resp = await omieCall('produtos/nfconsultar', 'ListarNF', param);
+        const resp = await omieCall(base44, 'produtos/nfconsultar/', param, { call: 'ListarNF' });
         const lista = resp?.nfCadastro || [];
         if (lista.length === 0) break;
 
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
     // 3) CancelarPedidoVenda
     //    (doc: /produtos/pedidovendafat/ CancelarPedidoVenda { nCodPed })
     // ───────────────────────────────────────────────────────────
-    const cancel = await omieCall('produtos/pedidovendafat', 'CancelarPedidoVenda', { nCodPed: Number(codigo_pedido) });
+    const cancel = await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigo_pedido) }, { call: 'CancelarPedidoVenda' });
     if (cancel.faultstring) {
       const fs = cancel.faultstring.toLowerCase();
       if (fs.includes('cancelad') || fs.includes('já foi') || fs.includes('ja foi')) {
