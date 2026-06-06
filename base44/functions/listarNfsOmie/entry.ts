@@ -1,21 +1,29 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-// ✅ ITEM 7: _shared/omieClient
-import { omieCall as omieCallShared, checkCircuitBreaker } from '../_shared/omieClient/entry.ts';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 
-// Resolve credenciais priorizando a ConfiguracaoOmie ativa (banco) e só caindo
-// para os Secrets se não houver config ativa. Evita usar chaves suspensas/inválidas
-// nos Secrets quando o banco tem as credenciais corretas.
-// ✅ resolverCreds → _shared/omieClient
+async function resolverCreds(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  return {
+    app_key: ativo?.app_key || Deno.env.get('OMIE_APP_KEY'),
+    app_secret: ativo?.app_secret || Deno.env.get('OMIE_APP_SECRET')
+  };
+}
 
-// ✅ omieCall local → wrapper _shared/omieClient
-async function omieCall(base44, callOrEndpoint, param, optsOrUndef) {
-  const opts = typeof optsOrUndef === 'object' && optsOrUndef !== null ? optsOrUndef : {};
-  // Se callOrEndpoint contém '/' → é um endpoint direto
-  if (callOrEndpoint && callOrEndpoint.includes('/')) return omieCallShared(base44, callOrEndpoint, param, opts);
-  // Senão é o nome do call → usar endpoint padrão desta função
-  return omieCallShared(base44, 'produtos/nfconsultar/', param, { ...opts, call: callOrEndpoint });
+async function omieCall(base44, call, param) {
+  const { app_key, app_secret } = await resolverCreds(base44);
+  if (!app_key || !app_secret) throw new Error('Credenciais Omie não configuradas.');
+
+  const url = OMIE_BASE_URL + 'produtos/nfconsultar/';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
+  });
+  const data = await res.json();
+  if (data.faultstring) throw new Error(data.faultstring);
+  return data;
 }
 
 Deno.serve(async (req) => {
@@ -34,7 +42,6 @@ Deno.serve(async (req) => {
       cnpj_cliente
     } = body;
 
-    // Doc Omie: máx 100 registros/página
     const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
     if (data_inicial) param.dEmiInicial = data_inicial;
     if (data_final) param.dEmiFinal = data_final;
@@ -42,7 +49,7 @@ Deno.serve(async (req) => {
     if (cnpj_cliente) param.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
 
     const t0 = Date.now();
-    const data = await omieCall(base44, 'ListarNF', param, { cacheMinutes: 10 });
+    const data = await omieCall(base44, 'ListarNF', param);
     const duracao = Date.now() - t0;
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -54,32 +61,20 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    // Doc Omie nfconsultar: ListarNF retorna nfStatus.cStat (status SEFAZ real).
-    // Códigos SEFAZ comuns:
-    //   - 100 = Autorizada
-    //   - 101 = Cancelada
-    //   - 102 = Inutilizada
-    //   - 110 = Denegada (110/301/302)
-    //   - 135 = Evento autorizado (carta de correção etc — mantém autorizada)
-    //   - 200+ (sem ser 200/135) = Rejeitada
-    // Fallback: derivar de ide.dCan / ide.dInut / ide.cDeneg / compl.cChaveNFe
     const derivarStatus = (nf) => {
       const ide = nf.ide || {};
       const compl = nf.compl || {};
       const nfStatus = nf.nfStatus || {};
       const cStat = String(nfStatus.cStat || compl.cStat || '').trim();
 
-      // 1) Códigos SEFAZ explícitos têm prioridade absoluta
       if (cStat) {
         if (cStat === '101') return 'cancelada';
         if (cStat === '102') return 'inutilizada';
         if (cStat === '110' || cStat === '301' || cStat === '302') return 'denegada';
         if (cStat === '100' || cStat === '135') return 'autorizada';
-        // Qualquer outro código diferente de 100 = rejeitada/erro
         return 'rejeitada';
       }
 
-      // 2) Fallback por campos de evento
       if (ide.dCan && String(ide.dCan).trim()) return 'cancelada';
       if (ide.cDeneg === 'S' || ide.cDeneg === 'D') return 'denegada';
       if (ide.dInut && String(ide.dInut).trim()) return 'inutilizada';
@@ -103,7 +98,7 @@ Deno.serve(async (req) => {
       cNomeFantasia: nf.nfDestInt?.cNomeFantasia || nf.nfDestInt?.nome_fantasia || '',
       cCPFCNPJDest: nf.nfDestInt?.cnpj_cpf || nf.cCPFCNPJDest,
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
-      cStatus: derivarStatus(nf), // 'autorizada' | 'cancelada' | 'denegada' | 'inutilizada' | 'pendente'
+      cStatus: derivarStatus(nf),
       cOperacao: nf.ide?.cNatOp || nf.cOperacao,
       itens: nf.det || [],
       total: nf.total || null,
