@@ -1,14 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══════════════════════════════════════════════════════════════════
-// exportarVendasItemDia — itens vendidos no dia com quantidade, venda,
-// custo e margem por item, segmentados em varejo/rede.
+// exportarVendasItemDia — itens vendidos no dia com quantidade e venda
+// por item, segmentados em varejo/rede.
 //
 // Header: api_key: <WEBHOOK_INDICADORES_TOKEN>
 // Body JSON: { "data": "2026-06-06" }  (opcional — default = hoje)
 //
 // Fonte: Pedido (tipo=venda, status=faturado) + PedidoItem do dia.
-// Custo: lido de PedidoItem.custo_unitario / Produto se existir; senão 0.
 // Segmento: Cliente → Rede. Mapeia nomes para as redes oficiais do
 // app financeiro (NOVO ATACAREJO, ASSAI, ARCOMIX, MIX MATHEUS, CARREFOUR).
 // ═══════════════════════════════════════════════════════════════════
@@ -74,10 +73,10 @@ Deno.serve(async (req) => {
   });
 
   if (pedidosDia.length === 0) {
-    return Response.json({ data, total_venda: 0, total_margem: 0, itens: [] });
+    return Response.json({ data, total_venda: 0, itens: [] });
   }
 
-  // ── Carregar Clientes/Redes p/ segmentação + Produtos p/ EAN e custo ──
+  // ── Carregar Clientes/Redes p/ segmentação + Produtos p/ EAN ──
   const [clientes, redes, produtos] = await Promise.all([
     base44.asServiceRole.entities.Cliente.list('-created_date', 50000),
     base44.asServiceRole.entities.Rede.list(),
@@ -114,14 +113,12 @@ Deno.serve(async (req) => {
     itensTodos.push(...itens);
   }
 
-  // Resolve nome/EAN/custo de um item a partir do Produto cadastrado.
+  // Resolve nome/EAN de um item a partir do Produto cadastrado.
   function resolverProduto(item) {
     const prod = produtoById.get(item.produto_id) || produtoByCodigo.get(String(item.produto_codigo));
     const nome = item.produto_nome || prod?.nome || prod?.descricao || item.produto_descricao || 'SEM NOME';
     const codigo = prod?.cod_barras || '';
-    // Custo unitário: campo do item, ou do produto (caso exista futuramente), senão 0.
-    const custoUnit = Number(item.custo_unitario ?? prod?.custo_unitario ?? prod?.custo ?? 0) || 0;
-    return { nome, codigo, custoUnit };
+    return { nome, codigo };
   }
 
   // ── Agregar por item + segmento + rede ──
@@ -129,20 +126,18 @@ Deno.serve(async (req) => {
   for (const item of itensTodos) {
     const seg = pedidoInfo.get(item.pedido_id);
     if (!seg) continue;
-    const { nome, codigo, custoUnit } = resolverProduto(item);
+    const { nome, codigo } = resolverProduto(item);
     const chave = `${nome}||${codigo}||${seg.segmento}||${seg.rede}`;
 
     const qtd = Number(item.quantidade) || 0;
     const venda = Number(item.valor_total) || 0;
-    const custo = qtd * custoUnit;
 
     const ex = agregado.get(chave) || {
       codigo, item: nome, segmento: seg.segmento, rede: seg.rede,
-      quantidade: 0, venda: 0, custo: 0, margem: 0
+      quantidade: 0, venda: 0
     };
     ex.quantidade += qtd;
     ex.venda += venda;
-    ex.custo += custo;
     agregado.set(chave, ex);
   }
 
@@ -152,13 +147,10 @@ Deno.serve(async (req) => {
     segmento: r.segmento,
     rede: r.rede,
     quantidade: round2(r.quantidade),
-    venda: round2(r.venda),
-    custo: round2(r.custo),
-    margem: round2(r.venda - r.custo)
+    venda: round2(r.venda)
   })).sort((a, b) => b.venda - a.venda);
 
   const total_venda = round2(itens.reduce((a, i) => a + i.venda, 0));
-  const total_margem = round2(itens.reduce((a, i) => a + i.margem, 0));
 
-  return Response.json({ data, total_venda, total_margem, itens });
+  return Response.json({ data, total_venda, itens });
 });
