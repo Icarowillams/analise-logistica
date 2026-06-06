@@ -100,11 +100,11 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
 
   let acumulados: any[] = [];
   for (let pag = 1; pag <= 5; pag++) {
-    const data = await omieCall(base44, 'ListarContasReceber', {
+    const data = await omieCall(base44, 'financas/contareceber/', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
       filtrar_por_data_de: fmt(inicio), filtrar_por_data_ate: fmt(futuro),
       filtrar_por_cpf_cnpj: cnpj, filtrar_apenas_titulos_em_aberto: 'S'
-    });
+    }, { call: 'ListarContasReceber' });
     const lista = data?.conta_receber_cadastro || [];
     acumulados.push(...lista);
     if (pag >= (data?.total_de_paginas || 1)) break;

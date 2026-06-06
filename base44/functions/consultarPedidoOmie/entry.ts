@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     if (codigo_pedido) param.codigo_pedido = Number(codigo_pedido);
     if (codigo_pedido_integracao) param.codigo_pedido_integracao = String(codigo_pedido_integracao);
 
-    const data = await omieCall(base44, 'ConsultarPedido', param, { cacheMinutes: 10 });
+    const data = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido' });
     const pedido = data.pedido_venda_produto;
 
     if (!pedido) return Response.json({ error: 'Pedido não retornado pelo Omie' }, { status: 404 });
