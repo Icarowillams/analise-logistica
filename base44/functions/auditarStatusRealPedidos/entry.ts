@@ -14,8 +14,6 @@ function encontrarPedido(pedidos, chave) {
     p.id === chaveTexto ||
     String(p.numero_pedido || '') === chaveTexto ||
     normalizarNumero(p.numero_pedido) === chaveNormalizada
-  );
-}
 
 function camposPossiveisStatus(registro) {
   const resultado = {};
@@ -32,9 +30,6 @@ function camposPossiveisStatus(registro) {
       nome.includes('ativo') ||
       nome.includes('fatur') ||
       nome.includes('etapa')
-    ) {
-      resultado[campo] = valor;
-    }
   }
   return resultado;
 }
@@ -50,8 +45,6 @@ function encontrarRelacionados(lista, pedido) {
     normalizarNumero(item.numero_omie) === numeroNormalizado ||
     String(item.codigo_pedido || '') === String(pedido.omie_codigo_pedido || '') ||
     String(item.omie_codigo_pedido || '') === String(pedido.omie_codigo_pedido || '')
-  );
-}
 
 async function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

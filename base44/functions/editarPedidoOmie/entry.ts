@@ -81,10 +81,6 @@ function setMemoryCache(key, data) {
   memoryCache.set(key, { data, ts: Date.now() });
 }
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 Deno.serve(async (req) => {
     try {

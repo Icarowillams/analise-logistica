@@ -77,9 +77,6 @@ const memoryCache = new Map();
 function getFromMemoryCache(key, ttlMs = 30000) { const entry = memoryCache.get(key); return entry && (Date.now() - entry.ts) < ttlMs ? entry.data : null; }
 function setMemoryCache(key, data) { memoryCache.set(key, { data, ts: Date.now() }); }
 
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 // Lista pedidos da etapa 60 (Faturado) e cruza com ListarNF para devolver
 // o status real de cada NF: emitida / rejeitada / cancelada / denegada / aguardando.

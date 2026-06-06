@@ -112,8 +112,6 @@ function setMemoryCache(key, data) {
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 
-);
-  }
   return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 

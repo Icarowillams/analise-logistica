@@ -68,6 +68,11 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
+async function resolverCredsOmie(base44: any) {
+  const c = await getOmieCredentials(base44);
+  return { app_key: c.appKey, app_secret: c.appSecret };
+}
+
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,9 +81,6 @@ const normalizar = (v) => String(v || '').trim().toLowerCase();
 const somenteDigitos = (v) => String(v || '').replace(/\D/g, '');
 const valorValido = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}) {
   const body = {
     call: endpoint,
     app_key: creds.app_key,

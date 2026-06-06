@@ -68,7 +68,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-// 🐛 FIX item1+2: credenciais movidas para resolverCredsOmie() — evita top-level warm-start
 //   e corrige OMIE_API_KEY → OMIE_APP_KEY (nome correto do secret)
 const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 
@@ -76,74 +75,6 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 const REGISTROS_PAGINA = 100;
 const PARALELISMO = 3; // conservador (limite é 4 simultâneas)
 
-);
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}) {
-  const { maxRetries = 3, cacheMinutes = 0, logIntegration = true } = typeof opts === 'number' ? { maxRetries: 3, cacheMinutes: 0, logIntegration: true } : opts;
-  const chave = `${OMIE_URL}|${call}|${JSON.stringify(param || {})}`;
-  const controles = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controle = controles?.[0];
-
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    throw new Error(`API Omie bloqueada temporariamente. Tente novamente em ${controle.bloqueado_ate}`);
-  }
-
-  if (cacheMinutes > 0) {
-    const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
-    if (caches?.[0] && new Date(caches[0].expira_em) > new Date()) return caches[0].valor;
-  }
-
-  const { app_key, app_secret } = await resolverCredsOmie(base44);
-  let ultimoErro = '';
-  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    const inicio = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(OMIE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ call, app_key, app_secret, param: [param] }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    const data = await res.json();
-
-    if (data.faultstring || data.faultcode) {
-      const msg = String(data.faultstring || '').toLowerCase();
-      const deveBloquear = res.status === 425 || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('tente novamente mais tarde');
-      if (deveBloquear) {
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: new Date(Date.now() + 30 * 60000).toISOString(), ultimo_erro: data.faultstring || '', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        throw new Error(data.faultstring || 'API Omie bloqueada temporariamente');
-      }
-
-      const deveTentar = res.status === 429 || msg.includes('too many') || msg.includes('aguarde') || msg.includes('cota') || msg.includes('limite de requisi') || msg.includes('internal error') || msg.includes('timeout') || msg.includes('indispon');
-      ultimoErro = data.faultstring || 'Erro Omie';
-      if (deveTentar && tentativa < maxRetries) {
-        await new Promise(r => setTimeout(r, 2500 * tentativa));
-        continue;
-      }
-      throw new Error(ultimoErro);
-    }
-
-    if (logIntegration) {
-      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-        endpoint: OMIE_URL,
-        call,
-        operacao: call,
-        status: 'sucesso',
-        payload_enviado: JSON.stringify(param || {}).slice(-500),
-        payload_resposta: JSON.stringify(data || {}).slice(-500),
-        duracao_ms: Date.now() - inicio,
-        tentativas: tentativa
-      }).catch(() => {});
-    }
-    return data;
-  }
-
-  throw new Error(ultimoErro || 'Máximo de tentativas Omie excedido');
-}
 
 async function listarClientesOmie(base44, pagina) {
   return await omieCall(base44, "ListarClientes", {

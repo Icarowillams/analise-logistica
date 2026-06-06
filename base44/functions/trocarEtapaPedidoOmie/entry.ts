@@ -85,10 +85,6 @@ function setMemoryCache(key, data) {
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 async function trocarUmPedido(base44, pedido, etapaDestino) {
   const etapa = String(pedido.etapa || etapaDestino || '');

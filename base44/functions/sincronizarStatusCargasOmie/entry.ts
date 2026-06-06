@@ -68,6 +68,11 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
+async function resolverCredsOmie(base44: any) {
+  const c = await getOmieCredentials(base44);
+  APP_KEY = c.appKey; APP_SECRET = c.appSecret;
+}
+
 // ✅ ITEM 7
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
@@ -101,10 +106,6 @@ function classificarCStat(cStat) {
   return null;
 }
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 async function buscarNfPorPedido(base44, codigoPedido) {
   try {

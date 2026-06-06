@@ -78,10 +78,6 @@ const configCache = { value: false, expiresAt: 0 };
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}
 
 async function getModoEconomico(base44) {
     const now = Date.now();

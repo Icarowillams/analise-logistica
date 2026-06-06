@@ -70,9 +70,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}) {
   const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   

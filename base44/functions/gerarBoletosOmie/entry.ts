@@ -75,9 +75,6 @@ const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'V
 const BATCH_SIZE = 3;       // títulos processados em paralelo
 const BATCH_DELAY_MS = 600; // delay entre lotes (respeita rate limit Omie)
 
-);
-  return omieCall(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
-}
 
 async function listarTitulosDoPedido(base44: any, codigoPedido: string | number) {
   const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;

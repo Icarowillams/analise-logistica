@@ -74,10 +74,6 @@ const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 const TAMANHO_LOTE_OMIE = 50;
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}
 
 async function chamarOmie(base44, call, param) {
   return await omieCall(base44, call, param, { cacheMinutes: 15 });

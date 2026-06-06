@@ -14,8 +14,6 @@ async function deletarLote(base44, entityName, registros) {
     const lote = registros.slice(i, i + LOTE);
     await Promise.all(
       lote.map(r => base44.asServiceRole.entities[entityName].delete(r.id).then(() => { removidos++; }).catch(() => {}))
-    );
-  }
   return removidos;
 }
 

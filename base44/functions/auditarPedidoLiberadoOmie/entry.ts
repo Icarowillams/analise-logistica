@@ -14,8 +14,6 @@ function encontrarPedidoPrincipal(pedidos, chave) {
     String(pedido.numero_pedido || '') === chaveTexto ||
     normalizarNumero(pedido.numero_pedido) === chaveNormalizada ||
     String(pedido.omie_codigo_pedido || '') === chaveTexto
-  );
-}
 
 function encontrarPedidoLiberado(registros, pedido, chave) {
   const numeroNormalizado = normalizarNumero(pedido?.numero_pedido || chave);
@@ -29,8 +27,6 @@ function encontrarPedidoLiberado(registros, pedido, chave) {
     String(registro.codigo_pedido || '') === codigoOmie ||
     String(registro.omie_codigo_pedido || '') === codigoOmie ||
     String(registro.codigo_pedido || '') === String(chave)
-  );
-}
 
 function primeiroValor(registros, campos) {
   for (const registro of registros) {

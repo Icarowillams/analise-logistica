@@ -68,7 +68,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-// 🐛 FIX: Credenciais top-level removidas — omieCall já usa resolverCredsOmie dinâmico
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
 
 // Endpoint pedido vs geral conforme a call
@@ -79,9 +78,6 @@ function urlParaCall(call) {
 }
 
 // omieCall com circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}) {
   const APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const url = urlParaCall(endpoint);

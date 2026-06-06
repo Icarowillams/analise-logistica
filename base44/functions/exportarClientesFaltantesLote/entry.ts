@@ -70,9 +70,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 
-);
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}
 
 function normalizarCpfCnpj(doc) {
   return (doc || '').replace(/[.\-\/\s]/g, '');

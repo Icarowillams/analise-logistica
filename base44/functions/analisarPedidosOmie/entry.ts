@@ -24,8 +24,6 @@ function encontrarPedido(pedidos, chave) {
     p.id === chaveTexto ||
     String(p.numero_pedido || '') === chaveTexto ||
     normalizarNumero(p.numero_pedido) === chaveNormalizada
-  );
-}
 
 async function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

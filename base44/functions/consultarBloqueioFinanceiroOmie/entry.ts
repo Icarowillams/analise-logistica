@@ -99,9 +99,6 @@ function setCached(key, data, modoEconomico) {
 // Substitui o antigo consultarBloqueioFinanceiro que dependia de webhook externo.
 
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429. Endpoint financeiro: /geral/.
-);
-  return omieCall(base44, 'financas/contareceber/', param, { call: callOrEndpoint });
-}) {
   const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
   const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
   const maxTentativas = options.maxTentativas || 3;

@@ -95,8 +95,6 @@ function debugLog(base44, mensagem, extra = {}) {
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 // O endpoint base usa /produtos/pedido/ para pedidos; para chamadas gerais (contas correntes) usa /geral/.
 
-);
-  }
   return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
 }
 

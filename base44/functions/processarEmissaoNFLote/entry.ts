@@ -83,8 +83,6 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
   return error;
 }
 
-);
-}
 
 async function buscarContextoPedido(base44, codigoPedido) {
   try {
@@ -193,8 +191,6 @@ Deno.serve(async (req) => {
       return Response.json(
         { error: 'API Omie bloqueada por rate limit', bloqueado_ate: breaker.bloqueado_ate },
         { status: 425 }
-      );
-    }
 
     const pedidos = Array.isArray(fila.pedidos) ? fila.pedidos.map(String).filter(Boolean) : [];
     const resultados = Array.isArray(fila.resultados) ? [...fila.resultados] : [];

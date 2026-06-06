@@ -75,9 +75,6 @@ const OMIE_URL_PRODUTO = "https://app.omie.com.br/api/v1/geral/produtos/";
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 // Lista produtos do Omie com paginação
 async function listarProdutosOmie() {

@@ -104,9 +104,6 @@ async function registrarBloqueio425(base44, controle, faultstring) {
   return err;
 }
 
-);
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
 
 async function buscarProdutoOmie(base44, controle, codigoIntegracao) {
     const result = await omieCall(base44, controle, OMIE_URL_PRODUTO, "ConsultarProduto", {

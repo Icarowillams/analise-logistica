@@ -82,9 +82,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
-);
-  return omieCall(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
-}
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 function dataBR(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }

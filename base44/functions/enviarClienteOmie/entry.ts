@@ -149,10 +149,6 @@ function validarCpfCnpj(doc) {
     return false;
 }
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}
 
 async function buscarClienteOmiePorCpfCnpj(base44, cnpjCpf) {
     if (!cnpjCpf) return null;

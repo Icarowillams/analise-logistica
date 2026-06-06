@@ -115,8 +115,6 @@ function extrairCodigoCliente(cliente, pedidoLocal, pedidoOmie, clienteOmie) {
     pedidoOmie.codigo_cliente_integracao ||
     pedidoOmie.codigo_cliente ||
     ''
-  );
-}
 
 Deno.serve(async (req) => {
   try {

@@ -13,8 +13,6 @@ function encontrarPedido(pedidos, chave) {
     p.id === chaveTexto ||
     String(p.numero_pedido || '') === chaveTexto ||
     normalizarNumero(p.numero_pedido) === chaveNormalizada
-  );
-}
 
 Deno.serve(async (req) => {
   try {

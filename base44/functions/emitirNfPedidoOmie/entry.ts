@@ -105,10 +105,6 @@ async function resolverCredsOmie(base44) {
   return { OMIE_APP_KEY: Deno.env.get('OMIE_APP_KEY'), OMIE_APP_SECRET: Deno.env.get('OMIE_APP_SECRET') };
 }
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
-}
 
 Deno.serve(async (req) => {
   try {

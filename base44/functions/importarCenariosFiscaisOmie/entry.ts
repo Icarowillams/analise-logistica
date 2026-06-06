@@ -79,9 +79,6 @@ async function logOmie(base44, payload) {
   try { await base44.asServiceRole.entities.LogIntegracaoOmie.create(payload); } catch (_) {}
 }
 
-);
-  return omieCall(base44, 'geral/cnaefiscal/', param, { call: callOrEndpoint });
-}
 
 async function listarTodosCenarios() {
   const registros = [];

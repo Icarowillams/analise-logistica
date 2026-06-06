@@ -88,10 +88,6 @@ function setMemoryCache(key, data) {
 // omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
 // Roteia ConsultarPedido para /produtos/pedido/ e demais (CancelarPedidoVenda) para /produtos/pedidovendafat/.
 
-);
-  if (typeof optsOrCall === 'string') return omieCall(base44, callOrEndpoint, param, { call: optsOrCall });
-  return omieCall(base44, 'produtos/pedidovendafat/', param, { call: callOrEndpoint });
-}
 
 Deno.serve(async (req) => {
   try {

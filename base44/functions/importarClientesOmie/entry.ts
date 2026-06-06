@@ -73,9 +73,6 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '');
 
-);
-  return omieCall(base44, 'geral/clientes/', param, { call: callOrEndpoint });
-}
 
 /**
  * Importa clientes do Omie para o Base44 vinculando codigo_omie por CNPJ/CPF.
