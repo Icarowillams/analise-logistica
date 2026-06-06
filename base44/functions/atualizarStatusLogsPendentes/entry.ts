@@ -136,7 +136,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
       console.log(`[atualizarStatusLogsPendentes] MOCK Omie usado para pedido ${codigoPedido}; nenhuma chamada real realizada`);
       pedido = mockOmieResponse?.pedido_venda_produto || mockOmieResponse || {};
     } else {
-      const r = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigoPedido) });
+      const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
       pedido = r?.pedido_venda_produto || r || {};
     }
   } catch (e) {
@@ -148,9 +148,10 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   const infoNfe = pedido.infoNfe || pedido.info_nf || pedido.informacoes_nfe || {};
   const etapa = String(cab.etapa || '');
   const nNF = infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || infoCad.nNumeroNFe || infoCad.numero_nfe || '';
+  const cStatConsulta = infoNfe.cStat || infoNfe.cStatus || '';
   const nf = {
     ide: {
-      cStat: infoNfe.cStat || infoNfe.cStatus || '',
+      cStat: cStatConsulta,
       nNF,
       xMotivo: infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || ''
     }
@@ -158,16 +159,39 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   const classificada = classificarNF(nf, codigoPedido);
   if (classificada) return { etapa, ...classificada };
 
-  // CORREÇÃO: Etapa 60 = faturado no Omie. Mesmo sem detalhes da NF no ConsultarPedido,
-  // o pedido FOI emitido. Marca como 'emitida' para resolver logs pendentes.
+  // Etapa 60 sem cStat no ConsultarPedido → buscar NF real via nfconsultar para obter cStat da SEFAZ
   if (etapa === '60') {
-    return { 
-      etapa, 
-      status_real: 'emitida', 
-      numero_nf: nNF || '', 
-      codigo_sefaz: '100', 
-      mensagem: nNF ? `NF ${nNF} autorizada` : 'NF emitida (etapa 60 confirmada no Omie)' 
-    };
+    try {
+      const nfData = await omieCall(base44, 'produtos/nfconsultar/', {
+        nPagina: 1, nRegPorPagina: 5,
+        cDetalhar: 'S',
+        lApenasResumo: 'N',
+        tpNF: '1',
+        nfeFiltro: { nCodPed: Number(codigoPedido) }
+      }, { call: 'ListarNF', skipLog: true });
+      const nfs = nfData?.nfCadastro || [];
+      // Procurar a NF mais recente deste pedido
+      for (const nfItem of nfs) {
+        const ide = nfItem?.ide || {};
+        const cStatNf = String(ide.cStat || '').trim();
+        const nNfReal = String(ide.nNF || '').trim();
+        if (!cStatNf && !nNfReal) continue;
+        const classificadaNf = classificarNF({ ide }, codigoPedido);
+        if (classificadaNf) {
+          console.log(`[atualizarStatusLogsPendentes] Pedido ${codigoPedido} etapa 60: NF ${nNfReal} cStat=${cStatNf} → ${classificadaNf.status_real}`);
+          return { etapa, ...classificadaNf };
+        }
+      }
+      // Se ListarNF retornou resultados mas sem cStat definido → aguardando processamento SEFAZ
+      if (nfs.length > 0) {
+        const nfNuResumo = String(nfs[0]?.ide?.nNF || '').trim();
+        return { etapa, status_real: 'aguardando_nf', numero_nf: nfNuResumo, mensagem: `NF ${nfNuResumo || '?'} em processamento na SEFAZ (sem cStat definido)` };
+      }
+    } catch (e) {
+      console.warn(`[atualizarStatusLogsPendentes] Falha ao consultar NF do pedido ${codigoPedido}: ${e.message}`);
+    }
+    // Sem NF encontrada na consulta → aguardando emissão
+    return { etapa, status_real: 'aguardando_nf', numero_nf: nNF || '', mensagem: nNF ? `Pedido etapa 60 com NF ${nNF} — aguardando confirmação SEFAZ` : 'Pedido etapa 60 — aguardando NF da SEFAZ' };
   }
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
 }
@@ -358,7 +382,7 @@ Deno.serve(async (req) => {
     for (const cod of codigosUnicos) {
       logs.push(...logsPorPedido.get(cod));
     }
-    console.log(\`[atualizarStatusLogsPendentes] Processando \${logs.length} logs de \${codigosUnicos.length} pedidos únicos (limite \${LIMITE_LOGS} pedidos)\`);
+    console.log(`[atualizarStatusLogsPendentes] Processando ${logs.length} logs de ${codigosUnicos.length} pedidos únicos (limite ${LIMITE_LOGS} pedidos)`);
 
     const resultados = [];
     const codigosConsultadosNestaExecucao = new Set();
