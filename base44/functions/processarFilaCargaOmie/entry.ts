@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     // ═══ PASSO 3: LIMPEZA DE ÓRFÃOS ═══
     const todosPendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 200).catch(() => []);
     if (!todosPendentes.length) {
-      return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasPreAtualizar.length, mensagem: 'Nenhum item pendente na fila' });
+      return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasParaAtualizar.length, mensagem: 'Nenhum item pendente na fila' });
     }
 
     // Agrupar por carga_id para verificar existência em batch
@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
       await atualizarStatusCarga(base44, carga_id);
     }
 
-    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizar.length, cargas_ciclo_atualizadas: cargasAfetadas.size });
+    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasParaAtualizar.length, cargas_ciclo_atualizadas: cargasAfetadas.size });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

@@ -132,7 +132,8 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     return;
   }
 
-  const data = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
+  const consultar = async (tentativa = 1) => {
+    const data = await omieCallShared(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
       // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta

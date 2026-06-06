@@ -468,11 +468,6 @@ Deno.serve(async (req) => {
     let pedido_id = null;
     try {
         base44 = createClientFromRequest(req);
-        ({ OMIE_APP_KEY: OMIE_KEY, OMIE_APP_SECRET: OMIE_SECRET } = await resolverCredsOmie(base44));
-        if (!OMIE_KEY || !OMIE_SECRET) {
-            return Response.json({ sucesso: false, erro: 'Credenciais Omie não configuradas: OMIE_APP_KEY/OMIE_APP_SECRET.' }, { status: 500 });
-        }
-        console.log(`[enviarPedidoOmie] Conectando ao Omie com APP_KEY: ...${String(OMIE_KEY).slice(-4)}`);
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 

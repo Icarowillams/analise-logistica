@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     // 🐛 FIX: Credenciais resolvidas dentro do handler — evita uso de creds stale em warm starts
-    const { APP_KEY, APP_SECRET } = await resolverCredsOmie(base44);
+    const { OMIE_APP_KEY, OMIE_APP_SECRET } = await resolverCredsOmie(base44);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));

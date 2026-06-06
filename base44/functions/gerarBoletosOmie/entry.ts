@@ -38,7 +38,7 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
 
   let acumulados: any[] = [];
   for (let pag = 1; pag <= 5; pag++) {
-    const data = await omieCall(OMIE_URL_CR, base44, 'ListarContasReceber', {
+    const data = await omieCall(base44, 'ListarContasReceber', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
       filtrar_por_data_de: fmt(inicio), filtrar_por_data_ate: fmt(futuro),
       filtrar_por_cpf_cnpj: cnpj, filtrar_apenas_titulos_em_aberto: 'S'
@@ -69,7 +69,7 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
   try {
     const param = { nCodTitulo: Number(codigo) };
     console.log('[GerarBoleto] Enviando para', codigo);
-    const data = await omieCall(OMIE_URL_BOLETO, base44, 'GerarBoleto', param);
+    const data = await omieCall(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
 
     const codStatus = String(data.cCodStatus || '0');
     if (codStatus !== '0' && codStatus !== '') {
