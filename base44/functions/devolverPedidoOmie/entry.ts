@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
     if (produtos.length === 0) return Response.json({ error: 'produtos vazio' }, { status: 400 });
 
-    const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) }, { cacheMinutes: 0 });
+    const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido' });
     const pedido = consulta?.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
 
@@ -124,10 +124,10 @@ Deno.serve(async (req) => {
     let erroOmie = null;
     let nIdDevolucao = null;
     try {
-      const resp = await omieCall(base44, 'DevolverPedido', {
+      const resp = await omieCall(base44, 'produtos/pedido/', {
         nCodPed: Number(codigo_pedido),
         produtos: produtosDevolver
-      }, { cacheMinutes: 0 });
+      }, { call: 'DevolverPedido' });
       // Captura nIdDevolucao retornado pelo Omie para rastreio
       nIdDevolucao = resp?.nIdDevolucao || resp?.nCodDevolucao || null;
     } catch (err) {
