@@ -354,7 +354,8 @@ export default function EmissaoBoletos() {
         setResultado(data);
         const ok = data.sucessos || 0;
         const erros = data.erros || 0;
-        if (ok > 0) toast.success(`${ok} boleto(s) gerado(s) com sucesso`);
+        const durSec = data.duracao_ms ? (data.duracao_ms / 1000).toFixed(1) : null;
+        if (ok > 0) toast.success(`${ok} boleto(s) gerado(s) com sucesso${durSec ? ` em ${durSec}s` : ''}`);
         if (erros > 0) toast.error(`${erros} boleto(s) falharam — veja o detalhe abaixo`);
         setSelecionados(new Set());
         queryClient.invalidateQueries({ queryKey: ['titulos-carga', cargaId] });

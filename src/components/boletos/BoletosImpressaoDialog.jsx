@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
+
+const BATCH_SIZE = 4; // PDFs baixados em paralelo
 
 const base64ToUint8Array = (b64) => {
   const bin = atob(b64);
@@ -26,7 +29,7 @@ const downloadBlob = (blob, filename) => {
 
 export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [], modo = 'individual' }) {
   const [carregando, setCarregando] = useState(false);
-  const [progresso, setProgresso] = useState({ feito: 0, total: 0 });
+  const [progresso, setProgresso] = useState({ feito: 0, total: 0, erros: 0 });
 
   const baixarPdf = async (titulo) => {
     const { data } = await base44.functions.invoke('baixarPdfBoletoOmie', {
@@ -37,46 +40,83 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     return base64ToUint8Array(data.pdf_base64);
   };
 
+  // Processa lote em paralelo
+  const processarLote = async (lote, onProgress) => {
+    const resultados = await Promise.allSettled(lote.map(t => baixarPdf(t)));
+    const saida = [];
+    resultados.forEach((r, idx) => {
+      if (r.status === 'fulfilled') {
+        saida.push({ titulo: lote[idx], bytes: r.value, ok: true });
+      } else {
+        saida.push({ titulo: lote[idx], ok: false, erro: r.reason?.message || 'Erro' });
+        toast.error(`Boleto ${lote[idx].numero_documento || lote[idx].codigo_lancamento}: ${r.reason?.message}`);
+      }
+      onProgress();
+    });
+    return saida;
+  };
+
   const gerarPdf = async () => {
     if (titulos.length === 0) return;
     setCarregando(true);
-    setProgresso({ feito: 0, total: titulos.length });
+    let feito = 0;
+    let erros = 0;
+    setProgresso({ feito: 0, total: titulos.length, erros: 0 });
+    const onProgress = () => { feito++; setProgresso(p => ({ ...p, feito })); };
+
     try {
       if (modo === 'agrupado' && titulos.length > 1) {
+        // Baixar todos os PDFs em lotes paralelos, depois mesclar
+        const todosResultados = [];
+        for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
+          const lote = titulos.slice(i, i + BATCH_SIZE);
+          const resultados = await processarLote(lote, onProgress);
+          todosResultados.push(...resultados);
+        }
+
+        // Mesclar na ordem original
         const merged = await PDFDocument.create();
-        for (let i = 0; i < titulos.length; i++) {
+        for (const r of todosResultados) {
+          if (!r.ok) { erros++; continue; }
           try {
-            const bytes = await baixarPdf(titulos[i]);
-            const src = await PDFDocument.load(bytes);
+            const src = await PDFDocument.load(r.bytes);
             const pages = await merged.copyPages(src, src.getPageIndices());
             pages.forEach(p => merged.addPage(p));
           } catch (e) {
-            toast.error(`Boleto ${titulos[i].numero_documento || titulos[i].codigo_lancamento}: ${e.message}`);
+            erros++;
+            toast.error(`Erro ao mesclar ${r.titulo.numero_documento || r.titulo.codigo_lancamento}: ${e.message}`);
           }
-          setProgresso({ feito: i + 1, total: titulos.length });
         }
-        const bytes = await merged.save();
-        downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boletos_${titulos.length}.pdf`);
-        toast.success('PDF agrupado gerado');
+
+        if (merged.getPageCount() > 0) {
+          const bytes = await merged.save();
+          downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boletos_${titulos.length}.pdf`);
+          toast.success(`PDF agrupado gerado (${merged.getPageCount()} páginas)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
+        } else {
+          toast.error('Nenhum boleto conseguiu ser baixado');
+        }
       } else {
-        for (let i = 0; i < titulos.length; i++) {
-          try {
-            const bytes = await baixarPdf(titulos[i]);
-            const nome = `boleto_${titulos[i].numero_documento || titulos[i].codigo_lancamento}.pdf`;
-            downloadBlob(new Blob([bytes], { type: 'application/pdf' }), nome);
-          } catch (e) {
-            toast.error(`Boleto ${titulos[i].numero_documento || titulos[i].codigo_lancamento}: ${e.message}`);
+        // Individual: baixar em lotes paralelos, cada um gera download separado
+        for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
+          const lote = titulos.slice(i, i + BATCH_SIZE);
+          const resultados = await processarLote(lote, onProgress);
+          for (const r of resultados) {
+            if (!r.ok) { erros++; continue; }
+            const nome = `boleto_${r.titulo.numero_documento || r.titulo.codigo_lancamento}.pdf`;
+            downloadBlob(new Blob([r.bytes], { type: 'application/pdf' }), nome);
           }
-          setProgresso({ feito: i + 1, total: titulos.length });
         }
-        toast.success(`${titulos.length} boleto(s) baixado(s)`);
+        toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
       }
       onOpenChange(false);
     } catch (e) {
       toast.error(e.message);
     }
     setCarregando(false);
+    setProgresso({ feito: 0, total: 0, erros: 0 });
   };
+
+  const percentual = progresso.total > 0 ? Math.round((progresso.feito / progresso.total) * 100) : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -93,15 +133,28 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
           {modo === 'agrupado' && titulos.length > 1 && ' — PDF será mesclado em um único arquivo'}
         </div>
 
+        {carregando && (
+          <div className="space-y-2">
+            <Progress value={percentual} className="h-2" />
+            <p className="text-xs text-slate-500 text-center">
+              {progresso.feito}/{progresso.total} processados ({percentual}%)
+            </p>
+          </div>
+        )}
+
         <Button onClick={gerarPdf} disabled={carregando || titulos.length === 0} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">
           {carregando ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {progresso.feito}/{progresso.total}</>
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Baixando {progresso.feito}/{progresso.total}…</>
           ) : (
             <>{modo === 'agrupado' ? <Layers className="w-4 h-4 mr-2" /> : <FileText className="w-4 h-4 mr-2" />} Gerar PDF</>
           )}
         </Button>
 
-        <p className="text-xs text-slate-500">O PDF será baixado diretamente, sem redirecionar para o Omie.</p>
+        <p className="text-xs text-slate-500">
+          {titulos.length > 1
+            ? `Downloads em lotes de ${BATCH_SIZE} — mais rápido que individual.`
+            : 'O PDF será baixado diretamente, sem redirecionar para o Omie.'}
+        </p>
       </DialogContent>
     </Dialog>
   );

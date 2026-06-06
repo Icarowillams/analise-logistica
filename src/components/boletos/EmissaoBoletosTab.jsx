@@ -269,7 +269,8 @@ export default function EmissaoBoletosTab() {
         setResultado(data);
         const qtdSucesso = data.sucessos || 0;
         const qtdErros = data.erros || 0;
-        if (qtdSucesso > 0) toast.success(`${qtdSucesso} boleto(s) emitido(s) com sucesso`);
+        const durSec = data.duracao_ms ? (data.duracao_ms / 1000).toFixed(1) : null;
+        if (qtdSucesso > 0) toast.success(`${qtdSucesso} boleto(s) emitido(s) com sucesso${durSec ? ` em ${durSec}s` : ''}`);
         if (qtdErros > 0) toast.error(`${qtdErros} boleto(s) falharam — veja o detalhe abaixo`);
 
         // Só limpa seleção dos títulos que foram gerados com sucesso
