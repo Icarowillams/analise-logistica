@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.30';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 
 async function trocarUmPedido(base44, pedido, etapaDestino) {
@@ -39,7 +39,7 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
 async function getOmieCredentials(base44: any) {
   try {
     const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-    if (rows.length > 0) return { appKey: rows[0].omie_app_key, appSecret: rows[0].omie_app_secret };
+    if (rows.length > 0) return { appKey: rows[0].app_key, appSecret: rows[0].app_secret };
   } catch (_) { /* ignore */ }
   const appKey = Deno.env.get('OMIE_APP_KEY') || '';
   const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';

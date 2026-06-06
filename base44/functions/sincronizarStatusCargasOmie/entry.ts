@@ -8,8 +8,8 @@ async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.omie_app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.omie_app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
+  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
   if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
@@ -109,11 +109,11 @@ function classificarCStat(cStat) {
 
 async function buscarNfPorPedido(base44, codigoPedido) {
   try {
-    const data = await omieCall(base44, 'ListarNF', {
+    const data = await omieCall(base44, 'produtos/nfconsultar/', {
       pagina: 1,
       registros_por_pagina: 50,
       nIdPedido: Number(codigoPedido)
-    }, 1, OMIE_NF_URL);
+    }, { call: 'ListarNF' });
     const nfs = data?.nfCadastro || [];
     if (nfs.length === 0) return null;
     // Prioriza NF NÃO cancelada e mais recente
@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
         }
 
         try {
-          const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo) }, { cacheMinutes: 10 });
+          const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo) }, { call: 'ConsultarPedido', cacheMinutes: 10 });
           const status = extrairPedido(consulta, pedido);
 
           // Fallback: se etapa 60 mas SEM cStat (ConsultarPedido não trouxe infoNfe completo),
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
             status_real_omie: status.cancelado ? 'Cancelado no Omie' : (statusRealLabel || undefined)
           });
         } catch (error) {
-          if (error instanceof OmieBloqueadaError) {
+          if (error.message && (error.message.includes('bloqueada') || error.message.includes('bloqueio'))) {
             apiBloqueada = true;
             erroBloqueio = error.message;
             console.error(`[sincronizarStatusCargasOmie] API BLOQUEADA — interrompendo. ${error.message}`);

@@ -8,8 +8,8 @@ async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.omie_app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.omie_app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
+  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
   if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
@@ -68,10 +68,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-async function resolverCredsOmie(base44: any) {
-  const c = await getOmieCredentials(base44);
-  return { app_key: c.appKey, app_secret: c.appSecret };
-}
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_CLIENTES_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
@@ -81,78 +77,9 @@ const normalizar = (v) => String(v || '').trim().toLowerCase();
 const somenteDigitos = (v) => String(v || '').replace(/\D/g, '');
 const valorValido = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 
-  const body = {
-    call: endpoint,
-    app_key: creds.app_key,
-    app_secret: creds.app_secret,
-    param: [param]
-  };
-
-  // ConsultarCliente vai para /geral/clientes/; demais (ListarPedidos) para /produtos/pedido/
-  const url = /^(Consultar|Listar|Pesquisar)Cliente/i.test(endpoint) ? OMIE_CLIENTES_URL : OMIE_PEDIDO_URL;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
-      const data = await res.json();
-
-      // Se a Omie sinalizar cota/bloqueio, ativa o circuit breaker (upsert) e aborta o loop.
-      const fault = String(data?.faultstring || '').toLowerCase();
-      if (fault.includes('cota') || fault.includes('limite') || fault.includes('aguarde') || fault.includes('bloque') || fault.includes('consumo indevido')) {
-        const bloqueadoAte = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-        const linhas = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 50).catch(() => []);
-        const payloadBreaker = { bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
-        if (linhas?.[0]?.id) {
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(linhas[0].id, payloadBreaker).catch(() => null);
-          for (const extra of linhas.slice(1)) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
-        } else {
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', ...payloadBreaker }).catch(() => null);
-        }
-        throw new Error(`API Omie bloqueada: ${data.faultstring}`);
-      }
-
-      if (!options.skipLog) {
-        try {
-          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: url,
-            call: endpoint,
-            operacao: endpoint,
-            status: data.faultcode ? 'erro' : 'sucesso',
-            mensagem_erro: data.faultstring || null,
-            payload_enviado: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000)
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      
-      return data;
-    } catch(err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
-}
-
-async function consultarClienteOmie(base44, creds, codigoCliente) {
+async function consultarClienteOmie(base44, codigoCliente) {
   try {
-    const data = await omieCall(base44, creds, 'ConsultarCliente', { codigo_cliente_omie: Number(codigoCliente) });
+    const data = await omieCall(base44, 'geral/clientes/', { codigo_cliente_omie: Number(codigoCliente) }, { call: 'ConsultarCliente', skipLog: true });
     return {
       codigo_omie: String(data.codigo_cliente_omie || codigoCliente),
       codigo_integracao: data.codigo_cliente_integracao || '',
@@ -262,8 +189,8 @@ Deno.serve(async (req) => {
     const MAX_FALLBACK_CLIENTES = 10; // limite duro de ConsultarCliente por execução
     const t0 = Date.now();
 
-    const creds = await resolverCredsOmie(base44);
-    if (!creds.app_key || !creds.app_secret) {
+    const { appKey, appSecret } = await getOmieCredentials(base44);
+    if (!appKey || !appSecret) {
       return Response.json({ sucesso: false, error: 'Credenciais Omie não configuradas (ConfiguracaoOmie ativa nem Secrets).' }, { status: 500 });
     }
 
@@ -306,12 +233,12 @@ Deno.serve(async (req) => {
       let pagina = 1;
       let totalPaginas = 1;
       do {
-        const data = await omieCall(base44, creds, 'ListarPedidos', {
+        const data = await omieCall(base44, 'produtos/pedido/', {
           pagina,
           registros_por_pagina: 100,
           apenas_importado_api: 'N',
           etapa: etapaAtual
-        }, { cacheMinutes: 30 }).catch((e) => {
+        }, { call: 'ListarPedidos', cacheMinutes: 30 }).catch((e) => {
           if (/n[ãa]o existem registros/i.test(e.message)) return null;
           throw e;
         });
@@ -389,7 +316,7 @@ Deno.serve(async (req) => {
     // Clientes excedentes ficam para o webhook ou a próxima sincronização.
     for (const codigo of codigosClienteFaltantes) {
       if (consultasFallback >= MAX_FALLBACK_CLIENTES) break;
-      const dados = await consultarClienteOmie(base44, creds, codigo);
+      const dados = await consultarClienteOmie(base44, codigo);
       if (dados) mapaClienteOmieFallback.set(codigo, dados);
       consultasFallback += 1;
       await delay(3000);
