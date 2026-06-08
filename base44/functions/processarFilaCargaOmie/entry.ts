@@ -34,7 +34,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
+  const RETRIES = [800, 1500, 3000];
   let lastErr = '';
   for (let i = 0; i <= RETRIES.length; i++) {
     try {
@@ -46,7 +46,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 10 * 60000).toISOString();
+          const until = new Date(Date.now() + 3 * 60000).toISOString();
           // Upsert: atualiza registro existente em vez de criar duplicados
           const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 5).catch(() => []);
           const cbPrincipal = cbRows?.[0];
@@ -83,8 +83,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
-const LOTE = 25;
-const DELAY_ENTRE_PEDIDOS_MS = 800;
+const LOTE = 50;
+const DELAY_ENTRE_PEDIDOS_MS = 400;
 
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
@@ -122,7 +122,7 @@ async function processarFaturar(base44, item) {
     await omieCall(base44, 'produtos/pedido/', {
       cabecalho: { ...idParam, data_previsao: dataOmie }
     }, { call: 'AlterarPedidoVenda' });
-    await sleep(600);
+    await sleep(300);
   }
 
   // 2) Trocar etapa para destino (50)
@@ -256,8 +256,9 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
 
       try {
-        // Idempotência: se já está na etapa destino, conclui sem reprocessar.
-        const jaFeito = await jaEstaNaEtapa(base44, item);
+        // Idempotência: só consulta se já tentou antes (reprocessamento).
+        // Pedidos novos (tentativas=0) vão direto para processar, economizando 1 chamada Omie.
+        const jaFeito = Number(item.tentativas || 0) > 0 ? await jaEstaNaEtapa(base44, item) : false;
         if (jaFeito) {
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
           // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
@@ -275,25 +276,29 @@ Deno.serve(async (req) => {
           processados++;
         } else {
           await processarFaturar(base44, item);
-          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
-          // Atualiza pedido local (etapa logística avança)
+          // Atualiza fila + pedido local + espelho em paralelo (não sequencial)
+          const postUpdates = [
+            base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {})
+          ];
           if (item.pedido_id) {
-            await base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {});
+            postUpdates.push(base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {}));
           }
-          // Atualiza espelho PedidoLiberadoOmie para refletir a nova etapa imediatamente
-          // (evita race condition com a reconciliação agendada)
           if (item.codigo_pedido_omie) {
-            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
-              { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
-            ).catch(() => []);
-            if (espelhos?.[0]) {
-              await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                etapa: String(item.etapa_destino || '50'),
-                data_previsao: item.data_previsao || espelhos[0].data_previsao,
-                sincronizado_em: new Date().toISOString()
-              }).catch(() => {});
-            }
+            postUpdates.push(
+              base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+                { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
+              ).then(espelhos => {
+                if (espelhos?.[0]) {
+                  return base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+                    etapa: String(item.etapa_destino || '50'),
+                    data_previsao: item.data_previsao || espelhos[0].data_previsao,
+                    sincronizado_em: new Date().toISOString()
+                  });
+                }
+              }).catch(() => {})
+            );
           }
+          await Promise.all(postUpdates);
           processados++;
         }
       } catch (e) {
