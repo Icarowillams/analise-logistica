@@ -2,9 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+let _credsCache = null;
 
-async function getOmieCredentials(base44: any) {
+async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
@@ -15,7 +15,7 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
-async function checkCircuitBreaker(base44: any) {
+async function checkCircuitBreaker(base44) {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
@@ -26,7 +26,7 @@ async function checkCircuitBreaker(base44: any) {
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
 }
 
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+async function omieCall(base44, endpoint, param, options = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
@@ -57,7 +57,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
       }
       return data;
-    } catch (e: any) {
+    } catch (e) {
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
