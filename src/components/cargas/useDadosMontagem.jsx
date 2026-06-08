@@ -536,8 +536,13 @@ export default function useDadosMontagem() {
   const recarregar = useCallback(async () => {
     sessionStorage.removeItem(CACHE_KEY);
     setLoading(true);
-    base44.functions.invoke('sincronizarLiberadosOmieRapido', {})
-      .catch((e) => console.warn('[useDadosMontagem] sync Omie falhou:', e?.message));
+    // Aguardar reconciliação do espelho ANTES de carregar dados,
+    // para que pedidos que mudaram de etapa 10→20 no Omie apareçam imediatamente.
+    try {
+      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'manual' });
+    } catch (e) {
+      console.warn('[useDadosMontagem] sync Omie falhou:', e?.message);
+    }
     await carregar();
   }, [carregar]);
 

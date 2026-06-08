@@ -207,15 +207,19 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     }
 
-    const limite48h = Date.now() - 48 * 60 * 60 * 1000;
-    const candidatosRecentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 50).catch(() => []);
-    const temTrabalhoRecente = (candidatosRecentes || []).some(p => {
-      const dt = new Date(p.created_date || p.updated_date || 0).getTime();
-      const status = String(p.status_real || p.status_label || '').toLowerCase();
-      return dt >= limite48h && (status.includes('faturado') || status.includes('pendente') || status.includes('aguardando'));
-    });
-    if (origem === 'reconciliacao' && !temTrabalhoRecente) {
-      return Response.json({ sucesso: true, total_omie: 0, total: 0, criados: 0, atualizados: 0, removidos: 0, consultas_fallback_cliente: 0, duracao_ms: Date.now() - t0, otimizado: true, motivo: 'sem_pedidos_recentes_para_sincronizar' });
+    // Checagem de "trabalho recente" — apenas para chamadas automáticas (scheduled).
+    // Chamadas manuais (botão Atualizar) e bootstrap SEMPRE executam a reconciliação completa.
+    if (origem === 'reconciliacao') {
+      const limite48h = Date.now() - 48 * 60 * 60 * 1000;
+      const candidatosRecentes = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 50).catch(() => []);
+      const temTrabalhoRecente = (candidatosRecentes || []).some(p => {
+        const dt = new Date(p.created_date || p.updated_date || 0).getTime();
+        const status = String(p.status_real || p.status_label || '').toLowerCase();
+        return dt >= limite48h && (status.includes('faturado') || status.includes('pendente') || status.includes('aguardando'));
+      });
+      if (!temTrabalhoRecente) {
+        return Response.json({ sucesso: true, total_omie: 0, total: 0, criados: 0, atualizados: 0, removidos: 0, consultas_fallback_cliente: 0, duracao_ms: Date.now() - t0, otimizado: true, motivo: 'sem_pedidos_recentes_para_sincronizar' });
+      }
     }
 
     const calcularStatusNF = (cab, infoNfe) => {
