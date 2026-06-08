@@ -817,6 +817,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           disabled={syncLoading}
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+            queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] });
             syncFaturadosOmie();
           }}
         >

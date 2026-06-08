@@ -473,6 +473,10 @@ async function handlePedido(base44, topic, evt) {
       topic === 'VendaProduto.EtapaAlterada' ||
       topic === 'VendaProduto.Incluida' ||
       topic === 'VendaProduto.Alterada'
+    ) {
+      await upsertEspelho(base44, codigoPedido);
+      espelhoAcao = 'upsert';
+    }
   } catch (e) {
     console.error(`[espelhoOperacao] erro ao sincronizar ${codigoPedido}:`, e.message);
   }
