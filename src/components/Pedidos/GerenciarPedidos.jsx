@@ -479,19 +479,34 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
-  // Verificar cancelamentos de pedidos faturados no Omie
-  const syncFaturadosOmie = async () => {
-    const faturados = pedidos.filter(p => p.status === 'faturado' && p.omie_enviado && p.omie_codigo_pedido && p.tipo !== 'troca');
-    if (faturados.length === 0) return;
+  // Atualizar: recarrega dados locais + reconcilia espelho com Omie (com timeout de 30s)
+  const syncEAtualizar = async () => {
+    setSyncLoading(true);
     try {
-      setSyncLoading(true);
-      const res = await base44.functions.invoke('sincronizarStatusPedidosOmie', {});
-      if (res.data?.atualizados > 0) {
-        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-        toast.success(`${res.data.atualizados} pedido(s) faturado(s) atualizado(s) via Omie`);
-      }
-    } catch (e) {
-      console.error('Erro ao sincronizar faturados:', e);
+      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+      
+      // 1. Reconciliar espelho (corrige etapas desatualizadas como "10" que já são "20" no Omie)
+      const reconciliarPromise = base44.functions.invoke('sincronizarLiberadosOmieRapido', { max_paginas: 5, origem: 'reconciliacao' })
+        .then(res => {
+          const d = res.data || {};
+          if (d.criados > 0 || d.atualizados > 0 || d.removidos > 0) {
+            toast.success(`Espelho atualizado: ${d.atualizados || 0} atualizado(s), ${d.criados || 0} novo(s)`);
+          }
+        })
+        .catch(e => {
+          if (e.message !== 'timeout') console.error('Erro ao reconciliar espelho:', e);
+        });
+
+      await Promise.race([reconciliarPromise, timeout(30000)]).catch(() => {
+        toast.info('Sincronização está demorando — os dados serão atualizados em background pela automação periódica.');
+      });
+
+      // 2. Recarregar queries locais
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
+        queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+        queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
+      ]);
     } finally {
       setSyncLoading(false);
     }
@@ -815,11 +830,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
           size="sm"
           className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white"
           disabled={syncLoading}
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-            queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] });
-            syncFaturadosOmie();
-          }}
+          onClick={syncEAtualizar}
         >
           {syncLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5 mr-0.5" />} Atualizar
         </Button>
