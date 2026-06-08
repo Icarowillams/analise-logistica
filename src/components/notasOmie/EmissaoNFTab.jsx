@@ -194,12 +194,15 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     }
     setSincronizandoCarga(true);
     try {
-      const { data } = await base44.functions.invoke('sincronizarEspelhoCarga', { numero_carga: numero });
+      const { data } = await base44.functions.invoke('reconciliarEspelhoCargaCompleto', { numero_carga: numero });
       if (data?.sucesso) {
-        toast.success(data.mensagem || 'Espelho da carga sincronizado.');
+        const msg = data.pedidos_atualizados > 0
+          ? `Espelho sincronizado: ${data.pedidos_atualizados} pedido(s) atualizado(s), ${data.nfs_vinculadas || 0} NF(s) vinculada(s).`
+          : 'Espelho já está atualizado — nenhuma alteração necessária.';
+        toast.success(msg);
         if (!carregamentoIniciado) setCarregamentoIniciado(true);
         else refetch();
-      } else if (data?.omie_bloqueada) {
+      } else if (data?.bloqueado) {
         toast.error('API Omie temporariamente bloqueada. Tente novamente mais tarde.');
       } else {
         toast.error('Erro ao sincronizar: ' + (data?.error || 'desconhecido'));
