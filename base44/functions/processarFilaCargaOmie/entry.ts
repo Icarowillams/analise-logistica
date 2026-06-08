@@ -41,21 +41,8 @@ function extrairSegundosBloqueio(msg: string): number {
   return 180; // fallback 3 minutos
 }
 
-// Lock distribuído simples: usa o campo atualizado_em como lock timestamp
-async function acquireLock(base44: any): Promise<boolean> {
-  const c = await getCircuitBreakerRecord(base44);
-  if (!c) return true; // sem registro, sem lock
-  const lockAge = Date.now() - new Date(c.atualizado_em || '2020-01-01').getTime();
-  // Se outra instância atualizou há menos de 60s, ela está processando — aborta
-  // (cada ciclo demora pelo menos ~30s com delays, então 60s é seguro)
-  if (lockAge < 60000 && c.bloqueado === false) {
-    // Verifica se NÃO fomos nós que atualizamos (evita auto-bloqueio)
-    return false;
-  }
-  // Adquire lock marcando timestamp
-  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { atualizado_em: new Date().toISOString() }).catch(() => null);
-  return true;
-}
+// Lock removido — o circuit breaker + processamento sequencial interno já protegem contra abusos.
+// O lock baseado em atualizado_em causava falsos positivos (checkCircuitBreaker atualiza o campo ao desbloquear).
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
@@ -183,10 +170,14 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
 
-    // Lock distribuído: impede 2 instâncias simultâneas (automação + clique manual)
-    const gotLock = await acquireLock(base44);
-    if (!gotLock) {
-      return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', mensagem: 'Outra instância já está processando a fila. Aguarde.' });
+    // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
+    // outra instância está ativa — aborta para não duplicar chamadas Omie.
+    const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
+    if (emProcessamento.length > 0) {
+      const age = Date.now() - new Date(emProcessamento[0].updated_date).getTime();
+      if (age < 2 * 60 * 1000) {
+        return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', mensagem: 'Outra instância já está processando a fila. Aguarde.' });
+      }
     }
 
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
