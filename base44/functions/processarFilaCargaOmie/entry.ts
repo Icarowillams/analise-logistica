@@ -19,9 +19,9 @@ async function getOmieCredentials(base44: any) {
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
 async function getCircuitBreakerRecord(base44: any) {
-  return base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1)
-    .then(rows => rows?.[0] || null)
-    .catch(() => null);
+  // Busca DIRETO pelo ID fixo — nunca por filter (que pode pegar duplicados)
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  return rows?.[0] || null;
 }
 
 async function checkCircuitBreaker(base44: any) {

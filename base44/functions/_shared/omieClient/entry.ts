@@ -137,19 +137,15 @@ async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: stri
   const secs = extrairSegundosBloqueio(errorMessage);
   const blockedUntil = new Date(Date.now() + secs * 1000).toISOString();
   // Sempre update no ID fixo — nunca criar novo registro
+  // SEMPRE update no ID fixo — NUNCA criar novo registro
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
     bloqueado: true,
     bloqueado_ate: blockedUntil,
     ultimo_erro: errorMessage.slice(0, 500),
     atualizado_em: new Date().toISOString()
-  }).catch(async () => {
-    // Fallback: se o ID fixo não existir, usa upsertControle
-    await upsertControle(base44, 'principal', {
-      bloqueado: true,
-      bloqueado_ate: blockedUntil,
-      ultimo_erro: errorMessage.slice(0, 500),
-      atualizado_em: new Date().toISOString()
-    });
+  }).catch((err) => {
+    console.error('[omieClient] Falha ao atualizar circuit breaker ID fixo:', err?.message);
+    // NÃO cria novo registro — apenas loga o erro
   });
 }
 
@@ -199,7 +195,8 @@ async function writePersistentCache(base44: Base44Client, cacheKey: string, endp
  * Retorna o status atual e desbloqueia automaticamente quando o prazo expirou.
  */
 export async function checkCircuitBreaker(base44: Base44Client): Promise<CircuitBreakerStatus> {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  // Busca DIRETO pelo ID fixo — nunca por filter genérico (que pode pegar duplicados)
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
   const control = rows?.[0];
   if (!control?.bloqueado) return { blocked: false };
 
