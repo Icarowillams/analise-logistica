@@ -334,8 +334,8 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString()
       });
 
-      // Delay adaptativo: se houve erro de rate limit, espera mais
-      if (i < pedidos.length - 1) await sleep(10000);
+      // Delay entre emissões para respeitar rate limit do Omie
+      if (i < pedidos.length - 1) await sleep(12000);
     }
 
     const statusFinal = erros.length > 0 ? 'erro' : 'concluido';

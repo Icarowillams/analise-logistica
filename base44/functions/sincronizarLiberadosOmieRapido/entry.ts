@@ -193,8 +193,8 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { max_paginas = 8, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
-    const MAX_FALLBACK_CLIENTES = 10; // limite duro de ConsultarCliente por execução
+    const { max_paginas = 3, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
+    const MAX_FALLBACK_CLIENTES = 5; // limite duro de ConsultarCliente por execução
     const t0 = Date.now();
 
     const { appKey, appSecret } = await getOmieCredentials(base44);
@@ -292,10 +292,10 @@ Deno.serve(async (req) => {
           });
         todosOmie.push(...lote);
         pagina += 1;
-        if (pagina <= totalPaginas) await delay(2000);
+        if (pagina <= totalPaginas) await delay(4000);
       } while (pagina <= totalPaginas);
       // Pausa entre etapas para respeitar o rate limit do Omie
-      await delay(2000);
+      await delay(4000);
     }
 
     const [clientes, rotas, vendedores, pedidosLocais, espelhoAtual] = await Promise.all([
@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
       const dados = await consultarClienteOmie(base44, codigo);
       if (dados) mapaClienteOmieFallback.set(codigo, dados);
       consultasFallback += 1;
-      await delay(3000);
+      await delay(5000);
     }
 
     let criados = 0;
