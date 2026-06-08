@@ -188,8 +188,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Log Gerencial', path: 'LogGerencial' },
           { title: 'Credenciais Omie', path: 'ConfiguracaoOmie' },
           { title: 'Sincronizar Clientes CSV', path: 'sincronizarclientescsv' },
-          { title: 'Sincronizar Clientes Omie', path: 'SincronizarClienteOmie' },
-          { title: 'Commits GitHub', path: 'CommitsGithub' }
+          { title: 'Sincronizar Clientes Omie', path: 'SincronizarClienteOmie' }
         ]
       });
 
