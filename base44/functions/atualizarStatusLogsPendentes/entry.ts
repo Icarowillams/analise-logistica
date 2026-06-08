@@ -329,9 +329,15 @@ Deno.serve(async (req) => {
     }
     if (!user) user = { email: 'sistema@automation', full_name: 'Automação Agendada' };
 
+    // Circuit breaker: se bloqueado, aborta imediatamente
+    const breaker = await checkCircuitBreaker(base44);
+    if (breaker.blocked) {
+      return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
+    }
+
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 10; // Aumentado para resolver mais pendentes por execução
+    const LIMITE_LOGS = 10;
     const DELAY_ENTRE_CONSULTAS_MS = 3000; // 3s entre cada ConsultarPedido
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
@@ -415,6 +421,14 @@ Deno.serve(async (req) => {
           continue;
         }
         codigosConsultadosNestaExecucao.add(codPed);
+
+        // Re-verificar circuit breaker antes de cada consulta (outra função pode ter ativado)
+        const breakerMid = await checkCircuitBreaker(base44);
+        if (breakerMid.blocked) {
+          console.warn(`[atualizarStatusLogsPendentes] Circuit breaker ativado durante execução — abortando restante`);
+          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: `API bloqueada até ${breakerMid.blockedUntil}`, abortado: true });
+          break;
+        }
 
         const real = await consultarStatusReal(base44, codPed, mock_omie_response);
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
