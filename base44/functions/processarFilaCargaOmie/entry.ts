@@ -16,7 +16,7 @@ async function getOmieCredentials(base44: any) {
 }
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
@@ -46,8 +46,19 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          const until = new Date(Date.now() + 10 * 60000).toISOString();
+          // Upsert: atualiza registro existente em vez de criar duplicados
+          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 5).catch(() => []);
+          const cbPrincipal = cbRows?.[0];
+          if (cbPrincipal?.id) {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbPrincipal.id, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+            // Limpar duplicados
+            for (const extra of (cbRows || []).slice(1)) {
+              await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+            }
+          } else {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -82,7 +93,7 @@ async function jaEstaNaEtapa(base44, item) {
     if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
     else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
     else return false;
-    const resp = await omieCall(base44, 'ConsultarPedido', param);
+    const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
     const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
     const destino = String(item.etapa_destino || '50');
     return etapa && Number(etapa) >= Number(destino);
@@ -106,14 +117,14 @@ async function processarFaturar(base44, item) {
       const [y, m, d] = dataOmie.split('-');
       dataOmie = `${d}/${m}/${y}`;
     }
-    await omieCall(base44, 'AlterarPedidoVenda', {
+    await omieCall(base44, 'produtos/pedido/', {
       cabecalho: { ...idParam, data_previsao: dataOmie }
-    });
+    }, { call: 'AlterarPedidoVenda' });
     await sleep(600);
   }
 
   // 2) Trocar etapa para destino (50)
-  await omieCall(base44, 'TrocarEtapaPedido', { ...idParam, etapa: String(item.etapa_destino || '50') });
+  await omieCall(base44, 'produtos/pedido/', { ...idParam, etapa: String(item.etapa_destino || '50') }, { call: 'TrocarEtapaPedido' });
 }
 
 // Recalcula o status de processamento da carga a partir dos itens da fila.

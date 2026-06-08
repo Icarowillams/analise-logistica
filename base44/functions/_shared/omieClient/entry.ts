@@ -179,7 +179,7 @@ async function writePersistentCache(base44: Base44Client, cacheKey: string, endp
  * Retorna o status atual e desbloqueia automaticamente quando o prazo expirou.
  */
 export async function checkCircuitBreaker(base44: Base44Client): Promise<CircuitBreakerStatus> {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const control = rows?.[0];
   if (!control?.bloqueado) return { blocked: false };
 
