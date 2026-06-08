@@ -123,13 +123,33 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
+
+// Extrai segundos de bloqueio da mensagem Omie (ex: "Tente novamente em 1798 segundos.")
+function extrairSegundosBloqueio(msg: string): number {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]) + 10, 1800); // +10s margem, cap 30min
+  return 180; // fallback 3 minutos
+}
+
 async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: string): Promise<void> {
-  const blockedUntil = new Date(Date.now() + 30 * 60_000).toISOString();
-  await upsertControle(base44, 'principal', {
+  const secs = extrairSegundosBloqueio(errorMessage);
+  const blockedUntil = new Date(Date.now() + secs * 1000).toISOString();
+  // Sempre update no ID fixo — nunca criar novo registro
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
     bloqueado: true,
     bloqueado_ate: blockedUntil,
     ultimo_erro: errorMessage.slice(0, 500),
     atualizado_em: new Date().toISOString()
+  }).catch(async () => {
+    // Fallback: se o ID fixo não existir, usa upsertControle
+    await upsertControle(base44, 'principal', {
+      bloqueado: true,
+      bloqueado_ate: blockedUntil,
+      ultimo_erro: errorMessage.slice(0, 500),
+      atualizado_em: new Date().toISOString()
+    });
   });
 }
 
