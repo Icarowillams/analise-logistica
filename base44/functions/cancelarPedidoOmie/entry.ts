@@ -99,14 +99,17 @@ function setMemoryCache(key, data) {
 
 
 async function consultarPedidoOmie(base44, codigoPedido) {
-    const result = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(codigoPedido) }, { skipLog: true });
+    const result = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido', skipLog: true });
     console.log('[cancelarPedidoOmie] ConsultarPedido resposta:', JSON.stringify(result).substring(0, 2000));
     return result;
 }
 
-async function excluirPedidoOmie(base44, codigoPedido) {
-    const result = await omieCall(base44, "ExcluirPedido", { codigo_pedido: Number(codigoPedido) });
-    console.log('[cancelarPedidoOmie] ExcluirPedido resposta:', JSON.stringify(result).substring(0, 1000));
+async function cancelarPedidoNoOmie(base44, codigoPedido) {
+    const result = await omieCall(base44, 'produtos/pedido/', {
+        codigo_pedido: Number(codigoPedido),
+        cancelar: 'S'
+    }, { call: 'StatusPedido', operation: 'cancelar_pedido' });
+    console.log('[cancelarPedidoOmie] StatusPedido(cancelar) resposta:', JSON.stringify(result).substring(0, 1000));
     return result;
 }
 
@@ -198,17 +201,16 @@ Deno.serve(async (req) => {
                     }, { status: 400 });
                 }
                 else {
-                    // Etapa é cancelável — executar exclusão no Omie (API só suporta exclusão)
-                    console.log(`[cancelarPedidoOmie] Etapa ${etapaAtual} permite cancelamento. Excluindo no Omie...`);
-                    const excluirResult = await excluirPedidoOmie(base44, codigoPedido);
+                    // Etapa é cancelável — usar StatusPedido com cancelar='S'
+                    console.log(`[cancelarPedidoOmie] Etapa ${etapaAtual} permite cancelamento. Cancelando no Omie via StatusPedido...`);
+                    const cancelResult = await cancelarPedidoNoOmie(base44, codigoPedido);
 
-                    if (excluirResult && !excluirResult.faultstring && !excluirResult.faultcode) {
+                    if (cancelResult && !cancelResult.faultstring && !cancelResult.faultcode) {
                         omieCancelado = true;
-                        console.log('[cancelarPedidoOmie] Pedido excluído com sucesso no Omie!');
+                        console.log('[cancelarPedidoOmie] Pedido cancelado com sucesso no Omie!');
                     } else {
-                        omieErro = excluirResult?.faultstring || 'Falha ao excluir no Omie';
-                        console.error('[cancelarPedidoOmie] Erro ao excluir:', omieErro);
-                        // Retornar erro sem cancelar localmente
+                        omieErro = cancelResult?.faultstring || 'Falha ao cancelar no Omie';
+                        console.error('[cancelarPedidoOmie] Erro ao cancelar:', omieErro);
                         return Response.json({
                             sucesso: false,
                             error: `Erro ao cancelar pedido no Omie: ${omieErro}`,
@@ -239,7 +241,25 @@ Deno.serve(async (req) => {
             omie_erro: omieErro
         });
 
-        console.log('[cancelarPedidoOmie] Pedido cancelado localmente. Omie excluído:', omieCancelado);
+        // Atualizar espelho local (PedidoLiberadoOmie) para refletir cancelamento no Kanban
+        if (pedido.omie_codigo_pedido) {
+            try {
+                const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(pedido.omie_codigo_pedido) }, '-created_date', 1);
+                if (espelhos.length > 0) {
+                    await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+                        etapa: 'cancelado',
+                        status_label: 'Cancelado',
+                        sincronizado_em: new Date().toISOString(),
+                        origem_sync: 'reconciliacao'
+                    });
+                    console.log('[cancelarPedidoOmie] Espelho local atualizado para cancelado');
+                }
+            } catch (e) {
+                console.error('[cancelarPedidoOmie] Erro ao atualizar espelho (não crítico):', e.message);
+            }
+        }
+
+        console.log('[cancelarPedidoOmie] Pedido cancelado localmente. Omie cancelado:', omieCancelado);
 
         return Response.json({
             sucesso: true,
