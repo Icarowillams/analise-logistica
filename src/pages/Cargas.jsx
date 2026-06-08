@@ -285,10 +285,15 @@ export default function Cargas() {
     setProcessandoFila(true);
     try {
       const { data } = await base44.functions.invoke('processarFilaCargaOmie', {});
-      const msg = data?.orfaos_limpos
-        ? `${data.processados} processados, ${data.orfaos_limpos} órfãos limpos`
-        : `${data.processados} pedidos processados`;
-      toast.success(msg);
+      if (data?.abortado) {
+        toast.warning(data.mensagem || data.motivo || 'Fila não processada no momento. Tente novamente em breve.');
+      } else {
+        const proc = data?.processados ?? 0;
+        const msg = data?.orfaos_limpos
+          ? `${proc} processados, ${data.orfaos_limpos} órfãos limpos`
+          : `${proc} pedidos processados`;
+        toast.success(msg);
+      }
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
       queryClient.invalidateQueries({ queryKey: ['fila-carga-batch'] });
     } catch (e) {
