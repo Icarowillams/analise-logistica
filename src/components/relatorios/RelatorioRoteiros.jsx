@@ -27,8 +27,8 @@ export default function RelatorioRoteiros() {
   const linhas = useMemo(() => filtrados.map(r => {
     const planejados = r.clientes_ids?.length || r.clientes_detalhes?.length || 0;
     const visitasR = visitas.filter(v => v.roteiro_id === r.id);
-    const realizadas = visitasR.filter(v => v.status === 'visitado').length;
-    const naoVisitadas = visitasR.filter(v => v.status === 'nao_visitado').length;
+    const realizadas = visitasR.filter(v => v.status === 'concluida').length;
+    const naoVisitadas = visitasR.filter(v => v.status === 'nao_atendimento').length;
     const desvio = planejados - realizadas;
     return { ...r, planejados, realizadas, naoVisitadas, desvio, visitasR };
   }), [filtrados, visitas]);

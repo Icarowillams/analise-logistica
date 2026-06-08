@@ -6,12 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronRight, Calendar, User, Filter, Download } from 'lucide-react';
 import { dentroPeriodo, exportarCSV, formatarMoeda } from '@/components/analises/utilsAnalises';
 
 export default function RelatorioTrocas() {
-  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', motivo_id: '', cliente_id: '', rede_id: '', busca: '', apenasUltima: false });
+  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', motivo_id: '', cliente_id: '', rede_id: '', busca: '' });
   const [expClient, setExpClient] = useState({});
   const [expVisita, setExpVisita] = useState({});
 
@@ -21,11 +20,15 @@ export default function RelatorioTrocas() {
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list('-updated_date', 5000) });
   const { data: visitas = [] } = useQuery({ queryKey: ['visitas'], queryFn: () => base44.entities.VisitaRoteiro.list('-data_visita', 10000) });
 
+  const clienteRedeMap = useMemo(() => new Map(clientes.map(c => [c.id, c.rede_id])), [clientes]);
+
   const visitasComTroca = useMemo(() => visitas.filter(v => (v.trocas_itens || []).length > 0
     && (!filtros.vendedor_id || v.vendedor_id === filtros.vendedor_id)
     && (!filtros.cliente_id || v.cliente_id === filtros.cliente_id)
+    && (!filtros.rede_id || clienteRedeMap.get(v.cliente_id) === filtros.rede_id)
+    && (!filtros.motivo_id || (v.trocas_itens || []).some(i => i.motivo_id === filtros.motivo_id))
     && (!filtros.busca || `${v.cliente_nome} ${(v.trocas_itens || []).map(i => i.produto_nome + ' ' + (i.motivo_descricao || '')).join(' ')}`.toLowerCase().includes(filtros.busca.toLowerCase()))
-    && ((!filtros.inicio && !filtros.fim) || dentroPeriodo(v.data_visita, filtros.inicio, filtros.fim))), [visitas, filtros]);
+    && ((!filtros.inicio && !filtros.fim) || dentroPeriodo(v.data_visita, filtros.inicio, filtros.fim))), [visitas, filtros, clienteRedeMap]);
 
   const totais = useMemo(() => {
     let qtd = 0; let valor = 0; let registros = 0;
@@ -66,12 +69,11 @@ export default function RelatorioTrocas() {
         <div><Label className="text-xs">Data Início</Label><Input type="date" value={filtros.inicio} onChange={(e) => setFiltros({ ...filtros, inicio: e.target.value })} /></div>
         <div><Label className="text-xs">Data Fim</Label><Input type="date" value={filtros.fim} onChange={(e) => setFiltros({ ...filtros, fim: e.target.value })} /></div>
         <div><Label className="text-xs">Func. Lançamento</Label><Select value={filtros.vendedor_id || '_t_'} onValueChange={(v) => setFiltros({ ...filtros, vendedor_id: v === '_t_' ? '' : v })}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="_t_">Todos</SelectItem>{vendedores.map(v => <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label className="text-xs">Vendedor</Label><Select value={'_t_'}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="_t_">Todos</SelectItem></SelectContent></Select></div>
+        <div><Label className="text-xs">Motivo</Label><Select value={filtros.motivo_id || '_t_'} onValueChange={(v) => setFiltros({ ...filtros, motivo_id: v === '_t_' ? '' : v })}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="_t_">Todos</SelectItem>{motivos.map(m => <SelectItem key={m.id} value={m.id}>{m.descricao}</SelectItem>)}</SelectContent></Select></div>
         <div><Label className="text-xs">Rede</Label><Select value={filtros.rede_id || '_t_'} onValueChange={(v) => setFiltros({ ...filtros, rede_id: v === '_t_' ? '' : v })}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent><SelectItem value="_t_">Todas</SelectItem>{redes.map(r => <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>)}</SelectContent></Select></div>
         <div><Label className="text-xs">Buscar</Label><Input value={filtros.busca} onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Produto, motivo..." /></div>
         <div><Label className="text-xs">Cliente</Label><Select value={filtros.cliente_id || '_t_'} onValueChange={(v) => setFiltros({ ...filtros, cliente_id: v === '_t_' ? '' : v })}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="_t_">Todos</SelectItem>{clientes.slice(0, 200).map(c => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}</SelectContent></Select></div>
       </CardContent></Card>
-      <label className="flex items-center gap-2 text-xs"><Checkbox checked={filtros.apenasUltima} onCheckedChange={(v) => setFiltros({ ...filtros, apenasUltima: !!v })} />Apenas última troca</label>
 
       <div className="space-y-2">{agrupado.map(c => (
         <div key={c.cliente_id} className="rounded-xl bg-white border shadow-sm overflow-hidden">
