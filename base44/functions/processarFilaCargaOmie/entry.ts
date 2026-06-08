@@ -224,24 +224,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══ PASSO 2: TIMEOUT — Limpar itens travados em "processando" há mais de 10 minutos ═══
-    const TIMEOUT_MS = 3 * 60 * 1000;
-    const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
-    for (const item of travados) {
-      const updatedAt = new Date(item.updated_date).getTime();
-      if (Date.now() - updatedAt > TIMEOUT_MS) {
-        const tentativas = Number(item.tentativas || 0) + 1;
-        const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
-        await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
-          status: novoStatus,
-          tentativas,
-          erro_log: `Timeout: travado em "processando" por mais de 3 minutos (tentativa ${tentativas})`
-        }).catch(() => {});
-        console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
-      }
-    }
-
-    // ═══ PASSO 3: LIMPEZA DE ÓRFÃOS ═══
+    // ═══ PASSO 2: LIMPEZA DE ÓRFÃOS ═══
     const todosPendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 200).catch(() => []);
     if (!todosPendentes.length) {
       return Response.json({ sucesso: true, processados: 0, cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Nenhum item pendente na fila' });
