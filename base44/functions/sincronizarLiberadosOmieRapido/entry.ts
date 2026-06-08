@@ -46,8 +46,16 @@ async function omieCall(base44, endpoint, param, options = {}) {
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          // Extrai tempo real da mensagem Omie
+          const secsMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
+          const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 180;
+          const until = new Date(Date.now() + secs * 1000).toISOString();
+          // SEMPRE update no registro existente — NUNCA criar novo
+          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+          const cbRec = cbRows?.[0];
+          if (cbRec) {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRec.id, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }

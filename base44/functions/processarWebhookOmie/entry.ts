@@ -15,15 +15,25 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID_WEBHOOK = '6a1e06a9aa62ceab7b3b6d97';
+
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const c = rows?.[0];
-  if (!c?.bloqueado) return { blocked: false };
+  if (!c?.bloqueado) return { blocked: false, record: c };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
     await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
-    return { blocked: false };
+    return { blocked: false, record: c };
   }
-  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro, record: c };
+}
+
+// Extrai segundos de bloqueio da mensagem Omie (ex: "Tente novamente em 1798 segundos.")
+function extrairSegundosBloqueioWH(msg) {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]), 1800);
+  return 180; // fallback 3 minutos
 }
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
@@ -46,8 +56,12 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          const secs = extrairSegundosBloqueioWH(data.faultstring);
+          const until = new Date(Date.now() + secs * 1000).toISOString();
+          // SEMPRE update no registro fixo — NUNCA criar novo
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
+            bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
+          }).catch(() => null);
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -192,8 +206,8 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
   } catch {}
 
   // Circuit breaker — se a API Omie está bloqueada por consumo indevido (425), não consulta agora.
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controleCb = cb?.[0];
+  const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const controleCb = cbRows?.[0];
   if (controleCb?.bloqueado && controleCb.bloqueado_ate && new Date(controleCb.bloqueado_ate) > new Date()) {
     console.log(`[espelho] API Omie bloqueada (425) — pulando ConsultarPedido de ${omieCodigoPedido} até ${controleCb.bloqueado_ate}`);
     return;
@@ -777,6 +791,20 @@ Deno.serve(async (req) => {
     // Só processa logs de webhook pendentes
     if (logData?.endpoint !== 'webhook' || logData?.status !== 'pendente') {
       return Response.json({ ignorado: true, motivo: 'log não é webhook pendente' });
+    }
+
+    // CIRCUIT BREAKER: se API bloqueada, marca como rate-limited e sai sem chamar Omie.
+    // A reconciliação periódica recupera esses dados depois.
+    const cbCheck = await checkCircuitBreaker(base44);
+    const topic0 = logData.webhook_topic || logData.call || '';
+    const topicsQueChamam = ['VendaProduto.Faturada', 'VendaProduto.EtapaAlterada', 'VendaProduto.Incluida', 'VendaProduto.Alterada', 'VendaProduto.Excluida', 'VendaProduto.Cancelada'];
+    if (cbCheck.blocked && topicsQueChamam.includes(topic0)) {
+      await base44.asServiceRole.entities.LogIntegracaoOmie.update(entityId, {
+        status: 'erro',
+        mensagem_erro: 'Rate limit exceeded',
+        webhook_processado_em: new Date().toISOString()
+      }).catch(() => {});
+      return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cbCheck.blockedUntil });
     }
 
     const topic = logData.webhook_topic || logData.call || '';
