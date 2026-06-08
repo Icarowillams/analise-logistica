@@ -645,7 +645,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     for (const pedido of pedidosParaCancelar) {
       try {
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-          const res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+          let res;
+          try {
+            res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+          } catch (invokeErr) {
+            // Extrair mensagem real do backend (axios wraps em response.data)
+            const backendMsg = invokeErr?.response?.data?.error || invokeErr?.message || 'Erro ao cancelar pedido no Omie';
+            throw new Error(backendMsg);
+          }
           if (!res.data?.sucesso) {
             throw new Error(res.data?.error || 'Erro ao cancelar pedido no Omie');
           }
