@@ -18,8 +18,10 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
@@ -50,7 +52,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
           const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -99,12 +101,12 @@ Deno.serve(async (req) => {
     if (!nIdNfe) {
       // Buscar via ConsultarNF (nfconsultar) usando nNF
       if (!nNF) return Response.json({ error: 'Informe nIdNF, nCodNF ou nNF' }, { status: 400 });
-      const detalhe = await omieCall(base44, NF_URL, 'ConsultarNF', { nNF: String(nNF) }, { cacheMinutes: 0 });
+      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF' });
       nIdNfe = detalhe?.compl?.nIdNF || detalhe?.nIdNF || detalhe?.nCodNF || null;
       if (!nIdNfe) return Response.json({ error: 'nIdNfe não encontrado para a NF informada' }, { status: 404 });
     }
 
-    const nfe = await omieCall(base44, DFE_URL, 'ObterNfe', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 0 });
+    const nfe = await omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe' });
     const pdfUrl = nfe?.cPdf || null;
 
     if (!pdfUrl) {
