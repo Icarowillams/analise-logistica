@@ -42,11 +42,14 @@ async function checkCircuitBreaker(base44) {
 }
 
 async function setCircuitBreakerBlocked(base44, errorMessage) {
-  const blockedUntil = new Date(Date.now() + 30 * 60000).toISOString();
-  const payload = { chave: 'principal', bloqueado: true, bloqueado_ate: blockedUntil, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  if (rows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(rows[0].id, payload).catch(() => {});
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
+  const secsMatch = errorMessage.match(/(\d+)\s*segundo/i);
+  const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
+  const blockedUntil = new Date(Date.now() + secs * 1000).toISOString();
+  // SEMPRE update no registro fixo — NUNCA criar novo
+  const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
+    bloqueado: true, bloqueado_ate: blockedUntil, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString()
+  }).catch(() => {});
 }
 
 // ============================================================
@@ -539,15 +542,18 @@ Deno.serve(async (req) => {
 
         if (isBloqueio) {
           console.log(`[processarFila] Bloqueio detectado: ${erro}. Abrindo circuit breaker.`);
-          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-            .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-          const cbPayload = {
-            chave: 'principal', bloqueado: true,
-            bloqueado_ate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            ultimo_erro: erro, atualizado_em: new Date().toISOString()
-          };
-          if (cbRows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows[0].id, cbPayload).catch(() => {});
-          else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(cbPayload).catch(() => {});
+          // Extrai tempo real da mensagem Omie (ex: "1799 segundos")
+          const secsMatch = erro.match(/(\d+)\s*segundo/i);
+          const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
+          // SEMPRE update no registro fixo — NUNCA criar novo
+          const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
+            bloqueado: true,
+            bloqueado_ate: new Date(Date.now() + secs * 1000).toISOString(),
+            ultimo_erro: erro,
+            atualizado_em: new Date().toISOString()
+          }).catch(() => {});
+          cbAtivado = true;
           break;
         }
       }
