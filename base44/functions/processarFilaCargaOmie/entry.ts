@@ -208,12 +208,14 @@ Deno.serve(async (req) => {
         base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 500).catch(() => [])
       ]);
       const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'nao_iniciado', 'processando']);
-      const cargaIdsComFila = new Set(filaItens.filter(i => i.status === 'pendente').map(i => i.carga_id));
+      const cargaIdsComFilaPendente = new Set(filaItens.filter(i => i.status === 'pendente').map(i => i.carga_id));
+      const cargaIdsComFilaQualquer = new Set(filaItens.map(i => i.carga_id));
 
       const cargasParaAtualizar = cargasIntermediarias.filter(c => {
         if (!STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return false;
-        // nao_iniciado: só recalcula se tem itens pendentes na fila
-        if (c.processamento_omie_status === 'nao_iniciado') return cargaIdsComFila.has(c.id);
+        // nao_iniciado: recalcula se tem QUALQUER item na fila (pendente, concluído ou erro)
+        // Isso corrige cargas que ficavam "Aguardando fila" mesmo com todos os itens concluídos
+        if (c.processamento_omie_status === 'nao_iniciado') return cargaIdsComFilaQualquer.has(c.id);
         return true;
       });
 
