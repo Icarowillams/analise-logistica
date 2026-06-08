@@ -219,10 +219,13 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
       const msg = String(data.faultstring).toLowerCase();
       // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
       if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
-        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
-        if (controleCb?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleCb.id, payloadCb).catch(() => {});
-        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        const secsMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
+        const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
+        const bloqueadoAte = new Date(Date.now() + secs * 1000).toISOString();
+        // SEMPRE update no registro fixo — NUNCA criar novo
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
+          bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString()
+        }).catch(() => {});
         const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${bloqueadoAte}.`);
         err.code = 'OMIE_425';
         throw err;
@@ -497,9 +500,49 @@ async function handlePedido(base44, topic, evt) {
         }
       } catch {}
       espelhoAcao = 'upsert_local';
+    } else if (topic === 'VendaProduto.Incluida') {
+      // Incluida: se o pedido JÁ existe no Base44 (enviado pela fila), NÃO consultar Omie.
+      // O espelho será atualizado pela reconciliação periódica. Evita rate limit.
+      const jaExisteLocal = await base44.asServiceRole.entities.Pedido
+        .filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1)
+        .catch(() => []);
+      if (jaExisteLocal.length > 0) {
+        // Pedido local encontrado — atualiza espelho com dados locais (sem bater no Omie)
+        try {
+          const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+            codigo_pedido: String(codigoPedido)
+          }, '-sincronizado_em', 1);
+          if (!espelhos.length) {
+            // Cria espelho mínimo com dados do pedido local
+            const pl = jaExisteLocal[0];
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.create({
+              codigo_pedido: String(codigoPedido),
+              numero_pedido: pl.numero_pedido || '',
+              etapa: evt?.etapa || '10',
+              cliente_id: pl.cliente_id || null,
+              nome_cliente: pl.cliente_nome || '',
+              nome_fantasia: pl.cliente_nome_fantasia || '',
+              cidade: pl.cliente_cidade || '',
+              rota_id: pl.rota_id || null,
+              rota_nome: pl.rota_nome || '',
+              vendedor_id: pl.vendedor_id || null,
+              vendedor_nome: pl.vendedor_nome || '',
+              valor_total_pedido: pl.valor_total || 0,
+              pedido_id: pl.id,
+              sincronizado_em: new Date().toISOString(),
+              origem_sync: 'webhook'
+            });
+          }
+        } catch {}
+        espelhoAcao = 'upsert_local_skip_omie';
+        console.log(`[espelhoOperacao] VendaProduto.Incluida ${codigoPedido} — pedido local encontrado, pular ConsultarPedido`);
+      } else {
+        // Pedido NÃO é nosso — consulta Omie normalmente
+        await upsertEspelho(base44, codigoPedido);
+        espelhoAcao = 'upsert';
+      }
     } else if (
       topic === 'VendaProduto.EtapaAlterada' ||
-      topic === 'VendaProduto.Incluida' ||
       topic === 'VendaProduto.Alterada'
     ) {
       await upsertEspelho(base44, codigoPedido);
