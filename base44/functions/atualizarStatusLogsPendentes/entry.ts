@@ -335,6 +335,26 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
 
+    // 🔒 LOCK: impede execuções simultâneas (2 cliques rápidos = 2x chamadas = rate limit)
+    const LOCK_KEY = 'lock_atualizarStatusLogsPendentes';
+    const LOCK_TTL_MS = 120_000; // 2 minutos máximo de lock
+    const lockExistente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: LOCK_KEY }, '-created_date', 1).catch(() => []);
+    const lockAtivo = lockExistente?.[0];
+    if (lockAtivo?.criado_em && (Date.now() - new Date(lockAtivo.criado_em).getTime()) < LOCK_TTL_MS) {
+      return Response.json({ sucesso: false, abortado: true, motivo: 'execucao_em_andamento', mensagem: 'Outra execução ainda está em andamento. Aguarde.' });
+    }
+    // Criar/atualizar lock
+    if (lockAtivo?.id) {
+      await base44.asServiceRole.entities.CacheOmieConsulta.update(lockAtivo.id, { criado_em: new Date().toISOString(), valor: { status: 'executando' } }).catch(() => {});
+    } else {
+      await base44.asServiceRole.entities.CacheOmieConsulta.create({ chave: LOCK_KEY, tipo: 'lock', criado_em: new Date().toISOString(), valor: { status: 'executando' }, expira_em: new Date(Date.now() + LOCK_TTL_MS).toISOString() }).catch(() => {});
+    }
+    // Função para liberar lock no final
+    const liberarLock = async () => {
+      const l = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: LOCK_KEY }, '-created_date', 1).catch(() => []);
+      if (l?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(l[0].id, { criado_em: new Date(0).toISOString(), valor: { status: 'livre' } }).catch(() => {});
+    };
+
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
     const LIMITE_LOGS = 10;
@@ -373,6 +393,7 @@ Deno.serve(async (req) => {
     }
 
     if (logs.length === 0) {
+      await liberarLock();
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [], otimizado: true, motivo: 'sem_logs_pendentes_24h' });
     }
 
@@ -380,6 +401,7 @@ Deno.serve(async (req) => {
     const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
     const ultimo = ultimosProcessamentos?.[0];
     if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 5 * 60 * 1000) {
+      await liberarLock();
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
     }
 
@@ -537,6 +559,7 @@ Deno.serve(async (req) => {
     const aindaPendentes = resultados.filter(r => r.ainda_pendente).length;
 
 
+    await liberarLock();
     return Response.json({
       sucesso: true,
       processados: resultados.filter(r => !r.ignorado_cooldown).length,
@@ -548,6 +571,12 @@ Deno.serve(async (req) => {
       resultados
     });
   } catch (error) {
+    // Liberar lock em caso de erro
+    try {
+      const base44Err = createClientFromRequest(req);
+      const l = await base44Err.asServiceRole.entities.CacheOmieConsulta.filter({ chave: 'lock_atualizarStatusLogsPendentes' }, '-created_date', 1).catch(() => []);
+      if (l?.[0]?.id) await base44Err.asServiceRole.entities.CacheOmieConsulta.update(l[0].id, { criado_em: new Date(0).toISOString(), valor: { status: 'livre' } }).catch(() => {});
+    } catch {}
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
