@@ -101,30 +101,42 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { nIdNF, nCodNF, nNF, nIdPedido } = body;
 
-    // Resolver o nIdNfe (id interno do Omie usado em ObterNfe)
-    let nIdNfe = Number(nIdNF || nCodNF || 0) || null;
+    // Resolver o nIdNfe (id interno do Omie usado em ObterNfe/dfedocs)
+    // IMPORTANTE: nIdNF/nCodNF vindos do ListarNF (nfconsultar) NÃO são o mesmo
+    // que nIdNfe do ObterNfe (dfedocs). Precisamos resolver via ConsultarNF.
+    let nIdNfe = null;
 
-    // Estratégia 1: se já temos nIdNfe, usa direto (1 chamada)
-    // Estratégia 2: se temos nIdPedido, busca via ListarNF filtrando pelo pedido (1 chamada)
-    // Estratégia 3: fallback via ConsultarNF usando nNF (2 chamadas — evitar)
-    if (!nIdNfe && nIdPedido) {
-      const listRes = await omieCall(base44, NF_URL, {
-        pagina: 1,
-        registros_por_pagina: 5,
-        nIdPedido: Number(nIdPedido)
-      }, { call: 'ListarNF', skipLog: true });
-      const nfEncontrada = (listRes?.nfCadastro || []).find(nf => {
-        if (nNF && String(nf.ide?.nNF || nf.cNumero || '') === String(nNF)) return true;
-        return !nNF; // se não informou nNF, pega a primeira
-      }) || (listRes?.nfCadastro || [])[0];
-      nIdNfe = nfEncontrada?.compl?.nIdNF || nfEncontrada?.nIdNF || nfEncontrada?.nCodNF || null;
+    // Estratégia 1: se já temos nIdNF numérico válido, tenta direto (1 chamada)
+    const candidato = Number(nIdNF || nCodNF || 0);
+    if (candidato > 0) {
+      // Tenta usar direto — se ObterNfe falhar, cairá no fallback abaixo
+      try {
+        const nfe = await omieCall(base44, DFE_URL, { nIdNfe: candidato }, { call: 'ObterNfe', skipLog: true });
+        if (nfe?.cPdf) {
+          // Sucesso — já temos o PDF, baixa e retorna
+          const pdfRes = await fetch(nfe.cPdf);
+          if (!pdfRes.ok) return Response.json({ error: `Falha ao baixar PDF (HTTP ${pdfRes.status})` }, { status: 502 });
+          const buf = await pdfRes.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let binary = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+          return Response.json({ sucesso: true, numero: nfe?.cNumNfe || nNF || '', chave: nfe?.nChaveNfe || '', pdf_base64: btoa(binary), pdf_url: nfe.cPdf });
+        }
+        // ObterNfe retornou mas sem cPdf — pode ser NF errada, tenta fallback
+      } catch {
+        // nIdNF não é o nIdNfe correto para dfedocs — segue para fallback
+      }
+    }
+
+    // Estratégia 2 (principal): resolver via ConsultarNF usando nNF (número da nota)
+    if (!nIdNfe && nNF) {
+      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF', skipLog: true });
+      nIdNfe = detalhe?.compl?.nIdNF || detalhe?.nIdNF || detalhe?.nCodNF || null;
     }
 
     if (!nIdNfe) {
-      if (!nNF) return Response.json({ error: 'Informe nIdNF, nCodNF, nIdPedido ou nNF' }, { status: 400 });
-      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF', skipLog: true });
-      nIdNfe = detalhe?.compl?.nIdNF || detalhe?.nIdNF || detalhe?.nCodNF || null;
-      if (!nIdNfe) return Response.json({ error: 'nIdNfe não encontrado para a NF informada' }, { status: 404 });
+      return Response.json({ error: 'Não foi possível resolver o ID da NF. Informe nNF (número da nota).' }, { status: 400 });
     }
 
     const nfe = await omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe', skipLog: true });
