@@ -46,8 +46,12 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          // tempo dinâmico removido — usa bloco abaixo
+          const secsMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
+          const blockSecs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 180;
+          const until2 = new Date(Date.now() + blockSecs * 1000).toISOString();
+          const cbRows2 = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+          if (cbRows2?.[0]) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRows2[0].id, { bloqueado: true, bloqueado_ate: until2, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -118,7 +122,7 @@ Deno.serve(async (req) => {
     let detalheErro = null;
 
     try {
-      detalhe = await omieCall(base44, NF_URL, 'ConsultarNF', chaveNF, { cacheMinutes: 5 });
+      detalhe = await omieCall(base44, NF_URL, chaveNF, { call: 'ConsultarNF', skipLog: true });
     } catch (e) {
       detalheErro = e.message;
     }
@@ -128,12 +132,12 @@ Deno.serve(async (req) => {
 
     const chamadas = [];
     if (nIdNfe) {
-      chamadas.push(['nfe_completa', omieCall(base44, DFE_URL, 'ObterNfe', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
-      chamadas.push(['danfe_simplificado', omieCall(base44, DFE_URL, 'ObterDanfeSimp', { nIdNfe: Number(nIdNfe) }, { cacheMinutes: 5 })]);
+      chamadas.push(['nfe_completa', omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe', skipLog: true })]);
+      chamadas.push(['danfe_simplificado', omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterDanfeSimp', skipLog: true })]);
     }
     if (nIdPedido) {
-      chamadas.push(['pedido_pdf', omieCall(base44, DFE_URL, 'ObterPedVenda', { nIdPed: Number(nIdPedido) }, { cacheMinutes: 5 })]);
-      chamadas.push(['pedido_completo', omieCall(base44, PEDIDO_URL, 'ConsultarPedido', { codigo_pedido: Number(nIdPedido) }, { cacheMinutes: 5 })]);
+      chamadas.push(['pedido_pdf', omieCall(base44, DFE_URL, { nIdPed: Number(nIdPedido) }, { call: 'ObterPedVenda', skipLog: true })]);
+      chamadas.push(['pedido_completo', omieCall(base44, PEDIDO_URL, { codigo_pedido: Number(nIdPedido) }, { call: 'ConsultarPedido', skipLog: true })]);
     }
 
     const resultados = await Promise.allSettled(chamadas.map(([, promise]) => promise));

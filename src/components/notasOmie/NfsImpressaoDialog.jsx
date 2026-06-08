@@ -55,8 +55,8 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     return data;
   };
 
-  const fetchPdfBytes = async (nf) => {
-    const { data, status } = await base44.functions.invoke('baixarPdfDanfeOmie', {
+  const fetchPdfBytes = async (nf, tentativa = 1) => {
+    const { data } = await base44.functions.invoke('baixarPdfDanfeOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
       nNF: nf.cNumero,
@@ -64,9 +64,20 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     });
     if (!data?.sucesso) {
       const motivo = data?.motivo || 'erro';
+      const errMsg = data?.error || `Falha ao obter PDF da NF ${nf.cNumero}`;
+      
+      // Rate limit detectado — espera e tenta de novo (até 2 tentativas)
+      if (tentativa < 3 && /redundante|aguarde|cota/i.test(errMsg)) {
+        const waitMatch = errMsg.match(/(\d+)\s*segundo/i);
+        const waitSecs = waitMatch ? Math.min(Number(waitMatch[1]) + 5, 120) : 60;
+        toast.info(`NF ${nf.cNumero}: Omie pediu ${waitSecs}s de espera. Aguardando...`, { duration: waitSecs * 1000 });
+        await sleep(waitSecs * 1000);
+        return fetchPdfBytes(nf, tentativa + 1);
+      }
+      
       const msg = motivo === 'aguardando_sefaz' 
         ? `NF ${nf.cNumero}: aguardando SEFAZ` 
-        : (data?.error || `Falha ao obter PDF da NF ${nf.cNumero}`);
+        : errMsg;
       const err = new Error(msg);
       err.motivo = motivo;
       throw err;
@@ -94,7 +105,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
             if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
             else falhas.push(nf.cNumero || '?'); 
           }
-          if (i < nfs.length - 1) await sleep(500);
+          if (i < nfs.length - 1) await sleep(1500);
         }
         const totalFalhas = falhas.length + falhasSefaz.length;
         const ok = total - totalFalhas;
@@ -117,7 +128,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
             if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
             else falhas.push(nf.cNumero || '?'); 
           }
-          if (i < nfs.length - 1) await sleep(500);
+          if (i < nfs.length - 1) await sleep(1500);
         }
         const totalFalhas = falhas.length + falhasSefaz.length;
         const ok = total - totalFalhas;
@@ -142,11 +153,13 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
   const handleXml = async () => {
     setTipoLoading('xml');
     try {
-      for (const nf of nfs) {
+      for (let i = 0; i < nfs.length; i++) {
+        const nf = nfs[i];
         const det = await fetchDetalhe(nf);
         const xml = det.dfe?.xml;
         if (!xml) { toast.warning(`NF ${nf.cNumero}: XML não disponível`); continue; }
         baixarTexto(`nfe-${nf.cNumero || 'omie'}.xml`, xml, 'application/xml');
+        if (i < nfs.length - 1) await sleep(1500);
       }
       toast.success(`XML(s) baixado(s)`);
       fechar();
@@ -159,9 +172,11 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
   const handleJson = async () => {
     setTipoLoading('json');
     try {
-      for (const nf of nfs) {
+      for (let i = 0; i < nfs.length; i++) {
+        const nf = nfs[i];
         const det = await fetchDetalhe(nf);
         baixarTexto(`nfe-${nf.cNumero || 'omie'}.json`, JSON.stringify(det, null, 2));
+        if (i < nfs.length - 1) await sleep(1500);
       }
       toast.success(`JSON(s) baixado(s)`);
       fechar();

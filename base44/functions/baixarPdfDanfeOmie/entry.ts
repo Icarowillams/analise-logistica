@@ -39,37 +39,43 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
+  // SEM retries automáticos para impressão de PDF — cada retry gasta cota e agrava o rate limit.
+  // Se falhar, retorna erro imediato e o frontend tenta de novo com delay adequado.
   let lastErr = '';
-  for (let i = 0; i <= RETRIES.length; i++) {
-    try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
-      clearTimeout(tid);
-      const data = await res.json();
-      if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          throw new Error(data.faultstring);
-        }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 20000);
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+    clearTimeout(tid);
+    const data = await res.json();
+    if (data.faultstring) {
+      const msg = String(data.faultstring).toLowerCase();
+      if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+        const secsMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
+        const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 180;
+        const until = new Date(Date.now() + secs * 1000).toISOString();
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
         throw new Error(data.faultstring);
       }
-      if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
+      // Erro de rate limit: retorna imediato — NÃO faz retry (economiza cota)
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite')) {
+        // Extrai segundos para informar o frontend
+        const waitMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
+        const waitSecs = waitMatch ? Number(waitMatch[1]) : 60;
+        const err = new Error(data.faultstring);
+        err.retryAfterSecs = waitSecs;
+        throw err;
       }
-      return data;
-    } catch (e: any) {
-      lastErr = e.message;
-      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
-      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
-      throw new Error(lastErr);
+      throw new Error(data.faultstring);
     }
+    return data;
+  } catch (e: any) {
+    lastErr = e.message;
+    if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+    const err = new Error(lastErr);
+    if (e.retryAfterSecs) err.retryAfterSecs = e.retryAfterSecs;
+    throw err;
   }
-  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 // ═══ fim omieClient inline ═══
 
@@ -93,20 +99,35 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { nIdNF, nCodNF, nNF } = body;
+    const { nIdNF, nCodNF, nNF, nIdPedido } = body;
 
     // Resolver o nIdNfe (id interno do Omie usado em ObterNfe)
     let nIdNfe = Number(nIdNF || nCodNF || 0) || null;
 
+    // Estratégia 1: se já temos nIdNfe, usa direto (1 chamada)
+    // Estratégia 2: se temos nIdPedido, busca via ListarNF filtrando pelo pedido (1 chamada)
+    // Estratégia 3: fallback via ConsultarNF usando nNF (2 chamadas — evitar)
+    if (!nIdNfe && nIdPedido) {
+      const listRes = await omieCall(base44, NF_URL, {
+        pagina: 1,
+        registros_por_pagina: 5,
+        nIdPedido: Number(nIdPedido)
+      }, { call: 'ListarNF', skipLog: true });
+      const nfEncontrada = (listRes?.nfCadastro || []).find(nf => {
+        if (nNF && String(nf.ide?.nNF || nf.cNumero || '') === String(nNF)) return true;
+        return !nNF; // se não informou nNF, pega a primeira
+      }) || (listRes?.nfCadastro || [])[0];
+      nIdNfe = nfEncontrada?.compl?.nIdNF || nfEncontrada?.nIdNF || nfEncontrada?.nCodNF || null;
+    }
+
     if (!nIdNfe) {
-      // Buscar via ConsultarNF (nfconsultar) usando nNF
-      if (!nNF) return Response.json({ error: 'Informe nIdNF, nCodNF ou nNF' }, { status: 400 });
-      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF' });
+      if (!nNF) return Response.json({ error: 'Informe nIdNF, nCodNF, nIdPedido ou nNF' }, { status: 400 });
+      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF', skipLog: true });
       nIdNfe = detalhe?.compl?.nIdNF || detalhe?.nIdNF || detalhe?.nCodNF || null;
       if (!nIdNfe) return Response.json({ error: 'nIdNfe não encontrado para a NF informada' }, { status: 404 });
     }
 
-    const nfe = await omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe' });
+    const nfe = await omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe', skipLog: true });
     const pdfUrl = nfe?.cPdf || null;
 
     if (!pdfUrl) {
