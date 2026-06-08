@@ -335,10 +335,18 @@ export default function Cargas() {
         pedidos,
         data_previsao: novaPrevisao
       });
-      const ok = (data?.resultados || []).filter(r => r.sucesso).length;
-      const fail = (data?.resultados || []).filter(r => !r.sucesso).length;
-      if (fail === 0) toast.success(`Previsão atualizada em ${ok} pedido(s) no Omie`);
-      else toast.warning(`${ok} atualizados, ${fail} com erro`);
+      const resultados = data?.resultados || [];
+      const ok = resultados.filter(r => r.sucesso).length;
+      const ignorados = resultados.filter(r => r.ignorado).length;
+      const fail = resultados.filter(r => !r.sucesso && !r.ignorado).length;
+      if (fail === 0 && ignorados === 0) {
+        toast.success(`Previsão atualizada em ${ok} pedido(s) no Omie`);
+      } else if (fail === 0) {
+        toast.success(`${ok} atualizado(s), ${ignorados} ignorado(s) (já em etapa avançada)`);
+      } else {
+        const errosMsg = resultados.filter(r => !r.sucesso && !r.ignorado).map(r => `${r.numero_pedido}: ${r.mensagem}`).join(', ');
+        toast.warning(`${ok} atualizados, ${fail} com erro: ${errosMsg}`, { duration: 8000 });
+      }
       setModalPrevisao({ open: false, carga: null });
       setNovaPrevisao('');
       queryClient.invalidateQueries({ queryKey: ['cargas'] });

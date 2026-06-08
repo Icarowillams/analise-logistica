@@ -105,6 +105,21 @@ Deno.serve(async (req) => {
         const data = await omieCall(base44, 'produtos/pedido/', { cabecalho }, { call: 'AlterarPedidoVenda' });
         const ok = data.cCodStatus === '0' || data.cCodStatus === 0;
 
+        // Tratar como sucesso quando o Omie rejeita mas o pedido já está em etapa
+        // avançada (50/60) — a previsão não pode ser alterada, mas não é um erro real.
+        if (!ok) {
+          const desc = String(data.cDescStatus || '').toLowerCase();
+          const ignoravel = desc.includes('etapa') || desc.includes('faturad') || desc.includes('não permite');
+          resultados.push({
+            codigo_pedido: p.codigo_pedido,
+            numero_pedido: p.numero_pedido,
+            sucesso: ignoravel,
+            ignorado: ignoravel,
+            mensagem: data.cDescStatus || 'Erro desconhecido'
+          });
+          continue;
+        }
+
         if (ok && p.codigo_pedido) {
           const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
             { codigo_pedido: String(p.codigo_pedido) },
@@ -139,12 +154,20 @@ Deno.serve(async (req) => {
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.length - sucessos;
 
+    // Detalhamento dos erros individuais para diagnóstico
+    const errosDetalhados = resultados
+      .filter(r => !r.sucesso)
+      .map(r => `Pedido ${r.numero_pedido || r.codigo_pedido}: ${r.mensagem}`)
+      .join(' | ');
+
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedido',
       call: 'AlterarPedidoVenda',
       operacao: 'alterar_previsao_lote',
       status: erros > 0 ? 'warning' : 'sucesso',
-      mensagem_erro: erros > 0 ? `${erros} pedidos falharam` : null,
+      mensagem_erro: erros > 0 ? `${erros} pedido(s) falharam: ${errosDetalhados}`.substring(0, 2000) : null,
+      erro_detalhado: erros > 0 ? errosDetalhados.substring(0, 2000) : null,
+      payload_resposta: erros > 0 ? JSON.stringify(resultados.filter(r => !r.sucesso)).substring(0, 2000) : null,
       usuario_email: user.email
     }).catch(() => {});
 
