@@ -479,34 +479,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
-  // Atualizar: recarrega dados locais + reconcilia espelho com Omie (com timeout de 30s)
+  // Atualizar: recarrega dados locais (espelho já é mantido em tempo real pelos webhooks)
   const syncEAtualizar = async () => {
     setSyncLoading(true);
     try {
-      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
-      
-      // 1. Reconciliar espelho (corrige etapas desatualizadas como "10" que já são "20" no Omie)
-      const reconciliarPromise = base44.functions.invoke('sincronizarLiberadosOmieRapido', { max_paginas: 5, origem: 'reconciliacao' })
-        .then(res => {
-          const d = res.data || {};
-          if (d.criados > 0 || d.atualizados > 0 || d.removidos > 0) {
-            toast.success(`Espelho atualizado: ${d.atualizados || 0} atualizado(s), ${d.criados || 0} novo(s)`);
-          }
-        })
-        .catch(e => {
-          if (e.message !== 'timeout') console.error('Erro ao reconciliar espelho:', e);
-        });
-
-      await Promise.race([reconciliarPromise, timeout(30000)]).catch(() => {
-        toast.info('Sincronização está demorando — os dados serão atualizados em background pela automação periódica.');
-      });
-
-      // 2. Recarregar queries locais
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
         queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
         queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
       ]);
+      toast.success('Dados atualizados');
     } finally {
       setSyncLoading(false);
     }
