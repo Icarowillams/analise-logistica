@@ -15,12 +15,17 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
   try {
     const resposta = await omieCall(base44, 'produtos/pedido/', param, { call: 'TrocarEtapaPedido' });
     await new Promise(r => setTimeout(r, 1200));
+    // Omie pode retornar codigo_status != "0" indicando que a troca foi recusada
+    const codStatus = String(resposta?.codigo_status || '0');
+    const descStatus = resposta?.descricao_status || '';
+    const rejeitado = codStatus !== '0' && descStatus.toLowerCase().includes('não é possível');
     return {
       codigo_pedido: pedido.codigo_pedido,
       codigo_pedido_integracao: pedido.codigo_pedido_integracao,
       numero_pedido: pedido.numero_pedido,
       etapa,
-      sucesso: true,
+      sucesso: !rejeitado,
+      mensagem: rejeitado ? descStatus : undefined,
       resposta
     };
   } catch (e) {
@@ -46,12 +51,20 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  if (rows.length > 0 && rows[0].bloqueado) {
-    const ate = new Date(rows[0].bloqueado_ate || 0);
-    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return;
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
+    // Expirou — desbloquear automaticamente
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return;
   }
+  const err = new Error(`API Omie bloqueada até ${c.bloqueado_ate}`);
+  err.code = 'OMIE_425';
+  throw err;
 }
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
@@ -60,17 +73,29 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
   const call = options.call || endpoint;
   const url = `https://app.omie.com.br/api/v1/${endpoint}`;
-  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
+  const bodyStr = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body,
+    body: bodyStr,
   });
-  if (!resp.ok) {
+  const data = await resp.json().catch(async () => {
     const text = await resp.text().catch(() => '');
     throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
+  });
+  // Omie retorna HTTP 200 mesmo com erro — verificar faultstring
+  if (data.faultstring) {
+    const msg = String(data.faultstring);
+    const lower = msg.toLowerCase();
+    if (lower.includes('bloqueada') || lower.includes('consumo indevido') || lower.includes('bloqueio')) {
+      const err = new Error(msg);
+      err.code = 'OMIE_425';
+      throw err;
+    }
+    throw new Error(msg);
   }
-  return resp.json();
+  if (!resp.ok) throw new Error(`Omie ${call} HTTP ${resp.status}`);
+  return data;
 }
 
 Deno.serve(async (req) => {
@@ -89,12 +114,18 @@ Deno.serve(async (req) => {
       }
       const sucessos = resultados.filter(r => r.sucesso).length;
       const erros = resultados.length - sucessos;
+      const errosDetalhe = resultados
+        .filter(r => !r.sucesso)
+        .map(r => `Ped ${r.numero_pedido || r.codigo_pedido}: ${r.mensagem || 'sem detalhe'}`)
+        .join(' | ');
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: 'produtos/pedido',
         call: 'TrocarEtapaPedido',
         operacao: `trocar_etapa_lote_${body.etapa_destino || 'multi'}`,
         status: erros > 0 ? 'warning' : 'sucesso',
-        mensagem_erro: erros > 0 ? `${erros} pedidos falharam` : null,
+        mensagem_erro: erros > 0 ? `${erros} pedidos falharam: ${errosDetalhe}`.substring(0, 2000) : null,
+        erro_detalhado: erros > 0 ? errosDetalhe.substring(0, 2000) : null,
+        payload_resposta: JSON.stringify(resultados).substring(0, 2000),
         usuario_email: user.email
       }).catch(() => {});
       return Response.json({ sucesso: true, total: pedidos.length, sucessos, erros, resultados });
