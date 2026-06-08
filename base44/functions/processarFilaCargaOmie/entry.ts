@@ -48,7 +48,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
           const until = new Date(Date.now() + 10 * 60000).toISOString();
           // Upsert: atualiza registro existente em vez de criar duplicados
-          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 5).catch(() => []);
+          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 5).catch(() => []);
           const cbPrincipal = cbRows?.[0];
           if (cbPrincipal?.id) {
             await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbPrincipal.id, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
@@ -59,7 +59,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           } else {
             await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
           }
-          throw new Error(data.faultstring);
+          const blockedErr = new Error(data.faultstring);
+          blockedErr.bloqueio = true;
+          throw blockedErr;
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
@@ -297,15 +299,16 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error(`[FILA ERRO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}):`, e.message);
         const tentativas = Number(item.tentativas || 0) + 1;
-        const novoStatus = (e.bloqueio || tentativas >= MAX_TENTATIVAS) ? (e.bloqueio ? 'pendente' : 'erro') : 'pendente';
+        const isBloqueio = e.bloqueio || /bloqueada|consumo indevido|bloqueio/i.test(e.message);
+        const novoStatus = isBloqueio ? 'pendente' : (tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente');
         await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
           status: novoStatus,
-          tentativas,
+          tentativas: isBloqueio ? Number(item.tentativas || 0) : tentativas,
           erro_log: String(e.message).slice(0, 1000)
         }).catch(() => {});
 
         // Bloqueio Omie → aborta o restante do lote, retoma na próxima rodada.
-        if (e.bloqueio) { interrompido = true; break; }
+        if (isBloqueio) { interrompido = true; break; }
       }
 
       // Delay entre pedidos (não no último).
