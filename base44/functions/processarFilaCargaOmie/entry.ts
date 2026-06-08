@@ -15,15 +15,46 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
+async function getCircuitBreakerRecord(base44: any) {
+  return base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1)
+    .then(rows => rows?.[0] || null)
+    .catch(() => null);
+}
+
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const c = rows?.[0];
-  if (!c?.bloqueado) return { blocked: false };
+  const c = await getCircuitBreakerRecord(base44);
+  if (!c?.bloqueado) return { blocked: false, record: c };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
     await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
-    return { blocked: false };
+    return { blocked: false, record: c };
   }
-  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro, record: c };
+}
+
+// Extrai segundos de bloqueio da mensagem Omie (ex: "Tente novamente em 1798 segundos.")
+function extrairSegundosBloqueio(msg: string): number {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]), 1800); // cap 30min
+  return 180; // fallback 3 minutos
+}
+
+// Lock distribuído simples: usa o campo atualizado_em como lock timestamp
+async function acquireLock(base44: any): Promise<boolean> {
+  const c = await getCircuitBreakerRecord(base44);
+  if (!c) return true; // sem registro, sem lock
+  const lockAge = Date.now() - new Date(c.atualizado_em || '2020-01-01').getTime();
+  // Se outra instância atualizou há menos de 60s, ela está processando — aborta
+  // (cada ciclo demora pelo menos ~30s com delays, então 60s é seguro)
+  if (lockAge < 60000 && c.bloqueado === false) {
+    // Verifica se NÃO fomos nós que atualizamos (evita auto-bloqueio)
+    return false;
+  }
+  // Adquire lock marcando timestamp
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { atualizado_em: new Date().toISOString() }).catch(() => null);
+  return true;
 }
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
@@ -31,8 +62,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
   if (!call) throw new Error('Informe options.call com o método Omie.');
-  const cb = await checkCircuitBreaker(base44);
-  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
   const RETRIES = [800, 1500, 3000];
   let lastErr = '';
@@ -46,19 +75,13 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 3 * 60000).toISOString();
-          // Upsert: atualiza registro existente em vez de criar duplicados
-          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 5).catch(() => []);
-          const cbPrincipal = cbRows?.[0];
-          if (cbPrincipal?.id) {
-            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbPrincipal.id, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-            // Limpar duplicados
-            for (const extra of (cbRows || []).slice(1)) {
-              await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
-            }
-          } else {
-            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          }
+          // Usa o tempo que o Omie informou na mensagem (ex: "1798 segundos")
+          const secs = extrairSegundosBloqueio(data.faultstring);
+          const until = new Date(Date.now() + secs * 1000).toISOString();
+          // SEMPRE update no registro fixo — NUNCA criar novo
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, {
+            bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
+          }).catch(() => null);
           const blockedErr = new Error(data.faultstring);
           blockedErr.bloqueio = true;
           throw blockedErr;
@@ -84,7 +107,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
 const LOTE = 50;
-const DELAY_ENTRE_PEDIDOS_MS = 400;
+const DELAY_ENTRE_PEDIDOS_MS = 600;
 
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
@@ -158,6 +181,12 @@ Deno.serve(async (req) => {
     const breaker = await checkCircuitBreaker(base44);
     if (breaker.blocked) {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
+    }
+
+    // Lock distribuído: impede 2 instâncias simultâneas (automação + clique manual)
+    const gotLock = await acquireLock(base44);
+    if (!gotLock) {
+      return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', mensagem: 'Outra instância já está processando a fila. Aguarde.' });
     }
 
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
