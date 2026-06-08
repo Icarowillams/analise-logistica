@@ -7,22 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, Play, FileText, Loader2, RefreshCw, AlertTriangle, CheckCircle2, Truck } from 'lucide-react';
+import { Wallet, Play, FileText, Loader2, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-// Status válidos pra acerto: APENAS cargas com pedidos faturados (etapa Omie 60).
-// REGRA: o acerto só pode acontecer DEPOIS que a NF foi emitida (etapa 60).
-// Cargas elegíveis: faturada / em_rota / entregue — e dentro dessas, filtramos
-// no front pra mostrar apenas as que têm pedidos_omie com etapa === '60'.
-const STATUS_ACERTO = ['faturada', 'em_rota', 'entregue'];
+// Status válidos pra acerto: APENAS cargas faturadas (status_carga é binário:
+// montagem/faturada). REGRA: o acerto só acontece DEPOIS que a NF foi emitida
+// (etapa Omie 60) — validado no front via pedidos_omie com etapa === '60'.
+const STATUS_ACERTO = ['faturada'];
 
 const STATUS_BADGE = {
   faturada: { label: 'Faturada', cls: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
-  em_rota: { label: 'Em Rota', cls: 'bg-amber-100 text-amber-800', icon: Truck },
-  entregue: { label: 'Entregue', cls: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
-  pronta: { label: 'Pronta (sem NF ainda)', cls: 'bg-slate-100 text-slate-800', icon: AlertTriangle },
   conferindo: { label: 'Conferindo', cls: 'bg-orange-100 text-orange-800', icon: AlertTriangle }
 };
 
@@ -72,7 +68,6 @@ export default function AcertoCaixa() {
   // e com PELO MENOS 1 pedido Omie em etapa 60 — ou só pedidos internos/trocas)
   const cargasElegiveis = useMemo(() => {
     return cargas.filter(c => {
-      if (c.status_carga === 'cancelada') return false;
       const a = acertosPorCarga.get(c.id);
       if (a?.status_acerto === 'finalizado') return false;
       // REGRA: só mostrar cargas cujos pedidos Omie já estão faturados (etapa 60).
