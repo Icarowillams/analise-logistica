@@ -96,46 +96,60 @@ export default function RomaneioEntregaPdf({ carga }) {
   });
 
   // Index NF por codigo_pedido (Omie) e por id do Pedido interno, incluindo status/etapa
+  // Prioridade: Espelho (PedidoLiberadoOmie) > Pedido local > LogEmissaoNF
+  // O espelho é a fonte de verdade — se ele já tem numero_nf e status "emitida",
+  // o log (que pode estar preso em "pendente") não deve sobrescrever.
   const nfPorCodigoOmie = useMemo(() => {
     const m = new Map();
 
-    logsEmissaoNF.forEach(log => {
-      if (log.codigo_pedido && !m.has(String(log.codigo_pedido))) {
-        m.set(String(log.codigo_pedido), {
-          numero_nf: log.numero_nf || '',
-          status: log.status || '',
-          etapa: '',
-          label: log.status === 'rejeitada' ? 'NF Rejeitada' : log.status === 'pendente' ? 'NF Pendente' : log.status === 'erro' ? 'Erro NF' : ''
-        });
-      }
-    });
-
+    // 1) Espelho Omie — fonte de verdade, tem prioridade máxima
     liberadosOmie.forEach(lo => {
       if (!lo.codigo_pedido) return;
       const key = String(lo.codigo_pedido);
-      const atual = m.get(key) || {};
       m.set(key, {
-        ...atual,
-        numero_nf: atual.numero_nf || lo.numero_nf || '',
-        status: atual.status || lo.status_real || '',
-        etapa: lo.etapa || atual.etapa || '',
-        label: atual.label || lo.status_label || ''
+        numero_nf: lo.numero_nf || '',
+        status: lo.status_real || '',
+        etapa: lo.etapa || '',
+        label: lo.status_label || ''
       });
     });
 
+    // 2) Pedido local — complementa se o espelho não tinha numero_nf
     pedidosCarga.forEach(p => {
       if (!p.numero_nota_fiscal) return;
       const info = { numero_nf: p.numero_nota_fiscal, status: 'autorizada', etapa: p.etapa || '' };
       if (p.omie_codigo_pedido) {
         const key = String(p.omie_codigo_pedido);
         const atual = m.get(key) || {};
-        m.set(key, { ...atual, ...info, numero_nf: atual.numero_nf || p.numero_nota_fiscal });
+        if (!atual.numero_nf) m.set(key, { ...atual, ...info });
       }
       if (p.id) {
         const key = String(p.id);
         const atual = m.get(key) || {};
-        m.set(key, { ...atual, ...info, numero_nf: atual.numero_nf || p.numero_nota_fiscal });
+        if (!atual.numero_nf) m.set(key, { ...atual, ...info });
       }
+    });
+
+    // 3) LogEmissaoNF — só complementa se as fontes anteriores não resolveram
+    // Útil para mostrar "NF Rejeitada" / "Erro NF" quando o espelho ainda não atualizou
+    logsEmissaoNF.forEach(log => {
+      if (!log.codigo_pedido) return;
+      const key = String(log.codigo_pedido);
+      const atual = m.get(key) || {};
+      // Se já tem NF resolvida pelo espelho ou pedido, não sobrescrever
+      if (atual.numero_nf) return;
+      // Se o espelho já confirmou como emitida (etapa 60 + status ok), não usar log pendente
+      if (atual.status === 'emitida') return;
+      const label = log.status === 'rejeitada' ? 'NF Rejeitada'
+        : log.status === 'pendente' ? 'NF Pendente'
+        : log.status === 'erro' ? 'Erro NF' : '';
+      m.set(key, {
+        ...atual,
+        numero_nf: log.numero_nf || atual.numero_nf || '',
+        status: atual.status || log.status || '',
+        etapa: atual.etapa || '',
+        label: label || atual.label || ''
+      });
     });
 
     return m;
