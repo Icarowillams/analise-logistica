@@ -170,6 +170,24 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
 
+    // ═══ PASSO 0: TIMEOUT — Limpar itens travados em "processando" há mais de 3 minutos ═══
+    // DEVE rodar ANTES da checagem de concorrência, senão itens travados bloqueiam a fila indefinidamente.
+    const TIMEOUT_MS = 3 * 60 * 1000;
+    const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
+    for (const item of travados) {
+      const updatedAt = new Date(item.updated_date).getTime();
+      if (Date.now() - updatedAt > TIMEOUT_MS) {
+        const tentativas = Number(item.tentativas || 0) + 1;
+        const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
+        await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+          status: novoStatus,
+          tentativas,
+          erro_log: `Timeout: travado em "processando" por mais de 3 minutos (tentativa ${tentativas})`
+        }).catch(() => {});
+        console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
+      }
+    }
+
     // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
     // outra instância está ativa — aborta para não duplicar chamadas Omie.
     const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
