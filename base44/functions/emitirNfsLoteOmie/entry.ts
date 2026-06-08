@@ -37,8 +37,21 @@ async function verificarJaFaturado(base44, codigoPedido) {
     };
   }
 
-  // NÃO bloquear baseado apenas em flags locais (faturado, status_faturamento) nem em logs genéricos de FaturarPedidoVenda,
-  // pois esses são setados pelo fechamento de carga antes da emissão real da NF.
+  // 4. Verificar log "pendente" recente (emissão acionada mas SEFAZ ainda não retornou)
+  // Bloqueia re-emissão se o log pendente tem menos de 2 horas (evita disparos repetidos).
+  // Após 2h, considera expirado e permite nova tentativa.
+  const logsPendentes = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'pendente' }, '-created_date', 1).catch(() => []);
+  if (logsPendentes?.[0]) {
+    const idadeMs = Date.now() - new Date(logsPendentes[0].created_date).getTime();
+    const DUAS_HORAS = 2 * 60 * 60 * 1000;
+    if (idadeMs < DUAS_HORAS) {
+      return {
+        bloqueado: true,
+        mensagem: `Pedido #${logsPendentes[0].numero_pedido || codigo} já tem emissão em andamento (aguardando SEFAZ desde ${formatDatePt(logsPendentes[0].created_date)}). Aguarde o retorno ou tente novamente após 2h.`
+      };
+    }
+  }
+
   return { bloqueado: false };
 }
 

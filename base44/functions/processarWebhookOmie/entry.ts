@@ -513,6 +513,24 @@ async function handlePedido(base44, topic, evt) {
     }
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
+
+    // Atualizar LogEmissaoNF pendente → autorizada (se existir)
+    try {
+      const logsPendentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+        { codigo_pedido: codigoPedido, status: 'pendente' }, '-created_date', 5
+      ).catch(() => []);
+      for (const log of logsPendentes) {
+        await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, {
+          status: 'autorizada',
+          numero_nf: evt?.numero_nf ? String(evt.numero_nf) : log.numero_nf || '',
+          codigo_sefaz: '100',
+          mensagem: 'NF emitida (etapa 60 confirmada no Omie)',
+          boleto_gerado: false
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error(`[handlePedido] erro ao atualizar LogEmissaoNF pendente:`, e.message);
+    }
   } else if (topic === 'VendaProduto.Excluida') {
     // ⚠️ BUG FIX: Antes de cancelar, verificar se existe NF autorizada.
     // O Omie pode marcar como "excluído" após encerramento de fluxo, mas a NF continua válida.
@@ -715,8 +733,24 @@ async function handleNFe(base44, topic, evt) {
     }
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = 'faturado';
-    // 🚫 Geração AUTOMÁTICA de boleto foi DESATIVADA.
-    // O operador gera os boletos manualmente em "Logística → Emissão de Boletos".
+
+    // Atualizar LogEmissaoNF pendente → autorizada (se existir)
+    try {
+      const logsPendentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+        { codigo_pedido: codigoPedido, status: 'pendente' }, '-created_date', 5
+      ).catch(() => []);
+      for (const log of logsPendentes) {
+        await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, {
+          status: 'autorizada',
+          numero_nf: numNf ? String(numNf) : log.numero_nf || '',
+          codigo_sefaz: '100',
+          mensagem: 'NF emitida (etapa 60 confirmada no Omie)',
+          boleto_gerado: false
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error(`[handleNFe] erro ao atualizar LogEmissaoNF pendente:`, e.message);
+    }
   } else if (topic === 'NFe.NotaCancelada') {
     updates.status = 'cancelado';
     updates.data_cancelamento = new Date().toISOString();
@@ -739,6 +773,24 @@ async function handleNFe(base44, topic, evt) {
     dadosCarga.etapa = '60';
     dadosCarga.status_pedido = topic === 'NFe.NotaDenegada' ? 'nf_denegada' : 'nf_rejeitada';
     dadosCarga.motivo_rejeicao = updates.omie_erro;
+
+    // Atualizar LogEmissaoNF pendente → rejeitada (se existir)
+    try {
+      const logsPendentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+        { codigo_pedido: codigoPedido, status: 'pendente' }, '-created_date', 5
+      ).catch(() => []);
+      const statusLog = topic === 'NFe.NotaDenegada' ? 'rejeitada' : 'rejeitada';
+      for (const log of logsPendentes) {
+        await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, {
+          status: statusLog,
+          mensagem: updates.omie_erro,
+          faultstring: detalhe || '',
+          codigo_sefaz: evt?.cStat || ''
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error(`[handleNFe] erro ao atualizar LogEmissaoNF rejeitada:`, e.message);
+    }
   }
 
   if (Object.keys(updates).length > 0) {
