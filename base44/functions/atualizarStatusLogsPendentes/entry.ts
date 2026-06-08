@@ -17,22 +17,87 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
-// Credenciais resolvidas dentro do handler (não no nível do módulo) para usar ConfiguracaoOmie do banco.
-// Fallback para env vars caso não haja config ativa.
-let _creds = null;
-async function resolverCreds(base44) {
-  if (_creds) return _creds;
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) {
-      _creds = { app_key: cfg.app_key, app_secret: cfg.app_secret };
-      return _creds;
-    }
-  } catch { /* fallback */ }
-  _creds = { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
-  return _creds;
+// ═══ omieClient inline (mesmo padrão do processarFilaCargaOmie) ═══
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+let _credsCache = null;
+
+async function getOmieCredentials(base44) {
+  if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = rows?.[0];
+  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
+  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  _credsCache = { appKey, appSecret, at: Date.now() };
+  return { appKey, appSecret };
 }
+
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return { blocked: false };
+  }
+  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+}
+
+function extrairSegundosBloqueio(msg) {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]), 1800);
+  return 180;
+}
+
+async function omieCall(base44, endpoint, param, options = {}) {
+  const breaker = await checkCircuitBreaker(base44);
+  if (breaker.blocked) throw new Error(`API Omie bloqueada até ${breaker.blockedUntil || '?'}`);
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [800, 1500, 3000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      clearTimeout(tid);
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+          const secs = extrairSegundosBloqueio(data.faultstring);
+          const until = new Date(Date.now() + secs * 1000).toISOString();
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, {
+            bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
+          }).catch(() => null);
+          const blockedErr = new Error(data.faultstring);
+          blockedErr.bloqueio = true;
+          throw blockedErr;
+        }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        throw new Error(data.faultstring);
+      }
+      if (!options.skipLog) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
+      }
+      return data;
+    } catch (e) {
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
+}
+// ═══ fim omieClient inline ═══
 
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -247,42 +312,7 @@ async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
   }
 }
 
-async function getOmieCredentials(base44: any) {
-  try {
-    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-    if (rows.length > 0) return { appKey: rows[0].app_key, appSecret: rows[0].app_secret };
-  } catch (_) { /* ignore */ }
-  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
-}
-
-async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  if (rows.length > 0 && rows[0].bloqueado) {
-    const ate = new Date(rows[0].bloqueado_ate || 0);
-    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
-  }
-}
-
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
-  await checkCircuitBreaker(base44);
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
-  const call = options.call || endpoint;
-  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
-  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
-  }
-  return resp.json();
-}
+// (omieClient inline já definido no início do arquivo)
 
 Deno.serve(async (req) => {
   try {
