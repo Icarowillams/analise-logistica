@@ -206,11 +206,18 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
   } catch {}
 
   // Circuit breaker — se a API Omie está bloqueada por consumo indevido (425), não consulta agora.
+  // Auto-desbloqueio: se bloqueado_ate já passou, desbloqueia automaticamente.
   const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
   const controleCb = cbRows?.[0];
-  if (controleCb?.bloqueado && controleCb.bloqueado_ate && new Date(controleCb.bloqueado_ate) > new Date()) {
-    console.log(`[espelho] API Omie bloqueada (425) — pulando ConsultarPedido de ${omieCodigoPedido} até ${controleCb.bloqueado_ate}`);
-    return;
+  if (controleCb?.bloqueado) {
+    if (controleCb.bloqueado_ate && new Date(controleCb.bloqueado_ate) <= new Date()) {
+      // Expirou — desbloquear automaticamente
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleCb.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
+      console.log(`[espelho] Circuit breaker expirado — auto-desbloqueado`);
+    } else {
+      console.log(`[espelho] API Omie bloqueada (425) — pulando ConsultarPedido de ${omieCodigoPedido} até ${controleCb.bloqueado_ate}`);
+      return;
+    }
   }
 
   const consultar = async (tentativa = 1) => {

@@ -375,13 +375,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Circuit breaker
+    // Circuit breaker — com auto-desbloqueio
     const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
       .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
-    if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-      console.log(`[processarFila] Circuit breaker ATIVO até ${controle.bloqueado_ate}. Abortando.`);
-      return Response.json({ sucesso: true, mensagem: 'Circuit breaker ativo', bloqueado_ate: controle.bloqueado_ate, processados: 0 });
+    if (controle?.bloqueado) {
+      if (controle.bloqueado_ate && new Date(controle.bloqueado_ate) <= new Date()) {
+        // Expirou — desbloquear automaticamente
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
+        console.log(`[processarFila] Circuit breaker expirado — auto-desbloqueado`);
+      } else {
+        console.log(`[processarFila] Circuit breaker ATIVO até ${controle.bloqueado_ate}. Abortando.`);
+        return Response.json({ sucesso: true, mensagem: 'Circuit breaker ativo', bloqueado_ate: controle.bloqueado_ate, processados: 0 });
+      }
     }
 
     // Buscar pendentes
