@@ -56,13 +56,21 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
   };
 
   const fetchPdfBytes = async (nf) => {
-    const { data } = await base44.functions.invoke('baixarPdfDanfeOmie', {
+    const { data, status } = await base44.functions.invoke('baixarPdfDanfeOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
       nNF: nf.cNumero,
       nIdPedido: nf.nIdPedido
     });
-    if (!data?.sucesso) throw new Error(data?.error || `Falha ao obter PDF da NF ${nf.cNumero}`);
+    if (!data?.sucesso) {
+      const motivo = data?.motivo || 'erro';
+      const msg = motivo === 'aguardando_sefaz' 
+        ? `NF ${nf.cNumero}: aguardando SEFAZ` 
+        : (data?.error || `Falha ao obter PDF da NF ${nf.cNumero}`);
+      const err = new Error(msg);
+      err.motivo = motivo;
+      throw err;
+    }
     return base64ToUint8Array(data.pdf_base64);
   };
 
@@ -71,6 +79,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     const total = nfs.length;
     setProgresso({ atual: 0, total });
     const falhas = [];
+    const falhasSefaz = [];
 
     try {
       if (modo === 'individual') {
@@ -81,11 +90,16 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
             const bytes = await fetchPdfBytes(nf);
             if (!bytes || bytes.length === 0) { falhas.push(nf.cNumero || '?'); continue; }
             baixarBlob(`nfe-${nf.cNumero || 'omie'}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
-          } catch { falhas.push(nf.cNumero || '?'); }
+          } catch (err) { 
+            if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
+            else falhas.push(nf.cNumero || '?'); 
+          }
           if (i < nfs.length - 1) await sleep(500);
         }
-        const ok = total - falhas.length;
+        const totalFalhas = falhas.length + falhasSefaz.length;
+        const ok = total - totalFalhas;
         if (ok > 0) toast.success(`${ok} PDF(s) gerado(s)`);
+        if (falhasSefaz.length > 0) toast.warning(`${falhasSefaz.length} NF(s) aguardando SEFAZ (tente novamente em alguns minutos): ${falhasSefaz.join(', ')}`, { duration: 8000 });
         if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) não baixadas: ${falhas.join(', ')}`);
         if (ok === 0) toast.error('Nenhuma NF pôde ser baixada.');
       } else {
@@ -99,14 +113,23 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
             const src = await PDFDocument.load(bytes);
             const pages = await merged.copyPages(src, src.getPageIndices());
             pages.forEach(p => merged.addPage(p));
-          } catch { falhas.push(nf.cNumero || '?'); }
+          } catch (err) { 
+            if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
+            else falhas.push(nf.cNumero || '?'); 
+          }
           if (i < nfs.length - 1) await sleep(500);
         }
-        const ok = total - falhas.length;
-        if (ok === 0) { toast.error('Nenhuma NF pôde ser baixada.'); setTipoLoading(null); return; }
+        const totalFalhas = falhas.length + falhasSefaz.length;
+        const ok = total - totalFalhas;
+        if (ok === 0) { 
+          if (falhasSefaz.length > 0) toast.error(`Todas as ${falhasSefaz.length} NF(s) estão aguardando processamento SEFAZ. Tente novamente em alguns minutos.`, { duration: 8000 });
+          else toast.error('Nenhuma NF pôde ser baixada.'); 
+          setTipoLoading(null); return; 
+        }
         const out = await merged.save();
         baixarBlob(`nfes-agrupadas-${ok}.pdf`, new Blob([out], { type: 'application/pdf' }));
         toast.success(`PDF agrupado com ${ok} de ${total} NF(s) gerado`);
+        if (falhasSefaz.length > 0) toast.warning(`${falhasSefaz.length} NF(s) aguardando SEFAZ (tente novamente em minutos): ${falhasSefaz.join(', ')}`, { duration: 8000 });
         if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) ignoradas: ${falhas.join(', ')}`);
       }
       fechar();

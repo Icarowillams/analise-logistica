@@ -110,7 +110,29 @@ Deno.serve(async (req) => {
     const pdfUrl = nfe?.cPdf || null;
 
     if (!pdfUrl) {
-      return Response.json({ error: 'PDF DANFE não disponível no Omie para esta NF' }, { status: 404 });
+      // Verificar se a NF existe mas ainda não tem PDF (pendente SEFAZ)
+      const temChave = !!nfe?.nChaveNfe;
+      const temXml = !!nfe?.cXmlNfe;
+      const statusOmie = nfe?.cDesStatus || '';
+      
+      if (temChave && !temXml) {
+        // NF tem chave mas sem XML/PDF — ainda sendo processada pela SEFAZ
+        return Response.json({ 
+          sucesso: false,
+          error: `NF ${nfe?.cNumNfe || nNF} ainda aguardando processamento SEFAZ. O DANFE será disponibilizado em breve.`,
+          motivo: 'aguardando_sefaz',
+          numero: nfe?.cNumNfe || nNF || '',
+          chave: nfe?.nChaveNfe || ''
+        }, { status: 202 });
+      }
+      
+      return Response.json({ 
+        sucesso: false,
+        error: 'PDF DANFE não disponível no Omie para esta NF',
+        motivo: 'pdf_indisponivel',
+        numero: nfe?.cNumNfe || nNF || '',
+        status_omie: statusOmie
+      }, { status: 404 });
     }
 
     const pdfRes = await fetch(pdfUrl);
