@@ -94,7 +94,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
 const LOTE = 50;
-const DELAY_ENTRE_PEDIDOS_MS = 600;
+const DELAY_ENTRE_PEDIDOS_MS = 2000;
 
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino

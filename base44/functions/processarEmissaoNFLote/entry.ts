@@ -37,6 +37,15 @@ async function checkCircuitBreaker(base44: any) {
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
 }
 
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
+function extrairSegundosBloqueio(msg) {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]), 1800);
+  return 300; // fallback 5 minutos
+}
+
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const call = options.call || '';
@@ -45,37 +54,47 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
-  let lastErr = '';
-  for (let i = 0; i <= RETRIES.length; i++) {
-    try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
-      clearTimeout(tid);
-      const data = await res.json();
-      if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          throw new Error(data.faultstring);
-        }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
-        throw new Error(data.faultstring);
+  // SEM retries automáticos para emissão de NF — cada retry consome cota.
+  // Se falhar por rate limit, o circuit breaker protege o restante do lote.
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 20000);
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+    clearTimeout(tid);
+    const data = await res.json();
+    if (data.faultstring) {
+      const msg = String(data.faultstring).toLowerCase();
+      if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+        const secs = extrairSegundosBloqueio(data.faultstring);
+        const until = new Date(Date.now() + secs * 1000).toISOString();
+        // SEMPRE update no registro fixo — NUNCA criar novo
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, {
+          bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
+        }).catch(() => null);
+        const err = new Error(data.faultstring);
+        err.bloqueio = true;
+        throw err;
       }
-      if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
+      // Rate limit suave (429/cota/aguarde) — NÃO faz retry, apenas propaga erro com flag
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite')) {
+        const err = new Error(data.faultstring);
+        err.faultstring = data.faultstring;
+        err.faultcode = data.faultcode || '';
+        err.omiePayload = data;
+        err.rateLimit = true;
+        throw err;
       }
-      return data;
-    } catch (e: any) {
-      lastErr = e.message;
-      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
-      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
-      throw new Error(lastErr);
+      const err = new Error(data.faultstring);
+      err.faultstring = data.faultstring;
+      err.faultcode = data.faultcode || '';
+      err.omiePayload = data;
+      throw err;
     }
+    return data;
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new Error('Timeout na chamada Omie');
+    throw e;
   }
-  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 // ═══ fim omieClient inline ═══
 
@@ -315,7 +334,8 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString()
       });
 
-      if (i < pedidos.length - 1) await sleep(8000);
+      // Delay adaptativo: se houve erro de rate limit, espera mais
+      if (i < pedidos.length - 1) await sleep(10000);
     }
 
     const statusFinal = erros.length > 0 ? 'erro' : 'concluido';

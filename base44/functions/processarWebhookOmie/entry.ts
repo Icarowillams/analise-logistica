@@ -477,13 +477,27 @@ async function handlePedido(base44, topic, evt) {
       await removerDoEspelho(base44, codigoPedido);
       espelhoAcao = 'removido';
     } else if (topic === 'VendaProduto.Cancelada') {
-      // ⚠️ BONIFICAÇÃO: o Omie marca como "cancelado" após emitir NF.
-      // NÃO remover espelho nem cancelar pedido se tiver NF autorizada.
-      // A verificação de NF é feita no handler principal abaixo.
-      // Por ora, NÃO removemos do espelho — o handler decide.
       espelhoAcao = 'cancelada_verificar_nf';
+    } else if (topic === 'VendaProduto.Faturada') {
+      // Faturada: NÃO chama ConsultarPedido (economiza 1 chamada Omie).
+      // O webhook NFe.NotaAutorizada que vem logo depois aplica o numero_nf via forceNumeroNf.
+      // Apenas faz upsert rápido com dados do evento (sem bater no Omie).
+      try {
+        const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+          codigo_pedido: String(codigoPedido)
+        }, '-sincronizado_em', 1);
+        if (espelhos?.[0]) {
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+            etapa: '60',
+            status_real: 'aguardando_nf',
+            status_label: 'Aguardando NF',
+            sincronizado_em: new Date().toISOString(),
+            origem_sync: 'webhook'
+          });
+        }
+      } catch {}
+      espelhoAcao = 'upsert_local';
     } else if (
-      topic === 'VendaProduto.Faturada' ||
       topic === 'VendaProduto.EtapaAlterada' ||
       topic === 'VendaProduto.Incluida' ||
       topic === 'VendaProduto.Alterada'
@@ -532,22 +546,48 @@ async function handlePedido(base44, topic, evt) {
       console.error(`[handlePedido] erro ao atualizar LogEmissaoNF pendente:`, e.message);
     }
   } else if (topic === 'VendaProduto.Excluida') {
-    // ⚠️ BUG FIX: Antes de cancelar, verificar se existe NF autorizada.
-    // O Omie pode marcar como "excluído" após encerramento de fluxo, mas a NF continua válida.
+    // Verificar NF autorizada LOCALMENTE antes de chamar Omie
     let nfAutorizadaExcluida = false;
     let numeroNfExcluida = null;
-    try {
-      const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
-      if (nfData?.ide?.nNF) {
-        const dCan = String(nfData.ide?.dCan || '').trim();
-        const cDeneg = String(nfData.ide?.cDeneg || '').trim();
-        if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
-          nfAutorizadaExcluida = true;
-          numeroNfExcluida = String(nfData.ide.nNF);
-        }
+
+    // 1) Checar espelho local
+    const espelhoExcl = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+      { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1
+    ).catch(() => []);
+    if (espelhoExcl?.[0]?.numero_nf && espelhoExcl[0].status_real === 'emitida') {
+      nfAutorizadaExcluida = true;
+      numeroNfExcluida = espelhoExcl[0].numero_nf;
+    }
+    // 2) Checar Pedido local
+    if (!nfAutorizadaExcluida && pedido.numero_nota_fiscal) {
+      nfAutorizadaExcluida = true;
+      numeroNfExcluida = pedido.numero_nota_fiscal;
+    }
+    // 3) Checar LogEmissaoNF autorizada
+    if (!nfAutorizadaExcluida) {
+      const logsAutExcl = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+        { codigo_pedido: String(codigoPedido), status: 'autorizada' }, '-created_date', 1
+      ).catch(() => []);
+      if (logsAutExcl?.[0]?.numero_nf) {
+        nfAutorizadaExcluida = true;
+        numeroNfExcluida = logsAutExcl[0].numero_nf;
       }
-    } catch (e) {
-      console.warn(`[webhook] Erro ao consultar NF do pedido excluído ${pedido.numero_pedido}: ${e.message}`);
+    }
+    // 4) Fallback: Omie apenas se necessário
+    if (!nfAutorizadaExcluida) {
+      try {
+        const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
+        if (nfData?.ide?.nNF) {
+          const dCan = String(nfData.ide?.dCan || '').trim();
+          const cDeneg = String(nfData.ide?.cDeneg || '').trim();
+          if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
+            nfAutorizadaExcluida = true;
+            numeroNfExcluida = String(nfData.ide.nNF);
+          }
+        }
+      } catch (e) {
+        console.warn(`[webhook] Erro ao consultar NF do pedido excluído ${pedido.numero_pedido}: ${e.message}`);
+      }
     }
 
     if (nfAutorizadaExcluida) {
@@ -577,25 +617,49 @@ async function handlePedido(base44, topic, evt) {
       dadosCarga.status_pedido = 'cancelado';
     }
   } else if (topic === 'VendaProduto.Cancelada') {
-    // Verificar se existe NF autorizada antes de cancelar (qualquer tipo de pedido).
+    // Verificar se existe NF autorizada LOCALMENTE antes de chamar Omie.
+    // Prioridade: dados locais (espelho + Pedido + LogEmissaoNF) → evita chamada API.
     let nfAutorizada = false;
     let numeroNfBonif = null;
 
-    // ⚠️ BUG FIX: Verificar NF para TODOS os pedidos (não só bonificações).
-    // O Omie marca pedidos como "cancelado" após encerrar fluxo, mas a NF pode estar válida.
-    console.log(`[webhook] Pedido ${pedido.numero_pedido} (tipo=${pedido.tipo}) — VendaProduto.Cancelada — verificando NF antes de cancelar...`);
-    try {
-      const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', maxTentativas: 2 });
-      if (nfData?.ide?.nNF) {
-        const dCan = String(nfData.ide?.dCan || '').trim();
-        const cDeneg = String(nfData.ide?.cDeneg || '').trim();
-        if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
-          nfAutorizada = true;
-          numeroNfBonif = String(nfData.ide.nNF);
-        }
+    // 1) Checar espelho local
+    const espelhoCanc = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+      { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1
+    ).catch(() => []);
+    if (espelhoCanc?.[0]?.numero_nf && espelhoCanc[0].status_real === 'emitida') {
+      nfAutorizada = true;
+      numeroNfBonif = espelhoCanc[0].numero_nf;
+    }
+    // 2) Checar Pedido local
+    if (!nfAutorizada && pedido.numero_nota_fiscal) {
+      nfAutorizada = true;
+      numeroNfBonif = pedido.numero_nota_fiscal;
+    }
+    // 3) Checar LogEmissaoNF autorizada
+    if (!nfAutorizada) {
+      const logsAut = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+        { codigo_pedido: String(codigoPedido), status: 'autorizada' }, '-created_date', 1
+      ).catch(() => []);
+      if (logsAut?.[0]?.numero_nf) {
+        nfAutorizada = true;
+        numeroNfBonif = logsAut[0].numero_nf;
       }
-    } catch (e) {
-      console.warn(`[webhook] Erro ao consultar NF do pedido ${pedido.numero_pedido}: ${e.message}`);
+    }
+    // 4) Fallback: consultar Omie APENAS se nenhum dado local confirmou NF
+    if (!nfAutorizada) {
+      try {
+        const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
+        if (nfData?.ide?.nNF) {
+          const dCan = String(nfData.ide?.dCan || '').trim();
+          const cDeneg = String(nfData.ide?.cDeneg || '').trim();
+          if (!dCan && cDeneg !== 'S' && cDeneg !== 'D') {
+            nfAutorizada = true;
+            numeroNfBonif = String(nfData.ide.nNF);
+          }
+        }
+      } catch (e) {
+        console.warn(`[webhook] Erro ao consultar NF do pedido ${pedido.numero_pedido}: ${e.message}`);
+      }
     }
 
     if (nfAutorizada) {
