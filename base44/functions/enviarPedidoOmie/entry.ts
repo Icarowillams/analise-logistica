@@ -92,12 +92,6 @@ function debugLog(base44, mensagem, extra = {}) {
   }).catch(() => {});
 }
 
-// omieCall robusto: circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429 + log padronizado.
-// O endpoint base usa /produtos/pedido/ para pedidos; para chamadas gerais (contas correntes) usa /geral/.
-
-  return omieCall(base44, 'produtos/pedido/', param, { call: callOrEndpoint });
-}
-
 let _contaCorrenteCache = null; // TTL: vida do worker (máx 30s no _shared)
 let _unidadesCache = null;
 async function resolverContaCorrentePadrao(base44) {
@@ -239,7 +233,9 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
         };
     });
 
-    const parcelas = gerarParcelas(plano, pedido.valor_total || 0);
+    // Bonificação: não gerar financeiro (sem parcelas) — CFOP 5910 não deve ter contas a receber
+    const isBonificacao = pedido.tipo === 'bonificacao';
+    const parcelas = isBonificacao ? [] : gerarParcelas(plano, pedido.valor_total || 0);
 
     // dados_adicionais_nf: já incluímos placeholder; Omie preenche {nrPedido} se existir, senão fica vazio
     // Como não temos o número do pedido ainda, usamos o pedido.dados_adicionais_nf direto
