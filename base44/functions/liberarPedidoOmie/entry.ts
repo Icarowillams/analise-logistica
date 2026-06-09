@@ -125,10 +125,21 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { pedido_id, etapa } = body;
+        let { pedido_id, etapa } = body;
+
+        // Aceita numero_pedido como alternativa ao pedido_id (útil para correções manuais via painel)
+        if (!pedido_id && body.numero_pedido) {
+            const encontrados = await base44.asServiceRole.entities.Pedido
+                .filter({ numero_pedido: String(body.numero_pedido) }, '-created_date', 1)
+                .catch(() => []);
+            pedido_id = encontrados[0]?.id;
+            if (!pedido_id) {
+                return Response.json({ error: `Pedido numero_pedido='${body.numero_pedido}' não encontrado` }, { status: 404 });
+            }
+        }
 
         if (!pedido_id) {
-            return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
+            return Response.json({ error: 'pedido_id ou numero_pedido é obrigatório' }, { status: 400 });
         }
 
         // etapa: "10" = Pedido de Venda, "20" = Pedidos Liberados (Separar)
@@ -181,6 +192,19 @@ Deno.serve(async (req) => {
             liberado_por: user.email,
             liberado_por_nome: user.full_name || user.email
           }).catch(e => console.warn('[liberarPedidoOmie] Falha ao atualizar status local:', e.message));
+
+          // Sincroniza espelho PedidoLiberadoOmie para etapa 20 imediatamente.
+          // Evita que o espelho fique desatualizado quando o webhook EtapaAlterada é descartado.
+          const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+            { codigo_pedido: String(codigoPedidoOmie) }
+          ).catch(() => []);
+          for (const esp of espelhos) {
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+              etapa: '20',
+              sincronizado_em: new Date().toISOString(),
+              origem_sync: 'liberacao'
+            }).catch(e => console.warn('[liberarPedidoOmie] Falha ao atualizar espelho:', e.message));
+          }
         }
 
         return Response.json({ sucesso: true, mensagem: `Pedido movido para ${etapaLabel} no Omie` });

@@ -152,8 +152,13 @@ Deno.serve(async (req) => {
       { status: 'liberado', omie_enviado: true }, '-updated_date', 50
     ).catch(() => []);
 
+    // Pedidos pendentes enviados ao Omie: podem ter avançado de etapa sem webhook chegar
+    const pendentesComOmie = await base44.asServiceRole.entities.Pedido.filter(
+      { status: 'pendente', omie_enviado: true }, '-updated_date', 50
+    ).catch(() => []);
+
     // Combinar e filtrar apenas os que têm código Omie
-    const candidatos = [...faturadosSemNF, ...liberadosComOmie]
+    const candidatos = [...faturadosSemNF, ...liberadosComOmie, ...pendentesComOmie]
       .filter(p => p.omie_codigo_pedido)
       .slice(0, LOTE);
 
@@ -251,6 +256,46 @@ Deno.serve(async (req) => {
             carga: pedido.numero_carga,
             acao: 'cancelado_localmente'
           });
+        }
+
+        // Avanço de etapa: pedido avançou no Omie mas o webhook foi perdido/descartado
+        if (!cancelado) {
+          let novoStatus = null;
+          if (etapaOmie === '20' && pedido.status === 'pendente') novoStatus = 'liberado';
+          else if (etapaOmie === '50' && (pedido.status === 'pendente' || pedido.status === 'liberado')) novoStatus = 'montagem';
+
+          if (novoStatus) {
+            console.log(`[RECONCILIAÇÃO] Pedido ${pedido.numero_pedido} está em etapa ${etapaOmie} no Omie mas local está '${pedido.status}' — sincronizando para '${novoStatus}'`);
+            const updateAvanco: any = { status: novoStatus };
+            if (novoStatus === 'liberado') updateAvanco.data_liberacao = new Date().toISOString();
+            await base44.asServiceRole.entities.Pedido.update(pedido.id, updateAvanco);
+            await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+              endpoint: 'reconciliacao', call: 'avanco_etapa', operacao: 'reconciliar_status',
+              entidade_tipo: 'Pedido', entidade_id: pedido.id, status: 'sucesso',
+              mensagem_erro: `Reconciliação: etapa avançada para ${etapaOmie} (${novoStatus}) — webhook perdido`,
+              payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, etapa_omie: etapaOmie, status_anterior: pedido.status }).slice(0, 2000)
+            }).catch(() => {});
+            detalhes.push({ pedido_id: pedido.id, numero_pedido: pedido.numero_pedido, tipo: pedido.tipo, acao: `avancado_${novoStatus}`, etapa_omie: etapaOmie });
+          }
+
+          // Corrigir espelho PedidoLiberadoOmie se etapa está desatualizada.
+          // Caso típico: webhook EtapaAlterada não chegou após liberação — espelho ficou em '10'.
+          if (etapaOmie === '20' && pedido.status === 'liberado') {
+            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+              { codigo_pedido: String(pedido.omie_codigo_pedido) }
+            ).catch(() => []);
+            for (const esp of espelhos) {
+              if (esp.etapa !== '20') {
+                await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+                  etapa: '20',
+                  sincronizado_em: new Date().toISOString(),
+                  origem_sync: 'reconciliacao'
+                }).catch(() => {});
+                console.log(`[RECONCILIAÇÃO] Espelho do pedido ${pedido.numero_pedido} corrigido para etapa 20 (estava ${esp.etapa})`);
+                detalhes.push({ pedido_id: pedido.id, numero_pedido: pedido.numero_pedido, tipo: pedido.tipo, acao: 'espelho_etapa_corrigida', etapa_omie: etapaOmie });
+              }
+            }
+          }
         }
 
         verificados++;
