@@ -192,7 +192,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
                     const etapa = cancelado ? ETAPA_LABELS.cancelado : (ETAPA_LABELS[p.etapa] || { label: p.etapa, color: 'bg-slate-100' });
                     return (
                       <tr key={p.codigo_pedido} className={`border-t ${cancelado ? 'bg-red-50 text-slate-500' : 'hover:bg-amber-50'}`}>
-                        <td className="p-2 font-medium">{p.numero_pedido || p.codigo_pedido}</td>
+                        <td className="p-2 font-medium">{String(p.numero_pedido || p.codigo_pedido).replace(/^0+/, '') || '0'}</td>
                         <td className="p-2 truncate max-w-[260px]" title={p.cliente_nome}>
                           {p.cliente_nome || '-'}
                         </td>

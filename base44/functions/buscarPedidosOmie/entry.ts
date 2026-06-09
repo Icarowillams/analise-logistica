@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
         return {
           codigo_pedido: String(cab.codigo_pedido || ''),
           codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
-          numero_pedido: cab.numero_pedido || '',
+          numero_pedido: String(cab.numero_pedido || '').replace(/^0+/, '') || '',
           codigo_cliente: String(cab.codigo_cliente || ''),
           cliente_nome: cab.razao_social || cab.nome_fantasia || '',
           cliente_cpf_cnpj: cab.cnpj_cpf || '',
