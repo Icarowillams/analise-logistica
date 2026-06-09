@@ -233,9 +233,9 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
         };
     });
 
-    // Bonificação: não gerar financeiro (sem parcelas) — CFOP 5910 não deve ter contas a receber
-    const isBonificacao = pedido.tipo === 'bonificacao';
-    const parcelas = isBonificacao ? [] : gerarParcelas(plano, pedido.valor_total || 0);
+    // Bonificação e Troca: faturadas no Omie mas NÃO geram financeiro (sem parcelas)
+    const semFinanceiro = pedido.tipo === 'bonificacao' || pedido.tipo === 'troca';
+    const parcelas = semFinanceiro ? [] : gerarParcelas(plano, pedido.valor_total || 0);
 
     // dados_adicionais_nf: já incluímos placeholder; Omie preenche {nrPedido} se existir, senão fica vazio
     // Como não temos o número do pedido ainda, usamos o pedido.dados_adicionais_nf direto
@@ -315,10 +315,6 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     if (!pedido.data_previsao_entrega) {
         return { sucesso: false, erro: 'Data de Previsão de Entrega é obrigatória', pedido_id };
-    }
-    if (pedido.tipo === 'troca') {
-        debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: tipo === 'troca'`, { pedido_id, motivo: 'troca' });
-        return { sucesso: true, pedido_id, codigo_pedido_omie: null, mensagem: 'Troca não gera venda no Omie' };
     }
     if (pedido.modelo_nota === 'd1') {
         debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: modelo_nota === 'd1'`, { pedido_id, motivo: 'd1' });
