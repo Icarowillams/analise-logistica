@@ -2,9 +2,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+let _credsCache = null;
 
-async function getOmieCredentials(base44: any) {
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
+async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
@@ -15,18 +18,24 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
-async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     return { blocked: false };
   }
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
 }
 
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+function extrairSegundosBloqueio(msg) {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  if (match) return Math.min(Number(match[1]), 1800);
+  return 300;
+}
+
+async function omieCall(base44, endpoint, param, options = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
@@ -40,24 +49,32 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
     try {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
+        signal: controller.signal
+      });
       clearTimeout(tid);
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          const secs = extrairSegundosBloqueio(data.faultstring);
+          const until = new Date(Date.now() + secs * 1000).toISOString();
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, {
+            bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
+          }).catch(() => null);
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+          lastErr = data.faultstring;
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        }
         throw new Error(data.faultstring);
       }
-      if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
-      }
       return data;
-    } catch (e: any) {
+    } catch (e) {
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
@@ -67,62 +84,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 // ═══ fim omieClient inline ═══
-
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  
-  const body = {
-    call: endpoint,
-    app_key: OMIE_APP_KEY,
-    app_secret: OMIE_APP_SECRET,
-    param: [param]
-  };
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-  
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(OMIE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      
-      const data = await res.json();
-      
-      if (!options.skipLog) {
-        try {
-          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: OMIE_URL,
-            call: endpoint,
-            operacao: endpoint,
-            status: data.faultcode ? 'erro' : 'sucesso',
-            mensagem_erro: data.faultstring || null,
-            payload_enviado: JSON.stringify(param).slice(0, 2000),
-            payload_resposta: JSON.stringify(data).slice(0, 2000)
-          });
-        } catch(logErr) { /* silent fail */ }
-      }
-      
-      return data;
-    } catch(err) {
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
-}
 
 function pedidoCancelado(pedido) {
   const cab = pedido?.cabecalho || {};
@@ -152,7 +113,6 @@ Deno.serve(async (req) => {
       max_paginas = 10
     } = body;
 
-    // Doc Omie: máx 100 registros/página
     const param = {
       pagina,
       registros_por_pagina: Math.min(registros_por_pagina, 100),
@@ -167,20 +127,19 @@ Deno.serve(async (req) => {
     let data;
     let todosPedidosOmie = [];
     try {
-      data = await omieCall(base44, 'ListarPedidos', param, { cacheMinutes: 10 });
+      data = await omieCall(base44, 'produtos/pedido/', param, { call: 'ListarPedidos' });
       todosPedidosOmie = data.pedido_venda_produto || [];
 
       if (buscar_todas_paginas) {
         const totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas || 10));
         for (let pag = 2; pag <= totalPaginas; pag++) {
-          const paginaData = await omieCall(base44, 'ListarPedidos', { ...param, pagina: pag }, { cacheMinutes: 10 });
+          const paginaData = await omieCall(base44, 'produtos/pedido/', { ...param, pagina: pag }, { call: 'ListarPedidos' });
           todosPedidosOmie.push(...(paginaData.pedido_venda_produto || []));
         }
       }
     } catch (e) {
-      // Omie retorna erro quando não há registros — tratar como lista vazia
       if (/n[ãa]o existem registros/i.test(e.message)) {
-        return Response.json({ sucesso: true, pedidos: [], pagina: pagina, total_de_paginas: 0, total_de_registros: 0, registros: 0 });
+        return Response.json({ sucesso: true, pedidos: [], pagina, total_de_paginas: 0, total_de_registros: 0, registros: 0 });
       }
       if (/bloqueada por consumo indevido|consumo redundante|aguarde/i.test(e.message)) {
         return Response.json({ sucesso: false, pedidos: [], error: e.message, bloqueado_omie: true }, { status: 429 });
@@ -202,16 +161,21 @@ Deno.serve(async (req) => {
       .filter(p => incluir_cancelados || !pedidoCancelado(p))
       .map(p => {
         const cancelado = pedidoCancelado(p);
+        const cab = p.cabecalho || {};
         return {
-          codigo_pedido: String(p.cabecalho?.codigo_pedido || ''),
-          codigo_pedido_integracao: p.cabecalho?.codigo_pedido_integracao || '',
-          numero_pedido: p.cabecalho?.numero_pedido || '',
-          codigo_cliente: String(p.cabecalho?.codigo_cliente || ''),
-          data_previsao: p.cabecalho?.data_previsao || '',
-          etapa: cancelado ? 'cancelado' : (p.cabecalho?.etapa || ''),
-          status_pedido: cancelado ? 'cancelado' : (p.cabecalho?.status_pedido || p.cabecalho?.status || ''),
+          codigo_pedido: String(cab.codigo_pedido || ''),
+          codigo_pedido_integracao: cab.codigo_pedido_integracao || '',
+          numero_pedido: cab.numero_pedido || '',
+          codigo_cliente: String(cab.codigo_cliente || ''),
+          cliente_nome: cab.razao_social || cab.nome_fantasia || '',
+          cliente_cpf_cnpj: cab.cnpj_cpf || '',
+          cliente_cidade: cab.cidade || '',
+          data_previsao: cab.data_previsao || '',
+          etapa: cancelado ? 'cancelado' : (cab.etapa || ''),
+          status_pedido: cancelado ? 'cancelado' : (cab.status_pedido || cab.status || ''),
           cancelado,
           valor_total_pedido: p.total_pedido?.valor_total_pedido || 0,
+          numero_nf: p.infoCadastro?.numero_nf || cab.numero_nfe || '',
           quantidade_itens: (p.det || []).length,
           produtos: (p.det || []).map(d => ({
             codigo_produto: String(d.produto?.codigo_produto || ''),
