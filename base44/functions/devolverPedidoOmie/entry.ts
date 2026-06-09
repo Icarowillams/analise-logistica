@@ -169,6 +169,44 @@ Deno.serve(async (req) => {
     }).catch(() => {});
 
     if (erroOmie) return Response.json({ error: erroOmie, registro_id: registro.id }, { status: 500 });
+
+    // === Atualizar Pedido local ===
+    const pedidosLocais = await base44.asServiceRole.entities.Pedido
+      .filter({ omie_codigo_pedido: String(codigo_pedido) }, '-updated_date', 1)
+      .catch(() => []);
+    const pedidoLocal = pedidosLocais?.[0];
+    if (pedidoLocal?.id) {
+      const isTotalReturn = tipo_retorno === 'devolucao_total';
+      const updateData = {
+        status_logistico: isTotalReturn ? 'devolvido' : 'parcial',
+        observacoes: [
+          pedidoLocal.observacoes || '',
+          `[Devolução ${tipo_retorno}] ${new Date().toISOString().slice(0, 10)} — ${motivo_geral || 'sem motivo'} — R$ ${valorTotal.toFixed(2)}`
+        ].filter(Boolean).join('\n')
+      };
+      if (isTotalReturn) {
+        updateData.status = 'cancelado';
+        updateData.motivo_cancelamento = `Devolução total: ${motivo_geral || tipo_retorno}`;
+        updateData.data_cancelamento = new Date().toISOString();
+      }
+      await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, updateData).catch(() => {});
+    }
+
+    // === Atualizar espelho PedidoLiberadoOmie ===
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie
+      .filter({ codigo_pedido: String(codigo_pedido) }, '-sincronizado_em', 1)
+      .catch(() => []);
+    const espelho = espelhos?.[0];
+    if (espelho?.id) {
+      const isTotalReturn = tipo_retorno === 'devolucao_total';
+      await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelho.id, {
+        status_real: isTotalReturn ? 'cancelada' : 'devolucao_parcial',
+        status_label: isTotalReturn ? 'Devolvido (total)' : `Devolução parcial — R$ ${valorTotal.toFixed(2)}`,
+        sincronizado_em: new Date().toISOString(),
+        origem_sync: 'webhook'
+      }).catch(() => {});
+    }
+
     return Response.json({ sucesso: true, registro_id: registro.id, valor_total: valorTotal, nIdDevolucao });
   } catch (error) {
     const bloqueada = error?.code === 'OMIE_425';
