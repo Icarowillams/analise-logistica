@@ -15,12 +15,15 @@ async function getOmieCredentials(base44) {
   return { appKey, appSecret };
 }
 
+// ID fixo do único registro de circuit breaker — NUNCA criar novos
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
+
 async function checkCircuitBreaker(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     return { blocked: false };
   }
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
@@ -51,11 +54,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
           const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 180;
           const until = new Date(Date.now() + secs * 1000).toISOString();
           // SEMPRE update no registro existente — NUNCA criar novo
-          const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-          const cbRec = cbRows?.[0];
-          if (cbRec) {
-            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(cbRec.id, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
-          }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -204,7 +203,7 @@ Deno.serve(async (req) => {
 
     // Verifica o circuit breaker ANTES de qualquer chamada à API. Se bloqueado, aborta
     // imediatamente — evita renovar o bloqueio na Omie com tentativas em loop.
-    const ctrlRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+    const ctrlRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
     const ctrl = ctrlRows?.[0];
     if (ctrl?.bloqueado) {
       const bloqueadoAte = ctrl.bloqueado_ate ? new Date(ctrl.bloqueado_ate).getTime() : 0;
@@ -212,7 +211,7 @@ Deno.serve(async (req) => {
         return Response.json({ sucesso: false, bloqueado: true, bloqueado_ate: ctrl.bloqueado_ate, error: `API Omie bloqueada pelo circuit breaker até ${ctrl.bloqueado_ate}. Sincronização abortada.` }, { status: 200 });
       }
       // Prazo expirou: desbloqueia o registro existente (sem criar novo).
-      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(ctrl.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     }
 
     // Checagem de "trabalho recente" — apenas para chamadas automáticas (scheduled).

@@ -19,11 +19,11 @@ async function getOmieCredentials(base44: any) {
 const CB_ID_WEBHOOK = '6a1e06a9aa62ceab7b3b6d97';
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false, record: c };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     return { blocked: false, record: c };
   }
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro, record: c };
@@ -207,12 +207,12 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
 
   // Circuit breaker — se a API Omie está bloqueada por consumo indevido (425), não consulta agora.
   // Auto-desbloqueio: se bloqueado_ate já passou, desbloqueia automaticamente.
-  const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []);
   const controleCb = cbRows?.[0];
   if (controleCb?.bloqueado) {
     if (controleCb.bloqueado_ate && new Date(controleCb.bloqueado_ate) <= new Date()) {
       // Expirou — desbloquear automaticamente
-      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleCb.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
       console.log(`[espelho] Circuit breaker expirado — auto-desbloqueado`);
     } else {
       console.log(`[espelho] API Omie bloqueada (425) — pulando ConsultarPedido de ${omieCodigoPedido} até ${controleCb.bloqueado_ate}`);
