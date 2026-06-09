@@ -217,19 +217,24 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
         const produtoRef = prod.codigo_omie
             ? { codigo_produto: Number(prod.codigo_omie) }
             : { codigo_produto_integracao: item.produto_id };
+        const produtoPayload = {
+            ...produtoRef,
+            descricao: item.produto_nome || prod.nome || '',
+            ncm: prod.ncm || '',
+            quantidade: item.quantidade,
+            valor_unitario: item.valor_unitario,
+            tipo_desconto: "V",
+            valor_desconto: 0,
+            unidade: unidadeStr
+        };
+        // Troca: forçar CFOP 5949 (outra saída de mercadoria não especificada)
+        if (pedido.tipo === 'troca') {
+            produtoPayload.cfop = "5.949";
+        }
         return {
             ide: { codigo_item_integracao: item.id },
             inf_adic: infAdic,
-            produto: {
-                ...produtoRef,
-                descricao: item.produto_nome || prod.nome || '',
-                ncm: prod.ncm || '',
-                quantidade: item.quantidade,
-                valor_unitario: item.valor_unitario,
-                tipo_desconto: "V",
-                valor_desconto: 0,
-                unidade: unidadeStr
-            }
+            produto: produtoPayload
         };
     });
 
