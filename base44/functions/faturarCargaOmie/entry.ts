@@ -6,7 +6,7 @@ const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 // Verifica circuit breaker — bloqueia faturamento se a API Omie estiver indisponível por consumo indevido (425).
 // Esta function não chama a API diretamente, mas cria a fila de emissão; abortar cedo evita enfileirar com a API bloqueada.
 async function checarBloqueioOmie(base44) {
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: '6a1e06a9aa62ceab7b3b6d97' }, '-created_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
     const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);

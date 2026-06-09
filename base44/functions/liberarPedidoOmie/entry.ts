@@ -5,6 +5,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
+const CB_ID_LIBERAR = '6a1e06a9aa62ceab7b3b6d97';
 
 let _credsCache = null;
 async function getOmieCredentials(base44) {
@@ -20,23 +21,29 @@ async function getOmieCredentials(base44) {
 }
 
 async function checkCircuitBreaker(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_LIBERAR }, '-created_date', 1).catch(() => []);
   const control = rows?.[0];
   if (!control?.bloqueado) return { blocked: false };
   const blockedUntil = control.bloqueado_ate ? new Date(control.bloqueado_ate).getTime() : 0;
   if (blockedUntil && blockedUntil <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(control.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_LIBERAR, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => {});
     return { blocked: false };
   }
   return { blocked: true, blockedUntil: control.bloqueado_ate, lastError: control.ultimo_erro };
 }
 
 async function setCircuitBreakerBlocked(base44, errorMessage) {
-  const blockedUntil = new Date(Date.now() + 30 * 60000).toISOString();
-  const payload = { chave: 'principal', bloqueado: true, bloqueado_ate: blockedUntil, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  if (rows?.[0]?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(rows[0].id, payload).catch(() => {});
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ id: CB_ID_LIBERAR }, '-created_date', 1).catch(() => []);
+  const ctrl = rows?.[0];
+  const erros = Number(ctrl?.erros_consecutivos || 0) + 1;
+  const threshold = Number(ctrl?.threshold_erros ?? 3);
+  const payload = { erros_consecutivos: erros, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
+  if (erros >= threshold) {
+    payload.bloqueado = true;
+    payload.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString();
+  }
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_LIBERAR, payload).catch(() => {});
 }
 
 async function omieCallDirect(base44, endpoint, param, options = {}) {
@@ -78,6 +85,7 @@ async function omieCallDirect(base44, endpoint, param, options = {}) {
         }
         return data;
       }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_LIBERAR, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (error) {
       clearTimeout(timer);

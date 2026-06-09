@@ -134,19 +134,22 @@ function extrairSegundosBloqueio(msg: string): number {
 }
 
 async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: string): Promise<void> {
-  const secs = extrairSegundosBloqueio(errorMessage);
-  const blockedUntil = new Date(Date.now() + secs * 1000).toISOString();
-  // Sempre update no ID fixo — nunca criar novo registro
-  // SEMPRE update no ID fixo — NUNCA criar novo registro
-  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
-    bloqueado: true,
-    bloqueado_ate: blockedUntil,
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
+  const ctrl = rows?.[0];
+  const erros = Number(ctrl?.erros_consecutivos || 0) + 1;
+  const threshold = Number(ctrl?.threshold_erros ?? 3);
+  const payload: Record<string, unknown> = {
+    erros_consecutivos: erros,
     ultimo_erro: errorMessage.slice(0, 500),
     atualizado_em: new Date().toISOString()
-  }).catch((err) => {
-    console.error('[omieClient] Falha ao atualizar circuit breaker ID fixo:', err?.message);
-    // NÃO cria novo registro — apenas loga o erro
-  });
+  };
+  if (erros >= threshold) {
+    payload.bloqueado = true;
+    payload.bloqueado_ate = new Date(Date.now() + 3 * 60_000).toISOString(); // 3 min max
+  }
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, payload)
+    .catch((err) => { console.error('[omieClient] Falha ao atualizar circuit breaker:', err?.message); });
 }
 
 async function writeLog(base44: Base44Client, data: Record<string, unknown>): Promise<void> {
@@ -370,6 +373,7 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
         });
       }
 
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (error) {
       clearTimeout(timer);

@@ -42,14 +42,14 @@ async function checkCircuitBreaker(base44) {
 }
 
 async function setCircuitBreakerBlocked(base44, errorMessage) {
-  const secsMatch = errorMessage.match(/(\d+)\s*segundo/i);
-  const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
-  const blockedUntil = new Date(Date.now() + secs * 1000).toISOString();
-  // SEMPRE update no registro fixo — NUNCA criar novo
   const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
-  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
-    bloqueado: true, bloqueado_ate: blockedUntil, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString()
-  }).catch(() => {});
+  const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
+  const _cb = _cbRows?.[0];
+  const _erros = (_cb?.erros_consecutivos || 0) + 1;
+  const _thresh = _cb?.threshold_erros ?? 3;
+  const _p: any = { erros_consecutivos: _erros, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
+  if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, _p).catch(() => {});
 }
 
 // ============================================================
@@ -95,6 +95,7 @@ async function omieCallDirect(base44, endpoint, param, options = {}) {
         // Retornar faultstring para lógica de tratamento existente
         return data;
       }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (error) {
       clearTimeout(timer);

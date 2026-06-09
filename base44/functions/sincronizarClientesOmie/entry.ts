@@ -23,15 +23,16 @@ async function checarBloqueioOmie(base44) {
 async function tratarResposta425(base44, faultstring, status) {
     const msg = String(faultstring || '').toLowerCase();
     if (status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
-        const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-        const controle = cb?.[0];
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
-        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+        const _cbId = '6a1e06a9aa62ceab7b3b6d97';
+        const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
+        const _cb = _cbRows?.[0];
+        const _erros = (_cb?.erros_consecutivos || 0) + 1;
+        const _thresh = _cb?.threshold_erros ?? 3;
+        const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() };
+        if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => {});
+        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Erro: ${String(faultstring || '').slice(0, 200)}`);
         err.code = 'OMIE_425';
-        err.bloqueado_ate = bloqueadoAte;
         return err;
     }
     return null;

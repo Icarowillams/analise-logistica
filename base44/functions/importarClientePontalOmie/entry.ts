@@ -40,6 +40,7 @@ async function omieCall(base44: any, call: string, param: unknown) {
         }
         throw new Error(data.faultstring);
       }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
       lastErr = e.name === 'AbortError' ? 'Timeout' : e.message;

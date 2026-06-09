@@ -46,8 +46,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const until = new Date(Date.now() + 30 * 60000).toISOString();
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
+          { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -56,6 +55,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (!options.skipLog) {
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
       }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
       lastErr = e.message;
@@ -110,19 +110,22 @@ async function checarBloqueio(base44) {
 async function tratar425(base44, controle, call, param, res, data) {
     const msg = String(data.faultstring || '').toLowerCase();
     if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-        const bloqueadoAte = new Date(Date.now() + 30 * 60000).toISOString();
-        const payloadCb = { chave: 'principal', bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString() };
-        if (controle?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controle.id, payloadCb).catch(() => {});
-        else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payloadCb).catch(() => {});
+        const _cbId = '6a1e06a9aa62ceab7b3b6d97';
+        const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
+        const _cb = _cbRows?.[0];
+        const _erros = (_cb?.erros_consecutivos || 0) + 1;
+        const _thresh = _cb?.threshold_erros ?? 3;
+        const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
+        if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => {});
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
             endpoint: 'geral/produtos/', call, operacao: call, status: 'erro', codigo_erro: '425',
             mensagem_erro: data.faultstring || 'HTTP 425 — consumo indevido',
             payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
             payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
         }).catch(() => {});
-        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${new Date(bloqueadoAte).toLocaleString('pt-BR')}.`);
+        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Erro: ${String(data.faultstring).slice(0, 200)}`);
         err.code = 'OMIE_425';
-        err.bloqueado_ate = bloqueadoAte;
         throw err;
     }
 }

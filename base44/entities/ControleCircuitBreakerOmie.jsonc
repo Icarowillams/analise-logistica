@@ -26,6 +26,16 @@
       "type": "string",
       "format": "date-time",
       "description": "\u00daltima atualiza\u00e7\u00e3o do controle"
+    },
+    "erros_consecutivos": {
+      "type": "number",
+      "default": 0,
+      "description": "Contador de erros consecutivos \u2014 incrementa a cada falha, zera no sucesso"
+    },
+    "threshold_erros": {
+      "type": "number",
+      "default": 3,
+      "description": "N\u00famero de erros consecutivos necess\u00e1rios para abrir o circuit breaker"
     }
   },
   "required": [

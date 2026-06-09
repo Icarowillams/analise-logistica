@@ -56,12 +56,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          const secs = extrairSegundosBloqueioWH(data.faultstring);
-          const until = new Date(Date.now() + secs * 1000).toISOString();
-          // SEMPRE update no registro fixo — NUNCA criar novo
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
-            bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString()
-          }).catch(() => null);
+          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -70,6 +65,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (!options.skipLog) {
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
       }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
       lastErr = e.message;
@@ -226,13 +222,7 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
       const msg = String(data.faultstring).toLowerCase();
       // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
       if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
-        const secsMatch = String(data.faultstring).match(/(\d+)\s*segundo/i);
-        const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
-        const bloqueadoAte = new Date(Date.now() + secs * 1000).toISOString();
-        // SEMPRE update no registro fixo — NUNCA criar novo
-        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
-          bloqueado: true, bloqueado_ate: bloqueadoAte, ultimo_erro: data.faultstring || 'HTTP 425 consumo indevido', atualizado_em: new Date().toISOString()
-        }).catch(() => {});
+        { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => {}); }
         const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${bloqueadoAte}.`);
         err.code = 'OMIE_425';
         throw err;
@@ -740,9 +730,19 @@ async function handlePedido(base44, topic, evt) {
       try { await removerDoEspelho(base44, codigoPedido); } catch {}
     }
   } else if (topic === 'VendaProduto.EtapaAlterada') {
-    const novoStatus = mapEtapaParaStatus(evt?.etapa);
+    let etapaEvento = evt?.etapa;
+    // Fallback: se o webhook não trouxe a etapa, lê do espelho recém-atualizado por upsertEspelho
+    if (!etapaEvento) {
+      try {
+        const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+          { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1
+        ).catch(() => []);
+        etapaEvento = espelhos[0]?.etapa;
+      } catch {}
+    }
+    const novoStatus = mapEtapaParaStatus(etapaEvento);
     if (novoStatus) updates.status = novoStatus;
-    if (String(evt?.etapa || '') === '60') {
+    if (String(etapaEvento || '') === '60') {
       updates.faturado = true;
       updates.status_faturamento = 'faturado';
       updates.data_faturamento = updates.data_faturamento || new Date().toISOString();
@@ -751,7 +751,7 @@ async function handlePedido(base44, topic, evt) {
         dadosCarga.numero_nf = updates.numero_nota_fiscal;
       }
     }
-    if (evt?.etapa) dadosCarga.etapa = String(evt.etapa);
+    if (etapaEvento) dadosCarga.etapa = String(etapaEvento);
   } else if (topic === 'VendaProduto.Devolvida') {
     updates.status = 'cancelado';
     updates.data_cancelamento = new Date().toISOString();

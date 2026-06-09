@@ -53,30 +53,29 @@ async function consultarNfDoPedido(app_key, app_secret, codigoPedido) {
 }
 
 async function verificarCircuitBreaker(base44) {
+  const _cbId = '6a1e06a9aa62ceab7b3b6d97';
   const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-    .filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    .filter({ id: _cbId }, '-created_date', 1).catch(() => []);
   const controle = cb?.[0];
   if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    return { bloqueado: true, bloqueado_ate: controle.bloqueado_ate, id: controle.id };
+    return { bloqueado: true, bloqueado_ate: controle.bloqueado_ate, id: _cbId };
   }
-  return { bloqueado: false, id: controle?.id || null };
+  return { bloqueado: false, id: _cbId };
 }
 
 async function ativarCircuitBreaker(base44, controleId, faultstring) {
-  const bloqueadoAte = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  const payload = {
-    chave: 'principal',
-    bloqueado: true,
-    bloqueado_ate: bloqueadoAte,
-    ultimo_erro: faultstring || 'HTTP 425 consumo indevido (auditoria)',
-    atualizado_em: new Date().toISOString()
-  };
-  if (controleId) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(controleId, payload).catch(() => {});
-  } else {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(payload).catch(() => {});
+  const _cbId = '6a1e06a9aa62ceab7b3b6d97';
+  const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
+  const _cb = _cbRows?.[0];
+  const _erros = (_cb?.erros_consecutivos || 0) + 1;
+  const _thresh = _cb?.threshold_erros ?? 3;
+  const payload: any = { erros_consecutivos: _erros, ultimo_erro: String(faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() };
+  if (_erros >= _thresh) {
+    payload.bloqueado = true;
+    payload.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString();
   }
-  return bloqueadoAte;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, payload).catch(() => {});
+  return payload.bloqueado_ate || null;
 }
 
 Deno.serve(async (req) => {

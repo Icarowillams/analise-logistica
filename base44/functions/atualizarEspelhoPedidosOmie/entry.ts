@@ -68,6 +68,17 @@ Deno.serve(async (req) => {
           data_faturamento: pedido.data_faturamento || new Date().toISOString()
         }).catch(() => {});
         atualizados++;
+      } else if (dados.etapa === '20' && pedido.status === 'pendente') {
+        await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+          status: 'liberado',
+          data_liberacao: new Date().toISOString()
+        }).catch(() => {});
+        atualizados++;
+      } else if (dados.etapa === '50' && (pedido.status === 'pendente' || pedido.status === 'liberado')) {
+        await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+          status: 'montagem'
+        }).catch(() => {});
+        atualizados++;
       }
     }
 
