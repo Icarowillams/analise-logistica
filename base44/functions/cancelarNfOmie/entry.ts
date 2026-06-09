@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     let clienteNome = '';
 
     try {
-      const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) });
+      const consulta = await omieCall(base44, OMIE_URL_PEDIDO, { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido', skipLog: true });
       const pedido = consulta.pedido_venda_produto;
       numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
       valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
@@ -115,10 +115,10 @@ Deno.serve(async (req) => {
 
     // CancelarPedidoVenda fica em /produtos/pedidovendafat/ (endpoint de faturamento)
     try {
-      await omieCall(base44, 'CancelarPedidoVenda', {
+      await omieCall(base44, OMIE_URL_FAT, {
         nCodPed: Number(codigo_pedido),
         cJustCanc: motivo || `Cancelamento via ${origem}`
-      });
+      }, { call: 'CancelarPedidoVenda', operation: `cancelar_${origem}`, entityType: 'Pedido', entityId: String(codigo_pedido) });
     } catch (err) {
       if (err.code === 'OMIE_425') throw err; // propaga bloqueio ao catch externo
       const msg = err.message.toLowerCase();
