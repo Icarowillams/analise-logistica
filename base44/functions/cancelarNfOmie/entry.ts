@@ -107,15 +107,13 @@ Deno.serve(async (req) => {
     let valorNf = 0;
     let clienteNome = '';
 
-    // Se o frontend já enviou os dados do pedido, usa direto (evita ConsultarPedido duplicado / REDUNDANT)
+    // Se o frontend já enviou os dados do pedido, usa para preencher info (evita ConsultarPedido duplicado / REDUNDANT)
+    // IMPORTANTE: NÃO confiar na etapa do frontend para decidir se o pedido está cancelado —
+    // sempre tenta cancelar no Omie e deixa a API confirmar se já está cancelado.
     if (dados_pedido) {
       numeroNf = dados_pedido.numero_nfe || '';
       valorNf = Number(dados_pedido.valor_total || 0);
       clienteNome = dados_pedido.cliente_nome || '';
-      const etapaAtual = String(dados_pedido.etapa || '').toLowerCase();
-      if (etapaAtual === 'cancelado') {
-        status = 'ja_cancelado';
-      }
     } else {
       // Fallback: consulta o Omie (só se dados não vieram do frontend)
       try {

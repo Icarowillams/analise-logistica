@@ -74,8 +74,11 @@ const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 
 function pedidoCancelado(pedido) {
-  const texto = JSON.stringify(pedido || {}).toLowerCase();
-  return texto.includes('cancelado') || texto.includes('cancelada');
+  // Verifica APENAS campos estruturais que indicam cancelamento real no Omie
+  const etapa = String(pedido?.cabecalho?.etapa || '').toLowerCase();
+  const statusPedido = String(pedido?.cabecalho?.status_pedido || '').toLowerCase();
+  const cCancelado = String(pedido?.cabecalho?.cancelado || '').toLowerCase();
+  return etapa === 'cancelado' || statusPedido === 'cancelado' || cCancelado === 's' || cCancelado === 'true';
 }
 
 // Consulta bruta de um pedido no Omie (retorna o objeto pedido_venda_produto completo)
