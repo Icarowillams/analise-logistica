@@ -70,7 +70,7 @@ export default function DevolucaoTab() {
 
   return (
     <div className="space-y-4">
-      {!pedido && <SeletorPedidoOmie onPedidoCarregado={onPedidoCarregado} etapas={['10', '20', '50']} />}
+      {!pedido && <SeletorPedidoOmie onPedidoCarregado={onPedidoCarregado} etapas={['10', '20', '50', '60']} />}
 
       {pedido && (
         <Card>
