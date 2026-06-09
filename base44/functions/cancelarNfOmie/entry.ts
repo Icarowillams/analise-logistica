@@ -50,7 +50,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: 'principal', bloqueado: true, bloqueado_ate: until, ultimo_erro: data.faultstring, atualizado_em: new Date().toISOString() }).catch(() => null);
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // REDUNDANT = chamada duplicada em intervalo curto — NÃO fazer retry (só piora)
+        if (msg.includes('redundant') || msg.includes('redundante')) { throw new Error(data.faultstring); }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -96,7 +98,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { codigo_pedido, motivo = '', origem = 'manual' } = body;
+    const { codigo_pedido, motivo = '', origem = 'manual', dados_pedido } = body;
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
 
     let status = 'cancelado';
@@ -105,19 +107,29 @@ Deno.serve(async (req) => {
     let valorNf = 0;
     let clienteNome = '';
 
-    try {
-      const consulta = await omieCall(base44, OMIE_URL_PEDIDO, { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido', skipLog: true });
-      const pedido = consulta.pedido_venda_produto;
-      numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
-      valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
-      clienteNome = pedido?.cabecalho?.codigo_cliente || '';
-
-      // Se já está cancelado no Omie, não precisa chamar a API de cancelamento
-      const etapaAtual = String(pedido?.cabecalho?.etapa || '').toLowerCase();
-      if (etapaAtual === 'cancelado' || pedido?.cabecalho?.cancelado === true) {
+    // Se o frontend já enviou os dados do pedido, usa direto (evita ConsultarPedido duplicado / REDUNDANT)
+    if (dados_pedido) {
+      numeroNf = dados_pedido.numero_nfe || '';
+      valorNf = Number(dados_pedido.valor_total || 0);
+      clienteNome = dados_pedido.cliente_nome || '';
+      const etapaAtual = String(dados_pedido.etapa || '').toLowerCase();
+      if (etapaAtual === 'cancelado') {
         status = 'ja_cancelado';
       }
-    } catch (_) { /* ignore */ }
+    } else {
+      // Fallback: consulta o Omie (só se dados não vieram do frontend)
+      try {
+        const consulta = await omieCall(base44, OMIE_URL_PEDIDO, { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido', skipLog: true });
+        const pedido = consulta.pedido_venda_produto;
+        numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
+        valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
+        clienteNome = pedido?.cabecalho?.codigo_cliente || '';
+        const etapaAtual = String(pedido?.cabecalho?.etapa || '').toLowerCase();
+        if (etapaAtual === 'cancelado' || pedido?.cabecalho?.cancelado === true) {
+          status = 'ja_cancelado';
+        }
+      } catch (_) { /* ignore */ }
+    }
 
     // Só chama CancelarPedidoVenda se ainda não está cancelado
     if (status !== 'ja_cancelado') {
@@ -129,7 +141,7 @@ Deno.serve(async (req) => {
       } catch (err) {
         if (err.code === 'OMIE_425') throw err;
         const msg = err.message.toLowerCase();
-        if (msg.includes('já') || msg.includes('ja cancelado') || msg.includes('cancelado')) {
+        if (msg.includes('já') || msg.includes('ja cancelado') || msg.includes('cancelado') || msg.includes('redundant') || msg.includes('redundante')) {
           status = 'ja_cancelado';
         } else {
           status = 'erro';

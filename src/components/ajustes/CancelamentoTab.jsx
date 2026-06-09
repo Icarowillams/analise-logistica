@@ -28,7 +28,13 @@ export default function CancelamentoTab() {
       const { data } = await base44.functions.invoke('cancelarNfOmie', {
         codigo_pedido: codigoPedido,
         motivo,
-        origem
+        origem,
+        dados_pedido: {
+          numero_nfe: pedido.informacoes_adicionais?.numero_nfe || '',
+          valor_total: pedido.total_pedido?.valor_total_pedido || 0,
+          cliente_nome: pedido.cabecalho?.cliente_nome || '',
+          etapa: pedido.cabecalho?.etapa || ''
+        }
       });
       if (data?.sucesso) {
         toast.success(`Pedido ${data.status === 'ja_cancelado' ? 'já estava cancelado' : 'cancelado com sucesso'}`);
