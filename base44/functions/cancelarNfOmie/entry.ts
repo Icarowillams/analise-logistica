@@ -111,22 +111,30 @@ Deno.serve(async (req) => {
       numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
       valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
       clienteNome = pedido?.cabecalho?.codigo_cliente || '';
+
+      // Se já está cancelado no Omie, não precisa chamar a API de cancelamento
+      const etapaAtual = String(pedido?.cabecalho?.etapa || '').toLowerCase();
+      if (etapaAtual === 'cancelado' || pedido?.cabecalho?.cancelado === true) {
+        status = 'ja_cancelado';
+      }
     } catch (_) { /* ignore */ }
 
-    // CancelarPedidoVenda fica em /produtos/pedidovendafat/ (endpoint de faturamento)
-    try {
-      await omieCall(base44, OMIE_URL_FAT, {
-        nCodPed: Number(codigo_pedido),
-        cJustCanc: motivo || `Cancelamento via ${origem}`
-      }, { call: 'CancelarPedidoVenda', operation: `cancelar_${origem}`, entityType: 'Pedido', entityId: String(codigo_pedido) });
-    } catch (err) {
-      if (err.code === 'OMIE_425') throw err; // propaga bloqueio ao catch externo
-      const msg = err.message.toLowerCase();
-      if (msg.includes('já') || msg.includes('ja cancelado') || msg.includes('cancelado')) {
-        status = 'ja_cancelado';
-      } else {
-        status = 'erro';
-        erroOmie = err.message;
+    // Só chama CancelarPedidoVenda se ainda não está cancelado
+    if (status !== 'ja_cancelado') {
+      try {
+        await omieCall(base44, OMIE_URL_FAT, {
+          nCodPed: Number(codigo_pedido),
+          cJustCanc: motivo || `Cancelamento via ${origem}`
+        }, { call: 'CancelarPedidoVenda', operation: `cancelar_${origem}`, entityType: 'Pedido', entityId: String(codigo_pedido) });
+      } catch (err) {
+        if (err.code === 'OMIE_425') throw err;
+        const msg = err.message.toLowerCase();
+        if (msg.includes('já') || msg.includes('ja cancelado') || msg.includes('cancelado')) {
+          status = 'ja_cancelado';
+        } else {
+          status = 'erro';
+          erroOmie = err.message;
+        }
       }
     }
 
