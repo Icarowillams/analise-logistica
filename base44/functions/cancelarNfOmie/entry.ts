@@ -139,8 +139,15 @@ Deno.serve(async (req) => {
       } catch (err) {
         if (err.code === 'OMIE_425') throw err;
         const msg = err.message.toLowerCase();
-        if (msg.includes('já') || msg.includes('ja cancelado') || msg.includes('cancelado') || msg.includes('redundant') || msg.includes('redundante')) {
+        // Log detalhado para debug
+        console.log('[cancelarNfOmie] Erro CancelarPedidoVenda:', err.message);
+        // Só trata como "já cancelado" se a mensagem indicar EXPLICITAMENTE que o pedido já está cancelado
+        if (msg.includes('já cancelado') || msg.includes('ja cancelado') || msg.includes('pedido cancelado') || msg.includes('nota cancelada')) {
           status = 'ja_cancelado';
+        } else if (msg.includes('redundant') || msg.includes('redundante')) {
+          // REDUNDANT = chamada duplicada, NÃO significa que está cancelado
+          status = 'erro';
+          erroOmie = 'Consumo redundante. Aguarde e tente novamente.';
         } else {
           status = 'erro';
           erroOmie = err.message;
