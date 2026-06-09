@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search, Loader2, RefreshCw, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import useDebounce from '@/hooks/useDebounce';
 
 const ETAPA_LABELS = {
   '10': { label: 'Pedido Venda', color: 'bg-amber-100 text-amber-800' },
@@ -36,7 +37,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
       const todos = await base44.entities.PedidoLiberadoOmie.list('-created_date', 500);
       return todos.filter(p => etapas.includes(String(p.etapa)));
     },
-    staleTime: 30000,
+    staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
@@ -61,7 +62,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
       return Array.from(map.values());
     },
     enabled: fonte === 'omie',
-    staleTime: 60000,
+    staleTime: 3 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
@@ -86,8 +87,10 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
   const isLoading = fonte === 'local' ? loadingLocal : loadingOmie;
   const isFetching = fonte === 'omie' ? fetchingOmie : false;
 
+  const buscaDebounced = useDebounce(busca, 300);
+
   const filtrados = useMemo(() => {
-    const t = busca.trim().toLowerCase();
+    const t = buscaDebounced.trim().toLowerCase();
     if (!t) return pedidos;
     return pedidos.filter(p =>
       String(p.numero_pedido || '').toLowerCase().includes(t) ||
@@ -97,7 +100,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
       (p.cliente_cidade || '').toLowerCase().includes(t) ||
       (p.numero_nf || '').toString().includes(t)
     );
-  }, [pedidos, busca]);
+  }, [pedidos, buscaDebounced]);
 
   const carregarPedido = async (codigo_pedido) => {
     setCarregandoId(codigo_pedido);

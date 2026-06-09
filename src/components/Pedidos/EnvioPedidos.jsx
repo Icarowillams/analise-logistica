@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import PedidoPdf from './PedidoPdf';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 import StatusFilaEnvio from './StatusFilaEnvio';
+import useDebounce from '@/hooks/useDebounce';
 
 export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const queryClient = useQueryClient();
@@ -53,7 +54,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
       const erros = await base44.entities.FilaEnvioPedidoOmie.filter({ status: 'erro' }, '-created_date', 50);
       return [...pendentes, ...processando, ...recentes, ...erros];
     },
-    refetchInterval: 10000 // poll a cada 10s para atualizar status
+    refetchInterval: 30000 // poll a cada 30s para atualizar status (reduz carga na API)
   });
 
   // Mapa rápido: pedido_id → item da fila mais recente
@@ -102,9 +103,11 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const pendentes = pedidosComCliente.filter(p => p.status === 'pendente' && !p.data_envio);
   const enviados = pedidosComCliente.filter(p => !!p.data_envio);
 
+  const searchDebounced = useDebounce(searchText, 300);
+
   const filtrarPedidos = (lista) => {
     return lista.filter(p => {
-      const s = searchText.toLowerCase();
+      const s = searchDebounced.toLowerCase();
       const matchSearch = !s || p.cliente_nome?.toLowerCase().includes(s) || p.cliente_codigo?.includes(s) || String(p.numero_pedido || '').includes(s);
       const matchCod = !filtroCodCliente || p.cliente_codigo?.includes(filtroCodCliente);
 

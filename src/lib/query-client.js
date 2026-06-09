@@ -4,8 +4,8 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClientInstance = new QueryClient({
 	defaultOptions: {
 		queries: {
-			staleTime: 60 * 1000,        // 1 min — evita re-fetch ao trocar de aba
-			gcTime: 5 * 60 * 1000,       // 5 min
+			staleTime: 3 * 60 * 1000,    // 3 min — reduz refetch automático, alivia API
+			gcTime: 10 * 60 * 1000,      // 10 min
 			refetchOnWindowFocus: false, // não pisca a tela ao voltar do browser
 			refetchOnReconnect: true,
 			retry: 1,
@@ -33,21 +33,21 @@ const QUERY_DEFAULTS = {
 	planosPagamento: { staleTime: 15 * 60 * 1000 },
 	modalidadesPagamento: { staleTime: 15 * 60 * 1000 },
 
-	// Dados operacionais — 30 seg
-	pedidos:             { staleTime: 30 * 1000 },
-	cargas:              { staleTime: 30 * 1000 },
-	cargasOperacao:      { staleTime: 30 * 1000 },
-	operacaoEspelho:     { staleTime: 30 * 1000 },
-	pedidoLiberadoOmie:  { staleTime: 30 * 1000 },
+	// Dados operacionais — 2 min (reduz refetch automático, alivia API)
+	pedidos:             { staleTime: 2 * 60 * 1000 },
+	cargas:              { staleTime: 2 * 60 * 1000 },
+	cargasOperacao:      { staleTime: 2 * 60 * 1000 },
+	operacaoEspelho:     { staleTime: 2 * 60 * 1000 },
+	pedidoLiberadoOmie:  { staleTime: 2 * 60 * 1000 },
 
-	// Logs e auditoria — 2 min, gcTime curto
-	logIntegracaoOmie: { staleTime: 2 * 60 * 1000, gcTime: 60 * 1000 },
-	logGerencial:      { staleTime: 2 * 60 * 1000, gcTime: 60 * 1000 },
+	// Logs e auditoria — 5 min, gcTime curto
+	logIntegracaoOmie: { staleTime: 5 * 60 * 1000, gcTime: 2 * 60 * 1000 },
+	logGerencial:      { staleTime: 5 * 60 * 1000, gcTime: 2 * 60 * 1000 },
 
-	// Controle interno — 10 seg
-	controleCircuitBreakerOmie: { staleTime: 10 * 1000 },
-	cacheOmieConsulta:          { staleTime: 10 * 1000 },
-	rateLimitWebhook:           { staleTime: 10 * 1000 },
+	// Controle interno — 1 min
+	controleCircuitBreakerOmie: { staleTime: 60 * 1000 },
+	cacheOmieConsulta:          { staleTime: 60 * 1000 },
+	rateLimitWebhook:           { staleTime: 60 * 1000 },
 
 	// Dashboards e analytics — 5 min
 	dashboard: { staleTime: 5 * 60 * 1000 },
