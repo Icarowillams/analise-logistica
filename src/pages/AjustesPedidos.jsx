@@ -7,6 +7,8 @@ import CancelamentoTab from '@/components/ajustes/CancelamentoTab';
 import DevolucaoTab from '@/components/ajustes/DevolucaoTab';
 import LogCortesView from '@/components/ajustes/LogCortesView';
 import LogTransferenciasView from '@/components/ajustes/LogTransferenciasView';
+import LogCancelamentosView from '@/components/ajustes/LogCancelamentosView';
+import LogDevolucoesView from '@/components/ajustes/LogDevolucoesView';
 
 export default function AjustesPedidos() {
   return (
@@ -27,6 +29,8 @@ export default function AjustesPedidos() {
           <TabsTrigger value="devolucao">Devolução</TabsTrigger>
           <TabsTrigger value="log-corte">Log de Cortes</TabsTrigger>
           <TabsTrigger value="log-transferencia">Log de Transferências</TabsTrigger>
+          <TabsTrigger value="log-cancelamento">Log de Cancelamentos</TabsTrigger>
+          <TabsTrigger value="log-devolucao">Log de Devoluções</TabsTrigger>
         </TabsList>
 
         <TabsContent value="corte"><CorteTab /></TabsContent>
@@ -35,6 +39,8 @@ export default function AjustesPedidos() {
         <TabsContent value="devolucao"><DevolucaoTab /></TabsContent>
         <TabsContent value="log-corte"><LogCortesView /></TabsContent>
         <TabsContent value="log-transferencia"><LogTransferenciasView /></TabsContent>
+        <TabsContent value="log-cancelamento"><LogCancelamentosView /></TabsContent>
+        <TabsContent value="log-devolucao"><LogDevolucoesView /></TabsContent>
       </Tabs>
     </div>
   );
