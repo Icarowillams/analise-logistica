@@ -231,7 +231,22 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             processamento_omie_status: 'nao_iniciado',
             processamento_omie_total: itensFila.length
           });
-        } catch (e) { console.warn('Falha ao enfileirar processamento Omie:', e.message); }
+        } catch (e) {
+          console.warn('Falha ao enfileirar processamento Omie:', e.message);
+          // Garante que a carga não fique exibindo "Aguardando fila" sem itens na fila.
+          await base44.entities.Carga.update(carga.id, {
+            processamento_omie_status: 'nao_iniciado',
+            processamento_omie_total: 0
+          }).catch(() => {});
+          toast.error(
+            `Carga ${numero} criada, mas falha ao enfileirar pedidos no Omie: ${e.message}. ` +
+            'Reabra a carga em "Gerenciar Cargas" para reprocessar.'
+          );
+          onSuccess?.(carga);
+          setSalvando(false);
+          navigate('/Cargas');
+          return;
+        }
       }
 
       if (falhasVinculo.length > 0) {
