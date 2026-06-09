@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Ban, Loader2 } from 'lucide-react';
+import { Ban, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import SeletorPedidoOmie from './SeletorPedidoOmie';
 
 export default function CancelamentoTab() {
@@ -33,7 +34,8 @@ export default function CancelamentoTab() {
           numero_nfe: pedido.informacoes_adicionais?.numero_nfe || '',
           valor_total: pedido.total_pedido?.valor_total_pedido || 0,
           cliente_nome: pedido.cabecalho?.cliente_nome || '',
-          etapa: pedido.cabecalho?.etapa || ''
+          etapa: pedido.cabecalho?.etapa || '',
+          data_faturamento: pedido.informacoes_adicionais?.dFat || pedido.cabecalho?.data_previsao || ''
         }
       });
       if (data?.sucesso) {
@@ -65,7 +67,37 @@ export default function CancelamentoTab() {
             <div className="bg-slate-50 rounded p-3 text-sm">
               <div><span className="text-slate-500">Cliente:</span> {pedido.cabecalho?.cliente_nome || '-'}</div>
               <div><span className="text-slate-500">Valor:</span> R$ {Number(pedido.total_pedido?.valor_total_pedido || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+              {pedido.informacoes_adicionais?.numero_nfe && (
+                <div><span className="text-slate-500">NF-e:</span> {pedido.informacoes_adicionais.numero_nfe}</div>
+              )}
             </div>
+            {(() => {
+              const dFat = pedido.informacoes_adicionais?.dFat || pedido.cabecalho?.data_previsao;
+              if (!dFat || !pedido.informacoes_adicionais?.numero_nfe) return null;
+              const horas = (Date.now() - new Date(dFat).getTime()) / (1000 * 60 * 60);
+              if (horas > 24) {
+                return (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Prazo expirado!</strong> A NF-e foi emitida há {Math.floor(horas)}h. 
+                      O cancelamento só é permitido em até 24 horas. Após esse prazo, é necessário emitir uma NF-e de devolução/estorno.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+              if (horas > 20) {
+                return (
+                  <Alert className="border-amber-300 bg-amber-50">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800">
+                      <strong>Atenção:</strong> Restam apenas {Math.floor(24 - horas)}h para cancelar esta NF-e. O prazo máximo é de 24 horas.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+              return null;
+            })()}
             <div>
               <Label>Origem do cancelamento</Label>
               <Select value={origem} onValueChange={setOrigem}>
@@ -84,7 +116,11 @@ export default function CancelamentoTab() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => { setPedido(null); setMotivo(''); }}>Voltar</Button>
-              <Button variant="destructive" onClick={cancelar} disabled={loading || !motivo}>
+              <Button variant="destructive" onClick={cancelar} disabled={loading || !motivo || (() => {
+                const dFat = pedido?.informacoes_adicionais?.dFat || pedido?.cabecalho?.data_previsao;
+                if (!dFat || !pedido?.informacoes_adicionais?.numero_nfe) return false;
+                return (Date.now() - new Date(dFat).getTime()) / (1000 * 60 * 60) > 24;
+              })()}>
                 {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                 Cancelar pedido
               </Button>

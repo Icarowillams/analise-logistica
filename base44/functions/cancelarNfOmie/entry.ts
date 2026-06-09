@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
     let numeroNf = '';
     let valorNf = 0;
     let clienteNome = '';
+    let dataFaturamento = null;
 
     // Se o frontend já enviou os dados do pedido, usa para preencher info (evita ConsultarPedido duplicado / REDUNDANT)
     // IMPORTANTE: NÃO confiar na etapa do frontend para decidir se o pedido está cancelado —
@@ -114,6 +115,7 @@ Deno.serve(async (req) => {
       numeroNf = dados_pedido.numero_nfe || '';
       valorNf = Number(dados_pedido.valor_total || 0);
       clienteNome = dados_pedido.cliente_nome || '';
+      dataFaturamento = dados_pedido.data_faturamento || null;
     } else {
       // Fallback: consulta o Omie (só se dados não vieram do frontend)
       try {
@@ -122,11 +124,41 @@ Deno.serve(async (req) => {
         numeroNf = pedido?.informacoes_adicionais?.numero_nfe || '';
         valorNf = pedido?.total_pedido?.valor_total_pedido || 0;
         clienteNome = pedido?.cabecalho?.codigo_cliente || '';
+        dataFaturamento = pedido?.informacoes_adicionais?.dFat || pedido?.cabecalho?.data_previsao || null;
         const etapaAtual = String(pedido?.cabecalho?.etapa || '').toLowerCase();
         if (etapaAtual === 'cancelado' || pedido?.cabecalho?.cancelado === true) {
           status = 'ja_cancelado';
         }
       } catch (_) { /* ignore */ }
+    }
+
+    // ═══ REGRA FISCAL: NF-e só pode ser cancelada em até 24h após emissão ═══
+    if (status !== 'ja_cancelado' && numeroNf && dataFaturamento) {
+      const dtFat = new Date(dataFaturamento);
+      if (!isNaN(dtFat.getTime())) {
+        const horasDesdeEmissao = (Date.now() - dtFat.getTime()) / (1000 * 60 * 60);
+        if (horasDesdeEmissao > 24) {
+          const horasFormatadas = Math.floor(horasDesdeEmissao);
+          erroOmie = `NF-e ${numeroNf} foi emitida há ${horasFormatadas}h. O prazo máximo para cancelamento é de 24 horas após a emissão. Após esse prazo, é necessário emitir uma NF-e de devolução/estorno.`;
+          status = 'erro';
+
+          // Registra o bloqueio e retorna
+          const registro = await base44.asServiceRole.entities.Cancelamento.create({
+            pedido_codigo_omie: String(codigo_pedido),
+            numero_nf: String(numeroNf),
+            valor_nf: Number(valorNf) || 0,
+            cliente_nome: String(clienteNome),
+            data_cancelamento: new Date().toISOString(),
+            motivo,
+            origem,
+            funcionario_nome: user.full_name || user.email,
+            status: 'erro',
+            erro_omie: erroOmie
+          });
+
+          return Response.json({ sucesso: false, status: 'erro', registro_id: registro.id, erro: erroOmie, prazo_expirado: true });
+        }
+      }
     }
 
     // Só chama CancelarPedidoVenda se ainda não está cancelado

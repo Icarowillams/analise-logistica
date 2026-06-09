@@ -136,6 +136,23 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, ja_cancelada: true, numero_nf: numeroNf, mensagem: 'NF já estava cancelada no Omie' });
     }
 
+    // ═══ REGRA FISCAL: NF-e só pode ser cancelada em até 24h após emissão ═══
+    if (numeroNf) {
+      const dFat = ped?.informacoes_adicionais?.dFat || dataPrev;
+      if (dFat) {
+        const dtFat = new Date(dFat);
+        if (!isNaN(dtFat.getTime())) {
+          const horasDesdeEmissao = (Date.now() - dtFat.getTime()) / (1000 * 60 * 60);
+          if (horasDesdeEmissao > 24) {
+            return Response.json({
+              error: `NF-e ${numeroNf} foi emitida há ${Math.floor(horasDesdeEmissao)}h. O prazo máximo para cancelamento é de 24 horas. Após esse prazo, é necessário emitir uma NF-e de devolução/estorno.`,
+              prazo_expirado: true
+            }, { status: 400 });
+          }
+        }
+      }
+    }
+
     // ───────────────────────────────────────────────────────────
     // 2.5) Trocar etapa para "não entregue" (se configurado)
     //      Lê etapa_nao_entregue da ConfiguracaoSistema
