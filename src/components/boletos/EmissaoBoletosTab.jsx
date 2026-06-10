@@ -26,6 +26,7 @@ export default function EmissaoBoletosTab() {
   const [selecionados, setSelecionados] = useState(new Set());
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [progressoBoletos, setProgressoBoletos] = useState({ atual: 0, total: 0 });
 
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-emissao-boletos-tab'],
@@ -261,39 +262,71 @@ export default function EmissaoBoletosTab() {
     }
     if (!confirm(`Emitir ${codigos.length} boleto(s) no Omie?`)) return;
 
+    const LOTE_FRONTEND = 5; // máx por chamada ao backend (evita timeout)
+    const lotes = [];
+    for (let i = 0; i < codigos.length; i += LOTE_FRONTEND) {
+      lotes.push(codigos.slice(i, i + LOTE_FRONTEND));
+    }
+
     setGerando(true);
     setResultado(null);
-    try {
-      const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: codigos });
-      if (data?.sucesso) {
-        setResultado(data);
-        const qtdSucesso = data.sucessos || 0;
-        const qtdErros = data.erros || 0;
-        const durSec = data.duracao_ms ? (data.duracao_ms / 1000).toFixed(1) : null;
-        if (qtdSucesso > 0) toast.success(`${qtdSucesso} boleto(s) emitido(s) com sucesso${durSec ? ` em ${durSec}s` : ''}`);
-        if (qtdErros > 0) toast.error(`${qtdErros} boleto(s) falharam — veja o detalhe abaixo`);
+    setProgressoBoletos({ atual: 0, total: codigos.length });
 
-        // Só limpa seleção dos títulos que foram gerados com sucesso
-        // Títulos com erro continuam selecionados para nova tentativa
-        if (qtdSucesso > 0) {
-          const codigosSucesso = new Set(
-            (data.resultados || []).filter(r => r.sucesso).map(r => String(r.codigo_lancamento))
-          );
-          setSelecionados(prev => {
-            const novo = new Set(prev);
-            codigosSucesso.forEach(c => novo.delete(c));
-            return novo;
-          });
+    const todosResultados = [];
+    let totalSucessos = 0;
+    let totalErros = 0;
+    let totalSkips = 0;
+    let processados = 0;
+
+    for (let i = 0; i < lotes.length; i++) {
+      const lote = lotes[i];
+      try {
+        const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: lote });
+        if (data?.sucesso) {
+          todosResultados.push(...(data.resultados || []));
+          totalSucessos += data.sucessos || 0;
+          totalErros += data.erros || 0;
+          totalSkips += data.skips || 0;
+        } else {
+          // marca todos do lote como erro
+          lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: data?.error || 'Erro desconhecido' }));
+          totalErros += lote.length;
         }
-        // Sempre recarrega a lista para refletir status atualizado
-        queryClient.invalidateQueries({ queryKey: ['titulos-emissao-boletos-carga', cargaId] });
-      } else {
-        toast.error(data?.error || 'Erro ao emitir boletos');
+      } catch (e) {
+        lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: e.message }));
+        totalErros += lote.length;
       }
-    } catch (e) {
-      toast.error(e.message);
+      processados += lote.length;
+      setProgressoBoletos({ atual: processados, total: codigos.length });
     }
+
+    const resultadoFinal = {
+      sucesso: true,
+      total: codigos.length,
+      processados: codigos.length,
+      sucessos: totalSucessos,
+      erros: totalErros,
+      skips: totalSkips,
+      resultados: todosResultados
+    };
+
+    setResultado(resultadoFinal);
+    if (totalSucessos > 0) toast.success(`${totalSucessos} boleto(s) emitido(s) com sucesso`);
+    if (totalErros > 0) toast.error(`${totalErros} boleto(s) falharam — veja o detalhe abaixo`);
+
+    if (totalSucessos > 0) {
+      const codigosSucesso = new Set(
+        todosResultados.filter(r => r.sucesso).map(r => String(r.codigo_lancamento))
+      );
+      setSelecionados(prev => {
+        const novo = new Set(prev);
+        codigosSucesso.forEach(c => novo.delete(c));
+        return novo;
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ['titulos-emissao-boletos-carga', cargaId] });
     setGerando(false);
+    setProgressoBoletos({ atual: 0, total: 0 });
   };
 
   return (
@@ -372,11 +405,21 @@ export default function EmissaoBoletosTab() {
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={gerarBoletos} disabled={gerando || selecionados.size === 0} className="bg-amber-600 hover:bg-amber-700 text-white">
-                {gerando
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Emitindo...</>
-                  : <><Receipt className="w-4 h-4 mr-2" /> Emitir {selecionados.size} boleto(s)</>}
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button onClick={gerarBoletos} disabled={gerando || selecionados.size === 0} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  {gerando
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Emitindo {progressoBoletos.atual}/{progressoBoletos.total}...</>
+                    : <><Receipt className="w-4 h-4 mr-2" /> Emitir {selecionados.size} boleto(s)</>}
+                </Button>
+                {gerando && progressoBoletos.total > 0 && (
+                  <div className="w-48 bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-amber-500 h-1.5 rounded-full transition-all"
+                      style={{ width: `${(progressoBoletos.atual / progressoBoletos.total) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             <ListaTitulosCarga
