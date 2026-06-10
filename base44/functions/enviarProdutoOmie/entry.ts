@@ -149,13 +149,14 @@ Deno.serve(async (req) => {
 
         const produtoOmie = mapearProdutoParaOmie(produtoData, unidadeSigla);
 
-        // Pré-consulta por código de integração: se já existe no Omie, reutilizar o codigo_produto
-        // Tenta primeiro pelo codigo_produto_integracao (mais confiável), depois pelo codigo
-        let codigoOmieExistente = produtoData.codigo_omie ? Number(produtoData.codigo_omie) : null;
+        // Pré-consulta: busca o produto no Omie pelo código interno (campo "codigo" = "11", "12", etc.)
+        // Este campo é o mais confiável pois é único e imutável no Omie.
+        // Se já temos o codigo_produto numérico salvo, usamos ele diretamente.
         try {
-            const paramConsulta = codigoOmieExistente
-                ? { codigo_produto: codigoOmieExistente }
-                : { codigo_produto_integracao: produtoOmie.codigo_produto_integracao };
+            const codigoOmieLocal = produtoData.codigo_omie ? Number(produtoData.codigo_omie) : null;
+            const paramConsulta = codigoOmieLocal
+                ? { codigo_produto: codigoOmieLocal }
+                : { codigo: produtoOmie.codigo }; // busca pelo código interno (ex: "11")
             const achado = await omieFetchComRetry(OMIE_URL, {
                 call: 'ConsultarProduto',
                 app_key: OMIE_APP_KEY,
@@ -163,25 +164,20 @@ Deno.serve(async (req) => {
                 param: [paramConsulta]
             });
             if (achado?.codigo_produto) {
+                // Produto encontrado: injeta o ID numérico para forçar UPDATE em vez de INSERT
                 produtoOmie.codigo_produto = achado.codigo_produto;
-                codigoOmieExistente = achado.codigo_produto;
-            }
-        } catch (_) { /* pré-consulta é best-effort */ }
-
-        // Se ainda não encontrou pelo integracao, tenta pelo código curto
-        if (!codigoOmieExistente) {
-            try {
-                const achado2 = await omieFetchComRetry(OMIE_URL, {
-                    call: 'ConsultarProduto',
-                    app_key: OMIE_APP_KEY,
-                    app_secret: OMIE_APP_SECRET,
-                    param: [{ codigo: produtoOmie.codigo }]
-                });
-                if (achado2?.codigo_produto) {
-                    produtoOmie.codigo_produto = achado2.codigo_produto;
+                // Mantém o codigo_produto_integracao que o Omie já conhece (não sobrescreve com ID do Base44)
+                if (achado.codigo_produto_integracao) {
+                    produtoOmie.codigo_produto_integracao = achado.codigo_produto_integracao;
                 }
-            } catch (_) { /* pré-consulta é best-effort */ }
-        }
+                // Persiste o codigo_produto no Base44 para evitar pré-consulta nas próximas vezes
+                if (!codigoOmieLocal) {
+                    await base44.asServiceRole.entities.Produto.update(entidadeId, {
+                        codigo_omie: String(achado.codigo_produto)
+                    }).catch(() => {});
+                }
+            }
+        } catch (_) { /* pré-consulta é best-effort — UpsertProduto tentará criar */ }
 
         const started = Date.now();
         const resultado = await omieFetchComRetry(OMIE_URL, {
