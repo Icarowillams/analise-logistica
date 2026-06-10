@@ -59,7 +59,7 @@ export default function Cargas() {
   // Padrão: últimos 60 dias. staleTime evita refetches excessivos.
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
-    queryFn: () => base44.entities.Carga.list('-created_date', 200),
+    queryFn: () => base44.entities.Carga.list('-created_date', 1000),
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false
   });
