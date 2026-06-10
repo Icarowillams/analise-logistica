@@ -55,12 +55,23 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       return;
     }
 
+    // SNAPSHOT dos dados ANTES de qualquer await — evita que re-renders
+    // durante operações assíncronas esvaziem os arrays (bug cargas com 0 pedidos)
+    const snapshotPedidos = [...pedidosSel];
+    const snapshotVendas = [...vendas];
+    const snapshotD1 = [...pedidosD1];
+    const snapshotTrocas = [...trocas];
+    const snapshotValorTotal = valorTotal;
+    const snapshotQtdPacotes = qtdPacotesTotal;
+
+    if (snapshotPedidos.length === 0) { toast.error('Nenhum pedido selecionado (snapshot vazio)'); return; }
+
     setSalvando(true);
     try {
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
 
-      const pedidosOmieFmt = vendas.map(v => ({
+      const pedidosOmieFmt = snapshotVendas.map(v => ({
         pedido_id: v.pedido_id || '',
         codigo_pedido: v.codigo_pedido,
         codigo_pedido_integracao: v.codigo_pedido_integracao || '',
@@ -82,7 +93,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         produtos: v.produtos || []
       }));
 
-      const pedidosD1Fmt = pedidosD1.map(p => ({
+      const pedidosD1Fmt = snapshotD1.map(p => ({
         pedido_id: p.pedido_id,
         numero_pedido: p.numero_pedido,
         modelo_nota: 'd1',
@@ -99,7 +110,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         produtos: p.produtos || []
       }));
 
-      const pedidosTrocaFmt = trocas.map(t => ({
+      const pedidosTrocaFmt = snapshotTrocas.map(t => ({
         pedido_troca_id: t.pedido_troca_id,
         pedido_id: t.pedido_id || '',
         numero_pedido: t.numero_pedido,
@@ -113,7 +124,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         produtos: t.produtos || []
       }));
 
-      const clientesUnicos = new Set(pedidosSel.map(p => p.cliente_id || p.codigo_cliente));
+      const clientesUnicos = new Set(snapshotPedidos.map(p => p.cliente_id || p.codigo_cliente));
       let carga = null;
       let numero = null;
       for (let tentativa = 0; tentativa < 10; tentativa++) {
@@ -129,12 +140,12 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           veiculo_id: veiculoId,
           veiculo_placa: veiculo?.placa || '',
           status_carga: 'montagem',
-          valor_total: valorTotal,
-          valor_total_carga: valorTotal,
-          quantidade_pedidos: pedidosSel.length,
+          valor_total: snapshotValorTotal,
+          valor_total_carga: snapshotValorTotal,
+          quantidade_pedidos: snapshotPedidos.length,
           quantidade_clientes: clientesUnicos.size,
-          quantidade_total_pacotes: qtdPacotesTotal,
-          notas_fiscais: pedidosSel.map(p => p.numero_pedido).filter(Boolean),
+          quantidade_total_pacotes: snapshotQtdPacotes,
+          notas_fiscais: snapshotPedidos.map(p => p.numero_pedido).filter(Boolean),
           pedidos_omie: pedidosOmieFmt,
           pedidos_internos: pedidosD1Fmt,
           pedidos_troca: pedidosTrocaFmt,
@@ -154,7 +165,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
       const falhasVinculo = [];
 
-      for (const p of [...vendas, ...pedidosD1]) {
+      for (const p of [...snapshotVendas, ...snapshotD1]) {
         try {
           let pedidoId = p.pedido_id;
           if (!pedidoId && p.codigo_pedido) {
@@ -178,7 +189,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
         }
       }
 
-      for (const t of trocas) {
+      for (const t of snapshotTrocas) {
         try {
           if (t.pedido_troca_id) {
             await base44.entities.PedidoTroca.update(t.pedido_troca_id, {
@@ -211,9 +222,9 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       // FECHAMENTO ASSÍNCRONO: em vez de chamar a Omie agora (o que bloqueava a API
       // com cargas grandes), enfileiramos 1 registro por pedido de venda. A função
       // scheduled processarFilaCargaOmie processa em background, espaçado e protegido.
-      if (vendas.length > 0) {
+      if (snapshotVendas.length > 0) {
         try {
-          const itensFila = vendas.map(v => ({
+          const itensFila = snapshotVendas.map(v => ({
             carga_id: carga.id,
             numero_carga: numero,
             pedido_id: v.pedido_id || '',
@@ -254,10 +265,10 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
 
       if (falhasVinculo.length > 0) {
         toast.error(`Carga ${numero} criada, mas ${falhasVinculo.length} pedido(s) não tiveram status local atualizado`);
-      } else if (vendas.length > 0) {
-        toast.success(`Carga fechada com sucesso. ${vendas.length} pedidos estão sendo processados na Omie. Acompanhe o progresso na tela de Cargas.`, { duration: 8000 });
+      } else if (snapshotVendas.length > 0) {
+        toast.success(`Carga fechada com sucesso. ${snapshotVendas.length} pedidos estão sendo processados na Omie. Acompanhe o progresso na tela de Cargas.`, { duration: 8000 });
       } else {
-        toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
+        toast.success(`Carga ${numero} criada com ${snapshotPedidos.length} pedidos`);
       }
       onSuccess?.(carga);
       navigate('/Cargas');
