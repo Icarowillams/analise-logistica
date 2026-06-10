@@ -153,12 +153,12 @@ function validarCpfCnpj(doc) {
 
 async function buscarClienteOmiePorCpfCnpj(base44, cnpjCpf) {
     if (!cnpjCpf) return null;
-    const achado = await omieCall(base44, 'ListarClientes', {
+    const achado = await omieCall(base44, 'geral/clientes/', {
         pagina: 1,
         registros_por_pagina: 1,
         apenas_importado_api: 'N',
         clientesFiltro: { cnpj_cpf: cnpjCpf }
-    });
+    }, { call: 'ListarClientes' });
     return achado?.clientes_cadastro?.[0] || null;
 }
 
@@ -338,7 +338,8 @@ Deno.serve(async (req) => {
         const body = await req.json();
         
         // Automação de entidade envia: { event, data, old_data, changed_fields, payload_too_large }
-        const { event, data: cliente, old_data: oldData, changed_fields: changedFields = [] } = body;
+        // Chamada manual aceita: { cliente_id: "..." }
+        const { event, data: cliente, old_data: oldData, changed_fields: changedFields = [], cliente_id: clienteIdManual } = body;
 
         console.log('[enviarClienteOmie] Payload recebido:', JSON.stringify(body).substring(0, 500));
         console.log('[enviarClienteOmie] Event:', JSON.stringify(event));
@@ -349,14 +350,17 @@ Deno.serve(async (req) => {
             return Response.json({ sucesso: true, ignorado: true, motivo: 'sem_campos_omie_alterados', cliente_id: clienteData?.id || event?.entity_id });
         }
 
+        // Suporte a chamada manual com { cliente_id }
+        const entityIdResolvido = clienteIdManual || event?.entity_id;
+
         // Se payload_too_large ou data veio vazio, buscar dados do cliente via SDK
-        if ((body.payload_too_large || !clienteData || !clienteData.razao_social) && event?.entity_id) {
-            console.log('[enviarClienteOmie] Buscando cliente via SDK, entity_id:', event.entity_id);
-            clienteData = await base44.asServiceRole.entities.Cliente.get(event.entity_id);
+        if ((body.payload_too_large || !clienteData || !clienteData.razao_social) && entityIdResolvido) {
+            console.log('[enviarClienteOmie] Buscando cliente via SDK, entity_id:', entityIdResolvido);
+            clienteData = await base44.asServiceRole.entities.Cliente.get(entityIdResolvido);
             console.log('[enviarClienteOmie] Cliente encontrado via SDK:', clienteData?.razao_social);
         }
 
-        if (!clienteData || (!clienteData.id && !event?.entity_id)) {
+        if (!clienteData || (!clienteData.id && !entityIdResolvido)) {
             console.log('[enviarClienteOmie] Cliente não informado no payload');
             return Response.json({ error: 'Cliente não informado' }, { status: 400 });
         }
@@ -492,7 +496,7 @@ Deno.serve(async (req) => {
         console.log('[enviarClienteOmie] Payload Omie:', JSON.stringify(clienteOmie).substring(0, 800));
 
         const startedAt = Date.now();
-        const resultado = await omieCall(base44, "UpsertCliente", clienteOmie);
+        const resultado = await omieCall(base44, "geral/clientes/", clienteOmie, { call: 'UpsertCliente', entityType: 'Cliente', entityId: clienteData.id });
         const duracao_ms = Date.now() - startedAt;
 
         console.log('[enviarClienteOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 500));
@@ -507,7 +511,7 @@ Deno.serve(async (req) => {
                     await salvarCodigoOmieNoCliente(base44, clienteData.id, existente.codigo_cliente_omie);
 
                     const retryStartedAt = Date.now();
-                    const resultadoAlteracao = await omieCall(base44, "UpsertCliente", clienteOmie);
+                    const resultadoAlteracao = await omieCall(base44, "geral/clientes/", clienteOmie, { call: 'UpsertCliente', entityType: 'Cliente', entityId: clienteData.id });
                     const duracaoResolvida = duracao_ms + (Date.now() - retryStartedAt);
 
                     if (!resultadoAlteracao.faultstring) {
