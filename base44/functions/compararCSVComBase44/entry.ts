@@ -131,9 +131,12 @@ Deno.serve(async (req) => {
         const csvCnpjs = new Set(csvRows.map(r => (r.cpf_cnpj || '').replace(/\D/g, '')).filter(Boolean));
 
         const buscarNoBase44 = (row) => {
-            if (!usarCnpjComoChave && row.codigo && String(row.codigo).trim() !== '0') {
-                return base44Map[String(row.codigo).trim()] || null;
+            // Tenta por código primeiro
+            const cod = String(row.codigo || '').trim();
+            if (cod && cod !== '0' && base44Map[cod]) {
+                return base44Map[cod];
             }
+            // Fallback sempre por CNPJ
             const cnpj = (row.cpf_cnpj || '').replace(/\D/g, '');
             return cnpj ? (base44MapCnpj[cnpj] || null) : null;
         };
@@ -195,12 +198,12 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Clientes no Base44 que não estão no CSV
+            // Clientes no Base44 que não estão no CSV — busca por código OU CNPJ
             for (const c of clientesBase44) {
                 const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
-                const noCSV = usarCnpjComoChave
-                    ? (cnpj ? csvCnpjs.has(cnpj) : false)
-                    : (c.codigo ? csvCodigos.has(c.codigo) : false);
+                const porCodigo = c.codigo ? csvCodigos.has(c.codigo) : false;
+                const porCnpj = cnpj ? csvCnpjs.has(cnpj) : false;
+                const noCSV = porCodigo || porCnpj;
                 if (!noCSV) {
                     soNoBase44.push({
                         id: c.id,
