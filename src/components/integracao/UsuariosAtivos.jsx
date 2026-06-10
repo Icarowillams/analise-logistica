@@ -1,12 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, Clock, TrendingUp, Activity } from 'lucide-react';
 
-const JANELA_ATIVO_MIN = 30; // últimos 30 minutos = "online agora"
-const JANELA_RECENTE_H = 24; // últimas 24h = "ativo hoje"
+const JANELA_ONLINE_MIN = 15; // últimos 15 minutos = "online agora"
+const JANELA_ATIVO_MIN = 30;  // mantido para compatibilidade com filtro de recentes
+const JANELA_RECENTE_H = 24;  // últimas 24h = "ativo hoje"
 
 function getIniciais(email) {
   if (!email) return '?';
@@ -41,13 +42,22 @@ export default function UsuariosAtivos() {
     staleTime: 60000,
   });
 
-  // Dados "online agora" — query separada, atualiza a cada 2 minutos
-  const { data: logsOnline = [] } = useQuery({
-    queryKey: ['logsOmie-online-agora'],
-    queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 100),
-    refetchInterval: 2 * 60 * 1000,
-    staleTime: 0,
-  });
+  // Dados "online agora" — em tempo real via subscription
+  const [logsOnline, setLogsOnline] = useState([]);
+  useEffect(() => {
+    // Carrega os últimos registros ao montar
+    base44.entities.LogIntegracaoOmie.list('-created_date', 200).then(setLogsOnline);
+
+    // Subscription em tempo real: atualiza o array quando chega novo log
+    const unsub = base44.entities.LogIntegracaoOmie.subscribe((event) => {
+      if (event.type === 'create' && event.data) {
+        setLogsOnline(prev => [event.data, ...prev].slice(0, 200));
+      } else if (event.type === 'update' && event.data) {
+        setLogsOnline(prev => prev.map(l => l.id === event.id ? event.data : l));
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const { data: logsGerenciais = [] } = useQuery({
     queryKey: ['logsGerenciais-ativos'],
@@ -65,7 +75,7 @@ export default function UsuariosAtivos() {
       const email = l.usuario_email;
       if (!email || email.includes('sistema@') || email.includes('automacao')) continue;
       const ts = new Date(l.created_date).getTime();
-      if (agora - ts > JANELA_ATIVO_MIN * 60000) continue;
+      if (agora - ts > JANELA_ONLINE_MIN * 60000) continue;
       if (!mapa[email] || mapa[email].ultimaAtividade < ts) {
         mapa[email] = {
           email,
@@ -163,7 +173,7 @@ export default function UsuariosAtivos() {
           <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
             <p className="text-2xl font-bold text-green-700">{online.length}</p>
             <p className="text-xs text-green-600 mt-0.5">Online agora</p>
-            <p className="text-[10px] text-green-500">últimos 30 min</p>
+            <p className="text-[10px] text-green-500">últimos 15 min</p>
           </div>
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-center">
             <p className="text-2xl font-bold text-blue-700">{usuarios.length}</p>
