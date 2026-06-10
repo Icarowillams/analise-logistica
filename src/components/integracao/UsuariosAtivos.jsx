@@ -35,9 +35,17 @@ function tempoRelativo(date) {
 }
 
 export default function UsuariosAtivos() {
+  // Dados gerais (24h) — reutiliza cache da página pai, sem refetch agressivo
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['logsOmie'],
-    // reutiliza o cache já carregado pela página pai
+    staleTime: 60000,
+  });
+
+  // Dados "online agora" — query separada, atualiza a cada 2 minutos
+  const { data: logsOnline = [] } = useQuery({
+    queryKey: ['logsOmie-online-agora'],
+    queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 100),
+    refetchInterval: 2 * 60 * 1000,
     staleTime: 0,
   });
 
@@ -49,6 +57,32 @@ export default function UsuariosAtivos() {
   });
 
   const agora = Date.now();
+
+  // Calcula quem está "online agora" com base na query dedicada (atualiza a cada 2min)
+  const onlineAgora = useMemo(() => {
+    const mapa = {};
+    for (const l of logsOnline) {
+      const email = l.usuario_email;
+      if (!email || email.includes('sistema@') || email.includes('automacao')) continue;
+      const ts = new Date(l.created_date).getTime();
+      if (agora - ts > JANELA_ATIVO_MIN * 60000) continue;
+      if (!mapa[email] || mapa[email].ultimaAtividade < ts) {
+        mapa[email] = {
+          email,
+          nome: null,
+          ultimaAtividade: ts,
+          ultimaAcao: l.call || l.operacao || '-',
+        };
+      }
+    }
+    // Enriquece com nomes dos logs gerenciais
+    for (const l of logsGerenciais) {
+      if (mapa[l.usuario_email] && !mapa[l.usuario_email].nome && l.usuario_nome) {
+        mapa[l.usuario_email].nome = l.usuario_nome;
+      }
+    }
+    return Object.values(mapa).sort((a, b) => b.ultimaAtividade - a.ultimaAtividade);
+  }, [logsOnline, logsGerenciais, agora]);
 
   const usuarios = useMemo(() => {
     const mapa = {};
@@ -99,7 +133,8 @@ export default function UsuariosAtivos() {
       .sort((a, b) => b.ultimaAtividade - a.ultimaAtividade);
   }, [logs, logsGerenciais, agora]);
 
-  const online = usuarios.filter(u => agora - u.ultimaAtividade < JANELA_ATIVO_MIN * 60000);
+  // "online" vem da query dedicada (atualiza a cada 2min)
+  const online = onlineAgora;
   const recentes = usuarios.filter(u => agora - u.ultimaAtividade >= JANELA_ATIVO_MIN * 60000);
 
   // Top 3 por total de ações
