@@ -317,10 +317,10 @@ Deno.serve(async (req) => {
           });
         todosOmie.push(...lote);
         pagina += 1;
-        if (pagina <= totalPaginas) await delay(6000);
+        if (pagina <= totalPaginas) await delay(2500);
       } while (pagina <= totalPaginas);
       // Pausa entre etapas para respeitar o rate limit do Omie
-      await delay(6000);
+      await delay(3000);
     }
 
     // Carrega dados locais paginando em lotes de 500 para evitar rate limit do Base44 SDK.
