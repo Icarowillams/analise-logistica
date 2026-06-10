@@ -505,15 +505,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSyncLoading(true);
     try {
       // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
-      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos', forcar_sem_cache: true }).catch(e => {
+      const res = await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos', forcar_sem_cache: true }).catch(e => {
         console.warn('[GerenciarPedidos] sync espelho falhou:', e?.message);
+        return null;
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
         queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
         queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
       ]);
-      toast.success('Dados sincronizados com o Omie');
+      if (res?.data?.em_andamento) {
+        toast.info('Sincronização já em andamento por outro usuário — dados locais recarregados. Tente novamente em alguns instantes.');
+      } else if (res?.data?.bloqueado) {
+        toast.warning('API Omie temporariamente bloqueada — dados locais recarregados. Tente novamente em alguns minutos.');
+      } else if (res?.data?.sucesso) {
+        toast.success('Dados sincronizados com o Omie');
+      } else {
+        toast.warning('Sincronização com o Omie falhou — dados locais recarregados.');
+      }
     } finally {
       setSyncLoading(false);
     }

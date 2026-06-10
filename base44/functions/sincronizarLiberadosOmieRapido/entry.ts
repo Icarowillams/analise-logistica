@@ -230,6 +230,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 🔒 LOCK GLOBAL: impede sincronizações simultâneas (causa raiz do rate limit —
+    // vários usuários clicando "Atualizar" no Gerenciar Pedidos disparavam N syncs paralelas,
+    // cada uma com até 40 chamadas ListarPedidos ao Omie).
+    const LOCK_KEY = 'lock_sincronizarLiberadosOmieRapido';
+    const LOCK_TTL_MS = 5 * 60_000; // 5 minutos
+    const lockRows = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: LOCK_KEY }, '-created_date', 1).catch(() => []);
+    const lockAtivo = lockRows?.[0];
+    if (lockAtivo?.criado_em && (Date.now() - new Date(lockAtivo.criado_em).getTime()) < LOCK_TTL_MS) {
+      return Response.json({ sucesso: false, em_andamento: true, mensagem: 'Sincronização já em andamento. Aguarde a conclusão — os dados serão atualizados automaticamente.' });
+    }
+    if (lockAtivo?.id) {
+      await base44.asServiceRole.entities.CacheOmieConsulta.update(lockAtivo.id, { criado_em: new Date().toISOString(), expira_em: new Date(Date.now() + LOCK_TTL_MS).toISOString(), valor: { status: 'executando', origem } }).catch(() => {});
+    } else {
+      await base44.asServiceRole.entities.CacheOmieConsulta.create({ chave: LOCK_KEY, tipo: 'lock', criado_em: new Date().toISOString(), expira_em: new Date(Date.now() + LOCK_TTL_MS).toISOString(), valor: { status: 'executando', origem } }).catch(() => {});
+    }
+    const liberarLock = async () => {
+      const l = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: LOCK_KEY }, '-created_date', 1).catch(() => []);
+      if (l?.[0]?.id) await base44.asServiceRole.entities.CacheOmieConsulta.update(l[0].id, { criado_em: new Date(0).toISOString(), valor: { status: 'livre' } }).catch(() => {});
+    };
+
     const calcularStatusNF = (cab, infoNfe) => {
       if (infoNfe?.cStatus === 'CANCELADA' || cab?.cancelado === 'S') return { status_real: 'cancelada', status_label: 'NF Cancelada' };
       if (infoNfe?.cStatus === 'DENEGADA') return { status_real: 'denegada', status_label: 'NF Denegada' };
@@ -389,8 +409,15 @@ Deno.serve(async (req) => {
       payload_resposta: JSON.stringify({ total_omie: todosOmie.length, criados, atualizados, removidos }).slice(0, 2000)
     }).catch(() => {});
 
+    await liberarLock();
     return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
   } catch (error) {
+    // Libera o lock em caso de erro para não travar a próxima sincronização
+    try {
+      const b44 = createClientFromRequest(req);
+      const l = await b44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: 'lock_sincronizarLiberadosOmieRapido' }, '-created_date', 1).catch(() => []);
+      if (l?.[0]?.id) await b44.asServiceRole.entities.CacheOmieConsulta.update(l[0].id, { criado_em: new Date(0).toISOString(), valor: { status: 'livre' } }).catch(() => {});
+    } catch {}
     return Response.json({ sucesso: false, error: error.message }, { status: 500 });
   }
 });
