@@ -66,7 +66,11 @@ export default function UsuariosAtivos() {
     staleTime: 20000,
   });
 
-  const agora = Date.now();
+  const [agora, setAgora] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setAgora(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Calcula quem está "online agora" com base na query dedicada (atualiza a cada 2min)
   const onlineAgora = useMemo(() => {
