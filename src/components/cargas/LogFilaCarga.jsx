@@ -133,9 +133,18 @@ export default function LogFilaCarga() {
                 const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pendente;
                 const Icon = cfg.icon;
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50">
+                  <tr key={item.id} className={`hover:bg-slate-50 ${item.status === 'processando' ? 'bg-blue-50/60' : ''}`}>
                     <td className="px-3 py-2 font-mono font-semibold text-slate-700">{item.numero_carga || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-slate-600">{item.numero_pedido || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-slate-600">
+                      <div className="flex items-center gap-1">
+                        {item.numero_pedido || '—'}
+                        {item.status === 'processando' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-medium bg-blue-50 border border-blue-200 rounded px-1 py-0.5 animate-pulse">
+                            <Loader className="w-2.5 h-2.5 animate-spin" /> inicializando
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-slate-700 max-w-[160px] truncate" title={item.cliente_nome}>{item.cliente_nome || '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{item.operacao || '—'}</td>
                     <td className="px-3 py-2">
