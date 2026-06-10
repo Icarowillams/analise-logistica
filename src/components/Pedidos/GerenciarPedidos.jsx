@@ -505,7 +505,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSyncLoading(true);
     try {
       // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
-      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos' }).catch(e => {
+      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos', forcar_sem_cache: true }).catch(e => {
         console.warn('[GerenciarPedidos] sync espelho falhou:', e?.message);
       });
       await Promise.all([

@@ -190,8 +190,11 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { max_paginas = 3, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'] } = body;
+    const { max_paginas = 3, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'], forcar_sem_cache = false } = body;
     const MAX_FALLBACK_CLIENTES = 3; // limite duro de ConsultarCliente por execução
+    // Chamadas manuais (botão Atualizar) ou bootstrap SEMPRE sem cache para pegar estado real
+    const usarCache = !forcar_sem_cache && origem === 'reconciliacao';
+    const cacheMinutos = usarCache ? 10 : 0;
     const t0 = Date.now();
 
     const { appKey, appSecret } = await getOmieCredentials(base44);
@@ -247,7 +250,7 @@ Deno.serve(async (req) => {
           registros_por_pagina: 100,
           apenas_importado_api: 'N',
           etapa: etapaAtual
-        }, { call: 'ListarPedidos', cacheMinutes: 30 }).catch((e) => {
+        }, { call: 'ListarPedidos', cacheMinutes: cacheMinutos, skipLog: true }).catch((e) => {
           if (/n[ãa]o existem registros/i.test(e.message)) return null;
           throw e;
         });
