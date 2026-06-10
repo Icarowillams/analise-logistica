@@ -46,7 +46,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
+          const _secsCliente = (() => { const m = String(data.faultstring).match(/(\d+)\s*segundo/i); return m ? Math.min(Number(m[1]), 1800) : 0; })();
+          { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && _secsCliente > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + _secsCliente * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -203,6 +204,11 @@ async function registrarDebounceCliente(base44, clienteId) {
     if (ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 30 * 1000) return true;
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente_debounce', entidade_tipo: 'Cliente', entidade_id: clienteId, status: 'processado' }).catch(() => {});
     return false;
+}
+
+function isErroDuplicidadeCliente(resultado) {
+    const msg = String(resultado?.faultstring || '').toLowerCase();
+    return msg.includes('já cadastrado') || msg.includes('já existe') || msg.includes('duplicidade') || msg.includes('duplicado');
 }
 
 function limparCamposTexto(obj) {
@@ -444,7 +450,7 @@ Deno.serve(async (req) => {
         if (!clienteOmie.razao_social || clienteOmie.razao_social === 'Cliente sem nome') camposFaltantes.push('Razão Social');
         
         if (camposFaltantes.length > 0) {
-            const erro = \`Campos obrigatórios não preenchidos: \${camposFaltantes.join(', ')}. Preencha o cadastro do cliente antes de sincronizar com o Omie.\`;
+            const erro = `Campos obrigatórios não preenchidos: ${camposFaltantes.join(', ')}. Preencha o cadastro do cliente antes de sincronizar com o Omie.`;
             console.warn('[enviarClienteOmie]', erro, '- Cliente:', clienteData.razao_social || clienteData.id);
             await logOmie(base44, {
                 endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente',

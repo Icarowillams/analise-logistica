@@ -33,7 +33,7 @@ async function checkCircuitBreaker(base44: any) {
 function extrairSegundosBloqueioWH(msg) {
   const match = String(msg).match(/(\d+)\s*segundo/i);
   if (match) return Math.min(Number(match[1]), 1800);
-  return 180; // fallback 3 minutos
+  return 0; // sem tempo informado = não bloqueia
 }
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
@@ -56,7 +56,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => null); }
+          const secsWH = extrairSegundosBloqueioWH(data.faultstring);
+          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && secsWH > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + secsWH * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
@@ -222,7 +223,8 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
       const msg = String(data.faultstring).toLowerCase();
       // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
       if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
-        { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => {}); }
+        const segsConsulta = extrairSegundosBloqueioWH(data.faultstring || '');
+        { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && segsConsulta > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsConsulta * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => {}); }
         const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${bloqueadoAte}.`);
         err.code = 'OMIE_425';
         throw err;
