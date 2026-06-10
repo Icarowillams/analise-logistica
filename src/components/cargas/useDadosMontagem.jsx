@@ -386,7 +386,7 @@ export default function useDadosMontagem() {
       const temTrocas = trocasSemItens.length > 0;
       const temNf55Local = vendasLocais.length > 0;
 
-      if (temD1 || temTrocas || temNf55Local) {
+      if (temD1 || temTrocas || temNf55Local || vendasEnriquecidas.length > 0) {
         setCarregandoItens(true);
 
         // Buscar clientes dos D1, Trocas e Vendas Omie (para bairro/endereço)
@@ -444,7 +444,7 @@ export default function useDadosMontagem() {
           };
         });
 
-        const todasVendasComItens = [...vendasOmieEnriquecidas, ...vendasLocaisComItens];
+        const todasVendasComItens = [...vendasOmieEnriquecidas, ...(temNf55Local ? vendasLocaisComItens : vendasLocais)];
 
         // Montar D1 completos com itens
         const d1Completos = d1SemItens.map(p => {
