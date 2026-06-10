@@ -35,43 +35,9 @@ Deno.serve(async (req) => {
     // base44 com service role — Omie chama sem cookie/token Base44
     const base44 = createClientFromRequest(req);
 
-    // ───────────────────────────────────────────────
-    // 1. RATE LIMITING POR IP (30 req/min)
-    // ───────────────────────────────────────────────
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const agora = Date.now();
-    try {
-      const registros = await base44.asServiceRole.entities.RateLimitWebhook.filter({ ip });
-      const registro = registros?.[0];
-      if (!registro) {
-        await base44.asServiceRole.entities.RateLimitWebhook.create({
-          ip,
-          contador: 1,
-          ultima_requisicao: new Date(agora).toISOString()
-        });
-      } else {
-        const ultima = new Date(registro.ultima_requisicao || 0).getTime();
-        if (ultima > agora - RATE_WINDOW_MS) {
-          // Dentro da janela de 1 minuto
-          if ((registro.contador || 0) >= RATE_LIMIT_MAX) {
-            return Response.json({ erro: 'Rate limit exceeded' }, { status: 429 });
-          }
-          await base44.asServiceRole.entities.RateLimitWebhook.update(registro.id, {
-            contador: (registro.contador || 0) + 1,
-            ultima_requisicao: new Date(agora).toISOString()
-          });
-        } else {
-          // Janela expirou → reseta
-          await base44.asServiceRole.entities.RateLimitWebhook.update(registro.id, {
-            contador: 1,
-            ultima_requisicao: new Date(agora).toISOString()
-          });
-        }
-      }
-    } catch (rlErr) {
-      // Falha no rate limiting não deve derrubar o recebimento — apenas loga interno
-      console.error('[receberWebhookOmie] rate limit falhou:', rlErr);
-    }
+    // Rate limiting removido — o token de autenticação já protege o endpoint.
+    // Webhooks do Omie chegam em pares simultâneos (Faturada + EtapaAlterada) e
+    // o rate limit por banco causava race condition, bloqueando requisições legítimas.
 
     // ───────────────────────────────────────────────
     // 2. SANITIZAÇÃO DE PAYLOAD
