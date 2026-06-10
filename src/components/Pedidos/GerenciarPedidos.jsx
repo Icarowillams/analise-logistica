@@ -514,7 +514,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSyncLoading(true);
     const timeoutId = setTimeout(() => {
       setSyncLoading(false);
-      toast.warning('Sincronização em andamento no servidor — dados locais recarregados em breve.');
+      toast.info('A sincronização está demorando mais que o esperado. Os dados serão atualizados automaticamente em breve.');
     }, 25000);
     try {
       // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
