@@ -38,7 +38,7 @@ async function checkCircuitBreaker(base44: any) {
 function extrairSegundosBloqueio(msg: string): number {
   const match = String(msg).match(/(\d+)\s*segundo/i);
   if (match) return Math.min(Number(match[1]), 1800); // cap 30min
-  return 180; // fallback 3 minutos
+  return 5; // fallback 5 segundos — se o Omie não informou o tempo, libera rápido
 }
 
 // Lock removido — o circuit breaker + processamento sequencial interno já protegem contra abusos.
@@ -61,13 +61,15 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
+        // Erros de BLOQUEIO REAL (conta bloqueada/banida pelo Omie)
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          // Usa o tempo que o Omie informou na mensagem (ex: "1798 segundos")
-          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
+          const segsOmie = extrairSegundosBloqueio(data.faultstring);
+          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsOmie * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
           const blockedErr = new Error(data.faultstring);
           blockedErr.bloqueio = true;
           throw blockedErr;
         }
+        // Erros de RATE LIMIT temporário (redundante, aguarde, cota) — retry rápido
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
