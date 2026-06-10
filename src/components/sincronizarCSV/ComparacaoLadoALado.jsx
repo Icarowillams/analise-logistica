@@ -37,7 +37,7 @@ export default function ComparacaoLadoALado({ items, busca }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Badge className="bg-amber-500 text-white">{filtrados.length}</Badge>
-          Clientes com diferenças (Base44 × Omie)
+          Clientes com diferenças (CSV × Base44)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-1 max-h-[600px] overflow-y-auto">
@@ -66,12 +66,12 @@ export default function ComparacaoLadoALado({ items, busca }) {
                     <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-500 pb-1 border-b border-slate-200">
                       <span>Campo</span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
-                        Base44
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      CSV
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                        Omie
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                      Base44
                       </span>
                     </div>
 
@@ -80,11 +80,11 @@ export default function ComparacaoLadoALado({ items, busca }) {
                         <span className="text-xs font-medium text-slate-600">
                           {CAMPOS_LABEL[diff.campo] || diff.campo}
                         </span>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-mono break-all">
+                          {diff.csv || diff.base44 || <span className="italic text-slate-400">(vazio)</span>}
+                        </span>
                         <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-mono break-all">
                           {diff.base44 || <span className="italic text-slate-400">(vazio)</span>}
-                        </span>
-                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-mono break-all">
-                          {diff.omie || <span className="italic text-slate-400">(vazio)</span>}
                         </span>
                       </div>
                     ))}
