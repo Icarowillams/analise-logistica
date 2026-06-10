@@ -52,6 +52,7 @@ export default function PedidosOmieConsulta() {
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos-liberados-omie-consulta'],
     queryFn: () => base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000),
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 

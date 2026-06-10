@@ -29,32 +29,41 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
-    queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id })
+    queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id }),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false
   });
 
+  // Carregar itens SOMENTE dos pedidos do vendedor (não do sistema todo)
+  const pedidoIds = useMemo(() => pedidos.map(p => p.id), [pedidos]);
   const { data: allItems = [] } = useQuery({
-    queryKey: ['pedidoItems-all'],
-    queryFn: () => base44.entities.PedidoItem.list()
+    queryKey: ['pedidoItems-vendedor', vendedor.id, pedidoIds.length],
+    queryFn: async () => {
+      if (pedidoIds.length === 0) return [];
+      const batches = await Promise.all(
+        pedidoIds.map(id => base44.entities.PedidoItem.filter({ pedido_id: id }).catch(() => []))
+      );
+      return batches.flat();
+    },
+    enabled: pedidoIds.length > 0,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false
   });
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes-envio-pedidos'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false
   });
 
   // Fila de envio — buscar itens ativos (pendente/processando) + recentes concluídos/erro
   const { data: filaEnvio = [] } = useQuery({
     queryKey: ['fila-envio-pedido-omie', vendedor.id],
-    queryFn: async () => {
-      const [pendentes, processando, recentes] = await Promise.all([
-        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'pendente' }, 'created_date', 100),
-        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'processando' }, 'created_date', 50),
-        base44.entities.FilaEnvioPedidoOmie.filter({ status: 'concluido' }, '-created_date', 50)
-      ]);
-      const erros = await base44.entities.FilaEnvioPedidoOmie.filter({ status: 'erro' }, '-created_date', 50);
-      return [...pendentes, ...processando, ...recentes, ...erros];
-    },
-    refetchInterval: 30000 // poll a cada 30s para atualizar status (reduz carga na API)
+    queryFn: () => base44.entities.FilaEnvioPedidoOmie.list('-created_date', 200),
+    staleTime: 15 * 1000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false
   });
 
   // Mapa rápido: pedido_id → item da fila mais recente

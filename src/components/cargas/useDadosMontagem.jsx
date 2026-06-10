@@ -138,45 +138,24 @@ export default function useDadosMontagem() {
       // FASE 1: Dados essenciais (libera tela)
       // ═══════════════════════════════════════
       console.log('[DEBUG MC] ===== INÍCIO CARREGAMENTO =====');
-      await sleep(isRetry ? 3000 : 1500);
+      await sleep(isRetry ? 2000 : 500);
 
-      const espelhoOmie = await fetchWithRetry(() =>
-        base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)
-      );
-      console.log('[DEBUG MC] Total no espelho Omie:', espelhoOmie?.length || 0);
-      await sleep(300);
+      // OTIMIZAÇÃO: carregar dados em PARALELO (antes era sequencial com sleep)
+      // Reduz de ~7 chamadas sequenciais (~3s) para 2 batches paralelos (~0.5s)
+      const [espelhoOmie, todosPedidosLocais, trocasAprovadas] = await Promise.all([
+        fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)),
+        fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 3000)),
+        fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500))
+      ]);
+      console.log('[DEBUG MC] Batch 1:', espelhoOmie?.length || 0, 'espelho,', todosPedidosLocais?.length || 0, 'pedidos,', trocasAprovadas?.length || 0, 'trocas');
 
-      const todosPedidosLocais = await fetchWithRetry(() =>
-        base44.entities.Pedido.list('-created_date', 3000)
-      );
-      console.log('[DEBUG MC] Total Pedido local:', todosPedidosLocais?.length || 0);
-      await sleep(300);
-
-      const trocasAprovadas = await fetchWithRetry(() =>
-        base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)
-      );
-      console.log('[DEBUG MC] Total Trocas aprovadas:', trocasAprovadas?.length || 0);
-      await sleep(300);
-
-      const rotas = await fetchWithRetry(() =>
-        base44.entities.Rota.list('-created_date', 500)
-      );
-      await sleep(300);
-
-      const motP = await fetchWithRetry(() =>
-        base44.entities.Motorista.list('-created_date', 500)
-      );
-      await sleep(300);
-
-      const veiP = await fetchWithRetry(() =>
-        base44.entities.Veiculo.list('-created_date', 500)
-      );
-      await sleep(300);
-
-      const carP = await fetchWithRetry(() =>
-        base44.entities.Carga.list('-created_date', 500)
-      );
-      console.log('[DEBUG MC] Total Cargas:', carP?.length || 0);
+      const [rotas, motP, veiP, carP] = await Promise.all([
+        fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
+        fetchWithRetry(() => base44.entities.Motorista.list('-created_date', 500)),
+        fetchWithRetry(() => base44.entities.Veiculo.list('-created_date', 500)),
+        fetchWithRetry(() => base44.entities.Carga.list('-created_date', 500))
+      ]);
+      console.log('[DEBUG MC] Batch 2:', carP?.length || 0, 'cargas');
 
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
       const motoristasAtivos = motP.filter(m => m.status === 'ativo');

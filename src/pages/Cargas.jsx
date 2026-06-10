@@ -59,7 +59,7 @@ export default function Cargas() {
   const { data: cargasTodas = [], isLoading } = useQuery({
     queryKey: ['cargas'],
     queryFn: () => base44.entities.Carga.list('-created_date', 200),
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false
   });
 
@@ -77,8 +77,8 @@ export default function Cargas() {
       return itens.filter(i => cargasComFilaIds.includes(i.carga_id));
     },
     enabled: cargasComFilaIds.length > 0,
-    staleTime: 15 * 1000,
-    refetchInterval: cargasComFilaIds.length > 0 ? 15000 : false
+    staleTime: 30 * 1000,
+    refetchInterval: cargasComFilaIds.length > 0 ? 30000 : false
   });
 
   // Mapa pré-computado: carga_id → itens da fila
