@@ -321,17 +321,17 @@ Deno.serve(async (req) => {
       await delay(6000);
     }
 
-    // Carrega dados locais em sequência (não paralelo) para evitar rate limit do Base44 SDK.
-    // Promise.all com queries grandes (10k/5k registros) causava 429 na própria plataforma.
+    // Carrega dados locais em sequência com delays maiores para evitar rate limit do Base44 SDK.
     const clientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-    await delay(300);
+    await delay(1000);
     const rotas = await base44.asServiceRole.entities.Rota.list('-created_date', 1000);
-    await delay(300);
+    await delay(800);
     const vendedores = await base44.asServiceRole.entities.Vendedor.list('-created_date', 1000);
-    await delay(300);
+    await delay(800);
     const pedidosLocais = await base44.asServiceRole.entities.Pedido.list('-created_date', 5000);
-    await delay(300);
+    await delay(1000);
     const espelhoAtual = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 5000);
+    await delay(800);
 
     const indices = criarIndicesClientes(clientes || []);
     const mapaRota = new Map((rotas || []).map((r) => [r.id, r.nome]));
