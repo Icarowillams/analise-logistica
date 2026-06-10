@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, RefreshCw, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const STATUS_CONFIG = {
   pendente:    { label: 'Pendente',    bg: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -16,16 +17,22 @@ const fmt = (d) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', mon
 
 export default function LogFilaCarga() {
   const [itens, setItens] = useState([]);
+  const [cargas, setCargas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroBusca, setFiltroBusca] = useState('');
   const [online, setOnline] = useState(true);
+  const [modalOrfaos, setModalOrfaos] = useState(false);
 
   const carregar = async () => {
     setCarregando(true);
     try {
-      const dados = await base44.entities.FilaCargaOmie.list('-created_date', 500);
+      const [dados, cargasDados] = await Promise.all([
+        base44.entities.FilaCargaOmie.list('-created_date', 500),
+        base44.entities.Carga.list('-created_date', 1000),
+      ]);
       setItens(dados);
+      setCargas(cargasDados);
       setOnline(true);
     } catch { setOnline(false); }
     finally { setCarregando(false); }
@@ -48,6 +55,26 @@ export default function LogFilaCarga() {
     return unsub;
   }, []);
 
+  // IDs de cargas existentes
+  const cargaIdsExistentes = useMemo(() => new Set(cargas.map(c => c.id)), [cargas]);
+
+  // Itens órfãos = carga_id não existe mais no banco
+  const itensOrfaos = useMemo(() =>
+    itens.filter(i => i.carga_id && !cargaIdsExistentes.has(i.carga_id)),
+    [itens, cargaIdsExistentes]
+  );
+
+  // Agrupar órfãos por número de carga
+  const orfaosPorCarga = useMemo(() => {
+    const map = {};
+    for (const i of itensOrfaos) {
+      const key = i.numero_carga || i.carga_id;
+      if (!map[key]) map[key] = [];
+      map[key].push(i);
+    }
+    return map;
+  }, [itensOrfaos]);
+
   const contadores = useMemo(() => ({
     pendente:    itens.filter(i => i.status === 'pendente').length,
     processando: itens.filter(i => i.status === 'processando').length,
@@ -64,7 +91,7 @@ export default function LogFilaCarga() {
       return (
         String(item.numero_carga || '').toLowerCase().includes(t) ||
         String(item.numero_pedido || '').toLowerCase().includes(t) ||
-        String(item.cliente_nome || '').toLowerCase().includes(t)
+        String(item.codigo_pedido_omie || '').toLowerCase().includes(t)
       );
     }
     return true;
@@ -79,9 +106,17 @@ export default function LogFilaCarga() {
           <span className={`w-2 h-2 rounded-full inline-block ${online ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`} />
           <span className="text-xs text-slate-500">{online ? 'Atualização em tempo real' : 'Sem conexão'}</span>
         </div>
-        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={carregar} disabled={carregando}>
-          <RefreshCw className={`w-3 h-3 mr-1 ${carregando ? 'animate-spin' : ''}`} /> Recarregar
-        </Button>
+        <div className="flex gap-2">
+          {itensOrfaos.length > 0 && (
+            <Button size="sm" variant="outline" className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => setModalOrfaos(true)}>
+              <Trash2 className="w-3 h-3 mr-1" />
+              {itensOrfaos.length} órfão{itensOrfaos.length > 1 ? 's' : ''} (cargas excluídas)
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={carregar} disabled={carregando}>
+            <RefreshCw className={`w-3 h-3 mr-1 ${carregando ? 'animate-spin' : ''}`} /> Recarregar
+          </Button>
+        </div>
       </div>
 
       {/* Sendo processado agora */}
@@ -95,7 +130,6 @@ export default function LogFilaCarga() {
             {emProcessamento.map(item => (
               <span key={item.id} className="text-xs bg-white border border-blue-200 rounded px-2 py-1 text-slate-700 font-mono">
                 Carga <b>{item.numero_carga}</b> · {item.numero_pedido || item.codigo_pedido_omie || '—'}
-                {item.cliente_nome ? ` · ${item.cliente_nome}` : ''}
               </span>
             ))}
           </div>
@@ -125,7 +159,7 @@ export default function LogFilaCarga() {
       {/* Filtros */}
       <div className="flex gap-2 items-center">
         <Input
-          placeholder="Buscar por carga, pedido ou cliente..."
+          placeholder="Buscar por carga ou pedido..."
           value={filtroBusca}
           onChange={e => setFiltroBusca(e.target.value)}
           className="h-8 text-sm flex-1"
@@ -154,7 +188,6 @@ export default function LogFilaCarga() {
               <tr>
                 <th className="text-left px-3 py-2 font-medium w-[65px]">Carga</th>
                 <th className="text-left px-3 py-2 font-medium w-[100px]">Pedido</th>
-                <th className="text-left px-3 py-2 font-medium">Cliente</th>
                 <th className="text-left px-3 py-2 font-medium w-[95px]">Status</th>
                 <th className="text-center px-3 py-2 font-medium w-[50px]">Tent.</th>
                 <th className="text-left px-3 py-2 font-medium w-[125px]">Criado</th>
@@ -166,11 +199,18 @@ export default function LogFilaCarga() {
               {filtrados.map(item => {
                 const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pendente;
                 const Icon = cfg.icon;
+                const isOrfao = item.carga_id && !cargaIdsExistentes.has(item.carga_id);
                 return (
-                  <tr key={item.id} className={item.status === 'processando' ? 'bg-blue-50/60' : 'hover:bg-slate-50'}>
-                    <td className="px-3 py-2 font-mono font-semibold text-slate-700">{item.numero_carga || '—'}</td>
+                  <tr key={item.id} className={
+                    item.status === 'processando' ? 'bg-blue-50/60' :
+                    isOrfao ? 'bg-orange-50/50' :
+                    'hover:bg-slate-50'
+                  }>
+                    <td className="px-3 py-2 font-mono font-semibold text-slate-700">
+                      {item.numero_carga || '—'}
+                      {isOrfao && <span className="ml-1 text-orange-400" title="Carga excluída">✕</span>}
+                    </td>
                     <td className="px-3 py-2 font-mono text-slate-600">{item.numero_pedido || item.codigo_pedido_omie || '—'}</td>
-                    <td className="px-3 py-2 text-slate-700 max-w-[160px] truncate" title={item.cliente_nome}>{item.cliente_nome || '—'}</td>
                     <td className="px-3 py-2">
                       <Badge className={`${cfg.bg} text-[10px] flex items-center gap-1 w-fit border-0`}>
                         <Icon className={`w-3 h-3 ${item.status === 'processando' ? 'animate-spin' : ''}`} />
@@ -192,6 +232,56 @@ export default function LogFilaCarga() {
           </table>
         </div>
       )}
+
+      {/* Modal de itens órfãos */}
+      <Dialog open={modalOrfaos} onOpenChange={setModalOrfaos}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-700">
+              <Trash2 className="w-5 h-5" />
+              Pedidos de Cargas Excluídas ({itensOrfaos.length} registros)
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-500 -mt-2">
+            Estes registros pertencem a cargas que foram excluídas do sistema. Os pedidos abaixo existiram na fila mas a carga-mãe não existe mais.
+          </p>
+          <div className="space-y-3 mt-2">
+            {Object.entries(orfaosPorCarga).map(([numeroCarga, pedidos]) => (
+              <div key={numeroCarga} className="rounded-lg border border-orange-200 bg-orange-50">
+                <div className="px-3 py-2 border-b border-orange-200 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-orange-800">
+                    Carga {numeroCarga} — excluída
+                  </span>
+                  <Badge className="bg-orange-100 text-orange-700 text-[10px] border-0">
+                    {pedidos.length} pedido{pedidos.length > 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                <div className="divide-y divide-orange-100">
+                  {pedidos.map(item => {
+                    const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pendente;
+                    const Icon = cfg.icon;
+                    return (
+                      <div key={item.id} className="px-3 py-2 flex items-center gap-3 text-xs">
+                        <span className="font-mono text-slate-700 w-20">{item.numero_pedido || item.codigo_pedido_omie || '—'}</span>
+                        <Badge className={`${cfg.bg} text-[10px] flex items-center gap-1 border-0`}>
+                          <Icon className="w-3 h-3" />
+                          {cfg.label}
+                        </Badge>
+                        <span className="text-slate-400">{fmt(item.created_date)}</span>
+                        {item.erro_log && (
+                          <span className="text-red-500 truncate flex-1" title={item.erro_log}>
+                            <AlertTriangle className="w-3 h-3 inline mr-1" />{item.erro_log}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
