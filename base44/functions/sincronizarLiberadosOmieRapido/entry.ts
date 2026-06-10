@@ -321,17 +321,37 @@ Deno.serve(async (req) => {
       await delay(6000);
     }
 
-    // Carrega dados locais em sequência com delays maiores para evitar rate limit do Base44 SDK.
-    const clientes = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-    await delay(1000);
-    const rotas = await base44.asServiceRole.entities.Rota.list('-created_date', 1000);
+    // Carrega dados locais paginando em lotes de 500 para evitar rate limit do Base44 SDK.
+    const carregarPaginado = async (entidade, limite = 500) => {
+      const todos = [];
+      let skip = 0;
+      while (true) {
+        const lote = await entidade.list('-created_date', limite, skip);
+        if (!lote || lote.length === 0) break;
+        todos.push(...lote);
+        if (lote.length < limite) break;
+        skip += limite;
+        await delay(600);
+      }
+      return todos;
+    };
+
+    console.log('[sincronizarLiberadosOmieRapido] carregando clientes...');
+    const clientes = await carregarPaginado(base44.asServiceRole.entities.Cliente);
     await delay(800);
-    const vendedores = await base44.asServiceRole.entities.Vendedor.list('-created_date', 1000);
+    console.log(`[sincronizarLiberadosOmieRapido] ${clientes.length} clientes carregados. Carregando rotas/vendedores...`);
+    const [rotas, vendedores] = await Promise.all([
+      base44.asServiceRole.entities.Rota.list('-created_date', 1000),
+      base44.asServiceRole.entities.Vendedor.list('-created_date', 1000)
+    ]);
     await delay(800);
-    const pedidosLocais = await base44.asServiceRole.entities.Pedido.list('-created_date', 5000);
-    await delay(1000);
-    const espelhoAtual = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-created_date', 5000);
+    console.log('[sincronizarLiberadosOmieRapido] carregando pedidos locais...');
+    const pedidosLocais = await carregarPaginado(base44.asServiceRole.entities.Pedido);
     await delay(800);
+    console.log(`[sincronizarLiberadosOmieRapido] ${pedidosLocais.length} pedidos locais. Carregando espelho...`);
+    const espelhoAtual = await carregarPaginado(base44.asServiceRole.entities.PedidoLiberadoOmie);
+    await delay(800);
+    console.log(`[sincronizarLiberadosOmieRapido] ${espelhoAtual.length} registros no espelho.`);
 
     const indices = criarIndicesClientes(clientes || []);
     const mapaRota = new Map((rotas || []).map((r) => [r.id, r.nome]));
