@@ -89,28 +89,39 @@ export default function UsuariosAtivos() {
   // Calcula quem está "online agora" com base na query dedicada (atualiza a cada 2min)
   const onlineAgora = useMemo(() => {
     const mapa = {};
+
+    // Logs de integração Omie
     for (const l of logsOnline) {
-      const email = l.usuario_email;
+      const email = (l.usuario_email || '').toLowerCase().trim();
       if (!email || email.includes('sistema@') || email.includes('automacao')) continue;
       const ts = new Date(l.created_date).getTime();
       if (agora - ts > JANELA_ONLINE_MIN * 60000) continue;
       if (!mapa[email] || mapa[email].ultimaAtividade < ts) {
-        mapa[email] = {
-          email,
-          nome: null,
-          ultimaAtividade: ts,
-          ultimaAcao: l.call || l.operacao || '-',
-        };
+        mapa[email] = { email, nome: null, ultimaAtividade: ts, ultimaAcao: l.call || l.operacao || '-' };
       }
     }
-    // Enriquece com nomes dos logs gerenciais
+
+    // Logs gerenciais também contam como "online"
     for (const l of logsGerenciais) {
-      if (mapa[l.usuario_email] && !mapa[l.usuario_email].nome && l.usuario_nome) {
-        mapa[l.usuario_email].nome = l.usuario_nome;
+      const email = (l.usuario_email || '').toLowerCase().trim();
+      if (!email || email.includes('sistema@') || email.includes('automacao')) continue;
+      const ts = new Date(l.created_date).getTime();
+      if (agora - ts > JANELA_ONLINE_MIN * 60000) continue;
+      if (!mapa[email] || mapa[email].ultimaAtividade < ts) {
+        mapa[email] = { email, nome: l.usuario_nome || null, ultimaAtividade: ts, ultimaAcao: l.descricao || l.tipo_acao || '-' };
+      } else {
+        if (!mapa[email].nome && l.usuario_nome) mapa[email].nome = l.usuario_nome;
       }
     }
+
+    // Enriquece nomes dos vendedores cadastrados
+    for (const v of todosVendedores) {
+      const email = (v.email || '').toLowerCase().trim();
+      if (mapa[email] && !mapa[email].nome) mapa[email].nome = v.nome;
+    }
+
     return Object.values(mapa).sort((a, b) => b.ultimaAtividade - a.ultimaAtividade);
-  }, [logsOnline, logsGerenciais, agora]);
+  }, [logsOnline, logsGerenciais, todosVendedores, agora]);
 
   const usuarios = useMemo(() => {
     const mapa = {};
@@ -295,8 +306,9 @@ export default function UsuariosAtivos() {
             </p>
             <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
               {todosVendedores.map(v => {
-                const isOnline = online.some(u => u.email?.toLowerCase() === v.email?.toLowerCase());
-                const atividadeRecente = usuarios.find(u => u.email?.toLowerCase() === v.email?.toLowerCase());
+                const vEmail = (v.email || '').toLowerCase().trim();
+                const isOnline = vEmail && online.some(u => (u.email || '').toLowerCase().trim() === vEmail);
+                const atividadeRecente = vEmail && usuarios.find(u => (u.email || '').toLowerCase().trim() === vEmail);
                 return (
                   <div key={v.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
                     <div className="relative flex-shrink-0">
