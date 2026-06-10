@@ -107,7 +107,9 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                           <th className="p-2 text-left w-20">Pedido</th>
                           <th className="p-2 text-left w-28">Código</th>
                           <th className="p-2 text-left min-w-48">Cliente</th>
-                          <th className="p-2 text-left w-24">Cidade</th>
+                           <th className="p-2 text-left w-24">Cidade</th>
+                           <th className="p-2 text-left w-28">Bairro</th>
+                           <th className="p-2 text-left w-40">Endereço</th>
                           <th className="p-2 text-left w-28">Vendedor</th>
                           <th className="p-2 text-right w-14">Itens</th>
                           <th className="p-2 text-right w-16">Pacotes</th>
@@ -153,7 +155,9 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                                 {p.nome_fantasia && p.nome_cliente && p.nome_fantasia !== p.nome_cliente && <div className="text-xs text-slate-500 truncate" title={p.nome_cliente}>{p.nome_cliente}</div>}
                               </td>
                               <td className="p-2 text-slate-600 truncate">{p.cidade || '-'}</td>
-                              <td className="p-2 text-slate-600 truncate">{p.vendedor_nome || '-'}</td>
+                               <td className="p-2 text-slate-600 truncate">{p.bairro || p.cliente_bairro || '-'}</td>
+                               <td className="p-2 text-slate-600 truncate" title={p.endereco || p.cliente_endereco || ''}>{p.endereco || p.cliente_endereco || '-'}</td>
+                               <td className="p-2 text-slate-600 truncate">{p.vendedor_nome || '-'}</td>
                               <td className="p-2 text-right text-slate-700">{p.quantidade_itens || 0}</td>
                               <td className="p-2 text-right font-semibold text-slate-900">{qtdPacotesPedido(p).toLocaleString('pt-BR')}</td>
                               <td className="p-2 text-right font-semibold text-slate-900">{formatCurrency(p.valor_total_pedido)}</td>

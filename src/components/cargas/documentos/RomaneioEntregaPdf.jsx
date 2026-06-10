@@ -453,8 +453,8 @@ export default function RomaneioEntregaPdf({ carga }) {
                           <td style={{ padding: '2px 4px' }}>{l.vendedor_nome_cliente || '-'}</td>
                         </tr>
                         <tr>
-                          <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
-                            <strong>Ped. {formatarNumeroPedido({ ...l, tipo: l._tipo === 'TROCA' ? 'troca' : l.tipo }) || '-'}:</strong>
+                         <td colSpan="10" style={{ padding: '2px 4px 6px 14px', fontSize: '8.5px', borderBottom: '1px dashed #999' }}>
+                           <strong>Ped. {formatarNumeroPedido({ ...l, tipo: l._tipo === 'TROCA' ? 'troca' : l.tipo }) || '-'}{l.numero_nf ? ` / NF ${l.numero_nf}` : ''}:</strong>
                             <span style={{ marginLeft: '20px' }}>Ass.:_______________________</span>
                             <span style={{ marginLeft: '14px' }}>RG.:_______________</span>
                             <span style={{ marginLeft: '14px' }}>Data:___/___/____</span>
