@@ -84,8 +84,11 @@ Deno.serve(async (req) => {
 
     const errosDuplicidade = [];
     const codigosValidos = [];
-    for (const codigo of codigosPedido) {
-      const check = await verificarJaFaturado(base44, codigo);
+    const checks = await Promise.all(codigosPedido.map(async (codigo) => ({
+      codigo,
+      check: await verificarJaFaturado(base44, codigo)
+    })));
+    for (const { codigo, check } of checks) {
       if (check.bloqueado) errosDuplicidade.push({ codigo_pedido: codigo, mensagem: check.mensagem });
       else codigosValidos.push(codigo);
     }

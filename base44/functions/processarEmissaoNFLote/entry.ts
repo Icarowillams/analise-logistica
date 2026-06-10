@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
       });
 
       // Delay entre emissões para respeitar rate limit do Omie
-      if (i < pedidos.length - 1) await sleep(12000);
+      if (i < pedidos.length - 1) await sleep(3000);
     }
 
     const statusFinal = erros.length > 0 ? 'erro' : 'concluido';
