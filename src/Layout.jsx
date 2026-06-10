@@ -47,10 +47,8 @@ import {
 } from '@/components/ui/dialog';
 import { Toaster } from '@/components/ui/sonner';
 import StatusOmieIndicator from '@/components/layout/StatusOmieIndicator';
-import { usePresencaHeartbeat } from '@/hooks/usePresencaHeartbeat';
 
 export default function Layout({ children, currentPageName }) {
-  usePresencaHeartbeat(currentPageName ? `/${currentPageName}` : window.location.pathname);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
