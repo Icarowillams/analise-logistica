@@ -207,37 +207,46 @@ export default function GerenciarPedidos({ onEditPedido }) {
   });
 
   // Etapas Omie — lê do ESPELHO LOCAL (PedidoLiberadoOmie), atualizado em tempo real pelos webhooks.
-  // Sem chamadas a Omie no carregamento. Ações (liberar/cancelar) continuam chamando o backend.
+  // Subscription em tempo real: qualquer update no espelho reflete imediatamente na coluna "Etapa Omie".
+  const buildOmieMap = (espelho) => {
+    const map = {};
+    espelho.forEach(p => {
+      const info = {
+        etapa: String(p.etapa || ''),
+        numero_pedido: p.numero_pedido,
+        numero_nf: p.numero_nf,
+        status_real: p.status_real,
+        status_label: p.status_label,
+        codigo_pedido: p.codigo_pedido
+      };
+      if (p.codigo_pedido) {
+        const raw = String(p.codigo_pedido).trim();
+        map[raw] = info;
+        const asInt = String(parseInt(raw, 10));
+        if (asInt !== 'NaN' && asInt !== raw) map[asInt] = info;
+      }
+      if (p.numero_pedido) map[`np:${String(p.numero_pedido).trim()}`] = info;
+    });
+    return map;
+  };
+
   const { data: omieMap = {} } = useQuery({
     queryKey: ['gerenciar-pedidos-omie-etapas'],
     queryFn: async () => {
       const espelho = await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
-      const map = {};
-      espelho.forEach(p => {
-        const info = {
-          etapa: String(p.etapa || ''),
-          numero_pedido: p.numero_pedido,
-          numero_nf: p.numero_nf,
-          status_real: p.status_real,
-          status_label: p.status_label,
-          codigo_pedido: p.codigo_pedido
-        };
-        // Indexar por MÚLTIPLAS formas do codigo_pedido para evitar falhas de cruzamento:
-        // O código pode estar como string "123456", número 123456, ou com decimais "123456.0"
-        if (p.codigo_pedido) {
-          const raw = String(p.codigo_pedido).trim();
-          map[raw] = info;
-          // Também indexar como inteiro puro (sem decimais) para match robusto
-          const asInt = String(parseInt(raw, 10));
-          if (asInt !== 'NaN' && asInt !== raw) map[asInt] = info;
-        }
-        if (p.numero_pedido) map[`np:${String(p.numero_pedido).trim()}`] = info;
-      });
-      return map;
+      return buildOmieMap(espelho);
     },
     staleTime: 30000,
     refetchOnWindowFocus: false
   });
+
+  // Subscription em tempo real: atualiza o omieMap instantaneamente quando o espelho muda
+  useEffect(() => {
+    const unsubscribe = base44.entities.PedidoLiberadoOmie.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] });
+    });
+    return () => unsubscribe();
+  }, [queryClient]);
 
   const { data: pedidoItems = [] } = useQuery({
     queryKey: ['pedidoItems-gerenciar'],
