@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import * as XLSX from 'npm:xlsx@0.18.5';
 
 // ============================================================================
 // SINCRONIZAR CLIENTES CSV → BASE44 → OMIE
@@ -61,9 +62,24 @@ function parseCSV(text) {
         const vals = lines[i].split(';');
         const obj = {};
         header.forEach((h, idx) => { obj[h] = (vals[idx] || '').trim(); });
-        if (obj.codigo) rows.push(obj);
+        if (obj.codigo || obj.cpf_cnpj) rows.push(obj);
     }
     return rows;
+}
+
+function parseXLSX(buffer) {
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    return raw.map(row => {
+        const obj = {};
+        for (const [key, val] of Object.entries(row)) {
+            const upper = key.toUpperCase().trim();
+            const mapped = HEADER_MAP[upper] || key.toLowerCase().replace(/\s+/g, '_');
+            obj[mapped] = val !== null && val !== undefined ? String(val).trim() : '';
+        }
+        return obj;
+    }).filter(r => r.cpf_cnpj || r.razao_social);
 }
 
 function parseLat(raw) {
@@ -243,10 +259,17 @@ Deno.serve(async (req) => {
 
         if (!csv_url) return Response.json({ error: 'csv_url obrigatório' }, { status: 400 });
 
-        // Baixar e parsear CSV
-        const csvResp = await fetch(csv_url);
-        const csvText = await csvResp.text();
-        const csvRows = parseCSV(csvText);
+        // Baixar arquivo (CSV ou XLSX)
+        const fileResp = await fetch(csv_url);
+        const isXlsx = csv_url.toLowerCase().includes('.xlsx') || csv_url.toLowerCase().includes('.xls');
+        let csvRows;
+        if (isXlsx) {
+            const buffer = await fileResp.arrayBuffer();
+            csvRows = parseXLSX(new Uint8Array(buffer));
+        } else {
+            const csvText = await fileResp.text();
+            csvRows = parseCSV(csvText);
+        }
 
         // Carregar lookups sequencialmente para evitar rate limit
         const planos = await base44.asServiceRole.entities.PlanoPagamento.list();
@@ -262,21 +285,45 @@ Deno.serve(async (req) => {
         // Carregar clientes do Base44
         await delay(500);
         const clientesSistema = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
-        const sistemaMap = {};
-        clientesSistema.forEach(c => { if (c.codigo) sistemaMap[c.codigo] = c; });
+
+        // Detecta se o CSV usa CNPJ como chave (todos os códigos são "0" ou vazios)
+        const codigosValidos = csvRows.filter(r => r.codigo && String(r.codigo).trim() !== '0' && String(r.codigo).trim() !== '');
+        const usarCnpjComoChave = codigosValidos.length < csvRows.length * 0.5;
+
+        const sistemaMap = {}; // por código
+        const sistemaMapCnpj = {}; // por CNPJ
+        clientesSistema.forEach(c => {
+            if (c.codigo) sistemaMap[c.codigo] = c;
+            const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+            if (cnpj) sistemaMapCnpj[cnpj] = c;
+        });
+
         const csvCodigos = new Set(csvRows.map(r => String(r.codigo).trim()));
+        const csvCnpjs = new Set(csvRows.map(r => (r.cpf_cnpj || '').replace(/\D/g, '')).filter(Boolean));
+
+        const buscarNaSistema = (row) => {
+            if (!usarCnpjComoChave && row.codigo && String(row.codigo).trim() !== '0') {
+                return sistemaMap[String(row.codigo).trim()] || null;
+            }
+            const cnpj = (row.cpf_cnpj || '').replace(/\D/g, '');
+            return cnpj ? (sistemaMapCnpj[cnpj] || null) : null;
+        };
 
         // =====================================================================
         // ANÁLISE — retorna contagens reais de operações necessárias
         // =====================================================================
         if (etapa === 'analise' || !etapa) {
-            const criar = csvRows.filter(r => !sistemaMap[String(r.codigo).trim()]);
-            const excluir = clientesSistema.filter(c => c.codigo && !csvCodigos.has(c.codigo));
+            const criar = csvRows.filter(r => !buscarNaSistema(r));
+            const excluir = clientesSistema.filter(c => {
+                const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+                return usarCnpjComoChave
+                    ? (cnpj ? !csvCnpjs.has(cnpj) : true)
+                    : (c.codigo ? !csvCodigos.has(c.codigo) : false);
+            });
 
             const atualizar = [];
             for (const row of csvRows) {
-                const cod = String(row.codigo).trim();
-                const existente = sistemaMap[cod];
+                const existente = buscarNaSistema(row);
                 if (!existente) continue;
                 const novo = buildClienteData(row, lookups);
                 if (clienteDiferente(novo, existente)) atualizar.push(row);
@@ -302,8 +349,7 @@ Deno.serve(async (req) => {
         if (etapa === 'atualizar') {
             const paraAtualizar = [];
             for (const r of csvRows) {
-                const cod = String(r.codigo).trim();
-                const existente = sistemaMap[cod];
+                const existente = buscarNaSistema(r);
                 if (!existente) continue;
                 const novo = buildClienteData(r, lookups);
                 if (clienteDiferente(novo, existente)) {
@@ -359,7 +405,7 @@ Deno.serve(async (req) => {
         // =====================================================================
         if (etapa === 'criar') {
             const paraCriar = csvRows
-                .filter(r => !sistemaMap[String(r.codigo).trim()])
+                .filter(r => !buscarNaSistema(r))
                 .map(r => buildClienteData(r, lookups));
 
             const bulkSize = Math.min(batch_size, 20);
