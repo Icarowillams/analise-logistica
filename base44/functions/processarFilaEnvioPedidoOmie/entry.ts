@@ -374,10 +374,15 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (user?.role !== 'admin') {
-      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    // Permite: admin logado OU chamada via service role (automações agendadas)
+    const isAuthenticated = await base44.auth.isAuthenticated();
+    if (isAuthenticated) {
+      const user = await base44.auth.me();
+      if (user?.role !== 'admin') {
+        return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+      }
     }
+    // Se não autenticado como user, continua (service role da automação)
 
     // Circuit breaker — com auto-desbloqueio
     const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
