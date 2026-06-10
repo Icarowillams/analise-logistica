@@ -19,13 +19,27 @@ const OMIE_URL = "https://app.omie.com.br/api/v1/geral/clientes/";
 // === MAPEAMENTOS ===
 
 const HEADER_MAP = {
-    'CODIGO': 'codigo', 'RAZAO_SOCIAL': 'razao_social', 'FANTASIA': 'nome_fantasia',
-    'CPF_CNPJ': 'cpf_cnpj', 'IE': 'inscricao_estadual', 'ENDERECO': 'endereco',
-    'BAIRRO': 'bairro', 'NUMERO': 'numero', 'CEP': 'cep', 'CIDADE': 'cidade',
-    'UF': 'estado', 'LATITUDE': 'latitude', 'LONGITUDE': 'longitude',
-    'COBRANCA': 'cobranca', 'PLANO PAGAMENTO': 'plano_pagamento',
-    'VENDEDOR': 'vendedor', 'NOME_TABELA': 'tabela_preco', 'NOME_ROTA': 'rota',
-    'STATUS': 'status', 'SEGUIMENTO': 'segmento', 'REDE': 'rede',
+    'CODIGO': 'codigo', 'COD': 'codigo', 'CÓDIGO': 'codigo',
+    'RAZAO_SOCIAL': 'razao_social', 'RAZÃO SOCIAL': 'razao_social', 'RAZAO SOCIAL': 'razao_social', 'NOME': 'razao_social',
+    'FANTASIA': 'nome_fantasia', 'NOME FANTASIA': 'nome_fantasia', 'NOME_FANTASIA': 'nome_fantasia',
+    'CPF_CNPJ': 'cpf_cnpj', 'CNPJ': 'cpf_cnpj', 'CPF': 'cpf_cnpj', 'CPF/CNPJ': 'cpf_cnpj', 'CNPJ/CPF': 'cpf_cnpj', 'CNPJ_CPF': 'cpf_cnpj',
+    'IE': 'inscricao_estadual', 'INSCRICAO_ESTADUAL': 'inscricao_estadual', 'INSCRIÇÃO ESTADUAL': 'inscricao_estadual',
+    'ENDERECO': 'endereco', 'ENDEREÇO': 'endereco', 'LOGRADOURO': 'endereco',
+    'BAIRRO': 'bairro',
+    'NUMERO': 'numero', 'NÚMERO': 'numero', 'NUM': 'numero',
+    'CEP': 'cep',
+    'CIDADE': 'cidade', 'MUNICIPIO': 'cidade', 'MUNICÍPIO': 'cidade',
+    'UF': 'estado', 'ESTADO': 'estado', 'SIGLA': 'estado',
+    'LATITUDE': 'latitude', 'LAT': 'latitude',
+    'LONGITUDE': 'longitude', 'LNG': 'longitude', 'LON': 'longitude',
+    'COBRANCA': 'cobranca', 'COBRANÇA': 'cobranca', 'MODALIDADE': 'cobranca',
+    'PLANO PAGAMENTO': 'plano_pagamento', 'PLANO_PAGAMENTO': 'plano_pagamento', 'PLANO': 'plano_pagamento',
+    'VENDEDOR': 'vendedor',
+    'NOME_TABELA': 'tabela_preco', 'TABELA': 'tabela_preco', 'TABELA_PRECO': 'tabela_preco', 'TABELA DE PREÇO': 'tabela_preco',
+    'NOME_ROTA': 'rota', 'ROTA': 'rota',
+    'STATUS': 'status', 'SITUACAO': 'status', 'SITUAÇÃO': 'status',
+    'SEGUIMENTO': 'segmento', 'SEGMENTO': 'segmento',
+    'REDE': 'rede',
 };
 
 const UF_MAP = {
@@ -261,15 +275,20 @@ Deno.serve(async (req) => {
 
         // Baixar arquivo (CSV ou XLSX)
         const fileResp = await fetch(csv_url);
-        const isXlsx = csv_url.toLowerCase().includes('.xlsx') || csv_url.toLowerCase().includes('.xls');
+        const contentType = fileResp.headers.get('content-type') || '';
+        const isXlsx = csv_url.toLowerCase().includes('.xlsx') || csv_url.toLowerCase().includes('.xls')
+            || contentType.includes('spreadsheet') || contentType.includes('excel') || contentType.includes('openxml');
         let csvRows;
         if (isXlsx) {
+            console.log('[debug] Detectado como XLSX, content-type:', contentType);
             const buffer = await fileResp.arrayBuffer();
             csvRows = parseXLSX(new Uint8Array(buffer));
         } else {
+            console.log('[debug] Detectado como CSV, content-type:', contentType);
             const csvText = await fileResp.text();
             csvRows = parseCSV(csvText);
         }
+        console.log('[debug] Total linhas parseadas:', csvRows.length, '| Primeira linha:', csvRows[0] ? JSON.stringify(csvRows[0]).substring(0, 200) : 'VAZIO');
 
         // Carregar lookups sequencialmente para evitar rate limit
         const planos = await base44.asServiceRole.entities.PlanoPagamento.list();
