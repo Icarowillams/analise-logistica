@@ -528,7 +528,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
       ]);
       if (res?.data?.em_andamento) {
-        toast.info('Sincronização já em andamento — dados locais recarregados. Tente novamente em alguns instantes.');
+        toast.success('Dados recarregados! Sincronização com Omie já em andamento em segundo plano.');
       } else if (res?.data?.bloqueado) {
         toast.warning('API Omie temporariamente bloqueada — dados locais recarregados. Tente novamente em alguns minutos.');
       } else if (res?.data?.sucesso) {
