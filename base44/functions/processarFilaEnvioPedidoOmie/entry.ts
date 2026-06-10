@@ -48,7 +48,10 @@ async function setCircuitBreakerBlocked(base44, errorMessage) {
   const _erros = (_cb?.erros_consecutivos || 0) + 1;
   const _thresh = _cb?.threshold_erros ?? 3;
   const _p: any = { erros_consecutivos: _erros, ultimo_erro: errorMessage.slice(0, 500), atualizado_em: new Date().toISOString() };
-  if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+  // Extrair tempo real que o Omie informou; se não informou, NÃO bloqueia
+  const secsMatch = errorMessage.match(/(\d+)\s*segundo/i);
+  const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 0;
+  if (_erros >= _thresh && secs > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + secs * 1000).toISOString(); }
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, _p).catch(() => {});
 }
 
@@ -549,18 +552,21 @@ Deno.serve(async (req) => {
 
         if (isBloqueio) {
           console.log(`[processarFila] Bloqueio detectado: ${erro}. Abrindo circuit breaker.`);
-          // Extrai tempo real da mensagem Omie (ex: "1799 segundos")
+          // Extrai tempo real da mensagem Omie (ex: "1799 segundos"); se não informou, NÃO bloqueia
           const secsMatch = erro.match(/(\d+)\s*segundo/i);
-          const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 300;
+          const secs = secsMatch ? Math.min(Number(secsMatch[1]), 1800) : 0;
           // SEMPRE update no registro fixo — NUNCA criar novo
           const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
-          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
-            bloqueado: true,
-            bloqueado_ate: new Date(Date.now() + secs * 1000).toISOString(),
-            ultimo_erro: erro,
-            atualizado_em: new Date().toISOString()
-          }).catch(() => {});
-          cbAtivado = true;
+          if (secs > 0) {
+            await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, {
+              bloqueado: true,
+              bloqueado_ate: new Date(Date.now() + secs * 1000).toISOString(),
+              ultimo_erro: erro,
+              atualizado_em: new Date().toISOString()
+            }).catch(() => {});
+            cbAtivado = true;
+          }
+          // Mesmo sem bloquear o CB, para o lote para não agravar o rate limit
           break;
         }
       }
