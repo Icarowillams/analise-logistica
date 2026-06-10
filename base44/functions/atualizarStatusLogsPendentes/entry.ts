@@ -357,8 +357,8 @@ Deno.serve(async (req) => {
 
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 5;
-    const DELAY_ENTRE_CONSULTAS_MS = 12000; // 12s entre cada pedido (cada um pode gerar 2 chamadas: ConsultarPedido + ListarNF)
+    const LIMITE_LOGS = 3;
+    const DELAY_ENTRE_CONSULTAS_MS = 15000; // 15s entre cada pedido (cada um pode gerar 2 chamadas: ConsultarPedido + ListarNF)
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
@@ -480,7 +480,7 @@ Deno.serve(async (req) => {
           // 🛡️ FIX CRÍTICO: registrar cooldown LONGO (60min) para pedidos "aguardando".
           // Sem isso, os MESMOS pedidos travados na etapa 60 sem NF eram reconsultados
           // a cada execução (30min) eternamente — causa raiz dos bloqueios por consumo indevido.
-          await registrarCooldownConsulta(base44, codPed, { aguardando: true, mensagem: real.mensagem }, 60);
+          await registrarCooldownConsulta(base44, codPed, { aguardando: true, mensagem: real.mensagem }, 240);
           resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: real.mensagem });
           continue;
         }
