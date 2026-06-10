@@ -237,9 +237,14 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     await aguardarRateLimit();
     const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
     if (data.faultstring) {
-      const msg = String(data.faultstring).toLowerCase();
-      // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
-      if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
+    const msg = String(data.faultstring).toLowerCase();
+    // Código 5113: pedido não existe no Omie — não é erro, apenas retorna null
+    if (msg.includes('não existem registros') || msg.includes('nao existem registros') || (data.faultcode && String(data.faultcode) === '5113')) {
+      console.log(`[espelho] ConsultarPedido ${omieCodigoPedido}: não encontrado no Omie (5113) — ignorando`);
+      return null;
+    }
+    // 425 / consumo indevido → abre circuit breaker (bloqueio 30min) e aborta
+    if (msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio') || msg.includes('425')) {
         const segsConsulta = extrairSegundosBloqueioWH(data.faultstring || '');
         { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && segsConsulta > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsConsulta * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, _p).catch(() => {}); }
         const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Desbloqueio previsto: ${bloqueadoAte}.`);
@@ -256,7 +261,7 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
   };
 
   const pedidoBruto = await consultar();
-  if (!pedidoBruto?.cabecalho) return;
+  if (!pedidoBruto || !pedidoBruto?.cabecalho) return;
   const etapa = String(pedidoBruto.cabecalho.etapa || '');
 
   // Se etapa não é operacional (ex: 70/80 = cancelado), remove do espelho
@@ -592,8 +597,60 @@ async function handlePedido(base44, topic, evt) {
       topic === 'VendaProduto.EtapaAlterada' ||
       topic === 'VendaProduto.Alterada'
     ) {
-      await upsertEspelho(base44, codigoPedido);
-      espelhoAcao = 'upsert';
+      // 🚀 OTIMIZAÇÃO: EtapaAlterada já traz a etapa no payload.
+      // Para etapas 10 (Pendente) e 20 (Liberado) — apenas atualiza o espelho com dados locais
+      // SEM chamar ConsultarPedido (evita rate limit quando muitos pedidos são liberados em lote).
+      // Etapas 50 (Em Faturamento) e 60 (Faturado) ainda precisam do ConsultarPedido para NF + produtos.
+      const etapaEvtEspelho = String(evt?.etapa || '');
+      if (etapaEvtEspelho === '10' || etapaEvtEspelho === '20') {
+        try {
+          const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
+            codigo_pedido: String(codigoPedido)
+          }, '-sincronizado_em', 1);
+          const novoStatusEspelho = etapaEvtEspelho === '20' ? 'Pedido Liberado' : 'Pedido Pendente';
+          if (espelhos?.[0]) {
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+              etapa: etapaEvtEspelho,
+              status_label: novoStatusEspelho,
+              sincronizado_em: new Date().toISOString(),
+              origem_sync: 'webhook'
+            });
+          } else {
+            // Espelho não existe — busca pedido local para criar registro mínimo
+            const pedidosLocaisEt = await base44.asServiceRole.entities.Pedido
+              .filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1)
+              .catch(() => []);
+            const pl = pedidosLocaisEt[0];
+            if (pl) {
+              await base44.asServiceRole.entities.PedidoLiberadoOmie.create({
+                codigo_pedido: String(codigoPedido),
+                numero_pedido: pl.numero_pedido || String(evt?.numeroPedido || ''),
+                etapa: etapaEvtEspelho,
+                status_label: novoStatusEspelho,
+                cliente_id: pl.cliente_id || null,
+                nome_cliente: pl.cliente_nome || '',
+                nome_fantasia: pl.cliente_nome_fantasia || '',
+                cidade: pl.cliente_cidade || '',
+                rota_id: pl.rota_id || null,
+                rota_nome: pl.rota_nome || '',
+                vendedor_id: pl.vendedor_id || null,
+                vendedor_nome: pl.vendedor_nome || '',
+                valor_total_pedido: pl.valor_total || 0,
+                pedido_id: pl.id,
+                sincronizado_em: new Date().toISOString(),
+                origem_sync: 'webhook'
+              });
+            }
+          }
+          espelhoAcao = 'upsert_local_etapa';
+        } catch (e) {
+          console.error(`[espelho] EtapaAlterada local erro ${codigoPedido}:`, e.message);
+        }
+      } else {
+        // Etapa 50/60 ou desconhecida — consulta Omie normalmente
+        await upsertEspelho(base44, codigoPedido);
+        espelhoAcao = 'upsert';
+      }
     }
   } catch (e) {
     console.error(`[espelhoOperacao] erro ao sincronizar ${codigoPedido}:`, e.message);
@@ -780,8 +837,9 @@ async function handlePedido(base44, topic, evt) {
       try { await removerDoEspelho(base44, codigoPedido); } catch {}
     }
   } else if (topic === 'VendaProduto.EtapaAlterada') {
+    // A etapa já vem no payload do webhook — usar diretamente sem consultar o espelho
     let etapaEvento = evt?.etapa;
-    // Fallback: se o webhook não trouxe a etapa, lê do espelho recém-atualizado por upsertEspelho
+    // Fallback apenas se o webhook não trouxe a etapa
     if (!etapaEvento) {
       try {
         const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
