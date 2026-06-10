@@ -265,15 +265,15 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     setEnfileirandoTodos(false);
   };
 
-  // Reprocessar erros
+  // Reprocessar erros — sem limite de tentativas (usuário está forçando o reenvio)
   const reprocessarErros = async () => {
-    const erros = filaEnvio.filter(f => f.status === 'erro' && (f.tentativas || 0) < 3);
+    const erros = filaEnvio.filter(f => f.status === 'erro');
     if (erros.length === 0) {
-      toast.info('Nenhum erro reprocessável (todos já atingiram 3 tentativas)');
+      toast.info('Nenhum pedido com erro encontrado');
       return;
     }
     for (const item of erros) {
-      await base44.entities.FilaEnvioPedidoOmie.update(item.id, { status: 'pendente', erro_log: null });
+      await base44.entities.FilaEnvioPedidoOmie.update(item.id, { status: 'pendente', tentativas: 0, erro_log: null });
     }
     queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
     toast.success(`${erros.length} pedido(s) reenfileirado(s) para reprocessamento`);
