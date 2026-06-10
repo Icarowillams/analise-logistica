@@ -308,6 +308,7 @@ Deno.serve(async (req) => {
         // Detecta se o CSV usa CNPJ como chave (todos os códigos são "0" ou vazios)
         const codigosValidos = csvRows.filter(r => r.codigo && String(r.codigo).trim() !== '0' && String(r.codigo).trim() !== '');
         const usarCnpjComoChave = codigosValidos.length < csvRows.length * 0.5;
+        console.log(`[debug] codigosValidos: ${codigosValidos.length}/${csvRows.length} → usarCnpjComoChave: ${usarCnpjComoChave}`);
 
         const sistemaMap = {}; // por código
         const sistemaMapCnpj = {}; // por CNPJ
@@ -319,6 +320,10 @@ Deno.serve(async (req) => {
 
         const csvCodigos = new Set(csvRows.map(r => String(r.codigo).trim()));
         const csvCnpjs = new Set(csvRows.map(r => (r.cpf_cnpj || '').replace(/\D/g, '')).filter(Boolean));
+        console.log(`[debug] sistemaMapCnpj keys: ${Object.keys(sistemaMapCnpj).length}, csvCnpjs: ${csvCnpjs.size}`);
+        // Amostra de 3 CNPJs do CSV vs sistemaMap para diagnóstico
+        const amostras = [...csvCnpjs].slice(0, 3);
+        amostras.forEach(cnpj => console.log(`[debug] CSV cnpj "${cnpj}" → no sistema: ${!!sistemaMapCnpj[cnpj]}`));
 
         const buscarNaSistema = (row) => {
             if (!usarCnpjComoChave && row.codigo && String(row.codigo).trim() !== '0') {
