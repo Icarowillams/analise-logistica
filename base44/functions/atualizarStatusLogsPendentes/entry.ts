@@ -160,6 +160,8 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   // Sem cStat do ConsultarPedido, buscamos via ListarNF para não assumir "autorizada" cegamente.
   if (etapa === '60') {
     try {
+      // Delay entre ConsultarPedido e ListarNF — evita 2 chamadas em rajada (gatilho do "consumo indevido")
+      await new Promise(r => setTimeout(r, 6000));
       const nfsResp = await omieCall(base44, 'produtos/nfconsultar/', {
         nPagina: 1,
         nRegPorPagina: 10,
@@ -204,13 +206,13 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   return { etapa, status_real: 'aguardando', mensagem: `Pedido em etapa ${etapa || '?'} — ainda processando` };
 }
 
-async function registrarCooldownConsulta(base44, codigoPedido, valor = {}) {
+async function registrarCooldownConsulta(base44, codigoPedido, valor = {}, minutos = 10) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
   const payloadCache = {
     chave,
     valor,
     tipo: `ConsultarPedido:${codigoPedido}`,
-    expira_em: new Date(Date.now() + 10 * 60000).toISOString(),
+    expira_em: new Date(Date.now() + minutos * 60000).toISOString(),
     criado_em: new Date().toISOString()
   };
   const existente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
@@ -222,7 +224,8 @@ async function consultadoRecentemente(base44, codigoPedido) {
   const chave = `${OMIE_PEDIDO_URL}|ConsultarPedido|${JSON.stringify({ codigo_pedido: Number(codigoPedido) })}`;
   const caches = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave }, '-created_date', 1).catch(() => []);
   const cache = caches?.[0];
-  return !!(cache?.criado_em && Date.now() - new Date(cache.criado_em).getTime() < 5 * 60 * 1000);
+  // Respeita o expira_em do cooldown (pode ser 10min para erro, 60min para "aguardando")
+  return !!(cache?.expira_em && new Date(cache.expira_em).getTime() > Date.now());
 }
 
 // Verifica se o pedido deve gerar boleto auto (tipo=venda + cliente BOLETO BANCARIO)
@@ -354,8 +357,8 @@ Deno.serve(async (req) => {
 
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 10;
-    const DELAY_ENTRE_CONSULTAS_MS = 3000; // 3s entre cada ConsultarPedido
+    const LIMITE_LOGS = 5;
+    const DELAY_ENTRE_CONSULTAS_MS = 12000; // 12s entre cada pedido (cada um pode gerar 2 chamadas: ConsultarPedido + ListarNF)
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
@@ -474,6 +477,10 @@ Deno.serve(async (req) => {
         }
 
         if (real.status_real === 'aguardando') {
+          // 🛡️ FIX CRÍTICO: registrar cooldown LONGO (60min) para pedidos "aguardando".
+          // Sem isso, os MESMOS pedidos travados na etapa 60 sem NF eram reconsultados
+          // a cada execução (30min) eternamente — causa raiz dos bloqueios por consumo indevido.
+          await registrarCooldownConsulta(base44, codPed, { aguardando: true, mensagem: real.mensagem }, 60);
           resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: real.mensagem });
           continue;
         }
