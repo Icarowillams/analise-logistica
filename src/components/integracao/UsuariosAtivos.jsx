@@ -42,13 +42,20 @@ export default function UsuariosAtivos() {
     staleTime: 60000,
   });
 
-  // Dados "online agora" — em tempo real via subscription
+  // Dados "online agora" — refetch a cada 5min + subscription em tempo real
+  const { data: logsOnlineBase = [] } = useQuery({
+    queryKey: ['logsOnline-ativos'],
+    queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 200),
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60000,
+  });
+
   const [logsOnline, setLogsOnline] = useState([]);
   useEffect(() => {
-    // Carrega os últimos registros ao montar
-    base44.entities.LogIntegracaoOmie.list('-created_date', 200).then(setLogsOnline);
+    setLogsOnline(logsOnlineBase);
+  }, [logsOnlineBase]);
 
-    // Subscription em tempo real: atualiza o array quando chega novo log
+  useEffect(() => {
     const unsub = base44.entities.LogIntegracaoOmie.subscribe((event) => {
       if (event.type === 'create' && event.data) {
         setLogsOnline(prev => [event.data, ...prev].slice(0, 200));
