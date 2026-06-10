@@ -489,15 +489,46 @@ async function handlePedido(base44, topic, evt) {
           codigo_pedido: String(codigoPedido)
         }, '-sincronizado_em', 1);
         if (espelhos?.[0]) {
+          // Espelho existe → apenas atualiza etapa para 60
           await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
             etapa: '60',
             status_real: 'aguardando_nf',
             status_label: 'Aguardando NF',
+            numero_nf: evt?.numero_nf ? String(evt.numero_nf) : (espelhos[0].numero_nf || ''),
             sincronizado_em: new Date().toISOString(),
             origem_sync: 'webhook'
           });
+        } else {
+          // Espelho NÃO existe → cria registro mínimo com dados do pedido local para garantir etapa 60
+          const pedidosLocaisF = await base44.asServiceRole.entities.Pedido
+            .filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1)
+            .catch(() => []);
+          const pl = pedidosLocaisF[0] || null;
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.create({
+            codigo_pedido: String(codigoPedido),
+            numero_pedido: pl?.numero_pedido || evt?.numero_pedido || '',
+            etapa: '60',
+            status_real: 'aguardando_nf',
+            status_label: 'Aguardando NF',
+            numero_nf: evt?.numero_nf ? String(evt.numero_nf) : '',
+            cliente_id: pl?.cliente_id || null,
+            nome_cliente: pl?.cliente_nome || '',
+            nome_fantasia: pl?.cliente_nome_fantasia || '',
+            cidade: pl?.cliente_cidade || '',
+            rota_id: pl?.rota_id || null,
+            rota_nome: pl?.rota_nome || '',
+            vendedor_id: pl?.vendedor_id || null,
+            vendedor_nome: pl?.vendedor_nome || '',
+            valor_total_pedido: pl?.valor_total || 0,
+            pedido_id: pl?.id || null,
+            sincronizado_em: new Date().toISOString(),
+            origem_sync: 'webhook'
+          });
+          console.log(`[espelho] VendaProduto.Faturada — espelho criado com etapa 60 para ${codigoPedido}`);
         }
-      } catch {}
+      } catch (e) {
+        console.error(`[espelho] VendaProduto.Faturada erro ao atualizar espelho ${codigoPedido}:`, e.message);
+      }
       espelhoAcao = 'upsert_local';
     } else if (topic === 'VendaProduto.Incluida') {
       // Incluida: se o pedido JÁ existe no Base44 (enviado pela fila), NÃO consultar Omie.
