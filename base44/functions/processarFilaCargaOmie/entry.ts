@@ -140,7 +140,10 @@ async function processarFaturar(base44, item) {
 // Recalcula o status de processamento da carga a partir dos itens da fila.
 async function atualizarStatusCarga(base44, carga_id) {
   const itens = await base44.asServiceRole.entities.FilaCargaOmie.filter({ carga_id }, '-created_date', 500).catch(() => []);
-  if (!itens.length) return;
+  if (!itens.length) {
+    // Carga tem processamento_omie_status != nao_iniciado mas fila vazia — corrige para nao_iniciado
+    return;
+  }
   const total = itens.length;
   const concluidos = itens.filter(i => i.status === 'concluido').length;
   const erros = itens.filter(i => i.status === 'erro').length;
@@ -149,7 +152,7 @@ async function atualizarStatusCarga(base44, carga_id) {
   let status;
   if (concluidos === total) status = 'concluido';
   else if (pendentesOuProc > 0) status = 'em_andamento';
-  else if (erros > 0) status = 'parcial';
+  else if (erros > 0 && concluidos + erros === total) status = 'parcial';
   else status = 'em_andamento';
 
   await base44.asServiceRole.entities.Carga.update(carga_id, {
@@ -197,29 +200,27 @@ Deno.serve(async (req) => {
     }
 
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
-    // 🐛 FIX item4: era 4 queries sequenciais + N loops com 1 query por carga (N+1).
-    // Agora: 2 queries em paralelo + filtro em memória + Promise.all para recalcular.
+    // Busca em paralelo todas as cargas e itens da fila com limite maior para não perder registros.
     let cargasPreAtualizadasCount = 0;
     {
-      const [cargasIntermediarias, filaItens] = await Promise.all([
-        base44.asServiceRole.entities.Carga.list('-updated_date', 300).catch(() => []),
-        base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 500).catch(() => [])
+      const [todasCargas, filaItens] = await Promise.all([
+        base44.asServiceRole.entities.Carga.list('-updated_date', 1000).catch(() => []),
+        base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 2000).catch(() => [])
       ]);
-      const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'nao_iniciado', 'processando']);
-      const cargaIdsComFilaPendente = new Set(filaItens.filter(i => i.status === 'pendente').map(i => i.carga_id));
+      const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'processando']);
       const cargaIdsComFilaQualquer = new Set(filaItens.map(i => i.carga_id));
 
-      const cargasParaAtualizar = cargasIntermediarias.filter(c => {
-        if (!STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return false;
-        // nao_iniciado: recalcula se tem QUALQUER item na fila (pendente, concluído ou erro)
-        // Isso corrige cargas que ficavam "Aguardando fila" mesmo com todos os itens concluídos
+      const cargasParaAtualizar = todasCargas.filter(c => {
+        // Sempre recalcula cargas em status intermediário ativo
+        if (STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return true;
+        // Para nao_iniciado: recalcula APENAS se tem itens na fila — evita recalcular cargas virgens
         if (c.processamento_omie_status === 'nao_iniciado') return cargaIdsComFilaQualquer.has(c.id);
-        return true;
+        return false;
       });
 
       cargasPreAtualizadasCount = cargasParaAtualizar.length;
       if (cargasParaAtualizar.length > 0) {
-        console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo (antes era sequencial com N+1 queries)`);
+        console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo`);
         await Promise.all(cargasParaAtualizar.map(c => atualizarStatusCarga(base44, c.id)));
       }
     }
