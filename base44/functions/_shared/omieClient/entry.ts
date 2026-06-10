@@ -130,7 +130,7 @@ const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
 function extrairSegundosBloqueio(msg: string): number {
   const match = String(msg).match(/(\d+)\s*segundo/i);
   if (match) return Math.min(Number(match[1]) + 10, 1800); // +10s margem, cap 30min
-  return 5; // fallback 5 segundos — se o Omie não informou o tempo, libera rápido
+  return 0; // sem tempo informado = não bloqueia
 }
 
 async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: string): Promise<void> {
@@ -146,8 +146,10 @@ async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: stri
   };
   if (erros >= threshold) {
     const segs = extrairSegundosBloqueio(errorMessage);
-    payload.bloqueado = true;
-    payload.bloqueado_ate = new Date(Date.now() + segs * 1000).toISOString();
+    if (segs > 0) {
+      payload.bloqueado = true;
+      payload.bloqueado_ate = new Date(Date.now() + segs * 1000).toISOString();
+    }
   }
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, payload)
     .catch((err) => { console.error('[omieClient] Falha ao atualizar circuit breaker:', err?.message); });

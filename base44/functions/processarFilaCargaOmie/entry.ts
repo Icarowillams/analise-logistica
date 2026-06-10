@@ -38,7 +38,7 @@ async function checkCircuitBreaker(base44: any) {
 function extrairSegundosBloqueio(msg: string): number {
   const match = String(msg).match(/(\d+)\s*segundo/i);
   if (match) return Math.min(Number(match[1]), 1800); // cap 30min
-  return 5; // fallback 5 segundos — se o Omie não informou o tempo, libera rápido
+  return 0; // sem tempo informado = não bloqueia
 }
 
 // Lock removido — o circuit breaker + processamento sequencial interno já protegem contra abusos.
@@ -64,7 +64,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         // Erros de BLOQUEIO REAL (conta bloqueada/banida pelo Omie)
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
           const segsOmie = extrairSegundosBloqueio(data.faultstring);
-          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsOmie * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
+          { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && segsOmie > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsOmie * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
           const blockedErr = new Error(data.faultstring);
           blockedErr.bloqueio = true;
           throw blockedErr;
