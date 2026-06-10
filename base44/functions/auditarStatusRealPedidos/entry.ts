@@ -14,6 +14,8 @@ function encontrarPedido(pedidos, chave) {
     p.id === chaveTexto ||
     String(p.numero_pedido || '') === chaveTexto ||
     normalizarNumero(p.numero_pedido) === chaveNormalizada
+  );
+}
 
 function camposPossiveisStatus(registro) {
   const resultado = {};
@@ -30,6 +32,9 @@ function camposPossiveisStatus(registro) {
       nome.includes('ativo') ||
       nome.includes('fatur') ||
       nome.includes('etapa')
+    ) {
+      resultado[campo] = valor;
+    }
   }
   return resultado;
 }
@@ -45,6 +50,8 @@ function encontrarRelacionados(lista, pedido) {
     normalizarNumero(item.numero_omie) === numeroNormalizado ||
     String(item.codigo_pedido || '') === String(pedido.omie_codigo_pedido || '') ||
     String(item.omie_codigo_pedido || '') === String(pedido.omie_codigo_pedido || '')
+  );
+}
 
 async function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -121,7 +128,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const idsSolicitados = Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : PEDIDOS_PADRAO;
-    const delayMs = Number(body.delay_ms || 400);
+    const delayMs = Math.max(Number(body.delay_ms || 1500), 1500); // Mínimo 1500ms para respeitar rate limit Omie
 
     const [pedidosPrincipais, pedidosVenda, pedidosLiberados] = await Promise.all([
       base44.asServiceRole.entities.Pedido.list('-created_date', 5000),

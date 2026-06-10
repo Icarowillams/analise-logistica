@@ -87,7 +87,7 @@ const OMIE_PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const LOTE = 20; // Pedidos por ciclo
-const DELAY_ENTRE_CONSULTAS_MS = 600;
+const DELAY_ENTRE_CONSULTAS_MS = 1500; // Mínimo seguro para evitar bloqueio Omie
 
 
 async function circuitBreakerBloqueado(base44) {
