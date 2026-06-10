@@ -36,6 +36,13 @@ function tempoRelativo(date) {
 }
 
 export default function UsuariosAtivos() {
+  // Todos os vendedores/funcionários ativos no sistema
+  const { data: todosVendedores = [] } = useQuery({
+    queryKey: ['vendedores-ativos-widget'],
+    queryFn: () => base44.entities.Vendedor.filter({ status: 'ativo' }, 'nome', 500),
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Dados gerais (24h) — reutiliza cache da página pai, sem refetch agressivo
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['logsOmie'],
@@ -280,7 +287,50 @@ export default function UsuariosAtivos() {
           </div>
         )}
 
-        {usuarios.length === 0 && (
+        {/* Todos os usuários cadastrados no sistema */}
+        {todosVendedores.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1">
+              <Users className="w-3 h-3" /> Todos no sistema ({todosVendedores.length})
+            </p>
+            <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+              {todosVendedores.map(v => {
+                const isOnline = online.some(u => u.email?.toLowerCase() === v.email?.toLowerCase());
+                const atividadeRecente = usuarios.find(u => u.email?.toLowerCase() === v.email?.toLowerCase());
+                return (
+                  <div key={v.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                    <div className="relative flex-shrink-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${getCorAvatar(v.email || v.nome)}`}>
+                        {getIniciais(v.nome || v.email)}
+                      </div>
+                      {isOnline && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-white animate-pulse" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-700 truncate font-medium">{v.nome}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{v.email || v.funcao || (v.papeis?.[0] || 'sem função')}</p>
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      {isOnline ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-700 rounded-full px-2 py-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          online
+                        </span>
+                      ) : atividadeRecente ? (
+                        <span className="text-[10px] text-slate-400">{tempoRelativo(atividadeRecente.ultimaAtividade)}</span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {usuarios.length === 0 && todosVendedores.length === 0 && (
           <div className="text-center py-6 text-slate-400 text-sm">
             <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
             Nenhuma atividade nas últimas 24h
