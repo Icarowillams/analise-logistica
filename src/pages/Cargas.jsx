@@ -16,6 +16,7 @@ import StatusProcessamentoOmie from '@/components/cargas/StatusProcessamentoOmie
 import SoltarCargaDialog from '@/components/cargas/SoltarCargaDialog';
 import EditarCargaModal from '@/components/cargas/EditarCargaModal';
 import TransferirPedidosCargaModal from '@/components/cargas/TransferirPedidosCargaModal';
+import LogFilaCarga from '@/components/cargas/LogFilaCarga';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
@@ -613,22 +614,40 @@ export default function Cargas() {
         >
           Faturadas ({totalFaturadas})
         </Button>
+        <Button
+          variant={abaAtiva === 'log' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('log')}
+          className={abaAtiva === 'log' ? 'bg-slate-700 hover:bg-slate-800' : 'text-slate-600'}
+        >
+          Log da Fila
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{cargas.length} cargas registradas{temFiltro ? ` (de ${cargasTodas.length})` : ''}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="py-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
-          ) : (
-            <div className="text-sm [&_th]:px-2 [&_td]:px-2 [&_td]:py-2 [&_.relative.w-full.overflow-auto]:overflow-x-hidden">
-              <DataTable data={cargas} columns={columns} searchable={false} pageSize={50} emptyMessage="Nenhuma carga criada ainda" />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {abaAtiva === 'log' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Log da Fila de Processamento Omie</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LogFilaCarga />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{cargas.length} cargas registradas{temFiltro ? ` (de ${cargasTodas.length})` : ''}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="py-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
+            ) : (
+              <div className="text-sm [&_th]:px-2 [&_td]:px-2 [&_td]:py-2 [&_.relative.w-full.overflow-auto]:overflow-x-hidden">
+                <DataTable data={cargas} columns={columns} searchable={false} pageSize={50} emptyMessage="Nenhuma carga criada ainda" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <DeleteConfirmDialog
         open={!!excluindo}
