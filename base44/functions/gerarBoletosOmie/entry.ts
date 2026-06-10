@@ -72,8 +72,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const OMIE_URL_BOLETO = 'https://app.omie.com.br/api/v1/financas/contareceberboleto/';
 const OMIE_URL_CR = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
-const BATCH_SIZE = 3;       // títulos processados em paralelo
-const BATCH_DELAY_MS = 600; // delay entre lotes (respeita rate limit Omie)
+// GerarBoleto Omie só aceita 1 requisição simultânea (erro 8020 se paralelo)
+const DELAY_ENTRE_BOLETOS_MS = 1200; // delay entre cada boleto (sequencial)
 
 
 async function listarTitulosDoPedido(base44: any, codigoPedido: string | number) {
@@ -161,27 +161,17 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
   }
 }
 
-// Processa títulos em lotes paralelos de BATCH_SIZE
+// Processa títulos SEQUENCIALMENTE — GerarBoleto Omie não aceita chamadas paralelas (erro 8020)
 async function gerarBoletosTitulos(base44: any, titulos: any[]) {
   const resultados: any[] = [];
 
-  for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
-    const lote = titulos.slice(i, i + BATCH_SIZE);
-    const loteResultados = await Promise.allSettled(
-      lote.map(titulo => processarTitulo(base44, titulo))
-    );
+  for (let i = 0; i < titulos.length; i++) {
+    const resultado = await processarTitulo(base44, titulos[i]);
+    resultados.push(resultado);
 
-    for (const r of loteResultados) {
-      if (r.status === 'fulfilled') {
-        resultados.push(r.value);
-      } else {
-        resultados.push({ sucesso: false, mensagem: r.reason?.message || 'Erro desconhecido' });
-      }
-    }
-
-    // Delay entre lotes (só se há mais lotes restantes)
-    if (i + BATCH_SIZE < titulos.length) {
-      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    // Delay entre boletos para não acionar o rate-limit do Omie
+    if (i < titulos.length - 1) {
+      await new Promise(r => setTimeout(r, DELAY_ENTRE_BOLETOS_MS));
     }
   }
   return resultados;
