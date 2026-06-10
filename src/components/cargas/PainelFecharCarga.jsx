@@ -231,6 +231,9 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             processamento_omie_status: 'nao_iniciado',
             processamento_omie_total: itensFila.length
           });
+          // PROCESSAMENTO IMEDIATO: dispara a fila agora (fire-and-forget).
+          // Se falhar, a automação scheduled de 5 min retenta automaticamente.
+          base44.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
         } catch (e) {
           console.warn('Falha ao enfileirar processamento Omie:', e.message);
           // Garante que a carga não fique exibindo "Aguardando fila" sem itens na fila.
@@ -252,7 +255,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       if (falhasVinculo.length > 0) {
         toast.error(`Carga ${numero} criada, mas ${falhasVinculo.length} pedido(s) não tiveram status local atualizado`);
       } else if (vendas.length > 0) {
-        toast.success(`Carga fechada com sucesso. ${vendas.length} pedidos serão processados em fila na Omie. Acompanhe o progresso na tela de Cargas.`, { duration: 8000 });
+        toast.success(`Carga fechada com sucesso. ${vendas.length} pedidos estão sendo processados na Omie. Acompanhe o progresso na tela de Cargas.`, { duration: 8000 });
       } else {
         toast.success(`Carga ${numero} criada com ${pedidosSel.length} pedidos`);
       }
