@@ -242,7 +242,7 @@ export default function CompararCSVBase44() {
             <div className="flex flex-col sm:flex-row items-center gap-3 max-w-lg mx-auto">
               <Input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={(e) => setArquivo(e.target.files?.[0] || null)}
                 className="flex-1"
               />

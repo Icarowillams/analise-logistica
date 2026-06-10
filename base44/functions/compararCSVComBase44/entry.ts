@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import * as XLSX from 'npm:xlsx@0.18.5';
 
 // Mapeamento de cabeçalhos do CSV para nomes internos
 const HEADER_MAP = {
@@ -45,7 +46,6 @@ function estadoParaSigla(val) {
 function parseCSV(text) {
     const lines = text.split('\n').filter(l => l.trim());
     const rawHeader = lines[0].split(';').map(h => h.trim());
-    // Map headers to internal names
     const header = rawHeader.map(h => {
         const upper = h.toUpperCase().trim();
         return HEADER_MAP[upper] || h.toLowerCase().replace(/\s+/g, '_');
@@ -60,6 +60,21 @@ function parseCSV(text) {
     return rows;
 }
 
+function parseXLSX(buffer) {
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    return raw.map(row => {
+        const obj = {};
+        for (const [key, val] of Object.entries(row)) {
+            const upper = key.toUpperCase().trim();
+            const mapped = HEADER_MAP[upper] || key.toLowerCase().replace(/\s+/g, '_');
+            obj[mapped] = val !== null && val !== undefined ? String(val).trim() : '';
+        }
+        return obj;
+    }).filter(r => r.codigo && String(r.codigo).trim() !== '' && String(r.codigo).trim() !== '0');
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -71,10 +86,17 @@ Deno.serve(async (req) => {
         const { csv_url, etapa, offset = 0, batch_size = 100 } = await req.json();
         if (!csv_url) return Response.json({ error: 'csv_url obrigatório' }, { status: 400 });
 
-        // Baixar e parsear CSV
-        const csvResp = await fetch(csv_url);
-        const csvText = await csvResp.text();
-        const csvRows = parseCSV(csvText);
+        // Baixar arquivo (CSV ou XLSX)
+        const fileResp = await fetch(csv_url);
+        const isXlsx = csv_url.toLowerCase().includes('.xlsx') || csv_url.toLowerCase().includes('.xls');
+        let csvRows;
+        if (isXlsx) {
+            const buffer = await fileResp.arrayBuffer();
+            csvRows = parseXLSX(new Uint8Array(buffer));
+        } else {
+            const csvText = await fileResp.text();
+            csvRows = parseCSV(csvText);
+        }
 
         // Buscar todos os clientes do Base44
         const clientesBase44 = await base44.asServiceRole.entities.Cliente.list('-created_date', 10000);
