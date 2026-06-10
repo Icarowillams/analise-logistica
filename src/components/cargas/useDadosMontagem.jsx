@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
-// ─── CACHE sessionStorage (5 min TTL) ───
-const CACHE_KEY = 'montagem_carga_v3';
-const CACHE_TTL = 5 * 60 * 1000;
+// ─── CACHE localStorage (10 min TTL — persiste entre F5) ───
+const CACHE_KEY = 'montagem_carga_v4';
+const CACHE_TTL = 10 * 60 * 1000;
 
 function getUserCacheKey() {
   try {
@@ -17,17 +17,18 @@ function getUserCacheKey() {
 
 function getCache() {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY + '_' + getUserCacheKey());
+    const raw = localStorage.getItem(CACHE_KEY + '_' + getUserCacheKey());
     if (!raw) return null;
     const { data, timestamp } = JSON.parse(raw);
     if (Date.now() - timestamp < CACHE_TTL) return data;
+    localStorage.removeItem(CACHE_KEY + '_' + getUserCacheKey());
   } catch {}
   return null;
 }
 
 function setCache(data) {
   try {
-    sessionStorage.setItem(CACHE_KEY + '_' + getUserCacheKey(), JSON.stringify({ timestamp: Date.now(), data }));
+    localStorage.setItem(CACHE_KEY + '_' + getUserCacheKey(), JSON.stringify({ timestamp: Date.now(), data }));
   } catch {}
 }
 
@@ -142,12 +143,15 @@ export default function useDadosMontagem() {
 
       // OTIMIZAÇÃO: carregar dados em PARALELO (antes era sequencial com sleep)
       // Reduz de ~7 chamadas sequenciais (~3s) para 2 batches paralelos (~0.5s)
-      const [espelhoOmie, todosPedidosLocais, trocasAprovadas] = await Promise.all([
+      const [espelhoOmie, todosPedidosLocais, trocasAprovadas, todosClientes] = await Promise.all([
         fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)),
         fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 3000)),
-        fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500))
+        fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
+        fetchWithRetry(() => base44.entities.Cliente.list('-created_date', 10000))
       ]);
-      console.log('[DEBUG MC] Batch 1:', espelhoOmie?.length || 0, 'espelho,', todosPedidosLocais?.length || 0, 'pedidos,', trocasAprovadas?.length || 0, 'trocas');
+      console.log('[DEBUG MC] Batch 1:', espelhoOmie?.length || 0, 'espelho,', todosPedidosLocais?.length || 0, 'pedidos,', trocasAprovadas?.length || 0, 'trocas,', todosClientes?.length || 0, 'clientes');
+      // Mapa global de clientes — evita N chamadas individuais depois
+      const clientesMapGlobal = new Map((todosClientes || []).map(c => [c.id, c]));
 
       const [rotas, motP, veiP, carP] = await Promise.all([
         fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
@@ -285,12 +289,8 @@ export default function useDadosMontagem() {
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id && !idsTrocasEmCarga.has(String(t.id)));
       console.log('[DEBUG MC] Trocas após excluir já em cargas:', trocasDisponiveis.length);
 
-      // Buscar clientes das trocas para obter rota (Promise.all paralelo)
-      const trocaClienteIds = [...new Set(trocasDisponiveis.map(t => t.cliente_id).filter(Boolean))];
-      const trocaClientesArr = trocaClienteIds.length > 0
-        ? await Promise.all(trocaClienteIds.map(id => fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null)))
-        : [];
-      const trocaClientesMap = new Map(trocaClientesArr.filter(Boolean).map(c => [c.id, c]));
+      // Usar mapa global de clientes (já carregado no Batch 1 — sem chamadas individuais)
+      const trocaClientesMap = clientesMapGlobal;
 
       console.log('[DEBUG MC] TOTAL FINAL:', todasVendas.length + d1Disponiveis.length + trocasDisponiveis.length,
         '(Omie:', vendasEnriquecidas.length, '| NF55 local:', vendasLocais.length, '| D1:', d1Disponiveis.length, '| Troca:', trocasDisponiveis.length, ')');
@@ -389,18 +389,8 @@ export default function useDadosMontagem() {
       if (temD1 || temTrocas || temNf55Local || vendasEnriquecidas.length > 0) {
         setCarregandoItens(true);
 
-        // Buscar clientes dos D1, Trocas e Vendas Omie (para bairro/endereço)
-        const d1ClienteIds = [...new Set(d1SemItens.map(p => p.cliente_id).filter(Boolean))];
-        const vendasOmieClienteIds = [...new Set(vendasEnriquecidas.map(p => p.cliente_id).filter(Boolean))];
-        const todosClienteIds = [...new Set([...d1ClienteIds, ...vendasOmieClienteIds])];
-
-        const clientesMap = new Map(trocaClientesMap);
-        for (const id of todosClienteIds) {
-          if (clientesMap.has(id)) continue;
-          await sleep(50);
-          const c = await fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null);
-          if (c) clientesMap.set(c.id, c);
-        }
+        // Usar mapa global de clientes (já carregado no Batch 1 — sem chamadas individuais)
+        const clientesMap = clientesMapGlobal;
 
         // Buscar TODOS os itens em 1 única chamada backend
         await sleep(300);
@@ -529,7 +519,7 @@ export default function useDadosMontagem() {
   }, []);
 
   const recarregar = useCallback(async () => {
-    sessionStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_KEY + '_' + getUserCacheKey());
     setLoading(true);
     // Aguardar reconciliação do espelho ANTES de carregar dados,
     // para que pedidos que mudaram de etapa 10→20 no Omie apareçam imediatamente.
