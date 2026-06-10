@@ -389,13 +389,15 @@ export default function useDadosMontagem() {
       if (temD1 || temTrocas || temNf55Local) {
         setCarregandoItens(true);
 
-        // Buscar clientes dos D1 (trocas já foram buscados na Fase 1)
+        // Buscar clientes dos D1, Trocas e Vendas Omie (para bairro/endereço)
         const d1ClienteIds = [...new Set(d1SemItens.map(p => p.cliente_id).filter(Boolean))];
+        const vendasOmieClienteIds = [...new Set(vendasEnriquecidas.map(p => p.cliente_id).filter(Boolean))];
+        const todosClienteIds = [...new Set([...d1ClienteIds, ...vendasOmieClienteIds])];
 
         const clientesMap = new Map(trocaClientesMap);
-        for (const id of d1ClienteIds) {
+        for (const id of todosClienteIds) {
           if (clientesMap.has(id)) continue;
-          await sleep(100);
+          await sleep(50);
           const c = await fetchWithRetry(() => base44.entities.Cliente.get(id)).catch(() => null);
           if (c) clientesMap.set(c.id, c);
         }
@@ -432,7 +434,17 @@ export default function useDadosMontagem() {
           };
         });
 
-        const todasVendasComItens = [...vendasEnriquecidas, ...vendasLocaisComItens];
+        // Enriquecer vendas Omie com bairro/endereço do cliente
+        const vendasOmieEnriquecidas = vendasEnriquecidas.map(p => {
+          const cliente = p.cliente_id ? clientesMap.get(p.cliente_id) : null;
+          return {
+            ...p,
+            bairro: cliente?.bairro || '',
+            endereco: cliente?.endereco || ''
+          };
+        });
+
+        const todasVendasComItens = [...vendasOmieEnriquecidas, ...vendasLocaisComItens];
 
         // Montar D1 completos com itens
         const d1Completos = d1SemItens.map(p => {
@@ -447,6 +459,8 @@ export default function useDadosMontagem() {
             nome_cliente: p.nome_cliente || cliente?.razao_social || '',
             nome_fantasia: p.nome_fantasia || cliente?.nome_fantasia || p.nome_cliente || cliente?.razao_social || '',
             cidade: p.cidade || cliente?.cidade || '',
+            bairro: cliente?.bairro || '',
+            endereco: cliente?.endereco || '',
             rota_nome: rotaNomeD1, rota_cliente: rotaNomeD1,
             quantidade_itens: itens.length,
             produtos: itens.map(i => montarItemProduto(i, 'pedido'))
@@ -462,6 +476,8 @@ export default function useDadosMontagem() {
             ...t,
             nome_fantasia: cliente?.nome_fantasia || cliente?.razao_social || t.nome_cliente || '',
             cidade: cliente?.cidade || '',
+            bairro: cliente?.bairro || '',
+            endereco: cliente?.endereco || '',
             rota_nome: rotaNome, rota_cliente: rotaNome,
             quantidade_itens: itens.length,
             produtos: itens.map(i => montarItemProduto(i, 'troca'))
