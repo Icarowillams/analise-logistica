@@ -524,13 +524,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
         queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
       ]);
       if (res?.data?.em_andamento) {
-        toast.info('Sincronização já em andamento por outro usuário — dados locais recarregados. Tente novamente em alguns instantes.');
+        toast.info('Sincronização já em andamento — dados locais recarregados. Tente novamente em alguns instantes.');
       } else if (res?.data?.bloqueado) {
         toast.warning('API Omie temporariamente bloqueada — dados locais recarregados. Tente novamente em alguns minutos.');
       } else if (res?.data?.sucesso) {
-        toast.success('Dados sincronizados com o Omie');
+        const { criados = 0, atualizados = 0 } = res.data;
+        toast.success(`Sincronizado: ${atualizados} atualizados, ${criados} novos`);
+      } else if (!res) {
+        toast.warning('Sem resposta do servidor — dados locais recarregados.');
       } else {
-        toast.warning('Sincronização com o Omie falhou — dados locais recarregados.');
+        const motivo = res?.data?.error || 'erro desconhecido';
+        toast.warning(`Sincronização falhou: ${motivo}`);
       }
     } finally {
       setSyncLoading(false);
