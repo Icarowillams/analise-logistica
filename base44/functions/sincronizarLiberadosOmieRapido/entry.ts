@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { max_paginas = 3, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'], forcar_sem_cache = false } = body;
+    const { max_paginas = 10, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'], forcar_sem_cache = false } = body;
     const MAX_FALLBACK_CLIENTES = 3; // limite duro de ConsultarCliente por execução
     // Chamadas manuais (botão Atualizar) ou bootstrap SEMPRE sem cache para pegar estado real
     const usarCache = !forcar_sem_cache && origem === 'reconciliacao';
@@ -238,9 +238,10 @@ Deno.serve(async (req) => {
       return { status_real: 'aguardando_nf', status_label: 'Aguardando NF' };
     };
 
-    console.log(`[sincronizarLiberadosOmieRapido] max_paginas=${max_paginas}, etapas=${etapas.join(',')}, origem=${origem}`);
+    console.log(`[sincronizarLiberadosOmieRapido] max_paginas=${max_paginas}, etapas=${etapas.join(',')}, origem=${origem}, cache=${cacheMinutos}min`);
 
     const todosOmie = [];
+    let leituraCompleta = true; // Rastreamos se TODAS as páginas de TODAS as etapas foram lidas
     for (const etapaAtual of etapas) {
       let pagina = 1;
       let totalPaginas = 1;
@@ -255,10 +256,12 @@ Deno.serve(async (req) => {
           throw e;
         });
         if (!data) break;
-        if (Number(data.total_de_paginas || 1) > max_paginas) {
-          console.warn(`[sincronizarLiberadosOmieRapido] ⚠️ Etapa ${etapaAtual}: Omie tem ${data.total_de_paginas} páginas mas limite é ${max_paginas}. Pedidos além da página ${max_paginas} não serão sincronizados.`);
+        const totalPaginasReal = Number(data.total_de_paginas || 1);
+        if (totalPaginasReal > max_paginas) {
+          console.warn(`[sincronizarLiberadosOmieRapido] ⚠️ Etapa ${etapaAtual}: Omie tem ${totalPaginasReal} páginas mas limite é ${max_paginas}. Pedidos truncados.`);
+          leituraCompleta = false; // Não lemos tudo — NÃO devemos deletar registros do espelho
         }
-        totalPaginas = Math.min(Number(data.total_de_paginas || 1), Number(max_paginas));
+        totalPaginas = Math.min(totalPaginasReal, Number(max_paginas));
         const lote = (data.pedido_venda_produto || [])
           .map((p) => {
             const cab = p.cabecalho || {};
@@ -363,11 +366,17 @@ Deno.serve(async (req) => {
     }
 
     let removidos = 0;
-    for (const espelho of (espelhoAtual || [])) {
-      if (!codigosOmieAtuais.has(String(espelho.codigo_pedido))) {
-        await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(espelho.id);
-        removidos += 1;
+    if (leituraCompleta) {
+      // Só remove espelhos que sumiram do Omie quando TODAS as páginas foram lidas
+      // Se houve truncamento, não deletar — evita perder dados de páginas não lidas
+      for (const espelho of (espelhoAtual || [])) {
+        if (!codigosOmieAtuais.has(String(espelho.codigo_pedido))) {
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(espelho.id);
+          removidos += 1;
+        }
       }
+    } else {
+      console.warn(`[sincronizarLiberadosOmieRapido] Leitura truncada — pulando remoção de registros do espelho para evitar perda de dados.`);
     }
 
     const duracao = Date.now() - t0;
@@ -380,7 +389,7 @@ Deno.serve(async (req) => {
       payload_resposta: JSON.stringify({ total_omie: todosOmie.length, criados, atualizados, removidos }).slice(0, 2000)
     }).catch(() => {});
 
-    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao });
+    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
   } catch (error) {
     return Response.json({ sucesso: false, error: error.message }, { status: 500 });
   }
