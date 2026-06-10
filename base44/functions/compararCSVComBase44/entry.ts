@@ -166,14 +166,16 @@ Deno.serve(async (req) => {
                 const camposComparar = [
                     ['razao_social', row.razao_social, existente.razao_social],
                     ['nome_fantasia', row.nome_fantasia, existente.nome_fantasia],
-                    ['cpf_cnpj', (row.cpf_cnpj || '').replace(/[.\-\/]/g, ''), (existente.cpf_cnpj || '').replace(/[.\-\/]/g, '')],
+                    ['cpf_cnpj', (row.cpf_cnpj || '').replace(/[.\-\/]/g, ''), (existente.cnpj_cpf || '').replace(/[.\-\/]/g, '')],
                     ['endereco', row.endereco, existente.endereco],
                     ['numero', row.numero, existente.numero],
                     ['bairro', row.bairro, existente.bairro],
                     ['cidade', row.cidade, existente.cidade],
-                    ['estado', estadoParaSigla(row.estado), existente.estado],
+                    // Normaliza ambos para sigla de 2 letras (ex: "PERNAMBUCO" → "PE")
+                    ['estado', estadoParaSigla(row.estado), estadoParaSigla(existente.estado)],
                     ['cep', (row.cep || '').replace(/\D/g, ''), (existente.cep || '').replace(/\D/g, '')],
-                    ['status', (row.status || '').toLowerCase() === 'ativo' ? 'ativo' : 'inativo', existente.status || 'ativo'],
+                    // Só compara status se o CSV tiver o campo explicitamente preenchido
+                    ...(row.status ? [['status', row.status.toLowerCase() === 'ativo' ? 'ativo' : 'inativo', existente.status || 'ativo']] : []),
                 ];
 
 
