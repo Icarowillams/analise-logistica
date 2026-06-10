@@ -149,21 +149,39 @@ Deno.serve(async (req) => {
 
         const produtoOmie = mapearProdutoParaOmie(produtoData, unidadeSigla);
 
-        // Pré-consulta por código interno: se já existe no Omie, reutilizar o codigo_produto_integracao real
+        // Pré-consulta por código de integração: se já existe no Omie, reutilizar o codigo_produto
+        // Tenta primeiro pelo codigo_produto_integracao (mais confiável), depois pelo codigo
+        let codigoOmieExistente = produtoData.codigo_omie ? Number(produtoData.codigo_omie) : null;
         try {
+            const paramConsulta = codigoOmieExistente
+                ? { codigo_produto: codigoOmieExistente }
+                : { codigo_produto_integracao: produtoOmie.codigo_produto_integracao };
             const achado = await omieFetchComRetry(OMIE_URL, {
                 call: 'ConsultarProduto',
                 app_key: OMIE_APP_KEY,
                 app_secret: OMIE_APP_SECRET,
-                param: [{ codigo: produtoOmie.codigo }]
+                param: [paramConsulta]
             });
             if (achado?.codigo_produto) {
                 produtoOmie.codigo_produto = achado.codigo_produto;
-                if (achado.codigo_produto_integracao && achado.codigo_produto_integracao !== produtoOmie.codigo_produto_integracao) {
-                    produtoOmie.codigo_produto_integracao = achado.codigo_produto_integracao;
-                }
+                codigoOmieExistente = achado.codigo_produto;
             }
         } catch (_) { /* pré-consulta é best-effort */ }
+
+        // Se ainda não encontrou pelo integracao, tenta pelo código curto
+        if (!codigoOmieExistente) {
+            try {
+                const achado2 = await omieFetchComRetry(OMIE_URL, {
+                    call: 'ConsultarProduto',
+                    app_key: OMIE_APP_KEY,
+                    app_secret: OMIE_APP_SECRET,
+                    param: [{ codigo: produtoOmie.codigo }]
+                });
+                if (achado2?.codigo_produto) {
+                    produtoOmie.codigo_produto = achado2.codigo_produto;
+                }
+            } catch (_) { /* pré-consulta é best-effort */ }
+        }
 
         const started = Date.now();
         const resultado = await omieFetchComRetry(OMIE_URL, {
