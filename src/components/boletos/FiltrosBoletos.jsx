@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,10 +12,9 @@ import { Search, Loader2, AlertTriangle, CalendarIcon, X, Truck } from 'lucide-r
 import { format, subDays, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
 
-const normalizar = (valor) => String(valor || '').trim().toUpperCase();
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
-const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
 const dateToBR = (d) => {
   if (!d) return '';
@@ -39,47 +37,7 @@ export default function FiltrosBoletos({ onResultado }) {
   const [openDe, setOpenDe] = useState(false);
   const [openAte, setOpenAte] = useState(false);
 
-  const { data: modalidades = [] } = useQuery({
-    queryKey: ['modalidades-pagamento-filtro-boletos'],
-    queryFn: () => base44.entities.ModalidadePagamento.list(),
-    refetchOnWindowFocus: false
-  });
-
-  const { data: clientesBase = [] } = useQuery({
-    queryKey: ['clientes-modalidade-filtro-boletos'],
-    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
-    refetchOnWindowFocus: false
-  });
-
-  const modalidadeBoletoIds = useMemo(() => {
-    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
-    modalidades.forEach(m => {
-      const nome = normalizar(m.nome).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
-    });
-    return ids;
-  }, [modalidades]);
-
-  const clientesBoletoMap = useMemo(() => {
-    const porCodigoOmie = new Map();
-    const porCnpj = new Map();
-    clientesBase.forEach(cliente => {
-      if (!modalidadeBoletoIds.has(cliente.modalidade_pagamento_id)) return;
-      [cliente.codigo_omie, cliente.codigo_cliente_omie].forEach(codigo => {
-        const key = String(codigo || '').trim();
-        if (key) porCodigoOmie.set(key, cliente);
-      });
-      const cn = somenteNumeros(cliente.cnpj_cpf);
-      if (cn) porCnpj.set(cn, cliente);
-    });
-    return { porCodigoOmie, porCnpj };
-  }, [clientesBase, modalidadeBoletoIds]);
-
-  const isClienteBoleto = (titulo) => {
-    if (clientesBoletoMap.porCodigoOmie.has(String(titulo.codigo_cliente || '').trim())) return true;
-    if (clientesBoletoMap.porCnpj.has(somenteNumeros(titulo.cnpj_cpf))) return true;
-    return false;
-  };
+  const { isClienteBoleto } = useModalidadeBoleto();
 
   // Extrai CNPJs dos clientes da carga (para filtrar a busca Omie por cliente)
   const documentosCarga = (carga) => new Set([

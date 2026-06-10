@@ -11,10 +11,9 @@ import { Loader2, Receipt, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ListaTitulosCarga from '@/components/boletos/ListaTitulosCarga';
 import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoletos';
+import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
 
-const normalizar = (valor) => String(valor || '').trim().toUpperCase();
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
-const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 
 const formatarDataBr = (data) => `${String(data.getDate()).padStart(2, '0')}/${String(data.getMonth() + 1).padStart(2, '0')}/${data.getFullYear()}`;
 
@@ -28,47 +27,13 @@ export default function EmissaoBoletosTab() {
   const [resultado, setResultado] = useState(null);
   const [progressoBoletos, setProgressoBoletos] = useState({ atual: 0, total: 0 });
 
+  const { clientesBoletoMap: clientesBoleto, loadingClientes } = useModalidadeBoleto();
+
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-emissao-boletos-tab'],
     queryFn: () => base44.entities.Carga.list('-created_date', 200),
     refetchOnWindowFocus: false
   });
-
-  const { data: modalidades = [] } = useQuery({
-    queryKey: ['modalidades-pagamento-boletos'],
-    queryFn: () => base44.entities.ModalidadePagamento.list(),
-    refetchOnWindowFocus: false
-  });
-
-  const { data: clientes = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes-modalidade-boletos'],
-    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
-    refetchOnWindowFocus: false
-  });
-
-  const modalidadeBoletoIds = useMemo(() => {
-    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
-    modalidades.forEach(m => {
-      const nome = normalizar(m.nome).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
-    });
-    return ids;
-  }, [modalidades]);
-
-  const clientesBoleto = useMemo(() => {
-    const porCodigoOmie = new Map();
-    const porCnpj = new Map();
-    clientes.forEach(cliente => {
-      if (!modalidadeBoletoIds.has(cliente.modalidade_pagamento_id)) return;
-      [cliente.codigo_omie, cliente.codigo_cliente_omie].forEach(codigo => {
-        const key = String(codigo || '').trim();
-        if (key) porCodigoOmie.set(key, cliente);
-      });
-      const cnpj = somenteNumeros(cliente.cnpj_cpf);
-      if (cnpj) porCnpj.set(cnpj, cliente);
-    });
-    return { porCodigoOmie, porCnpj };
-  }, [clientes, modalidadeBoletoIds]);
 
   const cargasFiltradas = useMemo(() => {
     const termo = filtroNumeroCarga.trim().toLowerCase();
@@ -85,12 +50,12 @@ export default function EmissaoBoletosTab() {
   const encontrarClienteBoleto = (titulo, pedido) => {
     const codigos = [titulo.codigo_cliente, pedido?.codigo_cliente, pedido?.codigo_cliente_cod];
     for (const codigo of codigos) {
-      const cliente = clientesBoleto.porCodigoOmie.get(String(codigo || '').trim());
+      const cliente = clientesBoleto.porCodigoOmie?.get(String(codigo || '').trim());
       if (cliente) return cliente;
     }
     const cnpjs = [titulo.cnpj_cpf, pedido?.cnpj_cpf_cliente];
     for (const cnpj of cnpjs) {
-      const cliente = clientesBoleto.porCnpj.get(somenteNumeros(cnpj));
+      const cliente = clientesBoleto.porCnpj?.get(somenteNumeros(cnpj));
       if (cliente) return cliente;
     }
     return null;
@@ -142,7 +107,7 @@ export default function EmissaoBoletosTab() {
   };
 
   const { data: consultaTitulos, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
-    queryKey: ['titulos-emissao-boletos-carga', cargaId, clientes.length, modalidades.length],
+    queryKey: ['titulos-emissao-boletos-carga', cargaId],
     queryFn: async () => {
       if (!cargaSelecionada) return { titulos: [], totalCarga: 0, ocultosComBoleto: 0, ocultosSemModalidade: 0 };
 

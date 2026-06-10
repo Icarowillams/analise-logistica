@@ -6,298 +6,135 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Receipt, Loader2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import ListaTitulosCarga from '@/components/boletos/ListaTitulosCarga';
 import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoletos';
 import PendenciasVinculoCarga from '@/components/boletos/PendenciasVinculoCarga';
+import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
 
-const normalizar = (valor) => String(valor || '').trim().toUpperCase();
-const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
-const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
+const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
-// Página de Emissão Manual de Boletos por Carga
-// Fluxo:
-//   1. Usuário escolhe a Carga
-//   2. Sistema busca os títulos (contas a receber) dos pedidos dessa carga no Omie
-//   3. Usuário seleciona quais títulos quer gerar boleto
-//   4. Clica em "Gerar Boletos" → chama gerarBoletosOmie
+const fmt = (d) =>
+  `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
 export default function EmissaoBoletos() {
   const queryClient = useQueryClient();
   const [cargaId, setCargaId] = useState('');
   const [filtroNumeroCarga, setFiltroNumeroCarga] = useState('');
-  const [apenasComBoletosDisponiveis, setApenasComBoletosDisponiveis] = useState(false);
   const [selecionados, setSelecionados] = useState(new Set());
   const [gerando, setGerando] = useState(false);
+  const [progresso, setProgresso] = useState({ atual: 0, total: 0 });
   const [resultado, setResultado] = useState(null);
-  // Filtros dos títulos
-  const [apenasComVinculo, setApenasComVinculo] = useState(true);
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('todos');
 
-  // Modalidades e clientes para filtro por modalidade BOLETO BANCÁRIO
-  const { data: modalidades = [] } = useQuery({
-    queryKey: ['modalidades-pagamento-emissao'],
-    queryFn: () => base44.entities.ModalidadePagamento.list(),
-    refetchOnWindowFocus: false
-  });
+  const { isClienteBoleto, loadingClientes } = useModalidadeBoleto();
 
-  const { data: clientesBase = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes-modalidade-emissao'],
-    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
-    refetchOnWindowFocus: false
-  });
-
-  const modalidadeBoletoIds = useMemo(() => {
-    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
-    modalidades.forEach(m => {
-      const nome = normalizar(m.nome).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
-    });
-    return ids;
-  }, [modalidades]);
-
-  const clientesBoletoMap = useMemo(() => {
-    const porCodigoOmie = new Map();
-    const porCnpj = new Map();
-    clientesBase.forEach(cliente => {
-      if (!modalidadeBoletoIds.has(cliente.modalidade_pagamento_id)) return;
-      [cliente.codigo_omie, cliente.codigo_cliente_omie].forEach(codigo => {
-        const key = String(codigo || '').trim();
-        if (key) porCodigoOmie.set(key, cliente);
-      });
-      const cnpj = somenteNumeros(cliente.cnpj_cpf);
-      if (cnpj) porCnpj.set(cnpj, cliente);
-    });
-    return { porCodigoOmie, porCnpj };
-  }, [clientesBase, modalidadeBoletoIds]);
-
-  const isClienteBoleto = (titulo) => {
-    const codigos = [titulo.codigo_cliente];
-    for (const codigo of codigos) {
-      if (clientesBoletoMap.porCodigoOmie.has(String(codigo || '').trim())) return true;
-    }
-    if (clientesBoletoMap.porCnpj.has(somenteNumeros(titulo.cnpj_cpf))) return true;
-    return false;
-  };
-
-  // Lista as cargas (faturadas têm prioridade — são as que precisam de boleto)
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-emissao-boletos'],
     queryFn: () => base44.entities.Carga.list('-created_date', 200),
     refetchOnWindowFocus: false
   });
 
-  // Pré-carrega TODOS os títulos em aberto sem boleto (últimos 90d) — 1 chamada só.
-  // Usado para identificar quais cargas têm boletos disponíveis sem chamar o Omie por carga.
-  const { data: titulosDisponiveis = [], isLoading: loadingTitulosDisp } = useQuery({
-    queryKey: ['titulos-disponiveis-globais'],
-    queryFn: async () => {
-      const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-      const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 365 * 86400000);
-      const futuro = new Date(hoje.getTime() + 90 * 86400000);
-      let acumulados = [];
-      for (let pag = 1; pag <= 10; pag++) {
-        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de: fmt(inicio),
-          data_ate: fmt(futuro),
-          filtrar_por_data: 'V',
-          apenas_pendentes: true,
-          pagina: pag,
-          registros_por_pagina: 100
-        });
-        if (!data?.sucesso) break;
-        acumulados = acumulados.concat(data.titulos || []);
-        if (pag >= (data.total_de_paginas || 1)) break;
-      }
-      // Só interessam títulos SEM boleto ainda gerado
-      return acumulados.filter(t => !(t.numero_boleto && String(t.numero_boleto).trim()));
-    },
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000
-  });
-
-  // Índices dos títulos disponíveis (sem boleto) p/ matching fiel — mesmos critérios
-  // usados no carregamento de títulos por carga: codigo_cliente OU cnpj OU numero_documento (NF)
-  const indicesTitulos = useMemo(() => {
-    const codigos = new Set();
-    const cnpjs = new Set();
-    const nfs = new Set();
-    titulosDisponiveis.forEach(t => {
-      const cod = String(t.codigo_cliente || '').trim();
-      if (cod) codigos.add(cod);
-      const cn = String(t.cnpj_cpf || '').replace(/\D/g, '');
-      if (cn) cnpjs.add(cn);
-      const doc = String(t.numero_documento || '').replace(/\D/g, '');
-      if (doc) nfs.add(doc);
-    });
-    return { codigos, cnpjs, nfs };
-  }, [titulosDisponiveis]);
-
-  // Verifica se a carga tem ao menos 1 pedido que casa com algum título disponível.
-  // Critérios (qualquer um casa): codigo_cliente Omie, CNPJ do cliente, ou número da NF.
-  const cargaTemBoletoDisponivel = (carga) => {
-    const pedidos = carga.pedidos_omie || [];
-    return pedidos.some(p => {
-      const cod = String(p.codigo_cliente || '').trim();
-      if (cod && indicesTitulos.codigos.has(cod)) return true;
-      const cn = String(p.cnpj_cpf_cliente || '').replace(/\D/g, '');
-      if (cn && indicesTitulos.cnpjs.has(cn)) return true;
-      const nf = String(p.numero_nf || '').replace(/\D/g, '');
-      if (nf && indicesTitulos.nfs.has(nf)) return true;
-      return false;
-    });
-  };
-
-  // Só faz sentido emitir boleto para cargas FATURADAS — antes disso ainda não existe
-  // NF emitida e portanto não há título no Omie para virar boleto.
   const cargasFiltradas = useMemo(() => {
     const termo = filtroNumeroCarga.trim().toLowerCase();
     return cargas
       .filter(c => c.status_carga === 'faturada')
-      .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo))
-      .filter(c => !apenasComBoletosDisponiveis || cargaTemBoletoDisponivel(c));
-  }, [cargas, filtroNumeroCarga, apenasComBoletosDisponiveis, indicesTitulos]);
-
-  const totalCargasComBoleto = useMemo(
-    () => cargas.filter(c => c.status_carga === 'faturada' && cargaTemBoletoDisponivel(c)).length,
-    [cargas, indicesTitulos]
-  );
+      .filter(c => !termo || String(c.numero_carga || '').toLowerCase().includes(termo));
+  }, [cargas, filtroNumeroCarga]);
 
   const cargaSelecionada = useMemo(
     () => cargas.find(c => c.id === cargaId) || null,
     [cargas, cargaId]
   );
 
-  // Busca os títulos (contas a receber) no Omie e filtra pelos pedidos da carga.
-  // Como a API ListarContasReceber NÃO devolve nCodPedido no mapeamento atual,
-  // casamos por DOIS critérios (qualquer um casa):
-  //   1. CNPJ/CPF do cliente do título == CNPJ/CPF do cliente do pedido na carga
-  //   2. numero_documento do título == numero_nf do pedido na carga
-  // Buscamos os últimos 60 dias (suficiente para NFs recém-emitidas) — sem o
-  // filtro de período o Omie pode retornar dados muito antigos e estourar paginação.
+  // Busca títulos filtrando por CNPJ de cada pedido sequencialmente (evita rate-limit Omie)
   const { data: titulosResp, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
     queryKey: ['titulos-carga', cargaId],
     queryFn: async () => {
-      if (!cargaSelecionada) return { titulos: [] };
+      if (!cargaSelecionada) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
       const pedidos = cargaSelecionada.pedidos_omie || [];
-      if (pedidos.length === 0) return { titulos: [] };
+      if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
 
-      const cnpjsCarga = new Set(
-        pedidos.map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, '')).filter(Boolean)
-      );
-      const nfsCarga = new Set(
-        pedidos.map(p => String(p.numero_nf || '').replace(/\D/g, '')).filter(Boolean)
-      );
-      // codigo_cliente Omie sempre vem preenchido nos pedidos — usado como casamento principal.
-      // O Omie devolve esse campo como NÚMERO no título, então normalizamos pra string sem espaços.
-      const codigosClienteCarga = new Set(
-        pedidos.map(p => String(p.codigo_cliente || '').trim()).filter(Boolean)
-      );
-
-      // Filtramos por EMISSÃO (e não vencimento) — cargas recém-faturadas ainda não venceram.
-      // Janela: 90 dias atrás até hoje (cobre folga p/ NFs emitidas semanas antes).
-      const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       const hoje = new Date();
       const inicio = new Date(hoje.getTime() - 365 * 86400000);
       const fim = new Date(hoje.getTime() + 90 * 86400000);
+      const dataDeStr = fmt(inicio);
+      const dataAteStr = fmt(fim);
 
-      // Varre até 5 páginas (500 títulos) — suficiente p/ uma carga
+      // Busca sequencial por CNPJ — evita erro 8020 / rate limit do Omie
+      const cnpjsUnicos = [...new Set(
+        pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(c => c.length >= 11)
+      )];
+
       let acumulados = [];
-      for (let pag = 1; pag <= 5; pag++) {
+      for (const cnpj of cnpjsUnicos) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de: fmt(inicio),
-          data_ate: fmt(fim),
+          data_de: dataDeStr,
+          data_ate: dataAteStr,
           filtrar_por_data: 'V',
-          apenas_pendentes: true,
-          pagina: pag,
+          cnpj_cpf: cnpj,
+          apenas_pendentes: false,
           registros_por_pagina: 100
         });
-        if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos');
-        acumulados = acumulados.concat(data.titulos || []);
-        if (pag >= (data.total_de_paginas || 1)) break;
+        if (data?.sucesso && data.titulos?.length > 0) {
+          acumulados = acumulados.concat(data.titulos);
+        }
       }
 
-      let ocultosNaoBoleto = 0;
+      // Dedup
+      acumulados = acumulados.filter((t, i, arr) =>
+        arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
+      );
 
-      // Mapa tipo_operacao por numero_pedido para filtrar bonificações
-      const tipoOperacaoPorPedido = new Map();
-      pedidos.forEach(p => {
-        const num = String(p.numero_pedido || '').trim();
-        if (num) tipoOperacaoPorPedido.set(num, (p.tipo_operacao || p.tipo_nota || 'venda'));
-      });
+      const nfsCarga = new Set(pedidos.map(p => somenteNumeros(p.numero_nf)).filter(Boolean));
+      const codigosClienteCarga = new Set(pedidos.map(p => String(p.codigo_cliente || '').trim()).filter(Boolean));
+      const cnpjsCarga = new Set(pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(Boolean));
 
-      // 🎯 MATCHING HARDENING v2 — vincula título ao pedido específico da carga
-      //   Prioridade 1: numero_pedido_vinculado do título == numero_pedido do pedido
-      //   Prioridade 2: numero_documento do título == numero_nf do pedido (match por NF)
-      //   Prioridade 3: codigo_cliente / cnpj (fallback — só se NF do título bate com NF da carga)
-      //   Filtro: exclui títulos cujo pedido vinculado é bonificação/troca/devolução
       const tituloCasaCarga = (t) => {
-        // P1: match por numero_pedido_vinculado
         const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
         if (numPedVinc) {
-          const pedidoMatch = pedidos.find(p =>
+          const match = pedidos.find(p =>
             String(p.numero_pedido || '').trim() === numPedVinc ||
             String(p.codigo_pedido || '').trim() === numPedVinc
           );
-          if (pedidoMatch) {
-            const tipo = pedidoMatch.tipo_operacao || pedidoMatch.tipo_nota || 'venda';
-            if (tipo !== 'venda') return false; // bonificação/troca → exclui
-            return true;
+          if (match) {
+            const tipo = match.tipo_operacao || match.tipo_nota || 'venda';
+            return tipo === 'venda';
           }
         }
-
-        // P2: match por NF
-        const docT = String(t.numero_documento || '').replace(/\D/g, '');
+        const docT = somenteNumeros(t.numero_documento);
         if (docT && nfsCarga.has(docT)) {
-          // Verifica tipo do pedido dono dessa NF
-          const pedidoNf = pedidos.find(p => String(p.numero_nf || '').replace(/\D/g, '') === docT);
-          if (pedidoNf) {
-            const tipo = pedidoNf.tipo_operacao || pedidoNf.tipo_nota || 'venda';
-            if (tipo !== 'venda') return false;
-          }
+          const pedidoNf = pedidos.find(p => somenteNumeros(p.numero_nf) === docT);
+          if (pedidoNf && (pedidoNf.tipo_operacao || pedidoNf.tipo_nota || 'venda') !== 'venda') return false;
           return true;
         }
-
-        // P3: match por codigo_cliente ou CNPJ — só aceita se há NF correspondente na carga
-        const codClienteT = String(t.codigo_cliente || '').trim();
-        const cnpjT = String(t.cnpj_cpf || '').replace(/\D/g, '');
-        const clienteCasa = (codClienteT && codigosClienteCarga.has(codClienteT)) ||
-                            (cnpjT && cnpjsCarga.has(cnpjT));
+        // fallback por cliente apenas se documento da carga confere
+        const codT = String(t.codigo_cliente || '').trim();
+        const cnpjT = somenteNumeros(t.cnpj_cpf);
+        const clienteCasa = (codT && codigosClienteCarga.has(codT)) || (cnpjT && cnpjsCarga.has(cnpjT));
         if (clienteCasa && docT && nfsCarga.has(docT)) return true;
-
         return false;
       };
 
+      let ocultosNaoBoleto = 0;
       const titulos = acumulados.filter(t => {
         if (!tituloCasaCarga(t)) return false;
-        // Filtro de modalidade: só exibe se o cliente tem modalidade BOLETO BANCÁRIO
-        if (!isClienteBoleto(t)) {
-          ocultosNaoBoleto++;
-          return false;
-        }
+        if (!isClienteBoleto(t)) { ocultosNaoBoleto++; return false; }
         return true;
       });
 
-      // 🔴 PENDÊNCIAS DE VÍNCULO:
-      //  - nfSemTitulo: pedido COM numero_nf mas nenhum título com numero_documento == numero_nf
-      //  - semNf: pedido SEM numero_nf preenchido (aguardando emissão / espelho incompleto)
-      const docsTitulos = new Set(
-        acumulados.map(t => String(t.numero_documento || '').replace(/\D/g, '')).filter(Boolean)
-      );
+      // Pendências de vínculo
+      const docsTitulos = new Set(acumulados.map(t => somenteNumeros(t.numero_documento)).filter(Boolean));
       const nfSemTitulo = [];
       const semNf = [];
       pedidos.forEach(p => {
-        if (p.tipo_nota === 'D1') return; // D1 não emite NF — não é pendência de boleto
-        const nf = String(p.numero_nf || '').replace(/\D/g, '');
-        if (nf) {
-          if (!docsTitulos.has(nf)) nfSemTitulo.push(p);
-        } else {
-          semNf.push(p);
-        }
+        if (p.tipo_nota === 'D1') return;
+        const nf = somenteNumeros(p.numero_nf);
+        if (nf) { if (!docsTitulos.has(nf)) nfSemTitulo.push(p); }
+        else { semNf.push(p); }
       });
 
       return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf };
@@ -310,14 +147,10 @@ export default function EmissaoBoletos() {
   const ocultosNaoBoleto = titulosResp?.ocultosNaoBoleto || 0;
   const nfSemTitulo = titulosResp?.nfSemTitulo || [];
   const semNf = titulosResp?.semNf || [];
+
   const titulos = useMemo(() => {
     const termo = filtroCliente.trim().toLowerCase();
     return titulosTodos.filter(t => {
-      if (apenasComVinculo) {
-        const temVinc = (t.numero_documento && String(t.numero_documento).trim()) ||
-                        (t.numero_pedido_vinculado && String(t.numero_pedido_vinculado).trim());
-        if (!temVinc) return false;
-      }
       if (termo && !String(t.nome_cliente || '').toLowerCase().includes(termo)) return false;
       if (filtroStatus !== 'todos') {
         const st = String(t.status_titulo || '').toUpperCase();
@@ -327,8 +160,7 @@ export default function EmissaoBoletos() {
       }
       return true;
     });
-  }, [titulosTodos, apenasComVinculo, filtroCliente, filtroStatus]);
-  const ocultos = titulosTodos.length - titulos.length;
+  }, [titulosTodos, filtroCliente, filtroStatus]);
 
   const handleSelecionarCarga = (id) => {
     setCargaId(id);
@@ -338,34 +170,48 @@ export default function EmissaoBoletos() {
 
   const gerarBoletos = async () => {
     const codigos = Array.from(selecionados);
-    if (codigos.length === 0) {
-      toast.warning('Selecione ao menos um título para gerar boleto.');
-      return;
-    }
+    if (codigos.length === 0) { toast.warning('Selecione ao menos um título para gerar boleto.'); return; }
     if (!confirm(`Gerar ${codigos.length} boleto(s) no Omie?`)) return;
+
+    // Processa em lotes de 5 (backend é sequencial, mas split evita timeout)
+    const LOTE = 5;
+    const lotes = [];
+    for (let i = 0; i < codigos.length; i += LOTE) lotes.push(codigos.slice(i, i + LOTE));
 
     setGerando(true);
     setResultado(null);
-    try {
-      const { data } = await base44.functions.invoke('gerarBoletosOmie', {
-        titulos: codigos
-      });
-      if (data?.sucesso) {
-        setResultado(data);
-        const ok = data.sucessos || 0;
-        const erros = data.erros || 0;
-        const durSec = data.duracao_ms ? (data.duracao_ms / 1000).toFixed(1) : null;
-        if (ok > 0) toast.success(`${ok} boleto(s) gerado(s) com sucesso${durSec ? ` em ${durSec}s` : ''}`);
-        if (erros > 0) toast.error(`${erros} boleto(s) falharam — veja o detalhe abaixo`);
-        setSelecionados(new Set());
-        queryClient.invalidateQueries({ queryKey: ['titulos-carga', cargaId] });
-      } else {
-        toast.error(data?.error || 'Erro ao gerar boletos');
+    setProgresso({ atual: 0, total: codigos.length });
+
+    const todosResultados = [];
+    let totalSucessos = 0, totalErros = 0, totalSkips = 0, processados = 0;
+
+    for (const lote of lotes) {
+      try {
+        const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: lote });
+        if (data?.sucesso) {
+          todosResultados.push(...(data.resultados || []));
+          totalSucessos += data.sucessos || 0;
+          totalErros += data.erros || 0;
+          totalSkips += data.skips || 0;
+        } else {
+          lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: data?.error || 'Erro' }));
+          totalErros += lote.length;
+        }
+      } catch (e) {
+        lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: e.message }));
+        totalErros += lote.length;
       }
-    } catch (e) {
-      toast.error(e.message);
+      processados += lote.length;
+      setProgresso({ atual: processados, total: codigos.length });
     }
+
+    setResultado({ sucesso: true, total: codigos.length, processados: codigos.length, sucessos: totalSucessos, erros: totalErros, skips: totalSkips, resultados: todosResultados });
+    if (totalSucessos > 0) toast.success(`${totalSucessos} boleto(s) gerado(s)`);
+    if (totalErros > 0) toast.error(`${totalErros} boleto(s) falharam`);
+    setSelecionados(new Set());
+    queryClient.invalidateQueries({ queryKey: ['titulos-carga', cargaId] });
     setGerando(false);
+    setProgresso({ atual: 0, total: 0 });
   };
 
   return (
@@ -374,31 +220,23 @@ export default function EmissaoBoletos() {
         <Receipt className="w-8 h-8 text-amber-500" />
         <div>
           <h1 className="text-2xl font-bold">Emissão de Boletos</h1>
-          <p className="text-sm text-slate-500">
-            Selecione uma carga, escolha os títulos e gere os boletos no Omie
-          </p>
+          <p className="text-sm text-slate-500">Selecione uma carga, escolha os títulos e gere os boletos no Omie</p>
         </div>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">1. Selecione a Carga</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base">1. Selecione a Carga</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-            <div className="md:col-span-1">
+            <div>
               <Label>Filtrar por nº</Label>
-              <Input
-                placeholder="Ex: 019"
-                value={filtroNumeroCarga}
-                onChange={(e) => setFiltroNumeroCarga(e.target.value)}
-              />
+              <Input placeholder="Ex: 019" value={filtroNumeroCarga} onChange={(e) => setFiltroNumeroCarga(e.target.value)} />
             </div>
             <div className="md:col-span-2">
               <Label>Carga</Label>
               <Select value={cargaId} onValueChange={handleSelecionarCarga} disabled={loadingCargas}>
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingCargas ? 'Carregando...' : 'Escolha uma carga'} />
+                  <SelectValue placeholder={loadingCargas ? 'Carregando...' : 'Escolha uma carga faturada'} />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
                   {cargasFiltradas.map(c => (
@@ -410,24 +248,6 @@ export default function EmissaoBoletos() {
               </Select>
             </div>
           </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-              <Checkbox
-                checked={apenasComBoletosDisponiveis}
-                onCheckedChange={(v) => setApenasComBoletosDisponiveis(!!v)}
-                disabled={loadingTitulosDisp}
-              />
-              Apenas cargas com boletos disponíveis
-              {loadingTitulosDisp && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
-            </label>
-            {!loadingTitulosDisp && (
-              <Badge variant="outline" className="text-xs">
-                {totalCargasComBoleto} carga(s) com boleto pendente
-              </Badge>
-            )}
-          </div>
-
           {cargaSelecionada && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="outline" className="font-mono">Nº {cargaSelecionada.numero_carga}</Badge>
@@ -444,24 +264,45 @@ export default function EmissaoBoletos() {
       {cargaSelecionada && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2. Filtros</CardTitle>
+            <CardTitle className="text-base flex flex-wrap items-center justify-between gap-3">
+              <span>
+                2. Títulos da carga
+                {titulos.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-slate-500">
+                    ({titulos.length} encontrado{titulos.length > 1 ? 's' : ''}
+                    {selecionados.size > 0 && `, ${selecionados.size} selecionado${selecionados.size > 1 ? 's' : ''}`})
+                  </span>
+                )}
+              </span>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  onClick={gerarBoletos}
+                  disabled={gerando || selecionados.size === 0}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {gerando
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gerando {progresso.atual}/{progresso.total}...</>
+                    : <><Receipt className="w-4 h-4 mr-2" /> Gerar {selecionados.size} boleto(s)</>}
+                </Button>
+                {gerando && progresso.total > 0 && (
+                  <div className="w-48 bg-slate-200 rounded-full h-1.5">
+                    <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${(progresso.atual / progresso.total) * 100}%` }} />
+                  </div>
+                )}
+              </div>
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <div>
-                <Label>Cliente</Label>
+            <div className="flex flex-wrap gap-3 mb-3 items-end">
+              <div className="flex-1 min-w-[200px]">
+                <Label>Filtrar cliente</Label>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    className="pl-8"
-                    placeholder="Buscar por nome..."
-                    value={filtroCliente}
-                    onChange={(e) => setFiltroCliente(e.target.value)}
-                  />
+                  <Input className="pl-8" placeholder="Buscar por nome..." value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} />
                 </div>
               </div>
-              <div>
-                <Label>Status do título</Label>
+              <div className="w-48">
+                <Label>Status</Label>
                 <Select value={filtroStatus} onValueChange={setFiltroStatus}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -472,59 +313,16 @@ export default function EmissaoBoletos() {
                   </SelectContent>
                 </Select>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer h-10">
-                <Checkbox
-                  checked={apenasComVinculo}
-                  onCheckedChange={(v) => setApenasComVinculo(!!v)}
-                />
-                Apenas títulos com NF/Pedido vinculado
-              </label>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {apenasComVinculo && ocultos > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {ocultos} título(s) avulso(s) ocultado(s)
-                </Badge>
-              )}
               {ocultosNaoBoleto > 0 && (
                 <Badge className="bg-orange-100 text-orange-800 text-xs">
                   <AlertTriangle className="w-3 h-3 mr-1" />
-                  {ocultosNaoBoleto} título(s) oculto(s) — cliente sem modalidade Boleto Bancário
+                  {ocultosNaoBoleto} sem modalidade Boleto Bancário
                 </Badge>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {cargaSelecionada && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex flex-wrap items-center justify-between gap-3">
-              <span>
-                3. Títulos da carga
-                {titulos.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-slate-500">
-                    ({titulos.length} encontrado{titulos.length > 1 ? 's' : ''}
-                    {selecionados.size > 0 && `, ${selecionados.size} selecionado${selecionados.size > 1 ? 's' : ''}`})
-                  </span>
-                )}
-              </span>
-              <Button
-                onClick={gerarBoletos}
-                disabled={gerando || selecionados.size === 0}
-                className="bg-amber-600 hover:bg-amber-700 text-white"
-              >
-                {gerando
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gerando...</>
-                  : <><Receipt className="w-4 h-4 mr-2" /> Gerar {selecionados.size} boleto(s)</>}
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
             <ListaTitulosCarga
               titulos={titulos}
-              loading={loadingTitulos}
+              loading={loadingTitulos || loadingClientes}
               selecionados={selecionados}
               setSelecionados={setSelecionados}
             />
@@ -536,9 +334,7 @@ export default function EmissaoBoletos() {
         <PendenciasVinculoCarga nfSemTitulo={nfSemTitulo} semNf={semNf} />
       )}
 
-      {resultado && (
-        <ResultadoGeracaoBoletos resultado={resultado} />
-      )}
+      {resultado && <ResultadoGeracaoBoletos resultado={resultado} />}
     </div>
   );
 }
