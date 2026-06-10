@@ -326,9 +326,12 @@ Deno.serve(async (req) => {
         amostras.forEach(cnpj => console.log(`[debug] CSV cnpj "${cnpj}" → no sistema: ${!!sistemaMapCnpj[cnpj]}`));
 
         const buscarNaSistema = (row) => {
-            if (!usarCnpjComoChave && row.codigo && String(row.codigo).trim() !== '0') {
-                return sistemaMap[String(row.codigo).trim()] || null;
+            // Tenta por código primeiro
+            const cod = String(row.codigo || '').trim();
+            if (cod && cod !== '0' && sistemaMap[cod]) {
+                return sistemaMap[cod];
             }
+            // Fallback sempre por CNPJ
             const cnpj = (row.cpf_cnpj || '').replace(/\D/g, '');
             return cnpj ? (sistemaMapCnpj[cnpj] || null) : null;
         };
