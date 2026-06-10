@@ -90,6 +90,35 @@ Deno.serve(async (req) => {
                 produtoOmie.descr_detalhada = `Categoria: ${categoria.nome}`.substring(0, 5000);
             }
 
+            // Pré-consulta: injeta codigo_produto numérico para forçar UPDATE em vez de INSERT
+            // Tenta primeiro pelo codigo_omie salvo localmente, depois pelo campo "codigo" (ex: "11")
+            const omieCall = async (call, param) => {
+                const r = await fetch(OMIE_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+                });
+                return r.json();
+            };
+
+            try {
+                const codigoOmieLocal = produto.codigo_omie ? Number(produto.codigo_omie) : null;
+                const paramConsulta = codigoOmieLocal
+                    ? { codigo_produto: codigoOmieLocal }
+                    : { codigo: produtoOmie.codigo };
+                const achado = await omieCall('ConsultarProduto', paramConsulta);
+                if (achado?.codigo_produto) {
+                    produtoOmie.codigo_produto = achado.codigo_produto;
+                    if (achado.codigo_produto_integracao) {
+                        produtoOmie.codigo_produto_integracao = achado.codigo_produto_integracao;
+                    }
+                    // Persiste codigo_omie localmente para próximas exportações
+                    if (!codigoOmieLocal) {
+                        await base44.entities.Produto.update(produto.id, { codigo_omie: String(achado.codigo_produto) }).catch(() => {});
+                    }
+                }
+            } catch (_) { /* pré-consulta best-effort */ }
+
             const metodo = modo === "incluir" ? "IncluirProduto" : "UpsertProduto";
 
             try {
