@@ -84,6 +84,22 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 // Disparado pela entity automation quando LogIntegracaoOmie é criado com status='pendente'.
 // Roteia o evento para o handler correto e atualiza o log.
 
+// 🔒 RATE LIMITER GLOBAL: garante no máximo 1 chamada ConsultarPedido por vez,
+// com intervalo mínimo de 3s entre chamadas — evita "consumo indevido" quando
+// múltiplos webhooks chegam simultâneos para pedidos diferentes.
+const OMIE_CALL_MIN_INTERVAL_MS = 3000;
+let _ultimaChamadaOmieTs = 0;
+
+async function aguardarRateLimit() {
+  const agora = Date.now();
+  const espera = OMIE_CALL_MIN_INTERVAL_MS - (agora - _ultimaChamadaOmieTs);
+  if (espera > 0) {
+    console.log(`[rateLimit] aguardando ${espera}ms antes de chamar Omie`);
+    await new Promise(r => setTimeout(r, espera));
+  }
+  _ultimaChamadaOmieTs = Date.now();
+}
+
 // Mapeia etapa Omie → status local do pedido
 function mapEtapaParaStatus(etapa) {
   const e = String(etapa || '');
@@ -218,6 +234,7 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
   }
 
   const consultar = async (tentativa = 1) => {
+    await aguardarRateLimit();
     const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido', maxTentativas: 2 });
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
