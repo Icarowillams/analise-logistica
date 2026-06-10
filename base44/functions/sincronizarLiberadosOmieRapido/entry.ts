@@ -54,7 +54,17 @@ async function omieCall(base44, endpoint, param, options = {}) {
           { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh && segsSync > 0) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + segsSync * 1000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+            lastErr = data.faultstring;
+            if (i < RETRIES.length) {
+              // Se Omie pede para aguardar X segundos, respeita o tempo real
+              const segsRedundante = (() => { const m = String(data.faultstring).match(/(\d+)\s*segundo/i); return m ? Math.min(Number(m[1]) * 1000, 65000) : 0; })();
+              const espera = segsRedundante > 0 ? segsRedundante : RETRIES[i];
+              console.log(`[omieCall] Aguardando ${espera}ms antes de retentar (${data.faultstring?.slice(0, 80)})`);
+              await new Promise(r => setTimeout(r, espera));
+              continue;
+            }
+          }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -317,10 +327,10 @@ Deno.serve(async (req) => {
           });
         todosOmie.push(...lote);
         pagina += 1;
-        if (pagina <= totalPaginas) await delay(2500);
+        if (pagina <= totalPaginas) await delay(3500);
       } while (pagina <= totalPaginas);
-      // Pausa entre etapas para respeitar o rate limit do Omie
-      await delay(3000);
+      // Pausa entre etapas para respeitar o rate limit do Omie (mínimo 65s evita "consumo redundante")
+      await delay(65000);
     }
 
     // Carrega dados locais paginando em lotes de 500 para evitar rate limit do Base44 SDK.
