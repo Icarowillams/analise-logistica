@@ -363,7 +363,10 @@ Deno.serve(async (req) => {
 
     let criados = 0;
     let atualizados = 0;
-    for (const pedidoOmie of todosOmie) {
+    // Processa em lotes de 10 com delay entre lotes para não estourar o rate limit do Base44 SDK
+    const LOTE_ESCRITA = 10;
+    for (let i = 0; i < todosOmie.length; i++) {
+      const pedidoOmie = todosOmie[i];
       const fallback = mapaClienteOmieFallback.get(String(pedidoOmie.codigo_cliente)) || null;
       const registro = montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedidoLocalPorOmie, origem, fallback);
       const existente = espelhoPorCodigo.get(registro.codigo_pedido);
@@ -387,17 +390,18 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
         criados += 1;
       }
+      // Pausa a cada lote para respeitar o rate limit do Base44 SDK
+      if ((i + 1) % LOTE_ESCRITA === 0) await delay(500);
     }
 
     let removidos = 0;
     if (leituraCompleta) {
       // Só remove espelhos que sumiram do Omie quando TODAS as páginas foram lidas
-      // Se houve truncamento, não deletar — evita perder dados de páginas não lidas
-      for (const espelho of (espelhoAtual || [])) {
-        if (!codigosOmieAtuais.has(String(espelho.codigo_pedido))) {
-          await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(espelho.id);
-          removidos += 1;
-        }
+      const paraRemover = (espelhoAtual || []).filter(e => !codigosOmieAtuais.has(String(e.codigo_pedido)));
+      for (let i = 0; i < paraRemover.length; i++) {
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(paraRemover[i].id);
+        removidos += 1;
+        if ((i + 1) % LOTE_ESCRITA === 0) await delay(500);
       }
     } else {
       console.warn(`[sincronizarLiberadosOmieRapido] Leitura truncada — pulando remoção de registros do espelho para evitar perda de dados.`);
