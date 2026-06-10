@@ -55,15 +55,9 @@ async function omieCall(base44, endpoint, param, options = {}) {
           throw new Error(data.faultstring);
         }
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
-            lastErr = data.faultstring;
-            if (i < RETRIES.length) {
-              // Se Omie pede para aguardar X segundos, respeita o tempo real
-              const segsRedundante = (() => { const m = String(data.faultstring).match(/(\d+)\s*segundo/i); return m ? Math.min(Number(m[1]) * 1000, 65000) : 0; })();
-              const espera = segsRedundante > 0 ? segsRedundante : RETRIES[i];
-              console.log(`[omieCall] Aguardando ${espera}ms antes de retentar (${data.faultstring?.slice(0, 80)})`);
-              await new Promise(r => setTimeout(r, espera));
-              continue;
-            }
+            // "Consumo redundante" pede 58s de espera — impossível dentro do Deno (timeout ~30s).
+            // Lança o erro imediatamente; o caller deve tratar com .catch(() => null) para pular silenciosamente.
+            throw new Error(data.faultstring);
           }
         throw new Error(data.faultstring);
       }
@@ -284,7 +278,11 @@ Deno.serve(async (req) => {
           apenas_importado_api: 'N',
           etapa: etapaAtual
         }, { call: 'ListarPedidos', cacheMinutes: cacheMinutos, skipLog: true }).catch((e) => {
-          if (/n[ãa]o existem registros/i.test(e.message)) return null;
+          // "Não existem registros" = etapa vazia (normal). "Redundante" = rate limit, pula silenciosamente.
+          if (/n[ãa]o existem registros/i.test(e.message) || /redundante/i.test(e.message)) {
+            console.log(`[sincronizarLiberadosOmieRapido] Etapa ${etapaAtual} pág ${pagina} ignorada: ${e.message.slice(0, 80)}`);
+            return null;
+          }
           throw e;
         });
         if (!data) break;
@@ -327,10 +325,10 @@ Deno.serve(async (req) => {
           });
         todosOmie.push(...lote);
         pagina += 1;
-        if (pagina <= totalPaginas) await delay(3500);
+        if (pagina <= totalPaginas) await delay(2000);
       } while (pagina <= totalPaginas);
-      // Pausa entre etapas para respeitar o rate limit do Omie (mínimo 65s evita "consumo redundante")
-      await delay(65000);
+      // Sem delay longo entre etapas — o Deno tem timeout ~30s e não aguenta esperas de 65s.
+      // O erro "consumo redundante" é tratado como skip silencioso no omieCall.
     }
 
     // Carrega dados locais paginando em lotes de 500 para evitar rate limit do Base44 SDK.
