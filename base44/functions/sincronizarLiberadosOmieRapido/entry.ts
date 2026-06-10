@@ -383,8 +383,14 @@ Deno.serve(async (req) => {
 
     let criados = 0;
     let atualizados = 0;
-    // Processa em lotes de 10 com delay entre lotes para não estourar o rate limit do Base44 SDK
-    const LOTE_ESCRITA = 10;
+    let pulados = 0;
+    // Processa em lotes de 5 com delay de 1200ms entre lotes para não estourar o rate limit do Base44 SDK
+    const LOTE_ESCRITA = 5;
+
+    // Campos que determinam se o registro realmente mudou (ignoramos sincronizado_em)
+    const camposComparacao = ['etapa', 'status_real', 'numero_nf', 'valor_total_pedido', 'quantidade_itens', 'rota_id', 'vendedor_id', 'cliente_id'];
+    const registroMudou = (existente, novo) => camposComparacao.some(k => String(existente[k] ?? '') !== String(novo[k] ?? ''));
+
     for (let i = 0; i < todosOmie.length; i++) {
       const pedidoOmie = todosOmie[i];
       const fallback = mapaClienteOmieFallback.get(String(pedidoOmie.codigo_cliente)) || null;
@@ -395,23 +401,28 @@ Deno.serve(async (req) => {
         const registroFinal = statusProtegido && registro.status_real === 'aguardando_nf'
           ? { ...registro, status_real: existente.status_real, status_label: existente.status_label, numero_nf: existente.numero_nf || registro.numero_nf, data_faturamento: existente.data_faturamento || registro.data_faturamento }
           : registro;
-        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registroFinal);
-        if (registroFinal.status_real === 'cancelada' && registroFinal.pedido_id) {
-          await base44.asServiceRole.entities.Pedido.update(registroFinal.pedido_id, {
-            status: 'cancelado',
-            motivo_cancelamento: registroFinal.status_label || 'Cancelado no Omie',
-            data_cancelamento: new Date().toISOString(),
-            cancelado_por: 'sistema',
-            cancelado_por_nome: 'Sincronização Omie'
-          }).catch(() => {});
+        // 🔑 Só atualiza se algo realmente mudou — evita centenas de writes desnecessários
+        if (!registroMudou(existente, registroFinal)) {
+          pulados += 1;
+        } else {
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente.id, registroFinal);
+          if (registroFinal.status_real === 'cancelada' && registroFinal.pedido_id) {
+            await base44.asServiceRole.entities.Pedido.update(registroFinal.pedido_id, {
+              status: 'cancelado',
+              motivo_cancelamento: registroFinal.status_label || 'Cancelado no Omie',
+              data_cancelamento: new Date().toISOString(),
+              cancelado_por: 'sistema',
+              cancelado_por_nome: 'Sincronização Omie'
+            }).catch(() => {});
+          }
+          atualizados += 1;
         }
-        atualizados += 1;
       } else {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
         criados += 1;
       }
       // Pausa a cada lote para respeitar o rate limit do Base44 SDK
-      if ((i + 1) % LOTE_ESCRITA === 0) await delay(500);
+      if ((i + 1) % LOTE_ESCRITA === 0) await delay(1200);
     }
 
     let removidos = 0;
@@ -438,7 +449,7 @@ Deno.serve(async (req) => {
     }).catch(() => {});
 
     await liberarLock();
-    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
+    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, pulados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
   } catch (error) {
     // Libera o lock em caso de erro para não travar a próxima sincronização
     try {
