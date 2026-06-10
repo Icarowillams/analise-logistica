@@ -114,6 +114,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const recarregarAbaAposAcao = async (resultado = null) => {
     setSelectedIds([]);
     if (resultado) setBatchResult(resultado);
+    // Aguarda 1.5s para dar tempo do backend atualizar o espelho PedidoLiberadoOmie
+    // antes de recarregar os dados na tela
+    await new Promise(r => setTimeout(r, 1500));
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
       queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
@@ -219,8 +222,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
           status_label: p.status_label,
           codigo_pedido: p.codigo_pedido
         };
-        if (p.codigo_pedido) map[String(p.codigo_pedido)] = info;
-        if (p.numero_pedido) map[`np:${p.numero_pedido}`] = info;
+        // Indexar por MÚLTIPLAS formas do codigo_pedido para evitar falhas de cruzamento:
+        // O código pode estar como string "123456", número 123456, ou com decimais "123456.0"
+        if (p.codigo_pedido) {
+          const raw = String(p.codigo_pedido).trim();
+          map[raw] = info;
+          // Também indexar como inteiro puro (sem decimais) para match robusto
+          const asInt = String(parseInt(raw, 10));
+          if (asInt !== 'NaN' && asInt !== raw) map[asInt] = info;
+        }
+        if (p.numero_pedido) map[`np:${String(p.numero_pedido).trim()}`] = info;
       });
       return map;
     },
@@ -308,10 +319,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
       const vendedorCliente = cliente?.vendedor_id ? vendedoresMap[cliente.vendedor_id] : null;
       const funcionarioEnvio = vendedores.find(v => v.email?.toLowerCase() === pedido.created_by?.toLowerCase());
 
-      // Cruzamento com etapa real do Omie
+      // Cruzamento com etapa real do Omie — tenta múltiplas formas do código
       let omieInfo = null;
-      if (pedido.omie_codigo_pedido) omieInfo = omieMap[String(pedido.omie_codigo_pedido)];
-      if (!omieInfo && pedido.numero_pedido) omieInfo = omieMap[`np:${pedido.numero_pedido}`];
+      if (pedido.omie_codigo_pedido) {
+        const rawCode = String(pedido.omie_codigo_pedido).trim();
+        omieInfo = omieMap[rawCode];
+        // Fallback: tentar como inteiro puro (ex: "123456.0" → "123456")
+        if (!omieInfo) {
+          const asInt = String(parseInt(rawCode, 10));
+          if (asInt !== 'NaN') omieInfo = omieMap[asInt];
+        }
+      }
+      if (!omieInfo && pedido.numero_pedido) {
+        omieInfo = omieMap[`np:${String(pedido.numero_pedido).trim()}`];
+      }
 
       return {
         ...pedido,
@@ -479,16 +500,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
-  // Atualizar: recarrega dados locais (espelho já é mantido em tempo real pelos webhooks)
+  // Atualizar: sincroniza espelho com Omie e recarrega dados locais
   const syncEAtualizar = async () => {
     setSyncLoading(true);
     try {
+      // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
+      await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos' }).catch(e => {
+        console.warn('[GerenciarPedidos] sync espelho falhou:', e?.message);
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
         queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
         queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
       ]);
-      toast.success('Dados atualizados');
+      toast.success('Dados sincronizados com o Omie');
     } finally {
       setSyncLoading(false);
     }

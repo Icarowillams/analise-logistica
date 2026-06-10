@@ -76,11 +76,21 @@ export default function PedidoCellRenderer({ col, p }) {
   }
 
   if (col.id === 'etapa_omie') {
+    // Pedidos que nunca vão ao Omie (D1 ou troca)
+    if (!p.omie_codigo_pedido && !p.omie_enviado) {
+      const isD1 = p.modelo_nota === 'd1';
+      const isTroca = p.tipo === 'troca';
+      if (isD1 || isTroca) {
+        return <span className="block truncate text-slate-300 text-[10px]">{isD1 ? 'D1' : 'Troca'}</span>;
+      }
+      return <span className="block truncate text-slate-300 text-[10px]">—</span>;
+    }
     if (!p.omie_codigo_pedido) {
       return <span className="block truncate text-slate-300 text-[10px]">—</span>;
     }
     if (!p.omie_etapa_real) {
-      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-[10px]">Sincronizando…</Badge>;
+      // Pedido tem código Omie mas não está no espelho — pode ser um problema real
+      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-[10px]" title="Pedido não encontrado no espelho. Clique Atualizar para sincronizar.">Sem espelho</Badge>;
     }
     const e = ETAPA_OMIE_LABELS[p.omie_etapa_real];
     if (!e) return <span className="block truncate text-[10px]">{p.omie_etapa_real}</span>;

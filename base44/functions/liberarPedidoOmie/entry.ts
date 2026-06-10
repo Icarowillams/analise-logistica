@@ -206,12 +206,32 @@ Deno.serve(async (req) => {
           const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
             { codigo_pedido: String(codigoPedidoOmie) }
           ).catch(() => []);
-          for (const esp of espelhos) {
-            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+          if (espelhos.length > 0) {
+            for (const esp of espelhos) {
+              await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+                etapa: '20',
+                sincronizado_em: new Date().toISOString(),
+                origem_sync: 'liberacao'
+              }).catch(e => console.warn('[liberarPedidoOmie] Falha ao atualizar espelho:', e.message));
+            }
+          } else {
+            // Espelho não existe — criar registro para que a coluna "Etapa Omie" funcione
+            console.log(`[liberarPedidoOmie] Espelho não encontrado para codigo_pedido ${codigoPedidoOmie}, criando...`);
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.create({
+              codigo_pedido: String(codigoPedidoOmie),
+              numero_pedido: pedido.numero_pedido || '',
               etapa: '20',
+              codigo_cliente: pedido.cliente_id || '',
+              nome_cliente: pedido.cliente_nome || '',
+              nome_fantasia: pedido.cliente_nome_fantasia || pedido.cliente_nome || '',
+              cidade: pedido.cliente_cidade || '',
+              vendedor_nome: pedido.vendedor_nome || '',
+              valor_total_pedido: pedido.valor_total || 0,
+              quantidade_itens: pedido.total_itens || 0,
+              pedido_id: pedido.id,
               sincronizado_em: new Date().toISOString(),
               origem_sync: 'liberacao'
-            }).catch(e => console.warn('[liberarPedidoOmie] Falha ao atualizar espelho:', e.message));
+            }).catch(e => console.warn('[liberarPedidoOmie] Falha ao criar espelho:', e.message));
           }
         }
 
