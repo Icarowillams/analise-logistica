@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
   Upload, Loader2, CheckCircle, AlertTriangle, Search,
-  FileSpreadsheet, Database, ArrowLeftRight, XCircle, Play
+  FileSpreadsheet, Database, ArrowLeftRight, XCircle, Play, Cloud
 } from 'lucide-react';
 import ComparacaoLadoALado from './ComparacaoLadoALado';
 import ListaClientesFaltantes from './ListaClientesFaltantes';
@@ -301,8 +301,28 @@ export default function CompararCSVBase44() {
             <ComparacaoLadoALado items={comparacao.lista_diferentes} busca={busca} />
           )}
 
-          {/* Não encontrados no Base44 (precisam ser criados) */}
-          {comparacao.lista_nao_encontrados && comparacao.lista_nao_encontrados.length > 0 && (
+          {/* Não encontrados no Base44 NEM no Omie */}
+          {comparacao.lista_nao_encontrados_nem_omie && comparacao.lista_nao_encontrados_nem_omie.length > 0 && (
+            <ListaClientesFaltantes
+              titulo="Não encontrados no Base44 NEM no Omie (serão criados)"
+              items={comparacao.lista_nao_encontrados_nem_omie}
+              cor="purple"
+              icon={<Database className="w-4 h-4 text-purple-500" />}
+            />
+          )}
+
+          {/* No CSV, não está no Base44 mas já existe no Omie */}
+          {comparacao.lista_nao_encontrados_mas_no_omie && comparacao.lista_nao_encontrados_mas_no_omie.length > 0 && (
+            <ListaClientesFaltantes
+              titulo="Não está no Base44, mas já existe no Omie (importar)"
+              items={comparacao.lista_nao_encontrados_mas_no_omie}
+              cor="blue"
+              icon={<Cloud className="w-4 h-4 text-blue-500" />}
+            />
+          )}
+
+          {/* Fallback: lista original se não vier a separação */}
+          {!comparacao.lista_nao_encontrados_nem_omie && comparacao.lista_nao_encontrados && comparacao.lista_nao_encontrados.length > 0 && (
             <ListaClientesFaltantes
               titulo="Não encontrados no Base44 (serão criados)"
               items={comparacao.lista_nao_encontrados}

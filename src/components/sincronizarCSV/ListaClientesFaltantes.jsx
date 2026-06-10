@@ -10,6 +10,7 @@ export default function ListaClientesFaltantes({ titulo, items, cor, icon }) {
   const corClasses = {
     purple: { badge: 'bg-purple-500', header: 'border-purple-200', row: 'hover:bg-purple-50' },
     orange: { badge: 'bg-orange-500', header: 'border-orange-200', row: 'hover:bg-orange-50' },
+    blue: { badge: 'bg-blue-500', header: 'border-blue-200', row: 'hover:bg-blue-50' },
   };
   const cores = corClasses[cor] || corClasses.purple;
 

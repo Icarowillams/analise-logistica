@@ -142,8 +142,20 @@ Deno.serve(async (req) => {
         };
 
         if (etapa === 'analise' || !etapa) {
+            // Buscar CNPJs que existem no Omie a partir dos clientes do Base44 que têm codigo_omie
+            // Isso nos diz quais CNPJs já foram sincronizados com o Omie
+            const cnpjsNoOmie = new Set();
+            clientesBase44.forEach(c => {
+                if (c.codigo_omie || c.codigo_cliente_omie) {
+                    const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+                    if (cnpj) cnpjsNoOmie.add(cnpj);
+                }
+            });
+
             // Comparar campo a campo
-            const naoEncontrados = []; // No CSV mas não no Base44 — precisam ser criados
+            const naoEncontradosNemOmie = []; // No CSV mas NÃO no Base44 NEM no Omie
+            const naoEncontradosMasNoOmie = []; // No CSV, NÃO no Base44, mas EXISTE no Omie
+            const naoEncontrados = []; // Compatibilidade: todos não encontrados no Base44
             const diferentes = []; // Existem mas com dados diferentes
             let iguais = 0;
             const soNoBase44 = []; // No Base44 mas não no CSV
@@ -152,13 +164,20 @@ Deno.serve(async (req) => {
                 const cod = String(row.codigo).trim();
                 const existente = buscarNoBase44(row);
                 if (!existente) {
-                    naoEncontrados.push({
+                    const cnpjRow = (row.cpf_cnpj || '').replace(/\D/g, '');
+                    const item = {
                         codigo: cod,
                         razao_social: row.razao_social || '',
                         nome_fantasia: row.nome_fantasia || '',
                         cpf_cnpj: row.cpf_cnpj || '',
                         status: (row.status || '').toLowerCase(),
-                    });
+                    };
+                    naoEncontrados.push(item);
+                    if (cnpjRow && cnpjsNoOmie.has(cnpjRow)) {
+                        naoEncontradosMasNoOmie.push(item);
+                    } else {
+                        naoEncontradosNemOmie.push(item);
+                    }
                     continue;
                 }
 
@@ -230,6 +249,11 @@ Deno.serve(async (req) => {
                 lista_nao_encontrados: naoEncontrados,
                 lista_diferentes: diferentes.slice(0, 500),
                 lista_so_base44: soNoBase44.slice(0, 500),
+                // Comparação tripla CSV × Base44 × Omie
+                nao_encontrados_nem_omie: naoEncontradosNemOmie.length,
+                nao_encontrados_mas_no_omie: naoEncontradosMasNoOmie.length,
+                lista_nao_encontrados_nem_omie: naoEncontradosNemOmie,
+                lista_nao_encontrados_mas_no_omie: naoEncontradosMasNoOmie,
             });
         }
 
