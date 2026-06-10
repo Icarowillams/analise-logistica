@@ -207,14 +207,12 @@ Deno.serve(async (req) => {
         base44.asServiceRole.entities.Carga.list('-updated_date', 1000).catch(() => []),
         base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 2000).catch(() => [])
       ]);
-      const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'processando']);
+      const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'processando', 'nao_iniciado']);
       const cargaIdsComFilaQualquer = new Set(filaItens.map(i => i.carga_id));
 
       const cargasParaAtualizar = todasCargas.filter(c => {
-        // Sempre recalcula cargas em status intermediário ativo
-        if (STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return true;
-        // Para nao_iniciado: recalcula APENAS se tem itens na fila — evita recalcular cargas virgens
-        if (c.processamento_omie_status === 'nao_iniciado') return cargaIdsComFilaQualquer.has(c.id);
+        // Recalcula cargas em status intermediário ativo QUE tenham itens na fila
+        if (STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return cargaIdsComFilaQualquer.has(c.id);
         return false;
       });
 

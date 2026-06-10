@@ -239,7 +239,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           }));
           await base44.entities.FilaCargaOmie.bulkCreate(itensFila);
           await base44.entities.Carga.update(carga.id, {
-            processamento_omie_status: 'nao_iniciado',
+            processamento_omie_status: 'em_andamento',
             processamento_omie_total: itensFila.length
           });
           // PROCESSAMENTO IMEDIATO: dispara a fila agora (fire-and-forget).
@@ -249,7 +249,7 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
           console.warn('Falha ao enfileirar processamento Omie:', e.message);
           // Garante que a carga não fique exibindo "Aguardando fila" sem itens na fila.
           await base44.entities.Carga.update(carga.id, {
-            processamento_omie_status: 'nao_iniciado',
+            processamento_omie_status: 'erro',
             processamento_omie_total: 0
           }).catch(() => {});
           toast.error(
