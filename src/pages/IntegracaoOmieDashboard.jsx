@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Switch } from '@/components/ui/switch';
 import SaudeIntegracaoOmie from '@/components/integracao/SaudeIntegracaoOmie';
 import AlertaBloqueioOmie from '@/components/integracao/AlertaBloqueioOmie';
+import UsuariosAtivos from '@/components/integracao/UsuariosAtivos';
 
 export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
@@ -221,7 +222,14 @@ export default function IntegracaoOmieDashboard() {
         </Card>
       )}
 
-      <SaudeIntegracaoOmie />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <SaudeIntegracaoOmie />
+        </div>
+        <div>
+          <UsuariosAtivos />
+        </div>
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
