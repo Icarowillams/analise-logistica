@@ -199,7 +199,7 @@ function buildClienteData(row, lookups) {
         cep: (row.cep || '').replace(/\D/g, ''),
         latitude: parseLat(row.latitude),
         longitude: parseLng(row.longitude),
-        status: (row.status || '').toLowerCase() === 'ativo' ? 'ativo' : 'inativo',
+        status: row.status ? ((row.status || '').toLowerCase() === 'ativo' ? 'ativo' : 'inativo') : undefined,
         email: 'nfe@paoemel.com.br',
         plano_pagamento_id: planoNorm ? (planoMap[normalizeStr(planoNorm)] || '') : '',
         tabela_id: findInMap(row.tabela_preco, tabelaMap),
@@ -251,6 +251,8 @@ const CAMPOS_COMPARAR = [
 
 function clienteDiferente(novo, existente) {
     for (const campo of CAMPOS_COMPARAR) {
+        // Se o campo não foi definido no novo (ex: status vazio no CSV), ignora a comparação
+        if (novo[campo] === undefined) continue;
         if ((novo[campo] || '').toString().trim() !== (existente[campo] || '').toString().trim()) {
             return true;
         }
@@ -380,7 +382,9 @@ Deno.serve(async (req) => {
                 if (!existente) continue;
                 const novo = buildClienteData(r, lookups);
                 if (clienteDiferente(novo, existente)) {
-                    paraAtualizar.push({ id: existente.id, ...novo });
+                    // Remove campos undefined para não sobrescrever valores válidos no Base44
+                    const dadosLimpos = Object.fromEntries(Object.entries(novo).filter(([, v]) => v !== undefined));
+                    paraAtualizar.push({ id: existente.id, ...dadosLimpos });
                 }
             }
 
