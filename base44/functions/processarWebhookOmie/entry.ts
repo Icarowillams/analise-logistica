@@ -1073,10 +1073,14 @@ Deno.serve(async (req) => {
     }
 
     // Marca log como processado
+    // ⚠️ mensagem_erro SÓ deve ser preenchida em casos de erro real —
+    // nunca em sucessos/skips (causaria falso positivo vermelho na UI).
+    const statusFinal = resultado.acao === 'ignorado' ? 'ignorado' : 'processado';
+    const mensagemErroFinal = statusFinal === 'ignorado' ? (resultado.motivo || null) : null;
     await base44.asServiceRole.entities.LogIntegracaoOmie.update(entityId, {
-      status: resultado.acao === 'ignorado' ? 'ignorado' : 'processado',
+      status: statusFinal,
       webhook_processado_em: new Date().toISOString(),
-      mensagem_erro: resultado.motivo || null,
+      mensagem_erro: mensagemErroFinal,
       payload_enviado: JSON.stringify(resultado).slice(0, 3000)
     });
 
