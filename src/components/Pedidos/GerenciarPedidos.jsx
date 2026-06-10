@@ -512,6 +512,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Atualizar: sincroniza espelho com Omie e recarrega dados locais
   const syncEAtualizar = async () => {
     setSyncLoading(true);
+    const timeoutId = setTimeout(() => {
+      setSyncLoading(false);
+      toast.warning('Sincronização em andamento no servidor — dados locais recarregados em breve.');
+    }, 25000);
     try {
       // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
       const res = await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos', forcar_sem_cache: true }).catch(e => {
@@ -537,6 +541,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         toast.warning(`Sincronização falhou: ${motivo}`);
       }
     } finally {
+      clearTimeout(timeoutId);
       setSyncLoading(false);
     }
   };
