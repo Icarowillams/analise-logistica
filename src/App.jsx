@@ -40,6 +40,7 @@ import EmissaoBoletos from './pages/EmissaoBoletos.jsx';
 import ConfiguracaoOmie from './pages/ConfiguracaoOmie.jsx';
 import CommitsGithub from './pages/CommitsGithub.jsx';
 import CorrecaoManual from './pages/CorrecaoManual.jsx';
+import ComparacaoPedidosOmie from './pages/ComparacaoPedidosOmie.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -140,6 +141,7 @@ const AuthenticatedApp = () => {
       <Route path="/ConfiguracaoOmie" element={<LayoutWrapper currentPageName="ConfiguracaoOmie"><ConfiguracaoOmie /></LayoutWrapper>} />
       <Route path="/CommitsGithub" element={<LayoutWrapper currentPageName="CommitsGithub"><CommitsGithub /></LayoutWrapper>} />
       <Route path="/correcao-manual" element={<LayoutWrapper currentPageName="CorrecaoManual"><CorrecaoManual /></LayoutWrapper>} />
+      <Route path="/ComparacaoPedidosOmie" element={<LayoutWrapper currentPageName="ComparacaoPedidosOmie"><ComparacaoPedidosOmie /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
