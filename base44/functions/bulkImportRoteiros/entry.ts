@@ -12,9 +12,15 @@ Deno.serve(async (req) => {
 
     const existentes = await base44.entities.Roteiro.list('-created_date', 5000);
 
+    // Normaliza o dia para comparação robusta (ignora acentos e sufixo "-feira")
+    const normalizarDia = (d) => String(d || '').toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/-feira$/, '');
+
     let criados = 0, atualizados = 0;
     for (const r of roteirosNovos) {
-      const existente = existentes.find(x => x.vendedor_id === r.vendedor_id && x.dia_semana === r.dia_semana);
+      const diaNorm = normalizarDia(r.dia_semana);
+      const existente = existentes.find(x => x.vendedor_id === r.vendedor_id && normalizarDia(x.dia_semana) === diaNorm);
       if (existente) {
         await base44.entities.Roteiro.update(existente.id, {
           clientes_ids: r.clientes_ids,
@@ -25,6 +31,7 @@ Deno.serve(async (req) => {
       } else {
         await base44.entities.Roteiro.create(r);
         criados++;
+        existentes.push(r); // evita criar duplicata dentro do mesmo lote
       }
     }
 
