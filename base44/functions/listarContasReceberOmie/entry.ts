@@ -92,8 +92,18 @@ Deno.serve(async (req) => {
       cnpj_cpf,
       pagina = 1,
       registros_por_pagina = 100,
-      apenas_pendentes = true
+      apenas_pendentes = true,
+      bypassCache = false,
+      cacheMinutes
     } = body;
+
+    // bypassCache (ou cacheMinutes: 0) força dados frescos — útil logo após emitir boletos,
+    // quando o cache de clientes/Omie ainda reflete boleto.cGerado = "N".
+    const _cacheMin = typeof cacheMinutes === 'number' ? cacheMinutes : (bypassCache ? 0 : null);
+    if (_cacheMin === 0) {
+      _clientesCache = null;
+      _credsCache = null;
+    }
 
     const param: any = {
       pagina,

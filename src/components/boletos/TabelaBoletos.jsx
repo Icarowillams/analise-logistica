@@ -30,14 +30,14 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
     );
   }, [titulos, filtro]);
 
-  // Sem boleto gerado no Omie — não pode imprimir
-  const semBoleto = (t) => !t.boleto_gerado && !t.numero_boleto;
+  // Não pré-bloqueia pelo cache de boleto (boleto_gerado/numero_boleto pode estar defasado).
+  // baixarPdfBoletoOmie consulta o Omie em tempo real (ObterBoleto) e só falha se realmente não houver link.
+  const semBoleto = (t) => false;
 
-  // Selecionável para impressão somente se tiver boleto gerado e não estiver cancelado/liquidado
+  // Elegível para impressão: qualquer título não cancelado/liquidado pode ser tentado.
   const isElegivel = (t) => {
     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
     if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO') return false;
-    if (semBoleto(t)) return false;
     return true;
   };
 
@@ -135,21 +135,25 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                   {t.numero_boleto ? t.numero_boleto : '-'}
                 </td>
                 <td className="p-2 text-center">
-                  {(t.boleto_gerado || t.numero_boleto) ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => verBoleto(t)}
-                      disabled={verLoading === t.codigo_lancamento}
-                      title="Abrir boleto em nova aba"
-                    >
-                      {verLoading === t.codigo_lancamento
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <><Eye className="w-4 h-4 mr-1" />Ver</>}
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-slate-400">Sem boleto</span>
-                  )}
+                  {(() => {
+                    const st = String(t.status_titulo || 'ABERTO').toUpperCase();
+                    if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO') {
+                      return <span className="text-xs text-slate-400">-</span>;
+                    }
+                    return (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => verBoleto(t)}
+                        disabled={verLoading === t.codigo_lancamento}
+                        title="Abrir boleto em nova aba"
+                      >
+                        {verLoading === t.codigo_lancamento
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <><Eye className="w-4 h-4 mr-1" />Ver</>}
+                      </Button>
+                    );
+                  })()}
                 </td>
               </tr>
             ))}

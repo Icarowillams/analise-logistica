@@ -150,7 +150,8 @@ export default function FiltrosBoletos({ onResultado }) {
             filtrar_por_data: filtrosBusca.filtrarPor || 'E',
             cnpj_cpf: cpfCnpj,
             apenas_pendentes: false,
-            registros_por_pagina: 100
+            registros_por_pagina: 100,
+            bypassCache: true
           });
           if (data?.sucesso && data.titulos?.length > 0) {
             acumulados = acumulados.concat(data.titulos);
@@ -172,7 +173,8 @@ export default function FiltrosBoletos({ onResultado }) {
           filtrar_por_data: filtrosBusca.filtrarPor || filtrarPor,
           cnpj_cpf: cnpj || undefined,
           apenas_pendentes: false,
-          registros_por_pagina: 200
+          registros_por_pagina: 200,
+          bypassCache: true
         });
         if (!data?.sucesso) {
           toast.error(data?.error || 'Erro ao buscar');
