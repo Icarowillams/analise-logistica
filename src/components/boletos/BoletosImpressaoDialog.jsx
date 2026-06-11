@@ -6,7 +6,8 @@ import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
-const BATCH_SIZE = 4; // PDFs baixados em paralelo
+const DELAY_MS = 700; // intervalo entre chamadas (anti-concorrência Omie)
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const base64ToUint8Array = (b64) => {
   const bin = atob(b64);
@@ -39,27 +40,18 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     return base64ToUint8Array(data.pdf_base64);
   };
 
-  // Processa lote em paralelo
-  const processarLote = async (lote, onProgress) => {
-    const resultados = await Promise.allSettled(lote.map(t => baixarPdf(t)));
-    const saida = [];
-    resultados.forEach((r, idx) => {
-      if (r.status === 'fulfilled') {
-        saida.push({ titulo: lote[idx], bytes: r.value, ok: true });
-      } else {
-        const msg = r.reason?.message || 'Erro';
-        saida.push({ titulo: lote[idx], ok: false, erro: msg });
-        const docRef = lote[idx].numero_documento || lote[idx].codigo_lancamento;
-        const naoGerado = /404|n[ãa]o (foi )?gerado|n[ãa]o dispon[íi]vel|sem boleto|cLinkBoleto|status code 404/i.test(msg);
-        if (naoGerado) {
-          toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
-        } else {
-          toast.error(`Boleto ${docRef}: ${msg}`);
-        }
+  // Baixa 1 boleto com retry leve em caso de erro de concorrência do Omie.
+  const baixarComRetry = async (titulo) => {
+    try {
+      return await baixarPdf(titulo);
+    } catch (e) {
+      const concorrencia = /redundante|j[áa] existe uma requisi|1880|aguarde/i.test(e.message || '');
+      if (concorrencia) {
+        await sleep(1500);
+        return await baixarPdf(titulo); // tenta mais uma vez
       }
-      onProgress();
-    });
-    return saida;
+      throw e;
+    }
   };
 
   const gerarPdf = async () => {
@@ -68,24 +60,31 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     let feito = 0;
     let erros = 0;
     setProgresso({ feito: 0, total: titulos.length, erros: 0 });
-    const onProgress = () => { feito++; setProgresso(p => ({ ...p, feito })); };
 
-    try {
-      // Tanto 'agrupado' quanto 'individual': 1 PDF por boleto.
-      for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
-        const lote = titulos.slice(i, i + BATCH_SIZE);
-        const resultados = await processarLote(lote, onProgress);
-        for (const r of resultados) {
-          if (!r.ok) { erros++; continue; }
-          const nome = `boleto_${r.titulo.numero_documento || r.titulo.codigo_lancamento}.pdf`;
-          downloadBlob(new Blob([r.bytes], { type: 'application/pdf' }), nome);
+    // Sequencial (1 por vez) com delay — evita bloqueio anti-concorrência do Omie.
+    for (let i = 0; i < titulos.length; i++) {
+      const titulo = titulos[i];
+      const docRef = titulo.numero_documento || titulo.codigo_lancamento;
+      try {
+        const bytes = await baixarComRetry(titulo);
+        downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boleto_${docRef}.pdf`);
+      } catch (e) {
+        erros++;
+        const msg = e.message || 'Erro';
+        const naoGerado = /404|n[ãa]o (foi )?gerado|n[ãa]o dispon[íi]vel|sem boleto|cLinkBoleto|status code 404/i.test(msg);
+        if (naoGerado) {
+          toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
+        } else {
+          toast.error(`Boleto ${docRef}: ${msg}`);
         }
       }
-      toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
-      onOpenChange(false);
-    } catch (e) {
-      toast.error(e.message);
+      feito++;
+      setProgresso(p => ({ ...p, feito, erros }));
+      if (i < titulos.length - 1) await sleep(DELAY_MS);
     }
+
+    toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
+    if (erros === 0) onOpenChange(false);
     setCarregando(false);
     setProgresso({ feito: 0, total: 0, erros: 0 });
   };
@@ -126,7 +125,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <p className="text-xs text-slate-500">
           {titulos.length > 1
-            ? `Downloads em lotes de ${BATCH_SIZE} — mais rápido que individual.`
+            ? 'Baixando sequencialmente para evitar bloqueio do Omie — um pouco mais lento, porém confiável.'
             : 'O PDF será baixado diretamente, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
