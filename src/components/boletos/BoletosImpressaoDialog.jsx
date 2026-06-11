@@ -50,7 +50,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
         const msg = r.reason?.message || 'Erro';
         saida.push({ titulo: lote[idx], ok: false, erro: msg });
         const docRef = lote[idx].numero_documento || lote[idx].codigo_lancamento;
-        const naoGerado = /404|não disponível|nao disponivel|status code 404/i.test(msg);
+        const naoGerado = /404|n[ãa]o (foi )?gerado|n[ãa]o dispon[íi]vel|sem boleto|cLinkBoleto|status code 404/i.test(msg);
         if (naoGerado) {
           toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
         } else {
