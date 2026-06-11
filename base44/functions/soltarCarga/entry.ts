@@ -51,6 +51,22 @@ Deno.serve(async (req) => {
           });
           pedidosLiberados++;
         }
+
+        // Atualiza imediatamente o espelho PedidoLiberadoOmie de volta para etapa Liberados (20),
+        // para o pedido reaparecer na Montagem de Carga sem esperar a reconciliação do Omie.
+        if (p.codigo_pedido) {
+          const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+            { codigo_pedido: String(p.codigo_pedido) }, '-updated_date', 1
+          ).catch(() => []);
+          if (espelhos?.[0]) {
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+              etapa: '20',
+              status_label: 'Liberado',
+              origem_sync: 'reconciliacao',
+              sincronizado_em: new Date().toISOString()
+            }).catch((e) => console.warn('Falha ao atualizar espelho:', e.message));
+          }
+        }
       } catch (e) { console.warn('Falha ao liberar pedido Omie:', e.message); }
     }
 
