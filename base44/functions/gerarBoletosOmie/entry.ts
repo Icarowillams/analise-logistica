@@ -1,4 +1,4 @@
-// deploy v2 — 2026-06-06 — processamento em lotes paralelos (3 simultâneos) + delay reduzido
+// deploy v3 — 2026-06-11 — 100% sequencial + delays anti-8020/CÓDIGO 6 + retry espaçado de concorrência
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
@@ -74,6 +74,30 @@ const OMIE_URL_CR = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 // GerarBoleto Omie só aceita 1 requisição simultânea (erro 8020 se paralelo)
 const DELAY_ENTRE_BOLETOS_MS = 1200; // delay entre cada boleto (sequencial)
+const DELAY_ENTRE_CR_MS = 800; // delay entre chamadas ListarContasReceber por pedido
+
+// Detecta erros de concorrência/redundância do Omie (8020 / CÓDIGO 6)
+function isConcorrenciaOmie(msg: string): boolean {
+  const m = String(msg || '').toLowerCase();
+  return m.includes('8020')
+    || m.includes('já existe uma requisição') || m.includes('ja existe uma requisicao')
+    || m.includes('sendo executada') || m.includes('em execução') || m.includes('em execucao')
+    || m.includes('redundante') || m.includes('aguarde')
+    || m.includes('código 6') || m.includes('codigo 6');
+}
+
+// Wrapper anti-8020: tenta a chamada Omie; se vier erro de concorrência, espera 3s e tenta +1 vez.
+async function omieCallAntiConcorrencia(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  try {
+    return await omieCall(base44, endpoint, param, options);
+  } catch (e: any) {
+    if (isConcorrenciaOmie(e.message)) {
+      await new Promise(r => setTimeout(r, 3000));
+      return await omieCall(base44, endpoint, param, options);
+    }
+    throw e;
+  }
+}
 
 
 async function listarTitulosDoPedido(base44: any, codigoPedido: string | number) {
@@ -100,7 +124,7 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
 
   let acumulados: any[] = [];
   for (let pag = 1; pag <= 5; pag++) {
-    const data = await omieCall(base44, 'financas/contareceber/', {
+    const data = await omieCallAntiConcorrencia(base44, 'financas/contareceber/', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
       filtrar_por_data_de: fmt(inicio), filtrar_por_data_ate: fmt(futuro),
       filtrar_por_cpf_cnpj: cnpj, filtrar_apenas_titulos_em_aberto: 'S'
@@ -108,7 +132,7 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
     const lista = data?.conta_receber_cadastro || [];
     acumulados.push(...lista);
     if (pag >= (data?.total_de_paginas || 1)) break;
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, DELAY_ENTRE_CR_MS));
   }
 
   if (numNf) {
@@ -130,7 +154,7 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
 
   try {
     const param = { nCodTitulo: Number(codigo) };
-    const data = await omieCall(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
+    const data = await omieCallAntiConcorrencia(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
 
     const codStatus = String(data.cCodStatus || '0');
     if (codStatus !== '0' && codStatus !== '') {
@@ -189,9 +213,12 @@ Deno.serve(async (req) => {
     let titulosParaGerar: any[] = [];
     if (origem === 'auto') {
       const codigosPedido = pedidos.map((p: any) => p.codigo_pedido || p).filter(Boolean);
-      for (const codigoPedido of codigosPedido) {
+      for (let ci = 0; ci < codigosPedido.length; ci++) {
+        const codigoPedido = codigosPedido[ci];
         const titulosPedido = await listarTitulosDoPedido(base44, codigoPedido);
         titulosParaGerar.push(...titulosPedido.map((t: any) => ({ ...t, codigo_pedido: codigoPedido })));
+        // Delay entre pedidos para não acionar concorrência/redundância no ListarContasReceber
+        if (ci < codigosPedido.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE_CR_MS));
       }
     } else {
       if (!Array.isArray(titulos) || titulos.length === 0) return Response.json({ error: 'titulos vazio' }, { status: 400 });
