@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey } from './utilsAnalises';
 
 const CORES = ['#dc2626', '#f59e0b', '#0891b2', '#7c3aed', '#16a34a', '#f97316', '#64748b'];
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -143,7 +143,7 @@ export default function DashboardTrocas() {
   const evolucaoMensal = useMemo(() => {
     const grupo = {};
     filtradas.forEach(t => {
-      const k = String(t.data_faturamento || t.created_date || '').slice(0, 7);
+      const k = mesKey(t.data_faturamento || t.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), valor: 0, qtd: 0 };
       grupo[k].valor += t.valor_total || 0;

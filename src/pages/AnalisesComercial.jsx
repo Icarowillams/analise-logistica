@@ -21,6 +21,10 @@ const ROTA_TAB = {
   '/dashboardvendedor': 'vendedor',
   '/DashboardClientes': 'clientes',
   '/dashboardclientes': 'clientes',
+  '/AnaliseDeVisitas': 'visitas',
+  '/analisedevisitas': 'visitas',
+  '/MapaDeVisitas': 'mapa',
+  '/mapadevisitas': 'mapa',
 };
 
 export default function AnalisesComercial() {

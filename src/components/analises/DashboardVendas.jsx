@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey } from './utilsAnalises';
 
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const formatMes = (k) => { const [a, m] = k.split('-'); return `${MESES_PT[+m-1]}/${a.slice(2)}`; };
@@ -101,7 +101,7 @@ export default function DashboardVendas() {
   const evolucaoMensal = useMemo(() => {
     const grupo = {};
     filtrados.forEach(p => {
-      const k = String(p.data_faturamento || p.created_date || '').slice(0, 7);
+      const k = mesKey(p.data_faturamento || p.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), valor: 0, qtd: 0, clientes: new Set() };
       grupo[k].valor += p.valor_total || 0;

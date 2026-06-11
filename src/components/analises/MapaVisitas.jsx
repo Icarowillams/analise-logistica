@@ -67,9 +67,16 @@ const iconeClienteSemVisita = L.divIcon({
   popupAnchor: [0, -5],
 });
 
+// Coordenada válida dentro do Brasil (descarta lat/lng trocados ou lixo)
+const coordValida = (lat, lng) =>
+  typeof lat === 'number' && typeof lng === 'number' &&
+  lat >= -34 && lat <= 6 && lng >= -75 && lng <= -32;
+
 function FitBounds({ pontos }) {
   const map = useMap();
   useEffect(() => {
+    // Corrige render cinza quando o mapa monta dentro de aba
+    setTimeout(() => map.invalidateSize(), 100);
     if (pontos.length > 0) {
       const bounds = L.latLngBounds(pontos.map(p => [p.lat, p.lng]));
       if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
@@ -104,7 +111,7 @@ export default function MapaVisitas() {
 
   // Com coordenadas do checkin
   const visitasComCheckin = useMemo(() =>
-    visitasFiltradas.filter(v => v.checkin_lat && v.checkin_lng && Math.abs(v.checkin_lat) > 0.01),
+    visitasFiltradas.filter(v => coordValida(v.checkin_lat, v.checkin_lng)),
     [visitasFiltradas]
   );
 
@@ -113,8 +120,7 @@ export default function MapaVisitas() {
   const clientesSemVisita = useMemo(() => {
     if (!filtros.mostrar_clientes) return [];
     return clientes.filter(c =>
-      c.latitude && c.longitude &&
-      Math.abs(c.latitude) > 0.1 &&
+      coordValida(c.latitude, c.longitude) &&
       c.status === 'ativo' &&
       !visitasClienteIds.has(c.id)
     ).slice(0, 500); // limite para performance

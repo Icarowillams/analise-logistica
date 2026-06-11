@@ -17,7 +17,7 @@ import {
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
 import useVisitasAnalise from './useVisitasAnalise';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, duracaoMin } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, duracaoMin, mesKey } from './utilsAnalises';
 
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const formatMes = (k) => { const [a, m] = k.split('-'); return `${MESES_PT[+m-1]}/${a.slice(2)}`; };
@@ -120,14 +120,14 @@ export default function DashboardVendedor() {
   const evolucaoMensal = useMemo(() => {
     const grupo = {};
     vendaFiltradas.forEach(p => {
-      const k = String(p.data_faturamento || p.created_date || '').slice(0, 7);
+      const k = mesKey(p.data_faturamento || p.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), venda: 0, troca: 0, pedidos: 0 };
       grupo[k].venda += p.valor_total || 0;
       grupo[k].pedidos++;
     });
     trocaFiltradas.forEach(p => {
-      const k = String(p.data_faturamento || p.created_date || '').slice(0, 7);
+      const k = mesKey(p.data_faturamento || p.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), venda: 0, troca: 0, pedidos: 0 };
       grupo[k].troca += p.valor_total || 0;

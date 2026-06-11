@@ -1,6 +1,16 @@
+// Normaliza datas DD/MM/YYYY (Omie) para YYYY-MM-DD
+export const normalizarData = (dataStr) => {
+  const s = String(dataStr || '');
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+};
+
+// Chave de mês YYYY-MM, tolerante a formato brasileiro
+export const mesKey = (dataStr) => normalizarData(dataStr).slice(0, 7);
+
 export const dentroPeriodo = (dataStr, inicio, fim) => {
   if (!dataStr) return false;
-  const d = new Date(dataStr).getTime();
+  const d = new Date(normalizarData(dataStr)).getTime();
   if (inicio && d < new Date(inicio).getTime()) return false;
   if (fim && d > new Date(fim).getTime() + 86400000) return false;
   return true;
