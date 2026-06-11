@@ -37,6 +37,7 @@ const CATEGORIAS = [
       { label: 'Segmentos', path: 'Segmentos', icon: Tag },
       { label: 'Redes', path: 'Redes', icon: Network },
       { label: 'Ocorrências - Motivos', path: 'MotivosTroca', icon: AlertTriangle },
+      { label: 'Corrigir Planos (Planilha)', path: 'CorrigirPlanosPlanilha', icon: FileText },
     ],
   },
   {
