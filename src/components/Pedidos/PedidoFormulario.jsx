@@ -61,6 +61,24 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => base44.entities.PlanoPagamento.list()
   });
 
+  // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
+  // desatualizada do cache (lista de clientes fica 15 min em cache).
+  const { data: clienteFresco } = useQuery({
+    queryKey: ['cliente-fresco', cliente.id],
+    queryFn: async () => {
+      const r = await base44.entities.Cliente.filter({ id: cliente.id });
+      return r[0] || null;
+    },
+    staleTime: 0,
+  });
+
+  // Preenche plano/tabela com os dados frescos caso o cache esteja vazio/antigo
+  useEffect(() => {
+    if (!clienteFresco) return;
+    setPlanoPagamentoId(prev => prev || clienteFresco.plano_pagamento_id || '');
+    setTabelaPrecoId(prev => prev || clienteFresco.tabela_id || '');
+  }, [clienteFresco]);
+
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
     queryFn: () => base44.entities.TabelaPreco.list()
