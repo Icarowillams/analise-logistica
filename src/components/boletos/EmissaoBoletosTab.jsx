@@ -129,48 +129,41 @@ export default function EmissaoBoletosTab() {
       const futuro = new Date(hoje.getTime() + 90 * 86400000);
       let acumulados = [];
 
-      const cnpjsUnicos = [...new Set(
-        pedidos
-          .map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, ''))
-          .filter(c => c.length >= 11)
-      )];
-
-      if (cnpjsUnicos.length > 0) {
-        for (const cnpj of cnpjsUnicos) {
-          for (let pagina = 1; pagina <= 5; pagina++) {
-            const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-              data_de: formatarDataBr(inicio),
-              data_ate: formatarDataBr(futuro),
-              filtrar_por_data: 'V',
-              cnpj_cpf: cnpj,
-              apenas_pendentes: true,
-              pagina,
-              registros_por_pagina: 100
-            });
-            if (!data?.sucesso) break;
-            acumulados = acumulados.concat(data.titulos || []);
-            if (pagina >= (data.total_de_paginas || 1)) break;
-          }
-        }
-      } else {
-        for (let pagina = 1; pagina <= 10; pagina++) {
-          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-            data_de: formatarDataBr(inicio),
-            data_ate: formatarDataBr(futuro),
-            filtrar_por_data: 'V',
-            apenas_pendentes: true,
-            pagina,
-            registros_por_pagina: 100
-          });
-          if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos no Omie');
-          acumulados = acumulados.concat(data.titulos || []);
-          if (pagina >= (data.total_de_paginas || 1)) break;
-        }
+      // ⚠️ Omie bloqueia rajada de chamadas com erro 6/REDUNDANT.
+      // Por isso fazemos UMA busca paginada por PERÍODO (sem cnpj_cpf) e filtramos localmente,
+      // em vez de N chamadas por CNPJ. A paginação é sequencial com await.
+      for (let pagina = 1; pagina <= 10; pagina++) {
+        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+          data_de: formatarDataBr(inicio),
+          data_ate: formatarDataBr(futuro),
+          filtrar_por_data: 'V',
+          apenas_pendentes: true,
+          pagina,
+          registros_por_pagina: 100
+        });
+        if (!data?.sucesso) throw new Error(data?.error || 'Falha ao consultar títulos no Omie');
+        acumulados = acumulados.concat(data.titulos || []);
+        if (pagina >= (data.total_de_paginas || 1)) break;
       }
 
+      // Dedup por codigo_lancamento
       acumulados = acumulados.filter((t, idx, arr) =>
         arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === idx
       );
+
+      // Filtro local: mantém só títulos cujo CNPJ/código pertença à carga (reduz volume antes do match detalhado)
+      const cnpjsCarga = new Set(
+        pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(c => c.length >= 11)
+      );
+      const codigosCarga = new Set(
+        pedidos.flatMap(p => [p.codigo_cliente, p.codigo_cliente_cod])
+          .map(c => String(c || '').trim()).filter(Boolean)
+      );
+      acumulados = acumulados.filter(t => {
+        const cn = somenteNumeros(t.cnpj_cpf);
+        const cod = String(t.codigo_cliente || '').trim();
+        return (cn && cnpjsCarga.has(cn)) || (cod && codigosCarga.has(cod));
+      });
 
       let ocultosComBoleto = 0;
       let ocultosSemModalidade = 0;
