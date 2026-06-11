@@ -33,6 +33,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [dataFim, setDataFim] = useState('');
   const [resolvendo, setResolvendo] = useState(false);
   const [atualizandoOmie, setAtualizandoOmie] = useState(false);
+  const [reconsultandoCod, setReconsultandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
   const autoConsultaKeyRef = useRef('');
 
@@ -237,6 +238,32 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     return () => clearTimeout(timer);
   }, [ativa, autoConsultarCodigos, refetch]);
 
+  // Reconsulta UM pedido específico no Omie (etapa + ListarNF) para destravar "aguardando SEFAZ".
+  const reconsultarPedido = async (codigoPedido) => {
+    if (!codigoPedido) return;
+    setReconsultandoCod(String(codigoPedido));
+    try {
+      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
+        codigos_pedido: [String(codigoPedido)]
+      });
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
+        else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
+        else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
+        else toast.info('Nada a atualizar para este pedido.');
+      } else if (r?.abortado) {
+        toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+      } else {
+        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
+      }
+      await refetch();
+    } catch (e) {
+      toast.error('Falha ao reconsultar: ' + e.message);
+    }
+    setReconsultandoCod(null);
+  };
+
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
@@ -372,16 +399,17 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                   <th className="p-2 text-center font-semibold">cStat</th>
                   <th className="p-2 text-left font-semibold">Motivo / Mensagem SEFAZ</th>
                   <th className="p-2 text-left font-semibold">Usuário</th>
+                  <th className="p-2 text-center font-semibold">Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
+                  <tr><td colSpan="10" className="text-center py-12 text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Carregando histórico...
                   </td></tr>
                 ) : logsFiltrados.length === 0 ? (
-                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
+                  <tr><td colSpan="10" className="text-center py-12 text-slate-500">
                     Nenhum registro encontrado
                   </td></tr>
                 ) : logsFiltrados.map((l) => (
@@ -427,6 +455,23 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                       )}
                     </td>
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
+                    <td className="p-2 text-center">
+                      {(l.status === 'pendente' || l.status === 'erro') && l.codigo_pedido ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => reconsultarPedido(l.codigo_pedido)}
+                          disabled={reconsultandoCod === String(l.codigo_pedido)}
+                          title="Reconsultar status deste pedido no Omie"
+                        >
+                          {reconsultandoCod === String(l.codigo_pedido)
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <RefreshCw className="w-4 h-4" />}
+                        </Button>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

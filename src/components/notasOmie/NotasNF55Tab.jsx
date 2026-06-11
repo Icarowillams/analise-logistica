@@ -12,7 +12,20 @@ import NfCompletaDialog from '@/components/notasOmie/NfCompletaDialog';
 import NfsImpressaoDialog from '@/components/notasOmie/NfsImpressaoDialog';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const ehBloqueioOmie = (msg) => /consumo indevido|bloqueada|bloqueado|redundante|1880|aguarde|429|cota|rate/i.test(msg || '');
+const ehBloqueioOmie = (msg) => /consumo indevido|consumo redundante|redundante|bloqueada|bloqueado|c[óo]digo 6|1880|aguarde|429|cota|rate/i.test(msg || '');
+
+// Chama listarNfsOmie com 1 retry espaçado quando o Omie responde "consumo redundante" (CÓDIGO 6).
+const listarNfsComRetry = async (payload) => {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    const { data } = await base44.functions.invoke('listarNfsOmie', payload);
+    const bloqueado = !data?.sucesso && ehBloqueioOmie(data?.error);
+    if (bloqueado && tentativa === 0) {
+      await sleep(3000); // aguarda e tenta mais 1 vez antes de desistir
+      continue;
+    }
+    return data;
+  }
+};
 
 /**
  * Aba de Notas Fiscais Nota 55 (NF-e Omie).
@@ -143,12 +156,11 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         while (pagAtual <= MAX_PAG) {
           let data;
           try {
-            const resp = await base44.functions.invoke('listarNfsOmie', {
+            data = await listarNfsComRetry({
               ...filtrosCargaBusca,
               pagina: pagAtual,
               registros_por_pagina: 200
             });
-            data = resp.data;
           } catch (e) {
             if (ehBloqueioOmie(e.message)) {
               toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
@@ -181,7 +193,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           const totalPag = Number(data.total_de_paginas || 1);
           if (pagAtual >= totalPag) break;
           pagAtual++;
-          await sleep(700); // espaça as chamadas para não acionar o circuit breaker do Omie
+          await sleep(1800); // espaça as chamadas (Omie pede ~18s p/ redundância — folga real evita CÓDIGO 6)
         }
         const apenasAutorizadas = nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada');
         const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
