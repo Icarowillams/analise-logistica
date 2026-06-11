@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
       // Endpoint correto: financas/contareceberboleto/ - call: ObterBoleto - param: nCodTitulo
       let cDesStatus = null;
       try {
-        const data = await omieCall(base44, BOLETO_URL, 'ObterBoleto', { nCodTitulo: Number(codigo_lancamento) }, { cacheMinutes: 0 });
+        const data = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'ObterBoleto' });
         link = data?.cLinkBoleto || data?.link_boleto || null;
         cDesStatus = data?.cDesStatus || null;
       } catch (e) {

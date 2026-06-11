@@ -130,7 +130,6 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
 
   try {
     const param = { nCodTitulo: Number(codigo) };
-    console.log('[GerarBoleto] Enviando para', codigo);
     const data = await omieCall(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
 
     const codStatus = String(data.cCodStatus || '0');
