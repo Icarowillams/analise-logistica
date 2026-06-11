@@ -5,7 +5,6 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { PDFDocument } from 'pdf-lib';
 
 const BATCH_SIZE = 4; // PDFs baixados em paralelo
 
@@ -72,49 +71,17 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     const onProgress = () => { feito++; setProgresso(p => ({ ...p, feito })); };
 
     try {
-      if (modo === 'agrupado' && titulos.length > 1) {
-        // Baixar todos os PDFs em lotes paralelos, depois mesclar
-        const todosResultados = [];
-        for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
-          const lote = titulos.slice(i, i + BATCH_SIZE);
-          const resultados = await processarLote(lote, onProgress);
-          todosResultados.push(...resultados);
-        }
-
-        // Mesclar na ordem original
-        const merged = await PDFDocument.create();
-        for (const r of todosResultados) {
+      // Tanto 'agrupado' quanto 'individual': 1 PDF por boleto.
+      for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
+        const lote = titulos.slice(i, i + BATCH_SIZE);
+        const resultados = await processarLote(lote, onProgress);
+        for (const r of resultados) {
           if (!r.ok) { erros++; continue; }
-          try {
-            const src = await PDFDocument.load(r.bytes);
-            const pages = await merged.copyPages(src, src.getPageIndices());
-            pages.forEach(p => merged.addPage(p));
-          } catch (e) {
-            erros++;
-            toast.error(`Erro ao mesclar ${r.titulo.numero_documento || r.titulo.codigo_lancamento}: ${e.message}`);
-          }
+          const nome = `boleto_${r.titulo.numero_documento || r.titulo.codigo_lancamento}.pdf`;
+          downloadBlob(new Blob([r.bytes], { type: 'application/pdf' }), nome);
         }
-
-        if (merged.getPageCount() > 0) {
-          const bytes = await merged.save();
-          downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boletos_${titulos.length}.pdf`);
-          toast.success(`PDF agrupado gerado (${merged.getPageCount()} páginas)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
-        } else {
-          toast.error('Nenhum boleto conseguiu ser baixado');
-        }
-      } else {
-        // Individual: baixar em lotes paralelos, cada um gera download separado
-        for (let i = 0; i < titulos.length; i += BATCH_SIZE) {
-          const lote = titulos.slice(i, i + BATCH_SIZE);
-          const resultados = await processarLote(lote, onProgress);
-          for (const r of resultados) {
-            if (!r.ok) { erros++; continue; }
-            const nome = `boleto_${r.titulo.numero_documento || r.titulo.codigo_lancamento}.pdf`;
-            downloadBlob(new Blob([r.bytes], { type: 'application/pdf' }), nome);
-          }
-        }
-        toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
       }
+      toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
       onOpenChange(false);
     } catch (e) {
       toast.error(e.message);
@@ -137,7 +104,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <div className="text-sm text-slate-600">
           <b>{titulos.length}</b> boleto(s) selecionado(s)
-          {modo === 'agrupado' && titulos.length > 1 && ' — PDF será mesclado em um único arquivo'}
+          {modo === 'agrupado' && ' — Será baixado um PDF para cada boleto selecionado'}
         </div>
 
         {carregando && (
