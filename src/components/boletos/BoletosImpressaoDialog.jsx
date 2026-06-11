@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { PDFDocument } from 'pdf-lib';
 
 const DELAY_MS = 700; // intervalo entre chamadas (anti-concorrência Omie)
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -27,9 +28,19 @@ const downloadBlob = (blob, filename) => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [], modo = 'individual' }) {
+export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [], modo = 'individual', numeroCarga }) {
   const [carregando, setCarregando] = useState(false);
   const [progresso, setProgresso] = useState({ feito: 0, total: 0, erros: 0 });
+
+  const reportarErro = (titulo, msg) => {
+    const docRef = titulo.numero_documento || titulo.codigo_lancamento;
+    const naoGerado = /404|n[ãa]o (foi )?gerado|n[ãa]o dispon[íi]vel|sem boleto|cLinkBoleto|status code 404/i.test(msg);
+    if (naoGerado) {
+      toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
+    } else {
+      toast.error(`Boleto ${docRef}: ${msg}`);
+    }
+  };
 
   const baixarPdf = async (titulo) => {
     const { data } = await base44.functions.invoke('baixarPdfBoletoOmie', {
@@ -54,14 +65,10 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     }
   };
 
-  const gerarPdf = async () => {
-    if (titulos.length === 0) return;
-    setCarregando(true);
+  // Individual: 1 PDF por boleto. Sequencial com delay (anti-concorrência Omie).
+  const gerarIndividual = async () => {
     let feito = 0;
     let erros = 0;
-    setProgresso({ feito: 0, total: titulos.length, erros: 0 });
-
-    // Sequencial (1 por vez) com delay — evita bloqueio anti-concorrência do Omie.
     for (let i = 0; i < titulos.length; i++) {
       const titulo = titulos[i];
       const docRef = titulo.numero_documento || titulo.codigo_lancamento;
@@ -70,21 +77,61 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
         downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boleto_${docRef}.pdf`);
       } catch (e) {
         erros++;
-        const msg = e.message || 'Erro';
-        const naoGerado = /404|n[ãa]o (foi )?gerado|n[ãa]o dispon[íi]vel|sem boleto|cLinkBoleto|status code 404/i.test(msg);
-        if (naoGerado) {
-          toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
-        } else {
-          toast.error(`Boleto ${docRef}: ${msg}`);
-        }
+        reportarErro(titulo, e.message || 'Erro');
+      }
+      feito++;
+      setProgresso(p => ({ ...p, feito, erros }));
+      if (i < titulos.length - 1) await sleep(DELAY_MS);
+    }
+    toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
+    if (erros === 0) onOpenChange(false);
+  };
+
+  // Agrupado: mescla todos os boletos num único PDF. Sequencial com delay.
+  const gerarAgrupado = async () => {
+    let feito = 0;
+    let erros = 0;
+    let incluidos = 0;
+    const merged = await PDFDocument.create();
+
+    for (let i = 0; i < titulos.length; i++) {
+      const titulo = titulos[i];
+      try {
+        const bytes = await baixarComRetry(titulo);
+        const src = await PDFDocument.load(bytes);
+        const pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+        incluidos++;
+      } catch (e) {
+        erros++;
+        reportarErro(titulo, e.message || 'Erro');
       }
       feito++;
       setProgresso(p => ({ ...p, feito, erros }));
       if (i < titulos.length - 1) await sleep(DELAY_MS);
     }
 
-    toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
+    if (incluidos === 0) {
+      toast.error('Nenhum boleto pôde ser mesclado.');
+      return;
+    }
+    const mergedBytes = await merged.save();
+    const nome = `boletos_carga_${numeroCarga || titulos.length}.pdf`;
+    downloadBlob(new Blob([mergedBytes], { type: 'application/pdf' }), nome);
+    toast.success(`${incluidos} boleto(s) mesclado(s) em um único PDF${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
     if (erros === 0) onOpenChange(false);
+  };
+
+  const gerarPdf = async () => {
+    if (titulos.length === 0) return;
+    setCarregando(true);
+    setProgresso({ feito: 0, total: titulos.length, erros: 0 });
+    try {
+      if (modo === 'agrupado') await gerarAgrupado();
+      else await gerarIndividual();
+    } catch (e) {
+      toast.error(e.message);
+    }
     setCarregando(false);
     setProgresso({ feito: 0, total: 0, erros: 0 });
   };
@@ -103,7 +150,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <div className="text-sm text-slate-600">
           <b>{titulos.length}</b> boleto(s) selecionado(s)
-          {modo === 'agrupado' && ' — Será baixado um PDF para cada boleto selecionado'}
+          {modo === 'agrupado' && ' — Todos os boletos serão mesclados em um único PDF para impressão'}
         </div>
 
         {carregando && (
@@ -124,9 +171,11 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
         </Button>
 
         <p className="text-xs text-slate-500">
-          {titulos.length > 1
-            ? 'Baixando sequencialmente para evitar bloqueio do Omie — um pouco mais lento, porém confiável.'
-            : 'O PDF será baixado diretamente, sem redirecionar para o Omie.'}
+          {modo === 'agrupado'
+            ? 'Todos os boletos serão mesclados em um único PDF para impressão — baixados sequencialmente para evitar bloqueio do Omie.'
+            : titulos.length > 1
+              ? 'Baixando sequencialmente para evitar bloqueio do Omie — um pouco mais lento, porém confiável.'
+              : 'O PDF será baixado diretamente, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
     </Dialog>
