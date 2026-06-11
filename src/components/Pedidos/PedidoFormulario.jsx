@@ -149,8 +149,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   useEffect(() => {
     if (existingPedido) {
-      setPlanoPagamentoId(existingPedido.plano_pagamento_id || '');
-      setTabelaPrecoId(existingPedido.tabela_preco_id || '');
+      // Fallback para o cadastro do cliente quando o pedido salvo não tem plano/tabela
+      // (ex.: pedidos antigos ou importados do Omie sem esses campos)
+      setPlanoPagamentoId(existingPedido.plano_pagamento_id || cliente.plano_pagamento_id || '');
+      setTabelaPrecoId(existingPedido.tabela_preco_id || cliente.tabela_id || '');
       setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : (cliente.tipo_nota === 'D1' ? 'd1' : '55')));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
@@ -173,6 +175,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
     }
   }, [existingPedido]);
+
+  // Sincroniza plano/tabela com o cadastro do cliente em pedidos NOVOS,
+  // caso o objeto cliente chegue/atualize com esses campos após a montagem inicial.
+  useEffect(() => {
+    if (editingPedidoId) return;
+    if (!planoPagamentoId && cliente.plano_pagamento_id) setPlanoPagamentoId(cliente.plano_pagamento_id);
+    if (!tabelaPrecoId && cliente.tabela_id) setTabelaPrecoId(cliente.tabela_id);
+  }, [cliente.plano_pagamento_id, cliente.tabela_id, editingPedidoId]);
 
   // Flag para controlar se já inicializou os itens do pedido
   const [itensInitialized, setItensInitialized] = useState(false);
