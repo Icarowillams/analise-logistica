@@ -37,7 +37,15 @@ export default function FiltrosBoletos({ onResultado }) {
   const [openDe, setOpenDe] = useState(false);
   const [openAte, setOpenAte] = useState(false);
 
-  const { isClienteBoleto } = useModalidadeBoleto();
+  const contextoClientes = useMemo(() => {
+    const pedidos = cargaFiltro?.pedidos_omie || [];
+    return {
+      cnpjs: pedidos.map(p => p.cnpj_cpf_cliente),
+      codigos: pedidos.flatMap(p => [p.codigo_cliente, p.codigo_cliente_cod])
+    };
+  }, [cargaFiltro]);
+
+  const { isClienteBoleto } = useModalidadeBoleto(contextoClientes);
 
   // Extrai CNPJs dos clientes da carga (para filtrar a busca Omie por cliente)
   const documentosCarga = (carga) => new Set([
@@ -142,20 +150,23 @@ export default function FiltrosBoletos({ onResultado }) {
           dataAteStr = dateToBR(addDays(new Date(), 7));
         }
 
-        // Busca sequencial: 1 CNPJ por vez para evitar rate limit do Omie
-        for (const cpfCnpj of cnpjsUnicos) {
+        // ⚠️ Regra Omie: NUNCA chamar o mesmo método em rajada/concorrência.
+        // Chamadas por CNPJ em loop disparam erro 1880 ("método já em execução") e 6 (REDUNDANT).
+        // Solução: UMA busca paginada por PERÍODO (sem cnpj_cpf), sequencial, + filtro local por carga.
+        void cnpjsUnicos; // mantido apenas para referência; não usado para chamadas
+        for (let pagina = 1; pagina <= 10; pagina++) {
           const { data } = await base44.functions.invoke('listarContasReceberOmie', {
             data_de: dataDeStr,
             data_ate: dataAteStr,
             filtrar_por_data: filtrosBusca.filtrarPor || 'E',
-            cnpj_cpf: cpfCnpj,
             apenas_pendentes: false,
+            pagina,
             registros_por_pagina: 100,
             bypassCache: true
           });
-          if (data?.sucesso && data.titulos?.length > 0) {
-            acumulados = acumulados.concat(data.titulos);
-          }
+          if (!data?.sucesso) break;
+          acumulados = acumulados.concat(data.titulos || []);
+          if (pagina >= (data.total_de_paginas || 1)) break;
         }
 
         // Dedup por codigo_lancamento
