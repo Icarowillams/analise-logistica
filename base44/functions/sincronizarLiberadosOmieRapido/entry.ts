@@ -195,6 +195,11 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { max_paginas = 10, origem = 'reconciliacao', etapas = ['10', '20', '50', '60'], forcar_sem_cache = false } = body;
+    // Janela de datas: busca só os pedidos recentes para não truncar a etapa 60 (histórico inteiro).
+    const { dias_retroativos = 10 } = body;
+    const fmtData = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const dataDe = fmtData(new Date(Date.now() - dias_retroativos * 86400000));
+    const dataAte = fmtData(new Date(Date.now() + 2 * 86400000)); // +2 dias de margem
     const MAX_FALLBACK_CLIENTES = 3; // limite duro de ConsultarCliente por execução
     // Chamadas manuais (botão Atualizar) ou bootstrap SEMPRE sem cache para pegar estado real
     const usarCache = !forcar_sem_cache && origem === 'reconciliacao';
@@ -276,7 +281,9 @@ Deno.serve(async (req) => {
           pagina,
           registros_por_pagina: 100,
           apenas_importado_api: 'N',
-          etapa: etapaAtual
+          etapa: etapaAtual,
+          filtrar_por_data_de: dataDe,
+          filtrar_por_data_ate: dataAte
         }, { call: 'ListarPedidos', cacheMinutes: cacheMinutos, skipLog: true }).catch((e) => {
           // "Não existem registros" = etapa vazia (normal). "Redundante" = rate limit, pula silenciosamente.
           if (/n[ãa]o existem registros/i.test(e.message) || /redundante/i.test(e.message)) {
