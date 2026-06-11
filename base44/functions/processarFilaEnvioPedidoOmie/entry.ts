@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
-const INTERVALO_ENTRE_PEDIDOS_MS = 2000;
-const MAX_PEDIDOS_POR_RODADA = 10;
+const INTERVALO_ENTRE_PEDIDOS_MS = 800;
+const MAX_PEDIDOS_POR_RODADA = 20;
 
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const CONTA_CORRENTE_PADRAO = 11464371392;

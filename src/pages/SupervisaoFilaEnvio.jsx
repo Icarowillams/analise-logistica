@@ -24,7 +24,7 @@ export default function SupervisaoFilaEnvio() {
 
   const { data: fila = [], isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['supervisao-fila-envio'],
-    queryFn: () => base44.entities.FilaEnvioPedidoOmie.list('-created_date', 500),
+    queryFn: () => base44.entities.FilaEnvioPedidoOmie.list('-created_date', 1000),
     refetchInterval: 10000,
     staleTime: 5000,
   });
