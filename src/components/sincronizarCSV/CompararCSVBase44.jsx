@@ -32,7 +32,6 @@ const invocarComRetry = async (fnName, params, maxRetries = 4) => {
         msg.includes('500') || msg.includes('429') || msg.includes('Rate limit') || msg.includes('rate limit');
       if (isRetryable && attempt < maxRetries - 1) {
         const waitMs = 6000 * Math.pow(2, attempt); // 6s, 12s, 24s, 48s
-        console.log(`[retry] ${fnName} tentativa ${attempt + 1}/${maxRetries}, aguardando ${waitMs}ms...`);
         await esperarMs(waitMs);
         continue;
       }

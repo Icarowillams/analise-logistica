@@ -105,7 +105,6 @@ export default function BulkImportModal({
     if (lines.length === 0) return [];
     
     const delimiter = detectDelimiter(lines[0]);
-    console.log('BulkImportModal - Delimitador detectado:', JSON.stringify(delimiter));
     const headerValues = parseCSVLine(lines[0], delimiter);
     // Normalizar headers: remover acentos, lowercase, underscores
     const headerAliases = {
@@ -180,8 +179,6 @@ export default function BulkImportModal({
       // Try multiple formats for alias matching
       return headerAliases[withUnderscores] || headerAliases[raw] || headerAliases[noSpaces] || withUnderscores;
     });
-    console.log('BulkImportModal - Headers brutos:', JSON.stringify(headerValues.map(h => removeQuotes(h))));
-    console.log('BulkImportModal - Headers normalizados:', JSON.stringify(headers));
     return lines.slice(1).map((line, idx) => {
       const values = parseCSVLine(line, delimiter);
       const row = { _rowNum: idx + 2 };
@@ -250,19 +247,6 @@ export default function BulkImportModal({
       });
       return item;
     });
-
-    console.log('BulkImportModal - Total registros:', data.length);
-    console.log('BulkImportModal - Campos do primeiro registro:', data.length > 0 ? JSON.stringify(Object.keys(data[0])) : 'vazio');
-    if (data.length > 0) {
-      console.log('BulkImportModal - Primeiro registro completo:', JSON.stringify(data[0]));
-      // Log especifico para IE e estado
-      console.log('BulkImportModal - inscricao_estadual:', data[0].inscricao_estadual, '| estado:', data[0].estado);
-    }
-    // Log dos headers detectados no allRows
-    if (allRows.length > 0) {
-      console.log('BulkImportModal - Todas as chaves do primeiro row:', JSON.stringify(Object.keys(allRows[0])));
-      console.log('BulkImportModal - Valores IE/estado do primeiro row:', 'inscricao_estadual=', allRows[0].inscricao_estadual, '| estado=', allRows[0].estado);
-    }
 
     // Não resetar aqui - deixar a página pai controlar quando fechar
     await onImport(data);

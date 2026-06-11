@@ -138,7 +138,6 @@ export default function useDadosMontagem() {
       // ═══════════════════════════════════════
       // FASE 1: Dados essenciais (libera tela)
       // ═══════════════════════════════════════
-      console.log('[DEBUG MC] ===== INÍCIO CARREGAMENTO =====');
       await sleep(isRetry ? 2000 : 500);
 
       // OTIMIZAÇÃO: carregar dados em PARALELO (antes era sequencial com sleep)
@@ -149,7 +148,6 @@ export default function useDadosMontagem() {
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
         fetchWithRetry(() => base44.entities.Cliente.list('-created_date', 10000))
       ]);
-      console.log('[DEBUG MC] Batch 1:', espelhoOmie?.length || 0, 'espelho,', todosPedidosLocais?.length || 0, 'pedidos,', trocasAprovadas?.length || 0, 'trocas,', todosClientes?.length || 0, 'clientes');
       // Mapa global de clientes — evita N chamadas individuais depois
       const clientesMapGlobal = new Map((todosClientes || []).map(c => [c.id, c]));
 
@@ -159,7 +157,6 @@ export default function useDadosMontagem() {
         fetchWithRetry(() => base44.entities.Veiculo.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Carga.list('-created_date', 500))
       ]);
-      console.log('[DEBUG MC] Batch 2:', carP?.length || 0, 'cargas');
 
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
       const motoristasAtivos = motP.filter(m => m.status === 'ativo');
@@ -183,7 +180,6 @@ export default function useDadosMontagem() {
             if (p?.pedido_troca_id) idsTrocasEmCarga.add(String(p.pedido_troca_id));
           });
         });
-      console.log('[DEBUG MC] Pedidos já em cargas faturadas:', codigosEmCarga.size);
 
       // Log distribuição de etapas no espelho
       const etapasContagem = {};
@@ -191,14 +187,12 @@ export default function useDadosMontagem() {
         const etapa = String(e?.etapa ?? 'sem_etapa');
         etapasContagem[etapa] = (etapasContagem[etapa] || 0) + 1;
       });
-      console.log('[DEBUG MC] Distribuição de etapas no espelho:', JSON.stringify(etapasContagem));
 
       // Vendas Omie etapas 10 e 20
       const ETAPAS_PERMITIDAS = ['20', '50']; // Apenas Liberados (20) e Em montagem (50)
       const vendasBruto = (espelhoOmie || []).filter(e =>
         ETAPAS_PERMITIDAS.includes(String(e?.etapa ?? '').trim())
       );
-      console.log('[DEBUG MC] Vendas Omie após filtro de etapa:', vendasBruto.length);
 
       // Mapear pedidos locais cancelados pelo codigo_pedido_omie
       const codigosCancelados = new Set(
@@ -213,7 +207,6 @@ export default function useDadosMontagem() {
         !codigosEmCarga.has(String(e.codigo_pedido)) &&
         !codigosCancelados.has(String(e.codigo_pedido))
       );
-      console.log('[DEBUG MC] Vendas Omie após excluir cargas e cancelados:', vendasSemCarga.length, '(cancelados excluídos:', codigosCancelados.size, ')');
 
       const vendasEnriquecidas = vendasSemCarga.map(montarVendaOmie);
 
@@ -238,7 +231,6 @@ export default function useDadosMontagem() {
         return !codigosNoEspelho.has(String(p.omie_codigo_pedido)) &&
                !codigosEmCarga.has(String(p.omie_codigo_pedido));
       });
-      console.log('[DEBUG MC] Pedidos NF55 locais liberados FORA do espelho:', pedidosNf55Locais.length);
 
       const vendasLocais = pedidosNf55Locais.map(p => ({
         codigo_pedido: String(p.omie_codigo_pedido),
@@ -276,25 +268,14 @@ export default function useDadosMontagem() {
       const d1Todos = (todosPedidosLocais || []).filter(p =>
         String(p.modelo_nota || '').trim().toLowerCase() === 'd1'
       );
-      console.log('[DEBUG MC] Total D1 no Pedido local:', d1Todos.length);
-      console.log('[DEBUG MC] D1 por status:', JSON.stringify(d1Todos.reduce((acc, p) => {
-        acc[p.status || 'sem_status'] = (acc[p.status || 'sem_status'] || 0) + 1;
-        return acc;
-      }, {})));
 
       const d1Disponiveis = d1Todos.filter(p => p.status === 'liberado' && !p.carga_id && !idsInternosEmCarga.has(String(p.id)));
-      console.log('[DEBUG MC] D1 após filtros (status=liberado, sem carga):', d1Disponiveis.length);
 
       // Trocas disponíveis (sem itens ainda)
       const trocasDisponiveis = (trocasAprovadas || []).filter(t => !t.carga_id && !idsTrocasEmCarga.has(String(t.id)));
-      console.log('[DEBUG MC] Trocas após excluir já em cargas:', trocasDisponiveis.length);
 
       // Usar mapa global de clientes (já carregado no Batch 1 — sem chamadas individuais)
       const trocaClientesMap = clientesMapGlobal;
-
-      console.log('[DEBUG MC] TOTAL FINAL:', todasVendas.length + d1Disponiveis.length + trocasDisponiveis.length,
-        '(Omie:', vendasEnriquecidas.length, '| NF55 local:', vendasLocais.length, '| D1:', d1Disponiveis.length, '| Troca:', trocasDisponiveis.length, ')');
-      console.log('[DEBUG MC] ===== FIM CARREGAMENTO =====');
 
       // Montar D1s e Trocas sem itens (produtos vazio, quantidade 0)
       const d1SemItens = d1Disponiveis.map(p => {
@@ -330,46 +311,6 @@ export default function useDadosMontagem() {
           tipo: 'troca', tipo_nota: '', produtos: []
         };
       });
-
-      // ─── DEBUG CONTAGEM DETALHADA ───
-      console.log('[DEBUG CONTAGEM] ========');
-      console.log('[DEBUG CONTAGEM] vendasEnriquecidas (Omie espelho):', vendasEnriquecidas.length);
-      console.log('[DEBUG CONTAGEM] vendasLocais (NF55 liberados fora espelho):', vendasLocais.length);
-      console.log('[DEBUG CONTAGEM] d1SemItens (D1 liberados sem carga):', d1SemItens.length);
-      console.log('[DEBUG CONTAGEM] trocasSemItens (trocas aprovadas sem carga):', trocasSemItens.length);
-      console.log('[DEBUG CONTAGEM] TOTAL FASE 1:', vendasEnriquecidas.length + vendasLocais.length + d1SemItens.length + trocasSemItens.length);
-
-      // Listar todos os números de pedido
-      const todosCodigos = [
-        ...vendasEnriquecidas.map(p => `[OMIE]${p.numero_pedido || p.codigo_pedido}`),
-        ...vendasLocais.map(p => `[NF55L]${p.numero_pedido || p.codigo_pedido}`),
-        ...d1SemItens.map(p => `[D1]${p.numero_pedido}`),
-        ...trocasSemItens.map(p => `[TROCA]${p.numero_pedido}`)
-      ].sort();
-      console.log('[DEBUG CONTAGEM] Todos os pedidos na tela (' + todosCodigos.length + '):', JSON.stringify(todosCodigos));
-
-      // Verificar limites de paginação
-      console.log('[DEBUG CONTAGEM] LIMITES: espelhoOmie=' + (espelhoOmie?.length || 0) + '/2000, todosPedidosLocais=' + (todosPedidosLocais?.length || 0) + '/3000, trocasAprovadas=' + (trocasAprovadas?.length || 0) + '/500, cargas=' + (carP?.length || 0) + '/500');
-      if ((espelhoOmie?.length || 0) >= 2000) console.warn('[DEBUG CONTAGEM] ⚠️ ESPELHO OMIE ATINGIU LIMITE DE 2000!');
-      if ((todosPedidosLocais?.length || 0) >= 3000) console.warn('[DEBUG CONTAGEM] ⚠️ PEDIDOS LOCAIS ATINGIU LIMITE DE 3000!');
-
-      // Verificar pedidos cancelados excluídos
-      const canceladosExcluidos = (todosPedidosLocais || []).filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por);
-      console.log('[DEBUG CONTAGEM] Pedidos locais cancelados excluídos:', canceladosExcluidos.length, canceladosExcluidos.map(p => p.numero_pedido));
-
-      // Verificar pedidos NF55 locais que tinham omie_codigo_pedido no espelho (foram deduplicados)
-      const nf55ComOmie = (todosPedidosLocais || []).filter(p => {
-        const modelo = String(p.modelo_nota || '').trim().toLowerCase();
-        return modelo !== 'd1' && p.status === 'liberado' && !p.carga_id && p.omie_codigo_pedido;
-      });
-      const nf55NoEspelho = nf55ComOmie.filter(p => codigosNoEspelho.has(String(p.omie_codigo_pedido)));
-      const nf55SemOmie = (todosPedidosLocais || []).filter(p => {
-        const modelo = String(p.modelo_nota || '').trim().toLowerCase();
-        return modelo !== 'd1' && p.status === 'liberado' && !p.carga_id && !p.omie_codigo_pedido;
-      });
-      console.log('[DEBUG CONTAGEM] NF55 liberados total:', nf55ComOmie.length, '(no espelho:', nf55NoEspelho.length, '| fora espelho:', pedidosNf55Locais.length, ')');
-      console.log('[DEBUG CONTAGEM] NF55 liberados SEM omie_codigo_pedido (PERDIDOS!):', nf55SemOmie.length, nf55SemOmie.map(p => p.numero_pedido));
-      console.log('[DEBUG CONTAGEM] ========');
 
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
@@ -476,7 +417,6 @@ export default function useDadosMontagem() {
 
         // Atualizar pedidos com itens completos
         const pedidosFinal = [...todasVendasComItens, ...d1Completos, ...trocasCompletas];
-        console.log('[DEBUG CONTAGEM] FASE 2 FINAL: vendasOmie=' + vendasEnriquecidas.length + ' + vendasLocaisItens=' + vendasLocaisComItens.length + ' + d1Completos=' + d1Completos.length + ' + trocasCompletas=' + trocasCompletas.length + ' = ' + pedidosFinal.length);
         setPedidos(pedidosFinal);
         setCarregandoItens(false);
 

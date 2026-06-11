@@ -106,7 +106,6 @@ export function buildSuiteAjustesEAcerto() {
     if (!ped) return; // pode ser pedido cancelado/excluído
     const det = ped.det || [];
     assert.truthy(Array.isArray(det), 'pedido sem array det');
-    console.log(`[corte] pedido ${com.omie_codigo_pedido} → ${det.length} itens em ${ms}ms`);
   });
 
   // ═════════════════════════════════════════════════════════
@@ -123,7 +122,6 @@ export function buildSuiteAjustesEAcerto() {
     assert.truthy(typeof data.alteradas === 'number', 'sem campo "alteradas"');
     assert.truthy(typeof data.total === 'number', 'sem campo "total"');
     assert.truthy(ms < 30000, `lento demais: ${ms}ms (alvo < 30000ms)`);
-    console.log(`[acerto-sync] ${ms}ms → ${data.alteradas}/${data.total} notas alteradas`);
   });
 
   s.test('ANTES/DEPOIS: sincronização de acerto NÃO mexe em notas já entregues', async () => {
@@ -231,7 +229,6 @@ export function buildSuiteAjustesEAcerto() {
     const { data, ms } = await timed('listarNfsOmie', { pagina: 1, registros_por_pagina: 10 });
     assert.truthy(data, `sem resposta em ${ms}ms`);
     assert.truthy(ms < 10000, `lento: ${ms}ms`);
-    console.log(`[listarNfs] ${ms}ms → ${(data?.nfs || []).length} NFs retornadas`);
   });
 
   // ═════════════════════════════════════════════════════════
@@ -256,7 +253,6 @@ export function buildSuiteAjustesEAcerto() {
     const sucesso = logs.filter(l => l.status === 'sucesso').length;
     const pct = (sucesso / logs.length) * 100;
     assert.truthy(pct >= 70, `taxa de sucesso baixa: ${pct.toFixed(1)}% em ${logs.length} chamadas`);
-    console.log(`[saude-ajustes] ${pct.toFixed(1)}% sucesso (${sucesso}/${logs.length})`);
   });
 
   s.test('SAÚDE: nenhum corte/cancelamento demorou > 45s', async () => {

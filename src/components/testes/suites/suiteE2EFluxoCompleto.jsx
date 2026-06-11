@@ -45,7 +45,6 @@ export function buildSuiteE2EFluxoCompleto() {
     const cli = clientes.find(c => c.codigo_omie && c.cnpj_cpf);
     assert.truthy(cli, 'Nenhum cliente ATIVO com codigo_omie encontrado no banco. Cadastre 1 cliente sincronizado com Omie.');
     ctx.cliente = cli;
-    console.log(`[E2E] cliente: ${cli.razao_social} (codigo_omie: ${cli.codigo_omie})`);
   });
 
   s.test('2. Localiza 1 produto ATIVO sincronizado com Omie', async () => {
@@ -55,8 +54,6 @@ export function buildSuiteE2EFluxoCompleto() {
     );
     assert.truthy(prod, 'Nenhum produto encontrado. Cadastre 1 produto sincronizado.');
     ctx.produto = prod;
-    const codProd = prod.codigo_omie || prod.codigo_produto_integracao || prod.codigo;
-    console.log(`[E2E] produto: ${prod.descricao} (cod: ${codProd})`);
   });
 
   // ═════════════════════════════════════════════════════════
@@ -84,7 +81,6 @@ export function buildSuiteE2EFluxoCompleto() {
     });
     ctx.pedidoLocalId = pedido.id;
     assert.truthy(pedido.id, 'pedido local não criado');
-    console.log(`[E2E] Pedido local criado: ${pedido.id}`);
   });
 
   // ═════════════════════════════════════════════════════════
@@ -94,13 +90,11 @@ export function buildSuiteE2EFluxoCompleto() {
   s.test('4. Envia pedido ao Omie via enviarPedidoOmie → recebe codigo_pedido (etapa 10)', async () => {
     if (!ctx.pedidoLocalId) throw new Error('pedido local não foi criado');
     const { data, ms } = await timed('enviarPedidoOmie', { pedido_id: ctx.pedidoLocalId });
-    console.log(`[E2E] enviarPedidoOmie em ${ms}ms`, JSON.stringify(data).slice(0, 200));
     if (data?.error) throw new Error(`Omie rejeitou: ${data.error}`);
     const cod = data?.codigo_pedido || data?.omie_codigo_pedido || data?.nCodPed;
     assert.truthy(cod, `Omie não retornou codigo_pedido. Retorno: ${JSON.stringify(data).slice(0, 200)}`);
     ctx.codigoPedidoOmie = cod;
     ctx.numeroPedido = data?.numero_pedido || data?.cNumPed || null;
-    console.log(`[E2E] codigo_pedido Omie: ${cod} • numero: ${ctx.numeroPedido}`);
   });
 
   s.test('5. Confirma no Omie que o pedido está em etapa "10" (Pedido)', async () => {
@@ -108,7 +102,6 @@ export function buildSuiteE2EFluxoCompleto() {
     // Aguarda 2s pro Omie consolidar
     await new Promise(r => setTimeout(r, 2000));
     const { data, ms } = await timed('consultarPedidoOmie', { codigo_pedido: ctx.codigoPedidoOmie });
-    console.log(`[E2E] consultarPedido em ${ms}ms`);
     const etapa = String(data?.pedido?.cabecalho?.etapa || '').trim();
     assert.equal(etapa, '10', `pedido deveria estar na etapa 10, está em ${etapa}`);
   });
@@ -120,7 +113,6 @@ export function buildSuiteE2EFluxoCompleto() {
   s.test('6. Libera pedido no Omie → etapa muda pra 20', async () => {
     if (!ctx.codigoPedidoOmie) throw new Error('codigo_pedido não obtido');
     const { data, ms } = await timed('liberarPedidoOmie', { codigo_pedido: ctx.codigoPedidoOmie });
-    console.log(`[E2E] liberarPedido em ${ms}ms`, JSON.stringify(data).slice(0, 200));
     if (data?.error) {
       console.warn(`[E2E] liberarPedidoOmie retornou erro: ${data.error}`);
       // Se já estava liberado, tudo certo. Caso contrário, falha.
@@ -144,7 +136,6 @@ export function buildSuiteE2EFluxoCompleto() {
       codigo_pedido: ctx.codigoPedidoOmie,
       nova_etapa: '50'
     });
-    console.log(`[E2E] trocarEtapaPedido em ${ms}ms`, JSON.stringify(data).slice(0, 200));
     if (data?.error && !String(data.error).toLowerCase().includes('já')) {
       throw new Error(`Falha ao trocar etapa: ${data.error}`);
     }
@@ -165,7 +156,6 @@ export function buildSuiteE2EFluxoCompleto() {
       registros_por_pagina: 100,
       buscar_todas_paginas: true,
     });
-    console.log(`[E2E] buscarPedidosOmie etapa=50 em ${ms}ms → ${(data?.pedidos || []).length} pedidos`);
     const achou = (data?.pedidos || []).some(p => String(p.codigo_pedido) === String(ctx.codigoPedidoOmie));
     assert.truthy(achou, `pedido ${ctx.codigoPedidoOmie} deveria aparecer na lista etapa 50, mas não veio`);
   });
@@ -194,7 +184,6 @@ export function buildSuiteE2EFluxoCompleto() {
       pedido_id: ctx.pedidoLocalId,
       motivo: '[E2E TESTE AUTOMATIZADO] Limpeza após teste'
     });
-    console.log(`[E2E] cancelarPedido em ${ms}ms`, JSON.stringify(data).slice(0, 200));
     // Mesmo se falhar, não quebra o teste — só registra
     if (data?.error) console.warn(`[E2E] limpeza falhou: ${data.error} — cancele manualmente o pedido ${ctx.codigoPedidoOmie}`);
   });

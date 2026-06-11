@@ -703,24 +703,6 @@ export default function Clientes() {
       }
     }
 
-    console.log('Importação - Modo:', modoImportacao);
-    console.log('Importação - Total no arquivo:', clientesData.length);
-    console.log('Importação - Para criar:', toCreate.length);
-    console.log('Importação - Para atualizar:', toUpdate.length);
-    console.log('Importação - Não encontrados:', naoEncontrados);
-    if (clientesData.length > 0) {
-      console.log('Importação - Campos do primeiro registro:', JSON.stringify(Object.keys(clientesData[0])));
-      console.log('Importação - Primeiro registro estado:', clientesData[0].estado, '| inscricao_estadual:', clientesData[0].inscricao_estadual);
-      // Log primeiros 3 registros para debug
-      clientesData.slice(0, 3).forEach((c, i) => {
-        console.log(`Importação - Registro ${i+1}: codigo=${c.codigo_interno || c.codigo_integracao}, estado=${c.estado}, ie=${c.inscricao_estadual}`);
-      });
-    }
-    if (toUpdate.length > 0) {
-      console.log('Importação - Campos do primeiro update:', JSON.stringify(Object.keys(toUpdate[0].data)));
-      console.log('Importação - Primeiro update estado:', toUpdate[0].data.estado, '| ie:', toUpdate[0].data.inscricao_estadual);
-    }
-
     // Se modo atualização e nenhum cliente foi encontrado
     if (modoImportacao === 'atualizacao' && toUpdate.length === 0) {
       setIsImporting(false);
@@ -733,7 +715,6 @@ export default function Clientes() {
       const batchSize = 100;
       
       if (toCreate.length > 0) {
-        console.log('Iniciando criação de', toCreate.length, 'clientes...');
         const totalLotesCriacao = Math.ceil(toCreate.length / batchSize);
         for (let i = 0; i < toCreate.length; i += batchSize) {
           const batch = toCreate.slice(i, i + batchSize);
@@ -750,7 +731,6 @@ export default function Clientes() {
               tentativa++;
               if (tentativa >= 4) throw err;
               const delay = 1000 * Math.pow(2, tentativa);
-              console.log(`Retry criação lote ${loteNum} (tentativa ${tentativa}, aguardando ${delay}ms)`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
@@ -759,13 +739,10 @@ export default function Clientes() {
             await new Promise(resolve => setTimeout(resolve, 300));
           }
         }
-        console.log('Criação concluída!');
       }
 
       // Executar atualizações via backend function em lotes pequenos para garantir 100%
       if (toUpdate.length > 0) {
-        console.log('Enviando', toUpdate.length, 'clientes para atualização via backend...');
-        
         // Lotes de 50 para dar mais tempo ao backend processar com retries
         const LOTE_SIZE = 50;
         let totalAtualizados = 0;
@@ -793,7 +770,6 @@ export default function Clientes() {
               tentativa++;
               if (tentativa >= 5) throw err;
               const delay = 3000 * Math.pow(2, tentativa);
-              console.log(`Retry lote ${loteNum} (tentativa ${tentativa}, aguardando ${delay}ms)`);
               toast.warning(`Lote ${loteNum} falhou, tentando novamente (${tentativa}/4)...`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
@@ -823,7 +799,6 @@ export default function Clientes() {
 
         // REPROCESSAMENTO: se houver erros, tenta novamente os que falharam
         if (errosAcumulados.length > 0) {
-          console.log(`Reprocessando ${errosAcumulados.length} clientes que falharam...`);
           toast.info(`Reprocessando ${errosAcumulados.length} clientes que falharam...`);
           
           // Montar lista dos que falharam
@@ -860,10 +835,7 @@ export default function Clientes() {
           
           totalAtualizados += retryAtualizados;
           errosAcumulados = retryErros;
-          console.log(`Reprocessamento: +${retryAtualizados} atualizados, ${retryErros.length} erros restantes`);
         }
-        
-        console.log(`Atualização final: ${totalAtualizados}/${toUpdate.length} atualizados`);
         
         if (errosAcumulados.length > 0) {
           console.error('Erros finais:', JSON.stringify(errosAcumulados));

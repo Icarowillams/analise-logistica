@@ -106,9 +106,6 @@ export default function FiltrosBoletos({ onResultado }) {
       excluidos++;
     });
 
-    if (excluidos > 0) {
-      console.log(`[FiltrosBoletos] ${excluidos} título(s) excluído(s) por não pertencerem à carga ${carga.numero_carga}`);
-    }
     return resultado;
   };
 
