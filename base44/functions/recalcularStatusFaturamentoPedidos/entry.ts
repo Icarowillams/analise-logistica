@@ -1,33 +1,43 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 
-function fmt(d) {
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-async function listarNfsRecentes(base44, dias) {
-  const hoje = new Date();
-  const inicio = new Date(hoje.getTime() - Number(dias || 30) * 86400000);
-  const nfs = [];
-  for (let pagina = 1; pagina <= 10; pagina++) {
-    let data;
+// CORREÇÃO DEFINITIVA: usar ConsultarNF (aceita nIdPedido) por pedido, em vez de varrer ListarNF.
+// ListarNF não aceita nIdPedido e disparava CÓDIGO 6 (consumo redundante).
+// ConsultarNF retorna a NF do pedido em UMA chamada. Retry único espaçado em caso de CÓDIGO 6.
+async function consultarNFporPedido(base44, codigoPedido) {
+  let tentativa = 0;
+  while (tentativa < 2) {
     try {
-      data = await omieCall(base44, 'produtos/nfconsultar/', {
-        pagina, registros_por_pagina: 100, dEmiInicial: fmt(inicio), dEmiFinal: fmt(hoje)
-      }, { call: 'ListarNF' });
+      const resp = await omieCall(base44, 'produtos/nfconsultar/', {
+        nIdPedido: Number(codigoPedido)
+      }, { call: 'ConsultarNF' });
+      if (resp?.faultstring) throw new Error(resp.faultstring);
+      const ide = resp?.ide || {};
+      const compl = resp?.compl || {};
+      const numero = ide.nNF || resp?.cNumero || '';
+      if (!numero) return null;
+      const cStat = String(ide.cStat || compl.cStat || '').trim();
+      if (cStat && cStat !== '100' && cStat !== '150') return null; // não autorizada
+      return {
+        numero_nf: String(numero),
+        serie: String(ide.serie || ''),
+        chave_nfe: compl.cChaveNFe || '',
+        id_nf: compl.nIdNF ? String(compl.nIdNF) : '',
+        data: ide.dEmi || new Date().toISOString()
+      };
     } catch (e) {
-      if (/n[ãa]o existem registros/i.test(e.message)) break;
+      const msg = String(e.message || '').toLowerCase();
+      if (/n[ãa]o existem registros|nenhuma nota/i.test(msg)) return null;
+      const redundante = msg.includes('redundante') || msg.includes('aguarde') || msg.includes('código 6') || msg.includes('codigo 6');
+      if (redundante && tentativa === 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        tentativa++;
+        continue;
+      }
       throw e;
     }
-    if (data.faultstring) {
-      if (/n[ãa]o existem registros/i.test(data.faultstring)) break;
-      throw new Error(data.faultstring);
-    }
-    nfs.push(...(data.nfCadastro || []));
-    if (pagina >= (data.nTotPaginas || 1)) break;
-    await new Promise(r => setTimeout(r, 1200));
   }
-  return nfs;
+  return null;
 }
 
 async function getOmieCredentials(base44: any) {
@@ -74,37 +84,44 @@ Deno.serve(async (req) => {
     if (user?.role !== 'admin') return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
-    const dias = body.dias || 30;
     const limite = body.limite || 500;
+    const maxConsultas = body.max_consultas || 60; // teto de chamadas Omie por execução
     const pedidos = await base44.asServiceRole.entities.Pedido.list('-updated_date', limite);
-    const candidatos = pedidos.filter(p => p.omie_codigo_pedido && p.status_faturamento !== 'faturado' && !p.numero_nota_fiscal);
-    const nfs = await listarNfsRecentes(base44, dias);
-    const nfPorPedido = new Map();
-
-    nfs.forEach(nf => {
-      const nIdPedido = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
-      const numeroNf = nf.ide?.nNF || nf.cNumero || '';
-      const cStat = String(nf.nfStatus?.cStat || nf.compl?.cStat || '').trim();
-      if (nIdPedido && numeroNf && (cStat === '100' || cStat === '150' || !cStat)) {
-        nfPorPedido.set(nIdPedido, { numero_nf: String(numeroNf), data: nf.ide?.dEmi || new Date().toISOString() });
-      }
-    });
+    const candidatos = pedidos
+      .filter(p => p.omie_codigo_pedido && p.status_faturamento !== 'faturado' && !p.numero_nota_fiscal)
+      .slice(0, maxConsultas);
 
     let atualizados = 0;
-    for (const pedido of candidatos) {
-      const nf = nfPorPedido.get(String(pedido.omie_codigo_pedido));
-      if (!nf) continue;
-      await base44.asServiceRole.entities.Pedido.update(pedido.id, {
-        status: 'faturado',
-        faturado: true,
-        status_faturamento: 'faturado',
-        numero_nota_fiscal: nf.numero_nf,
-        data_faturamento: nf.data || new Date().toISOString()
-      });
-      atualizados++;
+    let consultados = 0;
+    // Sequencial, com delay anti-rate-limit entre cada ConsultarNF (1 chamada por pedido)
+    for (let i = 0; i < candidatos.length; i++) {
+      const pedido = candidatos[i];
+      let nf = null;
+      try {
+        nf = await consultarNFporPedido(base44, pedido.omie_codigo_pedido);
+      } catch (e) {
+        const msg = String(e.message || '').toLowerCase();
+        if (msg.includes('circuit breaker') || msg.includes('bloque')) break; // para tudo se bloqueado
+        consultados++;
+        if (i < candidatos.length - 1) await new Promise(r => setTimeout(r, 1800));
+        continue;
+      }
+      consultados++;
+      if (nf?.numero_nf) {
+        await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+          status: 'faturado',
+          faturado: true,
+          status_faturamento: 'faturado',
+          numero_nota_fiscal: nf.numero_nf,
+          data_faturamento: nf.data || new Date().toISOString()
+        });
+        atualizados++;
+      }
+      // Delay entre chamadas (não no último)
+      if (i < candidatos.length - 1) await new Promise(r => setTimeout(r, 1800));
     }
 
-    return Response.json({ sucesso: true, analisados: candidatos.length, atualizados });
+    return Response.json({ sucesso: true, analisados: candidatos.length, consultados, atualizados });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

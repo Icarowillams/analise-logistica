@@ -125,6 +125,42 @@ function classificarNF(nfEncontrada, codigoPedido) {
   return null;
 }
 
+// Consulta a NF de UM pedido via ConsultarNF (endpoint produtos/nfconsultar/, call ConsultarNF).
+// ConsultarNF aceita { nIdPedido } e retorna ide.nNF, ide.serie, compl.cChaveNFe, compl.nIdNF.
+// Retry único espaçado (3s) em caso de CÓDIGO 6 / "redundante" / "aguarde".
+async function consultarNFporPedido(base44, codigoPedido) {
+  let tentativa = 0;
+  while (tentativa < 2) {
+    try {
+      const resp = await omieCall(base44, 'produtos/nfconsultar/', {
+        nIdPedido: Number(codigoPedido)
+      }, { call: 'ConsultarNF', cacheMinutes: 5 });
+      const ide = resp?.ide || {};
+      const compl = resp?.compl || {};
+      const numero = ide.nNF || resp?.cNumero || '';
+      if (!numero) return null;
+      return {
+        numero_nf: String(numero),
+        serie: String(ide.serie || ''),
+        cStat: String(ide.cStat || compl.cStat || '100'),
+        xMotivo: ide.xMotivo || compl.xMotivo || '',
+        chave_nfe: compl.cChaveNFe || '',
+        id_nf: compl.nIdNF ? String(compl.nIdNF) : ''
+      };
+    } catch (e) {
+      const msg = String(e.message || '').toLowerCase();
+      const redundante = msg.includes('redundante') || msg.includes('aguarde') || msg.includes('código 6') || msg.includes('codigo 6');
+      if (redundante && tentativa === 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        tentativa++;
+        continue;
+      }
+      throw e;
+    }
+  }
+  return null;
+}
+
 // Consulta etapa atual do pedido no Omie via ConsultarPedido.
 // CORREÇÃO: Etapa 60 = faturado. Mesmo sem detalhes de NF na resposta, marca como emitida.
 async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null) {
@@ -156,45 +192,33 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   const classificada = classificarNF(nf, codigoPedido);
   if (classificada) return { etapa, ...classificada };
 
-  // CORREÇÃO: Etapa 60 = faturado no Omie, mas precisamos verificar o cStat real.
-  // Sem cStat do ConsultarPedido, buscamos via ListarNF para não assumir "autorizada" cegamente.
+  // CORREÇÃO DEFINITIVA: usar ConsultarNF (aceita nIdPedido) em vez de ListarNF (NÃO aceita nIdPedido).
+  // ListarNF com nCodPed/nIdPedido retorna ERROR "Tag [NIDPEDIDO] não faz parte da estrutura" e dispara
+  // CÓDIGO 6 ao varrer páginas. ConsultarNF retorna a NF do pedido em UMA única chamada.
   if (etapa === '60') {
     try {
-      // Delay entre ConsultarPedido e ListarNF — evita 2 chamadas em rajada (gatilho do "consumo indevido")
+      // Delay entre ConsultarPedido e ConsultarNF — evita 2 chamadas em rajada (gatilho "consumo indevido")
       await new Promise(r => setTimeout(r, 6000));
-      const nfsResp = await omieCall(base44, 'produtos/nfconsultar/', {
-        nPagina: 1,
-        nRegPorPagina: 10,
-        nCodPed: Number(codigoPedido)
-      }, { call: 'ListarNF', cacheMinutes: 5 });
-
-      const nfsList = nfsResp?.nfCadastro || [];
-      if (nfsList.length > 0) {
-        // Pega a NF mais recente
-        const nfReal = nfsList[nfsList.length - 1];
-        const cStatReal = String(nfReal?.infProt?.cStat || nfReal?.cStat || '');
-        const nNfReal = String(nfReal?.nNF || nfReal?.infNFe?.nNF || nNF || '');
-        const xMotivoReal = nfReal?.infProt?.xMotivo || '';
-
-        const classificadaReal = classificarNF({ cStat: cStatReal, nNF: nNfReal, xMotivo: xMotivoReal }, codigoPedido);
-        if (classificadaReal) return { etapa, ...classificadaReal };
-
-        // Se ListarNF retornou dados mas classificarNF não reconhece o cStat
-        return {
-          etapa,
-          status_real: cStatReal === '100' ? 'emitida' : 'aguardando',
-          numero_nf: nNfReal,
-          codigo_sefaz: cStatReal,
-          mensagem: cStatReal === '100' 
-            ? `NF ${nNfReal} autorizada (cStat=100 via ListarNF)`
-            : `NF em processamento (cStat=${cStatReal || '?'})`
+      const nfData = await consultarNFporPedido(base44, codigoPedido);
+      if (nfData?.numero_nf) {
+        const classificadaReal = classificarNF(
+          { ide: { cStat: nfData.cStat, nNF: nfData.numero_nf, xMotivo: nfData.xMotivo } },
+          codigoPedido
+        );
+        const base = classificadaReal || {
+          status_real: 'emitida',
+          numero_nf: nfData.numero_nf,
+          codigo_sefaz: nfData.cStat || '100',
+          mensagem: `NF ${nfData.numero_nf} autorizada`
         };
+        // Etapa 60 + NF com número = autorizada. Anexa série e chave.
+        return { etapa, ...base, serie_nf: nfData.serie || '', chave_nfe: nfData.chave_nfe || '', id_nf: nfData.id_nf || '' };
       }
     } catch (nfErr) {
-      console.warn(`[atualizarStatusLogsPendentes] ListarNF falhou para pedido ${codigoPedido}: ${nfErr.message}`);
+      console.warn(`[atualizarStatusLogsPendentes] ConsultarNF falhou para pedido ${codigoPedido}: ${nfErr.message}`);
     }
 
-    // Fallback: ListarNF falhou ou não retornou NFs — marca como aguardando
+    // Fallback: ConsultarNF falhou ou não retornou NF — marca como aguardando
     return {
       etapa,
       status_real: 'aguardando',
@@ -298,6 +322,7 @@ async function atualizarPedidoLocal(base44, codigoPedido, resultado) {
     if (!p) return;
     const updates = {};
     if (resultado.status_real === 'emitida') {
+      updates.status = 'faturado';
       updates.status_faturamento = 'faturado';
       updates.faturado = true;
       if (!p.data_faturamento) updates.data_faturamento = new Date().toISOString();
@@ -356,6 +381,9 @@ Deno.serve(async (req) => {
     };
 
     const { codigos_pedido, status_filtros, mock_omie_response } = body;
+    // Quando o usuário passa códigos explícitos (botão "Atualizar"), força a reconsulta
+    // ignorando o cooldown de 10min — ele quer destravar AGORA.
+    const forcarReconsulta = Array.isArray(codigos_pedido) && codigos_pedido.length > 0;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
     const LIMITE_LOGS = 3;
     const DELAY_ENTRE_CONSULTAS_MS = 15000; // 15s entre cada pedido (cada um pode gerar 2 chamadas: ConsultarPedido + ListarNF)
@@ -437,7 +465,7 @@ Deno.serve(async (req) => {
           resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
           continue;
         }
-        if (await consultadoRecentemente(base44, codPed)) {
+        if (!forcarReconsulta && await consultadoRecentemente(base44, codPed)) {
           console.log(`[atualizarStatusLogsPendentes] Pedido ${codPed} ignorado - consultado há menos de 10 minutos`);
           resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
           continue;
