@@ -27,11 +27,10 @@ export default function EmissaoBoletosTab() {
   const [resultado, setResultado] = useState(null);
   const [progressoBoletos, setProgressoBoletos] = useState({ atual: 0, total: 0 });
 
-  const { clientesBoletoMap: clientesBoleto, loadingClientes } = useModalidadeBoleto();
-
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-emissao-boletos-tab'],
     queryFn: () => base44.entities.Carga.list('-created_date', 200),
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
@@ -46,6 +45,17 @@ export default function EmissaoBoletosTab() {
     () => cargas.find(c => c.id === cargaId) || null,
     [cargas, cargaId]
   );
+
+  // Clientes carregados sob demanda — apenas os da carga selecionada
+  const contextoClientes = useMemo(() => {
+    const pedidos = cargaSelecionada?.pedidos_omie || [];
+    return {
+      cnpjs: pedidos.map(p => p.cnpj_cpf_cliente),
+      codigos: pedidos.flatMap(p => [p.codigo_cliente, p.codigo_cliente_cod])
+    };
+  }, [cargaSelecionada]);
+
+  const { clientesBoletoMap: clientesBoleto, loadingClientes } = useModalidadeBoleto(contextoClientes);
 
   const encontrarClienteBoleto = (titulo, pedido) => {
     const codigos = [titulo.codigo_cliente, pedido?.codigo_cliente, pedido?.codigo_cliente_cod];

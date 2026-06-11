@@ -6,19 +6,55 @@ const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 const normalizar = (v) => String(v || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
-export function useModalidadeBoleto() {
+/**
+ * Carrega modalidades + APENAS os clientes do contexto informado (não a base inteira).
+ * @param {Object} opts
+ * @param {string[]} opts.cnpjs   CNPJs/CPFs dos pedidos da carga selecionada
+ * @param {string[]} opts.codigos códigos Omie dos clientes da carga selecionada
+ */
+export function useModalidadeBoleto({ cnpjs = [], codigos = [] } = {}) {
   const { data: modalidades = [] } = useQuery({
     queryKey: ['modalidades-pagamento-boleto'],
     queryFn: () => base44.entities.ModalidadePagamento.list(),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
+  // Chaves do contexto — normalizadas e únicas
+  const cnpjsKey = useMemo(
+    () => [...new Set(cnpjs.map(somenteNumeros).filter(c => c.length >= 11))].sort(),
+    [cnpjs]
+  );
+  const codigosKey = useMemo(
+    () => [...new Set(codigos.map(c => String(c || '').trim()).filter(Boolean))].sort(),
+    [codigos]
+  );
+
+  // Busca SOB DEMANDA apenas os clientes da carga (por CNPJ/CPF), nunca a base inteira
   const { data: clientes = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes-modalidade-boleto'],
-    queryFn: () => base44.entities.Cliente.list('-updated_date', 5000),
+    queryKey: ['clientes-modalidade-boleto-contexto', cnpjsKey, codigosKey],
+    enabled: cnpjsKey.length > 0 || codigosKey.length > 0,
     staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const buscas = [];
+      if (cnpjsKey.length > 0) {
+        buscas.push(base44.entities.Cliente.filter({ cnpj_cpf: { $in: cnpjsKey } }));
+      }
+      if (codigosKey.length > 0) {
+        buscas.push(base44.entities.Cliente.filter({ codigo_omie: { $in: codigosKey } }));
+        buscas.push(base44.entities.Cliente.filter({ codigo_cliente_omie: { $in: codigosKey } }));
+      }
+      const resultados = await Promise.all(buscas);
+      const planos = resultados.flat();
+      // Dedup por id
+      const vistos = new Set();
+      return planos.filter(c => {
+        if (vistos.has(c.id)) return false;
+        vistos.add(c.id);
+        return true;
+      });
+    }
   });
 
   const modalidadeBoletoIds = useMemo(() => {

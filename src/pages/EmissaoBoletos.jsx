@@ -30,11 +30,10 @@ export default function EmissaoBoletos() {
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('todos');
 
-  const { isClienteBoleto, loadingClientes } = useModalidadeBoleto();
-
   const { data: cargas = [], isLoading: loadingCargas } = useQuery({
     queryKey: ['cargas-emissao-boletos'],
     queryFn: () => base44.entities.Carga.list('-created_date', 200),
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
@@ -49,6 +48,17 @@ export default function EmissaoBoletos() {
     () => cargas.find(c => c.id === cargaId) || null,
     [cargas, cargaId]
   );
+
+  // Clientes carregados sob demanda — apenas os da carga selecionada
+  const contextoClientes = useMemo(() => {
+    const pedidos = cargaSelecionada?.pedidos_omie || [];
+    return {
+      cnpjs: pedidos.map(p => p.cnpj_cpf_cliente),
+      codigos: pedidos.flatMap(p => [p.codigo_cliente, p.codigo_cliente_cod])
+    };
+  }, [cargaSelecionada]);
+
+  const { isClienteBoleto, loadingClientes } = useModalidadeBoleto(contextoClientes);
 
   // Busca títulos filtrando por CNPJ de cada pedido sequencialmente (evita rate-limit Omie)
   const { data: titulosResp, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
