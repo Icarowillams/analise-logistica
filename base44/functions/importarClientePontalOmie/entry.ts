@@ -54,6 +54,33 @@ async function omieCall(base44: any, call: string, param: unknown) {
 
 const onlyDigits = (s: any) => String(s || '').replace(/\D/g, '');
 
+// Normaliza nome para comparação (maiúsculas, sem acentos, espaços colapsados)
+const normalizarNome = (s) =>
+  String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+
+// ═══ Defaults de plano/modalidade ═══
+// O cadastro de cliente do Omie NÃO possui o conceito de plano de pagamento/prazo
+// nem modalidade. A fonte de verdade real é a planilha/CSV legado (sincronizarClientesCSV /
+// corrigirPlanosViaPlanilha). Para evitar que clientes importados nasçam "sem plano",
+// aplicamos um default seguro (A VISTA / PIX) APENAS quando o campo ficaria vazio.
+const DEFAULT_PLANO_NOME = 'A VISTA';
+const DEFAULT_MODALIDADE_NOME = 'PIX';
+const DEFAULT_PLANO_ID_FALLBACK = '69ff70445fbcb49b659710cd';
+const DEFAULT_MODALIDADE_ID_FALLBACK = '69ff70445fbcb49b659710de';
+
+async function resolverDefaults(base44) {
+  const [planos, modalidades] = await Promise.all([
+    base44.asServiceRole.entities.PlanoPagamento.list(),
+    base44.asServiceRole.entities.ModalidadePagamento.list(),
+  ]);
+  const plano = planos.find((p) => normalizarNome(p.nome) === DEFAULT_PLANO_NOME);
+  const modalidade = modalidades.find((m) => normalizarNome(m.nome) === DEFAULT_MODALIDADE_NOME);
+  return {
+    planoId: plano?.id || DEFAULT_PLANO_ID_FALLBACK,
+    modalidadeId: modalidade?.id || DEFAULT_MODALIDADE_ID_FALLBACK,
+  };
+}
+
 // Extrai codigo_interno do campo tags do Omie (formato "COD:XXXXX")
 function extrairCodigoInternoDosTags(tags: any[]): string {
   if (!Array.isArray(tags)) return '';
@@ -128,6 +155,9 @@ Deno.serve(async (req) => {
 });
 
 async function processarImportacao(base44: any, codigos: number[]) {
+  // Resolve defaults de plano/modalidade UMA vez, fora do loop (evita rate limit)
+  const defaults = await resolverDefaults(base44);
+
   // Pré-carrega todos os clientes Base44 para lookups O(1)
   const todosClientes = await base44.asServiceRole.entities.Cliente.list();
   const porCnpj = new Map<string, any>();
@@ -169,17 +199,18 @@ async function processarImportacao(base44: any, codigos: number[]) {
 
       if (existente) {
         // Já existe — atualiza apenas codigo_omie/codigo_cliente_omie se estiver vazio
-        const precisaAtualizar =
-          !existente.codigo_omie ||
-          !existente.codigo_cliente_omie ||
-          String(existente.codigo_omie) !== codStr;
+        // e preenche plano/modalidade default APENAS se estiverem vazios (nunca sobrescreve).
+        const updates = {};
+        if (!existente.codigo_omie || !existente.codigo_cliente_omie || String(existente.codigo_omie) !== codStr) {
+          updates.codigo_omie = codStr;
+          updates.codigo_cliente_omie = codStr;
+        }
+        if (!existente.plano_pagamento_id) updates.plano_pagamento_id = defaults.planoId;
+        if (!existente.modalidade_pagamento_id) updates.modalidade_pagamento_id = defaults.modalidadeId;
 
-        if (precisaAtualizar) {
-          await base44.asServiceRole.entities.Cliente.update(existente.id, {
-            codigo_omie: codStr,
-            codigo_cliente_omie: codStr,
-          });
-          resultado.acao = 'vinculado_codigo_omie';
+        if (Object.keys(updates).length > 0) {
+          await base44.asServiceRole.entities.Cliente.update(existente.id, updates);
+          resultado.acao = updates.codigo_omie ? 'vinculado_codigo_omie' : 'preenchido_defaults';
         } else {
           resultado.acao = 'ja_existe_sem_alteracao';
         }
@@ -187,6 +218,9 @@ async function processarImportacao(base44: any, codigos: number[]) {
         resultado.razao_social = existente.razao_social;
       } else {
         // 3. Não existe — criar
+        // Default de plano/modalidade (Omie não fornece esses dados) — só como fallback
+        if (!campos.plano_pagamento_id) campos.plano_pagamento_id = defaults.planoId;
+        if (!campos.modalidade_pagamento_id) campos.modalidade_pagamento_id = defaults.modalidadeId;
         const novoCliente = await base44.asServiceRole.entities.Cliente.create(campos);
         resultado.acao = 'criado';
         resultado.cliente_id = novoCliente.id;
