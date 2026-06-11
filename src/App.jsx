@@ -11,6 +11,7 @@ import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import ControlePedidosVenda from './pages/ControlePedidosVenda';
 import ControlePedidosTroca from './pages/ControlePedidosTroca';
 import PreCadastros from './pages/PreCadastros';
+import CadastrosHub from './pages/CadastrosHub';
 import SincronizarClientesCSVPage from './pages/SincronizarClientesCSVPage.jsx';
 import SincronizarClienteOmie from './pages/SincronizarClienteOmie.jsx';
 import Veiculos from './pages/Veiculos.jsx';
@@ -145,6 +146,8 @@ const AuthenticatedApp = () => {
       <Route path="/correcao-manual" element={<LayoutWrapper currentPageName="CorrecaoManual"><CorrecaoManual /></LayoutWrapper>} />
       <Route path="/ComparacaoPedidosOmie" element={<LayoutWrapper currentPageName="ComparacaoPedidosOmie"><ComparacaoPedidosOmie /></LayoutWrapper>} />
       <Route path="/SupervisaoFilaEnvio" element={<LayoutWrapper currentPageName="SupervisaoFilaEnvio"><SupervisaoFilaEnvio /></LayoutWrapper>} />
+      <Route path="/CadastrosHub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
+      <Route path="/cadastroshub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

@@ -97,30 +97,7 @@ export default function Layout({ children, currentPageName }) {
       {
         title: 'Cadastros',
         icon: Settings,
-        submenu: [
-          { title: 'Funcionários', path: 'Funcionarios' },
-          { title: 'Funções/Departamentos', path: 'Funcoes' },
-          { title: 'Produtos', path: 'Produtos' },
-          { title: 'Categorias', path: 'Categorias' },
-          { title: 'Tabelas de Preço', path: 'TabelasPreco' },
-          { title: 'Clientes', path: 'Clientes' },
-          { title: 'Consulta de Clientes', path: 'ConsultaClientes' },
-          { title: 'Vendedores', path: 'Vendedores' },
-          { title: 'Segmentos', path: 'Segmentos' },
-          { title: 'Redes', path: 'Redes' },
-          { title: 'Ocorrências - Motivos', path: 'MotivosTroca' },
-          { title: 'Planos de Pagamento', path: 'PlanosPagamento' },
-          { title: 'Unidades de Medida', path: 'UnidadesMedida' },
-          { title: 'Rotas', path: 'Rotas' },
-          { title: 'Roteiros', path: 'GestaoRoteiros' },
-          { title: 'Cadastro de Metas', path: 'Metas' },
-          { title: 'Empresa', path: 'Empresa' },
-          { title: 'Pré-Cadastros', path: 'PreCadastros' },
-          { title: 'Veículos', path: 'Veiculos' },
-          { title: 'Motoristas', path: 'Motoristas' },
-          { title: 'Cenários Fiscais', path: 'CenariosFiscais' },
-          { title: 'Cenários Fiscais Locais', path: 'CenariosFiscaisLocais' }
-        ]
+        path: 'CadastrosHub'
       },
       {
         title: 'Pedidos',

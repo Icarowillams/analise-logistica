@@ -13,6 +13,7 @@ import Categorias from './pages/Categorias';
 import CenariosFiscais from './pages/CenariosFiscais';
 import CenariosFiscaisLocais from './pages/CenariosFiscaisLocais';
 import Clientes from './pages/Clientes';
+import CadastrosHub from './pages/CadastrosHub';
 import ConfiguracaoOmie from './pages/ConfiguracaoOmie';
 import ConsultaClientes from './pages/ConsultaClientes';
 import CommitsGithub from './pages/CommitsGithub';
@@ -69,6 +70,7 @@ export const PAGES = {
     "Categorias": Categorias,
     "CenariosFiscais": CenariosFiscais,
     "CenariosFiscaisLocais": CenariosFiscaisLocais,
+    "CadastrosHub": CadastrosHub,
     "Clientes": Clientes,
     "ConfiguracaoOmie": ConfiguracaoOmie,
     "ConsultaClientes": ConsultaClientes,
