@@ -53,15 +53,16 @@ export default function DashboardTrocas() {
     queryFn: () => base44.entities.LogCorte.list('-created_date', 5000)
   });
 
-  // Mapa cliente_id → vendedor
+  // Mapa cliente_id → vendedor (rota resolvida pelo cadastro de rotas)
   const vendedorPorCliente = useMemo(() => {
     const nomesVend = new Map(vendedores.map(v => [v.id, v.nome]));
+    const nomesRota = new Map(rotas.map(r => [r.id, r.nome]));
     const map = new Map();
     clientes.forEach(c => {
-      if (c.id && c.vendedor_id) map.set(c.id, { id: c.vendedor_id, nome: nomesVend.get(c.vendedor_id) || '-', rota_id: c.rota_id, rota_nome: c.rota_nome });
+      if (c.id && c.vendedor_id) map.set(c.id, { id: c.vendedor_id, nome: nomesVend.get(c.vendedor_id) || '-', rota_id: c.rota_id, rota_nome: nomesRota.get(c.rota_id) || '' });
     });
     return map;
-  }, [clientes, vendedores]);
+  }, [clientes, vendedores, rotas]);
 
   const trocasEnriquecidas = useMemo(() => trocasPedido.map(t => {
     const v = vendedorPorCliente.get(t.cliente_id);

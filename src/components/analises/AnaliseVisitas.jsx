@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
+import useVisitasAnalise from './useVisitasAnalise';
 import { dentroPeriodo, exportarCSV, formatarNumero, formatarMoeda, duracaoMin } from './utilsAnalises';
 
 const CORES = ['#0891b2', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0ea5e9'];
@@ -25,11 +26,8 @@ export default function AnaliseVisitas() {
     queryKey: ['vendedores_analise'],
     queryFn: () => base44.entities.Vendedor.list()
   });
-  // VisitaRoteiro — fonte principal (supervisor e app campo)
-  const { data: visitas = [], isLoading: loadingV } = useQuery({
-    queryKey: ['visitasRoteiro'],
-    queryFn: () => base44.entities.VisitaRoteiro.list('-updated_date', 10000)
-  });
+  // Visita — fonte real do app de campo (Meus Roteiros), normalizada para análise
+  const { visitas, isLoading: loadingV } = useVisitasAnalise();
   // Pedidos gerados a partir de visitas (para taxa de conversão real)
   const { data: pedidosVisita = [] } = useQuery({
     queryKey: ['pedidos_venda_faturados'],

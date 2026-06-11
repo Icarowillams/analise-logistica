@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
+import useVisitasAnalise from './useVisitasAnalise';
 import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './utilsAnalises';
 
 const CORES = ['#0891b2', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#f97316', '#64748b', '#0ea5e9'];
@@ -55,11 +56,8 @@ export default function DashboardClientes() {
     queryKey: ['log_nao_cadastrados'],
     queryFn: () => base44.entities.LogClienteNaoCadastrado.list('-created_date', 1000)
   });
-  // Visitas para calcular frequência de atendimento
-  const { data: visitas = [] } = useQuery({
-    queryKey: ['visitasRoteiro'],
-    queryFn: () => base44.entities.VisitaRoteiro.list('-updated_date', 10000)
-  });
+  // Visitas para calcular frequência de atendimento (entidade Visita normalizada)
+  const { visitas } = useVisitasAnalise();
 
   // Filtrar clientes
   const clientesFiltrados = useMemo(() => clientes.filter(c => {

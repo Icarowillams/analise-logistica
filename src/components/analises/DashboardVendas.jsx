@@ -63,11 +63,19 @@ export default function DashboardVendas() {
     return map;
   }, [clientes, vendedores]);
 
+  // Mapa rota_id → nome (pedidos têm rota_id mas rota_nome vem vazio)
+  const nomeRota = useMemo(() => new Map(rotas.map(r => [r.id, r.nome])), [rotas]);
+
   const enriquecer = (p) => {
     const v = vendedorPorCliente.get(p.cliente_id);
-    return { ...p, vendedor_id: v?.id || p.vendedor_id, vendedor_nome: v?.nome || p.vendedor_nome };
+    return {
+      ...p,
+      vendedor_id: v?.id || p.vendedor_id,
+      vendedor_nome: v?.nome || p.vendedor_nome,
+      rota_nome: p.rota_nome || nomeRota.get(p.rota_id) || ''
+    };
   };
-  const pedidosEnr = useMemo(() => pedidosFaturados.map(enriquecer), [pedidosFaturados, vendedorPorCliente]);
+  const pedidosEnr = useMemo(() => pedidosFaturados.map(enriquecer), [pedidosFaturados, vendedorPorCliente, nomeRota]);
 
   const filtrados = useMemo(() => pedidosEnr.filter(p => {
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;

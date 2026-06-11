@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MapPin, CheckCircle2, XCircle, Clock, Activity, Filter, Download } from 'lucide-react';
 import KpiCard from './KpiCard';
+import useVisitasAnalise from './useVisitasAnalise';
 import { dentroPeriodo, exportarCSV, formatarNumero, duracaoMin } from './utilsAnalises';
 
 // Fix Leaflet icons
@@ -86,10 +87,7 @@ export default function MapaVisitas() {
     queryKey: ['vendedores_analise'],
     queryFn: () => base44.entities.Vendedor.list()
   });
-  const { data: visitas = [], isLoading } = useQuery({
-    queryKey: ['visitasRoteiro'],
-    queryFn: () => base44.entities.VisitaRoteiro.list('-updated_date', 10000)
-  });
+  const { visitas, isLoading } = useVisitasAnalise();
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes_analise'],
     queryFn: () => base44.entities.Cliente.list('-created_date', 20000)

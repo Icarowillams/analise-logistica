@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
+import useVisitasAnalise from './useVisitasAnalise';
 import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, duracaoMin } from './utilsAnalises';
 
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -40,10 +41,7 @@ export default function DashboardVendedor() {
     queryKey: ['pedidos_troca_faturados'],
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
   });
-  const { data: visitas = [] } = useQuery({
-    queryKey: ['visitasRoteiro'],
-    queryFn: () => base44.entities.VisitaRoteiro.list('-updated_date', 10000)
-  });
+  const { visitas } = useVisitasAnalise();
   const { data: metas = [] } = useQuery({
     queryKey: ['metas_vendas'],
     queryFn: () => base44.entities.Meta.filter({ tipo: 'venda' }, '-periodo_inicio', 200)
