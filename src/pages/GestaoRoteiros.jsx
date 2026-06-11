@@ -18,6 +18,7 @@ import VisualizarRoteiroModal from '@/components/Roteiros/VisualizarRoteiroModal
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import LogClientesNaoCadastrados from '@/components/Roteiros/LogClientesNaoCadastrados';
 import AtualizacaoMassaRoteiros from '@/components/Roteiros/AtualizacaoMassaRoteiros';
+import RemoverClienteRoteiros from '@/components/Roteiros/RemoverClienteRoteiros';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 
@@ -176,10 +177,11 @@ export default function GestaoRoteiros() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[900px] grid-cols-5 mb-6">
+        <TabsList className="grid w-full max-w-[1100px] grid-cols-6 mb-6">
           <TabsTrigger value="busca">Busca de Roteiros</TabsTrigger>
           <TabsTrigger value="importar">Criação em Massa</TabsTrigger>
           <TabsTrigger value="atualizacao">Atualização em Massa</TabsTrigger>
+          <TabsTrigger value="remover">Remover Cliente</TabsTrigger>
           <TabsTrigger value="pendentes">Clientes Pendentes</TabsTrigger>
           <TabsTrigger value="visualizar">Visualizar Roteiro</TabsTrigger>
         </TabsList>
@@ -287,6 +289,7 @@ export default function GestaoRoteiros() {
 
         <TabsContent value="importar" className="space-y-6"><ImportarTab /></TabsContent>
         <TabsContent value="atualizacao" className="space-y-6"><AtualizacaoMassaRoteiros /></TabsContent>
+        <TabsContent value="remover" className="space-y-6"><RemoverClienteRoteiros /></TabsContent>
         <TabsContent value="pendentes" className="space-y-6"><LogClientesNaoCadastrados /></TabsContent>
         <TabsContent value="visualizar">
           <Card><CardContent className="pt-6"><p className="text-center text-slate-500">Selecione um roteiro na aba "Busca" e clique em "Visualizar"</p></CardContent></Card>
