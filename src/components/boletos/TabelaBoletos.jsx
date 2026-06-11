@@ -30,10 +30,14 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
     );
   }, [titulos, filtro]);
 
-  // Selecionável se: em aberto (para gerar boleto) OU já tem boleto emitido (para imprimir)
+  // Sem boleto gerado no Omie — não pode imprimir
+  const semBoleto = (t) => !t.boleto_gerado && !t.numero_boleto;
+
+  // Selecionável para impressão somente se tiver boleto gerado e não estiver cancelado/liquidado
   const isElegivel = (t) => {
     const st = String(t.status_titulo || 'ABERTO').toUpperCase();
     if (st === 'CANCELADO' || st === 'PAGO' || st === 'LIQUIDADO') return false;
+    if (semBoleto(t)) return false;
     return true;
   };
 
@@ -123,6 +127,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                     if (st === 'PARCIAL') return <Badge className="bg-amber-100 text-amber-800">Parcial</Badge>;
                     if (st === 'ATRASADO' || st === 'VENCIDO') return <Badge className="bg-red-100 text-red-800">Atrasado</Badge>;
                     if (t.numero_boleto) return <Badge className="bg-blue-100 text-blue-800">Boleto Emitido</Badge>;
+                    if (semBoleto(t)) return <Badge className="bg-slate-100 text-slate-600 border-slate-300">Sem boleto gerado</Badge>;
                     return <Badge variant="outline">Em Aberto</Badge>;
                   })()}
                 </td>

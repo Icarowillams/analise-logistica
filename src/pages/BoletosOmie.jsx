@@ -14,10 +14,19 @@ export default function BoletosOmie() {
   const [modoImpressao, setModoImpressao] = useState('individual');
 
   const titulosSelecionados = titulos.filter(t => selecionados.includes(t.codigo_lancamento));
+  const titulosComBoleto = titulosSelecionados.filter(t => t.boleto_gerado || t.numero_boleto);
 
   const abrirImpressao = (modo) => {
     if (titulosSelecionados.length === 0) {
       toast.error('Selecione ao menos um título');
+      return;
+    }
+    const semBoleto = titulosSelecionados.length - titulosComBoleto.length;
+    if (semBoleto > 0) {
+      toast.warning(`${semBoleto} título(s) ainda não têm boleto gerado no Omie e serão ignorados na impressão.`);
+    }
+    if (titulosComBoleto.length === 0) {
+      toast.error('Nenhum dos títulos selecionados tem boleto gerado. Emita primeiro na aba "Emissão de Boletos".');
       return;
     }
     setModoImpressao(modo);
@@ -49,7 +58,7 @@ export default function BoletosOmie() {
       <BoletosImpressaoDialog
         open={imprimirOpen}
         onOpenChange={setImprimirOpen}
-        titulos={titulosSelecionados}
+        titulos={titulosComBoleto}
         modo={modoImpressao}
       />
 

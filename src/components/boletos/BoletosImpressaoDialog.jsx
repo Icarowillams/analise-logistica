@@ -48,8 +48,15 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
       if (r.status === 'fulfilled') {
         saida.push({ titulo: lote[idx], bytes: r.value, ok: true });
       } else {
-        saida.push({ titulo: lote[idx], ok: false, erro: r.reason?.message || 'Erro' });
-        toast.error(`Boleto ${lote[idx].numero_documento || lote[idx].codigo_lancamento}: ${r.reason?.message}`);
+        const msg = r.reason?.message || 'Erro';
+        saida.push({ titulo: lote[idx], ok: false, erro: msg });
+        const docRef = lote[idx].numero_documento || lote[idx].codigo_lancamento;
+        const naoGerado = /404|não disponível|nao disponivel|status code 404/i.test(msg);
+        if (naoGerado) {
+          toast.error(`Boleto do documento ${docRef}: ainda não foi gerado no Omie. Emita primeiro na aba "Emissão de Boletos".`);
+        } else {
+          toast.error(`Boleto ${docRef}: ${msg}`);
+        }
       }
       onProgress();
     });
