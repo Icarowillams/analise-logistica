@@ -26,6 +26,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const [enviandoIds, setEnviandoIds] = useState(new Set());
   const [pdfPedidoId, setPdfPedidoId] = useState(null);
   const [enfileirandoTodos, setEnfileirandoTodos] = useState(false);
+  // Trava local persistente: pedidos já enfileirados nesta sessão (evita duplicação por cliques rápidos antes da fila atualizar)
+  const jaEnfileiradosRef = React.useRef(new Set());
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
@@ -155,6 +157,12 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   // Executa o envio efetivo — internos são síncronos, externos vão para a fila
   const executarEnvio = async (pedido) => {
     if (enviandoIds.has(pedido.id)) return;
+    // Trava imediata e síncrona — impede 2º clique antes do React atualizar o estado
+    if (!isInterno(pedido) && jaEnfileiradosRef.current.has(pedido.id)) {
+      toast.info('Este pedido já foi enviado para a fila');
+      return;
+    }
+    if (!isInterno(pedido)) jaEnfileiradosRef.current.add(pedido.id);
     setEnviandoIds(prev => new Set(prev).add(pedido.id));
     try {
       if (isInterno(pedido)) {
@@ -188,6 +196,8 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
       }
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     } catch (err) {
+      // Liberar trava para permitir nova tentativa após erro
+      jaEnfileiradosRef.current.delete(pedido.id);
       toast.error('Erro ao enfileirar pedido: ' + err.message);
     } finally {
       setEnviandoIds(prev => { const n = new Set(prev); n.delete(pedido.id); return n; });
@@ -234,8 +244,10 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
         .map(f => f.pedido_id)
     );
 
-    const aEnfileirar = externos.filter(p => !pedidosIdsJaNaFila.has(p.id));
+    const aEnfileirar = externos.filter(p => !pedidosIdsJaNaFila.has(p.id) && !jaEnfileiradosRef.current.has(p.id));
     const jaNaFila = externos.length - aEnfileirar.length;
+    // Marcar trava local imediatamente
+    aEnfileirar.forEach(p => jaEnfileiradosRef.current.add(p.id));
 
     if (aEnfileirar.length > 0) {
       const registros = aEnfileirar.map(p => ({
@@ -435,12 +447,12 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
                 <Button 
                   size="sm" 
                   onClick={() => enviarPedido(pedido)} 
-                  disabled={enviandoIds.has(pedido.id) || enfileirandoTodos || (filaPorPedido[pedido.id] && (filaPorPedido[pedido.id].status === 'pendente' || filaPorPedido[pedido.id].status === 'processando'))} 
+                  disabled={enviandoIds.has(pedido.id) || enfileirandoTodos || jaEnfileiradosRef.current.has(pedido.id) || (filaPorPedido[pedido.id] && (filaPorPedido[pedido.id].status === 'pendente' || filaPorPedido[pedido.id].status === 'processando'))} 
                   className="text-xs bg-green-600 hover:bg-green-700"
                 >
                   <Send className="w-3 h-3 mr-1" /> 
                   {enviandoIds.has(pedido.id) ? 'Enfileirando...' : 
-                   filaPorPedido[pedido.id]?.status === 'pendente' ? 'Na fila' :
+                   (filaPorPedido[pedido.id]?.status === 'pendente' || jaEnfileiradosRef.current.has(pedido.id)) ? 'Na fila' :
                    filaPorPedido[pedido.id]?.status === 'processando' ? 'Enviando...' : 'Enviar'}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setPdfPedidoId(pedido.id)} className="text-xs">
