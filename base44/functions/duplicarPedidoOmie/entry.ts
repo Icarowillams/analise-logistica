@@ -199,7 +199,7 @@ async function duplicarUm(base44, entrada, user, vendedorAtual) {
   else if (codigoPedidoIntegracao) param.codigo_pedido_integracao = String(codigoPedidoIntegracao);
   else return { sucesso: false, erro: 'codigo_pedido obrigatório' };
 
-  const consulta = await omieCall(base44, 'ConsultarPedido', param);
+  const consulta = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido' });
   if (consulta?.faultstring) return { sucesso: false, erro: `Consulta Omie: ${consulta.faultstring}`, origem_codigo: codigoPedido };
 
   const pedidoOriginal = consulta.pedido_venda_produto || consulta;

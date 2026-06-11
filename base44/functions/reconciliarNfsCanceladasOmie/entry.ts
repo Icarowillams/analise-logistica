@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
     const canceladas = [];
 
     do {
-      const data = await omieCall(base44, 'ListarNF', { ...param, pagina }, { cacheMinutes: 0 });
+      const data = await omieCall(base44, 'produtos/nfconsultar/', { ...param, pagina }, { call: 'ListarNF', cacheMinutes: 0 });
       if (data?.faultstring) {
         return Response.json({ sucesso: false, erro: data.faultstring }, { status: 500 });
       }

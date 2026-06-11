@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
     // === FLUXO PEDIDO OMIE ===
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
 
-    const consulta = await omieCall(base44, 'ConsultarPedido', { codigo_pedido: Number(codigo_pedido) }, { cacheMinutes: 0 });
+    const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido', cacheMinutes: 0 });
     const pedido = consulta.pedido_venda_produto;
     if (!pedido) return Response.json({ error: 'Pedido não encontrado no Omie' }, { status: 404 });
 
@@ -416,7 +416,7 @@ Deno.serve(async (req) => {
 
     let erroOmie = null;
     try {
-      await omieCall(base44, 'AlterarPedidoVenda', {
+      await omieCall(base44, 'produtos/pedido/', {
         cabecalho: {
           codigo_pedido: Number(codigo_pedido),
           codigo_pedido_integracao: codigoPedidoIntegracaoFinal,
@@ -425,7 +425,7 @@ Deno.serve(async (req) => {
           etapa: pedido.cabecalho?.etapa || '10'
         },
         det: novosItens
-      }, { cacheMinutes: 0 });
+      }, { call: 'AlterarPedidoVenda', cacheMinutes: 0 });
     } catch (err) {
       if (err.code === 'OMIE_425') throw err; // propaga bloqueio ao catch externo
       erroOmie = err.message;
