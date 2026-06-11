@@ -169,6 +169,12 @@ export default function Clientes() {
       if (logs.length === 0) return;
 
       const roteiros = await base44.entities.Roteiro.list();
+
+      // Normaliza o dia para comparação robusta (ignora sufixo "-feira" e acentos)
+      const normalizarDia = (d) => String(d || '').toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/-feira$/, '');
+
       const diasMap = {
         'segunda': 'segunda-feira',
         'terca': 'terca-feira',
@@ -184,11 +190,14 @@ export default function Clientes() {
       for (const log of logs) {
         for (const dia of log.dias_semana || []) {
           const diaCompleto = diasMap[dia] || dia;
+          const diaNormalizado = normalizarDia(diaCompleto);
           
           // Buscar roteiro existente do funcionário para este dia
+          // Compara de forma normalizada para evitar duplicatas por formato diferente
+          // (ex.: "quarta" vs "quarta-feira")
           const roteiroExistente = roteiros.find(r => 
             r.vendedor_id === log.funcionario_id && 
-            r.dia_semana === diaCompleto
+            normalizarDia(r.dia_semana) === diaNormalizado
           );
 
           if (roteiroExistente) {
