@@ -5,6 +5,97 @@ function formatDatePt(value) {
   return new Date(value).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' });
 }
 
+// ═══ omieClient mínimo inline (somente leitura: ConsultarNF / ConsultarPedido) ═══
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+
+async function getOmieCreds(base44) {
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = rows?.[0];
+  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
+  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  return { appKey, appSecret };
+}
+
+// Chamada Omie de leitura com retry leve para concorrência (CÓDIGO 6 / 8020 / redundante / aguarde).
+async function omieRead(base44, endpoint, call, param) {
+  const { appKey, appSecret } = await getOmieCreds(base44);
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  const url = OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  let tentativa = 0;
+  while (tentativa < 2) {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15000);
+    let data;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+      data = await res.json();
+    } catch (e) {
+      clearTimeout(tid);
+      throw new Error(e.name === 'AbortError' ? 'Timeout na chamada Omie' : e.message);
+    }
+    if (data.faultstring) {
+      const msg = String(data.faultstring).toLowerCase();
+      const concorrencia = msg.includes('código 6') || msg.includes('codigo 6') || msg.includes('8020') || msg.includes('redundante') || msg.includes('aguarde') || msg.includes('execução') || msg.includes('execucao');
+      if (concorrencia && tentativa === 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        tentativa++;
+        continue;
+      }
+      const err = new Error(data.faultstring);
+      err.faultstring = data.faultstring;
+      throw err;
+    }
+    return data;
+  }
+  return null;
+}
+
+// Verifica no Omie, em tempo real, se o pedido JÁ possui NF de verdade.
+// Retorna: { existe: true, numero_nf, etapa } se houver NF; { existe: false, etapa } caso contrário.
+// Se "NF não cadastrada para o pedido" → existe:false (log local é órfão, libera re-emissão).
+async function verificarNfRealOmie(base44, codigoPedidoOmie) {
+  const codigo = Number(codigoPedidoOmie);
+  if (!Number.isFinite(codigo) || codigo <= 0) return { existe: false, etapa: '', inconclusivo: true };
+
+  // 1) ConsultarNF { nIdPedido } — verdade sobre a NF
+  let numeroNf = '';
+  let chaveNfe = '';
+  try {
+    const resp = await omieRead(base44, 'produtos/nfconsultar/', 'ConsultarNF', { nIdPedido: codigo });
+    numeroNf = resp?.ide?.nNF || resp?.cNumero || '';
+    chaveNfe = resp?.compl?.cChaveNFe || '';
+  } catch (e) {
+    const msg = String(e.faultstring || e.message || '').toLowerCase();
+    // "NF não cadastrada para o pedido" = não existe emissão real → libera
+    if (msg.includes('não cadastrada') || msg.includes('nao cadastrada') || msg.includes('não encontrad') || msg.includes('nao encontrad')) {
+      // continua para checar etapa (reforço), mas já sabemos que não há NF
+      numeroNf = '';
+    } else {
+      // erro inconclusivo (timeout, bloqueio) → não libera nem confirma
+      return { existe: false, etapa: '', inconclusivo: true, erro: e.faultstring || e.message };
+    }
+  }
+
+  // 2) ConsultarPedido — etapa (60 = faturado). Reforça a verdade.
+  let etapa = '';
+  try {
+    await new Promise(r => setTimeout(r, 3000)); // delay anti-concorrência entre as 2 leituras
+    const r = await omieRead(base44, 'produtos/pedido/', 'ConsultarPedido', { codigo_pedido: codigo });
+    etapa = String(r?.pedido_venda_produto?.cabecalho?.etapa || '');
+  } catch { /* etapa inconclusiva — decide só pela NF */ }
+
+  if (numeroNf || chaveNfe) {
+    return { existe: true, numero_nf: String(numeroNf || ''), chave_nfe: chaveNfe, etapa };
+  }
+  return { existe: false, etapa };
+}
+
 async function verificarJaFaturado(base44, codigoPedido) {
   const codigo = String(codigoPedido);
 
@@ -38,21 +129,71 @@ async function verificarJaFaturado(base44, codigoPedido) {
   }
 
   // 4. Verificar log "pendente" recente (emissão acionada mas SEFAZ ainda não retornou)
-  // Bloqueia re-emissão se o log pendente tem menos de 2 horas (evita disparos repetidos).
-  // Após 2h, considera expirado e permite nova tentativa.
+  // ANTES de bloquear pela trava de 2h, perguntar ao Omie em TEMPO REAL se há NF de verdade.
+  // A verdade está no Omie, não no log local — logs "aguardando" podem ser órfãos (emissão abortada por 8020).
   const logsPendentes = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'pendente' }, '-created_date', 1).catch(() => []);
   if (logsPendentes?.[0]) {
     const idadeMs = Date.now() - new Date(logsPendentes[0].created_date).getTime();
     const DUAS_HORAS = 2 * 60 * 60 * 1000;
     if (idadeMs < DUAS_HORAS) {
-      return {
-        bloqueado: true,
-        mensagem: `Pedido #${logsPendentes[0].numero_pedido || codigo} já tem emissão em andamento (aguardando SEFAZ desde ${formatDatePt(logsPendentes[0].created_date)}). Aguarde o retorno ou tente novamente após 2h.`
-      };
+      const nfReal = await verificarNfRealOmie(base44, codigo);
+
+      // 4a. Omie confirma NF existente → NÃO re-emitir; destrava marcando como autorizada.
+      if (nfReal.existe) {
+        await marcarAutorizadoSemReemitir(base44, codigo, nfReal, logsPendentes[0]);
+        return {
+          bloqueado: true,
+          ja_autorizado: true,
+          mensagem: `Pedido #${logsPendentes[0].numero_pedido || codigo} já possui NF emitida no Omie: ${nfReal.numero_nf || '-'}. Status atualizado para Autorizada (não re-emitido).`
+        };
+      }
+
+      // 4b. Erro inconclusivo na consulta (timeout/bloqueio) → mantém trava por segurança.
+      if (nfReal.inconclusivo) {
+        return {
+          bloqueado: true,
+          mensagem: `Pedido #${logsPendentes[0].numero_pedido || codigo}: não foi possível confirmar no Omie se há NF (${nfReal.erro || 'consulta inconclusiva'}). Tente novamente em instantes.`
+        };
+      }
+
+      // 4c. Omie confirma que NÃO há NF (e etapa ≠ 60) → log "aguardando" é ÓRFÃO → LIBERA re-emissão.
+      console.log(`[emitirNfsLoteOmie] Log pendente órfão para pedido ${codigo} — Omie sem NF (etapa ${nfReal.etapa || '?'}). Liberando re-emissão.`);
+      // Marca o log órfão como expirado para não reaparecer como "aguardando".
+      await base44.asServiceRole.entities.LogEmissaoNF.update(logsPendentes[0].id, {
+        status: 'erro',
+        mensagem: 'Log órfão: emissão anterior não completou no Omie (sem NF). Liberado para re-emissão.'
+      }).catch(() => {});
+      // segue (não bloqueia)
     }
   }
 
   return { bloqueado: false };
+}
+
+// Quando o Omie confirma que a NF já existe: atualiza log + pedido local para Autorizada, sem re-emitir.
+async function marcarAutorizadoSemReemitir(base44, codigoPedido, nfReal, logPendente) {
+  try {
+    await base44.asServiceRole.entities.LogEmissaoNF.update(logPendente.id, {
+      status: 'autorizada',
+      numero_nf: nfReal.numero_nf || logPendente.numero_nf || '',
+      codigo_sefaz: '100',
+      mensagem: `NF ${nfReal.numero_nf || ''} confirmada no Omie (já existia).`
+    }).catch(() => {});
+
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
+    const p = pedidos?.[0];
+    if (p?.id) {
+      await base44.asServiceRole.entities.Pedido.update(p.id, {
+        status: 'faturado',
+        status_faturamento: 'faturado',
+        faturado: true,
+        numero_nota_fiscal: nfReal.numero_nf || p.numero_nota_fiscal || '',
+        data_faturamento: p.data_faturamento || new Date().toISOString()
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.error('[emitirNfsLoteOmie] falha marcarAutorizadoSemReemitir:', e.message);
+  }
 }
 
 Deno.serve(async (req) => {
