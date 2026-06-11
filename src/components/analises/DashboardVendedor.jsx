@@ -339,7 +339,7 @@ export default function DashboardVendedor() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
                   <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v, n) => n === 'faturamento' ? formatarMoeda(v) : v} />
+                  <Tooltip formatter={v => formatarMoeda(v)} />
                   <Legend />
                   <Bar dataKey="faturamento" fill="#16a34a" name="Faturamento" radius={[0,4,4,0]} />
                 </BarChart>
