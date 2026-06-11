@@ -11,6 +11,9 @@ import { toast } from 'sonner';
 import NfCompletaDialog from '@/components/notasOmie/NfCompletaDialog';
 import NfsImpressaoDialog from '@/components/notasOmie/NfsImpressaoDialog';
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const ehBloqueioOmie = (msg) => /consumo indevido|bloqueada|bloqueado|redundante|1880|aguarde|429|cota|rate/i.test(msg || '');
+
 /**
  * Aba de Notas Fiscais Nota 55 (NF-e Omie).
  * - Seleção múltipla (checkbox por linha + "selecionar todas").
@@ -120,24 +123,65 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       let nfsAcumuladas = [];
       let dataFinalResp = null;
       if (cargaParaFiltrar) {
+        // Estreita a janela de datas para o período da carga (± 7 dias) — menos páginas, menos chamadas.
+        let filtrosCargaBusca = { ...filtrosBusca };
+        if (cargaParaFiltrar.data_carga) {
+          const base = new Date(cargaParaFiltrar.data_carga + 'T12:00:00');
+          const ini = new Date(base); ini.setDate(ini.getDate() - 7);
+          const fim = new Date(base); fim.setDate(fim.getDate() + 7);
+          const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+          filtrosCargaBusca = { ...filtrosCargaBusca, data_inicial: fmt(ini), data_final: fmt(fim) };
+        }
+
+        // Quantas NFs esperamos desta carga? Para interromper assim que todas forem encontradas.
+        const nfsEsperadas = (cargaParaFiltrar.pedidos_omie || [])
+          .map(p => String(p.numero_nf || '').replace(/\D/g, ''))
+          .filter(Boolean).length;
+
         let pagAtual = 1;
-        const MAX_PAG = 20; // até 200×20 = 4000 NFs no período (largo o suficiente)
+        const MAX_PAG = 20; // limite de segurança
         while (pagAtual <= MAX_PAG) {
-          const { data } = await base44.functions.invoke('listarNfsOmie', {
-            ...filtrosBusca,
-            pagina: pagAtual,
-            registros_por_pagina: 200
-          });
+          let data;
+          try {
+            const resp = await base44.functions.invoke('listarNfsOmie', {
+              ...filtrosCargaBusca,
+              pagina: pagAtual,
+              registros_por_pagina: 200
+            });
+            data = resp.data;
+          } catch (e) {
+            if (ehBloqueioOmie(e.message)) {
+              toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+              setLoading(false);
+              return;
+            }
+            throw e;
+          }
           if (!data?.sucesso) {
-            toast.error(data?.error || 'Erro ao consultar NFs');
+            if (ehBloqueioOmie(data?.error)) {
+              toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+            } else {
+              toast.error(data?.error || 'Erro ao consultar NFs');
+            }
             setLoading(false);
             return;
           }
           dataFinalResp = data;
           nfsAcumuladas = nfsAcumuladas.concat(data.nfs || []);
+
+          // Parada antecipada: já encontrou todas as NFs esperadas da carga?
+          if (nfsEsperadas > 0) {
+            const encontradas = filtrarNfsPorCarga(
+              nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada'),
+              cargaParaFiltrar
+            ).length;
+            if (encontradas >= nfsEsperadas) break;
+          }
+
           const totalPag = Number(data.total_de_paginas || 1);
           if (pagAtual >= totalPag) break;
           pagAtual++;
+          await sleep(700); // espaça as chamadas para não acionar o circuit breaker do Omie
         }
         const apenasAutorizadas = nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada');
         const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
