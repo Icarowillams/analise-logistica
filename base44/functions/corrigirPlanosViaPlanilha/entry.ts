@@ -65,61 +65,73 @@ Deno.serve(async (req) => {
     const modalidadeMap = {};
     for (const m of modalidades) modalidadeMap[normalizeStr(m.nome)] = m.id;
 
+    // Carregar todos os clientes em lote (paginado) e indexar por codigo_interno
+    const clientesPorCodigo = {};
+    let totalClientes = 0;
+    let skip = 0;
+    const PAGINA = 100;
+    while (true) {
+      const pagina = await base44.entities.Cliente.list(null, PAGINA, skip);
+      if (!pagina || pagina.length === 0) break;
+      for (const c of pagina) {
+        totalClientes++;
+        if (c.codigo_interno) clientesPorCodigo[String(c.codigo_interno).trim()] = c;
+      }
+      if (pagina.length < PAGINA) break;
+      skip += PAGINA;
+      await sleep(300);
+    }
+
     const resumo = {
       total_planilha: linhas.length,
+      clientes_no_banco: totalClientes,
       atualizados: 0,
       ja_corretos: 0,
       sem_cliente_no_banco: [],
       nao_mapeados: [],
     };
 
-    let updatesFeitos = 0;
-    const LOTE = 10;
+    // Resolver tudo em memória e montar apenas a lista de updates necessários
+    const updates = [];
+    for (const linha of linhas) {
+      const planoId = linha.plano_pagamento ? planoMap[normalizeStr(linha.plano_pagamento)] : undefined;
+      const modalidadeId = linha.cobranca ? modalidadeMap[normalizeStr(linha.cobranca)] : undefined;
 
-    for (let i = 0; i < linhas.length; i += LOTE) {
-      const lote = linhas.slice(i, i + LOTE);
-      await Promise.all(lote.map(async (linha) => {
-        const planoId = linha.plano_pagamento ? planoMap[normalizeStr(linha.plano_pagamento)] : undefined;
-        const modalidadeId = linha.cobranca ? modalidadeMap[normalizeStr(linha.cobranca)] : undefined;
-
-        // Nome presente na planilha mas sem correspondência no banco → não inventa
-        const planoNaoMapeado = linha.plano_pagamento && !planoId;
-        const cobrancaNaoMapeada = linha.cobranca && !modalidadeId;
-        if (planoNaoMapeado || cobrancaNaoMapeada) {
-          resumo.nao_mapeados.push({ codigo: linha.codigo, plano: linha.plano_pagamento, cobranca: linha.cobranca });
-          if (!planoId && !modalidadeId) return; // nada aplicável
-        }
-
-        const encontrados = await base44.entities.Cliente.filter({ codigo_interno: linha.codigo });
-        if (!encontrados || encontrados.length === 0) {
-          resumo.sem_cliente_no_banco.push(linha.codigo);
-          return;
-        }
-        const cliente = encontrados[0];
-
-        const update = {};
-        if (planoId && planoId !== cliente.plano_pagamento_id) {
-          if (!somente_vazios || !cliente.plano_pagamento_id) update.plano_pagamento_id = planoId;
-        }
-        if (modalidadeId && modalidadeId !== cliente.modalidade_pagamento_id) {
-          if (!somente_vazios || !cliente.modalidade_pagamento_id) update.modalidade_pagamento_id = modalidadeId;
-        }
-
-        if (Object.keys(update).length === 0) {
-          resumo.ja_corretos++;
-          return;
-        }
-
-        await base44.entities.Cliente.update(cliente.id, update);
-        resumo.atualizados++;
-        updatesFeitos++;
-      }));
-
-      // Throttle leve a cada ~50 updates
-      if (updatesFeitos >= 50) {
-        await sleep(800);
-        updatesFeitos = 0;
+      // Nome presente na planilha mas sem correspondência no banco → não inventa
+      const planoNaoMapeado = linha.plano_pagamento && !planoId;
+      const cobrancaNaoMapeada = linha.cobranca && !modalidadeId;
+      if (planoNaoMapeado || cobrancaNaoMapeada) {
+        resumo.nao_mapeados.push({ codigo: linha.codigo, plano: linha.plano_pagamento, cobranca: linha.cobranca });
+        if (!planoId && !modalidadeId) continue; // nada aplicável
       }
+
+      const cliente = clientesPorCodigo[linha.codigo];
+      if (!cliente) {
+        resumo.sem_cliente_no_banco.push(linha.codigo);
+        continue;
+      }
+
+      const update = {};
+      if (planoId && planoId !== cliente.plano_pagamento_id) {
+        if (!somente_vazios || !cliente.plano_pagamento_id) update.plano_pagamento_id = planoId;
+      }
+      if (modalidadeId && modalidadeId !== cliente.modalidade_pagamento_id) {
+        if (!somente_vazios || !cliente.modalidade_pagamento_id) update.modalidade_pagamento_id = modalidadeId;
+      }
+
+      if (Object.keys(update).length === 0) {
+        resumo.ja_corretos++;
+        continue;
+      }
+
+      updates.push({ id: cliente.id, update });
+    }
+
+    // Updates em série com throttle
+    for (const u of updates) {
+      await base44.entities.Cliente.update(u.id, u.update);
+      resumo.atualizados++;
+      await sleep(250);
     }
 
     return Response.json(resumo);
