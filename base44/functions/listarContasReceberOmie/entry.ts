@@ -1,19 +1,26 @@
-// v2 — 2026-06-06 — enriquecimento bulk (sem N+1 queries)
+// v3 — 2026-06-11 — enriquecimento estrito (match exato cod/cnpj do próprio título, sem trocar identidade) + creds nunca cacheia vazio
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
 let _credsCache: any = null;
 async function resolverCredsOmie(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
+  if (_credsCache && _credsCache.app_key && _credsCache.app_secret && Date.now() - _credsCache.at < 30000) return _credsCache;
+  // Fonte primária: registro ativo de ConfiguracaoOmie (campos app_key/app_secret — NÃO os antigos omie_*).
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
   if (ativo?.app_key && ativo?.app_secret) {
     _credsCache = { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret), at: Date.now() };
     return _credsCache;
   }
-  _credsCache = { app_key: Deno.env.get('OMIE_APP_KEY') || '', app_secret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
-  return _credsCache;
+  // Fallback (último recurso): Secrets de ambiente. NÃO cacheia se vier vazio.
+  const envKey = Deno.env.get('OMIE_APP_KEY') || '';
+  const envSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  if (envKey && envSecret) {
+    _credsCache = { app_key: envKey, app_secret: envSecret, at: Date.now() };
+    return _credsCache;
+  }
+  return { app_key: '', app_secret: '', at: 0 };
 }
 
 async function omieCall(base44: any, call: string, param: any, options: any = {}) {
@@ -157,27 +164,41 @@ Deno.serve(async (req) => {
         t.numero_pedido || t.cNumPedido || t.pedido?.numero_pedido || t.pedido_venda?.numero_pedido || ''
     }));
 
-    // ✅ ENRIQUECIMENTO BULK — carrega todos os clientes em 1 chamada, faz lookup local
+    // ✅ ENRIQUECIMENTO BULK — carrega todos os clientes em 1 chamada, faz lookup local.
+    // REGRA ESTRITA: o nome SEMPRE vem do título do Omie quando presente. Quando o Omie
+    // não retornou nome, casa SOMENTE por codigo_cliente exato OU cnpj_cpf exato do PRÓPRIO título.
+    // NUNCA chutar outro cliente — sem match exato, mantém o que veio do Omie (evita troca de identidade).
     try {
       const { map: clientesPorCodigo, cnpjMap: clientesPorCnpj } = await carregarClientesBulk(base44);
 
       let enriquecidos = 0;
+      const semNomeNemMatch: string[] = [];
       titulos = titulos.map((t: any) => {
-        if (t.nome_cliente && t.nome_cliente.trim()) return t; // Omie já retornou nome
+        if (t.nome_cliente && t.nome_cliente.trim()) return t; // Omie já retornou nome → fonte da verdade
 
         const enr = { ...t };
-        // Lookup por codigo_cliente (campo mais confiável)
-        const c = clientesPorCodigo.get(String(enr.codigo_cliente || '').trim()) ||
-                  clientesPorCnpj.get(String(enr.cnpj_cpf || '').replace(/\D/g, ''));
+        const codTitulo = String(enr.codigo_cliente || '').trim();
+        const cnpjTitulo = String(enr.cnpj_cpf || '').replace(/\D/g, '');
+
+        // Match EXATO: 1º por código do próprio título, 2º por CNPJ do próprio título.
+        const c = (codTitulo && clientesPorCodigo.get(codTitulo)) ||
+                  (cnpjTitulo && clientesPorCnpj.get(cnpjTitulo)) || null;
+
         if (c) {
           enr.nome_cliente = c.razao_social || c.nome_fantasia || '';
           enr.nome_fantasia = c.nome_fantasia || '';
           if (!enr.cnpj_cpf) enr.cnpj_cpf = c.cnpj_cpf;
           enriquecidos++;
+        } else {
+          // Sem match exato — mantém como veio do Omie (não atribui outro cliente).
+          semNomeNemMatch.push(`cod=${codTitulo || '-'} cnpj=${cnpjTitulo || '-'} doc=${enr.numero_documento || '-'}`);
         }
         return enr;
       });
       console.log(`[listarContasReceber] ${enriquecidos}/${titulos.length} títulos enriquecidos com nome do cliente`);
+      if (semNomeNemMatch.length) {
+        console.warn(`[listarContasReceber] ${semNomeNemMatch.length} título(s) sem nome do Omie e sem match exato: ${semNomeNemMatch.join(' | ')}`);
+      }
     } catch (e: any) {
       console.warn('[listarContasReceber] enriquecimento falhou:', e.message);
     }
