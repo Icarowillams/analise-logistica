@@ -75,13 +75,24 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
     onError: (error) => toast.error('Erro: ' + error.message)
   });
 
-  const handleSubmit = () => {
+  // Normaliza o dia para comparação robusta (ignora sufixo "-feira" e acentos)
+  const normalizarDia = (d) => String(d || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/-feira$/, '');
+
+  const handleSubmit = async () => {
     const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
 
     if (!isEditing) {
-      const cache = queryClient.getQueryData(['roteiros']) || [];
-      const dup = cache.find(r => r.vendedor_id === formData.vendedor_id && r.dia_semana === formData.dia_semana);
-      if (dup) { toast.error('Já existe um roteiro para este funcionário neste dia.'); return; }
+      // Busca direta no banco (não confiar no cache, que pode estar desatualizado)
+      // e compara o dia de forma normalizada para nunca criar duplicata.
+      const existentes = await base44.entities.Roteiro.filter({ vendedor_id: formData.vendedor_id });
+      const diaNorm = normalizarDia(formData.dia_semana);
+      const dup = existentes.find(r => normalizarDia(r.dia_semana) === diaNorm);
+      if (dup) {
+        toast.error('Já existe um roteiro para este funcionário neste dia. Edite o roteiro existente em vez de criar um novo.');
+        return;
+      }
     }
 
     const data = {
