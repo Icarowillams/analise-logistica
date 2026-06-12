@@ -46,17 +46,22 @@ export default function TransferenciaTab() {
         '-data_carga',
         500
       );
-      return todas.filter(c => (c.pedidos_omie || []).length > 0);
+      return todas.filter(c => (c.pedidos_omie || []).length > 0 || (c.pedidos_internos || []).length > 0);
     },
     staleTime: 60_000
   });
 
   const cargaOrigem = useMemo(() => cargas.find(c => c.id === cargaOrigemId), [cargas, cargaOrigemId]);
 
-  // Pedidos da carga origem — APENAS faturados (etapa 60), filtrados pela busca
+  // Chave única de cada pedido: venda usa codigo_pedido (Omie); interno (D1/troca) usa numero_pedido
+  const chavePedido = (p) => String(p.__interno ? (p.numero_pedido || p.pedido_troca_id || p.pedido_id) : p.codigo_pedido);
+
+  // Pedidos da carga origem — vendas (pedidos_omie) + D1/trocas (pedidos_internos), filtrados pela busca
   const pedidosOrigem = useMemo(() => {
     if (!cargaOrigem) return [];
-    const lista = cargaOrigem.pedidos_omie || [];
+    const vendas = (cargaOrigem.pedidos_omie || []).map(p => ({ ...p, __interno: false }));
+    const internos = (cargaOrigem.pedidos_internos || []).map(p => ({ ...p, __interno: true }));
+    const lista = [...vendas, ...internos];
     const termo = filtroPedido.trim().toLowerCase();
     return lista.filter(p => {
       if (termo) {
@@ -105,7 +110,7 @@ export default function TransferenciaTab() {
 
   const toggleTodos = () => {
     if (selecionados.length === pedidosOrigem.length) setSelecionados([]);
-    else setSelecionados(pedidosOrigem.map(p => String(p.codigo_pedido)));
+    else setSelecionados(pedidosOrigem.map(p => chavePedido(p)));
   };
 
   const abrirDestino = () => {
@@ -219,6 +224,7 @@ export default function TransferenciaTab() {
                         />
                       </th>
                       <th className="p-2 text-left">Pedido</th>
+                      <th className="p-2 text-left">Tipo</th>
                       <th className="p-2 text-left">NF</th>
                       <th className="p-2 text-left">Cliente</th>
                       <th className="p-2 text-left">Cidade</th>
@@ -228,14 +234,19 @@ export default function TransferenciaTab() {
                   </thead>
                   <tbody>
                     {pedidosOrigem.length === 0 ? (
-                      <tr><td colSpan="7" className="p-6 text-center text-slate-400">Nenhum pedido encontrado.</td></tr>
+                      <tr><td colSpan="8" className="p-6 text-center text-slate-400">Nenhum pedido encontrado.</td></tr>
                     ) : pedidosOrigem.map(p => {
-                      const cod = String(p.codigo_pedido);
+                      const cod = chavePedido(p);
                       const checked = selecionados.includes(cod);
                       return (
                         <tr key={cod} className={`border-t hover:bg-slate-50 ${checked ? 'bg-indigo-50' : ''}`}>
                           <td className="p-2"><Checkbox checked={checked} onCheckedChange={() => toggleSelecionado(cod)} /></td>
                           <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
+                          <td className="p-2">
+                            {p.__interno
+                              ? <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-300">D1 / Interno</span>
+                              : <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700 border border-green-300">Venda</span>}
+                          </td>
                           <td className="p-2">{p.numero_nf || '-'}</td>
                           <td className="p-2">{p.nome_fantasia || p.nome_cliente || '-'}</td>
                           <td className="p-2">{p.cidade || '-'}</td>

@@ -37,8 +37,15 @@ Deno.serve(async (req) => {
     const destino = await base44.asServiceRole.entities.Carga.get(carga_destino_id);
     if (!origem || !destino) return Response.json({ error: 'Carga origem ou destino não encontrada' }, { status: 404 });
 
-    const pedidosOrigem = origem.pedidos_omie || [];
-    const pedidosMover = pedidosOrigem.filter(p => codigos.includes(String(p.codigo_pedido)));
+    const pedidosOmieOrigem = origem.pedidos_omie || [];
+    const pedidosInternosOrigem = origem.pedidos_internos || [];
+
+    // Chave de seleção: vendas usam codigo_pedido (Omie); internos (D1/troca) usam numero_pedido (sufixo D/T)
+    const chaveInterno = (p) => String(p.numero_pedido || p.pedido_troca_id || p.pedido_id || '');
+
+    const omieMover = pedidosOmieOrigem.filter(p => codigos.includes(String(p.codigo_pedido)));
+    const internosMover = pedidosInternosOrigem.filter(p => codigos.includes(chaveInterno(p)));
+    const pedidosMover = [...omieMover, ...internosMover];
 
     if (pedidosMover.length === 0) {
       return Response.json({ error: 'Nenhum dos pedidos informados está na carga origem' }, { status: 404 });
@@ -50,14 +57,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: `Pedido ${cancelado.numero_pedido} está cancelado: não pode ser transferido.` }, { status: 400 });
     }
 
-    // Remove da origem
-    const novosPedidosOrigem = pedidosOrigem.filter(p => !codigos.includes(String(p.codigo_pedido)));
-    // Adiciona no destino
-    const novosPedidosDestino = [...(destino.pedidos_omie || []), ...pedidosMover];
+    // Remove da origem (cada array com sua chave)
+    const novosOmieOrigem = pedidosOmieOrigem.filter(p => !codigos.includes(String(p.codigo_pedido)));
+    const novosInternosOrigem = pedidosInternosOrigem.filter(p => !codigos.includes(chaveInterno(p)));
+    // Adiciona no destino (cada array no seu lugar)
+    const novosOmieDestino = [...(destino.pedidos_omie || []), ...omieMover];
+    const novosInternosDestino = [...(destino.pedidos_internos || []), ...internosMover];
 
-    // Recalcula totais + consolida produtos (entram na Listagem da carga destino)
-    const recalcularCarga = async (pedidos, pedidosTroca = []) => {
-      const todos = [...pedidos, ...pedidosTroca];
+    // Recalcula totais + consolida produtos considerando AMBOS os arrays (vendas + internos)
+    const recalcularCarga = async (pedidosOmie, pedidosInternos = []) => {
+      const todos = [...pedidosOmie, ...pedidosInternos];
       const valor_total = todos.reduce((s, p) => s + (Number(p.valor_total_pedido) || 0), 0);
       const clientesUnicos = new Set(todos.map(p => p.codigo_cliente || p.cliente_id).filter(Boolean));
 
@@ -102,8 +111,9 @@ Deno.serve(async (req) => {
       }
 
       return {
-        pedidos_omie: pedidos,
-        quantidade_pedidos: pedidos.length,
+        pedidos_omie: pedidosOmie,
+        pedidos_internos: pedidosInternos,
+        quantidade_pedidos: pedidosOmie.length + pedidosInternos.length,
         quantidade_clientes: clientesUnicos.size,
         valor_total,
         valor_total_carga: valor_total,
@@ -113,17 +123,29 @@ Deno.serve(async (req) => {
       };
     };
 
-    const novaOrigem = await recalcularCarga(novosPedidosOrigem, origem.pedidos_troca || []);
-    const novoDestino = await recalcularCarga(novosPedidosDestino, destino.pedidos_troca || []);
+    const novaOrigem = await recalcularCarga(novosOmieOrigem, novosInternosOrigem);
+    const novoDestino = await recalcularCarga(novosOmieDestino, novosInternosDestino);
 
     await base44.asServiceRole.entities.Carga.update(carga_origem_id, novaOrigem);
     await base44.asServiceRole.entities.Carga.update(carga_destino_id, novoDestino);
 
-    // Atualiza Pedido (Base44) — coluna N. Carga em Gerenciar Pedidos puxa daí
+    const internosSet = new Set(internosMover);
+    // Atualiza Pedido (Base44) + espelho PedidoLiberadoOmie — telas de N.Carga, NF e boleto puxam daí
     const registros = [];
     for (const ped of pedidosMover) {
+      const ehInterno = internosSet.has(ped);
       try {
-        const lista = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(ped.codigo_pedido) }, '-created_date', 1);
+        // Casar o Pedido base: venda por omie_codigo_pedido; interno por id/troca
+        let lista = [];
+        if (ehInterno) {
+          const pid = ped.pedido_id || ped.pedido_troca_id;
+          if (pid) {
+            const encontrado = await base44.asServiceRole.entities.Pedido.get(pid).catch(() => null);
+            if (encontrado) lista = [encontrado];
+          }
+        } else {
+          lista = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(ped.codigo_pedido) }, '-created_date', 1);
+        }
         if (lista && lista[0]) {
           await base44.asServiceRole.entities.Pedido.update(lista[0].id, {
             carga_id: carga_destino_id,
@@ -136,7 +158,7 @@ Deno.serve(async (req) => {
       const qtdUnidades = (ped.produtos || []).reduce((s, p) => s + (Number(p.quantidade) || 0), 0);
 
       const reg = await base44.asServiceRole.entities.Transferencia.create({
-        pedido_codigo_omie: String(ped.codigo_pedido),
+        pedido_codigo_omie: String(ped.codigo_pedido || ''),
         numero_pedido: String(ped.numero_pedido || ''),
         numero_nf: String(ped.numero_nf || ''),
         cliente_codigo: String(ped.codigo_cliente_cod || ped.codigo_cliente || ''),
