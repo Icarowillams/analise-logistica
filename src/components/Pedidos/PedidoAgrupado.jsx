@@ -9,7 +9,16 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
 
   const { data: allItems = [] } = useQuery({
     queryKey: ['pedidoItems-agrupado', pedidoIds],
-    queryFn: () => base44.entities.PedidoItem.list(),
+    queryFn: async () => {
+      const itens = [];
+      // Busca em lotes de 40 pedidos para garantir que TODOS os itens venham
+      for (let i = 0; i < pedidoIds.length; i += 40) {
+        const chunk = pedidoIds.slice(i, i + 40);
+        const res = await base44.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 2000);
+        itens.push(...res);
+      }
+      return itens;
+    },
   });
 
   const { data: produtos = [] } = useQuery({
