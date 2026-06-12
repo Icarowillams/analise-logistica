@@ -59,46 +59,66 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
     queryKey: ['planosPagamento'],
     queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
-    staleTime: 5 * 60 * 1000,
+    // Lista minúscula (14 registros) — sobrevive em cache o dia todo no celular do
+    // vendedor e serve do cache mesmo com rede móvel instável.
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    networkMode: 'offlineFirst',
   });
 
-  // Busca o cliente DIRETO do banco ao abrir o formulário — apenas como CONFIRMAÇÃO
-  // em background. O objeto `cliente` recebido por prop já traz plano/tabela no caso
-  // normal, então a UI não fica presa esperando esta query (staleTime longo + sem
-  // bloquear). Filtra por chave (1 registro), nunca list().
-  const { data: clienteFresco, isLoading: loadingCliente } = useQuery({
+  // Busca o cliente DIRETO do banco ao abrir o formulário — APENAS revalidação
+  // em background. A fonte primária de plano/tabela é o objeto `cliente` recebido
+  // por prop (já em memória, preenchido para todos os clientes). Em rede móvel ruim
+  // esta query pode demorar/falhar — por isso tem timeout curto e NUNCA bloqueia a
+  // UI nem zera plano/tabela. Filtra por chave (1 registro), nunca list().
+  const { data: clienteFresco } = useQuery({
     queryKey: ['cliente-fresco', cliente.id, cliente.codigo_interno],
     queryFn: async () => {
+      // Timeout curto: se a rede móvel demorar >3,5s, abortamos e seguimos com a prop.
+      const comTimeout = (p) => Promise.race([
+        p,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500)),
+      ]);
       // 1) Tenta pelo id do banco
-      let r = await base44.entities.Cliente.filter({ id: cliente.id });
+      let r = await comTimeout(base44.entities.Cliente.filter({ id: cliente.id }));
       if (r[0]) return r[0];
       // 2) Fallback por código interno (campo estável — sobrevive a recriação do registro)
       const cod = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo;
       if (cod) {
-        r = await base44.entities.Cliente.filter({ codigo_interno: String(cod) });
+        r = await comTimeout(base44.entities.Cliente.filter({ codigo_interno: String(cod) }));
         if (r[0]) return r[0];
       }
       return null;
     },
     staleTime: 5 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 6000),
+    networkMode: 'offlineFirst',
     placeholderData: cliente,
   });
 
-  // Preenche plano/tabela com os dados frescos do banco.
-  // Em pedidos NOVOS, o cadastro do cliente é a fonte da verdade — sempre
-  // sobrescreve com o valor do banco (corrige cache antigo/vazio), mesmo que
-  // o estado já tenha algum valor herdado do objeto cliente em cache.
+  // Revalida plano/tabela com os dados frescos do banco — SOMENTE se vierem
+  // preenchidos. Nunca sobrescreve um valor já resolvido com string vazia vinda de
+  // uma resposta de rede incompleta (evita "piscar pra -" quando a rede oscila).
   // Em edição, não mexe (o pedido salvo manda).
   useEffect(() => {
     if (!clienteFresco || editingPedidoId) return;
-    setPlanoPagamentoId(clienteFresco.plano_pagamento_id || '');
-    setTabelaPrecoId(clienteFresco.tabela_id || '');
+    if (clienteFresco.plano_pagamento_id) setPlanoPagamentoId(clienteFresco.plano_pagamento_id);
+    if (clienteFresco.tabela_id) setTabelaPrecoId(clienteFresco.tabela_id);
   }, [clienteFresco, editingPedidoId]);
 
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
     queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000),
-    staleTime: 5 * 60 * 1000,
+    // Lista pequena (41 registros) — resiliente em cache para rede móvel instável.
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    networkMode: 'offlineFirst',
   });
 
   // Produtos só são necessários na aba "Produto" — não bloqueiam a aba "Pedido".
@@ -313,13 +333,19 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [precosAll, acoesCliente, itensInitialized]);
 
-  // ID efetivo para EXIBIÇÃO: usa o estado e, se ainda vazio, cai no clienteFresco
-  // (fonte da verdade do banco). Garante que o nome apareça assim que o cliente carrega.
-  const planoIdExibir = planoPagamentoId || clienteFresco?.plano_pagamento_id || '';
-  const tabelaIdExibir = tabelaPrecoId || clienteFresco?.tabela_id || '';
+  // ID efetivo para EXIBIÇÃO — fonte primária é o objeto cliente da PROP (já em
+  // memória, sem esperar rede). Ordem: estado → prop → clienteFresco (background).
+  // Renderiza plano/tabela na hora no celular, mesmo com rede móvel ruim.
+  const planoIdExibir = planoPagamentoId || cliente.plano_pagamento_id || clienteFresco?.plano_pagamento_id || '';
+  const tabelaIdExibir = tabelaPrecoId || cliente.tabela_id || clienteFresco?.tabela_id || '';
   const planoAtual = planosPagamento.find(p => p.id === planoIdExibir);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaIdExibir);
   const clienteSemTabela = !tabelaIdExibir;
+
+  // Estado de carregamento da EXIBIÇÃO: só mostra "Carregando…" se há um id de
+  // plano/tabela mas a lista de apoio (nome) ainda não chegou. Nunca trava por rede.
+  const planoCarregando = !!planoIdExibir && !planoAtual && (loadingPlanos || planosPagamento.length === 0);
+  const tabelaCarregando = !!tabelaIdExibir && !tabelaAtual && tabelasPreco.length === 0;
 
   const handleUpdateQuantidade = (produto, preco, novaQtd) => {
     setItensLocal(prev => {
@@ -551,8 +577,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <p className="text-sm font-medium">
                     {planoAtual?.nome
                       ? planoAtual.nome
-                      : (loadingPlanos || loadingCliente)
-                        ? <span className="text-slate-400 italic">Carregando...</span>
+                      : planoCarregando
+                        ? <span className="inline-flex items-center gap-1 text-slate-400 italic"><Loader2 className="w-3 h-3 animate-spin" /> Carregando...</span>
                         : '-'}
                   </p>
                 </div>
@@ -561,8 +587,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <p className="text-sm font-medium">
                     {tabelaAtual?.nome
                       ? tabelaAtual.nome
-                      : loadingCliente
-                        ? <span className="text-slate-400 italic">Carregando...</span>
+                      : tabelaCarregando
+                        ? <span className="inline-flex items-center gap-1 text-slate-400 italic"><Loader2 className="w-3 h-3 animate-spin" /> Carregando...</span>
                         : '-'}
                   </p>
                 </div>
