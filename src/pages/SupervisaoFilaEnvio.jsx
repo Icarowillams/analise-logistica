@@ -162,7 +162,7 @@ export default function SupervisaoFilaEnvio() {
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Supervisão — Fila de Envio ao Omie</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Atualiza automaticamente a cada 20s {isFetching && <span className="text-blue-500">· sincronizando…</span>}</p>
+          <p className="text-sm text-slate-500 mt-0.5">Os pedidos são enviados em sequência segura à Omie. Um lote de até ~250 pedidos é processado por execução; clique em "Acionar Fila Agora" para enviar imediatamente. {isFetching && <span className="text-blue-500">· sincronizando…</span>}</p>
         </div>
         <div className="flex gap-2">
           {counts.erro > 0 && (

@@ -2,8 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
-const INTERVALO_ENTRE_PEDIDOS_MS = 800;
-const MAX_PEDIDOS_POR_RODADA = 20;
+const INTERVALO_ENTRE_PEDIDOS_MS = 450; // ~2 req/s — margem segura abaixo do limite Omie (4 req/s)
+const MAX_PEDIDOS_POR_RODADA = 30;      // tamanho de cada busca interna de pendentes
+const TETO_EXECUCAO_MS = 150000;        // 150s — abaixo do timeout (180s); drena a fila numa execução
 
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const CONTA_CORRENTE_PADRAO = 11464371392;
@@ -399,16 +400,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Buscar pendentes
+    const inicioExecucao = Date.now();
+    const resultadosGlobais = [];
+    let cbAtivadoGlobal = false;
+    let rodadas = 0;
+
+    // ============================================================
+    // LOOP EXTERNO — drena a fila numa única execução até esvaziar
+    // ou bater o teto de tempo seguro (abaixo do timeout de 180s).
+    // A próxima execução continua de onde parou.
+    // ============================================================
+    while ((Date.now() - inicioExecucao) < TETO_EXECUCAO_MS && !cbAtivadoGlobal) {
+
+    // Buscar pendentes (próximo lote)
     const pendentes = await base44.asServiceRole.entities.FilaEnvioPedidoOmie
       .filter({ status: 'pendente' }, 'created_date', MAX_PEDIDOS_POR_RODADA);
 
     if (pendentes.length === 0) {
-      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0 });
+      break; // fila limpa
     }
 
+    rodadas++;
     const t0 = Date.now();
-    console.log(`[processarFila] Processando ${pendentes.length} pedidos da fila`);
+    console.log(`[processarFila] Rodada ${rodadas}: processando ${pendentes.length} pedidos da fila`);
 
     // ============================================================
     // PRÉ-CARREGAMENTO EM LOTE (antes do loop)
@@ -576,18 +590,38 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Aguardar intervalo entre pedidos (exceto último)
-      if (i < pendentes.length - 1) {
-        await sleep(INTERVALO_ENTRE_PEDIDOS_MS);
-      }
+      // Aguardar intervalo entre pedidos — mantém ~2 req/s (sequencial, seguro).
+      // Interrompe se bateu o teto de tempo da execução.
+      if ((Date.now() - inicioExecucao) >= TETO_EXECUCAO_MS) break;
+      await sleep(INTERVALO_ENTRE_PEDIDOS_MS);
     }
 
-    const sucessos = resultados.filter(r => r.sucesso).length;
-    const erros = resultados.filter(r => !r.sucesso).length;
+    // Propaga resultados e estado do circuit breaker para o loop externo
+    resultadosGlobais.push(...resultados);
+    if (cbAtivado) cbAtivadoGlobal = true;
 
-    console.log(`[PERF] Fila concluída: ${pendentes.length} pedidos em ${Date.now() - t0}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
+    console.log(`[PERF] Rodada ${rodadas}: ${pendentes.length} pedidos em ${Date.now() - t0}ms.`);
 
-    return Response.json({ sucesso: true, processados: resultados.length, sucessos, erros, resultados });
+    } // ── fim do while (loop externo / teto de tempo) ──
+
+    const sucessos = resultadosGlobais.filter(r => r.sucesso).length;
+    const erros = resultadosGlobais.filter(r => !r.sucesso).length;
+
+    if (resultadosGlobais.length === 0) {
+      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0 });
+    }
+
+    console.log(`[PERF] Execução concluída: ${rodadas} rodada(s), ${resultadosGlobais.length} pedidos em ${Date.now() - inicioExecucao}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
+
+    return Response.json({
+      sucesso: true,
+      rodadas,
+      processados: resultadosGlobais.length,
+      sucessos, erros,
+      circuit_breaker_ativado: cbAtivadoGlobal,
+      duracao_ms: Date.now() - inicioExecucao,
+      resultados: resultadosGlobais
+    });
   } catch (error) {
     console.error('[processarFila] Erro fatal:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
