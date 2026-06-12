@@ -82,33 +82,53 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
 
   const handleSubmit = async () => {
     const vendedor = vendedores.find(v => v.id === formData.vendedor_id);
+    const diaNorm = normalizarDia(formData.dia_semana);
 
-    if (!isEditing) {
-      // Busca direta no banco (não confiar no cache, que pode estar desatualizado)
-      // e compara o dia de forma normalizada para nunca criar duplicata.
-      const existentes = await base44.entities.Roteiro.filter({ vendedor_id: formData.vendedor_id });
-      const diaNorm = normalizarDia(formData.dia_semana);
-      const dup = existentes.find(r => normalizarDia(r.dia_semana) === diaNorm);
-      if (dup) {
-        toast.error('Já existe um roteiro para este funcionário neste dia. Edite o roteiro existente em vez de criar um novo.');
-        return;
-      }
-    }
+    // Busca SEMPRE no banco em tempo real (cache pode estar desatualizado) o roteiro
+    // existente deste vendedor+dia — garante que nunca haja 2 roteiros para o mesmo par.
+    const existentes = await base44.entities.Roteiro.filter({ vendedor_id: formData.vendedor_id });
+    const roteiroExistente = existentes.find(r => normalizarDia(r.dia_semana) === diaNorm);
+
+    // Monta detalhes a partir do que está na UI
+    const detalhesForm = formData.clientes_selecionados.map((c) => ({
+      cliente_id: c.id, cliente_nome: c.nome, nome_fantasia: c.nome_fantasia,
+      cliente_codigo: c.codigo, cliente_cidade: c.cidade, cliente_bairro: c.bairro
+    }));
+
+    // MERGE: preserva clientes que já estavam no roteiro e que o usuário NÃO removeu
+    // explicitamente na UI. Nunca descarta cliente por falha de lookup no carregamento.
+    const baseDetalhes = roteiroExistente?.clientes_detalhes || roteiro?.clientes_detalhes || [];
+    const idsNaUI = new Set(formData.clientes_selecionados.map(c => c.id));
+    const idsCarregados = new Set((isEditing ? (roteiro?.clientes_detalhes || []) : []).map(d => d.cliente_id));
+    const preservados = baseDetalhes.filter(d =>
+      !idsNaUI.has(d.cliente_id) && // não está na UI
+      (!isEditing || !idsCarregados.has(d.cliente_id)) // e não foi carregado (logo, não foi removido pelo usuário)
+    );
+
+    // Deduplica por cliente_id, prioriza a ordem da UI e renumera
+    const combinados = [...detalhesForm, ...preservados];
+    const vistos = new Set();
+    const detalhesFinais = combinados
+      .filter(d => {
+        if (vistos.has(d.cliente_id)) return false;
+        vistos.add(d.cliente_id);
+        return true;
+      })
+      .map((d, idx) => ({ ...d, ordem: idx + 1 }));
 
     const data = {
       vendedor_id: formData.vendedor_id,
       vendedor_nome: vendedor?.nome || 'N/A',
       dia_semana: formData.dia_semana,
-      clientes_ids: formData.clientes_selecionados.map(c => c.id),
-      clientes_detalhes: formData.clientes_selecionados.map((c, idx) => ({
-        cliente_id: c.id, cliente_nome: c.nome, nome_fantasia: c.nome_fantasia,
-        cliente_codigo: c.codigo, cliente_cidade: c.cidade, cliente_bairro: c.bairro,
-        ordem: idx + 1
-      })),
-      status: roteiro?.status || 'planejado'
+      clientes_ids: detalhesFinais.map(d => d.cliente_id),
+      clientes_detalhes: detalhesFinais,
+      status: roteiro?.status || roteiroExistente?.status || 'planejado'
     };
 
-    if (roteiro && isEditing) updateMutation.mutate({ id: roteiro.id, data });
+    // Se já existe um roteiro para este vendedor+dia, SEMPRE atualiza o existente
+    // (mesmo em "criar"), nunca cria um segundo.
+    const alvoId = (isEditing && roteiro?.id) ? roteiro.id : roteiroExistente?.id;
+    if (alvoId) updateMutation.mutate({ id: alvoId, data });
     else createMutation.mutate(data);
   };
 

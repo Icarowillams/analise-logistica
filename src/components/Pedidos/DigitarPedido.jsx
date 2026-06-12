@@ -23,9 +23,33 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     enabled: !!vendedor
   });
 
+  // Carrega APENAS os clientes referenciados nos roteiros deste vendedor
+  // (por codigo_interno e por id) em vez de toda a base — mais rápido e sem teto de 5000.
+  const { codigosRoteiro, idsRoteiro } = useMemo(() => {
+    const codigos = new Set();
+    const ids = new Set();
+    roteiros.forEach(r => (r.clientes_detalhes || []).forEach(cd => {
+      if (cd.cliente_codigo) codigos.add(String(cd.cliente_codigo));
+      if (cd.cliente_id) ids.add(cd.cliente_id);
+    }));
+    return { codigosRoteiro: [...codigos], idsRoteiro: [...ids] };
+  }, [roteiros]);
+
   const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
+    queryKey: ['clientes-roteiro', vendedor.id, codigosRoteiro, idsRoteiro],
+    queryFn: async () => {
+      if (codigosRoteiro.length === 0 && idsRoteiro.length === 0) return [];
+      // Busca por chave (codigo_interno e id), em paralelo, e deduplica por id.
+      const buscas = [
+        ...codigosRoteiro.map(cod => base44.entities.Cliente.filter({ codigo_interno: cod }).catch(() => [])),
+        ...idsRoteiro.map(id => base44.entities.Cliente.filter({ id }).catch(() => []))
+      ];
+      const resultados = await Promise.all(buscas);
+      const map = new Map();
+      resultados.flat().forEach(c => { if (c) map.set(c.id, c); });
+      return [...map.values()];
+    },
+    enabled: roteiros.length > 0
   });
 
   // If editing, load pedido and jump to form
@@ -58,20 +82,33 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     { valor: 'domingo', label: 'Dom' }
   ];
 
-  const clientesDoDia = useMemo(() => {
-    const roteiroDia = roteiros.find(r => r.dia_semana === selectedDia);
+  // Resolve a lista de clientes de um dia a partir do roteiro (deduplicando por cliente)
+  const resolverClientesDoDia = (dia) => {
+    const roteiroDia = roteiros.find(r => r.dia_semana === dia);
     if (!roteiroDia || !roteiroDia.clientes_detalhes) return [];
+    const vistos = new Set();
     return roteiroDia.clientes_detalhes.map(cd => {
       // Prioriza busca por código interno (campo estável) em vez de cliente_id (pode mudar)
       const clienteCompleto = clientes.find(c => cd.cliente_codigo && (c.codigo_interno === cd.cliente_codigo || c.codigo_integracao === cd.cliente_codigo))
         || clientes.find(c => cd.cliente_id && c.id === cd.cliente_id);
-      return clienteCompleto ? { ...clienteCompleto, ordem: cd.ordem } : null;
+      if (!clienteCompleto || vistos.has(clienteCompleto.id)) return null;
+      vistos.add(clienteCompleto.id);
+      return { ...clienteCompleto, ordem: cd.ordem };
     }).filter(Boolean);
-  }, [roteiros, selectedDia, clientes]);
+  };
+
+  const clientesDoDia = useMemo(() => resolverClientesDoDia(selectedDia), [roteiros, selectedDia, clientes]);
+
+  // Contagem real por dia (igual à lista exibida) — usada no badge das abas
+  const contagemPorDia = useMemo(() => {
+    const m = {};
+    roteiros.forEach(r => { m[r.dia_semana] = resolverClientesDoDia(r.dia_semana).length; });
+    return m;
+  }, [roteiros, clientes]);
 
   const clientesFiltrados = clientesDoDia.filter(c => {
     const s = searchCliente.toLowerCase();
-    return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo?.includes(s);
+    return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo_interno?.toLowerCase().includes(s);
   });
 
   return (
@@ -101,8 +138,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
         <Tabs value={selectedDia} onValueChange={setSelectedDia}>
           <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1">
             {diasSemana.map(dia => {
-              const roteiroDia = roteiros.find(r => r.dia_semana === dia.valor);
-              const count = roteiroDia?.clientes_ids?.length || 0;
+              const count = contagemPorDia[dia.valor] || 0;
               return (
                 <TabsTrigger key={dia.valor} value={dia.valor} className="text-xs flex-1 min-w-[40px] px-1 py-1.5">
                   {dia.label}
@@ -136,7 +172,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
               <Card key={cli.id} className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors" onClick={() => setSelectedCliente(cli)}>
                 <CardContent className="p-3 flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm truncate">{cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>
+                    <p className="font-medium text-sm truncate">{cli.codigo_interno || cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>
                     <p className="text-xs text-slate-500 truncate">{cli.cidade}{cli.bairro ? `, ${cli.bairro}` : ''}</p>
                   </div>
                   <ShoppingCart className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
