@@ -122,16 +122,20 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   });
 
   // Produtos só são necessários na aba "Produto" — não bloqueiam a aba "Pedido".
+  // Cache persistente: do 2º pedido em diante vêm do cache instantâneo.
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],
     queryFn: () => base44.entities.Produto.filter({ status: 'ativo' }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    retry: 3,
     enabled: activeTab === 'produto',
   });
 
-  // ID efetivo da tabela: usa o estado e, se vazio, cai no cliente fresco do banco.
-  // Evita lista de preços vazia (e produtos bloqueados) enquanto o estado sincroniza.
-  const tabelaPrecoIdEfetivo = tabelaPrecoId || clienteFresco?.tabela_id || '';
+  // ID efetivo da tabela: estado → PROP (já em memória) → clienteFresco (background).
+  // A prop já traz tabela_id para todos os clientes, então o lazy-load de preços
+  // não fica acoplado à query do cliente.
+  const tabelaPrecoIdEfetivo = tabelaPrecoId || cliente.tabela_id || clienteFresco?.tabela_id || '';
 
   // Preços só carregam quando a aba "Produto" abre (PrecoProduto tem milhares de
   // registros no total) — mantém a aba "Pedido" instantânea.
@@ -168,7 +172,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const { data: cenariosLocais = [], isLoading: loadingCenarios } = useQuery({
     queryKey: ['cenariosFiscaisLocais'],
     queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' }),
-    staleTime: 5 * 60 * 1000,
+    // Disparada na montagem (sem enabled dependente) — em paralelo com plano/tabela.
+    // Cache persistente para 2ª abertura instantânea.
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    retry: 3,
   });
 
   // Cenários disponíveis: mostra TODOS (venda, bonificação, troca, etc.)
