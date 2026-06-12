@@ -103,10 +103,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryFn: () => base44.entities.Produto.filter({ status: 'ativo' })
   });
 
+  // ID efetivo da tabela: usa o estado e, se vazio, cai no cliente fresco do banco.
+  // Evita lista de preços vazia (e produtos bloqueados) enquanto o estado sincroniza.
+  const tabelaPrecoIdEfetivo = tabelaPrecoId || clienteFresco?.tabela_id || '';
+
   const { data: precosAll = [] } = useQuery({
-    queryKey: ['precosProduto', tabelaPrecoId],
-    queryFn: () => tabelaPrecoId ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoId }) : [],
-    enabled: !!tabelaPrecoId
+    queryKey: ['precosProduto', tabelaPrecoIdEfetivo],
+    queryFn: () => tabelaPrecoIdEfetivo ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoIdEfetivo }) : [],
+    enabled: !!tabelaPrecoIdEfetivo
   });
 
   const { data: acoesPromocionais = [] } = useQuery({
@@ -301,7 +305,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const tabelaIdExibir = tabelaPrecoId || clienteFresco?.tabela_id || '';
   const planoAtual = planosPagamento.find(p => p.id === planoIdExibir);
   const tabelaAtual = tabelasPreco.find(t => t.id === tabelaIdExibir);
-  const clienteSemTabela = !tabelaPrecoId;
+  const clienteSemTabela = !tabelaIdExibir;
 
   const handleUpdateQuantidade = (produto, preco, novaQtd) => {
     setItensLocal(prev => {
@@ -682,7 +686,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               <ProdutoCardList
                 produtos={produtos}
                 precosAll={precosAll}
-                tabelaPrecoId={tabelaPrecoId}
+                tabelaPrecoId={tabelaPrecoIdEfetivo}
                 itensLocal={itensLocal}
                 onUpdateQuantidade={handleUpdateQuantidade}
                 onAddTrocaItem={handleAddTrocaItem}
