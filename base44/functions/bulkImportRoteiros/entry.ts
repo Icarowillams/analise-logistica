@@ -22,16 +22,40 @@ Deno.serve(async (req) => {
       const diaNorm = normalizarDia(r.dia_semana);
       const existente = existentes.find(x => x.vendedor_id === r.vendedor_id && normalizarDia(x.dia_semana) === diaNorm);
       if (existente) {
-        await base44.entities.Roteiro.update(existente.id, {
-          clientes_ids: r.clientes_ids,
-          clientes_detalhes: r.clientes_detalhes,
-          vendedor_nome: r.vendedor_nome
+        // MESCLA (não sobrescreve): preserva os clientes que já estão no roteiro
+        // e adiciona apenas os que vieram no CSV e ainda não existem.
+        // Isso evita que uma importação parcial apague clientes existentes.
+        const idsAtuais = existente.clientes_ids || [];
+        const detalhesAtuais = existente.clientes_detalhes || [];
+        const idsExistentes = new Set(idsAtuais);
+
+        const novosIds = [];
+        const novosDetalhes = [];
+        (r.clientes_detalhes || []).forEach(det => {
+          if (det?.cliente_id && !idsExistentes.has(det.cliente_id)) {
+            idsExistentes.add(det.cliente_id);
+            novosIds.push(det.cliente_id);
+            novosDetalhes.push(det);
+          }
         });
+
+        if (novosIds.length > 0) {
+          const detalhesMesclados = [...detalhesAtuais, ...novosDetalhes]
+            .map((d, i) => ({ ...d, ordem: i + 1 }));
+          await base44.entities.Roteiro.update(existente.id, {
+            clientes_ids: [...idsAtuais, ...novosIds],
+            clientes_detalhes: detalhesMesclados,
+            vendedor_nome: r.vendedor_nome || existente.vendedor_nome
+          });
+          // mantém o objeto em memória atualizado para o próximo item do lote
+          existente.clientes_ids = [...idsAtuais, ...novosIds];
+          existente.clientes_detalhes = detalhesMesclados;
+        }
         atualizados++;
       } else {
-        await base44.entities.Roteiro.create(r);
+        const criado = await base44.entities.Roteiro.create(r);
         criados++;
-        existentes.push(r); // evita criar duplicata dentro do mesmo lote
+        existentes.push(criado || r); // evita criar duplicata dentro do mesmo lote
       }
     }
 
