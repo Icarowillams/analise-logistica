@@ -10,14 +10,9 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
   const { data: allItems = [], isFetching: carregandoItens } = useQuery({
     queryKey: ['pedidoItems-agrupado', [...pedidoIds].sort().join(',')],
     queryFn: async () => {
-      const itens = [];
-      // Busca em lotes de 40 pedidos para garantir que TODOS os itens venham
-      for (let i = 0; i < pedidoIds.length; i += 40) {
-        const chunk = pedidoIds.slice(i, i + 40);
-        const res = await base44.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 2000);
-        itens.push(...res);
-      }
-      return itens;
+      // Busca via backend (suporta $in) — retorna todos os itens dos pedidos selecionados
+      const res = await base44.functions.invoke('getItensPedidosLote', { pedido_ids: pedidoIds });
+      return Object.values(res.data?.itens_pedido || {}).flat();
     },
     staleTime: 0,
     gcTime: 0,

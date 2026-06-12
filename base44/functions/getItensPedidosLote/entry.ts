@@ -11,12 +11,12 @@ Deno.serve(async (req) => {
     const { pedido_ids, troca_ids } = await req.json();
     const result = { itens_pedido: {}, itens_troca: {} };
 
-    // Buscar itens de pedidos D1
+    // Buscar itens de pedidos — filtro $in em lotes de 40 pedidos
     if (pedido_ids && pedido_ids.length > 0) {
-      const todosItens = await base44.asServiceRole.entities.PedidoItem.list('-created_date', 5000);
-      const pedidoIdSet = new Set(pedido_ids);
-      for (const item of todosItens) {
-        if (pedidoIdSet.has(item.pedido_id)) {
+      for (let i = 0; i < pedido_ids.length; i += 40) {
+        const chunk = pedido_ids.slice(i, i + 40);
+        const itens = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 5000);
+        for (const item of itens) {
           if (!result.itens_pedido[item.pedido_id]) {
             result.itens_pedido[item.pedido_id] = [];
           }
