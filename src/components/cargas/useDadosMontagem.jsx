@@ -140,23 +140,36 @@ export default function useDadosMontagem() {
       // ═══════════════════════════════════════
       await sleep(isRetry ? 2000 : 500);
 
-      // OTIMIZAÇÃO: carregar dados em PARALELO (antes era sequencial com sleep)
-      // Reduz de ~7 chamadas sequenciais (~3s) para 2 batches paralelos (~0.5s)
-      const [espelhoOmie, todosPedidosLocais, trocasAprovadas, todosClientes] = await Promise.all([
+      // OTIMIZAÇÃO: pedidos/espelho/trocas/listas pequenas em PARALELO.
+      // ⚠️ Cliente NÃO é mais carregado por inteiro (antes: list 10000 = ~958 reg / 4,4s).
+      // Os clientes são buscados DEPOIS, filtrando só pelos cliente_ids referenciados.
+      const [espelhoOmie, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
         fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)),
         fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 3000)),
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
-        fetchWithRetry(() => base44.entities.Cliente.list('-created_date', 10000))
-      ]);
-      // Mapa global de clientes — evita N chamadas individuais depois
-      const clientesMapGlobal = new Map((todosClientes || []).map(c => [c.id, c]));
-
-      const [rotas, motP, veiP, carP] = await Promise.all([
         fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Motorista.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Veiculo.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Carga.list('-created_date', 500))
       ]);
+
+      // Cliente_ids efetivamente referenciados (espelho + pedidos locais + trocas)
+      const clienteIdsRef = new Set();
+      (espelhoOmie || []).forEach(e => { if (e.cliente_id) clienteIdsRef.add(e.cliente_id); });
+      (todosPedidosLocais || []).forEach(p => { if (p.cliente_id) clienteIdsRef.add(p.cliente_id); });
+      (trocasAprovadas || []).forEach(t => { if (t.cliente_id) clienteIdsRef.add(t.cliente_id); });
+
+      // Busca SÓ os clientes referenciados, em lotes (evita payload gigante / list total)
+      const idsArr = [...clienteIdsRef];
+      const LOTE_CLI = 200;
+      const clientesRef = [];
+      for (let i = 0; i < idsArr.length; i += LOTE_CLI) {
+        const lote = idsArr.slice(i, i + LOTE_CLI);
+        const r = await fetchWithRetry(() => base44.entities.Cliente.filter({ id: { $in: lote } }));
+        clientesRef.push(...(r || []));
+      }
+      // Mapa global de clientes — evita N chamadas individuais depois
+      const clientesMapGlobal = new Map(clientesRef.map(c => [c.id, c]));
 
       const rotasMap = new Map((rotas || []).map(r => [r.id, r.nome]));
       const motoristasAtivos = motP.filter(m => m.status === 'ativo');

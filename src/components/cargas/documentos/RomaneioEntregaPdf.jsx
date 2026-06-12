@@ -39,26 +39,71 @@ export default function RomaneioEntregaPdf({ carga }) {
 
   const { data: empresas = [] } = useQuery({
     queryKey: ['empresa-romaneio'],
-    queryFn: () => base44.entities.Empresa.list()
+    queryFn: () => base44.entities.Empresa.list(),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000
   });
   const empresa = empresas[0] || {};
 
-  // Carrega clientes para resolver código interno a partir do cliente_id
+  // Chaves de cliente referenciadas pela carga (ids + códigos) — busca só esses clientes
+  const clienteRefs = useMemo(() => {
+    const ids = new Set();
+    const codigos = new Set();
+    const add = (p) => {
+      if (p.cliente_id) ids.add(p.cliente_id);
+      [p.codigo_cliente, p.codigo_cliente_cod, p.codigo_cliente_integracao].forEach(c => {
+        const k = String(c || '').trim();
+        if (k) codigos.add(k);
+      });
+    };
+    (carga?.pedidos_omie || []).forEach(add);
+    (carga?.pedidos_internos || []).forEach(add);
+    (carga?.pedidos_troca || []).forEach(add);
+    return { ids: [...ids], codigos: [...codigos] };
+  }, [carga]);
+
+  // Carrega APENAS os clientes da carga (por id + códigos) — não a base inteira
   const { data: clientes = [], isLoading: isLoadingClientes } = useQuery({
-    queryKey: ['clientes-romaneio'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 10000)
+    queryKey: ['clientes-romaneio', carga?.id, clienteRefs],
+    enabled: !!carga && (clienteRefs.ids.length > 0 || clienteRefs.codigos.length > 0),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    queryFn: async () => {
+      const buscas = [];
+      if (clienteRefs.ids.length > 0) buscas.push(base44.entities.Cliente.filter({ id: { $in: clienteRefs.ids } }));
+      if (clienteRefs.codigos.length > 0) {
+        buscas.push(base44.entities.Cliente.filter({ codigo_interno: { $in: clienteRefs.codigos } }));
+        buscas.push(base44.entities.Cliente.filter({ codigo_omie: { $in: clienteRefs.codigos } }));
+        buscas.push(base44.entities.Cliente.filter({ codigo_cliente_omie: { $in: clienteRefs.codigos } }));
+      }
+      const res = await Promise.all(buscas);
+      const todos = res.flat();
+      const vistos = new Set();
+      return todos.filter(c => { if (vistos.has(c.id)) return false; vistos.add(c.id); return true; });
+    }
   });
 
-  // Carrega modalidades de pagamento para resolver a cobrança a partir do cliente
+  // Modalidades de pagamento (lista pequena, estática) — cache persistente
   const { data: modalidades = [], isLoading: isLoadingModalidades } = useQuery({
     queryKey: ['modalidades-romaneio'],
-    queryFn: () => base44.entities.ModalidadePagamento.list()
+    queryFn: () => base44.entities.ModalidadePagamento.list(),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000
   });
 
-  // Carrega vendedores para resolver o nome a partir do vendedor_id do cliente
+  // Vendedores: só os referenciados pelos clientes da carga (não a base inteira)
+  const vendedorIds = useMemo(() => {
+    const ids = new Set();
+    clientes.forEach(c => { if (c.vendedor_id) ids.add(c.vendedor_id); });
+    return [...ids];
+  }, [clientes]);
+
   const { data: vendedores = [], isLoading: isLoadingVendedores } = useQuery({
-    queryKey: ['vendedores-romaneio'],
-    queryFn: () => base44.entities.Vendedor.list('-created_date', 5000)
+    queryKey: ['vendedores-romaneio', vendedorIds],
+    enabled: vendedorIds.length > 0,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    queryFn: () => base44.entities.Vendedor.filter({ id: { $in: vendedorIds } })
   });
 
   // Carrega pedidos cancelados desta carga (NF rejeitada → cancelado) para EXCLUIR
@@ -79,11 +124,17 @@ export default function RomaneioEntregaPdf({ carga }) {
     enabled: !!carga?.id
   });
 
-  // Espelho local de pedidos Omie — tem numero_nf real
+  // Espelho local de pedidos Omie — tem numero_nf real.
+  // Busca SÓ os códigos de pedido Omie desta carga (não o espelho inteiro).
+  const codigosPedidoCarga = useMemo(
+    () => [...new Set((carga?.pedidos_omie || []).map(p => String(p.codigo_pedido || '')).filter(Boolean))],
+    [carga]
+  );
   const { data: liberadosOmie = [] } = useQuery({
-    queryKey: ['liberados-omie-romaneio', carga?.id],
-    queryFn: () => base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000),
-    enabled: !!carga?.id
+    queryKey: ['liberados-omie-romaneio', carga?.id, codigosPedidoCarga],
+    enabled: !!carga?.id && codigosPedidoCarga.length > 0,
+    staleTime: 2 * 60 * 1000,
+    queryFn: () => base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: codigosPedidoCarga } })
   });
 
   // Logs de emissão de NF — carrega todos os status para tratar rejeitadas/pendentes

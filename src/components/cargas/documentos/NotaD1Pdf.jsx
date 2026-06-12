@@ -34,13 +34,30 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
 
   const { data: empresas = [] } = useQuery({
     queryKey: ['empresa-notad1'],
-    queryFn: () => base44.entities.Empresa.list()
+    queryFn: () => base44.entities.Empresa.list(),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000
   });
   const empresa = empresas[0] || {};
 
+  // Só os cliente_ids das notas D1 desta carga (não a base inteira)
+  const clienteIds = useMemo(() => {
+    const ids = new Set();
+    if (pedidosProp && pedidosProp.length > 0) {
+      pedidosProp.forEach(p => { if (p.cliente_id) ids.add(p.cliente_id); });
+    } else {
+      (carga?.pedidos_internos || []).forEach(p => { if (p.cliente_id) ids.add(p.cliente_id); });
+      (carga?.pedidos_troca || []).forEach(p => { if (p.cliente_id) ids.add(p.cliente_id); });
+    }
+    return [...ids];
+  }, [carga, pedidosProp]);
+
   const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes-notad1'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 10000)
+    queryKey: ['clientes-notad1', clienteIds],
+    enabled: clienteIds.length > 0,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    queryFn: () => base44.entities.Cliente.filter({ id: { $in: clienteIds } })
   });
 
   const clientesMap = useMemo(() => {
