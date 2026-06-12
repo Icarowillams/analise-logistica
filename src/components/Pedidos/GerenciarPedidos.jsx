@@ -255,31 +255,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return map;
   };
 
-  // Códigos Omie dos pedidos do período — usados para buscar SÓ o espelho relevante.
-  const codigosOmiePeriodo = useMemo(() => {
-    return [...new Set(pedidos.map(p => p.omie_codigo_pedido).filter(Boolean).map(c => String(c).trim()))];
-  }, [pedidos]);
-
+  // Espelho Omie (PedidoLiberadoOmie) — carrega a lista completa (~789 registros) e monta
+  // o omieMap por codigo_pedido. Comprovadamente funcional; com staleTime só busca na 1ª vez.
   const { data: omieMap = {} } = useQuery({
-    queryKey: ['gerenciar-pedidos-omie-etapas', codigosOmiePeriodo.join('|')],
+    queryKey: ['gerenciar-pedidos-omie-etapas'],
     queryFn: async () => {
-      if (codigosOmiePeriodo.length === 0) return {};
-      // Busca o espelho SÓ dos códigos do período, em lotes — em vez de carregar 5000.
-      const LOTE = 40;
-      const espelho = [];
-      for (let i = 0; i < codigosOmiePeriodo.length; i += LOTE) {
-        const lote = codigosOmiePeriodo.slice(i, i + LOTE);
-        const listas = await Promise.all(
-          lote.map(codigo => base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: codigo }, '-sincronizado_em', 5))
-        );
-        espelho.push(...listas.flat());
-        if (i + LOTE < codigosOmiePeriodo.length) {
-          await new Promise(r => setTimeout(r, 80));
-        }
-      }
+      const espelho = await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
       return buildOmieMap(espelho);
     },
-    enabled: codigosOmiePeriodo.length > 0,
     staleTime: 30000,
     refetchOnWindowFocus: false
   });
