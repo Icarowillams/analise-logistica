@@ -482,6 +482,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       numero_pedido_compra: numeroPedidoCompra,
       dados_adicionais_nf: buildDadosAdicionaisNf(),
       total_itens: itensLocal.length,
+      // Soma das QUANTIDADES (não nº de linhas) — usada no preço médio de Gerenciar Pedidos
+      // sem precisar varrer PedidoItem. Persistir aqui evita carregar milhares de itens no load.
+      qtd_total_itens: itensLocal.reduce((s, i) => s + (Number(i.quantidade) || 0), 0),
       valor_total: totalPedido
     };
 

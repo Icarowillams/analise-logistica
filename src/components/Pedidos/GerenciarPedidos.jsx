@@ -119,11 +119,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     await new Promise(r => setTimeout(r, 1500));
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
-      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
-      queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
+      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] })
     ]);
   };
 
+  // Pedidos — carregados por lista e filtrados por período no cliente.
+  // (O operador de range no servidor sobre created_date não é confiável neste backend,
+  // então o corte de período é feito no useMemo `filtered`.) O ganho de performance vem
+  // de eliminar PedidoItem(20000) e Cliente(5000), que eram os reais gargalos.
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
     queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
@@ -141,12 +144,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return funcionario?.nome || currentUser?.full_name || currentUser?.email || '';
   }, [vendedores, currentUser]);
 
-  const { data: clientesBase = [] } = useQuery({
-    queryKey: ['clientes-gerenciar'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
-    staleTime: 300000,
-  });
-
+  // Apenas os clientes REFERENCIADOS pelos pedidos do período — não a base inteira (5000).
   const pedidoClienteIds = useMemo(() => [...new Set(pedidos.map(p => p.cliente_id).filter(Boolean))], [pedidos]);
 
   const { data: clientesDosPedidos = [] } = useQuery({
@@ -172,9 +170,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const clientes = useMemo(() => {
     const mapa = new Map();
-    [...clientesBase, ...clientesDosPedidos].forEach(c => mapa.set(c.id, c));
+    clientesDosPedidos.forEach(c => mapa.set(c.id, c));
     return Array.from(mapa.values());
-  }, [clientesBase, clientesDosPedidos]);
+  }, [clientesDosPedidos]);
 
   const { data: redes = [] } = useQuery({
     queryKey: ['redes-gerenciar'],
@@ -230,12 +228,31 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return map;
   };
 
+  // Códigos Omie dos pedidos do período — usados para buscar SÓ o espelho relevante.
+  const codigosOmiePeriodo = useMemo(() => {
+    return [...new Set(pedidos.map(p => p.omie_codigo_pedido).filter(Boolean).map(c => String(c).trim()))];
+  }, [pedidos]);
+
   const { data: omieMap = {} } = useQuery({
-    queryKey: ['gerenciar-pedidos-omie-etapas'],
+    queryKey: ['gerenciar-pedidos-omie-etapas', codigosOmiePeriodo.join('|')],
     queryFn: async () => {
-      const espelho = await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
+      if (codigosOmiePeriodo.length === 0) return {};
+      // Busca o espelho SÓ dos códigos do período, em lotes — em vez de carregar 5000.
+      const LOTE = 40;
+      const espelho = [];
+      for (let i = 0; i < codigosOmiePeriodo.length; i += LOTE) {
+        const lote = codigosOmiePeriodo.slice(i, i + LOTE);
+        const listas = await Promise.all(
+          lote.map(codigo => base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: codigo }, '-sincronizado_em', 5))
+        );
+        espelho.push(...listas.flat());
+        if (i + LOTE < codigosOmiePeriodo.length) {
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
       return buildOmieMap(espelho);
     },
+    enabled: codigosOmiePeriodo.length > 0,
     staleTime: 30000,
     refetchOnWindowFocus: false
   });
@@ -248,21 +265,34 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return () => unsubscribe();
   }, [queryClient]);
 
+  // Itens carregados SOB DEMANDA: só quando o usuário usa o filtro de produto.
+  // No load inicial NÃO baixa os ~5.700 itens (era o vilão de 18s).
+  const filtroProdutoAtivo = produtoIds.length > 0 || !!produtoSearch.trim();
+
   const { data: pedidoItems = [] } = useQuery({
-    queryKey: ['pedidoItems-gerenciar'],
-    queryFn: () => base44.entities.PedidoItem.list('-created_date', 20000),
+    queryKey: ['pedidoItems-gerenciar-filtro', produtoIds.join('|'), produtoSearch.trim()],
+    queryFn: async () => {
+      // Por seleção de produto: filtra no SERVIDOR por produto_id (lotes).
+      if (produtoIds.length > 0) {
+        const itens = [];
+        for (const pid of produtoIds) {
+          const lista = await base44.entities.PedidoItem.filter({ produto_id: pid }, '-created_date', 20000);
+          itens.push(...lista);
+        }
+        return itens;
+      }
+      // Por texto: não há índice de texto no servidor, então carrega itens e filtra no cliente.
+      // Só ocorre quando o usuário digita um produto — não no load inicial.
+      if (produtoSearch.trim()) {
+        return base44.entities.PedidoItem.list('-created_date', 20000);
+      }
+      return [];
+    },
+    enabled: filtroProdutoAtivo,
+    staleTime: 60000,
   });
 
-  // Soma das quantidades de itens por pedido — usado para cálculo correto do preço médio
-  const qtdItensPorPedido = useMemo(() => {
-    const m = {};
-    pedidoItems.forEach(item => {
-      const qtd = Number(item.quantidade) || 0;
-      m[item.pedido_id] = (m[item.pedido_id] || 0) + qtd;
-    });
-    return m;
-  }, [pedidoItems]);
-
+  // Preço médio agora usa qtd_total_itens persistido no próprio Pedido (sem varrer PedidoItem).
   const vendedoresMap = useMemo(() => {
     const m = {};
     vendedores.forEach(v => { m[v.id] = v; });
@@ -360,10 +390,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
         omie_numero_nf: omieInfo?.numero_nf || null,
         omie_status_nf: omieInfo?.status_real || null,
         omie_status_label: omieInfo?.status_label || null,
-        qtd_total_itens: qtdItensPorPedido[pedido.id] || 0,
+        // Lê direto do campo persistido no Pedido (soma das quantidades).
+        // Fallback para total_itens em pedidos antigos sem o campo.
+        qtd_total_itens: pedido.qtd_total_itens || pedido.total_itens || 0,
       };
     });
-  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap, qtdItensPorPedido]);
+  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
@@ -524,8 +556,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
-        queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
-        queryClient.invalidateQueries({ queryKey: ['pedidoItems-gerenciar'] })
+        queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] })
       ]);
       if (res?.data?.em_andamento) {
         toast.success('Dados recarregados! Sincronização com Omie já em andamento em segundo plano.');

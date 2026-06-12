@@ -177,6 +177,10 @@
     "total_itens": {
       "type": "number"
     },
+    "qtd_total_itens": {
+      "type": "number",
+      "description": "Soma das quantidades de todos os itens do pedido (n\u00e3o n\u00famero de linhas) \u2014 usada para c\u00e1lculo de pre\u00e7o m\u00e9dio em Gerenciar Pedidos sem precisar varrer PedidoItem"
+    },
     "valor_total": {
       "type": "number"
     },
