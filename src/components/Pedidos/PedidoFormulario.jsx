@@ -65,10 +65,18 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
   // desatualizada do cache (lista de clientes fica 15 min em cache).
   const { data: clienteFresco, isLoading: loadingCliente } = useQuery({
-    queryKey: ['cliente-fresco', cliente.id],
+    queryKey: ['cliente-fresco', cliente.id, cliente.codigo_interno],
     queryFn: async () => {
-      const r = await base44.entities.Cliente.filter({ id: cliente.id });
-      return r[0] || null;
+      // 1) Tenta pelo id do banco
+      let r = await base44.entities.Cliente.filter({ id: cliente.id });
+      if (r[0]) return r[0];
+      // 2) Fallback por código interno (campo estável — sobrevive a recriação do registro)
+      const cod = cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo;
+      if (cod) {
+        r = await base44.entities.Cliente.filter({ codigo_interno: String(cod) });
+        if (r[0]) return r[0];
+      }
+      return null;
     },
     staleTime: 0,
   });
