@@ -58,7 +58,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
     queryKey: ['planosPagamento'],
-    queryFn: () => base44.entities.PlanoPagamento.list(),
+    queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
     staleTime: 10 * 60 * 1000,
   });
 
@@ -93,7 +93,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
-    queryFn: () => base44.entities.TabelaPreco.list()
+    queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000)
   });
 
   const { data: produtos = [] } = useQuery({
