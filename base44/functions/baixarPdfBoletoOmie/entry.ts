@@ -90,15 +90,28 @@ Deno.serve(async (req) => {
       if (!codigo_lancamento) {
         return Response.json({ error: 'Informe codigo_lancamento ou url_boleto' }, { status: 400 });
       }
-      // Endpoint correto: financas/contareceberboleto/ - call: ObterBoleto - param: nCodTitulo
+      // 1) Tenta ObterBoleto - param: nCodTitulo
       let cDesStatus = null;
       try {
         const data = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'ObterBoleto' });
         link = data?.cLinkBoleto || data?.link_boleto || null;
         cDesStatus = data?.cDesStatus || null;
       } catch (e) {
-        return Response.json({ error: e.message }, { status: 404 });
+        cDesStatus = e.message;
       }
+
+      // 2) Fallback: ObterBoleto às vezes responde "nenhum boleto gerado" mesmo para
+      // boletos já emitidos via API. GerarBoleto devolve o link do boleto existente.
+      if (!link) {
+        try {
+          const dataGer = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'GerarBoleto' });
+          link = dataGer?.cLinkBoleto || dataGer?.link_boleto || null;
+          if (!link) cDesStatus = dataGer?.cDesStatus || cDesStatus;
+        } catch (e2) {
+          cDesStatus = e2.message || cDesStatus;
+        }
+      }
+
       if (!link) {
         return Response.json({
           error: cDesStatus || 'Boleto não disponível para este título no Omie.'
