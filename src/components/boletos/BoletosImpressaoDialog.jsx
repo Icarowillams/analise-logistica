@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
 import { runPool } from '@/lib/concurrentPool';
 
-const CONCORRENCIA = 5; // downloads de PDF simultâneos (ObterBoleto = leitura, pode paralelizar)
+const CONCORRENCIA = 1; // SEQUENCIAL — Omie rejeita chamadas ObterBoleto simultâneas ("requisição redundante") e abre o circuit breaker
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const base64ToUint8Array = (b64) => {
@@ -53,18 +53,21 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     return base64ToUint8Array(data.pdf_base64);
   };
 
-  // Baixa 1 boleto com retry leve em caso de erro de concorrência do Omie.
+  // Baixa 1 boleto com até 3 tentativas em erros temporários do Omie (redundante/cota/bloqueio).
   const baixarComRetry = async (titulo) => {
-    try {
-      return await baixarPdf(titulo);
-    } catch (e) {
-      const concorrencia = /redundante|j[áa] existe uma requisi|1880|aguarde/i.test(e.message || '');
-      if (concorrencia) {
-        await sleep(1500);
-        return await baixarPdf(titulo); // tenta mais uma vez
+    const ESPERAS = [2000, 4000, 8000];
+    let ultimoErro;
+    for (let t = 0; t <= ESPERAS.length; t++) {
+      try {
+        return await baixarPdf(titulo);
+      } catch (e) {
+        ultimoErro = e;
+        const temporario = /redundante|j[áa] existe uma requisi|1880|aguarde|cota|limite|bloqueada|timeout/i.test(e.message || '');
+        if (!temporario || t === ESPERAS.length) throw e;
+        await sleep(ESPERAS[t]);
       }
-      throw e;
     }
+    throw ultimoErro;
   };
 
   // Baixa TODOS os boletos em paralelo (pool limitado), com progresso por item.
@@ -74,7 +77,10 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     let erros = 0;
     const resultados = await runPool(
       titulos,
-      (titulo) => baixarComRetry(titulo),
+      async (titulo, idx) => {
+        if (idx > 0) await sleep(400); // espaçamento entre chamadas para não estourar limite Omie
+        return baixarComRetry(titulo);
+      },
       {
         concorrencia: CONCORRENCIA,
         onProgress: (r) => {
@@ -186,8 +192,8 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <p className="text-xs text-slate-500">
           {modo === 'agrupado'
-            ? 'Todos os boletos serão baixados em paralelo e mesclados em um único PDF para impressão.'
-            : 'Os PDFs são baixados em paralelo, sem redirecionar para o Omie.'}
+            ? 'Os boletos são baixados um a um (limite do Omie) e mesclados em um único PDF para impressão.'
+            : 'Os PDFs são baixados um a um, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
     </Dialog>
