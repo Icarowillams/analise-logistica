@@ -149,7 +149,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const { data: acoesPromocionais = [] } = useQuery({
     queryKey: ['acoesPromocionais'],
     queryFn: () => base44.entities.AcaoPromocional.list(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
     enabled: activeTab === 'produto',
   });
 
@@ -162,7 +163,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const { data: motivosTroca = [] } = useQuery({
     queryKey: ['motivosTroca'],
     queryFn: () => base44.entities.MotivoTroca.list(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
     enabled: activeTab === 'produto' || tipo === 'troca',
   });
 

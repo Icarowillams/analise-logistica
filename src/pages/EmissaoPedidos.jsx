@@ -8,8 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DigitarPedido from '@/components/Pedidos/DigitarPedido';
 import PedidoAvulso from '@/components/Pedidos/PedidoAvulso';
 import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
+import { usePrefetchApoioPedido } from '@/components/Pedidos/usePrefetchApoioPedido';
 
 export default function EmissaoPedidos() {
+  // Aquece o cache das listas de apoio assim que a tela monta — 1ª abertura de
+  // cliente já vem do cache (plano/tabela/cenário instantâneos).
+  usePrefetchApoioPedido();
+
   const [currentUser, setCurrentUser] = useState(null);
   const [vendedorAtual, setVendedorAtual] = useState(null);
   const [activeTab, setActiveTab] = useState('digitar');
