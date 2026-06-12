@@ -220,7 +220,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const pedidos = Array.isArray(fila.pedidos) ? fila.pedidos.map(String).filter(Boolean) : [];
+    // Dedup defensiva — nunca processa o mesmo pedido 2x na mesma rodada (evita CÓDIGO 6 redundante)
+    const pedidos = Array.isArray(fila.pedidos) ? [...new Set(fila.pedidos.map(String).filter(Boolean))] : [];
     const resultados = Array.isArray(fila.resultados) ? [...fila.resultados] : [];
     const erros = Array.isArray(fila.erros) ? [...fila.erros] : [];
     let processados = Number(fila.processados || 0);

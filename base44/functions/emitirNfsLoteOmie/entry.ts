@@ -203,8 +203,9 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
+    // Dedup por código de pedido — nunca emite a mesma NF 2x na mesma rodada (evita CÓDIGO 6 redundante)
     const codigosPedido = Array.isArray(body.codigos_pedido)
-      ? body.codigos_pedido.map(c => String(c)).filter(Boolean)
+      ? [...new Set(body.codigos_pedido.map(c => String(c)).filter(Boolean))]
       : [];
 
     if (codigosPedido.length === 0) {

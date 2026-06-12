@@ -185,8 +185,17 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
 }
 
 // Processa títulos SEQUENCIALMENTE — GerarBoleto Omie não aceita chamadas paralelas (erro 8020)
-async function gerarBoletosTitulos(base44: any, titulos: any[]) {
+async function gerarBoletosTitulos(base44: any, titulosEntrada: any[]) {
   const resultados: any[] = [];
+
+  // Dedup por código de lançamento — nunca gera o mesmo boleto 2x na mesma rodada (evita CÓDIGO 6 redundante)
+  const vistos = new Set<string>();
+  const titulos = (titulosEntrada || []).filter((t: any) => {
+    const cod = String(t.codigo_lancamento_omie || t.codigo_lancamento || t || '');
+    if (!cod || vistos.has(cod)) return false;
+    vistos.add(cod);
+    return true;
+  });
 
   for (let i = 0; i < titulos.length; i++) {
     const resultado = await processarTitulo(base44, titulos[i]);
