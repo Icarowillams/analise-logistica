@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 
 export default function ResultadoGeracaoBoletos({ resultado }) {
   const { sucessos = 0, erros = 0, skips = 0, resultados = [] } = resultado || {};
+  const listaErros = resultados.filter(r => !r.sucesso && !r.skip);
 
   return (
     <Card>
@@ -16,7 +17,29 @@ export default function ResultadoGeracaoBoletos({ resultado }) {
           {skips > 0 && <Badge className="bg-gray-200 text-gray-800">{skips} ignorado(s)</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {/* Resumo verde */}
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span><b>{sucessos}</b> boleto(s) gerado(s) com sucesso{skips > 0 ? ` — ${skips} ignorado(s)` : ''}.</span>
+        </div>
+
+        {/* Lista vermelha de erros */}
+        {listaErros.length > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm space-y-1">
+            <div className="flex items-center gap-2 font-medium text-red-800">
+              <XCircle className="w-4 h-4 flex-shrink-0" /> {listaErros.length} com erro:
+            </div>
+            <div className="max-h-40 overflow-y-auto space-y-0.5">
+              {listaErros.map((r, i) => (
+                <div key={i} className="text-red-700 text-xs">
+                  • Título {r.codigo_lancamento}: {r.mensagem || 'erro desconhecido'}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50/80 text-slate-700">

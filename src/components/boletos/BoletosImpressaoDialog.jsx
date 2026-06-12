@@ -31,6 +31,7 @@ const downloadBlob = (blob, filename) => {
 export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [], modo = 'individual', numeroCarga }) {
   const [carregando, setCarregando] = useState(false);
   const [progresso, setProgresso] = useState({ feito: 0, total: 0, erros: 0 });
+  const [mesclando, setMesclando] = useState(false);
 
   const reportarErro = (titulo, msg) => {
     const docRef = titulo.numero_documento || titulo.codigo_lancamento;
@@ -115,6 +116,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
       toast.error('Nenhum boleto pôde ser mesclado.');
       return;
     }
+    setMesclando(true);
     const mergedBytes = await merged.save();
     const nome = `boletos_carga_${numeroCarga || titulos.length}.pdf`;
     downloadBlob(new Blob([mergedBytes], { type: 'application/pdf' }), nome);
@@ -125,6 +127,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
   const gerarPdf = async () => {
     if (titulos.length === 0) return;
     setCarregando(true);
+    setMesclando(false);
     setProgresso({ feito: 0, total: titulos.length, erros: 0 });
     try {
       if (modo === 'agrupado') await gerarAgrupado();
@@ -133,6 +136,7 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
       toast.error(e.message);
     }
     setCarregando(false);
+    setMesclando(false);
     setProgresso({ feito: 0, total: 0, erros: 0 });
   };
 
@@ -155,16 +159,19 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         {carregando && (
           <div className="space-y-2">
-            <Progress value={percentual} className="h-2" />
+            <Progress value={mesclando ? 100 : percentual} className="h-2" />
             <p className="text-xs text-slate-500 text-center">
-              {progresso.feito}/{progresso.total} processados ({percentual}%)
+              {mesclando
+                ? 'Mesclando PDFs…'
+                : `Baixando boleto ${Math.min(progresso.feito + 1, progresso.total)} de ${progresso.total} (${percentual}%)`}
+              {progresso.erros > 0 && <span className="text-red-600"> — {progresso.erros} falha(s)</span>}
             </p>
           </div>
         )}
 
         <Button onClick={gerarPdf} disabled={carregando || titulos.length === 0} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">
           {carregando ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Baixando {progresso.feito}/{progresso.total}…</>
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {mesclando ? 'Mesclando PDFs…' : `Baixando ${progresso.feito}/${progresso.total}…`}</>
           ) : (
             <>{modo === 'agrupado' ? <Layers className="w-4 h-4 mr-2" /> : <FileText className="w-4 h-4 mr-2" />} Gerar PDF</>
           )}
