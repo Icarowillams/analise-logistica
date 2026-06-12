@@ -289,9 +289,13 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     setDestravando(true);
     try {
       const res = await base44.functions.invoke('reenfileirarPedidosOrfaos', {});
-      const n = res?.data?.reenfileirados || 0;
+      const d = res?.data || {};
+      const n = d.reenfileirados || 0;
       if (n > 0) {
-        toast.success(`${n} pedido(s) preso(s) reenfileirado(s). Serão enviados em background.`);
+        const partes = [];
+        if (d.vendas_reenfileiradas > 0) partes.push(`${d.vendas_reenfileiradas} venda(s) reenfileirada(s)`);
+        if (d.trocas_processadas > 0) partes.push(`${d.trocas_processadas} troca(s) liberada(s)`);
+        toast.success(`Pedidos destravados: ${partes.join(', ')}.`);
       } else {
         toast.info('Nenhum pedido preso encontrado.');
       }
