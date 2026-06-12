@@ -60,11 +60,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     queryKey: ['planosPagamento'],
     queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
     staleTime: 5 * 60 * 1000,
-    refetchOnMount: true,
   });
 
-  // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
-  // desatualizada do cache (lista de clientes fica 15 min em cache).
+  // Busca o cliente DIRETO do banco ao abrir o formulário — apenas como CONFIRMAÇÃO
+  // em background. O objeto `cliente` recebido por prop já traz plano/tabela no caso
+  // normal, então a UI não fica presa esperando esta query (staleTime longo + sem
+  // bloquear). Filtra por chave (1 registro), nunca list().
   const { data: clienteFresco, isLoading: loadingCliente } = useQuery({
     queryKey: ['cliente-fresco', cliente.id, cliente.codigo_interno],
     queryFn: async () => {
@@ -79,7 +80,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       }
       return null;
     },
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: cliente,
   });
 
   // Preenche plano/tabela com os dados frescos do banco.
@@ -95,27 +97,36 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
-    queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000)
+    queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000),
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Produtos só são necessários na aba "Produto" — não bloqueiam a aba "Pedido".
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],
-    queryFn: () => base44.entities.Produto.filter({ status: 'ativo' })
+    queryFn: () => base44.entities.Produto.filter({ status: 'ativo' }),
+    staleTime: 5 * 60 * 1000,
+    enabled: activeTab === 'produto',
   });
 
   // ID efetivo da tabela: usa o estado e, se vazio, cai no cliente fresco do banco.
   // Evita lista de preços vazia (e produtos bloqueados) enquanto o estado sincroniza.
   const tabelaPrecoIdEfetivo = tabelaPrecoId || clienteFresco?.tabela_id || '';
 
+  // Preços só carregam quando a aba "Produto" abre (PrecoProduto tem milhares de
+  // registros no total) — mantém a aba "Pedido" instantânea.
   const { data: precosAll = [] } = useQuery({
     queryKey: ['precosProduto', tabelaPrecoIdEfetivo],
     queryFn: () => tabelaPrecoIdEfetivo ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoIdEfetivo }) : [],
-    enabled: !!tabelaPrecoIdEfetivo
+    enabled: !!tabelaPrecoIdEfetivo && activeTab === 'produto',
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: acoesPromocionais = [] } = useQuery({
     queryKey: ['acoesPromocionais'],
-    queryFn: () => base44.entities.AcaoPromocional.list()
+    queryFn: () => base44.entities.AcaoPromocional.list(),
+    staleTime: 5 * 60 * 1000,
+    enabled: activeTab === 'produto',
   });
 
   const acoesCliente = useMemo(() => {
@@ -126,7 +137,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   const { data: motivosTroca = [] } = useQuery({
     queryKey: ['motivosTroca'],
-    queryFn: () => base44.entities.MotivoTroca.list()
+    queryFn: () => base44.entities.MotivoTroca.list(),
+    staleTime: 5 * 60 * 1000,
+    enabled: activeTab === 'produto' || tipo === 'troca',
   });
 
   // Cenários Fiscais Locais — usados em ambos os fluxos (D1 e 55).
@@ -134,7 +147,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Para Nota D1: opera totalmente interno (não envia ao Omie).
   const { data: cenariosLocais = [], isLoading: loadingCenarios } = useQuery({
     queryKey: ['cenariosFiscaisLocais'],
-    queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' })
+    queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' }),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Cenários disponíveis: mostra TODOS (venda, bonificação, troca, etc.)
