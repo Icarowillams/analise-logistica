@@ -56,9 +56,10 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const [cenarioFiscalCodigo, setCenarioFiscalCodigo] = useState('');
   const [cenarioFiscalNome, setCenarioFiscalNome] = useState('');
 
-  const { data: planosPagamento = [] } = useQuery({
+  const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
     queryKey: ['planosPagamento'],
-    queryFn: () => base44.entities.PlanoPagamento.list()
+    queryFn: () => base44.entities.PlanoPagamento.list(),
+    staleTime: 10 * 60 * 1000,
   });
 
   // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
@@ -501,7 +502,13 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs text-slate-500">Plano de Pagamento</Label>
-                  <p className="text-sm font-medium">{planoAtual?.nome || '-'}</p>
+                  <p className="text-sm font-medium">
+                    {planoAtual?.nome
+                      ? planoAtual.nome
+                      : (loadingPlanos && planoPagamentoId)
+                        ? <span className="text-slate-400 italic">Carregando...</span>
+                        : '-'}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-xs text-slate-500">Tabela de Preço</Label>
