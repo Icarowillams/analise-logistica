@@ -249,32 +249,59 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     // Marcar trava local imediatamente
     aEnfileirar.forEach(p => jaEnfileiradosRef.current.add(p.id));
 
-    if (aEnfileirar.length > 0) {
-      const registros = aEnfileirar.map(p => ({
-        pedido_id: p.id,
-        numero_pedido: p.numero_pedido || '',
-        cliente_nome: p.cliente_nome || '',
-        vendedor_id: vendedor.id,
-        operacao: 'enviar',
-        status: 'pendente',
-        tentativas: 0,
-        usuario_email: ''
-      }));
-      await base44.entities.FilaEnvioPedidoOmie.bulkCreate(registros);
+    try {
+      if (aEnfileirar.length > 0) {
+        const registros = aEnfileirar.map(p => ({
+          pedido_id: p.id,
+          numero_pedido: p.numero_pedido || '',
+          cliente_nome: p.cliente_nome || '',
+          vendedor_id: vendedor.id,
+          operacao: 'enviar',
+          status: 'pendente',
+          tentativas: 0,
+          usuario_email: ''
+        }));
+        await base44.entities.FilaEnvioPedidoOmie.bulkCreate(registros);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
+
+      const msgs = [];
+      if (internosSucesso > 0) msgs.push(`${internosSucesso} interno(s) registrado(s)`);
+      if (aEnfileirar.length > 0) msgs.push(`${aEnfileirar.length} pedido(s) enfileirado(s) para envio ao Omie`);
+      if (jaNaFila > 0) msgs.push(`${jaNaFila} já estavam na fila`);
+      if (semData.length > 0) msgs.push(`${semData.length} sem data de previsão (ignorados)`);
+
+      toast.success(msgs.join('. ') + '. O processamento ocorre em background.');
+    } catch (err) {
+      // Falha ao enfileirar: liberar trava para permitir nova tentativa — nada fica preso.
+      aEnfileirar.forEach(p => jaEnfileiradosRef.current.delete(p.id));
+      toast.error('Não foi possível enfileirar os pedidos. Tente novamente em alguns instantes.');
+    } finally {
+      setEnfileirandoTodos(false);
     }
+  };
 
-    queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
-
-    const msgs = [];
-    if (internosSucesso > 0) msgs.push(`${internosSucesso} interno(s) registrado(s)`);
-    if (aEnfileirar.length > 0) msgs.push(`${aEnfileirar.length} pedido(s) enfileirado(s) para envio ao Omie`);
-    if (jaNaFila > 0) msgs.push(`${jaNaFila} já estavam na fila`);
-    if (semData.length > 0) msgs.push(`${semData.length} sem data de previsão (ignorados)`);
-
-    toast.success(msgs.join('. ') + '. O processamento ocorre em background.');
-
-    setEnfileirandoTodos(false);
+  // Destravar pedidos órfãos: pendentes que nunca entraram na fila (enfileiramento falhou).
+  const [destravando, setDestravando] = useState(false);
+  const destravarOrfaos = async () => {
+    setDestravando(true);
+    try {
+      const res = await base44.functions.invoke('reenfileirarPedidosOrfaos', {});
+      const n = res?.data?.reenfileirados || 0;
+      if (n > 0) {
+        toast.success(`${n} pedido(s) preso(s) reenfileirado(s). Serão enviados em background.`);
+      } else {
+        toast.info('Nenhum pedido preso encontrado.');
+      }
+      queryClient.invalidateQueries({ queryKey: ['fila-envio-pedido-omie'] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    } catch (err) {
+      toast.error('Erro ao destravar pedidos: ' + (err?.message || 'tente novamente'));
+    } finally {
+      setDestravando(false);
+    }
   };
 
   // Reprocessar erros — sem limite de tentativas (usuário está forçando o reenvio)
@@ -517,6 +544,12 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             <Button onClick={enviarTodos} disabled={enfileirandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
               <Send className="w-4 h-4 mr-2" />
               {enfileirandoTodos ? 'Enfileirando...' : `Enviar Todos (${pendentes.length})`}
+            </Button>
+          )}
+          {pendentes.length > 0 && (
+            <Button variant="outline" onClick={destravarOrfaos} disabled={destravando} className="w-full mb-4 text-xs border-amber-300 text-amber-700 hover:bg-amber-50">
+              {destravando ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+              Destravar pedidos presos
             </Button>
           )}
           {/* Painel de status da fila */}
