@@ -17,6 +17,11 @@ const MAX_LOG_FIELD = 3000;
 const RATE_LIMIT_MAX = 30;
 const RATE_WINDOW_MS = 60 * 1000;
 
+// Tópicos que o sistema NÃO processa — gravados já como 'ignorado' (não entram na
+// fila de processamento, mas ficam registrados para auditoria). Reduz o ruído.
+const TOPICS_IRRELEVANTES_PREFIX = ['Financas.', 'Produto.', 'TabelaPrecoItem', 'Departamento', 'Categoria', 'ClienteFornecedor.', 'RecebimentoProduto.'];
+const ehTopicIrrelevante = (t) => TOPICS_IRRELEVANTES_PREFIX.some(p => String(t || '').startsWith(p));
+
 const truncar = (valor) => String(valor ?? '').slice(0, MAX_LOG_FIELD);
 
 Deno.serve(async (req) => {
@@ -88,11 +93,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Tópicos irrelevantes entram já como 'ignorado' — não poluem a fila de processamento.
+      const statusInicial = ehTopicIrrelevante(topic) ? 'ignorado' : 'pendente';
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: truncar('webhook'),
         call: truncar(topic || 'desconhecido'),
         operacao: 'receber_webhook',
-        status: 'pendente',
+        status: statusInicial,
+        mensagem_erro: statusInicial === 'ignorado' ? 'Tópico não processado pelo sistema' : null,
         webhook_topic: truncar(topic || ''),
         webhook_message_id: messageId ? truncar(String(messageId)) : '',
         payload_resposta: truncar(JSON.stringify(body))

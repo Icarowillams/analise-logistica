@@ -20,8 +20,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 const CB_ID_WEBHOOK = '6a1e06a9aa62ceab7b3b6d97';
 
-// Quantos webhooks processar por execução (limite de tempo da função ~60s).
-const MAX_POR_RODADA = 15;
+// Quantos webhooks processar por execução. A função tem timeout de ~180s, então
+// usamos TEMPO_MAX_MS=150s como teto e paramos antes — o resto fica para o próximo
+// ciclo (5 min). Com ~2,5s/item, cabem ~55 itens/ciclo = ~660/h (> taxa de pico).
+const MAX_POR_RODADA = 60;
+// Teto de tempo de parede por execução — MENOR que o timeout real da função (~180s).
+const TEMPO_MAX_MS = 150000; // 2,5 min
 // Delay entre cada item que efetivamente chama a Omie (espacar as chamadas).
 const DELAY_ENTRE_ITENS_MS = 2500;
 
@@ -573,8 +577,12 @@ Deno.serve(async (req) => {
     let ignoradosDup = 0;
     let pausadoPorBloqueio = false;
     let chamouOmie = false;
+    const inicioMs = Date.now();
 
     for (const log of pendentes) {
+      // Para antes do timeout — o restante fica pendente para o próximo ciclo.
+      if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
+
       // Dedupe por evento de negócio dentro desta rodada.
       const chave = chaveDedupe(log);
       if (vistos.has(chave)) {
