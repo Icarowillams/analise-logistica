@@ -26,15 +26,27 @@ export default function MeusRoteiros({ vendedor }) {
   const contagensPorDia = useMemo(() => {
     const c = {};
     DIAS_SEMANA.forEach(d => { c[d.key] = 0; });
+    // Por dia, usa a MAIOR contagem (não a soma) para não inflar com duplicados.
     roteiros.forEach(r => {
       const k = diaParaKey(r.dia_semana);
       const qtd = (r.clientes_detalhes?.length || r.clientes_ids?.length || 0);
-      c[k] = (c[k] || 0) + qtd;
+      c[k] = Math.max(c[k] || 0, qtd);
     });
     return c;
   }, [roteiros]);
 
-  const roteiroDoDia = useMemo(() => roteiros.find(r => diaParaKey(r.dia_semana) === diaSelecionado), [roteiros, diaSelecionado]);
+  // Resiliente a roteiros duplicados (mesmo vendedor + mesmo dia):
+  // entre todos os roteiros do dia, escolhe o que tem MAIS clientes,
+  // evitando que um duplicado vazio/incompleto "esconda" os clientes.
+  const roteiroDoDia = useMemo(() => {
+    const doDia = roteiros.filter(r => diaParaKey(r.dia_semana) === diaSelecionado);
+    if (doDia.length === 0) return undefined;
+    return doDia.reduce((melhor, atual) => {
+      const qa = (atual.clientes_detalhes?.length || atual.clientes_ids?.length || 0);
+      const qm = (melhor.clientes_detalhes?.length || melhor.clientes_ids?.length || 0);
+      return qa > qm ? atual : melhor;
+    });
+  }, [roteiros, diaSelecionado]);
   const clientes = useMemo(() => {
     const lista = [...(roteiroDoDia?.clientes_detalhes || [])].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
     if (!busca.trim()) return lista;
