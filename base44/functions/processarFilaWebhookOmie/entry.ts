@@ -176,7 +176,16 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
   }
 
   // ConsultarPedido respeita o circuit breaker via omieCall (lança OMIE_BLOQUEADA).
-  const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido' });
+  // 105/5113/"não cadastrado" = pedido não existe → TERMINAL (nunca retry, evita erro 6).
+  let data;
+  try {
+    data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido' });
+  } catch (e) {
+    if (e.code === 'OMIE_BLOQUEADA') throw e;
+    const m = String(e.message || '').toLowerCase();
+    if (m.includes('não cadastrado') || m.includes('nao cadastrado') || m.includes('não existem registros') || m.includes('nao existem registros') || m.includes('105') || m.includes('5113')) return;
+    throw e;
+  }
   const pedidoBruto = data?.pedido_venda_produto;
   if (!pedidoBruto || !pedidoBruto?.cabecalho) return;
   const etapa = String(pedidoBruto.cabecalho.etapa || '');
@@ -448,6 +457,23 @@ async function handlePedido(base44, topic, evt) {
   return { acao: 'atualizado', pedido_id: pedido.id, espelho: espelhoAcao };
 }
 
+// Aplica numero_nf no espelho APENAS com dados do payload — NUNCA chama ConsultarPedido.
+// Usado por NotaAutorizada/DevolucaoAutorizada: o id_pedido do webhook de NF frequentemente
+// NÃO é consultável no Omie (faultcode 105) → consultar gera loop 105 + 6 (consumo redundante).
+// Se o espelho não existir, atualiza pelo pedido local; se nenhum existir, encerra sem consultar.
+async function aplicarNfNoEspelhoSemConsulta(base44, omieCodigoPedido, numeroNf) {
+  if (!omieCodigoPedido) return;
+  const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(omieCodigoPedido) }, '-sincronizado_em', 1).catch(() => []);
+  if (espelhos?.[0]) {
+    await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+      etapa: '60', status_real: 'emitida', status_label: 'Faturado',
+      numero_nf: numeroNf ? String(numeroNf) : (espelhos[0].numero_nf || ''),
+      data_faturamento: espelhos[0].data_faturamento || new Date().toISOString(),
+      sincronizado_em: new Date().toISOString(), origem_sync: 'webhook'
+    }).catch(() => {});
+  }
+}
+
 async function handleNFe(base44, topic, evt) {
   const codigoPedido = String(evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || '');
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
@@ -463,11 +489,12 @@ async function handleNFe(base44, topic, evt) {
   } else if (topic === 'NFe.NotaCancelada') {
     await upsertEspelho(base44, codigoPedido, null, { status_real: 'cancelada', status_label: 'NF Cancelada' });
   } else if (topic === 'NFe.NotaAutorizada' || topic === 'NFe.NotaDevolucaoAutorizada') {
-    await upsertEspelho(base44, codigoPedido, numNfWebhook);
+    // Todos os dados da NF já vêm no payload — atualiza espelho SEM ConsultarPedido (evita 105/6).
+    await aplicarNfNoEspelhoSemConsulta(base44, codigoPedido, numNfWebhook);
   }
 
   const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigoPedido });
-  if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'pedido não encontrado' };
+  if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'NF sem pedido local — processada só com dados do payload', sem_pedido_local: true };
 
   const pedido = pedidos[0];
   const updates = {};
