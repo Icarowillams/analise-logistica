@@ -59,7 +59,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
     queryKey: ['planosPagamento'],
     queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
   });
 
   // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
@@ -283,8 +284,12 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     }
   }, [precosAll, acoesCliente, itensInitialized]);
 
-  const planoAtual = planosPagamento.find(p => p.id === planoPagamentoId);
-  const tabelaAtual = tabelasPreco.find(t => t.id === tabelaPrecoId);
+  // ID efetivo para EXIBIÇÃO: usa o estado e, se ainda vazio, cai no clienteFresco
+  // (fonte da verdade do banco). Garante que o nome apareça assim que o cliente carrega.
+  const planoIdExibir = planoPagamentoId || clienteFresco?.plano_pagamento_id || '';
+  const tabelaIdExibir = tabelaPrecoId || clienteFresco?.tabela_id || '';
+  const planoAtual = planosPagamento.find(p => p.id === planoIdExibir);
+  const tabelaAtual = tabelasPreco.find(t => t.id === tabelaIdExibir);
   const clienteSemTabela = !tabelaPrecoId;
 
   const handleUpdateQuantidade = (produto, preco, novaQtd) => {

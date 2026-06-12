@@ -25,19 +25,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes'],
-    queryFn: async () => {
-      const todos = [];
-      let pagina = 0;
-      const tamanho = 5000;
-      // Pagina até trazer TODOS os clientes (evita lista truncada)
-      while (true) {
-        const lote = await base44.entities.Cliente.list('-created_date', tamanho, pagina * tamanho);
-        todos.push(...lote);
-        if (lote.length < tamanho) break;
-        pagina++;
-      }
-      return todos;
-    }
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
   });
 
   // If editing, load pedido and jump to form
