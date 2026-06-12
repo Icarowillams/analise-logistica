@@ -182,9 +182,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   useEffect(() => {
     if (existingPedido) {
       // Fallback para o cadastro do cliente quando o pedido salvo não tem plano/tabela
-      // (ex.: pedidos antigos ou importados do Omie sem esses campos)
-      setPlanoPagamentoId(existingPedido.plano_pagamento_id || cliente.plano_pagamento_id || '');
-      setTabelaPrecoId(existingPedido.tabela_preco_id || cliente.tabela_id || '');
+      // (ex.: pedidos antigos ou importados do Omie sem esses campos).
+      // Usa também clienteFresco (busca direta do banco) — cobre o caso do objeto
+      // `cliente` em cache ter chegado sem tabela_id, que zerava os produtos disponíveis.
+      setPlanoPagamentoId(existingPedido.plano_pagamento_id || cliente.plano_pagamento_id || clienteFresco?.plano_pagamento_id || '');
+      setTabelaPrecoId(existingPedido.tabela_preco_id || cliente.tabela_id || clienteFresco?.tabela_id || '');
       setModeloNota(existingPedido.modelo_nota || (tipo === 'troca' ? 'd1' : (cliente.tipo_nota === 'D1' ? 'd1' : '55')));
       setDataPrevisaoEntrega(existingPedido.data_previsao_entrega || '');
       setNumeroPedidoCompra(existingPedido.numero_pedido_compra || '');
@@ -206,7 +208,16 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         setCenarioFiscalNome(existingPedido.cenario_fiscal_nome || '');
       }
     }
-  }, [existingPedido]);
+  }, [existingPedido, clienteFresco]);
+
+  // Em EDIÇÃO: se a tabela/plano ficou vazia (pedido e cliente em cache sem esses
+  // campos), preenche assim que o clienteFresco do banco chegar. Sem isso, os
+  // produtos disponíveis ficam zerados quando o objeto cliente vem incompleto.
+  useEffect(() => {
+    if (!editingPedidoId || !clienteFresco) return;
+    if (!tabelaPrecoId && clienteFresco.tabela_id) setTabelaPrecoId(clienteFresco.tabela_id);
+    if (!planoPagamentoId && clienteFresco.plano_pagamento_id) setPlanoPagamentoId(clienteFresco.plano_pagamento_id);
+  }, [editingPedidoId, clienteFresco, tabelaPrecoId, planoPagamentoId]);
 
   // Sincroniza plano/tabela com o cadastro do cliente em pedidos NOVOS,
   // caso o objeto cliente chegue/atualize com esses campos após a montagem inicial.
