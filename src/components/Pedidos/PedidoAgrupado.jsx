@@ -2,13 +2,13 @@ import React, { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Loader2 } from 'lucide-react';
 
 export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
   const printRef = useRef();
 
-  const { data: allItems = [] } = useQuery({
-    queryKey: ['pedidoItems-agrupado', pedidoIds],
+  const { data: allItems = [], isFetching: carregandoItens } = useQuery({
+    queryKey: ['pedidoItems-agrupado', [...pedidoIds].sort().join(',')],
     queryFn: async () => {
       const itens = [];
       // Busca em lotes de 40 pedidos para garantir que TODOS os itens venham
@@ -19,6 +19,9 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
       }
       return itens;
     },
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
   });
 
   const { data: produtos = [] } = useQuery({
@@ -86,8 +89,9 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
         <Button variant="outline" onClick={onVoltar}>
           <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
         </Button>
-        <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700">
-          <Printer className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
+        <Button onClick={handlePrint} disabled={carregandoItens} className="bg-blue-600 hover:bg-blue-700">
+          {carregandoItens ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Printer className="w-4 h-4 mr-2" />}
+          {carregandoItens ? 'Carregando itens...' : 'Imprimir / Salvar PDF'}
         </Button>
       </div>
 
@@ -112,7 +116,10 @@ export default function PedidoAgrupado({ pedidoIds, onVoltar }) {
             <div><span style={{ fontWeight: 700 }}>Telefone: </span>{empresa?.telefone || '(81)3454-7552'}</div>
             <div><span style={{ fontWeight: 700 }}>Dt. Relatório: </span>{dataRelatorio}</div>
           </div>
-          <div><span style={{ fontWeight: 700 }}>Pedidos: </span>{pedidoIds.length} selecionado(s)</div>
+          <div>
+            <span style={{ fontWeight: 700 }}>Pedidos: </span>{pedidoIds.length} selecionado(s)
+            <span style={{ marginLeft: '20px', fontWeight: 700 }}>Com itens: </span>{new Set(itensSelecionados.map(i => i.pedido_id)).size}
+          </div>
         </div>
 
         {/* Tabela */}
