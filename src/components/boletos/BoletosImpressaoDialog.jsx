@@ -6,8 +6,9 @@ import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
+import { runPool } from '@/lib/concurrentPool';
 
-const DELAY_MS = 700; // intervalo entre chamadas (anti-concorrência Omie)
+const CONCORRENCIA = 5; // downloads de PDF simultâneos (ObterBoleto = leitura, pode paralelizar)
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const base64ToUint8Array = (b64) => {
@@ -66,50 +67,56 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     }
   };
 
-  // Individual: 1 PDF por boleto. Sequencial com delay (anti-concorrência Omie).
-  const gerarIndividual = async () => {
+  // Baixa TODOS os boletos em paralelo (pool limitado), com progresso por item.
+  // ObterBoleto apenas recupera um PDF já gerado → seguro paralelizar.
+  const baixarTodos = async () => {
     let feito = 0;
     let erros = 0;
-    for (let i = 0; i < titulos.length; i++) {
-      const titulo = titulos[i];
-      const docRef = titulo.numero_documento || titulo.codigo_lancamento;
-      try {
-        const bytes = await baixarComRetry(titulo);
-        downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `boleto_${docRef}.pdf`);
-      } catch (e) {
-        erros++;
-        reportarErro(titulo, e.message || 'Erro');
+    const resultados = await runPool(
+      titulos,
+      (titulo) => baixarComRetry(titulo),
+      {
+        concorrencia: CONCORRENCIA,
+        onProgress: (r) => {
+          feito++;
+          if (!r.ok) { erros++; reportarErro(r.item, r.error?.message || 'Erro'); }
+          setProgresso(p => ({ ...p, feito, erros }));
+        }
       }
-      feito++;
-      setProgresso(p => ({ ...p, feito, erros }));
-      if (i < titulos.length - 1) await sleep(DELAY_MS);
+    );
+    return resultados;
+  };
+
+  // Individual: 1 PDF por boleto. Download paralelo, depois salva cada um.
+  const gerarIndividual = async () => {
+    const resultados = await baixarTodos();
+    let erros = 0;
+    for (const r of resultados) {
+      if (!r.ok) { erros++; continue; }
+      const docRef = r.item.numero_documento || r.item.codigo_lancamento;
+      downloadBlob(new Blob([r.value], { type: 'application/pdf' }), `boleto_${docRef}.pdf`);
     }
     toast.success(`${titulos.length - erros} boleto(s) baixado(s)${erros > 0 ? ` — ${erros} falha(s)` : ''}`);
     if (erros === 0) onOpenChange(false);
   };
 
-  // Agrupado: mescla todos os boletos num único PDF. Sequencial com delay.
+  // Agrupado: download paralelo, depois mescla na ordem original num único PDF.
   const gerarAgrupado = async () => {
-    let feito = 0;
+    const resultados = await baixarTodos();
     let erros = 0;
     let incluidos = 0;
     const merged = await PDFDocument.create();
 
-    for (let i = 0; i < titulos.length; i++) {
-      const titulo = titulos[i];
+    for (const r of resultados) {
+      if (!r.ok) { erros++; continue; }
       try {
-        const bytes = await baixarComRetry(titulo);
-        const src = await PDFDocument.load(bytes);
+        const src = await PDFDocument.load(r.value);
         const pages = await merged.copyPages(src, src.getPageIndices());
         pages.forEach(p => merged.addPage(p));
         incluidos++;
-      } catch (e) {
+      } catch {
         erros++;
-        reportarErro(titulo, e.message || 'Erro');
       }
-      feito++;
-      setProgresso(p => ({ ...p, feito, erros }));
-      if (i < titulos.length - 1) await sleep(DELAY_MS);
     }
 
     if (incluidos === 0) {
@@ -179,10 +186,8 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <p className="text-xs text-slate-500">
           {modo === 'agrupado'
-            ? 'Todos os boletos serão mesclados em um único PDF para impressão — baixados sequencialmente para evitar bloqueio do Omie.'
-            : titulos.length > 1
-              ? 'Baixando sequencialmente para evitar bloqueio do Omie — um pouco mais lento, porém confiável.'
-              : 'O PDF será baixado diretamente, sem redirecionar para o Omie.'}
+            ? 'Todos os boletos serão baixados em paralelo e mesclados em um único PDF para impressão.'
+            : 'Os PDFs são baixados em paralelo, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
     </Dialog>

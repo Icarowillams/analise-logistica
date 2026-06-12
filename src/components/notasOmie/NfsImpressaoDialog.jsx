@@ -5,6 +5,9 @@ import { FileText, FileJson, Download, Loader2, Layers, Files } from 'lucide-rea
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { PDFDocument } from 'pdf-lib';
+import { runPool } from '@/lib/concurrentPool';
+
+const CONCORRENCIA = 5; // downloads de DANFE simultâneos (ObterDanfe = leitura, pode paralelizar)
 
 /**
  * Modal de "tipo de impressão" para 1 ou N NF-es selecionadas.
@@ -92,20 +95,35 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     const falhas = [];
     const falhasSefaz = [];
 
+    // Baixa TODAS as DANFEs em paralelo (pool limitado) — ObterDanfe só recupera
+    // um PDF já gerado, então é seguro paralelizar.
+    const baixarTodas = async () => {
+      let feito = 0;
+      return runPool(
+        nfs,
+        (nf) => fetchPdfBytes(nf),
+        {
+          concorrencia: CONCORRENCIA,
+          onProgress: (r) => {
+            feito++;
+            setProgresso({ atual: feito, total });
+            if (!r.ok) {
+              if (r.error?.motivo === 'aguardando_sefaz') falhasSefaz.push(r.item.cNumero || '?');
+              else falhas.push(r.item.cNumero || '?');
+            } else if (!r.value || r.value.length === 0) {
+              falhas.push(r.item.cNumero || '?');
+            }
+          }
+        }
+      );
+    };
+
     try {
       if (modo === 'individual') {
-        for (let i = 0; i < nfs.length; i++) {
-          const nf = nfs[i];
-          setProgresso({ atual: i + 1, total });
-          try {
-            const bytes = await fetchPdfBytes(nf);
-            if (!bytes || bytes.length === 0) { falhas.push(nf.cNumero || '?'); continue; }
-            baixarBlob(`nfe-${nf.cNumero || 'omie'}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
-          } catch (err) { 
-            if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
-            else falhas.push(nf.cNumero || '?'); 
-          }
-          if (i < nfs.length - 1) await sleep(1500);
+        const resultados = await baixarTodas();
+        for (const r of resultados) {
+          if (!r.ok || !r.value || r.value.length === 0) continue;
+          baixarBlob(`nfe-${r.item.cNumero || 'omie'}.pdf`, new Blob([r.value], { type: 'application/pdf' }));
         }
         const totalFalhas = falhas.length + falhasSefaz.length;
         const ok = total - totalFalhas;
@@ -114,21 +132,17 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
         if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) não baixadas: ${falhas.join(', ')}`);
         if (ok === 0) toast.error('Nenhuma NF pôde ser baixada.');
       } else {
+        const resultados = await baixarTodas();
         const merged = await PDFDocument.create();
-        for (let i = 0; i < nfs.length; i++) {
-          const nf = nfs[i];
-          setProgresso({ atual: i + 1, total });
+        for (const r of resultados) {
+          if (!r.ok || !r.value || r.value.length === 0) continue;
           try {
-            const bytes = await fetchPdfBytes(nf);
-            if (!bytes || bytes.length === 0) { falhas.push(nf.cNumero || '?'); continue; }
-            const src = await PDFDocument.load(bytes);
+            const src = await PDFDocument.load(r.value);
             const pages = await merged.copyPages(src, src.getPageIndices());
             pages.forEach(p => merged.addPage(p));
-          } catch (err) { 
-            if (err.motivo === 'aguardando_sefaz') falhasSefaz.push(nf.cNumero || '?');
-            else falhas.push(nf.cNumero || '?'); 
+          } catch {
+            falhas.push(r.item.cNumero || '?');
           }
-          if (i < nfs.length - 1) await sleep(1500);
         }
         const totalFalhas = falhas.length + falhasSefaz.length;
         const ok = total - totalFalhas;
