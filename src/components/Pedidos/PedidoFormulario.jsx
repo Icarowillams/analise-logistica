@@ -83,12 +83,13 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   // Preenche plano/tabela com os dados frescos do banco.
   // Em pedidos NOVOS, o cadastro do cliente é a fonte da verdade — sempre
-  // sobrescreve com o valor do banco (corrige cache antigo/vazio).
+  // sobrescreve com o valor do banco (corrige cache antigo/vazio), mesmo que
+  // o estado já tenha algum valor herdado do objeto cliente em cache.
   // Em edição, não mexe (o pedido salvo manda).
   useEffect(() => {
     if (!clienteFresco || editingPedidoId) return;
-    if (clienteFresco.plano_pagamento_id) setPlanoPagamentoId(clienteFresco.plano_pagamento_id);
-    if (clienteFresco.tabela_id) setTabelaPrecoId(clienteFresco.tabela_id);
+    setPlanoPagamentoId(clienteFresco.plano_pagamento_id || '');
+    setTabelaPrecoId(clienteFresco.tabela_id || '');
   }, [clienteFresco, editingPedidoId]);
 
   const { data: tabelasPreco = [] } = useQuery({
