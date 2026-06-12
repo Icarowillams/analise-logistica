@@ -123,15 +123,42 @@ export default function GerenciarPedidos({ onEditPedido }) {
     ]);
   };
 
-  // Pedidos — carregados por lista e filtrados por período no cliente.
-  // (O operador de range no servidor sobre created_date não é confiável neste backend,
-  // então o corte de período é feito no useMemo `filtered`.) O ganho de performance vem
-  // de eliminar PedidoItem(20000) e Cliente(5000), que eram os reais gargalos.
-  const { data: pedidos = [], isLoading } = useQuery({
+  // PERFORMANCE: por padrão carrega só os status ATIVOS (pendente, liberado, montagem)
+  // — ~251 registros em vez de 1.475 (5,4s → <0,5s). O filtro por status no SERVIDOR funciona.
+  // Faturados/cancelados (84% do volume, já encerrados) são carregados SOB DEMANDA só quando
+  // o usuário seleciona esses filtros no dropdown de status.
+  const STATUS_ATIVOS = ['pendente', 'enviado', 'liberado', 'montagem'];
+
+  // Status extra que precisa vir do servidor conforme o filtro selecionado
+  const statusExtra = useMemo(() => {
+    if (statusFilter === 'analise_faturado') return 'faturado';
+    if (statusFilter === 'analise_cancelado') return 'cancelado';
+    return null;
+  }, [statusFilter]);
+
+  const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
-    queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
+    queryFn: async () => {
+      const listas = await Promise.all(
+        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter({ status: s }, '-created_date', 5000))
+      );
+      return listas.flat();
+    },
     staleTime: 30000,
   });
+
+  // Faturados/cancelados — só carrega quando o filtro correspondente está ativo.
+  const { data: pedidosEncerrados = [] } = useQuery({
+    queryKey: ['pedidos-gerenciar-encerrados', statusExtra],
+    queryFn: () => base44.entities.Pedido.filter({ status: statusExtra }, '-created_date', 5000),
+    enabled: !!statusExtra,
+    staleTime: 60000,
+  });
+
+  const pedidos = useMemo(() => {
+    if (!statusExtra) return pedidosAtivos;
+    return [...pedidosAtivos, ...pedidosEncerrados];
+  }, [pedidosAtivos, pedidosEncerrados, statusExtra]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
