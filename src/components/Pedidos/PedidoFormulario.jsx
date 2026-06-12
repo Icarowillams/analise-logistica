@@ -64,7 +64,7 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
 
   // Busca o cliente DIRETO do banco ao abrir o formulário — evita usar versão
   // desatualizada do cache (lista de clientes fica 15 min em cache).
-  const { data: clienteFresco } = useQuery({
+  const { data: clienteFresco, isLoading: loadingCliente } = useQuery({
     queryKey: ['cliente-fresco', cliente.id],
     queryFn: async () => {
       const r = await base44.entities.Cliente.filter({ id: cliente.id });
@@ -73,12 +73,15 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
     staleTime: 0,
   });
 
-  // Preenche plano/tabela com os dados frescos caso o cache esteja vazio/antigo
+  // Preenche plano/tabela com os dados frescos do banco.
+  // Em pedidos NOVOS, o cadastro do cliente é a fonte da verdade — sempre
+  // sobrescreve com o valor do banco (corrige cache antigo/vazio).
+  // Em edição, não mexe (o pedido salvo manda).
   useEffect(() => {
-    if (!clienteFresco) return;
-    setPlanoPagamentoId(prev => prev || clienteFresco.plano_pagamento_id || '');
-    setTabelaPrecoId(prev => prev || clienteFresco.tabela_id || '');
-  }, [clienteFresco]);
+    if (!clienteFresco || editingPedidoId) return;
+    if (clienteFresco.plano_pagamento_id) setPlanoPagamentoId(clienteFresco.plano_pagamento_id);
+    if (clienteFresco.tabela_id) setTabelaPrecoId(clienteFresco.tabela_id);
+  }, [clienteFresco, editingPedidoId]);
 
   const { data: tabelasPreco = [] } = useQuery({
     queryKey: ['tabelasPreco'],
@@ -505,14 +508,20 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
                   <p className="text-sm font-medium">
                     {planoAtual?.nome
                       ? planoAtual.nome
-                      : (loadingPlanos && planoPagamentoId)
+                      : (loadingPlanos || loadingCliente)
                         ? <span className="text-slate-400 italic">Carregando...</span>
                         : '-'}
                   </p>
                 </div>
                 <div>
                   <Label className="text-xs text-slate-500">Tabela de Preço</Label>
-                  <p className="text-sm font-medium">{tabelaAtual?.nome || '-'}</p>
+                  <p className="text-sm font-medium">
+                    {tabelaAtual?.nome
+                      ? tabelaAtual.nome
+                      : loadingCliente
+                        ? <span className="text-slate-400 italic">Carregando...</span>
+                        : '-'}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
