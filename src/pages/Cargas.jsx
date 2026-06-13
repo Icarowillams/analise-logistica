@@ -17,6 +17,7 @@ import SoltarCargaDialog from '@/components/cargas/SoltarCargaDialog';
 import EditarCargaModal from '@/components/cargas/EditarCargaModal';
 import TransferirPedidosCargaModal from '@/components/cargas/TransferirPedidosCargaModal';
 import LogFilaCarga from '@/components/cargas/LogFilaCarga';
+import ObservacaoCell from '@/components/cargas/ObservacaoCell';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
@@ -325,28 +326,61 @@ export default function Cargas() {
     if (!novaPrevisao || !modalPrevisao.carga) return;
     setSalvandoPrevisao(true);
     try {
-      const pedidos = (modalPrevisao.carga.pedidos_omie || [])
+      const carga = modalPrevisao.carga;
+      // Monta lista com vendas (Omie) + D1/trocas internas
+      const pedidosOmie = (carga.pedidos_omie || [])
         .filter(p => p.codigo_pedido)
         .map(p => ({
           codigo_pedido: p.codigo_pedido,
           codigo_pedido_integracao: p.codigo_pedido_integracao || '',
           numero_pedido: p.numero_pedido || ''
         }));
+      const pedidosInternos = (carga.pedidos_internos || [])
+        .filter(p => p.codigo_pedido)
+        .map(p => ({
+          codigo_pedido: p.codigo_pedido,
+          codigo_pedido_integracao: p.codigo_pedido_integracao || '',
+          numero_pedido: p.numero_pedido || ''
+        }));
+      const todosPedidos = [...pedidosOmie, ...pedidosInternos];
+
+      // Atualiza D1s puramente internas (sem codigo_pedido no Omie) via Pedido local
+      const d1sLocais = (carga.pedidos_internos || []).filter(p => !p.codigo_pedido && p.pedido_id);
+      let d1sAtualizadas = 0;
+      for (const d1 of d1sLocais) {
+        try {
+          await base44.entities.Pedido.update(d1.pedido_id, { data_previsao_entrega: novaPrevisao });
+          d1sAtualizadas++;
+        } catch (e) { console.warn('Falha ao atualizar D1 local:', e.message); }
+      }
+
+      const total = todosPedidos.length + d1sAtualizadas;
+      if (todosPedidos.length === 0) {
+        toast.success(`Previsão atualizada em ${d1sAtualizadas} pedido(s) interno(s)`);
+        setModalPrevisao({ open: false, carga: null });
+        setNovaPrevisao('');
+        queryClient.invalidateQueries({ queryKey: ['cargas'] });
+        setSalvandoPrevisao(false);
+        return;
+      }
+
       const { data } = await base44.functions.invoke('alterarPrevisaoFaturamentoOmie', {
-        pedidos,
+        pedidos: todosPedidos,
         data_previsao: novaPrevisao
       });
       const resultados = data?.resultados || [];
       const ok = resultados.filter(r => r.sucesso).length;
       const ignorados = resultados.filter(r => r.ignorado).length;
       const fail = resultados.filter(r => !r.sucesso && !r.ignorado).length;
+      const msgPedidos = `${ok + d1sAtualizadas} pedido(s) atualizado(s)`;
+      const msgExtra = d1sAtualizadas > 0 ? ` (${d1sAtualizadas} D1 local)` : '';
       if (fail === 0 && ignorados === 0) {
-        toast.success(`Previsão atualizada em ${ok} pedido(s) no Omie`);
+        toast.success(`${msgPedidos} no Omie${msgExtra}`);
       } else if (fail === 0) {
-        toast.success(`${ok} atualizado(s), ${ignorados} ignorado(s) (já em etapa avançada)`);
+        toast.success(`${ok} atualizado(s) no Omie, ${ignorados} ignorado(s) (já em etapa avançada)${msgExtra}`);
       } else {
         const errosMsg = resultados.filter(r => !r.sucesso && !r.ignorado).map(r => `${r.numero_pedido}: ${r.mensagem}`).join(', ');
-        toast.warning(`${ok} atualizados, ${fail} com erro: ${errosMsg}`, { duration: 8000 });
+        toast.warning(`${ok} atualizados, ${fail} com erro: ${errosMsg}${msgExtra}`, { duration: 8000 });
       }
       setModalPrevisao({ open: false, carga: null });
       setNovaPrevisao('');
@@ -393,7 +427,12 @@ export default function Cargas() {
     { key: 'data_carga', label: 'Data', sortable: true, width: '100px' },
     { key: 'motorista_nome', label: 'Motorista', width: '160px' },
     { key: 'veiculo_placa', label: 'Veículo', width: '95px' },
-    { key: 'rota_nome', label: 'Rota', width: '120px' },
+    {
+      key: 'observacao',
+      label: 'Observação',
+      width: '230px',
+      render: (_, row) => <ObservacaoCell row={row} queryClient={queryClient} />
+    },
     { key: 'quantidade_pedidos', label: 'Ped.', width: '60px', sortable: true },
     {
       key: 'valor_total',
@@ -462,7 +501,7 @@ export default function Cargas() {
               </Button>
             )}
             {/* Previsão de entrega em lote */}
-            {(row.pedidos_omie || []).length > 0 && (
+            {((row.pedidos_omie || []).length + (row.pedidos_internos || []).length) > 0 && (
               <Button size="icon" variant="outline" className="h-7 w-7 border-cyan-300 text-cyan-700 hover:bg-cyan-50" onClick={() => { setModalPrevisao({ open: true, carga: row }); setNovaPrevisao(''); }} title="Alterar previsão de entrega dos pedidos">
                 <CalendarDays className="w-3.5 h-3.5" />
               </Button>
@@ -691,8 +730,9 @@ export default function Cargas() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-slate-500">
-              Altera a data de previsão de entrega de todos os
-              {' '}{(modalPrevisao.carga?.pedidos_omie || []).length} pedido(s) desta carga no Omie.
+              Altera a data de previsão de entrega de{' '}
+              {(modalPrevisao.carga?.pedidos_omie || []).length + (modalPrevisao.carga?.pedidos_internos || []).length}{' '}
+              pedido(s) (venda + D1) no Omie e localmente.
             </p>
             <div>
               <Label>Nova data de previsão</Label>

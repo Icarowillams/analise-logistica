@@ -450,7 +450,7 @@ export default function RomaneioEntregaPdf({ carga }) {
             </tr>
             <tr>
               <td><strong>Destino:</strong> {cidadeDestino}</td>
-              <td colSpan="2"></td>
+              <td colSpan="2"><strong>Obs:</strong> {carga.observacao || carga.observacoes || '-'}</td>
             </tr>
           </tbody>
         </table>
