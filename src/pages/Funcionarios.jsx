@@ -34,6 +34,7 @@ export default function Funcionarios() {
     departamento_id: '',
     supervisor_id: '',
     supervisor_ids: [],
+    papeis: [],
     telefone: '',
     latitude: '',
     longitude: '',
@@ -101,6 +102,7 @@ export default function Funcionarios() {
       departamento_id: '',
       supervisor_id: '',
       supervisor_ids: [],
+      papeis: [],
       telefone: '',
       latitude: '',
       longitude: '',
@@ -129,6 +131,7 @@ export default function Funcionarios() {
       departamento_id: item.departamento_id || '',
       supervisor_id: item.supervisor_id || '',
       supervisor_ids: supervisorIds,
+      papeis: item.papeis || [],
       telefone: item.telefone || '',
       latitude: item.latitude || '',
       longitude: item.longitude || '',
@@ -139,26 +142,27 @@ export default function Funcionarios() {
   };
 
   const handleView = (item) => {
-    setSelected(item);
-    let supervisorIds = item.supervisor_ids || [];
-    if (supervisorIds.length === 0 && item.supervisor_id) {
-      supervisorIds = [item.supervisor_id];
-    }
-    setFormData({
-      nome: item.nome || '',
-      cpf: item.cpf || '',
-      email: item.email || '',
-      funcao: item.funcao || '',
-      departamento_id: item.departamento_id || '',
-      supervisor_id: item.supervisor_id || '',
-      supervisor_ids: supervisorIds,
-      telefone: item.telefone || '',
-      latitude: item.latitude || '',
-      longitude: item.longitude || '',
-      status: item.status || 'ativo'
-    });
-    setIsEditing(false);
-    setActiveTab("cadastro");
+  setSelected(item);
+  let supervisorIds = item.supervisor_ids || [];
+  if (supervisorIds.length === 0 && item.supervisor_id) {
+    supervisorIds = [item.supervisor_id];
+  }
+  setFormData({
+    nome: item.nome || '',
+    cpf: item.cpf || '',
+    email: item.email || '',
+    funcao: item.funcao || '',
+    departamento_id: item.departamento_id || '',
+    supervisor_id: item.supervisor_id || '',
+    supervisor_ids: supervisorIds,
+    papeis: item.papeis || [],
+    telefone: item.telefone || '',
+    latitude: item.latitude || '',
+    longitude: item.longitude || '',
+    status: item.status || 'ativo'
+  });
+  setIsEditing(false);
+  setActiveTab("cadastro");
   };
 
   const handleCancel = () => {
@@ -226,6 +230,18 @@ export default function Funcionarios() {
     { key: 'cpf', label: 'CPF' },
     { key: 'email', label: 'Email' },
     { key: 'funcao', label: 'Função' },
+    { 
+      key: 'papeis', 
+      label: 'Papéis',
+      render: (val) => (
+        <div className="flex flex-wrap gap-1">
+          {(val || []).map(p => (
+            <Badge key={p} className="text-[10px] px-1.5 py-0 bg-slate-100 text-slate-600 border-0">{p}</Badge>
+          ))}
+          {(!val || val.length === 0) && <span className="text-slate-400 text-xs">—</span>}
+        </div>
+      )
+    },
     { key: 'departamento_id', label: 'Departamento', render: (val) => getDepartmentName(val) },
     { 
       key: 'supervisor_ids', 
@@ -429,6 +445,66 @@ export default function Funcionarios() {
                       })}
                       {(!formData.supervisor_ids || formData.supervisor_ids.length === 0) && !formData.supervisor_id && (
                         <span className="text-sm text-slate-400">Nenhum supervisor</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Papéis</Label>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <Select 
+                        value=""
+                        onValueChange={(v) => {
+                          if (v && !formData.papeis.includes(v)) {
+                            setFormData({ ...formData, papeis: [...formData.papeis, v] });
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Adicionar papel..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['vendedor', 'supervisor', 'gerente', 'motorista', 'ajudante', 'admin_logistica']
+                            .filter(p => !formData.papeis.includes(p))
+                            .map(p => (
+                              <SelectItem key={p} value={p}>{p}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {formData.papeis.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {formData.papeis.map(p => {
+                            const coresPapel = {
+                              gerente: 'bg-purple-100 text-purple-800 border-purple-200',
+                              supervisor: 'bg-blue-100 text-blue-800 border-blue-200',
+                              vendedor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                              motorista: 'bg-orange-100 text-orange-800 border-orange-200',
+                              ajudante: 'bg-slate-100 text-slate-700 border-slate-200',
+                              admin_logistica: 'bg-rose-100 text-rose-800 border-rose-200',
+                            };
+                            return (
+                              <Badge key={p} className={`gap-1 pr-1 ${coresPapel[p] || 'bg-slate-100'}`}>
+                                {p}
+                                <button
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, papeis: formData.papeis.filter(x => x !== p) })}
+                                  className="ml-1 hover:bg-black/10 rounded-full p-0.5"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-1 min-h-[36px] items-center">
+                      {formData.papeis?.length > 0 ? formData.papeis.map(p => (
+                        <Badge key={p} variant="outline" className="bg-slate-50">{p}</Badge>
+                      )) : (
+                        <span className="text-sm text-slate-400">Nenhum papel</span>
                       )}
                     </div>
                   )}

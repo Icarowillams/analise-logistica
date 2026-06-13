@@ -186,6 +186,7 @@ export default function FuncionariosConsulta({
                 <TableHead className="font-semibold text-neutral-700">CPF</TableHead>
                 <TableHead className="font-semibold text-neutral-700">Email</TableHead>
                 <TableHead className="font-semibold text-neutral-700">Função</TableHead>
+                <TableHead className="font-semibold text-neutral-700">Papéis</TableHead>
                 <TableHead className="font-semibold text-neutral-700">Departamento</TableHead>
                 <TableHead className="font-semibold text-neutral-700">Supervisor(es)</TableHead>
                 <TableHead className="font-semibold text-neutral-700">Status</TableHead>
@@ -195,11 +196,11 @@ export default function FuncionariosConsulta({
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-slate-500">Carregando...</TableCell>
+                  <TableCell colSpan={9} className="text-center py-12 text-slate-500">Carregando...</TableCell>
                 </TableRow>
               ) : paginatedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-slate-500">Nenhum registro encontrado</TableCell>
+                  <TableCell colSpan={9} className="text-center py-12 text-slate-500">Nenhum registro encontrado</TableCell>
                 </TableRow>
               ) : paginatedData.map((item) => (
                 <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
@@ -207,6 +208,14 @@ export default function FuncionariosConsulta({
                   <TableCell className="text-neutral-600">{item.cpf || '-'}</TableCell>
                   <TableCell className="text-neutral-600">{item.email}</TableCell>
                   <TableCell className="text-neutral-600">{item.funcao || '-'}</TableCell>
+                  <TableCell className="text-neutral-600">
+                    <div className="flex flex-wrap gap-1">
+                      {(item.papeis || []).map(p => (
+                        <Badge key={p} className="text-[10px] px-1.5 py-0 bg-slate-100 text-slate-600 border-0">{p}</Badge>
+                      ))}
+                      {(!item.papeis || item.papeis.length === 0) && <span className="text-slate-400 text-xs">—</span>}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-neutral-600">{getDepartmentName(item.departamento_id)}</TableCell>
                   <TableCell className="text-neutral-600">{getSupervisorNames(item)}</TableCell>
                   <TableCell>
