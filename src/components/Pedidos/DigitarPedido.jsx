@@ -23,34 +23,15 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     enabled: !!vendedor
   });
 
-  // Carrega APENAS os clientes referenciados nos roteiros deste vendedor
-  // (por codigo_interno e por id) em vez de toda a base — mais rápido e sem teto de 5000.
-  const { codigosRoteiro, idsRoteiro } = useMemo(() => {
-    const codigos = new Set();
-    const ids = new Set();
-    roteiros.forEach(r => (r.clientes_detalhes || []).forEach(cd => {
-      if (cd.cliente_codigo) codigos.add(String(cd.cliente_codigo));
-      if (cd.cliente_id) ids.add(cd.cliente_id);
-    }));
-    return { codigosRoteiro: [...codigos], idsRoteiro: [...ids] };
-  }, [roteiros]);
-
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes-roteiro', vendedor.id, codigosRoteiro, idsRoteiro],
-    queryFn: async () => {
-      if (codigosRoteiro.length === 0 && idsRoteiro.length === 0) return [];
-      // Busca por chave (codigo_interno e id), em paralelo, e deduplica por id.
-      const buscas = [
-        ...codigosRoteiro.map(cod => base44.entities.Cliente.filter({ codigo_interno: cod }).catch(() => [])),
-        ...idsRoteiro.map(id => base44.entities.Cliente.filter({ id }).catch(() => []))
-      ];
-      const resultados = await Promise.all(buscas);
-      const map = new Map();
-      resultados.flat().forEach(c => { if (c) map.set(c.id, c); });
-      return [...map.values()];
-    },
-    enabled: roteiros.length > 0
+  // Carrega todos os clientes do vendedor em UMA unica chamada,
+  // depois casa com os clientes dos roteiros por codigo_interno ou id.
+  const { data: clientesVendedor = [] } = useQuery({
+    queryKey: ['clientes-vendedor', vendedor.id],
+    queryFn: () => base44.entities.Cliente.filter({ vendedor_id: vendedor.id, status: 'ativo' }, 'codigo_interno', 2000),
+    enabled: !!vendedor?.id
   });
+
+  const clientes = useMemo(() => clientesVendedor, [clientesVendedor]);
 
   // If editing, load pedido and jump to form
   const { data: editingPedido } = useQuery({
