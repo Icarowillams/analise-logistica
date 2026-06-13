@@ -1106,7 +1106,8 @@ Deno.serve(async (req) => {
 
     const topicsSilenciosos = [
       'RecebimentoProduto.Incluido',
-      'Produto.MovimentacaoEstoque'
+      'Produto.MovimentacaoEstoque',
+      'VendaProduto.Alterada'
     ];
 
     if (topicsSilenciosos.includes(topic)) {
