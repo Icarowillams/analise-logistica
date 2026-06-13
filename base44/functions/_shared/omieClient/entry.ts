@@ -347,6 +347,23 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
           throw lastError;
         }
 
+        // CÓDIGO 6: "Consumo redundante detectado. Aguarde X segundos"
+        // Retry com o tempo exato informado pelo Omie, até 4 tentativas extras
+        const isCodigo6 = lower.includes('redundante') || (lower.includes('aguarde') && /\d+\s*segundo/i.test(message));
+        if (isCodigo6) {
+          const segs = extrairSegundosBloqueio(message);
+          const waitMs = segs > 0 ? segs * 1000 : 5000;
+          const MAX_COD6 = 4;
+          if (attempt < MAX_COD6) {
+            console.log(`[omieClient] Código 6 detectado (${call}) → aguardando ${waitMs}ms (tentativa ${attempt + 1}/${MAX_COD6})`);
+            await sleep(waitMs);
+            continue;
+          }
+          console.error(`[omieClient] Código 6 esgotou ${MAX_COD6} tentativas (${call}).`);
+          await setCircuitBreakerBlocked(base44, message);
+          throw lastError;
+        }
+
         // Bloqueio genérico por rate limit / suspensão
         if (lower.includes('cota') || lower.includes('limite') || lower.includes('aguarde') ||
             lower.includes('bloque') || lower.includes('suspended') || lower.includes('suspens') ||

@@ -3,9 +3,19 @@
 // 2) Faz fetch do PDF no servidor (evita CORS) e devolve em base64.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// ═══ omieClient inline (auto-contido) ═══
+// ═══ omieClient inline (auto-contido, com cache ObterBoleto + retry código 6) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
 let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+
+// Cache em memória (isolate-scoped) para ObterBoleto — evita repetir mesma consulta
+const boletoCache = new Map<string, { link: string; at: number }>();
+const BOLETO_CACHE_TTL_MS = 3 * 60_000; // 3 minutos
+
+function extrairSegundos(mensagem: string): number {
+  const match = String(mensagem).match(/(\d+)\s*segundo/i);
+  return match ? Math.min(parseInt(match[1]) + 2, 60) : 0;
+}
 
 async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
@@ -19,7 +29,7 @@ async function getOmieCredentials(base44: any) {
 }
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
@@ -27,6 +37,16 @@ async function checkCircuitBreaker(base44: any) {
     return { blocked: false };
   }
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+}
+
+async function updateCircuitBreaker(base44: any, erros: number, ultimoErro: string) {
+  const threshold = 3;
+  const p: any = { erros_consecutivos: erros, ultimo_erro: ultimoErro.slice(0, 500), atualizado_em: new Date().toISOString() };
+  if (erros >= threshold) {
+    p.bloqueado = true;
+    p.bloqueado_ate = new Date(Date.now() + 3 * 60_000).toISOString();
+  }
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, p).catch(() => null);
 }
 
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
@@ -37,8 +57,10 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
+  const RETRIES = [2000, 5000, 10000];
+  const MAX_REDUNDANT_RETRIES = 4;
   let lastErr = '';
+  let errosConsecutivos = 0;
   for (let i = 0; i <= RETRIES.length; i++) {
     try {
       const controller = new AbortController();
@@ -46,24 +68,57 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
       clearTimeout(tid);
       const data = await res.json();
+
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
-          { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
+        lastErr = String(data.faultstring);
+
+        // MISUSE / bloqueio permanente → circuit breaker sem retry
+        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('misuse')) {
+          await updateCircuitBreaker(base44, errosConsecutivos + 1, String(data.faultstring));
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+
+        // CÓDIGO 6: "Consumo redundante detectado. Aguarde X segundos"
+        const isRedundante = msg.includes('redundante') || msg.includes('aguarde');
+        if (isRedundante) {
+          const segs = extrairSegundos(String(data.faultstring));
+          errosConsecutivos++;
+          const waitMs = segs > 0 ? segs * 1000 : 5000; // usa o valor da msg ou fallback 5s
+          // Tenta até MAX_REDUNDANT_RETRIES vezes para este tipo de erro
+          const redundantTried = i; // i conta tentativas normais
+          if (redundantTried < MAX_REDUNDANT_RETRIES) {
+            console.log(`[baixarPdfBoletoOmie] Código 6 detectado → aguardando ${waitMs}ms antes de retry ${redundantTried + 1}/${MAX_REDUNDANT_RETRIES}`);
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+          await updateCircuitBreaker(base44, errosConsecutivos, String(data.faultstring));
+          throw new Error(`API Omie bloqueada por consumo redundante após ${MAX_REDUNDANT_RETRIES} tentativas: ${data.faultstring}`);
+        }
+
+        // Rate limit / cota / timeout → retry normal
+        if (res.status === 429 || msg.includes('cota') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+          errosConsecutivos++;
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+          await updateCircuitBreaker(base44, errosConsecutivos, String(data.faultstring));
+          throw new Error(data.faultstring);
+        }
+
+        // Outro erro → falha imediata
         throw new Error(data.faultstring);
       }
+
+      // Sucesso
       if (!options.skipLog) {
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
       }
-      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
-      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      errosConsecutivos++;
+      if (i < RETRIES.length && !e.message?.includes('bloqueada') && !e.message?.includes('API Omie bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
       throw new Error(lastErr);
     }
   }
@@ -90,14 +145,28 @@ Deno.serve(async (req) => {
       if (!codigo_lancamento) {
         return Response.json({ error: 'Informe codigo_lancamento ou url_boleto' }, { status: 400 });
       }
+
+      // Cache em memória para ObterBoleto (3 min) — evita "consumo redundante"
+      const cacheKey = String(codigo_lancamento);
+      const cached = boletoCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < BOLETO_CACHE_TTL_MS) {
+        link = cached.link;
+        console.log(`[baixarPdfBoletoOmie] Cache hit para título ${codigo_lancamento}`);
+      }
+
       // 1) Tenta ObterBoleto - param: nCodTitulo
       let cDesStatus = null;
-      try {
-        const data = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'ObterBoleto' });
-        link = data?.cLinkBoleto || data?.link_boleto || null;
-        cDesStatus = data?.cDesStatus || null;
-      } catch (e) {
-        cDesStatus = e.message;
+      if (!link) {
+        try {
+          const data = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'ObterBoleto' });
+          link = data?.cLinkBoleto || data?.link_boleto || null;
+          cDesStatus = data?.cDesStatus || null;
+          if (link) {
+            boletoCache.set(cacheKey, { link, at: Date.now() });
+          }
+        } catch (e) {
+          cDesStatus = e.message;
+        }
       }
 
       // 2) Fallback: ObterBoleto às vezes responde "nenhum boleto gerado" mesmo para
@@ -107,6 +176,9 @@ Deno.serve(async (req) => {
           const dataGer = await omieCall(base44, BOLETO_URL, { nCodTitulo: Number(codigo_lancamento) }, { call: 'GerarBoleto' });
           link = dataGer?.cLinkBoleto || dataGer?.link_boleto || null;
           if (!link) cDesStatus = dataGer?.cDesStatus || cDesStatus;
+          if (link) {
+            boletoCache.set(cacheKey, { link, at: Date.now() });
+          }
         } catch (e2) {
           cDesStatus = e2.message || cDesStatus;
         }

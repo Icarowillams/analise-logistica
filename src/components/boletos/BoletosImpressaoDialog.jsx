@@ -6,9 +6,9 @@ import { Loader2, FileText, Layers } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
-import { runPool } from '@/lib/concurrentPool';
 
-const CONCORRENCIA = 5; // downloads de boleto simultâneos (ObterBoleto = leitura, pode paralelizar)
+const CONCORRENCIA = 1; // 1 por vez — evita "consumo redundante" (código 6) do Omie
+const DELAY_ENTRE_BOLETOS_MS = 900; // espaçamento entre chamadas consecutivas
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const base64ToUint8Array = (b64) => {
@@ -53,42 +53,56 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     return base64ToUint8Array(data.pdf_base64);
   };
 
-  // Baixa 1 boleto com até 3 tentativas em erros temporários do Omie (redundante/cota/bloqueio).
+  // Baixa 1 boleto com até 4 tentativas em erros temporários do Omie.
+  // Código 6 (consumo redundante): espera o tempo informado na mensagem.
   const baixarComRetry = async (titulo) => {
-    const ESPERAS = [2000, 4000, 8000];
+    const ESPERAS = [3000, 6000, 12000, 20000];
     let ultimoErro;
     for (let t = 0; t <= ESPERAS.length; t++) {
       try {
         return await baixarPdf(titulo);
       } catch (e) {
         ultimoErro = e;
-        const temporario = /redundante|j[áa] existe uma requisi|1880|aguarde|cota|limite|bloqueada|timeout/i.test(e.message || '');
+        const msg = (e.message || '');
+        const docRef = titulo.numero_documento || titulo.codigo_lancamento;
+        // Código 6: extrai o tempo da mensagem "Aguarde X segundos"
+        const matchCod6 = msg.match(/(\d+)\s*segundo/i);
+        const redundante = /redundante|aguarde|consumo/i.test(msg);
+        const temporario = redundante || /j[áa] existe uma requisi|1880|cota|limite|bloqueada|timeout/i.test(msg);
         if (!temporario || t === ESPERAS.length) throw e;
-        await sleep(ESPERAS[t]);
+        const waitMs = matchCod6 && redundante
+          ? Math.min((parseInt(matchCod6[1]) + 2) * 1000, 60000)
+          : ESPERAS[t];
+        console.log(`[BoletosImpressao] Retry ${t + 1}/${ESPERAS.length} para ${docRef} → aguardando ${waitMs}ms (${msg.slice(0, 80)})`);
+        await sleep(waitMs);
       }
     }
     throw ultimoErro;
   };
 
-  // Baixa TODOS os boletos em paralelo (pool limitado), com progresso por item.
-  // ObterBoleto apenas recupera um PDF já gerado → seguro paralelizar.
+  // Baixa TODOS os boletos sequencialmente, com delay entre chamadas para
+  // evitar o anti-flood "consumo redundante" (código 6) da Omie.
   const baixarTodos = async () => {
     let feito = 0;
     let erros = 0;
-    const resultados = await runPool(
-      titulos,
-      async (titulo, idx) => {
-        return baixarComRetry(titulo);
-      },
-      {
-        concorrencia: CONCORRENCIA,
-        onProgress: (r) => {
-          feito++;
-          if (!r.ok) { erros++; reportarErro(r.item, r.error?.message || 'Erro'); }
-          setProgresso(p => ({ ...p, feito, erros }));
-        }
+    const resultados = [];
+    for (let idx = 0; idx < titulos.length; idx++) {
+      const titulo = titulos[idx];
+      // Espaçar chamadas — evita que o Omie detecte "consumo redundante"
+      if (idx > 0) await sleep(DELAY_ENTRE_BOLETOS_MS);
+      try {
+        const pdf = await baixarComRetry(titulo);
+        feito++;
+        setProgresso(p => ({ ...p, feito, erros }));
+        resultados.push({ ok: true, item: titulo, value: pdf });
+      } catch (e) {
+        erros++;
+        feito++;
+        reportarErro(titulo, e.message || 'Erro');
+        setProgresso(p => ({ ...p, feito, erros }));
+        resultados.push({ ok: false, item: titulo, error: e });
       }
-    );
+    }
     return resultados;
   };
 
@@ -191,8 +205,8 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <p className="text-xs text-slate-500">
           {modo === 'agrupado'
-            ? 'Os boletos são baixados em paralelo e mesclados em um único PDF para impressão.'
-            : 'Os PDFs são baixados em paralelo, sem redirecionar para o Omie.'}
+            ? 'Os boletos são baixados sequencialmente e mesclados em um único PDF para impressão.'
+            : 'Os PDFs são baixados sequencialmente, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
     </Dialog>
