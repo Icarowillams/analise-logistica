@@ -45,6 +45,22 @@ const getTodayFilterDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getYesterdayFilterDate = () => {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: LOCAL_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(yesterday);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+};
+
 const getLocalDateFromIso = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -119,7 +135,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     await new Promise(r => setTimeout(r, 1500));
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
-      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] })
+      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
     ]);
   };
 
@@ -155,10 +172,28 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 60000,
   });
 
+  // Sempre carrega ~300 faturados mais recentes (ordena por data_faturamento)
+  // para exibir os do dia anterior na visão padrão (~0,5-1s, cobre ~1-2 dias).
+  const { data: pedidosFaturadosRecentes = [] } = useQuery({
+    queryKey: ['pedidos-gerenciar-faturados-recentes'],
+    queryFn: () => base44.entities.Pedido.filter({ status: 'faturado' }, '-data_faturamento', 300),
+    staleTime: 30000,
+  });
+
+  const yesterdayDate = useMemo(() => getYesterdayFilterDate(), []);
+  const todayDate = useMemo(() => getTodayFilterDate(), []);
+
+  const faturadosDeOntem = useMemo(() => {
+    return pedidosFaturadosRecentes.filter(p => {
+      const d = getLocalDateFromIso(p.data_faturamento);
+      return d === yesterdayDate || d === todayDate;
+    });
+  }, [pedidosFaturadosRecentes, yesterdayDate, todayDate]);
+
   const pedidos = useMemo(() => {
-    if (!statusExtra) return pedidosAtivos;
-    return [...pedidosAtivos, ...pedidosEncerrados];
-  }, [pedidosAtivos, pedidosEncerrados, statusExtra]);
+    if (statusExtra) return [...pedidosAtivos, ...pedidosEncerrados];
+    return [...pedidosAtivos, ...faturadosDeOntem];
+  }, [pedidosAtivos, pedidosEncerrados, faturadosDeOntem, statusExtra]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -566,7 +601,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
-        queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] })
+        queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+        queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
       ]);
       if (res?.data?.em_andamento) {
         toast.success('Dados recarregados! Sincronização com Omie já em andamento em segundo plano.');
