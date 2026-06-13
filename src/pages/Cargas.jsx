@@ -369,11 +369,31 @@ export default function Cargas() {
         data_previsao: novaPrevisao
       });
       const resultados = data?.resultados || [];
+
+      // Atualiza Pedido.data_previsao_entrega para vendas Omie que tiveram sucesso
+      let vendasAtualizadas = 0;
+      for (const r of resultados) {
+        if (!r.sucesso || r.ignorado) continue;
+        try {
+          const pedidosLocais = await base44.entities.Pedido.filter(
+            { omie_codigo_pedido: String(r.codigo_pedido) },
+            '-created_date', 1
+          );
+          if (pedidosLocais?.[0]) {
+            await base44.entities.Pedido.update(pedidosLocais[0].id, { data_previsao_entrega: novaPrevisao });
+            vendasAtualizadas++;
+          }
+        } catch (e) { console.warn('Falha ao atualizar Pedido local da venda:', e.message); }
+      }
       const ok = resultados.filter(r => r.sucesso).length;
       const ignorados = resultados.filter(r => r.ignorado).length;
       const fail = resultados.filter(r => !r.sucesso && !r.ignorado).length;
-      const msgPedidos = `${ok + d1sAtualizadas} pedido(s) atualizado(s)`;
-      const msgExtra = d1sAtualizadas > 0 ? ` (${d1sAtualizadas} D1 local)` : '';
+      const totalLocal = d1sAtualizadas + vendasAtualizadas;
+      const msgPedidos = `${ok + totalLocal} pedido(s) atualizado(s)`;
+      const partes = [];
+      if (d1sAtualizadas > 0) partes.push(`${d1sAtualizadas} D1`);
+      if (vendasAtualizadas > 0) partes.push(`${vendasAtualizadas} venda`);
+      const msgExtra = partes.length > 0 ? ` (${partes.join(' + ')} local)` : '';
       if (fail === 0 && ignorados === 0) {
         toast.success(`${msgPedidos} no Omie${msgExtra}`);
       } else if (fail === 0) {

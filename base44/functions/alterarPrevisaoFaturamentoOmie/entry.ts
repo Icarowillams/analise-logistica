@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
         }
 
         if (ok && p.codigo_pedido) {
+          // Atualiza espelho PedidoLiberadoOmie
           const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
             { codigo_pedido: String(p.codigo_pedido) },
             '-created_date',
@@ -130,6 +131,18 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
               data_previsao: data_previsao,
               sincronizado_em: new Date().toISOString()
+            });
+          }
+
+          // Atualiza também o Pedido local (data_previsao_entrega é o campo que a tela lê)
+          const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter(
+            { omie_codigo_pedido: String(p.codigo_pedido) },
+            '-created_date',
+            1
+          );
+          if (pedidosLocais?.[0]) {
+            await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, {
+              data_previsao_entrega: data_previsao
             });
           }
         }
