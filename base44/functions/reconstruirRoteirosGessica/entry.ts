@@ -1,10 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// Reconstroi os roteiros de segunda a sabado da vendedora Gessica.
-// Junta todos os clientes ativos dela, deduplica, e distribui uniformemente
-// entre os 6 dias. Preserva roteiros existentes quando possivel.
+// Reconstroi os roteiros da vendedora Gessica (seg a sab).
+// Logica de pares: Seg=Qui, Ter=Sex, Qua=Sab (mesmos clientes no par).
+// 115 clientes divididos em 3 grupos: ~38 / ~38 / ~39.
 
-const DIAS = ['segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
+const PARES = [
+  { dias: ['segunda-feira', 'quinta-feira'], label: 'Seg/Qui' },
+  { dias: ['terca-feira', 'sexta-feira'], label: 'Ter/Sex' },
+  { dias: ['quarta-feira', 'sabado'], label: 'Qua/Sab' },
+];
 const VENDEDOR_ID = '69ff70a75fbcb49b6597113f';
 
 Deno.serve(async (req) => {
@@ -53,24 +57,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. Distribuir clientes entre os 6 dias (round-robin)
-    const distribuicao = {};
-    DIAS.forEach(d => { distribuicao[d] = []; });
-
+    // 6. Distribuir clientes em 3 grupos (pares Seg/Qui, Ter/Sex, Qua/Sab)
+    const distribuicao = [[], [], []];
     clientesUnicos.forEach((c, i) => {
-      const dia = DIAS[i % 6];
-      distribuicao[dia].push(c);
+      distribuicao[i % 3].push(c);
     });
 
-    // 7. Criar/atualizar roteiros
+    // 7. Criar/atualizar roteiros (cada grupo alimenta 2 dias)
     const resultado = [];
 
-    for (const dia of DIAS) {
-      const clientesDoDia = distribuicao[dia];
-      const idsDoDia = clientesDoDia.map(c => c.id);
+    for (const [idx, par] of PARES.entries()) {
+      const clientesDoGrupo = distribuicao[idx];
+      const idsDoGrupo = clientesDoGrupo.map(c => c.id);
 
-      // Construir detalhes preservando os existentes ou criando novos
-      const detalhesDoDia = clientesDoDia.map((c, i) => {
+      const detalhesDoGrupo = clientesDoGrupo.map((c, i) => {
         const existente = clientesJaDetalhados.get(c.id);
         return {
           cliente_id: c.id,
@@ -85,30 +85,29 @@ Deno.serve(async (req) => {
         };
       });
 
-      // Buscar roteiro existente para este dia
-      let roteiro = roteirosExistentes.find(r => r.dia_semana === dia);
+      for (const dia of par.dias) {
+        let roteiro = roteirosExistentes.find(r => r.dia_semana === dia);
 
-      if (roteiro) {
-        // Atualizar roteiro existente
-        await base44.asServiceRole.entities.Roteiro.update(roteiro.id, {
-          clientes_ids: idsDoDia,
-          clientes_detalhes: detalhesDoDia,
-          status: 'ativo',
-          ativo: true
-        });
-        resultado.push({ dia, acao: 'atualizado', roteiro_id: roteiro.id, clientes: idsDoDia.length });
-      } else {
-        // Criar novo roteiro
-        const novo = await base44.asServiceRole.entities.Roteiro.create({
-          vendedor_id: VENDEDOR_ID,
-          vendedor_nome: vendedor.nome || 'GESSICA EDVANIA DE SOUSA',
-          dia_semana: dia,
-          clientes_ids: idsDoDia,
-          clientes_detalhes: detalhesDoDia,
-          status: 'ativo',
-          ativo: true
-        });
-        resultado.push({ dia, acao: 'criado', roteiro_id: novo.id, clientes: idsDoDia.length });
+        if (roteiro) {
+          await base44.asServiceRole.entities.Roteiro.update(roteiro.id, {
+            clientes_ids: idsDoGrupo,
+            clientes_detalhes: detalhesDoGrupo,
+            status: 'ativo',
+            ativo: true
+          });
+          resultado.push({ dia, par: par.label, acao: 'atualizado', roteiro_id: roteiro.id, clientes: idsDoGrupo.length });
+        } else {
+          const novo = await base44.asServiceRole.entities.Roteiro.create({
+            vendedor_id: VENDEDOR_ID,
+            vendedor_nome: vendedor.nome || 'GESSICA EDVANIA DE SOUSA',
+            dia_semana: dia,
+            clientes_ids: idsDoGrupo,
+            clientes_detalhes: detalhesDoGrupo,
+            status: 'ativo',
+            ativo: true
+          });
+          resultado.push({ dia, par: par.label, acao: 'criado', roteiro_id: novo.id, clientes: idsDoGrupo.length });
+        }
       }
     }
 
