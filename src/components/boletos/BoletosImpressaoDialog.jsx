@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
 import { runPool } from '@/lib/concurrentPool';
 
-const CONCORRENCIA = 1; // SEQUENCIAL — Omie rejeita chamadas ObterBoleto simultâneas ("requisição redundante") e abre o circuit breaker
+const CONCORRENCIA = 5; // downloads de boleto simultâneos (ObterBoleto = leitura, pode paralelizar)
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const base64ToUint8Array = (b64) => {
@@ -78,7 +78,6 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
     const resultados = await runPool(
       titulos,
       async (titulo, idx) => {
-        if (idx > 0) await sleep(400); // espaçamento entre chamadas para não estourar limite Omie
         return baixarComRetry(titulo);
       },
       {
@@ -192,8 +191,8 @@ export default function BoletosImpressaoDialog({ open, onOpenChange, titulos = [
 
         <p className="text-xs text-slate-500">
           {modo === 'agrupado'
-            ? 'Os boletos são baixados um a um (limite do Omie) e mesclados em um único PDF para impressão.'
-            : 'Os PDFs são baixados um a um, sem redirecionar para o Omie.'}
+            ? 'Os boletos são baixados em paralelo e mesclados em um único PDF para impressão.'
+            : 'Os PDFs são baixados em paralelo, sem redirecionar para o Omie.'}
         </p>
       </DialogContent>
     </Dialog>
