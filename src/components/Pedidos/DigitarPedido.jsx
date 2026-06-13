@@ -23,11 +23,13 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     enabled: !!vendedor
   });
 
-  // Carrega todos os clientes do vendedor em UMA unica chamada,
-  // depois casa com os clientes dos roteiros por codigo_interno ou id.
+  // Carrega TODOS os clientes do vendedor (list ignora limite padrao de 50)
   const { data: clientesVendedor = [] } = useQuery({
     queryKey: ['clientes-vendedor', vendedor.id],
-    queryFn: () => base44.entities.Cliente.filter({ vendedor_id: vendedor.id, status: 'ativo' }, 'codigo_interno', 2000),
+    queryFn: async () => {
+      const todos = await base44.entities.Cliente.list('-created_date', 5000);
+      return todos.filter(c => c.vendedor_id === vendedor.id && c.status === 'ativo');
+    },
     enabled: !!vendedor?.id
   });
 
