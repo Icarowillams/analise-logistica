@@ -9,6 +9,7 @@ export const getPedidoBusca = (pedido) => [
   pedido.nome_fantasia,
   pedido.numero_pedido,
   pedido.codigo_cliente_cod,
+  pedido.codigo_interno,
   pedido.cidade,
   pedido.rota_nome,
   pedido.vendedor_nome,

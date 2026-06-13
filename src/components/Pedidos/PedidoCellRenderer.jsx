@@ -156,18 +156,22 @@ export default function PedidoCellRenderer({ col, p }) {
 
   if (col.id === 'cliente_nome') {
     const nomeExibir = p.cliente_fantasia_base || p.cliente_nome_base || '-';
+    const codExibir = p.cliente_codigo_base || p.cliente_codigo;
     return (
       <span className="block truncate" title={p.cliente_nome_base || ''}>
         {nomeExibir}
+        {codExibir ? <span className="text-slate-400 ml-1 font-normal text-[10px]">({codExibir})</span> : null}
         {p.cliente_pendencia_financeira && <Badge className="ml-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-800">Pendência Financeira</Badge>}
       </span>
     );
   }
 
   if (col.id === 'cliente_nome_fantasia') {
+    const codExibir = p.cliente_codigo_base || p.cliente_codigo;
     return (
       <span className="block truncate" title={p.cliente_fantasia_base || ''}>
         {p.cliente_fantasia_base || '-'}
+        {codExibir ? <span className="text-slate-400 ml-1 font-normal text-[10px]">({codExibir})</span> : null}
         {p.cliente_pendencia_financeira && <Badge className="ml-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-800">Pendência Financeira</Badge>}
       </span>
     );

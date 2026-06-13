@@ -71,6 +71,21 @@ export default function Operacao() {
     staleTime: 30000
   });
 
+  // Clientes: lookup codigo_omie → codigo_interno
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['clientesOperacao'],
+    queryFn: () => base44.entities.Cliente.list('-updated_date', 2000),
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false
+  });
+  const clienteLookup = useMemo(() => {
+    const map = {};
+    for (const c of clientes) {
+      if (c.codigo_omie) map[String(c.codigo_omie)] = c.codigo_interno || '';
+    }
+    return map;
+  }, [clientes]);
+
   // Filtro de busca + ordenação por data prevista
   const filtrarOrdenar = (lista) => {
     const t = busca.trim().toLowerCase();
@@ -85,7 +100,8 @@ export default function Operacao() {
         (p.numero_nf || '').toString().includes(t) ||
         (p.cliente_cidade || '').toLowerCase().includes(t) ||
         (p.rota_nome || '').toLowerCase().includes(t) ||
-        (p.vendedor_nome || '').toLowerCase().includes(t)
+        (p.vendedor_nome || '').toLowerCase().includes(t) ||
+        (clienteLookup[String(p.codigo_cliente)] || '').toLowerCase().includes(t)
       );
     }
     // Ordena por data prevista (mais antiga primeiro)
@@ -207,6 +223,7 @@ export default function Operacao() {
         ? (p.status_label || 'Faturado')
         : `Etapa Omie ${p.etapa || etapa}`;
 
+      const codInterno = clienteLookup[String(p.codigo_cliente)] || '';
       return (
         <CardPedidoKanban
           key={p.codigo_pedido}
@@ -215,7 +232,8 @@ export default function Operacao() {
             data_previsao: formatarData(p.data_previsao),
             cliente_nome: p.nome_fantasia || p.nome_cliente,
             cliente_cidade: p.cidade,
-            rota_nome: p.rota_nome || p.rota_cliente
+            rota_nome: p.rota_nome || p.rota_cliente,
+            codigo_interno: codInterno
           }}
           borderColor={borderColor}
           origemLabel={origemLabel}

@@ -39,6 +39,7 @@ export default function CardPedidoKanban({
 
       <div className="font-bold text-sm text-slate-800 truncate mt-1" title={pedido.nome_fantasia || pedido.cliente_nome}>
         {pedido.nome_fantasia || pedido.cliente_nome || `Cliente ${pedido.codigo_cliente}`}
+        {pedido.codigo_interno ? <span className="text-slate-400 font-normal ml-1">({pedido.codigo_interno})</span> : null}
       </div>
 
       {(pedido.cliente_cidade || pedido.rota_nome) && (
