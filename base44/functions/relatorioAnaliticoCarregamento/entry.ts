@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * Relatório Analítico do Carregamento — consolida todas as cargas de uma data.
- * Body: { data: "YYYY-MM-DD" }
+ * Relatório Analítico do Carregamento — consolida cargas em um período.
+ * Body: { data_inicial: "YYYY-MM-DD", data_final: "YYYY-MM-DD" }
  */
 Deno.serve(async (req) => {
   try {
@@ -11,17 +11,18 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const dataFiltro = body.data || '';
+    const dataInicial = body.data_inicial || '';
+    const dataFinal = body.data_final || '';
 
-    if (!dataFiltro) {
-      return Response.json({ error: 'Parâmetro "data" obrigatório (YYYY-MM-DD)' }, { status: 400 });
+    if (!dataInicial || !dataFinal) {
+      return Response.json({ error: 'Parâmetros "data_inicial" e "data_final" obrigatórios (YYYY-MM-DD)' }, { status: 400 });
     }
 
     // Busca todas as cargas (limite alto para cobrir histórico)
     const todasCargas = await base44.asServiceRole.entities.Carga.list('-created_date', 2000);
 
-    // Filtra pela data_carga
-    const cargasDoDia = todasCargas.filter(c => c.data_carga === dataFiltro);
+    // Filtra pelo período
+    const cargasDoDia = todasCargas.filter(c => c.data_carga >= dataInicial && c.data_carga <= dataFinal);
 
     // Para cada carga, busca o faturista (usuário que criou)
     const linhas = [];
@@ -66,7 +67,8 @@ Deno.serve(async (req) => {
 
     return Response.json({
       sucesso: true,
-      data: dataFiltro,
+      data_inicial: dataInicial,
+      data_final: dataFinal,
       total_carregamentos: linhas.length,
       linhas,
       totais

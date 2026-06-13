@@ -21,17 +21,21 @@ const formatData = (d) => {
 
 export default function RelatorioCarregamento() {
   const hoje = new Date().toISOString().slice(0, 10);
-  const [data, setData] = useState(hoje);
+  const [dataInicial, setDataInicial] = useState(hoje);
+  const [dataFinal, setDataFinal] = useState(hoje);
   const [carregando, setCarregando] = useState(false);
   const [relatorio, setRelatorio] = useState(null);
   const printRef = useRef(null);
 
   const buscar = async () => {
-    if (!data) return;
+    if (!dataInicial || !dataFinal) return;
     setCarregando(true);
     setRelatorio(null);
     try {
-      const { data: resp } = await base44.functions.invoke('relatorioAnaliticoCarregamento', { data });
+      const { data: resp } = await base44.functions.invoke('relatorioAnaliticoCarregamento', {
+        data_inicial: dataInicial,
+        data_final: dataFinal
+      });
       if (resp?.sucesso) {
         setRelatorio(resp);
       } else {
@@ -71,7 +75,7 @@ export default function RelatorioCarregamento() {
         <FileText className="w-7 h-7 text-cyan-600" />
         <div>
           <h1 className="text-2xl font-bold">Relatório Analítico do Carregamento</h1>
-          <p className="text-sm text-slate-500">Consolidado diário de cargas</p>
+          <p className="text-sm text-slate-500">Consolidado de cargas por período</p>
         </div>
       </div>
 
@@ -82,8 +86,12 @@ export default function RelatorioCarregamento() {
         <CardContent>
           <div className="flex items-end gap-3 flex-wrap">
             <div>
-              <Label>Data do carregamento</Label>
-              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+              <Label>De</Label>
+              <Input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} />
+            </div>
+            <div>
+              <Label>Até</Label>
+              <Input type="date" value={dataFinal} onChange={(e) => setDataFinal(e.target.value)} />
             </div>
             <Button onClick={buscar} disabled={carregando}>
               {carregando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
