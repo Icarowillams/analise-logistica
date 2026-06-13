@@ -45,6 +45,7 @@ import ComparacaoPedidosOmie from './pages/ComparacaoPedidosOmie.jsx';
 import RelatorioCarregamento from './pages/RelatorioCarregamento';
 import SupervisaoFilaEnvio from './pages/SupervisaoFilaEnvio';
 import CorrigirPlanosPlanilhaPage from './pages/CorrigirPlanosPlanilha.jsx';
+import GestaoMetas from './pages/GestaoMetas.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -146,6 +147,8 @@ const AuthenticatedApp = () => {
       <Route path="/Trocas" element={<LayoutWrapper currentPageName="Trocas"><RelatoriosVisitas /></LayoutWrapper>} />
       <Route path="/RotinaSupervisores" element={<LayoutWrapper currentPageName="RotinaSupervisores"><RelatoriosVisitas /></LayoutWrapper>} />
       <Route path="/Metas" element={<LayoutWrapper currentPageName="Metas"><Metas /></LayoutWrapper>} />
+      <Route path="/GestaoMetas" element={<LayoutWrapper currentPageName="GestaoMetas"><GestaoMetas /></LayoutWrapper>} />
+      <Route path="/gestaometas" element={<LayoutWrapper currentPageName="GestaoMetas"><GestaoMetas /></LayoutWrapper>} />
       <Route path="/AcertoCaixa" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixaPage /></LayoutWrapper>} />
       <Route path="/AcertoCaixaEditar" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixaEditar /></LayoutWrapper>} />
       <Route path="/AcertoResumoPDF" element={<AcertoResumoPDF />} />

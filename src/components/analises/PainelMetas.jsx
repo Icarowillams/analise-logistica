@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TrendingUp, TrendingDown, Target, Package, DollarSign, AlertTriangle, CheckCircle2, Clock, Users, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Package, DollarSign, AlertTriangle, CheckCircle2, Clock, Users, BarChart3, ChevronDown, ChevronRight, Crown } from 'lucide-react';
 
 const PM_BENCHMARK = 5.17;
 const PM_MINIMO = 5.00;
@@ -56,6 +56,7 @@ export default function PainelMetas() {
     queryKey: ['vendedores'],
     queryFn: () => base44.entities.Vendedor.filter({ status: 'ativo' }),
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: metas = [] } = useQuery({
@@ -133,6 +134,50 @@ export default function PainelMetas() {
   const projecaoGeral = duDecorridos > 0 ? (totalRealizado / duDecorridos) * duMes : 0;
   const pctGeral = totalMeta > 0 ? (totalRealizado / totalMeta) * 100 : 0;
   const pctProjecaoGeral = totalMeta > 0 ? (projecaoGeral / totalMeta) * 100 : 0;
+
+  // Agrupamento por supervisor para visão hierárquica
+  const dadosPorSupervisor = useMemo(() => {
+    // Metas de nível supervisor do mês
+    const metasSup = metasDoMes.filter(m => m.nivel === 'supervisor');
+    // Metas de nível vendedor do mês
+    const metasVend = metasDoMes.filter(m => m.nivel === 'vendedor');
+
+    // Para cada supervisor com meta, calcular seus vendedores
+    const supMap = new Map();
+
+    for (const ms of metasSup) {
+      const vid = ms.supervisor_id;
+      if (!vid) continue;
+      const realSup = dadosVendedor.filter(d => {
+        // Encontrar vendedores cujo supervisor_id bate
+        const vend = vendedores.find(v => v.id === d.vendedor_id);
+        return vend?.supervisor_id === vid || vend?.supervisor_ids?.includes(vid);
+      });
+      const realizadoSup = realSup.reduce((s, d) => s + d.valor_total, 0);
+      const pacotesSup = realSup.reduce((s, d) => s + d.qtd_pacotes, 0);
+      const pctSup = ms.valor_meta > 0 ? (realizadoSup / ms.valor_meta) * 100 : 0;
+      const pmSup = pacotesSup > 0 ? realizadoSup / pacotesSup : 0;
+      const projecaoSup = duDecorridos > 0 ? (realizadoSup / duDecorridos) * duMes : 0;
+
+      supMap.set(vid, {
+        supervisor_id: vid,
+        supervisor_nome: ms.supervisor_nome || '—',
+        meta_valor: ms.valor_meta,
+        realizado: realizadoSup,
+        pacotes: pacotesSup,
+        pct_atingimento: pctSup,
+        pm_atual: pmSup,
+        projecao: projecaoSup,
+        pct_projecao: ms.valor_meta > 0 ? (projecaoSup / ms.valor_meta) * 100 : 0,
+        vendedores: realSup,
+      });
+    }
+
+    return Array.from(supMap.values()).sort((a, b) => b.pct_atingimento - a.pct_atingimento);
+  }, [metasDoMes, dadosVendedor, vendedores, duDecorridos, duMes]);
+
+  const [expandidoSup, setExpandidoSup] = useState({});
+  const toggleSup = (id) => setExpandidoSup(prev => ({ ...prev, [id]: !prev[id] }));
 
   const meses = [
     { v: 1, l: 'Janeiro' }, { v: 2, l: 'Fevereiro' }, { v: 3, l: 'Março' },
@@ -321,6 +366,59 @@ export default function PainelMetas() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Visão Hierárquica por Supervisor */}
+      {dadosPorSupervisor.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Crown className="w-4 h-4 text-purple-600" /> Cascata por Supervisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dadosPorSupervisor.map(sup => {
+              const aberto = expandidoSup[sup.supervisor_id] !== false;
+              return (
+                <div key={sup.supervisor_id} className="border border-blue-200 rounded-lg overflow-hidden">
+                  <div
+                    className="flex items-center justify-between p-3 bg-blue-50 cursor-pointer hover:bg-blue-100"
+                    onClick={() => toggleSup(sup.supervisor_id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {aberto ? <ChevronDown className="w-4 h-4 text-blue-600" /> : <ChevronRight className="w-4 h-4 text-blue-600" />}
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-900 text-sm">{sup.supervisor_nome}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-blue-700">{fmt(sup.realizado)} / {fmt(sup.meta_valor)}</span>
+                      <SemaforoBadge pct={sup.pct_atingimento} />
+                      <span className={`font-medium ${sup.pm_atual < PM_BENCHMARK ? 'text-red-600' : 'text-green-700'}`}>
+                        PM: R$ {fmtN(sup.pm_atual)}
+                      </span>
+                    </div>
+                  </div>
+                  {aberto && sup.vendedores.length > 0 && (
+                    <div className="divide-y divide-slate-100">
+                      {sup.vendedores.map(d => (
+                        <div key={d.vendedor_id} className="flex items-center justify-between px-4 py-2 hover:bg-slate-50 text-sm">
+                          <span className="truncate text-slate-700">{d.vendedor_nome}</span>
+                          <div className="flex items-center gap-3 text-xs flex-shrink-0">
+                            <span>{fmt(d.valor_total)}</span>
+                            {d.meta_valor > 0 && <SemaforoBadge pct={d.pct_atingimento} />}
+                            <span className={d.pm_atual > 0 && d.pm_atual < PM_BENCHMARK ? 'text-red-600 font-medium' : 'text-slate-500'}>
+                              {d.pm_atual > 0 ? `PM R$ ${fmtN(d.pm_atual)}` : '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}

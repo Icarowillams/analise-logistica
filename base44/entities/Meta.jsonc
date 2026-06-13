@@ -1,10 +1,11 @@
 {
   "name": "Meta",
   "type": "object",
-  "description": "Metas comerciais por vendedor/equipe \u2014 per\u00edodo, valor e indicadores",
+  "description": "Metas comerciais com cascata hier\u00e1rquica: Gerente \u2192 Supervisor \u2192 Vendedor",
   "properties": {
     "titulo": {
-      "type": "string"
+      "type": "string",
+      "description": "T\u00edtulo descritivo da meta"
     },
     "tipo": {
       "type": "string",
@@ -17,16 +18,43 @@
       ],
       "default": "vendas"
     },
+    "nivel": {
+      "type": "string",
+      "enum": [
+        "gerente",
+        "supervisor",
+        "vendedor"
+      ],
+      "default": "vendedor",
+      "description": "N\u00edvel hier\u00e1rquico da meta na cascata"
+    },
+    "meta_pai_id": {
+      "type": "string",
+      "description": "ID da meta do n\u00edvel acima (pai) \u2014 null para meta do gerente (raiz)"
+    },
+    "mes_referencia": {
+      "type": "string",
+      "description": "M\u00eas de refer\u00eancia no formato YYYY-MM (ex: 2026-06)"
+    },
     "vendedor_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do funcion\u00e1rio (vendedor ou promotor) \u2014 preenchido para n\u00edvel vendedor"
     },
     "vendedor_nome": {
       "type": "string"
     },
     "supervisor_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do supervisor respons\u00e1vel"
     },
     "supervisor_nome": {
+      "type": "string"
+    },
+    "gerente_id": {
+      "type": "string",
+      "description": "ID do gerente que criou a meta raiz"
+    },
+    "gerente_nome": {
       "type": "string"
     },
     "periodo_inicio": {
@@ -39,9 +67,19 @@
     },
     "valor_meta": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "Meta em R$"
+    },
+    "volume_pacotes_meta": {
+      "type": "number",
+      "default": 0,
+      "description": "Meta em volume de pacotes"
     },
     "valor_realizado": {
+      "type": "number",
+      "default": 0
+    },
+    "volume_pacotes_realizado": {
       "type": "number",
       "default": 0
     },

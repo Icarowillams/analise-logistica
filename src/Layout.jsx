@@ -115,6 +115,7 @@ export default function Layout({ children, currentPageName }) {
         title: 'Análises Comercial',
         icon: BarChart3,
         submenu: [
+          { title: 'Gestão de Metas (Cascata)', path: 'GestaoMetas' },
           { title: 'Metas', path: 'Metas' },
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
