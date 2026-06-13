@@ -42,6 +42,7 @@ import ConfiguracaoOmie from './pages/ConfiguracaoOmie.jsx';
 import CommitsGithub from './pages/CommitsGithub.jsx';
 import CorrecaoManual from './pages/CorrecaoManual.jsx';
 import ComparacaoPedidosOmie from './pages/ComparacaoPedidosOmie.jsx';
+import RelatorioCarregamento from './pages/RelatorioCarregamento';
 import SupervisaoFilaEnvio from './pages/SupervisaoFilaEnvio';
 import CorrigirPlanosPlanilhaPage from './pages/CorrigirPlanosPlanilha.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -148,6 +149,7 @@ const AuthenticatedApp = () => {
       <Route path="/ComparacaoPedidosOmie" element={<LayoutWrapper currentPageName="ComparacaoPedidosOmie"><ComparacaoPedidosOmie /></LayoutWrapper>} />
       <Route path="/SupervisaoFilaEnvio" element={<LayoutWrapper currentPageName="SupervisaoFilaEnvio"><SupervisaoFilaEnvio /></LayoutWrapper>} />
       <Route path="/CorrigirPlanosPlanilha" element={<LayoutWrapper currentPageName="CorrigirPlanosPlanilha"><CorrigirPlanosPlanilhaPage /></LayoutWrapper>} />
+      <Route path="/RelatorioCarregamento" element={<LayoutWrapper currentPageName="RelatorioCarregamento"><RelatorioCarregamento /></LayoutWrapper>} />
       <Route path="/CadastrosHub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
       <Route path="/cadastroshub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
