@@ -87,11 +87,16 @@ function pickId(detalhe, body) {
 }
 
 function nfChaveFromBody(body) {
-  const chave = {};
+  const chave: any = {};
+  // PRIORIZAR nCodNF (identificador numérico interno) — Omie rejeita (erro 101)
+  // quando nCodNF e nNF são enviados no mesmo param. Só um identificador por vez.
   if (body.nIdNF) chave.nCodNF = Number(body.nIdNF);
-  if (body.nCodNF) chave.nCodNF = Number(body.nCodNF);
-  if (body.nNF) chave.nNF = String(body.nNF);
-  if (body.cNumero) chave.nNF = String(body.cNumero);
+  else if (body.nCodNF) chave.nCodNF = Number(body.nCodNF);
+  // nNF só como fallback quando NÃO há nCodNF
+  if (!chave.nCodNF) {
+    if (body.nNF) chave.nNF = String(body.nNF);
+    else if (body.cNumero) chave.nNF = String(body.cNumero);
+  }
   return chave;
 }
 

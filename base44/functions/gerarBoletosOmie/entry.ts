@@ -100,20 +100,25 @@ async function omieCallAntiConcorrencia(base44: any, endpoint: string, param: un
 }
 
 
+// Cache em memória (isolate-scoped) para ListarContasReceber por CNPJ+janela
+// Evita repetir a mesma varredura quando vários títulos do mesmo cliente são processados
+const _crCache = new Map<string, { data: any[]; at: number }>();
+const CR_CACHE_TTL_MS = 5 * 60_000; // 5 minutos
+
 async function listarTitulosDoPedido(base44: any, codigoPedido: string | number) {
   const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-  const hoje = new Date();
-  const inicio = new Date(hoje.getTime() - 365 * 86400000);
-  const futuro = new Date(hoje.getTime() + 90 * 86400000);
 
   let cnpj: string | null = null;
   let numNf: string | null = null;
+  let dataPedido: Date | null = null;
   try {
     const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1);
     const pedido = pedidos?.[0];
     if (pedido) {
       cnpj = String(pedido.cliente_cpf_cnpj || '').replace(/\D/g, '');
       numNf = pedido.numero_nota_fiscal ? String(pedido.numero_nota_fiscal).replace(/\D/g, '') : null;
+      const dataRef = pedido.data_faturamento || pedido.created_date;
+      if (dataRef) dataPedido = new Date(dataRef);
     }
   } catch { /* fallback */ }
 
@@ -122,8 +127,25 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
     return [];
   }
 
+  // Janela estreita: ±30 dias em torno da data do pedido (antes era ~15 meses)
+  const ref = dataPedido || new Date();
+  const inicio = new Date(ref.getTime() - 30 * 86400000);
+  const futuro = new Date(ref.getTime() + 30 * 86400000);
+
+  // Cache por CNPJ+janela — evita varreduras repetidas do mesmo cliente em sequência
+  const cacheKey = `${cnpj}_${fmt(inicio)}_${fmt(futuro)}`;
+  const cached = _crCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < CR_CACHE_TTL_MS) {
+    console.log(`[listarTitulosDoPedido] Cache hit para CNPJ ${cnpj.slice(0,6)}...`);
+    if (numNf) {
+      const comNf = cached.data.filter((t: any) => String(t.numero_documento || '').replace(/\D/g, '') === numNf);
+      if (comNf.length > 0) return comNf;
+    }
+    return cached.data;
+  }
+
   let acumulados: any[] = [];
-  for (let pag = 1; pag <= 5; pag++) {
+  for (let pag = 1; pag <= 3; pag++) { // reduzido de 5 para 3 páginas (janela menor)
     const data = await omieCallAntiConcorrencia(base44, 'financas/contareceber/', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
       filtrar_por_data_de: fmt(inicio), filtrar_por_data_ate: fmt(futuro),
@@ -134,6 +156,9 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
     if (pag >= (data?.total_de_paginas || 1)) break;
     await new Promise(r => setTimeout(r, DELAY_ENTRE_CR_MS));
   }
+
+  _crCache.set(cacheKey, { data: acumulados, at: Date.now() });
+  console.log(`[listarTitulosDoPedido] ${acumulados.length} títulos para CNPJ ${cnpj.slice(0,6)}... (janela: ${fmt(inicio)} a ${fmt(futuro)})`);
 
   if (numNf) {
     const comNf = acumulados.filter((t: any) => String(t.numero_documento || '').replace(/\D/g, '') === numNf);
