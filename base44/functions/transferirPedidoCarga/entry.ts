@@ -39,13 +39,16 @@ Deno.serve(async (req) => {
 
     const pedidosOmieOrigem = origem.pedidos_omie || [];
     const pedidosInternosOrigem = origem.pedidos_internos || [];
+    const pedidosTrocaOrigem = origem.pedidos_troca || [];
 
-    // Chave de seleção: vendas usam codigo_pedido (Omie); internos (D1/troca) usam numero_pedido (sufixo D/T)
-    const chaveInterno = (p) => String(p.numero_pedido || p.pedido_troca_id || p.pedido_id || '');
+    // Chave de seleção: vendas usam codigo_pedido (Omie); internos (D1) usam numero_pedido; trocas usam pedido_troca_id
+    const chaveInterno = (p) => String(p.numero_pedido || p.pedido_id || '');
+    const chaveTroca = (p) => String(p.pedido_troca_id || p.numero_pedido || '');
 
     const omieMover = pedidosOmieOrigem.filter(p => codigos.includes(String(p.codigo_pedido)));
     const internosMover = pedidosInternosOrigem.filter(p => codigos.includes(chaveInterno(p)));
-    const pedidosMover = [...omieMover, ...internosMover];
+    const trocasMover = pedidosTrocaOrigem.filter(p => codigos.includes(chaveTroca(p)));
+    const pedidosMover = [...omieMover, ...internosMover, ...trocasMover];
 
     if (pedidosMover.length === 0) {
       return Response.json({ error: 'Nenhum dos pedidos informados está na carga origem' }, { status: 404 });
@@ -60,19 +63,35 @@ Deno.serve(async (req) => {
     // Remove da origem (cada array com sua chave)
     const novosOmieOrigem = pedidosOmieOrigem.filter(p => !codigos.includes(String(p.codigo_pedido)));
     const novosInternosOrigem = pedidosInternosOrigem.filter(p => !codigos.includes(chaveInterno(p)));
+    const novosTrocaOrigem = pedidosTrocaOrigem.filter(p => !codigos.includes(chaveTroca(p)));
     // Adiciona no destino (cada array no seu lugar)
     const novosOmieDestino = [...(destino.pedidos_omie || []), ...omieMover];
     const novosInternosDestino = [...(destino.pedidos_internos || []), ...internosMover];
+    const novosTrocaDestino = [...(destino.pedidos_troca || []), ...trocasMover];
 
-    // Recalcula totais + consolida produtos considerando AMBOS os arrays (vendas + internos)
-    const recalcularCarga = async (pedidosOmie, pedidosInternos = []) => {
-      const todos = [...pedidosOmie, ...pedidosInternos];
+    // Recalcula totais + consolida produtos considerando TODOS os arrays (vendas + internos + trocas)
+    const recalcularCarga = async (pedidosOmie, pedidosInternos = [], pedidosTroca = []) => {
+      const todos = [...pedidosOmie, ...pedidosInternos, ...pedidosTroca];
       const valor_total = todos.reduce((s, p) => s + (Number(p.valor_total_pedido) || 0), 0);
       const clientesUnicos = new Set(todos.map(p => p.codigo_cliente || p.cliente_id).filter(Boolean));
+
+      // Recalcula notas_fiscais a partir dos pedidos RESTANTES
+      const notas_fiscais = [];
+      for (const p of pedidosOmie) {
+        if (p.numero_pedido) notas_fiscais.push(String(p.numero_pedido));
+        if (p.numero_nf && !notas_fiscais.includes(String(p.numero_nf))) notas_fiscais.push(String(p.numero_nf));
+      }
+      for (const p of pedidosInternos) {
+        if (p.numero_pedido) notas_fiscais.push(String(p.numero_pedido));
+      }
+      for (const p of pedidosTroca) {
+        if (p.numero_pedido) notas_fiscais.push(String(p.numero_pedido));
+      }
 
       const produtosMap = new Map();
       let peso_total_kg = 0;
       let volume_total_m3 = 0;
+      let quantidade_total_pacotes = 0;
       const codigosOmie = new Set();
 
       for (const p of todos) {
@@ -85,7 +104,9 @@ Deno.serve(async (req) => {
             quantidade_total: 0,
             unidade: prod.unidade || 'UN'
           };
-          atual.quantidade_total += Number(prod.quantidade) || 0;
+          const qtd = Number(prod.quantidade) || 0;
+          atual.quantidade_total += qtd;
+          quantidade_total_pacotes += qtd;
           produtosMap.set(cod, atual);
         }
       }
@@ -113,31 +134,36 @@ Deno.serve(async (req) => {
       return {
         pedidos_omie: pedidosOmie,
         pedidos_internos: pedidosInternos,
-        quantidade_pedidos: pedidosOmie.length + pedidosInternos.length,
+        pedidos_troca: pedidosTroca,
+        quantidade_pedidos: pedidosOmie.length + pedidosInternos.length + pedidosTroca.length,
         quantidade_clientes: clientesUnicos.size,
         valor_total,
         valor_total_carga: valor_total,
         peso_total_kg: Math.round(peso_total_kg * 100) / 100,
         volume_total_m3: Math.round(volume_total_m3 * 1000) / 1000,
-        produtos_resumo: Array.from(produtosMap.values())
+        quantidade_total_pacotes,
+        produtos_resumo: Array.from(produtosMap.values()),
+        notas_fiscais
       };
     };
 
-    const novaOrigem = await recalcularCarga(novosOmieOrigem, novosInternosOrigem);
-    const novoDestino = await recalcularCarga(novosOmieDestino, novosInternosDestino);
+    const novaOrigem = await recalcularCarga(novosOmieOrigem, novosInternosOrigem, novosTrocaOrigem);
+    const novoDestino = await recalcularCarga(novosOmieDestino, novosInternosDestino, novosTrocaDestino);
 
     await base44.asServiceRole.entities.Carga.update(carga_origem_id, novaOrigem);
     await base44.asServiceRole.entities.Carga.update(carga_destino_id, novoDestino);
 
     const internosSet = new Set(internosMover);
-    // Atualiza Pedido (Base44) + espelho PedidoLiberadoOmie — telas de N.Carga, NF e boleto puxam daí
+    const trocasSet = new Set(trocasMover);
+    // Atualiza Pedido (Base44) — telas de N.Carga, NF e boleto puxam daí
     const registros = [];
     for (const ped of pedidosMover) {
       const ehInterno = internosSet.has(ped);
+      const ehTroca = trocasSet.has(ped);
       try {
-        // Casar o Pedido base: venda por omie_codigo_pedido; interno por id/troca
+        // Casar o Pedido base: venda por omie_codigo_pedido; interno/troca por id
         let lista = [];
-        if (ehInterno) {
+        if (ehInterno || ehTroca) {
           const pid = ped.pedido_id || ped.pedido_troca_id;
           if (pid) {
             const encontrado = await base44.asServiceRole.entities.Pedido.get(pid).catch(() => null);

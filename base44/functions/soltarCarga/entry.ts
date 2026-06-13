@@ -70,16 +70,16 @@ Deno.serve(async (req) => {
       } catch (e) { console.warn('Falha ao liberar pedido Omie:', e.message); }
     }
 
-    // Libera pedidos internos D1
+    // Libera pedidos internos D1 — mesmo destino que vendas (faturamento)
     for (const p of pedidosInternos) {
       try {
         if (p.pedido_id) {
           await base44.asServiceRole.entities.Pedido.update(p.pedido_id, {
             carga_id: null,
             numero_carga: null,
-            status: 'pendente',
+            status: 'liberado',
             status_logistico: 'aguardando',
-            etapa: 'comercial'
+            etapa: 'faturamento'
           });
           pedidosLiberados++;
         }
@@ -134,7 +134,9 @@ Deno.serve(async (req) => {
       valor_total_carga: 0,
       peso_total_kg: 0,
       volume_total_m3: 0,
+      quantidade_total_pacotes: 0,
       produtos_resumo: [],
+      notas_fiscais: [],
       status_carga: 'montagem',
       processamento_omie_status: 'nao_iniciado',
       processamento_omie_total: 0,
