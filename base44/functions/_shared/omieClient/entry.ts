@@ -364,6 +364,25 @@ export async function omieCall(base44: Base44Client, endpoint: string, param: un
           throw lastError;
         }
 
+        // CHAVE DE ACESSO INVÁLIDA: anti-flood severo do Omie (bloqueia a chave
+        // temporariamente após rajada). NÃO é credencial errada — as outras chamadas
+        // recentes passaram. Tratar como temporário: retry com espera + circuit breaker.
+        const isChaveBloqueada = lower.includes('chave de acesso') || lower.includes('chave inválid') ||
+            lower.includes('chave invalid') || lower.includes('acesso está inválid') ||
+            lower.includes('acesso esta invalid');
+        if (isChaveBloqueada) {
+          const MAX_CHAVE = 3;
+          if (attempt < MAX_CHAVE) {
+            const waitMs = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)];
+            console.log(`[omieClient] Chave de acesso bloqueada temporariamente (${call}) → retry em ${waitMs}ms (tentativa ${attempt + 1}/${MAX_CHAVE})`);
+            await sleep(waitMs);
+            continue;
+          }
+          console.error(`[omieClient] Chave de acesso bloqueada esgotou ${MAX_CHAVE} tentativas (${call}).`);
+          await setCircuitBreakerBlocked(base44, message);
+          throw lastError;
+        }
+
         // Bloqueio genérico por rate limit / suspensão
         if (lower.includes('cota') || lower.includes('limite') || lower.includes('aguarde') ||
             lower.includes('bloque') || lower.includes('suspended') || lower.includes('suspens') ||

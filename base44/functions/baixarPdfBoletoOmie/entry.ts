@@ -96,8 +96,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           throw new Error(`API Omie bloqueada por consumo redundante após ${MAX_REDUNDANT_RETRIES} tentativas: ${data.faultstring}`);
         }
 
-        // Rate limit / cota / timeout → retry normal
-        if (res.status === 429 || msg.includes('cota') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+        // Rate limit / cota / timeout / chave bloqueada temporariamente → retry normal
+        const chaveBloqueada = msg.includes('chave de acesso') || msg.includes('chave inválid') || msg.includes('chave invalid') || msg.includes('acesso está inválid') || msg.includes('acesso esta invalid');
+        if (res.status === 429 || chaveBloqueada || msg.includes('cota') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
           errosConsecutivos++;
           if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
           await updateCircuitBreaker(base44, errosConsecutivos, String(data.faultstring));
