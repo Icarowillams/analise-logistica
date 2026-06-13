@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, Activity, ArrowLeftRight, TrendingUp, User, Users, Target, Map, Zap } from 'lucide-react';
+import { BarChart3, Activity, ArrowLeftRight, TrendingUp, User, Users, Target, Map, Zap, CreditCard, MapPin } from 'lucide-react';
 import AnaliseVisitas from '@/components/analises/AnaliseVisitas';
 import DashboardTrocas from '@/components/analises/DashboardTrocas';
 import DashboardVendas from '@/components/analises/DashboardVendas';
@@ -12,6 +12,8 @@ import DashboardMetas from '@/components/analises/DashboardMetas';
 import MapaVisitas from '@/components/analises/MapaVisitas';
 import PainelMetas from '@/components/analises/PainelMetas';
 import AtingimentoDiario from '@/components/analises/AtingimentoDiario';
+import PainelCobrancas from '@/components/analises/PainelCobrancas';
+import CoberturaVisitas from '@/components/analises/CoberturaVisitas';
 
 // Mapa rota → tab
 const ROTA_TAB = {
@@ -19,6 +21,10 @@ const ROTA_TAB = {
   '/painelmetas': 'painel',
   '/AtingimentoDiario': 'atingimento',
   '/atingimentodiario': 'atingimento',
+  '/Cobrancas': 'cobrancas',
+  '/cobrancas': 'cobrancas',
+  '/CoberturaVisitas': 'cobertura',
+  '/coberturavisitas': 'cobertura',
   '/DashboardVendas': 'vendas',
   '/dashboardvendas': 'vendas',
   '/DashboardTrocas': 'trocas',
@@ -56,7 +62,13 @@ export default function AnalisesComercial() {
             <Target className="w-3.5 h-3.5" />Painel de Metas
           </TabsTrigger>
           <TabsTrigger value="atingimento" className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <Zap className="w-3.5 h-3.5" />Atingimento Diário
+            <Zap className="w-3.5 h-3.5" />Ating. Diário
+          </TabsTrigger>
+          <TabsTrigger value="cobrancas" className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <CreditCard className="w-3.5 h-3.5" />Cobranças
+          </TabsTrigger>
+          <TabsTrigger value="cobertura" className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <MapPin className="w-3.5 h-3.5" />Cobertura
           </TabsTrigger>
           <TabsTrigger value="vendas" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <TrendingUp className="w-3.5 h-3.5" />Vendas
@@ -83,6 +95,8 @@ export default function AnalisesComercial() {
 
         <TabsContent value="painel"><PainelMetas /></TabsContent>
         <TabsContent value="atingimento"><AtingimentoDiario /></TabsContent>
+        <TabsContent value="cobrancas"><PainelCobrancas /></TabsContent>
+        <TabsContent value="cobertura"><CoberturaVisitas /></TabsContent>
         <TabsContent value="vendas"><DashboardVendas /></TabsContent>
         <TabsContent value="trocas"><DashboardTrocas /></TabsContent>
         <TabsContent value="visitas"><AnaliseVisitas /></TabsContent>

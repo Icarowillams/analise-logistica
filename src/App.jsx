@@ -125,6 +125,14 @@ const AuthenticatedApp = () => {
       <Route path="/rotasupervisores" element={<LayoutWrapper currentPageName="RotaSupervisores"><RotaSupervisoresPage /></LayoutWrapper>} />
       <Route path="/PainelRoteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
       <Route path="/painelroteiros" element={<LayoutWrapper currentPageName="PainelRoteiros"><Roteiros /></LayoutWrapper>} />
+      <Route path="/PainelMetas" element={<LayoutWrapper currentPageName="PainelMetas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/painelmetas" element={<LayoutWrapper currentPageName="PainelMetas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/AtingimentoDiario" element={<LayoutWrapper currentPageName="AtingimentoDiario"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/atingimentodiario" element={<LayoutWrapper currentPageName="AtingimentoDiario"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/Cobrancas" element={<LayoutWrapper currentPageName="Cobrancas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/cobrancas" element={<LayoutWrapper currentPageName="Cobrancas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/CoberturaVisitas" element={<LayoutWrapper currentPageName="CoberturaVisitas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/coberturavisitas" element={<LayoutWrapper currentPageName="CoberturaVisitas"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/AnalisesComercial" element={<LayoutWrapper currentPageName="AnalisesComercial"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardVendedor" element={<LayoutWrapper currentPageName="DashboardVendedor"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardTrocas" element={<LayoutWrapper currentPageName="DashboardTrocas"><AnalisesComercial /></LayoutWrapper>} />
