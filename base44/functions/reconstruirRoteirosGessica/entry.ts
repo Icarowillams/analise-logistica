@@ -1,13 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Reconstroi os roteiros da vendedora Gessica (seg a sab).
-// Logica de pares: Seg=Qui, Ter=Sex, Qua=Sab (mesmos clientes no par).
-// 115 clientes divididos em 3 grupos: ~38 / ~38 / ~39.
+// Logica: 115 clientes divididos em 6 grupos (~19 cada).
+// Dias iniciais pegam 1 grupo, dias finais pegam 2 grupos (mesma direcao + area extra).
+// Seg=grupo0, Qui=grupo0+grupo3 | Ter=grupo1, Sex=grupo1+grupo4 | Qua=grupo2, Sab=grupo2+grupo5
 
-const PARES = [
-  { dias: ['segunda-feira', 'quinta-feira'], label: 'Seg/Qui' },
-  { dias: ['terca-feira', 'sexta-feira'], label: 'Ter/Sex' },
-  { dias: ['quarta-feira', 'sabado'], label: 'Qua/Sab' },
+const DIAS = [
+  { dia: 'segunda-feira', grupos: [0] },
+  { dia: 'quinta-feira',  grupos: [0, 3] },
+  { dia: 'terca-feira',   grupos: [1] },
+  { dia: 'sexta-feira',   grupos: [1, 4] },
+  { dia: 'quarta-feira',  grupos: [2] },
+  { dia: 'sabado',        grupos: [2, 5] },
 ];
 const VENDEDOR_ID = '69ff70a75fbcb49b6597113f';
 
@@ -57,57 +61,65 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. Distribuir clientes em 3 grupos (pares Seg/Qui, Ter/Sex, Qua/Sab)
-    const distribuicao = [[], [], []];
+    // 6. Distribuir clientes em 6 grupos (round-robin entre os 6)
+    const grupos = [[], [], [], [], [], []];
     clientesUnicos.forEach((c, i) => {
-      distribuicao[i % 3].push(c);
+      grupos[i % 6].push(c);
     });
 
-    // 7. Criar/atualizar roteiros (cada grupo alimenta 2 dias)
+    // 7. Criar/atualizar roteiros conforme configuracao de grupos por dia
     const resultado = [];
 
-    for (const [idx, par] of PARES.entries()) {
-      const clientesDoGrupo = distribuicao[idx];
-      const idsDoGrupo = clientesDoGrupo.map(c => c.id);
+    // Cache de detalhes por cliente_id para manter consistencia entre dias
+    const detalhesCache = new Map();
 
-      const detalhesDoGrupo = clientesDoGrupo.map((c, i) => {
-        const existente = clientesJaDetalhados.get(c.id);
-        return {
-          cliente_id: c.id,
-          cliente_nome: existente?.cliente_nome || c.razao_social || '',
-          nome_fantasia: existente?.nome_fantasia || c.nome_fantasia || '',
-          cliente_codigo: existente?.cliente_codigo || String(c.codigo_interno || ''),
-          cliente_cidade: existente?.cliente_cidade || c.cidade || '',
-          cliente_bairro: existente?.cliente_bairro || c.bairro || '',
-          cliente_endereco: existente?.cliente_endereco || c.endereco || '',
-          cliente_telefone: existente?.cliente_telefone || c.telefone || '',
-          ordem: i + 1
-        };
+    for (const cfg of DIAS) {
+      // Juntar os grupos que alimentam este dia
+      let clientesDoDia = [];
+      for (const g of cfg.grupos) {
+        clientesDoDia = clientesDoDia.concat(grupos[g]);
+      }
+
+      const idsDoDia = clientesDoDia.map(c => c.id);
+
+      const detalhesDoDia = clientesDoDia.map((c, i) => {
+        if (!detalhesCache.has(c.id)) {
+          const existente = clientesJaDetalhados.get(c.id);
+          detalhesCache.set(c.id, {
+            cliente_id: c.id,
+            cliente_nome: existente?.cliente_nome || c.razao_social || '',
+            nome_fantasia: existente?.nome_fantasia || c.nome_fantasia || '',
+            cliente_codigo: existente?.cliente_codigo || String(c.codigo_interno || ''),
+            cliente_cidade: existente?.cliente_cidade || c.cidade || '',
+            cliente_bairro: existente?.cliente_bairro || c.bairro || '',
+            cliente_endereco: existente?.cliente_endereco || c.endereco || '',
+            cliente_telefone: existente?.cliente_telefone || c.telefone || '',
+          });
+        }
+        return { ...detalhesCache.get(c.id), ordem: i + 1 };
       });
 
-      for (const dia of par.dias) {
-        let roteiro = roteirosExistentes.find(r => r.dia_semana === dia);
+      let roteiro = roteirosExistentes.find(r => r.dia_semana === cfg.dia);
 
-        if (roteiro) {
-          await base44.asServiceRole.entities.Roteiro.update(roteiro.id, {
-            clientes_ids: idsDoGrupo,
-            clientes_detalhes: detalhesDoGrupo,
-            status: 'ativo',
-            ativo: true
-          });
-          resultado.push({ dia, par: par.label, acao: 'atualizado', roteiro_id: roteiro.id, clientes: idsDoGrupo.length });
-        } else {
-          const novo = await base44.asServiceRole.entities.Roteiro.create({
-            vendedor_id: VENDEDOR_ID,
-            vendedor_nome: vendedor.nome || 'GESSICA EDVANIA DE SOUSA',
-            dia_semana: dia,
-            clientes_ids: idsDoGrupo,
-            clientes_detalhes: detalhesDoGrupo,
-            status: 'ativo',
-            ativo: true
-          });
-          resultado.push({ dia, par: par.label, acao: 'criado', roteiro_id: novo.id, clientes: idsDoGrupo.length });
-        }
+      if (roteiro) {
+        await base44.asServiceRole.entities.Roteiro.update(roteiro.id, {
+          clientes_ids: idsDoDia,
+          clientes_detalhes: detalhesDoDia,
+          status: 'ativo',
+          ativo: true
+        });
+        resultado.push({ dia: cfg.dia, acao: 'atualizado', roteiro_id: roteiro.id, clientes: idsDoDia.length });
+      } else {
+        const novo = await base44.asServiceRole.entities.Roteiro.create({
+          vendedor_id: VENDEDOR_ID,
+          vendedor_nome: vendedor.nome || 'GESSICA EDVANIA DE SOUSA',
+          dia_semana: cfg.dia,
+          clientes_ids: idsDoDia,
+          clientes_detalhes: detalhesDoDia,
+          status: 'ativo',
+          ativo: true
+        });
+        resultado.push({ dia: cfg.dia, acao: 'criado', roteiro_id: novo.id, clientes: idsDoDia.length });
       }
     }
 
