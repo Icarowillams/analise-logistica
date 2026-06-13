@@ -256,14 +256,30 @@ function mapearClienteParaOmie(clienteData, rotaNome, vendedorNome, tabelaOmieId
         inscricaoEstadualEnvio = ieDigitos;
     }
 
+    // Prepend codigo_interno ao nome para identificacao no Omie (ex: "[28949] MERCADINHO DA FAMILIA")
+    const codigoInterno = clienteData.codigo_interno || '';
+    const prefixoCodigo = codigoInterno ? `[${codigoInterno}] ` : '';
+    
+    // Se o nome ja tem o prefixo, nao duplicar
+    const prependCodigo = (nome) => {
+      if (!nome || !prefixoCodigo) return nome;
+      if (nome.startsWith(prefixoCodigo)) return nome; // ja tem o prefixo correto
+      const match = nome.match(/^\[\d+\]\s/);
+      if (match) return prefixoCodigo + nome.substring(match[0].length); // substitui prefixo antigo
+      return prefixoCodigo + nome;
+    };
+
+    const razaoSocialFinal = prependCodigo(clienteData.razao_social || clienteData.nome_fantasia || "Cliente sem nome").substring(0, 60);
+    const nomeFantasiaFinal = prependCodigo(clienteData.nome_fantasia || clienteData.razao_social || "").substring(0, 100);
+
     // Mapeamento completo conforme documentação Omie API - clientes_cadastro
     const clienteOmie = {
         // --- Identificação ---
         codigo_cliente_integracao: clienteData.codigo || clienteData.id,
         
         // --- Dados principais ---
-        razao_social: (clienteData.razao_social || clienteData.nome_fantasia || "Cliente sem nome").substring(0, 60),
-        nome_fantasia: (clienteData.nome_fantasia || clienteData.razao_social || "").substring(0, 100),
+        razao_social: razaoSocialFinal,
+        nome_fantasia: nomeFantasiaFinal,
         cnpj_cpf: cnpjCpfLimpo,
         pessoa_fisica: isPessoaFisica ? "S" : "N",
         
