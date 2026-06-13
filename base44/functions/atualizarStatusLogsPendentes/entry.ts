@@ -455,11 +455,55 @@ Deno.serve(async (req) => {
     const codigosConsultadosNestaExecucao = new Set();
     const codigosParaBoleto = [];
 
+    const MAX_IDADE_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias
+    const MAX_TENTATIVAS = 5;
+    const agora = Date.now();
+
+    // Marca todos os logs de um pedido com status 'erro' + mensagem (encerra reprocessamento)
+    const encerrarLogs = async (logsDoPedido, mensagem) => {
+      for (const l of logsDoPedido) {
+        await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem }).catch(() => {});
+      }
+    };
+
     // 3) Consulta cada PEDIDO ÚNICO sequencialmente com delay obrigatório entre chamadas
     let chamadaIndex = 0;
     for (const codPed of codigosUnicos) {
       const t0 = Date.now();
+      const logsDoPedidoGuard = logsPorPedido.get(codPed) || [];
       try {
+        // GUARD 1: codigo_pedido inválido (vazio, 0, não-numérico) → NÃO chamar Omie
+        const codNum = Number(codPed);
+        if (!codPed || !Number.isFinite(codNum) || codNum <= 0) {
+          await encerrarLogs(logsDoPedidoGuard, 'codigo_pedido inválido/ausente — não reprocessar');
+          resultados.push({ codigo_pedido: codPed, sucesso: false, novo_status: 'erro', mensagem: 'codigo_pedido inválido/ausente — não reprocessar' });
+          continue;
+        }
+
+        // GUARD 2a: log pendente há mais de 3 dias → encerrar
+        const maisAntigo = logsDoPedidoGuard.reduce((min, l) => {
+          const t = new Date(l.created_date || l.updated_date || agora).getTime();
+          return t < min ? t : min;
+        }, agora);
+        if (agora - maisAntigo > MAX_IDADE_MS) {
+          await encerrarLogs(logsDoPedidoGuard, 'expirado após 3 dias sem faturamento — não reprocessar');
+          resultados.push({ codigo_pedido: codPed, sucesso: false, novo_status: 'erro', mensagem: 'expirado após 3 dias sem faturamento — não reprocessar' });
+          continue;
+        }
+
+        // GUARD 2b: limite de tentativas atingido → encerrar
+        const tentativasMax = logsDoPedidoGuard.reduce((max, l) => Math.max(max, Number(l.tentativas_reconsulta || 0)), 0);
+        if (tentativasMax >= MAX_TENTATIVAS) {
+          await encerrarLogs(logsDoPedidoGuard, 'limite de tentativas atingido — não reprocessar');
+          resultados.push({ codigo_pedido: codPed, sucesso: false, novo_status: 'erro', mensagem: 'limite de tentativas atingido — não reprocessar' });
+          continue;
+        }
+
+        // Incrementa o contador de tentativas ANTES de consultar (conta esta rodada)
+        for (const l of logsDoPedidoGuard) {
+          await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { tentativas_reconsulta: Number(l.tentativas_reconsulta || 0) + 1 }).catch(() => {});
+        }
+
         if (codigosConsultadosNestaExecucao.has(codPed)) {
           console.log(`[atualizarStatusLogsPendentes] Pedido ${codPed} ignorado - consultado há menos de 10 minutos`);
           resultados.push({ codigo_pedido: codPed, sucesso: false, ignorado_cooldown: true, mensagem: 'Consultado há menos de 10 minutos' });
