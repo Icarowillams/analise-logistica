@@ -16,14 +16,27 @@ async function omieCall(base44, call, param) {
   if (!app_key || !app_secret) throw new Error('Credenciais Omie não configuradas.');
 
   const url = OMIE_BASE_URL + 'produtos/nfconsultar/';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key, app_secret, param: [param] })
-  });
-  const data = await res.json();
-  if (data.faultstring) throw new Error(data.faultstring);
-  return data;
+  const RETRIES = [1000, 2000, 4000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call, app_key, app_secret, param: [param] })
+    });
+    // Status HTTP ANTES de res.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+    if (res.status >= 500 || res.status === 429 || res.status === 425) {
+      const corpo = await res.text().catch(() => '');
+      lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+      if (res.status === 425) throw new Error(lastErr);
+      if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+    const data = await res.json();
+    if (data.faultstring) throw new Error(data.faultstring);
+    return data;
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 
 Deno.serve(async (req) => {

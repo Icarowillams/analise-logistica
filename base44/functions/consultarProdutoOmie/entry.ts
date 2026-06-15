@@ -151,24 +151,45 @@ Deno.serve(async (req) => {
         // Circuit breaker — aborta antes de qualquer chamada
         const controle = await checarBloqueio(base44);
 
-        for (const codigo of codigos) {
+        // Deduplicação por código — evita chamadas redundantes ao Omie no mesmo lote
+        const codigosUnicos = [...new Set(codigos.map(c => String(c)))];
+
+        for (const codigo of codigosUnicos) {
             const cached = getProdutoCached(codigo);
             if (cached) {
                 resultados[codigo] = cached;
                 continue;
             }
-            const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    call: "ConsultarProduto",
-                    app_key: OMIE_APP_KEY,
-                    app_secret: OMIE_APP_SECRET,
-                    param: [{ codigo }]
-                })
-            });
 
-            const data = await response.json();
+            // Chamada com retry/backoff para HTTP 500/429 (instabilidade Omie); 425 → circuit breaker
+            const RETRIES = [1000, 2000, 4000];
+            let data = null;
+            for (let tentativa = 0; tentativa <= RETRIES.length; tentativa++) {
+                const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        call: "ConsultarProduto",
+                        app_key: OMIE_APP_KEY,
+                        app_secret: OMIE_APP_SECRET,
+                        param: [{ codigo }]
+                    })
+                });
+
+                // Tratar status HTTP ANTES de .json() — num 5xx/429 o corpo não costuma ser JSON
+                if (response.status >= 500 || response.status === 429 || response.status === 425) {
+                    const corpo = await response.text().catch(() => '');
+                    if (response.status === 425) {
+                        await tratar425(base44, controle, 'ConsultarProduto', { codigo }, response, { faultstring: corpo || 'HTTP 425' });
+                    }
+                    if (tentativa < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[tentativa])); continue; }
+                    data = { faultstring: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+                    break;
+                }
+
+                data = await response.json();
+                break;
+            }
 
             if (data.faultstring) {
                 await tratar425(base44, controle, 'ConsultarProduto', { codigo }, response, data);

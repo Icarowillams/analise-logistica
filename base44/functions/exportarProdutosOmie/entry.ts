@@ -39,10 +39,41 @@ Deno.serve(async (req) => {
             base44.entities.Categoria.list()
         ]);
 
-        const produtosParaExportar = produtos.filter(p => produtosDoLote.includes(p.id));
+        // Deduplicação por código de produto — evita UpsertProduto redundante no mesmo lote
+        const vistosCodigo = new Set();
+        const produtosParaExportar = produtos
+            .filter(p => produtosDoLote.includes(p.id))
+            .filter(p => {
+                const cod = String(p.codigo || p.id).trim();
+                if (vistosCodigo.has(cod)) return false;
+                vistosCodigo.add(cod);
+                return true;
+            });
 
         const resultados = [];
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        // Fetch com tratamento de status HTTP antes do .json() + backoff para 500/429
+        const omieFetch = async (call, param, tentativa = 1, maxTentativas = 3) => {
+            const r = await fetch(OMIE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
+            });
+            if (r.status >= 500 || r.status === 429) {
+                const corpo = await r.text().catch(() => '');
+                if (tentativa < maxTentativas) {
+                    await delay(2500 * tentativa);
+                    return omieFetch(call, param, tentativa + 1, maxTentativas);
+                }
+                return { faultstring: `HTTP ${r.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+            }
+            if (r.status === 425) {
+                const corpo = await r.text().catch(() => '');
+                return { faultstring: `HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`, faultcode: '425' };
+            }
+            return r.json();
+        };
 
         for (const produto of produtosParaExportar) {
             // Buscar unidade de medida - usar o nome como sigla (UN, KG, FD, PCT, GR)
@@ -92,21 +123,12 @@ Deno.serve(async (req) => {
 
             // Pré-consulta: injeta codigo_produto numérico para forçar UPDATE em vez de INSERT
             // Tenta primeiro pelo codigo_omie salvo localmente, depois pelo campo "codigo" (ex: "11")
-            const omieCall = async (call, param) => {
-                const r = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ call, app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
-                });
-                return r.json();
-            };
-
             try {
                 const codigoOmieLocal = produto.codigo_omie ? Number(produto.codigo_omie) : null;
                 const paramConsulta = codigoOmieLocal
                     ? { codigo_produto: codigoOmieLocal }
                     : { codigo: produtoOmie.codigo };
-                const achado = await omieCall('ConsultarProduto', paramConsulta);
+                const achado = await omieFetch('ConsultarProduto', paramConsulta);
                 if (achado?.codigo_produto) {
                     produtoOmie.codigo_produto = achado.codigo_produto;
                     if (achado.codigo_produto_integracao) {
@@ -122,18 +144,7 @@ Deno.serve(async (req) => {
             const metodo = modo === "incluir" ? "IncluirProduto" : "UpsertProduto";
 
             try {
-                const response = await fetch(OMIE_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: metodo,
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [produtoOmie]
-                    })
-                });
-
-                const resultado = await response.json();
+                const resultado = await omieFetch(metodo, produtoOmie);
 
                 resultados.push({
                     produto_id: produto.id,

@@ -9,6 +9,20 @@ async function omieFetchComRetry(url, payload, tentativa = 1, maxTentativas = 3)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
+    // Tratar status HTTP ANTES de .json() — num 5xx/429 o corpo não costuma ser JSON.
+    // 500/429 → retry com backoff; 425 → não reenfileira (deixa a lógica de bloqueio resolver).
+    if (res.status >= 500 || res.status === 429) {
+        const corpo = await res.text().catch(() => '');
+        if (tentativa < maxTentativas) {
+            await new Promise(r => setTimeout(r, 2500 * tentativa));
+            return omieFetchComRetry(url, payload, tentativa + 1, maxTentativas);
+        }
+        return { faultstring: `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+    }
+    if (res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        return { faultstring: `HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`, faultcode: '425' };
+    }
     const data = await res.json();
     if (data.faultstring) {
         const msg = data.faultstring.toLowerCase();

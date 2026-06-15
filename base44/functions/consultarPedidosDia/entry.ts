@@ -17,21 +17,41 @@ async function getOmieCredentials(base44) {
 async function omieCall(base44, endpoint, param, call) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const url = OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 20000);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
-    signal: controller.signal
-  });
-  clearTimeout(tid);
-  const data = await res.json();
-  if (data.faultstring) {
-    if (/n[ãa]o existem registros/i.test(data.faultstring)) return null;
-    throw new Error(data.faultstring);
+  const RETRIES = [1000, 2000, 4000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
+      signal: controller.signal
+    });
+    clearTimeout(tid);
+    // Tratamento de status HTTP ANTES de res.json() — num 5xx/429 o corpo não costuma ser JSON.
+    if (res.status >= 500 || res.status === 429 || res.status === 425) {
+      const corpo = await res.text().catch(() => '');
+      lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+      if (res.status === 425) {
+        const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+        const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+        const _p = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+        if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+        throw new Error(lastErr);
+      }
+      if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+    const data = await res.json();
+    if (data.faultstring) {
+      if (/n[ãa]o existem registros/i.test(data.faultstring)) return null;
+      throw new Error(data.faultstring);
+    }
+    return data;
   }
-  return data;
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 
 Deno.serve(async (req) => {

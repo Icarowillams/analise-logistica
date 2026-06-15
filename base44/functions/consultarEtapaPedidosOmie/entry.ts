@@ -59,14 +59,20 @@ async function omieCallSafe(base44, endpoint, param, options = {}) {
       });
       clearTimeout(timer);
 
-      // Rate limit (429) — espera e retenta
-      if (resp.status === 429) {
-        console.warn(`[consultarEtapa] Rate limit 429 na tentativa ${attempt + 1}/${MAX_RETRIES + 1}`);
+      // Rate limit (429) e erro interno do Omie (5xx) — espera e retenta com backoff.
+      // O corpo de um 5xx/429 costuma NÃO ser JSON, por isso tratamos antes do parse.
+      if (resp.status === 429 || resp.status >= 500) {
+        console.warn(`[consultarEtapa] HTTP ${resp.status} na tentativa ${attempt + 1}/${MAX_RETRIES + 1}`);
+        await resp.text().catch(() => '');
         if (attempt < MAX_RETRIES) {
           await delay(RETRY_DELAY_MS * (attempt + 1));
           continue;
         }
-        throw new Error('Rate limit Omie (429) — tentativas esgotadas');
+        throw new Error(`Erro HTTP ${resp.status} Omie — tentativas esgotadas`);
+      }
+      if (resp.status === 425) {
+        await resp.text().catch(() => '');
+        return { _bloqueio_omie: true, faultstring: 'HTTP 425 — consumo indevido' };
       }
 
       const text = await resp.text();
