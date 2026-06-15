@@ -16,8 +16,20 @@ export default function LogClientesNaoCadastrados() {
     queryKey: ['logsClientesNaoCadastrados'],
     queryFn: () => base44.entities.LogClienteNaoCadastrado.filter({ status: 'pendente' }, '-created_date')
   });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
   const { data: roteiros = [] } = useQuery({ queryKey: ['roteiros'], queryFn: () => base44.entities.Roteiro.list() });
+
+  // Busca SÓ os clientes referenciados pelos logs (por código) — não a base inteira.
+  const codigosLog = [...new Set(logs.map(l => l.codigo_cliente).filter(Boolean))];
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['log-clientes-nao-cadastrados-clientes', codigosLog.join('|')],
+    queryFn: async () => {
+      if (codigosLog.length === 0) return [];
+      const listas = await Promise.all(codigosLog.map(cod => base44.entities.Cliente.filter({ codigo_interno: cod }, '-created_date', 1).catch(() => [])));
+      return listas.flat();
+    },
+    enabled: codigosLog.length > 0,
+    staleTime: 60 * 1000,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.LogClienteNaoCadastrado.delete(id),
