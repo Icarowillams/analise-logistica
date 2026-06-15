@@ -117,9 +117,11 @@ export default function SupervisaoFilaEnvio() {
     if (reprocessaveis.length === 0) { toast.info('Nenhum erro reprocessável (todos já no limite de tentativas)'); return; }
     setReprocessando(true);
     try {
-      for (const item of reprocessaveis) {
-        await base44.entities.FilaEnvioPedidoOmie.update(item.id, { status: 'pendente', erro_log: null });
-        await new Promise(r => setTimeout(r, 400));
+      const updates = reprocessaveis.map(f => ({ id: f.id, status: 'pendente', erro_log: null }));
+      const SUB_BATCH = 50;
+      for (let i = 0; i < updates.length; i += SUB_BATCH) {
+        await base44.entities.FilaEnvioPedidoOmie.bulkUpdate(updates.slice(i, i + SUB_BATCH));
+        await new Promise(r => setTimeout(r, 500));
       }
       toast.success(`${reprocessaveis.length} pedido(s) reenfileirado(s)`);
       invalidarTudo();
