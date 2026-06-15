@@ -44,12 +44,28 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     staleTime: 15000
   });
 
-  // Carrega Clientes para enriquecer com codigo_interno e nome_fantasia (join local)
+  // Carrega SÓ os clientes referenciados pelos logs (por cliente_id) para enriquecer
+  // com codigo_interno e nome_fantasia — não a base inteira.
+  const clienteIdsLogs = useMemo(
+    () => [...new Set(logs.map(l => l.cliente_id).filter(Boolean))],
+    [logs]
+  );
   const { data: clientes = [] } = useQuery({
-    queryKey: ['clientesParaLogNF'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
-    enabled: ativa,
-    staleTime: 5 * 60 * 1000
+    queryKey: ['clientesParaLogNF', clienteIdsLogs],
+    enabled: ativa && clienteIdsLogs.length > 0,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const LOTE = 100;
+      const out = [];
+      for (let i = 0; i < clienteIdsLogs.length; i += LOTE) {
+        const lote = clienteIdsLogs.slice(i, i + LOTE);
+        const res = await base44.entities.Cliente.filter(
+          { id: { $in: lote } }, '-created_date', LOTE, ['id', 'codigo_interno', 'nome_fantasia']
+        );
+        out.push(...res);
+      }
+      return out;
+    }
   });
 
   const clientePorId = useMemo(() => {

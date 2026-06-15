@@ -17,7 +17,7 @@ export default function RelatorioTrocas() {
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
   const { data: redes = [] } = useQuery({ queryKey: ['redes'], queryFn: () => base44.entities.Rede.list() });
   const { data: motivos = [] } = useQuery({ queryKey: ['motivosTroca'], queryFn: () => base44.entities.MotivoTroca.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list('-updated_date', 5000) });
+  const { data: clientes = [] } = useQuery({ queryKey: ['clientes_relatorio_trocas'], queryFn: () => base44.entities.Cliente.list('-updated_date', 1000, ['id', 'razao_social', 'rede_id']), staleTime: 5 * 60 * 1000 });
   const { data: visitas = [] } = useQuery({ queryKey: ['visitas'], queryFn: () => base44.entities.VisitaRoteiro.list('-data_visita', 10000) });
 
   const clienteRedeMap = useMemo(() => new Map(clientes.map(c => [c.id, c.rede_id])), [clientes]);

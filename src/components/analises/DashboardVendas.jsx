@@ -28,9 +28,11 @@ export default function DashboardVendas() {
     queryKey: ['rotas_analise'],
     queryFn: () => base44.entities.Rota.list()
   });
+  // Só precisamos do vínculo cliente→vendedor: projetar campos mínimos e limitar a 1000 (base tem ~958).
   const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes_analise'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 20000)
+    queryKey: ['clientes_vinculo_vendedor'],
+    queryFn: () => base44.entities.Cliente.list('-created_date', 1000, ['id', 'vendedor_id', 'rota_id']),
+    staleTime: 5 * 60 * 1000
   });
   // Pedidos de venda faturados (entregues ou com NF emitida)
   const { data: pedidosFaturados = [], isLoading: loadingF } = useQuery({

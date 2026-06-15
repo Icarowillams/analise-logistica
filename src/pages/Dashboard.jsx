@@ -26,9 +26,11 @@ export default function Dashboard() {
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'venda' }, '-created_date', 1000)
   });
 
+  // Só usamos status para contar ativos/total: projetar campos mínimos e limitar a 1000 (base tem ~958).
   const { data: clientes = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
+    queryKey: ['clientes_status_dashboard'],
+    queryFn: () => base44.entities.Cliente.list('-created_date', 1000, ['id', 'status']),
+    staleTime: 5 * 60 * 1000
   });
 
   const { data: vendedores = [], isLoading: loadingVendedores } = useQuery({
