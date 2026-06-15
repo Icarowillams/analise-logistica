@@ -42,6 +42,22 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
       clearTimeout(tid);
+      // Tratamento de status HTTP ANTES de res.json() — num 5xx/429 o corpo não costuma ser JSON.
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 425) {
+          const _cbId = '6a1e06a9aa62ceab7b3b6d97';
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p: any = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null);
+          throw new Error(lastErr);
+        }
+        if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        throw new Error(lastErr);
+      }
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
@@ -67,73 +83,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 // ═══ fim omieClient inline ═══
-
-const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
-
-// Endpoint pedido vs geral conforme a call
-function urlParaCall(call) {
-  return /ConsultarCliente|UpsertCliente|ListarClientes/i.test(call)
-    ? 'https://app.omie.com.br/api/v1/geral/clientes/'
-    : OMIE_URL;
-}
-
-// omieCall com circuit breaker + 425 (bloqueio 30min, sem retry) + retry 429
-  const APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-  const url = urlParaCall(endpoint);
-
-  // Circuit breaker — aborta antes de qualquer chamada
-  const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
-  const controle = cb?.[0];
-  if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
-    const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
-    err.code = 'OMIE_425';
-    err.bloqueado_ate = controle.bloqueado_ate;
-    throw err;
-  }
-
-  const body = { call: endpoint, app_key: APP_KEY, app_secret: APP_SECRET, param: [param] };
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-
-      if (data.faultstring || data.faultcode) {
-        const msg = String(data.faultstring || '').toLowerCase();
-        // 425 / consumo indevido → bloqueia 30min, sem retry
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-          { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring || '').slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => {}); }
-          const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Erro: ${String(data.faultstring || '').slice(0, 200)}`);
-          err.code = 'OMIE_425';
-          throw err;
-        }
-        // 429 / cota → retry com backoff
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')) {
-          lastError = new Error(data.faultstring);
-          if (attempt < 2) { await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); continue; }
-        }
-        return data; // erro de negócio — devolve ao chamador
-      }
-      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
-      return data;
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.code === 'OMIE_425') throw err;
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
-}
 
 const ETAPA_STATUS_MAP = {
     '10': 'enviado',
