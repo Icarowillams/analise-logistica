@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { Package, Upload, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send, RefreshCw } from 'lucide-react';
+import { Package, Upload, Image as ImageIcon, List, Save, Ban, Download, ZoomIn, Send, RefreshCw, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ export default function Produtos() {
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [exportOmieOpen, setExportOmieOpen] = useState(false);
+  const [enviandoOmie, setEnviandoOmie] = useState(false);
   const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '',
@@ -518,27 +519,42 @@ export default function Produtos() {
                     <Button
                       type="button"
                       variant="outline"
+                      disabled={enviandoOmie}
                       className="border-amber-400 text-amber-700 hover:bg-amber-50"
                       onClick={async () => {
+                        if (enviandoOmie) return;
+                        setEnviandoOmie(true);
                         try {
-                          toast.info('Enviando ao Omie…');
                           const res = await base44.functions.invoke('enviarProdutoOmie', {
                             event: { type: 'manual', entity_id: selected.id },
                             data: selected
                           });
-                          if (res.data?.sucesso) {
-                            toast.success(`✅ Enviado ao Omie (código ${res.data.codigo_omie || '—'})`);
+                          const d = res.data || {};
+                          if (d.sucesso) {
                             queryClient.invalidateQueries(['produtos']);
+                            if (d.em_processamento) {
+                              toast('⏳ Envio já em processamento, aguarde alguns segundos');
+                            } else if (d.ja_cadastrado) {
+                              toast.success(`✅ Produto já sincronizado no Omie${d.codigo_omie ? ` (código ${d.codigo_omie})` : ''}`);
+                            } else {
+                              toast.success(`✅ Sincronizado ✓${d.codigo_omie ? ` (código Omie: ${d.codigo_omie})` : ''}`);
+                            }
                           } else {
-                            toast.error('❌ ' + (res.data?.erro || 'Falha no envio'));
+                            toast.error('❌ ' + (d.erro || 'Falha no envio'));
                           }
                         } catch (e) {
-                          toast.error('❌ ' + e.message);
+                          toast.error('❌ ' + (e?.message || 'Falha no envio'));
+                        } finally {
+                          setEnviandoOmie(false);
                         }
                       }}
                     >
-                      <Send className="w-4 h-4 mr-2" />
-                      Enviar ao Omie
+                      {enviandoOmie ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
+                      {enviandoOmie ? 'Enviando…' : 'Enviar ao Omie'}
                     </Button>
                   )}
                   <Button 

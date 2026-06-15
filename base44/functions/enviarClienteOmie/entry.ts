@@ -573,6 +573,50 @@ Deno.serve(async (req) => {
                 }
             }
 
+            const faultMsg = String(resultado.faultstring || '');
+            const faultMsgLower = faultMsg.toLowerCase();
+            const faultCodeStr = String(resultado.faultcode || '');
+
+            // CÓDIGO 101 / "já cadastrado" = cliente já existe no Omie → SUCESSO (não erro)
+            if (faultCodeStr.includes('101') || isErroDuplicidadeCliente(resultado)) {
+                // Tentar recuperar o código Omie para gravar localmente
+                let codigoExistente = clienteOmie.codigo_cliente_omie;
+                if (!codigoExistente && cnpjLimpo) {
+                    try {
+                        const existente = await buscarClienteOmiePorCpfCnpj(base44, cnpjLimpo);
+                        if (existente?.codigo_cliente_omie) {
+                            codigoExistente = existente.codigo_cliente_omie;
+                            await salvarCodigoOmieNoCliente(base44, clienteData.id, codigoExistente);
+                        }
+                    } catch (_) { /* ignore */ }
+                }
+                await logOmie(base44, {
+                    endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente',
+                    entidade_tipo: 'Cliente', entidade_id: clienteData.id,
+                    status: 'sucesso', mensagem_erro: 'Cliente já cadastrado no Omie (código 101) — tratado como sincronizado.',
+                    payload_resposta: JSON.stringify(resultado).slice(0, 5000), duracao_ms, tentativas: 1
+                });
+                return Response.json({
+                    sucesso: true, ja_cadastrado: true, cliente_id: clienteData.id,
+                    codigo_omie: codigoExistente || null,
+                    mensagem: 'Cliente já sincronizado no Omie'
+                });
+            }
+
+            // CÓDIGO 6 / REDUNDANT = envio em processamento → aviso neutro (não erro)
+            if (faultCodeStr.includes('SOAP-ENV:Client-6') || /c[óo]digo\s*6\b/.test(faultMsgLower) || faultMsgLower.includes('redundant') || faultMsgLower.includes('redundante')) {
+                await logOmie(base44, {
+                    endpoint: 'geral/clientes', call: 'UpsertCliente', operacao: 'enviar_cliente',
+                    entidade_tipo: 'Cliente', entidade_id: clienteData.id,
+                    status: 'warning', codigo_erro: resultado.faultcode, mensagem_erro: faultMsg,
+                    payload_resposta: JSON.stringify(resultado).slice(0, 5000), duracao_ms, tentativas: 1
+                });
+                return Response.json({
+                    sucesso: true, em_processamento: true, cliente_id: clienteData.id,
+                    mensagem: 'Envio já em processamento, aguarde alguns segundos'
+                });
+            }
+
             console.error('[enviarClienteOmie] Erro Omie:', resultado.faultstring);
             await logOmie(base44, {
                 endpoint: 'geral/clientes',
@@ -627,7 +671,18 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
+        const msg = String(error?.message || '');
+        const msgLower = msg.toLowerCase();
+
+        // CÓDIGO 101 / "já cadastrado" lançado dentro do omieCall = sucesso
+        if (msg.includes('101') || msgLower.includes('já cadastrado') || msgLower.includes('ja cadastrado') || msgLower.includes('já existe') || msgLower.includes('duplicidade')) {
+            return Response.json({ sucesso: true, ja_cadastrado: true, mensagem: 'Cliente já sincronizado no Omie' });
+        }
+        // CÓDIGO 6 / REDUNDANT = aviso neutro
+        if (msg.includes('-6') || /c[óo]digo\s*6\b/.test(msgLower) || msgLower.includes('redundant') || msgLower.includes('redundante') || msgLower.includes('aguarde')) {
+            return Response.json({ sucesso: true, em_processamento: true, mensagem: 'Envio já em processamento, aguarde alguns segundos' });
+        }
         console.error('Erro ao enviar cliente para Omie:', error.message);
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ sucesso: false, erro: msg || 'Falha no envio ao Omie' }, { status: 500 });
     }
 });
