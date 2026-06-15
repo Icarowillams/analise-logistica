@@ -23,14 +23,13 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     enabled: !!vendedor
   });
 
-  // Carrega TODOS os clientes do vendedor (list ignora limite padrao de 50)
+  // Carrega SÓ os clientes ativos deste vendedor (filtro no servidor — não a base inteira)
   const { data: clientesVendedor = [] } = useQuery({
     queryKey: ['clientes-vendedor', vendedor.id],
-    queryFn: async () => {
-      const todos = await base44.entities.Cliente.list('-created_date', 5000);
-      return todos.filter(c => c.vendedor_id === vendedor.id && c.status === 'ativo');
-    },
-    enabled: !!vendedor?.id
+    queryFn: () => base44.entities.Cliente.filter({ vendedor_id: vendedor.id, status: 'ativo' }, '-created_date', 5000),
+    enabled: !!vendedor?.id,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false
   });
 
   const clientes = useMemo(() => clientesVendedor, [clientesVendedor]);
@@ -65,18 +64,28 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     { valor: 'domingo', label: 'Dom' }
   ];
 
-  // Resolve a lista de clientes de um dia a partir do roteiro (deduplicando por cliente)
+  // Resolve a lista de clientes de um dia a partir do roteiro (deduplicando por cliente).
+  // Usa os dados já salvos em clientes_detalhes; só cruza com o cliente completo do vendedor
+  // quando há match (para enriquecer). Sem match, mantém os dados do detalhe (instantâneo).
   const resolverClientesDoDia = (dia) => {
     const roteiroDia = roteiros.find(r => r.dia_semana === dia);
     if (!roteiroDia || !roteiroDia.clientes_detalhes) return [];
     const vistos = new Set();
     return roteiroDia.clientes_detalhes.map(cd => {
-      // Prioriza busca por código interno (campo estável) em vez de cliente_id (pode mudar)
       const clienteCompleto = clientes.find(c => cd.cliente_codigo && (c.codigo_interno === cd.cliente_codigo || c.codigo_integracao === cd.cliente_codigo))
         || clientes.find(c => cd.cliente_id && c.id === cd.cliente_id);
-      if (!clienteCompleto || vistos.has(clienteCompleto.id)) return null;
-      vistos.add(clienteCompleto.id);
-      return { ...clienteCompleto, ordem: cd.ordem };
+      const base = clienteCompleto || {
+        id: cd.cliente_id,
+        codigo_interno: cd.cliente_codigo,
+        razao_social: cd.cliente_nome,
+        nome_fantasia: cd.nome_fantasia,
+        cidade: cd.cliente_cidade,
+        bairro: cd.cliente_bairro,
+      };
+      const chave = base.id || cd.cliente_codigo;
+      if (!chave || vistos.has(chave)) return null;
+      vistos.add(chave);
+      return { ...base, ordem: cd.ordem };
     }).filter(Boolean);
   };
 
@@ -93,6 +102,29 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
     const s = searchCliente.toLowerCase();
     return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo_interno?.toLowerCase().includes(s);
   });
+
+  // Ao selecionar: garante o Cliente COMPLETO. Se o item do roteiro veio parcial
+  // (sem match na lista do vendedor), busca o registro completo por id/código.
+  const [carregandoCliente, setCarregandoCliente] = useState(false);
+  const selecionarCliente = async (cli) => {
+    const completo = clientes.find(c => c.id === cli.id);
+    if (completo) { setSelectedCliente(completo); return; }
+    setCarregandoCliente(true);
+    try {
+      let achado = null;
+      if (cli.id) {
+        const r = await base44.entities.Cliente.filter({ id: cli.id }, '-created_date', 1);
+        achado = r[0];
+      }
+      if (!achado && cli.codigo_interno) {
+        const r = await base44.entities.Cliente.filter({ codigo_interno: cli.codigo_interno }, '-created_date', 1);
+        achado = r[0];
+      }
+      setSelectedCliente(achado || cli);
+    } finally {
+      setCarregandoCliente(false);
+    }
+  };
 
   return (
     <div>
@@ -152,7 +184,7 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
         ) : (
           <div className="space-y-2">
             {clientesFiltrados.map((cli) => (
-              <Card key={cli.id} className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors" onClick={() => setSelectedCliente(cli)}>
+              <Card key={cli.id || cli.codigo_interno} className={`cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors ${carregandoCliente ? 'opacity-60 pointer-events-none' : ''}`} onClick={() => selecionarCliente(cli)}>
                 <CardContent className="p-3 flex items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm truncate">{cli.codigo_interno || cli.codigo} - {cli.nome_fantasia || cli.razao_social}</p>

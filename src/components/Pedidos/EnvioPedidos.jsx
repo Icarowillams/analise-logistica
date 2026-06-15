@@ -52,9 +52,23 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     refetchOnWindowFocus: false
   });
 
+  // Carrega SÓ os clientes referenciados pelos pedidos deste vendedor (não a base inteira).
+  const clienteIds = useMemo(() => [...new Set(pedidos.map(p => p.cliente_id).filter(Boolean))], [pedidos]);
   const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes-envio-pedidos'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    queryKey: ['clientes-envio-pedidos', vendedor.id, clienteIds.join('|')],
+    queryFn: async () => {
+      if (clienteIds.length === 0) return [];
+      const LOTE = 20;
+      const out = [];
+      for (let i = 0; i < clienteIds.length; i += LOTE) {
+        const lote = clienteIds.slice(i, i + LOTE);
+        const listas = await Promise.all(lote.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1).catch(() => [])));
+        out.push(...listas.flat());
+        if (i + LOTE < clienteIds.length) await new Promise(r => setTimeout(r, 100));
+      }
+      return out;
+    },
+    enabled: clienteIds.length > 0,
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false
   });

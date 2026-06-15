@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, X, GripVertical } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import useBuscaClientes from '@/components/hooks/useBuscaClientes';
 
 export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditing }) {
   const [formData, setFormData] = useState({
@@ -23,11 +24,14 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
 
   const queryClient = useQueryClient();
 
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
-  const { data: redes = [] } = useQuery({ queryKey: ['redes'], queryFn: () => base44.entities.Rede.list() });
-  const { data: rotas = [] } = useQuery({ queryKey: ['rotas'], queryFn: () => base44.entities.Rota.list() });
-  const { data: segmentos = [] } = useQuery({ queryKey: ['segmentos'], queryFn: () => base44.entities.Segmento.list() });
+  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list(), staleTime: 5 * 60 * 1000 });
+  const { data: redes = [] } = useQuery({ queryKey: ['redes'], queryFn: () => base44.entities.Rede.list(), staleTime: 5 * 60 * 1000 });
+  const { data: rotas = [] } = useQuery({ queryKey: ['rotas'], queryFn: () => base44.entities.Rota.list(), staleTime: 5 * 60 * 1000 });
+  const { data: segmentos = [] } = useQuery({ queryKey: ['segmentos'], queryFn: () => base44.entities.Segmento.list(), staleTime: 5 * 60 * 1000 });
+
+  // Busca SERVER-SIDE de clientes — gatilho é o primeiro campo de texto preenchido.
+  const termoBusca = filtros.busca || filtros.codigo || filtros.cpf_cnpj || '';
+  const { clientes, isFetching: buscandoClientes, termoAtivo: buscaAtiva } = useBuscaClientes(termoBusca, { minChars: 2, limite: 50 });
 
   const supervisores = vendedores.filter(v => vendedores.some(vend => vend.supervisor_id === v.id));
 
@@ -36,24 +40,21 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
       setFormData({
         vendedor_id: roteiro.vendedor_id || '',
         dia_semana: roteiro.dia_semana || '',
-        clientes_selecionados: roteiro.clientes_detalhes?.map(c => {
-          const completo = clientes.find(cl => cl.id === c.cliente_id) ||
-            (c.cliente_codigo ? clientes.find(cl => cl.codigo_interno === c.cliente_codigo) : undefined);
-          return {
-            id: completo?.id || c.cliente_id,
-            nome: completo?.razao_social || c.cliente_nome,
-            nome_fantasia: completo?.nome_fantasia || c.nome_fantasia || '',
-            codigo: completo?.codigo_interno || c.cliente_codigo,
-            cidade: completo?.cidade || c.cliente_cidade,
-            bairro: completo?.bairro || c.cliente_bairro,
-            ordem: c.ordem
-          };
-        }) || []
+        // Usa diretamente os dados já persistidos em clientes_detalhes (nome, código, cidade)
+        clientes_selecionados: roteiro.clientes_detalhes?.map(c => ({
+          id: c.cliente_id,
+          nome: c.cliente_nome,
+          nome_fantasia: c.nome_fantasia || '',
+          codigo: c.cliente_codigo,
+          cidade: c.cliente_cidade,
+          bairro: c.cliente_bairro,
+          ordem: c.ordem
+        })) || []
       });
     } else {
       setFormData({ vendedor_id: '', dia_semana: '', clientes_selecionados: [] });
     }
-  }, [roteiro, isEditing, open, clientes]);
+  }, [roteiro, isEditing, open]);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Roteiro.create(data),
@@ -163,12 +164,6 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
 
   const clientesFiltrados = clientes.filter(c => {
     if (formData.clientes_selecionados.find(cs => cs.id === c.id)) return false;
-    if (filtros.busca) {
-      const q = filtros.busca.toLowerCase();
-      if (!(c.razao_social?.toLowerCase().includes(q) || c.nome_fantasia?.toLowerCase().includes(q) || c.codigo_interno?.toLowerCase().includes(q))) return false;
-    }
-    if (filtros.codigo && !c.codigo_interno?.toLowerCase().includes(filtros.codigo.toLowerCase())) return false;
-    if (filtros.cpf_cnpj && !c.cnpj_cpf?.toLowerCase().includes(filtros.cpf_cnpj.toLowerCase())) return false;
     if (filtros.cidade && !c.cidade?.toLowerCase().includes(filtros.cidade.toLowerCase())) return false;
     if (filtros.vendedor_id && c.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.supervisor_id) {
@@ -276,7 +271,11 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                 </div>
 
                 <div className="max-h-60 overflow-y-auto space-y-1 border-t pt-2">
-                  {clientesFiltrados.length === 0 ? (
+                  {!buscaAtiva ? (
+                    <p className="text-sm text-slate-500 text-center py-4">Digite ao menos 2 letras (busca, código ou CPF/CNPJ)</p>
+                  ) : buscandoClientes ? (
+                    <p className="text-sm text-slate-500 text-center py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Buscando...</p>
+                  ) : clientesFiltrados.length === 0 ? (
                     <p className="text-sm text-slate-500 text-center py-4">Nenhum cliente</p>
                   ) : (
                     <>

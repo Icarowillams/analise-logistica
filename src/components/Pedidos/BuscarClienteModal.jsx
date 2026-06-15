@@ -5,10 +5,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin } from 'lucide-react';
+import { Search, MapPin, Loader2 } from 'lucide-react';
+import useBuscaClientes from '@/components/hooks/useBuscaClientes';
 
-// Modal compacto de busca de cliente — usa as mesmas dimensões dos filtros do cadastro,
-// mas em formato pop-up. Ao selecionar e clicar em "Buscar", retorna o código do cliente.
+// Modal compacto de busca de cliente — busca SERVER-SIDE: nada carrega antes de digitar.
+// Ao selecionar e clicar em "Buscar", retorna o código do cliente.
 export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
   const [filters, setFilters] = useState({
     vendedor_id: 'all',
@@ -22,35 +23,35 @@ export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
   });
   const [selectedId, setSelectedId] = useState(null);
 
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['buscar-cliente-modal-clientes'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
-    enabled: open,
-  });
+  // Busca server-side a partir de 2 letras (nome/código), debounce 300ms, limite 30.
+  const { clientes, isFetching, termoAtivo } = useBuscaClientes(filters.search, { minChars: 2, limite: 30 });
+
+  // Tabelas auxiliares — só para exibir nomes; carregadas só com o modal aberto.
   const { data: vendedores = [] } = useQuery({
     queryKey: ['buscar-cliente-modal-vendedores'],
     queryFn: () => base44.entities.Vendedor.list(),
-    enabled: open,
+    enabled: open, staleTime: 5 * 60 * 1000,
   });
   const { data: redes = [] } = useQuery({
     queryKey: ['buscar-cliente-modal-redes'],
     queryFn: () => base44.entities.Rede.list(),
-    enabled: open,
+    enabled: open, staleTime: 5 * 60 * 1000,
   });
   const { data: segmentos = [] } = useQuery({
     queryKey: ['buscar-cliente-modal-segmentos'],
     queryFn: () => base44.entities.Segmento.list(),
-    enabled: open,
+    enabled: open, staleTime: 5 * 60 * 1000,
   });
   const { data: rotas = [] } = useQuery({
     queryKey: ['buscar-cliente-modal-rotas'],
     queryFn: () => base44.entities.Rota.list(),
-    enabled: open,
+    enabled: open, staleTime: 5 * 60 * 1000,
   });
 
   const getNome = (lista, id) => lista.find(i => i.id === id)?.nome || '-';
   const getCodigo = (c) => c?.codigo_interno || c?.codigo_integracao || c?.codigo || c?.codigo_omie || '';
 
+  // Filtros adicionais aplicados sobre o resultado da busca server-side
   const filtrados = useMemo(() => {
     return clientes.filter(c => {
       if (filters.status !== 'all' && c.status !== filters.status) return false;
@@ -60,14 +61,8 @@ export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
       if (filters.rota_id !== 'all' && c.rota_id !== filters.rota_id) return false;
       if (filters.cidade && !c.cidade?.toLowerCase().includes(filters.cidade.toLowerCase())) return false;
       if (filters.bairro && !c.bairro?.toLowerCase().includes(filters.bairro.toLowerCase())) return false;
-      if (filters.search) {
-        const s = filters.search.toLowerCase();
-        const match = [getCodigo(c), c.razao_social, c.nome_fantasia, c.cnpj_cpf, c.endereco]
-          .some(v => v && String(v).toLowerCase().includes(s));
-        if (!match) return false;
-      }
       return true;
-    }).slice(0, 200);
+    });
   }, [clientes, filters]);
 
   const clienteSelecionado = filtrados.find(c => c.id === selectedId);
@@ -96,6 +91,19 @@ export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
 
         {/* Filtros */}
         <div className="p-3 border-b bg-slate-50 grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">
+          <div className="col-span-2 md:col-span-2">
+            <label className="text-[10px] text-slate-600">Busca (nome ou código) *</label>
+            <div className="relative">
+              <Search className="absolute left-2 top-2 w-3 h-3 text-slate-400" />
+              <Input
+                placeholder="Digite ao menos 2 letras..."
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                className="h-8 text-xs pl-7"
+                autoFocus
+              />
+            </div>
+          </div>
           <div>
             <label className="text-[10px] text-slate-600">Vendedor</label>
             <Select value={filters.vendedor_id} onValueChange={(v) => setFilters({ ...filters, vendedor_id: v })}>
@@ -159,18 +167,6 @@ export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-[10px] text-slate-600">Busca geral</label>
-            <div className="relative">
-              <Search className="absolute left-2 top-2 w-3 h-3 text-slate-400" />
-              <Input
-                placeholder="Código, nome, CNPJ..."
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                className="h-8 text-xs pl-7"
-              />
-            </div>
-          </div>
         </div>
 
         {/* Tabela */}
@@ -187,7 +183,11 @@ export default function BuscarClienteModal({ open, onOpenChange, onConfirm }) {
               </tr>
             </thead>
             <tbody>
-              {filtrados.length === 0 ? (
+              {!termoAtivo ? (
+                <tr><td colSpan={6} className="p-6 text-center text-slate-400">Digite ao menos 2 letras para buscar</td></tr>
+              ) : isFetching ? (
+                <tr><td colSpan={6} className="p-6 text-center text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Buscando...</td></tr>
+              ) : filtrados.length === 0 ? (
                 <tr><td colSpan={6} className="p-6 text-center text-slate-400">Nenhum cliente encontrado</td></tr>
               ) : (
                 filtrados.map(c => (

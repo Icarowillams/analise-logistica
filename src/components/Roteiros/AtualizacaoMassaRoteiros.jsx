@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Search, Plus, Minus, RefreshCw, Filter, Users } from 'lucide-react';
+import useBuscaClientes from '@/components/hooks/useBuscaClientes';
 
 export default function AtualizacaoMassaRoteiros() {
   const qc = useQueryClient();
@@ -26,9 +27,11 @@ export default function AtualizacaoMassaRoteiros() {
   const [resultado, setResultado] = useState(null);
 
   const { data: roteiros = [] } = useQuery({ queryKey: ['roteiros'], queryFn: () => base44.entities.Roteiro.list() });
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: funcoes = [] } = useQuery({ queryKey: ['funcoes'], queryFn: () => base44.entities.Funcao.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
+  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list(), staleTime: 5 * 60 * 1000 });
+  const { data: funcoes = [] } = useQuery({ queryKey: ['funcoes'], queryFn: () => base44.entities.Funcao.list(), staleTime: 5 * 60 * 1000 });
+
+  // Busca SERVER-SIDE de clientes para a ação (não baixa a base inteira)
+  const { clientes: clientesBusca } = useBuscaClientes(buscaCliente, { minChars: 2, limite: 30 });
 
   const roteirosFiltrados = useMemo(() => roteiros.filter(r => {
     if (filtroDia && r.dia_semana !== filtroDia) return false;
@@ -47,14 +50,8 @@ export default function AtualizacaoMassaRoteiros() {
   const vendedoresFiltrados = useMemo(() => filtroFuncao ? vendedores.filter(v => v.funcao_id === filtroFuncao) : vendedores, [vendedores, filtroFuncao]);
 
   const clientesFiltradosAcao = useMemo(() => {
-    if (!buscaCliente || buscaCliente.length < 2) return [];
-    const q = buscaCliente.toLowerCase();
-    return clientes.filter(c => {
-      if (clientesAcao.find(cs => cs.id === c.id)) return false;
-      return c.razao_social?.toLowerCase().includes(q) || c.nome_fantasia?.toLowerCase().includes(q) ||
-        c.codigo_interno?.toLowerCase().includes(q) || c.cnpj_cpf?.includes(q);
-    }).slice(0, 30);
-  }, [clientes, buscaCliente, clientesAcao]);
+    return clientesBusca.filter(c => !clientesAcao.find(cs => cs.id === c.id)).slice(0, 30);
+  }, [clientesBusca, clientesAcao]);
 
   const getDiaLabel = (d) => ({ 'segunda-feira': 'Seg', 'terca-feira': 'Ter', 'quarta-feira': 'Qua', 'quinta-feira': 'Qui', 'sexta-feira': 'Sex', 'sabado': 'Sáb', 'domingo': 'Dom' })[d] || d;
 

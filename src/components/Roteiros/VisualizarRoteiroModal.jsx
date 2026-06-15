@@ -1,6 +1,4 @@
-import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,17 +7,6 @@ import MapaRoteiro from './MapaRoteiro';
 
 export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) {
   const [viewMode, setViewMode] = useState('lista');
-
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list(),
-    enabled: open
-  });
-
-  const clientesMap = useMemo(() => clientes.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}), [clientes]);
-  const clientesMapByCodigo = useMemo(() => clientes.reduce((acc, c) => { if (c.codigo_interno) acc[c.codigo_interno] = c; return acc; }, {}), [clientes]);
-
-  const findCliente = (id, codigo) => clientesMap[id] || (codigo ? clientesMapByCodigo[codigo] : undefined);
 
   if (!roteiro) return null;
 
@@ -50,9 +37,8 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
               <h3 className="font-semibold mb-4">Sequência de Visitas:</h3>
               <div className="space-y-3">
                 {roteiro.clientes_detalhes?.map((cd, idx) => {
-                  const c = findCliente(cd.cliente_id, cd.cliente_codigo);
-                  const nome = c?.nome_fantasia || cd.nome_fantasia || cd.cliente_nome;
-                  const codigo = c?.codigo_interno || cd.cliente_codigo;
+                  const nome = cd.nome_fantasia || cd.cliente_nome;
+                  const codigo = cd.cliente_codigo;
                   return (
                     <div key={idx} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-slate-50">
                       <Badge className="bg-amber-100 text-amber-700 text-lg px-3 py-1">{idx + 1}</Badge>
@@ -62,8 +48,8 @@ export default function VisualizarRoteiroModal({ open, onOpenChange, roteiro }) 
                           <h4 className="font-semibold text-lg">{nome}</h4>
                         </div>
                         <p className="text-sm text-slate-600 mt-1">
-                          {c?.bairro && <span>{c.bairro} - </span>}
-                          {c?.cidade || cd.cliente_cidade}
+                          {cd.cliente_bairro && <span>{cd.cliente_bairro} - </span>}
+                          {cd.cliente_cidade}
                         </p>
                       </div>
                     </div>

@@ -18,11 +18,6 @@ export default function PedidoAvulso({ vendedor, editingPedidoId, onClearEdit, p
 
   const getCodigo = (c) => c?.codigo_interno || c?.codigo_integracao || c?.codigo || c?.codigo_omie || '';
 
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: () => base44.entities.Cliente.list()
-  });
-
   // If editing, load pedido and jump to form
   const { data: editingPedido } = useQuery({
     queryKey: ['pedido-edit-avulso', editingPedidoId],
@@ -33,35 +28,43 @@ export default function PedidoAvulso({ vendedor, editingPedidoId, onClearEdit, p
     enabled: !!editingPedidoId
   });
 
+  // Em edição: busca SÓ o cliente do pedido (por id), não a base inteira.
   useEffect(() => {
-    if (editingPedido && editingPedidoId) {
-      const cli = clientes.find(c => c.id === editingPedido.cliente_id);
-      if (cli) {
-        setSelectedCliente(cli);
-        setTipoPedido(editingPedido.tipo);
-      }
+    if (editingPedido && editingPedidoId && editingPedido.cliente_id) {
+      base44.entities.Cliente.filter({ id: editingPedido.cliente_id }, '-created_date', 1).then(r => {
+        if (r[0]) {
+          setSelectedCliente(r[0]);
+          setTipoPedido(editingPedido.tipo);
+        }
+      }).catch(() => {});
     }
-  }, [editingPedido, editingPedidoId, clientes]);
+  }, [editingPedido, editingPedidoId]);
 
-  const clientesFiltrados = useMemo(() => {
-    const cod = searchCodigo.trim().toLowerCase();
-    const fan = searchFantasia.trim().toLowerCase();
-    if (!cod && !fan) return [];
-    return clientes.filter(c => {
-      if (c.status !== 'ativo') return false;
+  // Busca SERVER-SIDE exata por código OU nome fantasia — nada antes de digitar.
+  const buscaTermo = searchCodigo.trim() || searchFantasia.trim();
+  const { data: clientesFiltrados = [] } = useQuery({
+    queryKey: ['avulso-busca-cliente', searchCodigo.trim(), searchFantasia.trim()],
+    queryFn: async () => {
+      const cod = searchCodigo.trim();
+      const fan = searchFantasia.trim();
+      let resultado = [];
       if (cod) {
-        // Busca EXATA por código (qualquer um dos campos de código)
-        const codigoCli = String(getCodigo(c) || '').toLowerCase();
-        if (codigoCli !== cod) return false;
+        const listas = await Promise.all([
+          base44.entities.Cliente.filter({ codigo_interno: cod, status: 'ativo' }, '-created_date', 10).catch(() => []),
+          base44.entities.Cliente.filter({ codigo_integracao: cod, status: 'ativo' }, '-created_date', 10).catch(() => []),
+        ]);
+        resultado = listas.flat();
+      } else if (fan) {
+        resultado = await base44.entities.Cliente.filter({ nome_fantasia: fan, status: 'ativo' }, '-created_date', 10).catch(() => []);
       }
-      if (fan) {
-        // Busca EXATA por nome fantasia
-        const fantasia = String(c.nome_fantasia || '').toLowerCase();
-        if (fantasia !== fan) return false;
-      }
-      return true;
-    }).slice(0, 50);
-  }, [clientes, searchCodigo, searchFantasia]);
+      const mapa = new Map();
+      resultado.forEach(c => { if (c && !mapa.has(c.id)) mapa.set(c.id, c); });
+      return Array.from(mapa.values()).slice(0, 50);
+    },
+    enabled: !!buscaTermo,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const handleConfirmModal = (codigo, cliente) => {
     if (cliente) {

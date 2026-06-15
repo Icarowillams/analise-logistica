@@ -17,8 +17,27 @@ export default function MapaRoteiro({ roteiro }) {
   const [clientesCoords, setClientesCoords] = useState([]);
   const [center, setCenter] = useState([-8.05, -34.9]);
 
-  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
+  const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list(), staleTime: 5 * 60 * 1000 });
+
+  // Busca SÓ os clientes deste roteiro (por id) para pegar lat/lng — não a base inteira.
+  const roteiroClienteIds = (roteiro?.clientes_detalhes || []).map(cd => cd.cliente_id).filter(Boolean);
+  const { data: clientes = [] } = useQuery({
+    queryKey: ['mapa-roteiro-clientes', roteiro?.id, roteiroClienteIds.join('|')],
+    queryFn: async () => {
+      if (roteiroClienteIds.length === 0) return [];
+      const LOTE = 20;
+      const out = [];
+      for (let i = 0; i < roteiroClienteIds.length; i += LOTE) {
+        const lote = roteiroClienteIds.slice(i, i + LOTE);
+        const listas = await Promise.all(lote.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1).catch(() => [])));
+        out.push(...listas.flat());
+        if (i + LOTE < roteiroClienteIds.length) await new Promise(r => setTimeout(r, 80));
+      }
+      return out;
+    },
+    enabled: roteiroClienteIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (!roteiro) return;

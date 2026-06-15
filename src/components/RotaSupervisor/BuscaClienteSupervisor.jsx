@@ -4,30 +4,26 @@ import { base44 } from '@/api/base44Client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, X } from 'lucide-react';
+import { Search, X, Loader2 } from 'lucide-react';
+import useBuscaClientes from '@/components/hooks/useBuscaClientes';
 
 export default function BuscaClienteSupervisor({ onSelectCliente, clientesJaAdicionados = [] }) {
   const [filtros, setFiltros] = useState({ busca: '', cidade: '', segmento_id: '', rede_id: '' });
 
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: () => base44.entities.Cliente.list() });
-  const { data: segmentos = [] } = useQuery({ queryKey: ['segmentos'], queryFn: () => base44.entities.Segmento.list() });
-  const { data: redes = [] } = useQuery({ queryKey: ['redes'], queryFn: () => base44.entities.Rede.list() });
-
-  const cidades = [...new Set(clientes.map(c => c.cidade).filter(Boolean))].sort();
+  // Busca SERVER-SIDE — nada carrega antes de digitar (a base inteira não é mais baixada).
+  const { clientes, isFetching, termoAtivo } = useBuscaClientes(filtros.busca, { minChars: 2, limite: 50 });
+  const { data: segmentos = [] } = useQuery({ queryKey: ['segmentos'], queryFn: () => base44.entities.Segmento.list(), staleTime: 5 * 60 * 1000 });
+  const { data: redes = [] } = useQuery({ queryKey: ['redes'], queryFn: () => base44.entities.Rede.list(), staleTime: 5 * 60 * 1000 });
 
   const clientesFiltrados = clientes.filter(c => {
     if (clientesJaAdicionados.includes(c.id)) return false;
-    if (filtros.busca) {
-      const busca = filtros.busca.toLowerCase();
-      const match = c.razao_social?.toLowerCase().includes(busca) || c.nome_fantasia?.toLowerCase().includes(busca) ||
-        c.codigo_interno?.toLowerCase().includes(busca) || c.cnpj_cpf?.toLowerCase().includes(busca);
-      if (!match) return false;
-    }
     if (filtros.cidade && c.cidade !== filtros.cidade) return false;
     if (filtros.segmento_id && c.segmento_id !== filtros.segmento_id) return false;
     if (filtros.rede_id && c.rede_id !== filtros.rede_id) return false;
     return true;
   });
+
+  const cidades = [...new Set(clientes.map(c => c.cidade).filter(Boolean))].sort();
 
   const limparFiltros = () => setFiltros({ busca: '', cidade: '', segmento_id: '', rede_id: '' });
   const temFiltro = Object.values(filtros).some(v => v);
@@ -65,12 +61,14 @@ export default function BuscaClienteSupervisor({ onSelectCliente, clientesJaAdic
       </div>
 
       <div className="max-h-60 overflow-y-auto border-t pt-2 space-y-1">
-        {!temFiltro ? (
-          <p className="text-sm text-slate-500 text-center py-4">Use os filtros para buscar</p>
+        {!termoAtivo ? (
+          <p className="text-sm text-slate-500 text-center py-4">Digite ao menos 2 letras para buscar</p>
+        ) : isFetching ? (
+          <p className="text-sm text-slate-500 text-center py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Buscando...</p>
         ) : clientesFiltrados.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-4">Nenhum cliente</p>
         ) : (
-          clientesFiltrados.slice(0, 50).map(c => (
+          clientesFiltrados.map(c => (
             <div key={c.id} className="flex items-center justify-between p-2 hover:bg-white rounded cursor-pointer" onClick={() => onSelectCliente(c)}>
               <div>
                 <p className="text-sm font-medium">{c.codigo_interno} - {c.nome_fantasia || c.razao_social}</p>
