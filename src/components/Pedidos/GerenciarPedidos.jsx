@@ -8,6 +8,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
 import {
+  Popover, PopoverContent, PopoverTrigger
+} from '@/components/ui/popover';
+import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
   Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil
 } from 'lucide-react';
@@ -90,10 +93,20 @@ const getDataPeriodoPedido = (pedido, statusFilter) => {
 };
 const getClienteCodigo = (cliente) => cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || cliente?.codigo_omie || '';
 
+// Opções do filtro de status (multi-seleção). value = chave de análise.
+const STATUS_OPCOES = [
+  { value: 'analise_pendente', label: 'Pendente' },
+  { value: 'analise_liberado', label: 'Liberados' },
+  { value: 'analise_montagem', label: 'Montagem' },
+  { value: 'analise_faturado', label: 'Faturado' },
+  { value: 'analise_cancelado', label: 'Cancelado' },
+  { value: 'sem_omie', label: 'Sem Omie' },
+];
+
 export default function GerenciarPedidos({ onEditPedido }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('todos');
+  const [statusFilters, setStatusFilters] = useState([]); // [] = Todos Status
   const [cenarioFiscalFilter, setCenarioFiscalFilter] = useState('todos');
   const [envioInicio, setEnvioInicio] = useState(() => getTodayFilterDate());
   const [envioFim, setEnvioFim] = useState(() => getTodayFilterDate());
@@ -156,12 +169,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // o usuário seleciona esses filtros no dropdown de status.
   const STATUS_ATIVOS = ['pendente', 'enviado', 'liberado', 'montagem'];
 
-  // Status extra que precisa vir do servidor conforme o filtro selecionado
-  const statusExtra = useMemo(() => {
-    if (statusFilter === 'analise_faturado') return 'faturado';
-    if (statusFilter === 'analise_cancelado') return 'cancelado';
-    return null;
-  }, [statusFilter]);
+  // Status que vêm do servidor SOB DEMANDA (já encerrados, alto volume), com o campo de data usado para filtrar/ordenar.
+  const STATUS_ENCERRADOS = { analise_faturado: 'faturado', analise_cancelado: 'cancelado' };
+  const CAMPO_DATA_ENCERRADO = { faturado: 'data_faturamento', cancelado: 'data_cancelamento' };
+
+  // Lista de status encerrados marcados (faturado/cancelado) — carregados sob demanda.
+  const statusExtras = useMemo(() => {
+    return statusFilters.map(s => STATUS_ENCERRADOS[s]).filter(Boolean);
+  }, [statusFilters]);
 
   const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
@@ -174,39 +189,28 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 30000,
   });
 
-  // Campo de data usado para filtrar/ordenar os encerrados no servidor, conforme o status.
-  const campoDataEncerrado = statusExtra === 'faturado'
-    ? 'data_faturamento'
-    : statusExtra === 'cancelado'
-      ? 'data_cancelamento'
-      : null;
-
-  // Faturados/cancelados — só carrega quando o filtro correspondente está ativo.
-  // Bug 2: em vez de cortar nos 5000 mais recentes (que descarta o histórico antigo),
-  // filtra por período no SERVIDOR pela data correta e pagina até esgotar o intervalo.
+  // Faturados/cancelados — carrega TODOS os status encerrados marcados (uma query por status),
+  // filtrando por período no SERVIDOR pelo campo de data correto de cada status, depois .flat().
   const { data: pedidosEncerrados = [] } = useQuery({
-    queryKey: ['pedidos-gerenciar-encerrados', statusExtra, envioInicio, envioFim],
+    queryKey: ['pedidos-gerenciar-encerrados', statusExtras.join('|'), envioInicio, envioFim],
     queryFn: async () => {
-      const query = { status: statusExtra };
-      if (campoDataEncerrado && (envioInicio || envioFim)) {
-        // O período é informado em horário LOCAL (America/Fortaleza, UTC-3), mas a data_faturamento
-        // é armazenada em UTC. Convertendo as bordas do dia local para UTC (00:00 local = 03:00Z,
-        // 23:59 local = 02:59Z do dia seguinte) para não perder os faturamentos noturnos que, em UTC,
-        // caem no dia seguinte. Era a causa do "dia 12 = 0": seus 168 faturados à noite estavam em 13/06 UTC.
-        query[campoDataEncerrado] = {};
-        if (envioInicio) query[campoDataEncerrado]['$gte'] = `${envioInicio}T03:00:00.000Z`;
-        if (envioFim) {
-          const fimUtc = new Date(`${envioFim}T23:59:59.999-03:00`).toISOString();
-          query[campoDataEncerrado]['$lte'] = fimUtc;
+      const listas = await Promise.all(statusExtras.map(async (statusEnc) => {
+        const campoData = CAMPO_DATA_ENCERRADO[statusEnc];
+        const query = { status: statusEnc };
+        if (campoData && (envioInicio || envioFim)) {
+          // Período em horário LOCAL (America/Fortaleza, UTC-3); a data é armazenada em UTC.
+          // Converte as bordas do dia local para UTC para não perder faturamentos noturnos.
+          query[campoData] = {};
+          if (envioInicio) query[campoData]['$gte'] = `${envioInicio}T03:00:00.000Z`;
+          if (envioFim) query[campoData]['$lte'] = new Date(`${envioFim}T23:59:59.999-03:00`).toISOString();
         }
-      }
-      const ordenacao = campoDataEncerrado ? `-${campoDataEncerrado}` : '-created_date';
-      // UMA única chamada — a paginação manual estava descartando registros na borda do lote.
-      const resultado = await base44.entities.Pedido.filter(query, ordenacao, 5000);
-      console.log('[GerenciarPedidos] DEBUG pedidosEncerrados (1 chamada):', resultado.length, { query: JSON.stringify(query), ordenacao });
+        return base44.entities.Pedido.filter(query, `-${campoData}`, 5000);
+      }));
+      const resultado = listas.flat();
+      console.log('[GerenciarPedidos] DEBUG pedidosEncerrados:', resultado.length, { statusExtras });
       return resultado;
     },
-    enabled: !!statusExtra,
+    enabled: statusExtras.length > 0,
     staleTime: 60000,
   });
 
@@ -232,21 +236,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
     // Merge + dedup por id — evita que faturados/cancelados buscados por período
     // sejam descartados ou duplicados ao combinar com os ativos.
     const mapa = new Map();
-    const fonte = statusExtra
+    const fonte = statusExtras.length > 0
       ? [...pedidosAtivos, ...pedidosEncerrados]
       : [...pedidosAtivos, ...faturadosDeOntem];
     fonte.forEach(p => { if (p?.id) mapa.set(p.id, p); });
-    const lista = Array.from(mapa.values());
-    if (statusExtra) {
-      console.log('[GerenciarPedidos] DEBUG pedidos:', {
-        statusExtra,
-        pedidosAtivos: pedidosAtivos.length,
-        pedidosEncerrados: pedidosEncerrados.length,
-        merged: lista.length,
-      });
-    }
-    return lista;
-  }, [pedidosAtivos, pedidosEncerrados, faturadosDeOntem, statusExtra]);
+    return Array.from(mapa.values());
+  }, [pedidosAtivos, pedidosEncerrados, faturadosDeOntem, statusExtras]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -506,7 +501,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   }, [envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cenarioFiscalFilter, cidadeSearch]);
 
   const clearAllFilters = () => {
-    setSearch(''); setStatusFilter('todos'); setCenarioFiscalFilter('todos');
+    setSearch(''); setStatusFilters([]); setCenarioFiscalFilter('todos');
     setEnvioInicio(''); setEnvioFim('');
     setVendedorSearch(''); setVendedorIds([]);
     setProdutoSearch(''); setProdutoIds([]);
@@ -515,29 +510,26 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Filter and sort
   const filtered = useMemo(() => {
-    const DEBUG = statusFilter === 'analise_faturado';
-    if (DEBUG) console.log('[GerenciarPedidos] DEBUG filtro — entrada:', pedidosComVendedorCliente.length);
     // Gerenciar Pedidos: mostra todos os pedidos já enviados, independente do status atual.
     // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
     let list = pedidosComVendedorCliente.filter(p => p.data_envio || p.status !== 'pendente');
-    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro inicial (data_envio/status):', list.length);
 
-    if (statusFilter !== 'todos') {
-      const statusFilterMap = {
-        'analise_pendente': ['enviado'],
-        'analise_liberado': ['liberado'],
-        'analise_montagem': ['montagem'],
-        'analise_faturado': ['faturado'],
-        'analise_cancelado': ['cancelado'],
-      };
-      if (statusFilter === 'sem_omie') {
-        list = list.filter(p => !p.omie_enviado || !p.omie_codigo_pedido);
-      } else if (statusFilterMap[statusFilter]) {
-        const targetStatuses = statusFilterMap[statusFilter];
-        list = list.filter(p => targetStatuses.includes(p.status));
-      }
+    // Status — MULTI-SELEÇÃO: OR entre os status marcados (união). Lista vazia = Todos Status.
+    const STATUS_REAL = {
+      'analise_pendente': 'enviado',
+      'analise_liberado': 'liberado',
+      'analise_montagem': 'montagem',
+      'analise_faturado': 'faturado',
+      'analise_cancelado': 'cancelado',
+    };
+    if (statusFilters.length > 0) {
+      const statusReais = statusFilters.map(s => STATUS_REAL[s]).filter(Boolean);
+      const incluiSemOmie = statusFilters.includes('sem_omie');
+      list = list.filter(p =>
+        statusReais.includes(p.status) ||
+        (incluiSemOmie && (!p.omie_enviado || !p.omie_codigo_pedido))
+      );
     }
-    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro de status:', list.length);
     if (cenarioFiscalFilter !== 'todos') {
       list = list.filter(p => p.cenario_local_id === cenarioFiscalFilter);
     }
@@ -554,25 +546,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
-    // Período — filtra pela data correta conforme o status (Bug 1).
-    // Para faturado/cancelado o SERVIDOR já filtra por período (Bug 2), então não refiltramos
-    // no front — assim evitamos descartar registros por divergência de fuso UTC↔local na borda.
-    const periodoJaFiltradoNoServidor = statusFilter === 'analise_faturado' || statusFilter === 'analise_cancelado';
-    if (!periodoJaFiltradoNoServidor) {
-      if (envioInicio) {
-        list = list.filter(p => {
-          const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
-          return dataLocal && dataLocal >= envioInicio;
-        });
-      }
-      if (envioFim) {
-        list = list.filter(p => {
-          const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
-          return dataLocal && dataLocal <= envioFim;
-        });
-      }
+    // Período — usa a data correta conforme o status REAL de CADA pedido (funciona na lista
+    // mista montagem+faturado). Os encerrados (faturado/cancelado) já vêm filtrados por período
+    // do SERVIDOR, então não os refiltramos no front (evita descarte por borda de fuso UTC↔local).
+    const statusEncerradosReais = ['faturado', 'cancelado'];
+    const analiseDoStatusReal = { faturado: 'analise_faturado', liberado: 'analise_liberado', cancelado: 'analise_cancelado' };
+    const dentroDoPeriodo = (p) => {
+      if (statusEncerradosReais.includes(p.status)) return true; // já filtrado no servidor
+      const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, analiseDoStatusReal[p.status]));
+      if (envioInicio && !(dataLocal && dataLocal >= envioInicio)) return false;
+      if (envioFim && !(dataLocal && dataLocal <= envioFim)) return false;
+      return true;
+    };
+    if (envioInicio || envioFim) {
+      list = list.filter(dentroDoPeriodo);
     }
-    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro de período:', list.length, { envioInicio, envioFim, periodoJaFiltradoNoServidor });
     // Vendedor (texto ou seleção)
     if (vendedorIds.length > 0) {
       list = list.filter(p => vendedorIds.includes(p.vendedor_id));
@@ -632,9 +620,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
       return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa);
     });
 
-    if (DEBUG) console.log('[GerenciarPedidos] DEBUG resultado final:', list.length);
     return list;
-  }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
+  }, [pedidosComVendedorCliente, statusFilters, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
   // Atualizar: sincroniza espelho com Omie e recarrega dados locais
   const syncEAtualizar = async () => {
@@ -881,20 +868,43 @@ export default function GerenciarPedidos({ onEditPedido }) {
             <Input placeholder="Buscar pedido..." value={search} onChange={e => setSearch(e.target.value)} className="pl-7 h-6 text-[10px]" />
           </div>
         </div>
-        {/* Status */}
+        {/* Status — MULTI-SELEÇÃO (caixinhas) */}
         <div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-6 text-[10px]"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos Status</SelectItem>
-              <SelectItem value="analise_pendente">Pendente</SelectItem>
-              <SelectItem value="analise_liberado">Liberados</SelectItem>
-              <SelectItem value="analise_montagem">Montagem</SelectItem>
-              <SelectItem value="analise_faturado">Faturado</SelectItem>
-              <SelectItem value="analise_cancelado">Cancelado</SelectItem>
-              <SelectItem value="sem_omie">Sem Omie</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-6 text-[10px] w-full justify-between font-normal px-2">
+                <span className="truncate">
+                  {statusFilters.length === 0
+                    ? 'Todos Status'
+                    : statusFilters.length === 1
+                      ? STATUS_OPCOES.find(o => o.value === statusFilters[0])?.label
+                      : `${statusFilters.length} status`}
+                </span>
+                <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-44 p-1" align="start">
+              <button
+                className="w-full text-left text-[11px] px-2 py-1.5 rounded hover:bg-slate-100 text-slate-500"
+                onClick={() => setStatusFilters([])}
+              >
+                Todos Status
+              </button>
+              {STATUS_OPCOES.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-100 cursor-pointer text-[11px]">
+                  <Checkbox
+                    checked={statusFilters.includes(opt.value)}
+                    onCheckedChange={(checked) => {
+                      setStatusFilters(prev =>
+                        checked ? [...prev, opt.value] : prev.filter(s => s !== opt.value)
+                      );
+                    }}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </PopoverContent>
+          </Popover>
         </div>
         {/* Cenário Fiscal (independente 55/D1) */}
         <div>
