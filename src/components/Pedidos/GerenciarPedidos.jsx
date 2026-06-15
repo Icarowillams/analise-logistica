@@ -78,6 +78,16 @@ const getLocalDateFromIso = (value) => {
 
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
+
+// Bug 1: o período deve filtrar pela data correta conforme o status selecionado.
+// Faturado → data_faturamento; Liberado → data_liberacao; Cancelado → data_cancelamento;
+// demais → data_envio. Sempre com fallback para data_envio.
+const getDataPeriodoPedido = (pedido, statusFilter) => {
+  if (statusFilter === 'analise_faturado') return pedido.data_faturamento || pedido.data_envio;
+  if (statusFilter === 'analise_liberado') return pedido.data_liberacao || pedido.data_envio;
+  if (statusFilter === 'analise_cancelado') return pedido.data_cancelamento || pedido.data_envio;
+  return pedido.data_envio;
+};
 const getClienteCodigo = (cliente) => cliente?.codigo_interno || cliente?.codigo_integracao || cliente?.codigo || cliente?.codigo_omie || '';
 
 export default function GerenciarPedidos({ onEditPedido }) {
@@ -164,10 +174,38 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 30000,
   });
 
+  // Campo de data usado para filtrar/ordenar os encerrados no servidor, conforme o status.
+  const campoDataEncerrado = statusExtra === 'faturado'
+    ? 'data_faturamento'
+    : statusExtra === 'cancelado'
+      ? 'data_cancelamento'
+      : null;
+
   // Faturados/cancelados — só carrega quando o filtro correspondente está ativo.
+  // Bug 2: em vez de cortar nos 5000 mais recentes (que descarta o histórico antigo),
+  // filtra por período no SERVIDOR pela data correta e pagina até esgotar o intervalo.
   const { data: pedidosEncerrados = [] } = useQuery({
-    queryKey: ['pedidos-gerenciar-encerrados', statusExtra],
-    queryFn: () => base44.entities.Pedido.filter({ status: statusExtra }, '-created_date', 5000),
+    queryKey: ['pedidos-gerenciar-encerrados', statusExtra, envioInicio, envioFim],
+    queryFn: async () => {
+      const query = { status: statusExtra };
+      if (campoDataEncerrado && (envioInicio || envioFim)) {
+        query[campoDataEncerrado] = {};
+        if (envioInicio) query[campoDataEncerrado]['$gte'] = `${envioInicio}T00:00:00`;
+        if (envioFim) query[campoDataEncerrado]['$lte'] = `${envioFim}T23:59:59.999`;
+      }
+      const ordenacao = campoDataEncerrado ? `-${campoDataEncerrado}` : '-created_date';
+      const PAGINA = 1000;
+      const resultado = [];
+      let skip = 0;
+      // Pagina até esgotar o intervalo — sem corte fixo de 5000.
+      while (true) {
+        const lote = await base44.entities.Pedido.filter(query, ordenacao, PAGINA, skip);
+        resultado.push(...lote);
+        if (lote.length < PAGINA) break;
+        skip += PAGINA;
+      }
+      return resultado;
+    },
     enabled: !!statusExtra,
     staleTime: 60000,
   });
@@ -511,17 +549,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
-    // Período de envio
+    // Período — filtra pela data correta conforme o status (Bug 1)
     if (envioInicio) {
       list = list.filter(p => {
-        const dataEnvioLocal = getLocalDateFromIso(p.data_envio);
-        return dataEnvioLocal && dataEnvioLocal >= envioInicio;
+        const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
+        return dataLocal && dataLocal >= envioInicio;
       });
     }
     if (envioFim) {
       list = list.filter(p => {
-        const dataEnvioLocal = getLocalDateFromIso(p.data_envio);
-        return dataEnvioLocal && dataEnvioLocal <= envioFim;
+        const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
+        return dataLocal && dataLocal <= envioFim;
       });
     }
     // Vendedor (texto ou seleção)
