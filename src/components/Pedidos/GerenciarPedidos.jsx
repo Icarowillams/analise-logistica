@@ -189,21 +189,21 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryFn: async () => {
       const query = { status: statusExtra };
       if (campoDataEncerrado && (envioInicio || envioFim)) {
+        // O período é informado em horário LOCAL (America/Fortaleza, UTC-3), mas a data_faturamento
+        // é armazenada em UTC. Convertendo as bordas do dia local para UTC (00:00 local = 03:00Z,
+        // 23:59 local = 02:59Z do dia seguinte) para não perder os faturamentos noturnos que, em UTC,
+        // caem no dia seguinte. Era a causa do "dia 12 = 0": seus 168 faturados à noite estavam em 13/06 UTC.
         query[campoDataEncerrado] = {};
-        if (envioInicio) query[campoDataEncerrado]['$gte'] = `${envioInicio}T00:00:00`;
-        if (envioFim) query[campoDataEncerrado]['$lte'] = `${envioFim}T23:59:59.999`;
+        if (envioInicio) query[campoDataEncerrado]['$gte'] = `${envioInicio}T03:00:00.000Z`;
+        if (envioFim) {
+          const fimUtc = new Date(`${envioFim}T23:59:59.999-03:00`).toISOString();
+          query[campoDataEncerrado]['$lte'] = fimUtc;
+        }
       }
       const ordenacao = campoDataEncerrado ? `-${campoDataEncerrado}` : '-created_date';
-      const PAGINA = 1000;
-      const resultado = [];
-      let skip = 0;
-      // Pagina até esgotar o intervalo — sem corte fixo de 5000.
-      while (true) {
-        const lote = await base44.entities.Pedido.filter(query, ordenacao, PAGINA, skip);
-        resultado.push(...lote);
-        if (lote.length < PAGINA) break;
-        skip += PAGINA;
-      }
+      // UMA única chamada — a paginação manual estava descartando registros na borda do lote.
+      const resultado = await base44.entities.Pedido.filter(query, ordenacao, 5000);
+      console.log('[GerenciarPedidos] DEBUG pedidosEncerrados (1 chamada):', resultado.length, { query: JSON.stringify(query), ordenacao });
       return resultado;
     },
     enabled: !!statusExtra,
