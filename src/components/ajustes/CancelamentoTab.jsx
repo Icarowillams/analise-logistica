@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,13 @@ export default function CancelamentoTab() {
   const [motivo, setMotivo] = useState('');
   const [origem, setOrigem] = useState('manual');
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const cancelar = async () => {
     if (!pedido || !motivo) {
@@ -43,7 +50,14 @@ export default function CancelamentoTab() {
         setPedido(null);
         setMotivo('');
       } else {
-        toast.error(data?.erro || data?.error || 'Erro ao cancelar');
+        const erroMsg = data?.erro || data?.error || 'Erro ao cancelar';
+        const ehRedundante = /redundante|processando outra solicita|aguarde/i.test(erroMsg);
+        if (ehRedundante) {
+          setCooldown(30);
+          toast.warning(erroMsg);
+        } else {
+          toast.error(erroMsg);
+        }
       }
     } catch (e) {
       toast.error(e.message);
@@ -116,13 +130,13 @@ export default function CancelamentoTab() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => { setPedido(null); setMotivo(''); }}>Voltar</Button>
-              <Button variant="destructive" onClick={cancelar} disabled={loading || !motivo || (() => {
+              <Button variant="destructive" onClick={cancelar} disabled={loading || !motivo || cooldown > 0 || (() => {
                 const dFat = pedido?.informacoes_adicionais?.dFat || pedido?.cabecalho?.data_previsao;
                 if (!dFat || !pedido?.informacoes_adicionais?.numero_nfe) return false;
                 return (Date.now() - new Date(dFat).getTime()) / (1000 * 60 * 60) > 24;
               })()}>
                 {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                Cancelar pedido
+                {cooldown > 0 ? `Aguarde ${cooldown}s` : 'Cancelar pedido'}
               </Button>
             </div>
           </CardContent>

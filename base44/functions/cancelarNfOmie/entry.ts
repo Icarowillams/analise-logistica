@@ -34,7 +34,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
+  const RETRIES = [2000, 5000, 10000];
   let lastErr = '';
   for (let i = 0; i <= RETRIES.length; i++) {
     try {
@@ -101,6 +101,19 @@ Deno.serve(async (req) => {
     const { codigo_pedido, motivo = '', origem = 'manual', dados_pedido } = body;
     if (!codigo_pedido) return Response.json({ error: 'codigo_pedido obrigatório' }, { status: 400 });
 
+    // ═══ Deduplicação: se este pedido já foi cancelado com sucesso nos últimos 60s, não cancelar de novo ═══
+    const cancelamentosRecentes = await base44.asServiceRole.entities.Cancelamento
+      .filter({ pedido_codigo_omie: String(codigo_pedido) }, '-data_cancelamento', 3)
+      .catch(() => []);
+    const sucessoRecente = (cancelamentosRecentes || []).find(c =>
+      c.status !== 'erro' &&
+      c.data_cancelamento &&
+      (Date.now() - new Date(c.data_cancelamento).getTime()) < 60_000
+    );
+    if (sucessoRecente) {
+      return Response.json({ sucesso: true, status: sucessoRecente.status, registro_id: sucessoRecente.id, dedup: true });
+    }
+
     let status = 'cancelado';
     let erroOmie = null;
     let numeroNf = '';
@@ -111,6 +124,7 @@ Deno.serve(async (req) => {
     // Se o frontend já enviou os dados do pedido, usa para preencher info (evita ConsultarPedido duplicado / REDUNDANT)
     // IMPORTANTE: NÃO confiar na etapa do frontend para decidir se o pedido está cancelado —
     // sempre tenta cancelar no Omie e deixa a API confirmar se já está cancelado.
+    let consultouOmie = false;
     if (dados_pedido) {
       numeroNf = dados_pedido.numero_nfe || '';
       valorNf = Number(dados_pedido.valor_total || 0);
@@ -118,6 +132,7 @@ Deno.serve(async (req) => {
       dataFaturamento = dados_pedido.data_faturamento || null;
     } else {
       // Fallback: consulta o Omie (só se dados não vieram do frontend)
+      consultouOmie = true;
       try {
         const consulta = await omieCall(base44, OMIE_URL_PEDIDO, { codigo_pedido: Number(codigo_pedido) }, { call: 'ConsultarPedido', skipLog: true });
         const pedido = consulta.pedido_venda_produto;
@@ -163,6 +178,8 @@ Deno.serve(async (req) => {
 
     // Só chama CancelarPedidoVenda se ainda não está cancelado
     if (status !== 'ja_cancelado') {
+      // Se acabamos de fazer ConsultarPedido, espera ~800ms para não disparar "consumo redundante"
+      if (consultouOmie) await new Promise(r => setTimeout(r, 800));
       try {
         await omieCall(base44, OMIE_URL_FAT, {
           nCodPed: Number(codigo_pedido),
@@ -179,7 +196,7 @@ Deno.serve(async (req) => {
         } else if (msg.includes('redundant') || msg.includes('redundante')) {
           // REDUNDANT = chamada duplicada, NÃO significa que está cancelado
           status = 'erro';
-          erroOmie = 'Consumo redundante. Aguarde e tente novamente.';
+          erroOmie = 'O Omie está processando outra solicitação, aguarde ~30s';
         } else {
           status = 'erro';
           erroOmie = err.message;
