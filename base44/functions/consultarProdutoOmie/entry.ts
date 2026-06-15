@@ -192,7 +192,8 @@ Deno.serve(async (req) => {
             }
 
             if (data.faultstring) {
-                await tratar425(base44, controle, 'ConsultarProduto', { codigo }, response, data);
+                // tratar425 só inspeciona data.faultstring quando não há status 425 explícito (response já tratado no loop acima)
+                await tratar425(base44, controle, 'ConsultarProduto', { codigo }, { status: 200 }, data);
                 resultados[codigo] = { erro: data.faultstring };
             } else {
                 resultados[codigo] = {
