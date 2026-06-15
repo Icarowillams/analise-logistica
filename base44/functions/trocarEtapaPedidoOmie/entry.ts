@@ -12,32 +12,42 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
   if (pedido.codigo_pedido) param.codigo_pedido = Number(pedido.codigo_pedido);
   if (pedido.codigo_pedido_integracao) param.codigo_pedido_integracao = String(pedido.codigo_pedido_integracao);
 
-  try {
-    const resposta = await omieCall(base44, 'produtos/pedido/', param, { call: 'TrocarEtapaPedido' });
-    await new Promise(r => setTimeout(r, 1200));
-    // Omie pode retornar codigo_status != "0" indicando que a troca foi recusada
-    const codStatus = String(resposta?.codigo_status || '0');
-    const descStatus = resposta?.descricao_status || '';
-    const rejeitado = codStatus !== '0' && descStatus.toLowerCase().includes('não é possível');
-    return {
-      codigo_pedido: pedido.codigo_pedido,
-      codigo_pedido_integracao: pedido.codigo_pedido_integracao,
-      numero_pedido: pedido.numero_pedido,
-      etapa,
-      sucesso: !rejeitado,
-      mensagem: rejeitado ? descStatus : undefined,
-      resposta
-    };
-  } catch (e) {
-    if (e.code === 'OMIE_425') throw e; // propaga bloqueio para parar o lote
-    return {
-      codigo_pedido: pedido.codigo_pedido,
-      codigo_pedido_integracao: pedido.codigo_pedido_integracao,
-      numero_pedido: pedido.numero_pedido,
-      etapa,
-      sucesso: false,
-      mensagem: e.message
-    };
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    try {
+      const resposta = await omieCall(base44, 'produtos/pedido/', param, { call: 'TrocarEtapaPedido' });
+      // Omie pode retornar codigo_status != "0" indicando que a troca foi recusada
+      const codStatus = String(resposta?.codigo_status || '0');
+      const descStatus = resposta?.descricao_status || '';
+      const rejeitado = codStatus !== '0' && descStatus.toLowerCase().includes('não é possível');
+      return {
+        codigo_pedido: pedido.codigo_pedido,
+        codigo_pedido_integracao: pedido.codigo_pedido_integracao,
+        numero_pedido: pedido.numero_pedido,
+        etapa,
+        sucesso: !rejeitado,
+        mensagem: rejeitado ? descStatus : undefined,
+        resposta
+      };
+    } catch (e) {
+      if (e.code === 'OMIE_425') throw e; // propaga bloqueio para parar o lote
+      // REDUNDANT (consumo redundante) = throttling: aguardar e reenviar o MESMO pedido
+      if (e.code === 'OMIE_REDUNDANT' && tentativa < 2) {
+        const espera = Math.min(Number(e.esperaSegundos) || 30, 60);
+        await new Promise(r => setTimeout(r, espera * 1000));
+        continue;
+      }
+      return {
+        codigo_pedido: pedido.codigo_pedido,
+        codigo_pedido_integracao: pedido.codigo_pedido_integracao,
+        numero_pedido: pedido.numero_pedido,
+        etapa,
+        sucesso: false,
+        redundant: e.code === 'OMIE_REDUNDANT',
+        mensagem: e.code === 'OMIE_REDUNDANT'
+          ? 'Omie ocupado (REDUNDANT), tente em 1 min'
+          : e.message
+      };
+    }
   }
 }
 
@@ -93,6 +103,21 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
     const text = await resp.text().catch(() => '');
     throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
   });
+  // Omie pode retornar erro como array [{CODIGO, MENSAGEM, ORIGEM}] com HTTP 200.
+  // CODIGO 6 / "REDUNDANT" = throttling (consumo redundante), não falha real.
+  const erroArr = Array.isArray(data) ? data[0] : null;
+  if (erroArr && (erroArr.CODIGO !== undefined || erroArr.MENSAGEM)) {
+    const codigo = Number(erroArr.CODIGO);
+    const mensagem = String(erroArr.MENSAGEM || '');
+    if (codigo === 6 || /redundant/i.test(mensagem)) {
+      const m = mensagem.match(/aguarde\s+(\d+)\s+segundo/i);
+      const err = new Error(mensagem);
+      err.code = 'OMIE_REDUNDANT';
+      err.esperaSegundos = Math.min((m ? parseInt(m[1], 10) : 30), 60);
+      throw err;
+    }
+    throw new Error(mensagem || `Omie ${call} erro CODIGO ${codigo}`);
+  }
   // Omie retorna HTTP 200 mesmo com erro — verificar faultstring
   if (data.faultstring) {
     const msg = String(data.faultstring);
@@ -118,9 +143,20 @@ Deno.serve(async (req) => {
     const pedidos = Array.isArray(body.pedidos) ? body.pedidos : null;
 
     if (pedidos) {
+      // Dedupe por codigo_pedido (ou codigo_pedido_integracao) — não enviar o mesmo pedido 2x no mesmo processo
+      const vistos = new Set();
+      const pedidosUnicos = pedidos.filter(p => {
+        const chave = String(p.codigo_pedido || p.codigo_pedido_integracao || '');
+        if (!chave) return true;
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
       const resultados = [];
-      for (const pedido of pedidos) {
-        resultados.push(await trocarUmPedido(base44, pedido, body.etapa_destino));
+      for (let i = 0; i < pedidosUnicos.length; i++) {
+        resultados.push(await trocarUmPedido(base44, pedidosUnicos[i], body.etapa_destino));
+        // Intervalo entre pedidos para reduzir REDUNDANT (não após o último)
+        if (i < pedidosUnicos.length - 1) await new Promise(r => setTimeout(r, 1800));
       }
       const sucessos = resultados.filter(r => r.sucesso).length;
       const erros = resultados.length - sucessos;
@@ -146,7 +182,7 @@ Deno.serve(async (req) => {
       endpoint: 'produtos/pedido',
       call: 'TrocarEtapaPedido',
       operacao: 'trocar_etapa',
-      status: resultado.sucesso ? 'sucesso' : 'erro',
+      status: resultado.sucesso ? 'sucesso' : (resultado.redundant ? 'warning' : 'erro'),
       mensagem_erro: resultado.sucesso ? null : resultado.mensagem,
       payload_enviado: JSON.stringify(body).substring(0, 1500),
       payload_resposta: JSON.stringify(resultado).substring(0, 1500),
