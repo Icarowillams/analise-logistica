@@ -58,7 +58,12 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
         throw new Error(lastErr);
       }
-      const data = await res.json();
+      let data = await res.json();
+      // Omie às vezes retorna o erro como ARRAY [{CODIGO, MENSAGEM, ORIGEM}] com HTTP 200 — normalizar para faultstring
+      if (Array.isArray(data) && data[0] && (data[0].MENSAGEM || data[0].CODIGO !== undefined)) {
+        const e0 = data[0];
+        data = { faultstring: String(e0.MENSAGEM || `Omie CODIGO ${e0.CODIGO}`), faultcode: String(e0.CODIGO ?? '') };
+      }
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
         if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {

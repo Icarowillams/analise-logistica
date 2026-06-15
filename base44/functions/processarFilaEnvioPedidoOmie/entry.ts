@@ -86,7 +86,12 @@ async function omieCallDirect(base44, endpoint, param, options = {}) {
         throw lastError;
       }
       const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
+      let data = text ? JSON.parse(text) : {};
+      // Omie às vezes retorna o erro como ARRAY [{CODIGO, MENSAGEM, ORIGEM}] com HTTP 200 — normalizar para faultstring
+      if (Array.isArray(data) && data[0] && (data[0].MENSAGEM || data[0].CODIGO !== undefined)) {
+        const e0 = data[0];
+        data = { faultstring: String(e0.MENSAGEM || `Omie CODIGO ${e0.CODIGO}`), faultcode: String(e0.CODIGO ?? '') };
+      }
       if (!response.ok || data?.faultstring || data?.faultcode) {
         const msg = data?.faultstring || `Erro HTTP ${response.status}`;
         const lower = msg.toLowerCase();
