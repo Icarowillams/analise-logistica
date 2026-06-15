@@ -259,28 +259,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return funcionario?.nome || currentUser?.full_name || currentUser?.email || '';
   }, [vendedores, currentUser]);
 
-  // Apenas os clientes REFERENCIADOS pelos pedidos do período — não a base inteira (5000).
-  const pedidoClienteIds = useMemo(() => [...new Set(pedidos.map(p => p.cliente_id).filter(Boolean))], [pedidos]);
-
+  // Carrega a base de clientes em UMA única chamada cacheada (staleTime alto).
+  // Antes buscava cliente 1-a-1 (centenas de requests) → estourava 429 Too Many Requests
+  // e fazia a query de faturados voltar vazia. Agora é 1 request, independente do volume.
   const { data: clientesDosPedidos = [] } = useQuery({
-    queryKey: ['clientes-dos-pedidos-gerenciar', pedidoClienteIds.join('|')],
-    queryFn: async () => {
-      if (pedidoClienteIds.length === 0) return [];
-      const LOTE = 20;
-      const resultado = [];
-      for (let i = 0; i < pedidoClienteIds.length; i += LOTE) {
-        const lote = pedidoClienteIds.slice(i, i + LOTE);
-        const listas = await Promise.all(
-          lote.map(id => base44.entities.Cliente.filter({ id }, '-created_date', 1))
-        );
-        resultado.push(...listas.flat());
-        if (i + LOTE < pedidoClienteIds.length) {
-          await new Promise(r => setTimeout(r, 100));
-        }
-      }
-      return resultado;
-    },
-    enabled: pedidoClienteIds.length > 0,
+    queryKey: ['clientes-dos-pedidos-gerenciar'],
+    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    staleTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const clientes = useMemo(() => {
