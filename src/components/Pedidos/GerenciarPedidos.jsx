@@ -229,8 +229,23 @@ export default function GerenciarPedidos({ onEditPedido }) {
   }, [pedidosFaturadosRecentes, yesterdayDate, todayDate]);
 
   const pedidos = useMemo(() => {
-    if (statusExtra) return [...pedidosAtivos, ...pedidosEncerrados];
-    return [...pedidosAtivos, ...faturadosDeOntem];
+    // Merge + dedup por id — evita que faturados/cancelados buscados por período
+    // sejam descartados ou duplicados ao combinar com os ativos.
+    const mapa = new Map();
+    const fonte = statusExtra
+      ? [...pedidosAtivos, ...pedidosEncerrados]
+      : [...pedidosAtivos, ...faturadosDeOntem];
+    fonte.forEach(p => { if (p?.id) mapa.set(p.id, p); });
+    const lista = Array.from(mapa.values());
+    if (statusExtra) {
+      console.log('[GerenciarPedidos] DEBUG pedidos:', {
+        statusExtra,
+        pedidosAtivos: pedidosAtivos.length,
+        pedidosEncerrados: pedidosEncerrados.length,
+        merged: lista.length,
+      });
+    }
+    return lista;
   }, [pedidosAtivos, pedidosEncerrados, faturadosDeOntem, statusExtra]);
 
   const { data: vendedores = [] } = useQuery({
@@ -514,9 +529,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Filter and sort
   const filtered = useMemo(() => {
+    const DEBUG = statusFilter === 'analise_faturado';
+    if (DEBUG) console.log('[GerenciarPedidos] DEBUG filtro — entrada:', pedidosComVendedorCliente.length);
     // Gerenciar Pedidos: mostra todos os pedidos já enviados, independente do status atual.
     // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
     let list = pedidosComVendedorCliente.filter(p => p.data_envio || p.status !== 'pendente');
+    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro inicial (data_envio/status):', list.length);
 
     if (statusFilter !== 'todos') {
       const statusFilterMap = {
@@ -533,6 +551,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         list = list.filter(p => targetStatuses.includes(p.status));
       }
     }
+    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro de status:', list.length);
     if (cenarioFiscalFilter !== 'todos') {
       list = list.filter(p => p.cenario_local_id === cenarioFiscalFilter);
     }
@@ -549,19 +568,25 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
-    // Período — filtra pela data correta conforme o status (Bug 1)
-    if (envioInicio) {
-      list = list.filter(p => {
-        const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
-        return dataLocal && dataLocal >= envioInicio;
-      });
+    // Período — filtra pela data correta conforme o status (Bug 1).
+    // Para faturado/cancelado o SERVIDOR já filtra por período (Bug 2), então não refiltramos
+    // no front — assim evitamos descartar registros por divergência de fuso UTC↔local na borda.
+    const periodoJaFiltradoNoServidor = statusFilter === 'analise_faturado' || statusFilter === 'analise_cancelado';
+    if (!periodoJaFiltradoNoServidor) {
+      if (envioInicio) {
+        list = list.filter(p => {
+          const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
+          return dataLocal && dataLocal >= envioInicio;
+        });
+      }
+      if (envioFim) {
+        list = list.filter(p => {
+          const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
+          return dataLocal && dataLocal <= envioFim;
+        });
+      }
     }
-    if (envioFim) {
-      list = list.filter(p => {
-        const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, statusFilter));
-        return dataLocal && dataLocal <= envioFim;
-      });
-    }
+    if (DEBUG) console.log('[GerenciarPedidos] DEBUG após filtro de período:', list.length, { envioInicio, envioFim, periodoJaFiltradoNoServidor });
     // Vendedor (texto ou seleção)
     if (vendedorIds.length > 0) {
       list = list.filter(p => vendedorIds.includes(p.vendedor_id));
@@ -621,6 +646,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa);
     });
 
+    if (DEBUG) console.log('[GerenciarPedidos] DEBUG resultado final:', list.length);
     return list;
   }, [pedidosComVendedorCliente, statusFilter, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
