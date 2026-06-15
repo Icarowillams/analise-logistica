@@ -225,6 +225,11 @@ Deno.serve(async (req) => {
     const syncLimit = Math.min(Number(body.sync_limit || 10), 10);
     const cargaIds = Array.isArray(body.carga_ids) ? body.carga_ids : null;
     const diasRetroativos = Number(body.dias_retroativos || 30);
+    // Limite de pedidos ainda-não-reconciliados consultados por chamada (evita 504 com Omie lento).
+    const maxPedidosPorChamada = Math.max(1, Math.min(Number(body.max_pedidos_por_chamada || 8), 30));
+
+    // Um pedido já reconciliado (NF real + etapa 60) não precisa reconsultar no Omie.
+    const jaReconciliado = (p) => String(p?.etapa || '') === '60' && !!String(p?.numero_nf || '').trim();
 
     let cargas = await base44.asServiceRole.entities.Carga.list('-created_date', listLimit);
 
@@ -267,6 +272,8 @@ Deno.serve(async (req) => {
 
       const pedidosStatus = [];
       const pedidosAtualizados = [];
+      let consultasFeitas = 0;
+      let pendentesCarga = 0;
 
       for (const pedido of pedidos) {
         if (apiBloqueada) { pedidosAtualizados.push(pedido); continue; }
@@ -275,6 +282,20 @@ Deno.serve(async (req) => {
           pedidosAtualizados.push(pedido);
           continue;
         }
+
+        // Pula quem já está reconciliado (NF real + etapa 60) — corta a maior parte das consultas.
+        if (jaReconciliado(pedido)) {
+          pedidosAtualizados.push(pedido);
+          continue;
+        }
+
+        // Estourou o limite desta leva: deixa o resto como pendente para a próxima chamada.
+        if (consultasFeitas >= maxPedidosPorChamada) {
+          pendentesCarga++;
+          pedidosAtualizados.push(pedido);
+          continue;
+        }
+        consultasFeitas++;
 
         try {
           const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo) }, { call: 'ConsultarPedido', cacheMinutes: 10 });
@@ -416,20 +437,25 @@ Deno.serve(async (req) => {
           } catch { /* não bloqueia */ }
         }
 
-        cargasAtualizadas.push({ ...carga, pedidos_omie: pedidosAtualizados, notas_fiscais: notasFiscaisAtualizadas });
+        cargasAtualizadas.push({ ...carga, pedidos_omie: pedidosAtualizados, notas_fiscais: notasFiscaisAtualizadas, _pendentes: pendentesCarga });
       } else {
-        cargasAtualizadas.push(carga);
+        cargasAtualizadas.push({ ...carga, _pendentes: pendentesCarga });
       }
     }
 
     const resto = cargas.slice(syncLimit);
+
+    const pendentes = cargasAtualizadas.reduce((acc, c) => acc + (c._pendentes || 0), 0);
+    const concluida = !apiBloqueada && pendentes === 0;
 
     return Response.json({
       sucesso: !apiBloqueada,
       api_bloqueada: apiBloqueada,
       erro_bloqueio: apiBloqueada ? erroBloqueio : undefined,
       cargas: [...cargasAtualizadas, ...resto],
-      sincronizadas: cargasAtualizadas.length
+      sincronizadas: cargasAtualizadas.length,
+      pendentes,
+      concluida
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

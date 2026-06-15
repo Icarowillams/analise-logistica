@@ -413,18 +413,33 @@ export default function Cargas() {
   };
 
   // Reconcilia NFs reais (ide.nNF) de uma carga faturada via sincronizarStatusCargasOmie.
-  // Só consulta — não reenvia emissão. Uma carga por vez (rate limit Omie já tratado na função).
+  // Só consulta — não reenvia emissão. Processa em levas (max_pedidos_por_chamada) para
+  // evitar 504 com Omie lento; reitera automaticamente até concluir ou a API bloquear.
+  // Cada leva grava progresso parcial no backend, então timeout no meio não perde o feito.
   const reconciliarNfs = async (carga) => {
     setReconciliando(carga.id);
     try {
-      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
-        carga_ids: [carga.id], sync_limit: 1, dias_retroativos: 90
-      });
-      if (data?.api_bloqueada) {
-        toast.warning(data.erro_bloqueio || 'API Omie temporariamente bloqueada. Tente novamente em breve.');
-      } else {
+      let concluida = false;
+      let bloqueada = false;
+      let guarda = 0; // trava de segurança contra loop infinito
+      while (!concluida && !bloqueada && guarda < 30) {
+        guarda++;
+        const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
+          carga_ids: [carga.id], sync_limit: 1, dias_retroativos: 90, max_pedidos_por_chamada: 8
+        });
+        if (data?.api_bloqueada) {
+          bloqueada = true;
+          toast.warning(data.erro_bloqueio || 'API Omie temporariamente bloqueada. Tente novamente em breve.');
+          break;
+        }
+        concluida = !!data?.concluida;
         const nfs = (data?.cargas?.[0]?.notas_fiscais || []).length;
-        toast.success(`Carga ${carga.numero_carga}: ${nfs} NF(s) reconciliada(s).`);
+        if (!concluida) {
+          toast.info(`Carga ${carga.numero_carga}: reconciliando… ${nfs} NF(s), ${data?.pendentes || 0} pendente(s)`);
+          await new Promise(r => setTimeout(r, 500));
+        } else {
+          toast.success(`Carga ${carga.numero_carga}: ${nfs} NF(s) reconciliada(s).`);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['cargas'] });
     } catch (e) {
