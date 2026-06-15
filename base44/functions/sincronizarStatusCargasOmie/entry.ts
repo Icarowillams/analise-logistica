@@ -105,27 +105,29 @@ function classificarCStat(cStat) {
 }
 
 
+// Método correto p/ obter o número de NF de um pedido: ConsultarNF (produtos/nfconsultar/)
+// com { nIdPedido }. ListarNF + nIdPedido é rejeitado pelo Omie ("Tag NIDPEDIDO não faz
+// parte da estrutura"). ConsultarNF retorna a NF única do pedido em ide.nNF / ide.cStat.
 async function buscarNfPorPedido(base44, codigoPedido) {
   try {
     const data = await omieCall(base44, 'produtos/nfconsultar/', {
-      pagina: 1,
-      registros_por_pagina: 50,
       nIdPedido: Number(codigoPedido)
-    }, { call: 'ListarNF' });
-    const nfs = data?.nfCadastro || [];
-    if (nfs.length === 0) return null;
-    // Prioriza NF NÃO cancelada e mais recente
-    const ativa = nfs.find(nf => !['101','135'].includes(String(nf.ide?.cStat || ''))) || nfs[0];
-    const cStat = String(ativa.ide?.cStat || '');
+    }, { call: 'ConsultarNF' });
+    const ide = data?.ide || data?.nfConsultada?.ide || {};
+    const compl = data?.compl || data?.nfConsultada?.compl || {};
+    const cStat = String(ide.cStat || '');
+    const numeroNf = String(ide.nNF || '');
+    if (!numeroNf && !cStat) return null;
     return {
-      numero_nf: String(ativa.ide?.nNF || ativa.cNumero || ''),
-      serie: ativa.ide?.serie || '',
-      chave: ativa.compl?.cChaveNFe || '',
+      numero_nf: numeroNf,
+      serie: ide.serie || '',
+      chave: compl.cChaveNFe || '',
       cStat,
-      xMotivo: ativa.ide?.xMotivo || ativa.compl?.cMensagem || '',
+      xMotivo: ide.xMotivo || compl.cMensagem || '',
       classificacao: classificarCStat(cStat)
     };
   } catch {
+    // Falha de consulta (incl. comunicação) → null: nunca infere rejeição daqui.
     return null;
   }
 }
@@ -138,7 +140,6 @@ function extrairPedido(consulta, pedidoOriginal) {
   const etapa = String(cab.etapa || pedidoOriginal.etapa || '');
   const numeroNf = infoNfe.nNF || cab.numero_nf || cab.numero_nota_fiscal || info.numero_nf || info.numero_nota_fiscal || pedidoOriginal.numero_nf || '';
   const cStatPedido = String(infoNfe.cStat || '');
-  const textoPedido = JSON.stringify(pedido || {}).toLowerCase();
 
   // Cancelamento só pode vir de campo/etapa explícita; nunca por texto solto do retorno,
   // pois descrições/observações podem conter a palavra "cancelado" e cancelar carga indevidamente.
@@ -151,10 +152,11 @@ function extrairPedido(consulta, pedidoOriginal) {
     statusTexto === 'cancelado' ||
     statusTexto === 'cancelada';
 
-  const rejeitado =
-    textoPedido.includes('rejeitad') ||
-    textoPedido.includes('denegad') ||
-    textoPedido.includes('sefaz');
+  // 🛡️ Rejeição SÓ pode vir do cStat estruturado real da NF — NUNCA de busca de texto.
+  // (O bug antigo marcava como rejeitado qualquer JSON que contivesse "sefaz"/"rejeitad"/"denegad".)
+  // cStat >= 200 e fora das faixas de autorizada/cancelada (100,150,101,135) = rejeição real.
+  const cRej = Number(cStatPedido || infoNfe?.cStat || 0);
+  const rejeitado = cRej >= 200 && ![100, 150, 101, 135].includes(cRej);
 
   return {
     etapa,
@@ -319,13 +321,9 @@ Deno.serve(async (req) => {
             await new Promise(r => setTimeout(r, DELAY_ENTRE_CHAMADAS_MS));
           }
 
-          // Caso real Omie: pedido vai para etapa 60, a NF é rejeitada e o pedido aparece como cancelado/sem NF.
-          // Isso NÃO deve virar "cancelada" operacional; é rejeição fiscal para o operador corrigir/reemitir.
-          if (status.etapa === '60' && !classificacao && !numeroNfFinal && (status.cancelado || status.rejeitado)) {
-            classificacao = 'rejeitada';
-            xMotivoFinal = xMotivoFinal || 'NF-e rejeitada pela SEFAZ';
-          }
-
+          // Rejeição SÓ vem de cStat real (já refletido em `classificacao` via classificarCStat).
+          // Etapa 60 sem cStat = NF ainda não consultável OU erro de comunicação Omie (425/500/timeout):
+          // NÃO classificamos como rejeitada nem cancelada — preservamos o status anterior e re-tentamos depois.
           pedidosStatus.push({
             ...status,
             cancelado: status.cancelado && classificacao !== 'rejeitada',
@@ -346,15 +344,17 @@ Deno.serve(async (req) => {
           const nfNovaConfiavel = status.etapa === '60' ? String(numeroNfFinal || '').trim() : '';
           const nfPreservada = nfNovaConfiavel || String(pedido.numero_nf || '').trim() || '';
 
+          // Sem classificação NOVA (cStat ausente = comunicação/NF ainda não consultável):
+          // preserva os campos de status fiscal anteriores em vez de zerá-los.
           pedidosAtualizados.push({
             ...pedido,
             etapa: status.etapa || pedido.etapa,
             status_pedido: status.cancelado ? 'cancelado' : (status.status_pedido || pedido.status_pedido),
             numero_nf: nfPreservada,
-            cstat_sefaz: cStatFinal || undefined,
-            status_nf: status.cancelado ? 'cancelada' : (classificacao || undefined),
-            motivo_rejeicao: ['rejeitada','denegada'].includes(classificacao) ? statusRealLabel : undefined,
-            status_real_omie: status.cancelado ? 'Cancelado no Omie' : (statusRealLabel || undefined)
+            cstat_sefaz: cStatFinal || pedido.cstat_sefaz || undefined,
+            status_nf: status.cancelado ? 'cancelada' : (classificacao || pedido.status_nf || undefined),
+            motivo_rejeicao: ['rejeitada','denegada'].includes(classificacao) ? statusRealLabel : (pedido.motivo_rejeicao || undefined),
+            status_real_omie: status.cancelado ? 'Cancelado no Omie' : (statusRealLabel || pedido.status_real_omie || undefined)
           });
         } catch (error) {
           if (error.message && (error.message.includes('bloqueada') || error.message.includes('bloqueio'))) {
