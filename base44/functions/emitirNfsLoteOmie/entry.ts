@@ -34,6 +34,12 @@ async function omieRead(base44, endpoint, call, param) {
         signal: controller.signal
       });
       clearTimeout(tid);
+      // Erro HTTP do Omie (5xx/429/425): corpo não costuma ser JSON. Trata como concorrência e tenta de novo.
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        if (tentativa === 0) { await new Promise(r => setTimeout(r, 3000)); tentativa++; continue; }
+        throw new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      }
       data = await res.json();
     } catch (e) {
       clearTimeout(tid);

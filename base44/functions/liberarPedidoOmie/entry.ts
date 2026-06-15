@@ -72,6 +72,13 @@ async function omieCallDirect(base44, endpoint, param, options = {}) {
         await setCircuitBreakerBlocked(base44, lastError.message);
         throw lastError;
       }
+      // Erro interno do Omie (5xx) — corpo costuma não ser JSON. Retry com backoff antes de desistir.
+      if (response.status >= 500) {
+        const corpo5xx = await response.text().catch(() => '');
+        lastError = new Error(`HTTP ${response.status} Omie${corpo5xx ? ': ' + corpo5xx.slice(0, 200) : ''}`);
+        if (attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); continue; }
+        throw lastError;
+      }
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
       if (!response.ok || data?.faultstring || data?.faultcode) {
