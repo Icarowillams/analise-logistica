@@ -13,6 +13,7 @@ import ListaTitulosCarga from '@/components/boletos/ListaTitulosCarga';
 import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoletos';
 import PendenciasVinculoCarga from '@/components/boletos/PendenciasVinculoCarga';
 import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
+import GerarBoletosFaltantesPrazo from '@/components/boletos/GerarBoletosFaltantesPrazo';
 
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
@@ -195,24 +196,63 @@ export default function EmissaoBoletos() {
     const todosResultados = [];
     let totalSucessos = 0, totalErros = 0, totalSkips = 0, processados = 0;
 
-    for (const lote of lotes) {
-      try {
-        const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: lote });
-        if (data?.sucesso) {
-          todosResultados.push(...(data.resultados || []));
-          totalSucessos += data.sucessos || 0;
-          totalErros += data.erros || 0;
-          totalSkips += data.skips || 0;
-        } else {
-          lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: data?.error || 'Erro' }));
-          totalErros += lote.length;
+    // Detecta rate-limit / bloqueio temporário do Omie (425/429/"consumo indevido"/"bloqueada").
+    const isRateLimit = (msg) => {
+      const m = String(msg || '').toLowerCase();
+      return m.includes('425') || m.includes('429') || m.includes('consumo indevido') ||
+             m.includes('bloqueada') || m.includes('bloqueio') || m.includes('aguarde') || m.includes('cota');
+    };
+
+    const DELAY_ENTRE_LOTES_MS = 2500;
+
+    for (let li = 0; li < lotes.length; li++) {
+      const lote = lotes[li];
+      // Backoff/retry no 425/429: espera e re-tenta o MESMO lote (não marca erro).
+      let tentativa = 0;
+      const maxTentativas = 4;
+      while (true) {
+        let bloqueou = false;
+        try {
+          const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: lote });
+          if (data?.sucesso) {
+            // Se algum resultado do lote indicou rate-limit, re-tenta o lote inteiro.
+            const algumBloqueio = (data.resultados || []).some(r => !r.sucesso && !r.skip && isRateLimit(r.mensagem));
+            if (algumBloqueio && tentativa < maxTentativas) { bloqueou = true; }
+            else {
+              todosResultados.push(...(data.resultados || []));
+              totalSucessos += data.sucessos || 0;
+              totalErros += data.erros || 0;
+              totalSkips += data.skips || 0;
+            }
+          } else if (isRateLimit(data?.error) && tentativa < maxTentativas) {
+            bloqueou = true;
+          } else {
+            lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: data?.error || 'Erro' }));
+            totalErros += lote.length;
+          }
+        } catch (e) {
+          if (isRateLimit(e.message) && tentativa < maxTentativas) {
+            bloqueou = true;
+          } else {
+            lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: e.message }));
+            totalErros += lote.length;
+          }
         }
-      } catch (e) {
-        lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: e.message }));
-        totalErros += lote.length;
+
+        if (bloqueou) {
+          tentativa++;
+          const espera = 30000 * tentativa; // 30s, 60s, 90s... (425 bloqueia por dezenas/centenas de s)
+          toast.info(`Omie limitou o ritmo — aguardando ${espera / 1000}s antes de re-tentar (tentativa ${tentativa})...`);
+          await new Promise(r => setTimeout(r, espera));
+          continue;
+        }
+        break;
       }
+
       processados += lote.length;
       setProgresso({ atual: processados, total: codigos.length });
+      // Pausa entre lotes para não estourar o rate-limit do Omie (425).
+      if (li < lotes.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE_LOTES_MS));
     }
 
     setResultado({ sucesso: true, total: codigos.length, processados: codigos.length, sucessos: totalSucessos, erros: totalErros, skips: totalSkips, resultados: todosResultados });
@@ -233,6 +273,8 @@ export default function EmissaoBoletos() {
           <p className="text-sm text-slate-500">Selecione uma carga, escolha os títulos e gere os boletos no Omie</p>
         </div>
       </div>
+
+      <GerarBoletosFaltantesPrazo />
 
       <Card>
         <CardHeader><CardTitle className="text-base">1. Selecione a Carga</CardTitle></CardHeader>

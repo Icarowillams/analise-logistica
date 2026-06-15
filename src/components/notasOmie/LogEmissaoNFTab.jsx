@@ -13,6 +13,7 @@ import {
 import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Wand2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 /**
  * Log de Emissão de NF-e — histórico persistente de TODAS as tentativas
@@ -120,7 +121,12 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
       if (cargaT && !String(l.numero_carga || '').toLowerCase().includes(cargaT)) return false;
       if (codT && String(l.codigo_interno || '').toLowerCase() !== codT) return false;
       if (fantT && !String(l.nome_fantasia || '').toLowerCase().includes(fantT)) return false;
-      if (pedT && !String(l.numero_pedido || l.codigo_pedido || '').toLowerCase().includes(pedT)) return false;
+      if (pedT) {
+        // Normaliza ambos os lados (sem zeros à esquerda) para que "1411" case com "0001411".
+        const pedNorm = formatNumeroPedido(l.numero_pedido || l.codigo_pedido || '').toLowerCase();
+        const buscaNorm = formatNumeroPedido(pedT).toLowerCase();
+        if (!pedNorm.includes(buscaNorm) && !String(l.numero_pedido || l.codigo_pedido || '').toLowerCase().includes(pedT)) return false;
+      }
       if (nfT && !String(l.numero_nf || '').toLowerCase().includes(nfT)) return false;
 
       if (ini || fim) {
@@ -433,7 +439,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                     <td className="p-2 text-xs whitespace-nowrap">
                       {l.created_date ? format(new Date(l.created_date), 'dd/MM/yyyy HH:mm') : '-'}
                     </td>
-                    <td className="p-2 font-medium">{l.numero_pedido || l.codigo_pedido}</td>
+                    <td className="p-2 font-medium">{formatNumeroPedido(l.numero_pedido) || l.codigo_pedido}</td>
                     <td className="p-2">
                       {l.numero_nf
                         ? <Badge className="bg-green-100 text-green-800 border-green-300">{l.numero_nf}</Badge>
@@ -504,7 +510,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
           {erroDetalhe && (
             <div className="space-y-3 text-sm">
               <div><b>Data/hora:</b> {erroDetalhe.created_date ? format(new Date(erroDetalhe.created_date), 'dd/MM/yyyy HH:mm') : '-'}</div>
-              <div><b>Pedido:</b> {erroDetalhe.numero_pedido || erroDetalhe.codigo_pedido}</div>
+              <div><b>Pedido:</b> {formatNumeroPedido(erroDetalhe.numero_pedido) || erroDetalhe.codigo_pedido}</div>
               <div><b>faultcode:</b> <code>{erroDetalhe.faultcode || erroDetalhe.codigo_sefaz || '-'}</code></div>
               <div>
                 <b>faultstring:</b>

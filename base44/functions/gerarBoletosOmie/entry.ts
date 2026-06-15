@@ -193,9 +193,30 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
   if (!aberto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Título ${status}` };
   if (jaTemBoleto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Boleto já gerado: ${titulo.numero_boleto || ''}` };
 
+  const isRateLimit = (msg: string) => {
+    const m = String(msg || '').toLowerCase();
+    return m.includes('425') || m.includes('429') || m.includes('consumo indevido') ||
+           m.includes('bloqueada') || m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde');
+  };
+
   try {
     const param = { nCodTitulo: Number(codigo) };
-    const data = await omieCallAntiConcorrencia(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
+    // Backoff/retry no rate-limit (425/429): espera e re-tenta o MESMO título; nunca marca erro por isso.
+    let data: any;
+    let tentRate = 0;
+    while (true) {
+      try {
+        data = await omieCallAntiConcorrencia(base44, 'financas/contareceberboleto/', param, { call: 'GerarBoleto' });
+        break;
+      } catch (e: any) {
+        if (isRateLimit(e.message) && tentRate < 3) {
+          tentRate++;
+          await new Promise(r => setTimeout(r, 5000 * tentRate)); // 5s, 10s, 15s
+          continue;
+        }
+        throw e;
+      }
+    }
 
     const codStatus = String(data.cCodStatus || '0');
     if (codStatus !== '0' && codStatus !== '') {
