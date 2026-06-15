@@ -48,6 +48,10 @@ Deno.serve(async (req) => {
             })
         });
 
+        if (response.status >= 500 || response.status === 429 || response.status === 425) {
+            const corpo = await response.text().catch(() => '');
+            return Response.json({ sucesso: false, erro: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` }, { status: response.status === 425 ? 425 : 503 });
+        }
         const resultado = await response.json();
 
         if (resultado.faultstring) {
