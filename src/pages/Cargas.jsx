@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil, Play, CalendarDays } from 'lucide-react';
+import { Truck, Loader2, Trash2, FileText, Receipt, ClipboardList, MapPinned, FileSignature, X, Unlock, ArrowLeftRight, Pencil, Play, CalendarDays, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +55,7 @@ export default function Cargas() {
   const [modalPrevisao, setModalPrevisao] = useState({ open: false, carga: null });
   const [novaPrevisao, setNovaPrevisao] = useState('');
   const [salvandoPrevisao, setSalvandoPrevisao] = useState(false);
+  const [reconciliando, setReconciliando] = useState(null);
 
   // Carrega cargas direto do banco local — ZERO chamadas ao Omie
   // Padrão: últimos 60 dias. staleTime evita refetches excessivos.
@@ -411,6 +412,27 @@ export default function Cargas() {
     setSalvandoPrevisao(false);
   };
 
+  // Reconcilia NFs reais (ide.nNF) de uma carga faturada via sincronizarStatusCargasOmie.
+  // Só consulta — não reenvia emissão. Uma carga por vez (rate limit Omie já tratado na função).
+  const reconciliarNfs = async (carga) => {
+    setReconciliando(carga.id);
+    try {
+      const { data } = await base44.functions.invoke('sincronizarStatusCargasOmie', {
+        carga_ids: [carga.id], sync_limit: 1, dias_retroativos: 90
+      });
+      if (data?.api_bloqueada) {
+        toast.warning(data.erro_bloqueio || 'API Omie temporariamente bloqueada. Tente novamente em breve.');
+      } else {
+        const nfs = (data?.cargas?.[0]?.notas_fiscais || []).length;
+        toast.success(`Carga ${carga.numero_carga}: ${nfs} NF(s) reconciliada(s).`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['cargas'] });
+    } catch (e) {
+      toast.error(`Falha: ${e.message}`);
+    }
+    setReconciliando(null);
+  };
+
   const abrirNotas = (carga) => {
     navigate(`/NotasOmie?carga_id=${carga.id}`);
   };
@@ -509,6 +531,9 @@ export default function Cargas() {
                 </Button>
                 <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => abrirDocumento('romaneio', row)} title="Romaneio de entrega">
                   <MapPinned className="w-3.5 h-3.5" />
+                </Button>
+                <Button size="icon" variant="outline" className="h-7 w-7 border-cyan-300 text-cyan-700 hover:bg-cyan-50" onClick={() => reconciliarNfs(row)} disabled={reconciliando === row.id} title="Reconciliar NFs com o Omie">
+                  {reconciliando === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 </Button>
               </>
             )}
