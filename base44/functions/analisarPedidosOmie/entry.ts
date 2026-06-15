@@ -24,6 +24,8 @@ function encontrarPedido(pedidos, chave) {
     p.id === chaveTexto ||
     String(p.numero_pedido || '') === chaveTexto ||
     normalizarNumero(p.numero_pedido) === chaveNormalizada
+  );
+}
 
 async function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -40,6 +42,10 @@ async function consultarPedidoOmie(codigoPedido) {
       param: [{ codigo_pedido: Number(codigoPedido) }]
     })
   });
+  if (response.status >= 500 || response.status === 429 || response.status === 425) {
+    const corpo = await response.text().catch(() => '');
+    throw new Error(`HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+  }
   const data = await response.json();
   if (data.faultstring || data.faultcode) {
     throw new Error(data.faultstring || data.faultcode);

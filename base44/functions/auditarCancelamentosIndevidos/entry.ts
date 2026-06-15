@@ -27,6 +27,12 @@ async function consultarNfDoPedido(app_key, app_secret, codigoPedido) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ call: 'ConsultarNF', app_key, app_secret, param: [{ nIdPedido: Number(codigoPedido) }] })
     });
+    if (res.status >= 500 || res.status === 429 || res.status === 425) {
+      const corpo = await res.text().catch(() => '');
+      const e = new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      if (res.status === 425) e.bloqueio = true; else e.retry = true;
+      throw e;
+    }
     const data = await res.json();
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();

@@ -43,6 +43,11 @@ async function omieCall(base44, endpoint, param, options = {}) {
         signal: controller.signal
       });
       clearTimeout(tid);
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        if (i < 2) { await new Promise(r => setTimeout(r, [2000, 4000][i])); continue; }
+        const corpo = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      }
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
