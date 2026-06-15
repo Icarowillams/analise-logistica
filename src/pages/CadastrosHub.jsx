@@ -3,14 +3,15 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
   Search, Settings, ChevronRight,
-  ShoppingCart, Users, Truck, Briefcase, FileText,
+  ShoppingCart, Users, Truck, Cog,
   Package, Tags, Ruler, DollarSign, CreditCard, Target,
   UserCircle, ClipboardList, UserPlus, UserCog, Tag, Network, AlertTriangle,
-  Map, Route as RouteIcon, Car, User, Building2, Receipt, ScrollText
+  Map, Route as RouteIcon, Car, User, Building2, Receipt, ScrollText, Briefcase
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-// Estrutura de categorias — 5 grupos por domínio de negócio.
+// Estrutura de categorias — 4 grupos: uso frequente (Comercial, Clientes, Logística)
+// + Configurações (guarda-tudo, config rara) por último.
 const CATEGORIAS = [
   {
     titulo: 'Comercial',
@@ -18,26 +19,25 @@ const CATEGORIAS = [
     cor: 'emerald',
     itens: [
       { label: 'Produtos', path: 'Produtos', icon: Package },
-      { label: 'Categorias', path: 'Categorias', icon: Tags },
-      { label: 'Unidades de Medida', path: 'UnidadesMedida', icon: Ruler },
       { label: 'Tabelas de Preço', path: 'TabelasPreco', icon: DollarSign },
       { label: 'Planos de Pagamento', path: 'PlanosPagamento', icon: CreditCard },
       { label: 'Cadastro de Metas', path: 'Metas', icon: Target },
+      // sub-aba dentro de Produtos — mantida buscável
+      { label: 'Categorias', path: 'Categorias', icon: Tags, oculto: true },
     ],
   },
   {
-    titulo: 'Clientes & Vendas',
+    titulo: 'Clientes',
     icon: Users,
     cor: 'blue',
     itens: [
       { label: 'Clientes', path: 'Clientes', icon: UserCircle },
-      { label: 'Consulta de Clientes', path: 'ConsultaClientes', icon: ClipboardList },
-      { label: 'Pré-Cadastros', path: 'PreCadastros', icon: UserPlus },
       { label: 'Vendedores', path: 'Vendedores', icon: UserCog },
       { label: 'Segmentos', path: 'Segmentos', icon: Tag },
       { label: 'Redes', path: 'Redes', icon: Network },
-      { label: 'Ocorrências - Motivos', path: 'MotivosTroca', icon: AlertTriangle },
-      { label: 'Corrigir Planos (Planilha)', path: 'CorrigirPlanosPlanilha', icon: FileText },
+      // sub-abas dentro de Clientes — mantidas buscáveis
+      { label: 'Consultar Clientes', path: 'ConsultaClientes', icon: ClipboardList, oculto: true },
+      { label: 'Pré-Cadastros', path: 'PreCadastros', icon: UserPlus, oculto: true },
     ],
   },
   {
@@ -52,22 +52,17 @@ const CATEGORIAS = [
     ],
   },
   {
-    titulo: 'Equipe',
-    icon: Briefcase,
-    cor: 'violet',
+    titulo: 'Configurações',
+    icon: Cog,
+    cor: 'slate',
     itens: [
+      { label: 'Empresa', path: 'Empresa', icon: Building2 },
       { label: 'Funcionários', path: 'Funcionarios', icon: Users },
       { label: 'Funções/Departamentos', path: 'Funcoes', icon: Briefcase },
-    ],
-  },
-  {
-    titulo: 'Fiscal',
-    icon: FileText,
-    cor: 'rose',
-    itens: [
       { label: 'Cenários Fiscais', path: 'CenariosFiscais', icon: Receipt },
       { label: 'Cenários Fiscais Locais', path: 'CenariosFiscaisLocais', icon: ScrollText },
-      { label: 'Empresa', path: 'Empresa', icon: Building2 },
+      { label: 'Ocorrências - Motivos', path: 'MotivosTroca', icon: AlertTriangle },
+      { label: 'Unidades de Medida', path: 'UnidadesMedida', icon: Ruler },
     ],
   },
 ];
@@ -76,8 +71,7 @@ const CORES = {
   emerald: { bg: 'bg-emerald-100', text: 'text-emerald-600', badge: 'bg-emerald-50 text-emerald-700', hover: 'hover:bg-emerald-50' },
   blue: { bg: 'bg-blue-100', text: 'text-blue-600', badge: 'bg-blue-50 text-blue-700', hover: 'hover:bg-blue-50' },
   orange: { bg: 'bg-orange-100', text: 'text-orange-600', badge: 'bg-orange-50 text-orange-700', hover: 'hover:bg-orange-50' },
-  violet: { bg: 'bg-violet-100', text: 'text-violet-600', badge: 'bg-violet-50 text-violet-700', hover: 'hover:bg-violet-50' },
-  rose: { bg: 'bg-rose-100', text: 'text-rose-600', badge: 'bg-rose-50 text-rose-700', hover: 'hover:bg-rose-50' },
+  slate: { bg: 'bg-slate-100', text: 'text-slate-600', badge: 'bg-slate-50 text-slate-700', hover: 'hover:bg-slate-50' },
 };
 
 export default function CadastrosHub() {
@@ -85,7 +79,13 @@ export default function CadastrosHub() {
 
   const categoriasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return CATEGORIAS;
+    if (!termo) {
+      // Sem busca: esconde itens que viraram sub-abas (oculto)
+      return CATEGORIAS
+        .map((cat) => ({ ...cat, itens: cat.itens.filter((i) => !i.oculto) }))
+        .filter((cat) => cat.itens.length > 0);
+    }
+    // Com busca: inclui também os itens ocultos (sub-abas) para que sejam encontrados
     return CATEGORIAS
       .map((cat) => ({
         ...cat,
@@ -130,7 +130,7 @@ export default function CadastrosHub() {
           <p>Nenhum cadastro encontrado para "{busca}".</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
           {categoriasFiltradas.map((cat) => {
             const c = CORES[cat.cor];
             const CatIcon = cat.icon;
