@@ -54,6 +54,16 @@ async function omieCall(base44, endpoint, param, options = {}) {
       if (res.status >= 500 || res.status === 429 || res.status === 425) {
         const corpo = await res.text().catch(() => '');
         lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        // "Consumo redundante" → re-tentável, mas o Omie pede ~50s. Espera o que ele indica (teto 12s/tentativa)
+        // para não estourar o tempo de execução; se ainda bloquear, lança e a leva para (re-tenta depois).
+        if (/redundante|redundant/i.test(corpo)) {
+          if (i < RETRIES.length) {
+            const m = corpo.match(/(\d+)\s*segundos?/i);
+            const espera = Math.min((m ? Number(m[1]) : 8) * 1000, 12000);
+            await new Promise(r => setTimeout(r, espera)); continue;
+          }
+          throw new Error(lastErr);
+        }
         if (res.status === 425) {
           const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
           const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
@@ -89,51 +99,51 @@ async function omieCall(base44, endpoint, param, options = {}) {
 }
 // ═══ fim omieClient inline ═══
 
-const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 const ehAVista = (nome) => /vista/i.test(String(nome || ''));
 const isRateLimit = (msg) => {
   const m = String(msg || '').toLowerCase();
   return m.includes('425') || m.includes('429') || m.includes('consumo indevido') ||
+         m.includes('redundante') || m.includes('redundant') ||
          m.includes('bloqueada') || m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde');
 };
-const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-
-// Lista títulos (contas a receber) de um pedido — filtra por CNPJ + NF na janela do faturamento.
-async function listarTitulosDoPedido(base44, pedido) {
-  const cnpj = String(pedido.cliente_cpf_cnpj || '').replace(/\D/g, '');
-  const numNf = pedido.numero_nota_fiscal ? String(pedido.numero_nota_fiscal).replace(/\D/g, '') : null;
-  if (!cnpj) return [];
-  // Janela ampla (igual à tela de boletos): -365 / +90 dias do faturamento.
-  // Não restringe a abertos no Omie — o status é filtrado depois em gerarBoletoTitulo.
-  const ref = pedido.data_faturamento ? new Date(pedido.data_faturamento) : new Date(pedido.created_date || Date.now());
-  const inicio = new Date(ref.getTime() - 365 * 86400000);
-  const futuro = new Date(ref.getTime() + 90 * 86400000);
-
+// Lista TODAS as contas a receber de um cliente (por codigo_cliente_fornecedor), com paginação.
+// SEM janela de data estreita — o casamento robusto é feito depois por nCodPedido em memória.
+async function listarTitulosDoCliente(base44, codigoClienteOmie) {
+  const codCli = Number(codigoClienteOmie);
+  if (!codCli) return [];
   let acumulados = [];
-  for (let pag = 1; pag <= 5; pag++) {
+  for (let pag = 1; pag <= 10; pag++) {
     const data = await omieCall(base44, 'financas/contareceber/', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
-      filtrar_por_data_de: fmt(inicio), filtrar_por_data_ate: fmt(futuro),
-      filtrar_por_cpf_cnpj: cnpj
+      codigo_cliente_fornecedor: codCli
     }, { call: 'ListarContasReceber' });
     acumulados.push(...(data?.conta_receber_cadastro || []));
     if (pag >= (data?.total_de_paginas || 1)) break;
     await new Promise(r => setTimeout(r, 800));
   }
-  if (numNf) {
-    const comNf = acumulados.filter((t) => String(t.numero_documento || '').replace(/\D/g, '') === numNf);
-    if (comNf.length > 0) return comNf;
-  }
   return acumulados;
 }
 
-// Gera (ou detecta já gerado) o boleto de um título, com backoff no rate-limit.
+// Casa os títulos do cliente com o pedido por nCodPedido (primário) ou NF (secundário).
+function casarTitulosComPedido(titulos, pedido) {
+  const codPed = String(pedido.omie_codigo_pedido || '').replace(/\D/g, '');
+  const numNf = pedido.numero_nota_fiscal ? String(pedido.numero_nota_fiscal).replace(/\D/g, '') : null;
+  let casados = titulos.filter((t) => {
+    const tp = String(t.nCodPedido ?? t.codigo_pedido ?? '').replace(/\D/g, '');
+    return tp && codPed && tp === codPed;
+  });
+  if (casados.length === 0 && numNf) {
+    casados = titulos.filter((t) => {
+      const nf = String(t.numero_documento_fiscal ?? t.numero_documento ?? '').replace(/\D/g, '');
+      return nf && nf === numNf;
+    });
+  }
+  return casados;
+}
+
+// Gera o boleto de um título (já casado e SEM boleto). Backoff no rate-limit.
 async function gerarBoletoTitulo(base44, titulo) {
   const codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento;
-  const status = String(titulo.status_titulo || '').toUpperCase();
-  if (status && !STATUS_ABERTOS.has(status)) return { skip: true, motivo: 'status_' + status };
-  if (titulo.numero_boleto && String(titulo.numero_boleto).trim()) return { jaTinha: true };
-
   let tent = 0;
   while (true) {
     try {
@@ -151,6 +161,10 @@ async function gerarBoletoTitulo(base44, titulo) {
     }
   }
 }
+
+// Flag cGerado do próprio título: 'S' = já tem boleto.
+const boletoJaGerado = (t) => String(t?.boleto?.cGerado || t?.cGerado || '').toUpperCase() === 'S';
+const tituloCancelado = (t) => String(t?.status_titulo || '').toUpperCase() === 'CANCELADO';
 
 Deno.serve(async (req) => {
   try {
@@ -195,47 +209,80 @@ Deno.serve(async (req) => {
     const totalCandidatos = candidatos.length;
     const lote = candidatos.slice(skip, skip + maxPedidos);
 
+    // Resolve o código do cliente Omie de cada pedido da leva (via Cliente).
+    const clienteIds = [...new Set(lote.map(c => c.pedido.cliente_id).filter(Boolean))];
+    const codClientePorClienteId = new Map();
+    for (let i = 0; i < clienteIds.length; i += 100) {
+      const fatia = clienteIds.slice(i, i + 100);
+      const clis = await base44.asServiceRole.entities.Cliente.filter({ id: { $in: fatia } }, '-created_date', 200).catch(() => []);
+      for (const c of clis) {
+        const cod = c.codigo_cliente_omie || c.codigo_omie;
+        if (cod) codClientePorClienteId.set(c.id, cod);
+      }
+    }
+
     let gerados = 0, jaTinham = 0, semTitulo = 0, falhas = 0;
     const detalhes = [];
 
     for (const { log, pedido } of lote) {
       try {
-        const titulos = await listarTitulosDoPedido(base44, pedido);
-        if (titulos.length === 0) {
+        const codCli = codClientePorClienteId.get(pedido.cliente_id);
+        if (!codCli) {
+          semTitulo++;
+          detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'sem_titulo', mensagem: 'cliente sem código Omie' });
+          await new Promise(r => setTimeout(r, 2500));
+          continue;
+        }
+
+        const todosTitulos = await listarTitulosDoCliente(base44, codCli);
+        const casados = casarTitulosComPedido(todosTitulos, pedido);
+
+        if (casados.length === 0) {
           semTitulo++;
           detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'sem_titulo' });
         } else {
           // Dedup por código de lançamento.
           const vistos = new Set();
-          const unicos = titulos.filter(t => {
+          const unicos = casados.filter(t => {
             const c = String(t.codigo_lancamento_omie || t.codigo_lancamento || '');
             if (!c || vistos.has(c)) return false;
             vistos.add(c); return true;
           });
 
-          let algumGerado = false, algumJaTinha = false, algumaFalha = false;
-          for (let i = 0; i < unicos.length; i++) {
-            const r = await gerarBoletoTitulo(base44, unicos[i]);
-            if (r.gerado) algumGerado = true;
-            else if (r.jaTinha) algumJaTinha = true;
-            else if (r.falha) algumaFalha = true;
-            if (i < unicos.length - 1) await new Promise(r => setTimeout(r, 1200));
-          }
+          // Já tem boleto em TODOS os títulos não-cancelados? → só marca o log.
+          const naoCancelados = unicos.filter(t => !tituloCancelado(t));
+          const aGerar = naoCancelados.filter(t => !boletoJaGerado(t));
 
-          if (algumGerado) {
-            gerados++;
-            await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
-            detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'gerado' });
-          } else if (algumJaTinha) {
+          if (naoCancelados.length > 0 && aGerar.length === 0) {
             jaTinham++;
             await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
             detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'ja_tinha' });
-          } else if (algumaFalha) {
-            falhas++;
-            detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'falha' });
-          } else {
+          } else if (aGerar.length === 0) {
+            // só cancelados
             semTitulo++;
-            detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'sem_aberto' });
+            detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'sem_titulo', mensagem: 'apenas cancelados' });
+          } else {
+            let algumGerado = false, algumJaTinha = false, algumaFalha = false;
+            for (let i = 0; i < aGerar.length; i++) {
+              const r = await gerarBoletoTitulo(base44, aGerar[i]);
+              if (r.gerado) algumGerado = true;
+              else if (r.jaTinha) algumJaTinha = true;
+              else if (r.falha) algumaFalha = true;
+              if (i < aGerar.length - 1) await new Promise(r => setTimeout(r, 1200));
+            }
+
+            if (algumGerado) {
+              gerados++;
+              await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
+              detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'gerado' });
+            } else if (algumJaTinha) {
+              jaTinham++;
+              await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
+              detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'ja_tinha' });
+            } else if (algumaFalha) {
+              falhas++;
+              detalhes.push({ codigo_pedido: log.codigo_pedido, status: 'falha' });
+            }
           }
         }
       } catch (e) {
