@@ -79,6 +79,16 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
     headers: { 'Content-Type': 'application/json' },
     body: bodyStr,
   });
+  // Erro HTTP do Omie (5xx/429/425): corpo costuma não ser JSON. 425 abre circuit breaker.
+  if (resp.status >= 500 || resp.status === 429 || resp.status === 425) {
+    const corpo = await resp.text().catch(() => '');
+    if (resp.status === 425) {
+      const err = new Error(`HTTP 425 Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      err.code = 'OMIE_425';
+      throw err;
+    }
+    throw new Error(`Omie ${call} HTTP ${resp.status}${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+  }
   const data = await resp.json().catch(async () => {
     const text = await resp.text().catch(() => '');
     throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
