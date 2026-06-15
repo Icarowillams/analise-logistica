@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,6 +62,29 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
   const [cargasPorNf, setCargasPorNf] = useState({}); // cNumero(normalizado) → numero_carga
 
+  // Índice codigo_pedido → numero_carga cacheado em memória com TTL de 5 min.
+  // Evita rebaixar todas as cargas a cada busca (eram ~2 MB / chamada).
+  const indiceCargasRef = useRef({ dados: null, expira: 0 });
+  const TTL_INDICE = 5 * 60 * 1000;
+
+  const getIndiceCargas = async () => {
+    const agora = Date.now();
+    if (indiceCargasRef.current.dados && indiceCargasRef.current.expira > agora) {
+      return indiceCargasRef.current.dados;
+    }
+    // Projeção de campos: traz só numero_carga e pedidos_omie (corta ~94% do payload).
+    const cargas = await base44.entities.Carga.list('-created_date', 1000, ['numero_carga', 'pedidos_omie']);
+    const indice = {}; // codigo_pedido → numero_carga
+    cargas.forEach(c => {
+      (c.pedidos_omie || []).forEach(p => {
+        const cod = String(p.codigo_pedido || '');
+        if (cod && c.numero_carga && !indice[cod]) indice[cod] = c.numero_carga;
+      });
+    });
+    indiceCargasRef.current = { dados: indice, expira: agora + TTL_INDICE };
+    return indice;
+  };
+
   // Filtra NFs pela carga cruzando por DOIS critérios (qualquer um casa):
   //  1. nIdPedido da NF == codigo_pedido do pedido na carga (caminho normal)
   //  2. nNF normalizado da NF == numero_nf do pedido na carga (fallback quando o
@@ -95,14 +118,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     if (!nfs || nfs.length === 0) return mapa;
 
     try {
-      const cargas = await base44.entities.Carga.list('-created_date', 1000);
-      const indice = {}; // codigo_pedido → numero_carga
-      cargas.forEach(c => {
-        (c.pedidos_omie || []).forEach(p => {
-          const cod = String(p.codigo_pedido || '');
-          if (cod && c.numero_carga && !indice[cod]) indice[cod] = c.numero_carga;
-        });
-      });
+      const indice = await getIndiceCargas(); // cacheado (TTL 5 min)
 
       nfs.forEach(nf => {
         const num = String(nf.cNumero || '').replace(/\D/g, '');
