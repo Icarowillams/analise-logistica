@@ -11,8 +11,8 @@ import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
 import { usePrefetchApoioPedido } from '@/components/Pedidos/usePrefetchApoioPedido';
 
 export default function EmissaoPedidos() {
-  // Aquece o cache das listas de apoio assim que a tela monta — 1ª abertura de
-  // cliente já vem do cache (plano/tabela/cenário instantâneos).
+  // Aquece o cache das listas de apoio — adiado (~500ms) para não competir com a
+  // primeira busca de cliente. 1ª abertura de cliente já vem do cache.
   usePrefetchApoioPedido();
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -126,11 +126,11 @@ export default function EmissaoPedidos() {
         </div>
 
         <div style={{ display: activeTab === 'digitar' ? 'block' : 'none' }}>
-          <DigitarPedido vendedor={vendedorEfetivo} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
+          <DigitarPedido vendedor={vendedorEfetivo} activeTab={activeTab} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </div>
 
         <div style={{ display: activeTab === 'avulso' ? 'block' : 'none' }}>
-          <PedidoAvulso vendedor={vendedorEfetivo} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
+          <PedidoAvulso vendedor={vendedorEfetivo} activeTab={activeTab} editingPedidoId={editingPedidoId} onClearEdit={() => setEditingPedidoId(null)} permissaoCenariosFiscais={permissaoCenariosFiscais} />
         </div>
 
         <div style={{ display: activeTab === 'envio' ? 'block' : 'none' }}>

@@ -8,8 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Search, ShoppingCart, MapPin, Filter } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 import BuscarClienteModal from './BuscarClienteModal';
+import useDebounce from '@/hooks/useDebounce';
 
-export default function PedidoAvulso({ vendedor, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
+export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [tipoPedido, setTipoPedido] = useState(null);
   const [searchCodigo, setSearchCodigo] = useState('');
@@ -40,13 +41,17 @@ export default function PedidoAvulso({ vendedor, editingPedidoId, onClearEdit, p
     }
   }, [editingPedido, editingPedidoId]);
 
+  // Debounce (~350ms) — evita 1 chamada por tecla digitada.
+  const codigoDebounced = useDebounce(searchCodigo.trim(), 350);
+  const fantasiaDebounced = useDebounce(searchFantasia.trim(), 350);
+
   // Busca SERVER-SIDE exata por código OU nome fantasia — nada antes de digitar.
-  const buscaTermo = searchCodigo.trim() || searchFantasia.trim();
+  const buscaTermo = codigoDebounced || fantasiaDebounced;
   const { data: clientesFiltrados = [] } = useQuery({
-    queryKey: ['avulso-busca-cliente', searchCodigo.trim(), searchFantasia.trim()],
+    queryKey: ['avulso-busca-cliente', codigoDebounced, fantasiaDebounced],
     queryFn: async () => {
-      const cod = searchCodigo.trim();
-      const fan = searchFantasia.trim();
+      const cod = codigoDebounced;
+      const fan = fantasiaDebounced;
       let resultado = [];
       if (cod) {
         const listas = await Promise.all([

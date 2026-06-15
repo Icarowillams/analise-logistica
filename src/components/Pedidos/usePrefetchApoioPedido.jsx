@@ -15,36 +15,40 @@ export function usePrefetchApoioPedido() {
 
   useEffect(() => {
     const cache = { staleTime: 10 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000 };
-    queryClient.prefetchQuery({
-      queryKey: ['planosPagamento'],
-      queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
-      ...cache,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['tabelasPreco'],
-      queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000),
-      ...cache,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['cenariosFiscaisLocais'],
-      queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' }),
-      ...cache,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['produtos'],
-      queryFn: () => base44.entities.Produto.filter({ status: 'ativo' }),
-      ...cache,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['acoesPromocionais'],
-      queryFn: () => base44.entities.AcaoPromocional.list(),
-      ...cache,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['motivosTroca'],
-      queryFn: () => base44.entities.MotivoTroca.list(),
-      ...cache,
-    });
+    // Adiado ~500ms para não competir com a primeira busca de cliente do usuário.
+    const t = setTimeout(() => {
+      queryClient.prefetchQuery({
+        queryKey: ['planosPagamento'],
+        queryFn: () => base44.entities.PlanoPagamento.list('-created_date', 1000),
+        ...cache,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['tabelasPreco'],
+        queryFn: () => base44.entities.TabelaPreco.list('-created_date', 1000),
+        ...cache,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['cenariosFiscaisLocais'],
+        queryFn: () => base44.entities.CenarioFiscalLocal.filter({ status: 'ativo' }),
+        ...cache,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['produtos'],
+        queryFn: () => base44.entities.Produto.filter({ status: 'ativo' }),
+        ...cache,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['acoesPromocionais'],
+        queryFn: () => base44.entities.AcaoPromocional.list(),
+        ...cache,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['motivosTroca'],
+        queryFn: () => base44.entities.MotivoTroca.list(),
+        ...cache,
+      });
+    }, 500);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

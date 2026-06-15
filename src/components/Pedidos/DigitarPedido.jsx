@@ -8,7 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, ShoppingCart, ArrowLeftRight } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 
-export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
+export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
+  // Só carrega os dados pesados quando a aba Roteiro está ativa (ou em edição vinda de outra aba)
+  const ativo = activeTab === undefined || activeTab === 'digitar' || !!editingPedidoId;
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [tipoPedido, setTipoPedido] = useState(null);
   const [searchCliente, setSearchCliente] = useState('');
@@ -20,14 +22,14 @@ export default function DigitarPedido({ vendedor, editingPedidoId, onClearEdit, 
   const { data: roteiros = [] } = useQuery({
     queryKey: ['roteiros', vendedor.id],
     queryFn: () => base44.entities.Roteiro.filter({ vendedor_id: vendedor.id }),
-    enabled: !!vendedor
+    enabled: ativo && !!vendedor?.id
   });
 
   // Carrega SÓ os clientes ativos deste vendedor (filtro no servidor — não a base inteira)
   const { data: clientesVendedor = [] } = useQuery({
     queryKey: ['clientes-vendedor', vendedor.id],
     queryFn: () => base44.entities.Cliente.filter({ vendedor_id: vendedor.id, status: 'ativo' }, '-created_date', 5000),
-    enabled: !!vendedor?.id,
+    enabled: ativo && !!vendedor?.id,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
