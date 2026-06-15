@@ -33,7 +33,16 @@ async function omieCall(base44: any, call: string, param: any, options: any = {}
     try {
       const res = await fetch(OMIE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
       clearTimeout(timeoutId);
-      if (res.status === 429) { await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); continue; }
+      // Tratamento de status HTTP ANTES de res.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+      if (res.status === 429 || res.status >= 500) {
+        await res.text().catch(() => '');
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); continue; }
+        throw new Error(`HTTP ${res.status} Omie — tentativas esgotadas`);
+      }
+      if (res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        throw new Error(`HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      }
       const data = await res.json();
       if (data.faultstring) throw new Error(data.faultstring);
       return data;
