@@ -72,13 +72,23 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     if (indiceCargasRef.current.dados && indiceCargasRef.current.expira > agora) {
       return indiceCargasRef.current.dados;
     }
-    // Projeção de campos: traz só numero_carga e pedidos_omie (corta ~94% do payload).
-    const cargas = await base44.entities.Carga.list('-created_date', 1000, ['numero_carga', 'pedidos_omie']);
-    const indice = {}; // codigo_pedido → numero_carga
+    // Projeção de campos: traz só numero_carga, pedidos_omie e notas_fiscais (corta ~94% do payload).
+    const cargas = await base44.entities.Carga.list('-created_date', 1000, ['numero_carga', 'pedidos_omie', 'notas_fiscais']);
+    const indice = {}; // codigo_pedido → numero_carga  |  'nf:'+numNF → numero_carga
     cargas.forEach(c => {
+      if (!c.numero_carga) return;
       (c.pedidos_omie || []).forEach(p => {
         const cod = String(p.codigo_pedido || '');
-        if (cod && c.numero_carga && !indice[cod]) indice[cod] = c.numero_carga;
+        if (cod && !indice[cod]) indice[cod] = c.numero_carga;
+      });
+      // Fallback por número de NF real (notas_fiscais), já que o ListarNF do Omie
+      // raramente devolve nIdPedido no resumo.
+      (c.notas_fiscais || []).forEach(nf => {
+        const num = String(nf || '').replace(/\D/g, '');
+        if (num) {
+          const chave = 'nf:' + num;
+          if (!indice[chave]) indice[chave] = c.numero_carga;
+        }
       });
     });
     indiceCargasRef.current = { dados: indice, expira: agora + TTL_INDICE };
@@ -122,8 +132,15 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
 
       nfs.forEach(nf => {
         const num = String(nf.cNumero || '').replace(/\D/g, '');
+        if (!num) return;
         const codPed = String(nf.nIdPedido || '');
-        if (num && codPed && indice[codPed]) mapa[num] = indice[codPed];
+        // 1) caminho original: cruza nIdPedido → codigo_pedido
+        if (codPed && indice[codPed]) {
+          mapa[num] = indice[codPed];
+          return;
+        }
+        // 2) fallback: cruza pelo número real da NF (notas_fiscais da carga)
+        if (indice['nf:' + num]) mapa[num] = indice['nf:' + num];
       });
     } catch { /* segue */ }
 

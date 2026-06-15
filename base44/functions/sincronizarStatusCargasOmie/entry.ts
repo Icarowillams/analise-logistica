@@ -320,7 +320,10 @@ Deno.serve(async (req) => {
 
           // 🛡️ REGRA IMUTÁVEL: numero_nf já preenchido NUNCA é apagado.
           // Só atualiza se houver um número válido novo; senão mantém o que já existe localmente.
-          const nfPreservada = String(numeroNfFinal || '').trim() || String(pedido.numero_nf || '').trim() || '';
+          // Só aceita numero_nf NOVO quando a NF está realmente em etapa 60 (emitida) — evita
+          // gravar número de PEDIDO disfarçado de NF e poluir carga.notas_fiscais.
+          const nfNovaConfiavel = status.etapa === '60' ? String(numeroNfFinal || '').trim() : '';
+          const nfPreservada = nfNovaConfiavel || String(pedido.numero_nf || '').trim() || '';
 
           pedidosAtualizados.push({
             ...pedido,
