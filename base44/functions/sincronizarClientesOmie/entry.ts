@@ -404,6 +404,19 @@ async function buscarPaginaOmie(pagina, registrosPorPagina = 100, tentativa = 0)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ call: "ListarClientes", app_key: OMIE_APP_KEY, app_secret: OMIE_APP_SECRET, param: [param] })
     });
+    // Status HTTP ANTES de response.json() — num 5xx/429 o corpo não costuma ser JSON. Reaproveita o retry com backoff.
+    if (response.status >= 500 || response.status === 429) {
+        await response.text().catch(() => '');
+        if (tentativa < 4) {
+            await new Promise(r => setTimeout(r, 2000 * (tentativa + 1)));
+            return buscarPaginaOmie(pagina, registrosPorPagina, tentativa + 1);
+        }
+        return { faultstring: `HTTP ${response.status} Omie — tentativas esgotadas` };
+    }
+    if (response.status === 425) {
+        const corpo = await response.text().catch(() => '');
+        return { faultstring: `HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`, faultcode: '425' };
+    }
     const data = await response.json();
     if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
@@ -613,9 +626,19 @@ Deno.serve(async (req) => {
                             app_key: OMIE_APP_KEY,
                             app_secret: OMIE_APP_SECRET,
                             param: [clienteOmie]
-                        })
-                    });
-                    const resultado = await response.json();
+                            })
+                            });
+                            // Status HTTP ANTES de response.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+                            let resultado;
+                            if (response.status >= 500 || response.status === 429) {
+                            const corpo = await response.text().catch(() => '');
+                            resultado = { faultstring: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+                            } else if (response.status === 425) {
+                            const corpo = await response.text().catch(() => '');
+                            resultado = { faultstring: `API bloqueada por consumo indevido (HTTP 425)${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+                            } else {
+                            resultado = await response.json();
+                            }
 
                     // 425 / consumo indevido → abre circuit breaker e interrompe o lote
                     const err425 = await tratarResposta425(base44, resultado.faultstring, response.status);

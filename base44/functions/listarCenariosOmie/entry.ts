@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
         }
 
         async function listarPagina(nPagina) {
-            return await omieCall(base44, CENARIOS_URL, "ListarCenarios", { nPagina, nRegPorPagina: 100 }, { cacheMinutes: 60 });
+            return await omieCall(base44, CENARIOS_URL, { nPagina, nRegPorPagina: 100 }, { call: 'ListarCenarios', cacheMinutes: 60 });
         }
 
         let todosRegistros = [];

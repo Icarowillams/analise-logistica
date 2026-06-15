@@ -31,6 +31,14 @@ async function omieCall(base44: any, call: string, param: unknown) {
         signal: ctrl.signal
       });
       clearTimeout(tid);
+      // Tratamento de status HTTP ANTES de res.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 425) throw new Error(lastErr);
+        if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        throw new Error(lastErr);
+      }
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();

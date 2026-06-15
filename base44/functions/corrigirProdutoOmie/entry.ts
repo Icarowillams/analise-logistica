@@ -104,7 +104,14 @@ Deno.serve(async (req) => {
             })
         });
 
-        const result = await response.json();
+        // Status HTTP ANTES de response.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+        let result;
+        if (response.status >= 500 || response.status === 429 || response.status === 425) {
+            const corpo = await response.text().catch(() => '');
+            result = { faultstring: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+        } else {
+            result = await response.json();
+        }
         console.log('[corrigirProdutoOmie] Resultado:', JSON.stringify(result));
 
         if (result.faultstring) {

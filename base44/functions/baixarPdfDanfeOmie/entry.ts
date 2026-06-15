@@ -47,6 +47,21 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
     const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 20000);
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
     clearTimeout(tid);
+    // Status HTTP ANTES de res.json() — num 5xx/429/425 o corpo não costuma ser JSON. Sem retry (impressão de PDF).
+    if (res.status >= 500 || res.status === 429 || res.status === 425) {
+      const corpo = await res.text().catch(() => '');
+      lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+      if (res.status === 425) {
+        const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+        const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+        const _p: any = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+        if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+      }
+      const err = new Error(lastErr);
+      if (res.status === 429) err.retryAfterSecs = 60;
+      throw err;
+    }
     const data = await res.json();
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();

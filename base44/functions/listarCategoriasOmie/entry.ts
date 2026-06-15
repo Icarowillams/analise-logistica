@@ -20,6 +20,12 @@ async function chamarOmie(payload) {
         })
     });
 
+    // Status HTTP ANTES de response.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+    if (response.status >= 500 || response.status === 429 || response.status === 425) {
+        const corpo = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+    }
+
     const data = await response.json();
     if (data?.faultstring) {
         throw new Error(data.faultstring);

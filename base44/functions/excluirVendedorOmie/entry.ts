@@ -28,7 +28,14 @@ Deno.serve(async (req) => {
             })
         });
 
-        const resultado = await response.json();
+        // Status HTTP ANTES de response.json() — num 5xx/429/425 o corpo não costuma ser JSON.
+        let resultado;
+        if (response.status >= 500 || response.status === 429 || response.status === 425) {
+            const corpo = await response.text().catch(() => '');
+            resultado = { faultstring: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
+        } else {
+            resultado = await response.json();
+        }
 
         if (resultado.faultstring) {
             console.error('Erro Omie ao excluir vendedor:', resultado.faultstring);
