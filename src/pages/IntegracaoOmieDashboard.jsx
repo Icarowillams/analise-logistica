@@ -29,11 +29,19 @@ export default function IntegracaoOmieDashboard() {
   }, [cooldown]);
   const [filtroStatus, setFiltroStatus] = useState('all');
   const [filtroCall, setFiltroCall] = useState('');
+  const [mostrarIgnorados, setMostrarIgnorados] = useState(false);
   const [logDetalhe, setLogDetalhe] = useState(null);
 
+  // Os webhooks financeiros (Financas.*/ContaCorrente.*/ContaReceber.*) entram como 'ignorado'.
+  // Por padrão buscamos só os relevantes no servidor; quando o usuário liga o toggle ou filtra
+  // explicitamente por 'ignorado', buscamos tudo.
+  const incluirIgnorados = mostrarIgnorados || filtroStatus === 'ignorado';
+
   const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['logsOmie'],
-    queryFn: () => base44.entities.LogIntegracaoOmie.list('-created_date', 200),
+    queryKey: ['logsOmie', incluirIgnorados],
+    queryFn: () => incluirIgnorados
+      ? base44.entities.LogIntegracaoOmie.list('-created_date', 200)
+      : base44.entities.LogIntegracaoOmie.filter({ status: { $ne: 'ignorado' } }, '-created_date', 200),
     refetchInterval: 10000,
     staleTime: 0, // Painel de monitoramento — sempre busca dados frescos ao invalidar
   });
@@ -74,11 +82,17 @@ export default function IntegracaoOmieDashboard() {
 
   const logsFiltrados = useMemo(() => {
     return logs.filter(l => {
+      if (!incluirIgnorados && l.status === 'ignorado') return false;
       if (filtroStatus !== 'all' && l.status !== filtroStatus) return false;
       if (filtroCall && !l.call?.toLowerCase().includes(filtroCall.toLowerCase())) return false;
       return true;
     });
-  }, [logs, filtroStatus, filtroCall]);
+  }, [logs, filtroStatus, filtroCall, incluirIgnorados]);
+
+  const ignoradosOcultos = useMemo(
+    () => (incluirIgnorados ? 0 : logs.filter(l => l.status === 'ignorado').length),
+    [logs, incluirIgnorados]
+  );
 
   // Invoca função backend compatível com preview-sandbox e produção.
   // No preview, o SDK bloqueia chamadas a functions — usamos fetch direto para o app publicado.
@@ -294,6 +308,7 @@ export default function IntegracaoOmieDashboard() {
                 <SelectItem value="sucesso">Sucesso</SelectItem>
                 <SelectItem value="erro">Erro</SelectItem>
                 <SelectItem value="warning">Warning</SelectItem>
+                <SelectItem value="ignorado">Ignorado</SelectItem>
               </SelectContent>
             </Select>
             <Input
@@ -302,6 +317,15 @@ export default function IntegracaoOmieDashboard() {
               onChange={e => setFiltroCall(e.target.value)}
               className="max-w-xs"
             />
+            <div className="flex items-center gap-2">
+              <Switch id="toggle-ignorados" checked={mostrarIgnorados} onCheckedChange={setMostrarIgnorados} />
+              <label htmlFor="toggle-ignorados" className="text-sm text-slate-600 cursor-pointer select-none">
+                Mostrar ignorados
+                {ignoradosOcultos > 0 && (
+                  <span className="ml-1 text-xs text-slate-400">({ignoradosOcultos} ocultos)</span>
+                )}
+              </label>
+            </div>
             <Button
               variant="outline"
               disabled={refreshing}
