@@ -741,7 +741,6 @@ Deno.serve(async (req) => {
       // um lote de 2 nunca consulta o mesmo registro (respeita "4 simultâneas com registros
       // diferentes" do Omie, usando só 2). Itens sem código vão 1 por vez (não loteados).
       let i = 0;
-      let primeiroLote = true;
       while (i < fila.length) {
         if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
 
@@ -762,9 +761,9 @@ Deno.serve(async (req) => {
           i++;
         }
 
-        // THROTTLE: intervalo entre lotes (não antes do primeiro).
-        if (!primeiroLote) await new Promise(r => setTimeout(r, INTERVALO_ENTRE_PEDIDOS_MS));
-        primeiroLote = false;
+        // THROTTLE: intervalo antes de CADA lote. Vale tanto p/ a vazão ao Omio quanto p/
+        // dar respiro às chamadas Base44 (o paralelismo de 2 dobra as ops de banco/lote).
+        await new Promise(r => setTimeout(r, INTERVALO_ENTRE_PEDIDOS_MS));
 
         const resultados = await Promise.all(lote.map(processarComTratamento));
         if (resultados.some(r => r.bloqueado)) { pausadoPorBloqueio = true; break; }
