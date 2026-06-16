@@ -86,6 +86,9 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       }
     });
     indicePedidosRef.current = { dados: indice, expira: agora + TTL_INDICE };
+    console.log('[NF55-DEBUG] getIndicePedidos: total pedidos=', pedidos.length,
+      '| com codigo=', Object.keys(indice).length,
+      '| tem 11524127880?', indice['11524127880']);
     return indice;
   };
 
@@ -155,8 +158,16 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         getIndiceCargas()   // FALLBACK: cargas (pedidos_omie / notas_fiscais)
       ]);
 
+      console.log('[NF55-DEBUG] buscarCargasDasNfs: nfs=', nfs.length,
+        '| idxPedido keys=', Object.keys(idxPedido).length,
+        '| sample nf=', nfs[0] ? { cNumero: nfs[0].cNumero, nIdPedido: nfs[0].nIdPedido } : null);
+
       nfs.forEach(nf => {
         const num = String(nf.cNumero || '').replace(/\D/g, '');
+        if (String(nf.cNumero).replace(/\D/g, '') === '00181706' || String(nf.nIdPedido) === '11524127880') {
+          console.log('[NF55-DEBUG] NF alvo:', { cNumero: nf.cNumero, nIdPedido: nf.nIdPedido,
+            tipoNId: typeof nf.nIdPedido, hitPedido: idxPedido[String(nf.nIdPedido)] });
+        }
         if (!num) return;
         const codPed = String(nf.nIdPedido || '');
         // 1) FONTE PRIMÁRIA: nIdPedido → Pedido.numero_carga
@@ -172,7 +183,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         // 3) fallback: cruza pelo número real da NF (notas_fiscais da carga)
         if (indice['nf:' + num]) mapa[num] = indice['nf:' + num];
       });
-    } catch { /* segue */ }
+    } catch (e) { console.error('[NF55-DEBUG] buscarCargasDasNfs ERRO:', e); }
 
     return mapa;
   };
