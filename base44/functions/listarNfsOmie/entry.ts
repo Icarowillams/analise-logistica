@@ -53,33 +53,10 @@ Deno.serve(async (req) => {
       registros_por_pagina = 50,
       nome_cliente,
       cnpj_cliente,
-      nf_min,
-      nf_max,
+      numeros_nf,
+      codigos_pedido,
       incluir_raw = false
     } = body;
-
-    const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
-    if (data_inicial) param.dEmiInicial = data_inicial;
-    if (data_final) param.dEmiFinal = data_final;
-    if (nome_cliente) param.cRazao = nome_cliente;
-    if (cnpj_cliente) param.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
-    // Filtro DIRETO por faixa de número de NF — usado na busca por carga para
-    // evitar varrer várias páginas por data (muito mais rápido).
-    if (nf_min != null && String(nf_min).trim()) param.nNfMin = Number(String(nf_min).replace(/\D/g, ''));
-    if (nf_max != null && String(nf_max).trim()) param.nNfMax = Number(String(nf_max).replace(/\D/g, ''));
-
-    const t0 = Date.now();
-    const data = await omieCall(base44, 'ListarNF', param);
-    const duracao = Date.now() - t0;
-
-    await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-      endpoint: 'produtos/nfconsultar',
-      call: 'ListarNF',
-      operacao: 'listar_nfs',
-      status: 'sucesso',
-      duracao_ms: duracao,
-      usuario_email: user.email
-    }).catch(() => {});
 
     const derivarStatus = (nf) => {
       const ide = nf.ide || {};
@@ -102,7 +79,7 @@ Deno.serve(async (req) => {
       return 'pendente';
     };
 
-    const nfs = (data.nfCadastro || []).map(nf => ({
+    const mapNf = (nf) => ({
       nIdNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
       nCodNF: nf.compl?.nIdNF || nf.nIdNF || nf.nCodNF,
       nIdPedido: nf.compl?.nIdPedido || nf.nIdPedido,
@@ -127,7 +104,122 @@ Deno.serve(async (req) => {
       qtd_itens: (nf.det || []).length,
       // Só inclui dados completos quando o front pedir explicitamente (incluir_raw=true).
       ...(incluir_raw ? { itens: nf.det || [], total: nf.total || null, nf_raw: nf } : {})
-    }));
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CAMINHO RÁPIDO: lista explícita de números de NF (busca por CARGA).
+    // A API ListarNF aceita filtrar por UMA NF exata (nNF). Como a carga já conhece
+    // todos os números, consultamos cada NF DIRETO por nNF, em paralelo (lotes),
+    // sem varrer páginas por data. Cada consulta retorna 1 nota na hora.
+    // ─────────────────────────────────────────────────────────────────────────
+    if (Array.isArray(numeros_nf) && numeros_nf.length > 0) {
+      const numeros = [...new Set(
+        numeros_nf.map(n => Number(String(n).replace(/\D/g, ''))).filter(n => n > 0)
+      )];
+
+      const t0 = Date.now();
+      const LOTE = 6; // paralelismo controlado
+      const encontradas = [];
+      for (let i = 0; i < numeros.length; i += LOTE) {
+        const fatia = numeros.slice(i, i + LOTE);
+        const resultados = await Promise.all(fatia.map(async (numNF) => {
+          try {
+            const d = await omieCall(base44, 'ListarNF', { pagina: 1, registros_por_pagina: 50, nNF: numNF });
+            return (d.nfCadastro || []).map(mapNf);
+          } catch {
+            return [];
+          }
+        }));
+        resultados.forEach(arr => encontradas.push(...arr));
+      }
+
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'produtos/nfconsultar',
+        call: 'ListarNF',
+        operacao: 'listar_nfs_por_numeros',
+        status: 'sucesso',
+        duracao_ms: Date.now() - t0,
+        usuario_email: user.email
+      }).catch(() => {});
+
+      return Response.json({
+        sucesso: true,
+        nfs: encontradas,
+        pagina: 1,
+        total_de_paginas: 1,
+        total_de_registros: encontradas.length
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CAMINHO RÁPIDO 2: lista de códigos de pedido (busca por CARGA).
+    // O numero_nf nem sempre está gravado na carga (só após sincronização), mas o
+    // codigo_pedido (=nIdPedido) está sempre. ListarNF aceita filtrar por nIdPedido,
+    // então consultamos a NF de cada pedido direto, em paralelo. Pedido sem NF
+    // emitida simplesmente retorna vazio — sem varrer páginas por data.
+    // ─────────────────────────────────────────────────────────────────────────
+    if (Array.isArray(codigos_pedido) && codigos_pedido.length > 0) {
+      const codigos = [...new Set(
+        codigos_pedido.map(c => Number(String(c).replace(/\D/g, ''))).filter(c => c > 0)
+      )];
+
+      const t0 = Date.now();
+      const LOTE = 6;
+      const encontradas = [];
+      for (let i = 0; i < codigos.length; i += LOTE) {
+        const fatia = codigos.slice(i, i + LOTE);
+        const resultados = await Promise.all(fatia.map(async (idPedido) => {
+          try {
+            const d = await omieCall(base44, 'ListarNF', { pagina: 1, registros_por_pagina: 50, nIdPedido: idPedido });
+            return (d.nfCadastro || []).map(mapNf);
+          } catch {
+            return [];
+          }
+        }));
+        resultados.forEach(arr => encontradas.push(...arr));
+      }
+
+      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'produtos/nfconsultar',
+        call: 'ListarNF',
+        operacao: 'listar_nfs_por_pedidos',
+        status: 'sucesso',
+        duracao_ms: Date.now() - t0,
+        usuario_email: user.email
+      }).catch(() => {});
+
+      return Response.json({
+        sucesso: true,
+        nfs: encontradas,
+        pagina: 1,
+        total_de_paginas: 1,
+        total_de_registros: encontradas.length
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CAMINHO PADRÃO: busca paginada por data / nome / CNPJ.
+    // ─────────────────────────────────────────────────────────────────────────
+    const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
+    if (data_inicial) param.dEmiInicial = data_inicial;
+    if (data_final) param.dEmiFinal = data_final;
+    if (nome_cliente) param.cRazao = nome_cliente;
+    if (cnpj_cliente) param.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
+
+    const t0 = Date.now();
+    const data = await omieCall(base44, 'ListarNF', param);
+    const duracao = Date.now() - t0;
+
+    await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+      endpoint: 'produtos/nfconsultar',
+      call: 'ListarNF',
+      operacao: 'listar_nfs',
+      status: 'sucesso',
+      duracao_ms: duracao,
+      usuario_email: user.email
+    }).catch(() => {});
+
+    const nfs = (data.nfCadastro || []).map(mapNf);
 
     return Response.json({
       sucesso: true,

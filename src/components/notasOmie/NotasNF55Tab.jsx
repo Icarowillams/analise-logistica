@@ -190,83 +190,56 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       }
       // Quando filtra por CARGA, precisamos varrer TODAS as páginas do período
       // (uma NF da carga pode estar em qualquer página). Caso contrário, só busca a página pg.
-      let nfsAcumuladas = [];
       let dataFinalResp = null;
       if (cargaParaFiltrar) {
-        // OTIMIZAÇÃO: a carga já conhece os números de NF dos pedidos. Em vez de varrer
-        // página por página por DATA (lento), buscamos DIRETO a faixa min/max desses
-        // números de NF numa única chamada (nNfMin/nNfMax). Cai de ~30s-1min para ~3s.
+        // OTIMIZAÇÃO REAL: a carga já conhece os números de NF dos pedidos. A API
+        // ListarNF do Omie só filtra por UMA NF exata (nNF) — não por faixa. Então
+        // mandamos a LISTA de números e o backend consulta cada uma direto por nNF,
+        // em paralelo, numa única invocação. Sem varrer páginas por data → ~poucos seg.
         const numerosNfCarga = (cargaParaFiltrar.pedidos_omie || [])
           .map(p => Number(String(p.numero_nf || '').replace(/\D/g, '')))
           .filter(n => n > 0);
 
-        let filtrosCargaBusca = { ...filtrosBusca };
-        if (numerosNfCarga.length > 0) {
-          // Busca pela faixa exata de NFs da carga — sem precisar de datas.
-          filtrosCargaBusca = {
-            ...filtrosCargaBusca,
-            data_inicial: '',
-            data_final: '',
-            nf_min: Math.min(...numerosNfCarga),
-            nf_max: Math.max(...numerosNfCarga)
-          };
-        } else if (cargaParaFiltrar.data_carga) {
-          // Fallback (carga sem numero_nf preenchido): janela de datas ± 7 dias.
-          const base = new Date(cargaParaFiltrar.data_carga + 'T12:00:00');
-          const ini = new Date(base); ini.setDate(ini.getDate() - 7);
-          const fim = new Date(base); fim.setDate(fim.getDate() + 7);
-          const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-          filtrosCargaBusca = { ...filtrosCargaBusca, data_inicial: fmt(ini), data_final: fmt(fim) };
+        // Códigos de pedido (nIdPedido) — sempre presentes, mesmo sem numero_nf gravado.
+        const codigosPedidoCarga = (cargaParaFiltrar.pedidos_omie || [])
+          .map(p => Number(String(p.codigo_pedido || '').replace(/\D/g, '')))
+          .filter(c => c > 0);
+
+        if (numerosNfCarga.length === 0 && codigosPedidoCarga.length === 0) {
+          toast.warning('Esta carga não tem pedidos vinculados.');
+          setResultado({ nfs: [], total_de_registros: 0, total_de_paginas: 1 });
+          setLoading(false);
+          return;
         }
 
-        // Quantas NFs esperamos desta carga? Para interromper assim que todas forem encontradas.
-        const nfsEsperadas = numerosNfCarga.length;
+        // Preferimos buscar por número de NF (mais direto); se a carga ainda não tem
+        // numero_nf gravado, buscamos pelo código do pedido (nIdPedido).
+        const payloadBusca = numerosNfCarga.length > 0
+          ? { numeros_nf: numerosNfCarga }
+          : { codigos_pedido: codigosPedidoCarga };
 
-        let pagAtual = 1;
-        const MAX_PAG = 20; // limite de segurança
-        while (pagAtual <= MAX_PAG) {
-          let data;
-          try {
-            data = await listarNfsComRetry({
-              ...filtrosCargaBusca,
-              pagina: pagAtual,
-              registros_por_pagina: 200
-            });
-          } catch (e) {
-            if (ehBloqueioOmie(e.message)) {
-              toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
-              setLoading(false);
-              return;
-            }
-            throw e;
-          }
-          if (!data?.sucesso) {
-            if (ehBloqueioOmie(data?.error)) {
-              toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
-            } else {
-              toast.error(data?.error || 'Erro ao consultar NFs');
-            }
+        let data;
+        try {
+          data = await listarNfsComRetry(payloadBusca);
+        } catch (e) {
+          if (ehBloqueioOmie(e.message)) {
+            toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
             setLoading(false);
             return;
           }
-          dataFinalResp = data;
-          nfsAcumuladas = nfsAcumuladas.concat(data.nfs || []);
-
-          // Parada antecipada: já encontrou todas as NFs esperadas da carga?
-          if (nfsEsperadas > 0) {
-            const encontradas = filtrarNfsPorCarga(
-              nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada'),
-              cargaParaFiltrar
-            ).length;
-            if (encontradas >= nfsEsperadas) break;
-          }
-
-          const totalPag = Number(data.total_de_paginas || 1);
-          if (pagAtual >= totalPag) break;
-          pagAtual++;
-          await sleep(1800); // espaça as chamadas (Omie pede ~18s p/ redundância — folga real evita CÓDIGO 6)
+          throw e;
         }
-        const apenasAutorizadas = nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada');
+        if (!data?.sucesso) {
+          if (ehBloqueioOmie(data?.error)) {
+            toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+          } else {
+            toast.error(data?.error || 'Erro ao consultar NFs');
+          }
+          setLoading(false);
+          return;
+        }
+        dataFinalResp = data;
+        const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
         const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
         // Busca POR carga: o nº da carga já é conhecido (é o próprio filtro). Marca todas
         // as NFs com ele direto, sem baixar o índice de TODAS as cargas (que era lento).
