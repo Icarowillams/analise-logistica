@@ -66,6 +66,23 @@ const getYesterdayFilterDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+// Data local (America/Fortaleza) de "hoje menos N dias" — usada para a janela de 7 dias.
+const getDateMinusDays = (days) => {
+  const now = new Date();
+  const past = new Date(now);
+  past.setDate(past.getDate() - days);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: LOCAL_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(past);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+};
+
 const getLocalDateFromIso = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -201,14 +218,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const yesterdayDate = useMemo(() => getYesterdayFilterDate(), []);
   const todayDate = useMemo(() => getTodayFilterDate(), []);
+  // Início da janela = hoje menos 6 dias (total de 7 dias: hoje + 6 anteriores), data local.
+  const semanaInicioDate = useMemo(() => getDateMinusDays(6), []);
+  // Mínimo selecionável nos inputs = hoje menos 7 dias.
+  const minSelecionavelDate = useMemo(() => getDateMinusDays(7), []);
 
-  // Corte RÍGIDO da janela (sempre em memória): só pedidos criados hoje ou ontem (data local).
+  // Corte da janela (sempre em memória): pedidos criados nos últimos 7 dias (data local).
   // NÃO usamos filtro de range por created_date na query — esse SDK retorna vazio com
   // operadores de range de data ($gte/$lte), por isso todo o corte é feito aqui.
   const dentroDaJanela = useCallback((p) => {
     const d = getLocalDateFromIso(p.created_date);
-    return d === yesterdayDate || d === todayDate;
-  }, [yesterdayDate, todayDate]);
+    return d >= semanaInicioDate && d <= todayDate;
+  }, [semanaInicioDate, todayDate]);
 
   const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
@@ -945,10 +966,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Input
             type="date"
             value={envioInicio}
-            min={yesterdayDate}
-            onChange={e => setEnvioInicio(e.target.value < yesterdayDate ? yesterdayDate : e.target.value)}
+            min={minSelecionavelDate}
+            onChange={e => setEnvioInicio(e.target.value < minSelecionavelDate ? minSelecionavelDate : e.target.value)}
             className="h-6 text-[10px]"
-            title="Envio de (mínimo: ontem)"
+            title="Envio de (mínimo: 7 dias atrás)"
           />
         </div>
         {/* Envio até — mínimo = ontem */}
@@ -956,10 +977,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
           <Input
             type="date"
             value={envioFim}
-            min={yesterdayDate}
-            onChange={e => setEnvioFim(e.target.value < yesterdayDate ? yesterdayDate : e.target.value)}
+            min={minSelecionavelDate}
+            onChange={e => setEnvioFim(e.target.value < minSelecionavelDate ? minSelecionavelDate : e.target.value)}
             className="h-6 text-[10px]"
-            title="Envio até (mínimo: ontem)"
+            title="Envio até (mínimo: 7 dias atrás)"
           />
         </div>
         {/* Vendedor */}
