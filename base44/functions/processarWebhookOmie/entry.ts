@@ -641,9 +641,16 @@ async function handlePedido(base44, topic, evt) {
                 sincronizado_em: new Date().toISOString(),
                 origem_sync: 'webhook'
               });
+              espelhoAcao = 'upsert_local_etapa';
+            } else {
+              // 🆕 PEDIDO ÓRFÃO (faturado direto no Omie, sem pedido local) —
+              // consulta o Omie e cria o espelho a partir dos dados reais (idempotente).
+              console.log(`[espelho] EtapaAlterada ${codigoPedido} etapa ${etapaEvtEspelho} — sem pedido local, criando espelho de órfão via ConsultarPedido`);
+              await upsertEspelho(base44, codigoPedido);
+              espelhoAcao = 'upsert_orfao';
             }
           }
-          espelhoAcao = 'upsert_local_etapa';
+          if (!espelhoAcao) espelhoAcao = 'upsert_local_etapa';
         } catch (e) {
           console.error(`[espelho] EtapaAlterada local erro ${codigoPedido}:`, e.message);
         }
@@ -658,7 +665,14 @@ async function handlePedido(base44, topic, evt) {
   }
 
   const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigoPedido });
-  if (pedidos.length === 0) return { acao: 'ignorado', motivo: 'pedido não encontrado no Base44', espelho: espelhoAcao };
+  if (pedidos.length === 0) {
+    // Pedido órfão (não existe no Base44). Se o espelho foi criado/atualizado via ConsultarPedido,
+    // o pedido passa a aparecer em Gerenciar Pedidos em tempo real — não é mais só "ignorado".
+    if (espelhoAcao === 'upsert' || espelhoAcao === 'upsert_orfao') {
+      return { acao: 'espelho_criado_orfao', motivo: 'pedido órfão sincronizado no espelho via ConsultarPedido', espelho: espelhoAcao };
+    }
+    return { acao: 'ignorado', motivo: 'pedido não encontrado no Base44', espelho: espelhoAcao };
+  }
 
   const pedido = pedidos[0];
   const updates = {};
