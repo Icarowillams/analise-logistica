@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Search, ShoppingCart, MapPin, Filter } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 import BuscarClienteModal from './BuscarClienteModal';
-import useDebounce from '@/hooks/useDebounce';
 
 export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
   const [selectedCliente, setSelectedCliente] = useState(null);
@@ -41,43 +40,38 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
     }
   }, [editingPedido, editingPedidoId]);
 
-  // Debounce (~350ms) — evita 1 chamada por tecla digitada.
-  const codigoDebounced = useDebounce(searchCodigo.trim(), 350);
-  const fantasiaDebounced = useDebounce(searchFantasia.trim(), 350);
-
-  // Busca SERVER-SIDE PARCIAL (contém) por código, razão social ou nome fantasia.
-  // Dispara a partir de 2 caracteres — não exige termo exato. Sem filtro por vendedor:
-  // qualquer cliente ATIVO aparece para qualquer vendedor.
-  const codigoValido = codigoDebounced.length >= 2 ? codigoDebounced : '';
-  const fantasiaValido = fantasiaDebounced.length >= 2 ? fantasiaDebounced : '';
-  const buscaTermo = codigoValido || fantasiaValido;
-  const { data: clientesFiltrados = [] } = useQuery({
-    queryKey: ['avulso-busca-cliente', codigoValido, fantasiaValido],
-    queryFn: async () => {
-      const cod = codigoValido;
-      const fan = fantasiaValido;
-      let resultado = [];
-      if (cod) {
-        const listas = await Promise.all([
-          base44.entities.Cliente.filter({ codigo_interno: { $contains: cod }, status: 'ativo' }, '-created_date', 50).catch(() => []),
-          base44.entities.Cliente.filter({ codigo_integracao: { $contains: cod }, status: 'ativo' }, '-created_date', 50).catch(() => []),
-        ]);
-        resultado = listas.flat();
-      } else if (fan) {
-        const listas = await Promise.all([
-          base44.entities.Cliente.filter({ nome_fantasia: { $contains: fan }, status: 'ativo' }, '-created_date', 50).catch(() => []),
-          base44.entities.Cliente.filter({ razao_social: { $contains: fan }, status: 'ativo' }, '-created_date', 50).catch(() => []),
-        ]);
-        resultado = listas.flat();
-      }
-      const mapa = new Map();
-      resultado.forEach(c => { if (c && !mapa.has(c.id)) mapa.set(c.id, c); });
-      return Array.from(mapa.values()).slice(0, 50);
-    },
-    enabled: !!buscaTermo,
-    staleTime: 60 * 1000,
+  // Carrega TODOS os clientes ativos UMA vez, enxutos, com cache longo (10 min).
+  // Sem filtro por vendedor: todo cliente ativo aparece para qualquer vendedor.
+  const { data: todosClientes = [] } = useQuery({
+    queryKey: ['avulso-todos-clientes'],
+    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 5000),
+    staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // Filtro LOCAL (em memória) — instantâneo, parcial (contém), case-insensitive,
+  // cobrindo código interno, código integração, razão social e nome fantasia.
+  const termo = (searchCodigo || searchFantasia).trim().toLowerCase();
+  const clientesFiltrados = useMemo(() => {
+    if (termo.length < 2) return [];
+    return todosClientes.filter(c =>
+      (c.codigo_interno || '').toLowerCase().includes(termo) ||
+      (c.codigo_integracao || '').toLowerCase().includes(termo) ||
+      (c.razao_social || '').toLowerCase().includes(termo) ||
+      (c.nome_fantasia || '').toLowerCase().includes(termo)
+    ).slice(0, 50);
+  }, [todosClientes, termo]);
+
+  // Ao selecionar, garante o registro completo (se vier enxuto) antes de abrir o form.
+  const handleSelectCliente = async (cli) => {
+    let completo = cli;
+    if (!cli.cnpj_cpf || !cli.endereco) {
+      const r = await base44.entities.Cliente.filter({ id: cli.id }, '-created_date', 1).catch(() => []);
+      if (r[0]) completo = r[0];
+    }
+    setSelectedCliente(completo);
+    setTipoPedido('venda');
+  };
 
   const handleConfirmModal = (codigo, cliente) => {
     if (cliente) {
@@ -138,7 +132,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             </Button>
           </div>
 
-          {!searchCodigo.trim() && !searchFantasia.trim() && (
+          {termo.length < 2 && (
             <div className="text-center text-slate-500 py-16">
               <Search className="w-12 h-12 mx-auto mb-3 text-slate-300" />
               <p className="font-medium">Digite para buscar um cliente</p>
@@ -146,7 +140,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             </div>
           )}
 
-          {(searchCodigo.trim() || searchFantasia.trim()) && clientesFiltrados.length === 0 && (
+          {termo.length >= 2 && clientesFiltrados.length === 0 && (
             <div className="text-center text-slate-500 py-12">
               <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
               <p>Nenhum cliente encontrado</p>
@@ -161,7 +155,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
                 <Card
                   key={cli.id}
                   className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors"
-                  onClick={() => { setSelectedCliente(cli); setTipoPedido('venda'); }}
+                  onClick={() => handleSelectCliente(cli)}
                 >
                   <CardContent className="p-3 flex items-center justify-between">
                     <div className="min-w-0 flex-1">
