@@ -59,20 +59,25 @@ async function omieCall(base44, endpoint, param, options = {}) {
       const data = await res.json();
       if (data.faultstring) {
         const msg = String(data.faultstring).toLowerCase();
-        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('misuse')) {
+        if (msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio') || msg.includes('misuse')) {
           const e = new Error(data.faultstring); e.bloqueio = true; throw e;
         }
-        // Redundante / cota / rate limit → retry curto
-        if (res.status === 429 || msg.includes('redundante') || msg.includes('aguarde') || msg.includes('cota') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+        // Redundante / 425 / 429 / cota / timeout NÃO é erro de NF — é só "espere para consultar de novo".
+        // Faz 1 retry curto; se persistir, lança com flag .redundante para o chamador tratar como
+        // "ainda processando" (nunca como erro/rejeição) e aplicar backoff.
+        if (res.status === 425 || res.status === 429 || msg.includes('redundante') || msg.includes('aguarde') || msg.includes('cota') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
           lastErr = data.faultstring;
           if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+          const e = new Error(data.faultstring); e.redundante = true; throw e;
         }
+        // Qualquer outra faultstring = erro real (estrutura, pedido inexistente, etc.)
         throw new Error(data.faultstring);
       }
       return data;
     } catch (e) {
-      if (e.bloqueio) throw e;
-      lastErr = e.name === 'AbortError' ? 'Timeout na chamada Omie' : e.message;
+      if (e.bloqueio || e.redundante) throw e;
+      if (e.name === 'AbortError') { const te = new Error('Timeout na chamada Omie'); te.redundante = true; throw te; }
+      lastErr = e.message;
       if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
       throw new Error(lastErr);
     }
@@ -107,7 +112,7 @@ async function consultarStatusReal(base44, codigoPedido) {
     const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
     pedido = r?.pedido_venda_produto || r || {};
   } catch (e) {
-    if (e.bloqueio) throw e;
+    if (e.bloqueio || e.redundante) throw e; // rate limit: deixa o chamador tratar como "ainda processando"
     return { erro: e.message };
   }
 
@@ -122,20 +127,24 @@ async function consultarStatusReal(base44, codigoPedido) {
   const classDireta = classificarNF(infoNfe.cStat || infoNfe.cStatus || '', nNF, infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || '');
   if (classDireta) return { etapa, ...classDireta };
 
-  // Etapa 60 sem NF na resposta → ConsultarNF (1 chamada extra, com delay anti-rajada).
+  // Etapa 60 SEM cStat/nNF na resposta direta. IMPORTANTE: etapa 60 = pedido faturado/NF autorizada.
+  // Tentamos enriquecer com ConsultarNF para pegar o número, mas se o rate limit atrapalhar,
+  // NÃO marcamos erro nem deixamos pendente injustamente — etapa 60 já indica NF emitida.
   if (etapaNum >= 60) {
     try {
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 6000)); // delay anti-rajada antes da 2ª chamada
       const nfData = await consultarNFporPedido(base44, codigoPedido);
       if (nfData?.numero_nf) {
         const c = classificarNF(nfData.cStat, nfData.numero_nf, nfData.xMotivo) || { status_real: 'emitida', numero_nf: nfData.numero_nf, codigo_sefaz: nfData.cStat || '100', mensagem: `NF ${nfData.numero_nf} autorizada` };
         return { etapa, ...c };
       }
     } catch (e) {
-      if (e.bloqueio) throw e;
+      if (e.bloqueio || e.redundante) throw e; // rate limit no ConsultarNF → tratar como "verificando"
       console.warn(`[reconsultarStatusNFsPendentes] ConsultarNF falhou p/ ${codigoPedido}: ${e.message}`);
     }
-    return { etapa, status_real: 'aguardando', mensagem: 'Etapa 60 sem NF confirmada pela SEFAZ' };
+    // Etapa 60 confirmada mas sem número de NF nesta consulta → autorizada (sem número ainda).
+    // Resolve o número num refresh futuro; nunca vira erro.
+    return { etapa, status_real: 'emitida', numero_nf: nNF || '', codigo_sefaz: '100', mensagem: nNF ? `NF ${nNF} autorizada` : 'NF autorizada (etapa 60)' };
   }
 
   // Etapa < 60 (ex: 50) → SEFAZ ainda processando → segue pendente (real).
@@ -210,10 +219,11 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [] });
     }
 
-    // Teto de segurança por chamada (o frontend já manda lotes pequenos).
-    const LIMITE = 6;
+    // Teto de segurança por chamada. Consultas SEQUENCIAIS (1 por vez) com delay generoso
+    // para nunca disparar em rajada (gatilho de "consumo redundante").
+    const LIMITE = 4;
     const lote = codigos.slice(0, LIMITE);
-    const DELAY_ENTRE = 7000;
+    const DELAY_ENTRE = 9000; // ~9s entre ConsultarPedido (backoff suave aumenta isso)
 
     const breaker = await checkCircuitBreaker(base44);
     if (breaker.blocked) {
@@ -235,17 +245,18 @@ Deno.serve(async (req) => {
       try {
         real = await consultarStatusReal(base44, codPed);
       } catch (e) {
-        // Bloqueio/circuit breaker → aborta o restante do lote (sem martelar a API)
-        if (e.bloqueio) {
-          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, abortado: true, mensagem: e.message });
-          break;
-        }
-        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: e.message });
-        continue;
+        // BLOQUEIO/circuit breaker OU REDUNDANTE/rate limit → PARAR o restante do lote (backoff).
+        // Nenhum dos dois é erro de NF: mantém pendente e deixa pro próximo refresh.
+        // Sem isso, continuar martelando o Omie só piora a rajada.
+        const motivo = e.bloqueio ? 'bloqueio' : 'rate_limit';
+        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, abortado: true, motivo, mensagem: 'Verificando no Omie — aguarde um instante e atualize.' });
+        break;
       }
 
       const logsDoPedido = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(codPed) }, '-created_date', 10).catch(() => []);
 
+      // real.erro = falha REAL de consulta (estrutura, pedido inexistente) — NÃO é rejeição de NF
+      // e NÃO é rate limit. Mantém pendente, não marca erro no log.
       if (real.erro) {
         resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: real.erro });
         if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));

@@ -27,8 +27,9 @@ import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // Teto de pedidos reconsultados por abertura/clique (evita varrer tudo).
 const TETO_RECONSULTA = 24;
-// Lote por chamada à função backend (mantém cada chamada < 180s).
-const LOTE_RECONSULTA = 4;
+// Lote por chamada à função backend = 1 → consultas estritamente sequenciais, sem rajada.
+// O backend serializa internamente com ~9s entre consultas; aqui processamos 1 pedido por chamada.
+const LOTE_RECONSULTA = 1;
 
 export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsultarCodigos = [] }) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
@@ -202,7 +203,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
 
       if (!silencioso) {
         if (abortado) {
-          toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+          toast.info('Omie pediu para aguardar antes de consultar de novo. Atualize em ~1 min — quem já foi autorizado aparece como autorizado.');
         } else {
           const partes = [];
           if (totAut > 0) partes.push(`${totAut} autorizada(s)`);
@@ -265,7 +266,8 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     try {
       const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: [String(codigoPedido)] });
       const r = resp?.data || {};
-      if (r?.abortado) toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+      const resultado = r?.resultados?.[0] || {};
+      if (resultado.abortado || r?.abortado) toast.info('Omie pediu para aguardar — atualize novamente em ~1 min.');
       else if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
       else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
       else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
