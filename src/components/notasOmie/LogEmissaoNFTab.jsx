@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select';
-import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Wand2 } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Wand2, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
@@ -33,6 +33,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [resolvendo, setResolvendo] = useState(false);
+  const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
   const [atualizandoOmie, setAtualizandoOmie] = useState(false);
   const [reconsultandoCod, setReconsultandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
@@ -183,6 +184,37 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     setResolvendo(false);
   };
 
+  // "Buscar no Omie": para NFs emitidas DIRETO no Omie (fora da tela do app), que nunca
+  // geraram log local. Busca as NFs reais da carga filtrada no Omie e cria os logs faltantes.
+  const buscarLogsNoOmie = async () => {
+    const numCarga = filtroCarga.trim();
+    if (!numCarga) {
+      toast.warning('Informe o Nº da Carga para buscar as NFs emitidas no Omie.');
+      return;
+    }
+    setBuscandoNoOmie(true);
+    try {
+      toast.info(`Buscando NFs da carga ${numCarga} no Omie...`);
+      const resp = await base44.functions.invoke('sincronizarLogEmissaoCarga', { numero_carga: numCarga });
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        if (r.criados > 0) {
+          toast.success(`✅ ${r.criados} NF(s) da carga ${numCarga} adicionada(s) ao log.`);
+        } else if (r.nfs_encontradas_omie > 0) {
+          toast.info(`As ${r.nfs_encontradas_omie} NF(s) desta carga já estavam no log.`);
+        } else {
+          toast.warning(`Nenhuma NF encontrada no Omie para a carga ${numCarga}.`);
+        }
+        await refetch();
+      } else {
+        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
+      }
+    } catch (e) {
+      toast.error('Falha ao buscar no Omie: ' + e.message);
+    }
+    setBuscandoNoOmie(false);
+  };
+
   // "Atualizar": consulta ATIVAMENTE o Omie para todos os logs visíveis cujo status ainda
   // não é final (pendente / erro). Isso garante 100% de precisão — o status real é puxado
   // direto do Omie (ConsultarPedido + ListarNF) e gravado no log + espelho + pedido local.
@@ -328,6 +360,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
           <CardTitle className="text-base flex items-center justify-between">
             <span>Histórico de emissões ({logsFiltrados.length})</span>
             <div className="flex gap-2">
+              {filtroCarga.trim() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-cyan-300 text-cyan-700 hover:bg-cyan-50"
+                  onClick={buscarLogsNoOmie}
+                  disabled={buscandoNoOmie}
+                  title="Busca no Omie as NFs desta carga emitidas fora do app e adiciona ao log"
+                >
+                  {buscandoNoOmie ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                  Buscar no Omie
+                </Button>
+              )}
               {stats.pendente > 0 && (
                 <Button
                   size="sm"
