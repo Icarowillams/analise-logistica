@@ -362,7 +362,7 @@ Deno.serve(async (req) => {
 
     // 🔒 LOCK: impede execuções simultâneas (2 cliques rápidos = 2x chamadas = rate limit)
     const LOCK_KEY = 'lock_atualizarStatusLogsPendentes';
-    const LOCK_TTL_MS = 120_000; // 2 minutos máximo de lock
+    const LOCK_TTL_MS = 200_000; // ~3,3 minutos máximo de lock (lote de até 10 pedidos com delay de 8s)
     const lockExistente = await base44.asServiceRole.entities.CacheOmieConsulta.filter({ chave: LOCK_KEY }, '-created_date', 1).catch(() => []);
     const lockAtivo = lockExistente?.[0];
     if (lockAtivo?.criado_em && (Date.now() - new Date(lockAtivo.criado_em).getTime()) < LOCK_TTL_MS) {
@@ -385,8 +385,10 @@ Deno.serve(async (req) => {
     // ignorando o cooldown de 10min — ele quer destravar AGORA.
     const forcarReconsulta = Array.isArray(codigos_pedido) && codigos_pedido.length > 0;
     const limite24h = Date.now() - 24 * 60 * 60 * 1000;
-    const LIMITE_LOGS = 3;
-    const DELAY_ENTRE_CONSULTAS_MS = 15000; // 15s entre cada pedido (cada um pode gerar 2 chamadas: ConsultarPedido + ListarNF)
+    // 6 pedidos × (até ~14s cada: ConsultarPedido + delay 6s + ConsultarNF na etapa 60 + delay 8s entre pedidos)
+    // mantém o total bem abaixo do teto de 180s da plataforma. Com a automação a cada 15min = 24 pedidos/hora.
+    const LIMITE_LOGS = 6;
+    const DELAY_ENTRE_CONSULTAS_MS = 8000;
 
     // Status que serão reconsultados no Omie. Default: apenas 'pendente'.
     // O botão "Atualizar" da tela passa ['pendente','erro'] para reconsultar também os erros recentes.
