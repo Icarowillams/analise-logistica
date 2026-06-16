@@ -194,6 +194,11 @@ Deno.serve(async (req) => {
 
         if (resultado.faultstring) {
             console.error('[liberarPedidoOmie] Erro Omie:', resultado.faultstring);
+            // Consumo redundante: o Omie só libera o mesmo id após ~60s — orienta aguardar a janela.
+            if (/redundante/i.test(resultado.faultstring)) {
+                const segs = (String(resultado.faultstring).match(/(\d+)\s*segundo/i)?.[1]) || '60';
+                return Response.json({ sucesso: false, redundante: true, erro: `Consumo redundante detectado pelo Omie. Aguarde ~${segs}s e tente reenviar este pedido.` });
+            }
             return Response.json({ sucesso: false, erro: resultado.faultstring });
         }
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, RefreshCw, Trash2, X } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, RefreshCw, Trash2, X, RotateCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,31 @@ export default function LogFilaCarga() {
   const [filtroBusca, setFiltroBusca] = useState('');
   const [online, setOnline] = useState(true);
   const [modalOrfaos, setModalOrfaos] = useState(false);
+  const [reenviando, setReenviando] = useState(null); // id do item ou 'carga:<numero>' em reenvio
+
+  const reenviarItem = async (item) => {
+    setReenviando(item.id);
+    try {
+      const res = await base44.functions.invoke('reenviarItemFilaCarga', { item_id: item.id });
+      toast.success(res?.data?.mensagem || 'Pedido reenviado para processamento.');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Falha ao reenviar pedido.');
+    } finally {
+      setReenviando(null);
+    }
+  };
+
+  const reenviarErrosDaCarga = async (carga_id, numero_carga) => {
+    setReenviando(`carga:${numero_carga}`);
+    try {
+      const res = await base44.functions.invoke('reenviarItemFilaCarga', { carga_id, apenas_erros: true });
+      toast.success(res?.data?.mensagem || 'Pedidos com erro reenviados.');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Falha ao reenviar pedidos.');
+    } finally {
+      setReenviando(null);
+    }
+  };
 
   const carregar = async () => {
     setCarregando(true);
@@ -107,6 +133,35 @@ export default function LogFilaCarga() {
           <span className="text-xs text-slate-500">{online ? 'Atualização em tempo real' : 'Sem conexão'}</span>
         </div>
         <div className="flex gap-2">
+          {contadores.erro > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+              disabled={reenviando === 'carga:todos'}
+              onClick={async () => {
+                // Reenvia todos os itens com erro de todas as cargas (cada um pela sua carga)
+                const errosPorCarga = {};
+                itens.filter(i => i.status === 'erro' && i.carga_id).forEach(i => { errosPorCarga[i.carga_id] = i.numero_carga; });
+                setReenviando('carga:todos');
+                try {
+                  let total = 0;
+                  for (const [cid, num] of Object.entries(errosPorCarga)) {
+                    const res = await base44.functions.invoke('reenviarItemFilaCarga', { carga_id: cid, apenas_erros: true });
+                    total += res?.data?.reenfileirados || 0;
+                  }
+                  toast.success(`${total} pedido(s) com erro reenviado(s) para processamento.`);
+                } catch (e) {
+                  toast.error(e?.response?.data?.error || 'Falha ao reenviar pedidos.');
+                } finally {
+                  setReenviando(null);
+                }
+              }}
+            >
+              <RotateCw className={`w-3 h-3 mr-1 ${reenviando === 'carga:todos' ? 'animate-spin' : ''}`} />
+              Reenviar {contadores.erro} com erro
+            </Button>
+          )}
           {itensOrfaos.length > 0 && (
             <Button size="sm" variant="outline" className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => setModalOrfaos(true)}>
               <Trash2 className="w-3 h-3 mr-1" />
@@ -193,6 +248,7 @@ export default function LogFilaCarga() {
                 <th className="text-left px-3 py-2 font-medium w-[125px]">Criado</th>
                 <th className="text-left px-3 py-2 font-medium w-[125px]">Processado</th>
                 <th className="text-left px-3 py-2 font-medium">Erro</th>
+                <th className="text-center px-3 py-2 font-medium w-[90px]">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -224,6 +280,21 @@ export default function LogFilaCarga() {
                       {item.erro_log
                         ? <span title={item.erro_log} className="truncate block max-w-[180px]"><AlertTriangle className="w-3 h-3 inline mr-1" />{item.erro_log}</span>
                         : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {item.status !== 'concluido' && item.status !== 'processando' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[10px] border-amber-300 text-amber-700 hover:bg-amber-50"
+                          disabled={reenviando === item.id}
+                          onClick={() => reenviarItem(item)}
+                          title="Reenviar este pedido para o Omie (mesma carga)"
+                        >
+                          <RotateCw className={`w-3 h-3 mr-1 ${reenviando === item.id ? 'animate-spin' : ''}`} />
+                          Reenviar
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );

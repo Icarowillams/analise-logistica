@@ -41,6 +41,14 @@ function extrairSegundosBloqueio(msg: string): number {
   return 0; // sem tempo informado = não bloqueia
 }
 
+// Extrai os segundos de espera de uma mensagem de "Consumo redundante"
+// (ex: "Consumo redundante detectado. Aguarde 55 segundos."). Default 60s, teto 90s.
+function extrairSegundosRedundante(msg: string): number {
+  const match = String(msg).match(/(\d+)\s*segundo/i);
+  const segs = match ? Number(match[1]) : 60;
+  return Math.min(Math.max(segs, 1), 90);
+}
+
 // Lock removido — o circuit breaker + processamento sequencial interno já protegem contra abusos.
 // O lock baseado em atualizado_em causava falsos positivos (checkCircuitBreaker atualiza o campo ao desbloquear).
 
@@ -69,8 +77,16 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           blockedErr.bloqueio = true;
           throw blockedErr;
         }
-        // Erros de RATE LIMIT temporário (redundante, aguarde, cota) — retry rápido
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // CONSUMO REDUNDANTE: o Omie exige aguardar ~60s antes de repetir o MESMO id.
+        // Não adianta retry rápido — propaga erro especial p/ o worker re-agendar a janela.
+        if (msg.includes('redundante')) {
+          const redErr: any = new Error(data.faultstring);
+          redErr.redundante = true;
+          redErr.segundosEspera = extrairSegundosRedundante(data.faultstring);
+          throw redErr;
+        }
+        // Outros rate limits temporários (aguarde, cota, limite, timeout) — retry rápido
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -79,6 +95,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
+      // Redundante propaga imediatamente (sem retry rápido) — o worker re-agenda a janela de 60s.
+      if (e.redundante) throw e;
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
@@ -91,6 +109,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
+// "Consumo redundante" não é uma falha real: o Omie só libera o mesmo id após ~60s.
+// Re-agendamos a janela e só desistimos após muitas janelas reais (praticamente nunca acontece).
+const MAX_TENTATIVAS_REDUNDANTE = 5;
 const LOTE = 50;
 const DELAY_ENTRE_PEDIDOS_MS = 2000;
 
@@ -256,8 +277,14 @@ Deno.serve(async (req) => {
       console.log(`[FILA] Limpando ${orfaosLimpos} itens órfãos de ${cargasDeletadas.size} carga(s) deletada(s): ${[...cargasDeletadas].join(', ')}`);
     }
 
-    // Agora buscar os pendentes reais (cargas válidas) para processar
-    const pendentes = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', LOTE).catch(() => []);
+    // Agora buscar os pendentes reais (cargas válidas) para processar.
+    // Busca um lote maior e descarta os que ainda estão na janela de espera (redundante)
+    // — assim a janela de 60s não bloqueia os demais itens da fila.
+    const pendentesBrutos = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', LOTE * 2).catch(() => []);
+    const agora = Date.now();
+    const pendentes = pendentesBrutos
+      .filter(p => !p.proxima_tentativa_em || new Date(p.proxima_tentativa_em).getTime() <= agora)
+      .slice(0, LOTE);
     if (!pendentes.length) {
       return Response.json({ sucesso: true, processados: 0, orfaos_limpos: orfaosLimpos, mensagem: orfaosLimpos > 0 ? `${orfaosLimpos} itens órfãos limpos, nenhum pendente restante` : 'Nenhum item pendente na fila' });
     }
@@ -278,9 +305,9 @@ Deno.serve(async (req) => {
       try {
         // Idempotência: só consulta se já tentou antes (reprocessamento).
         // Pedidos novos (tentativas=0) vão direto para processar, economizando 1 chamada Omie.
-        const jaFeito = Number(item.tentativas || 0) > 0 ? await jaEstaNaEtapa(base44, item) : false;
+        const jaFeito = (Number(item.tentativas || 0) > 0 || Number(item.tentativas_redundante || 0) > 0) ? await jaEstaNaEtapa(base44, item) : false;
         if (jaFeito) {
-          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {});
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null }).catch(() => {});
           // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
           if (item.codigo_pedido_omie) {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
@@ -298,7 +325,7 @@ Deno.serve(async (req) => {
           await processarFaturar(base44, item);
           // Atualiza fila + pedido local + espelho em paralelo (não sequencial)
           const postUpdates = [
-            base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '' }).catch(() => {})
+            base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null }).catch(() => {})
           ];
           if (item.pedido_id) {
             postUpdates.push(base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {}));
@@ -323,6 +350,32 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.error(`[FILA ERRO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}):`, e.message);
+
+        // CONSUMO REDUNDANTE: o Omie exige aguardar ~60s antes de repetir o mesmo id.
+        // Re-enfileira mantendo pendente, agenda a próxima tentativa para depois da janela
+        // e NÃO conta como tentativa fatal. Só vira erro após MAX_TENTATIVAS_REDUNDANTE janelas.
+        if (e.redundante || /redundante/i.test(e.message)) {
+          const janelas = Number(item.tentativas_redundante || 0) + 1;
+          const segundos = e.segundosEspera || 60;
+          if (janelas >= MAX_TENTATIVAS_REDUNDANTE) {
+            await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+              status: 'erro',
+              tentativas_redundante: janelas,
+              erro_log: `Consumo redundante persistente após ${janelas} janelas de ${segundos}s: ${String(e.message).slice(0, 800)}`
+            }).catch(() => {});
+          } else {
+            await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+              status: 'pendente',
+              tentativas_redundante: janelas,
+              proxima_tentativa_em: new Date(Date.now() + segundos * 1000).toISOString(),
+              erro_log: `Consumo redundante — aguardando ${segundos}s (janela ${janelas}/${MAX_TENTATIVAS_REDUNDANTE})`
+            }).catch(() => {});
+          }
+          // Não interrompe o lote: segue para os próximos itens (de outros pedidos).
+          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
+          continue;
+        }
+
         const tentativas = Number(item.tentativas || 0) + 1;
         const isBloqueio = e.bloqueio || /bloqueada|consumo indevido|bloqueio/i.test(e.message);
         const novoStatus = isBloqueio ? 'pendente' : (tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente');

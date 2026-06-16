@@ -65,7 +65,15 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // CONSUMO REDUNDANTE: o Omie só libera o mesmo id após ~60s. Retry rápido falha de novo,
+        // então propaga erro claro orientando aguardar a janela — sem esgotar tentativas em 7s.
+        if (msg.includes('redundante')) {
+          const segs = (String(data.faultstring).match(/(\d+)\s*segundo/i)?.[1]) || '60';
+          const redErr: any = new Error(`Consumo redundante detectado pelo Omie. Aguarde ~${segs}s e tente reenviar este pedido.`);
+          redErr.redundante = true;
+          throw redErr;
+        }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -74,6 +82,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
     } catch (e: any) {
+      if (e.redundante) throw e; // redundante não retenta — propaga mensagem clara
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }

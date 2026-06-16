@@ -60,7 +60,17 @@
     "tentativas": {
       "type": "number",
       "default": 0,
-      "description": "Quantidade de tentativas j\u00e1 realizadas (m\u00e1x. 3)"
+      "description": "Quantidade de tentativas j\u00e1 realizadas"
+    },
+    "tentativas_redundante": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de janelas de espera por 'Consumo redundante' j\u00e1 aguardadas. S\u00f3 vira erro definitivo ap\u00f3s o limite (ex: 5)."
+    },
+    "proxima_tentativa_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora a partir da qual o item pode ser reprocessado. Usado para respeitar a janela de ~60s do Omie no caso 'Consumo redundante'. O worker pula itens cujo valor ainda \u00e9 futuro."
     },
     "erro_log": {
       "type": "string",
