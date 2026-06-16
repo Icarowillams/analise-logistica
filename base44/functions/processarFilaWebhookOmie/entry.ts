@@ -28,8 +28,18 @@ const MAX_POR_RODADA = 60;
 // parar com folga e deixar o self-chain/scheduler continuar a fila. Com ~30 itens
 // (~75s a 2,5s/item) sob o teto, jamais batemos no timeout do isolate.
 const TEMPO_MAX_MS = 80000; // 80s
-// Delay entre cada item que efetivamente chama a Omie (espacar as chamadas).
-const DELAY_ENTRE_ITENS_MS = 2500;
+// Intervalo entre micro-lotes que efetivamente chamam a Omie.
+// Doc Omie: 240 req/min (4 req/s) e 4 simultâneas por IP+AppKey+Método com registros
+// DIFERENTES. Com 320ms entre lotes de 2 → ~6 req/s de pico, mas espaçados → bem abaixo
+// dos 4/s sustentados (~3 req/s reais). NUNCA descer abaixo de 300ms (respiro p/ picos).
+const INTERVALO_ENTRE_PEDIDOS_MS = 320;
+// Paralelismo conservador: 2 pedidos de CÓDIGOS DIFERENTES por lote (o Omie permite 4
+// simultâneas com registros distintos; usamos 2 por segurança).
+const PARALELISMO = 2;
+// Cache anti-redundante: se um codigo_pedido foi consultado com sucesso há menos disto,
+// pulamos a nova consulta (a doc do Omie recomenda cache no lado da aplicação para evitar
+// o erro "Consumo redundante" = mesmo registro consultado 2x em 60s).
+const CACHE_CONSULTA_MS = 60000;
 
 let _credsCache = null;
 async function getOmieCredentials(base44) {
@@ -135,6 +145,19 @@ function recalcularStatusCarga(pedidosOmie, statusAtual) {
 
 const ETAPAS_ESPELHO = new Set(['10', '20', '50', '60']);
 
+// Cache anti-redundante em memória do isolate: codigo_pedido -> timestamp do último
+// ConsultarPedido bem-sucedido. Evita o erro "Consumo redundante" do Omie (mesmo registro
+// consultado 2x em 60s). Vive durante a execução do worker (e self-chains reaproveitam
+// enquanto o isolate sobrevive); não precisa persistir — só impede duplicata na janela.
+const _consultaRecentePorPedido = new Map();
+function consultadoRecentemente(codigoPedido) {
+  const t = _consultaRecentePorPedido.get(String(codigoPedido));
+  return t && (Date.now() - t) < CACHE_CONSULTA_MS;
+}
+function marcarConsulta(codigoPedido) {
+  _consultaRecentePorPedido.set(String(codigoPedido), Date.now());
+}
+
 function calcularStatusNF(cabecalho, infoNfe) {
   if (infoNfe?.cStatus === 'CANCELADA' || cabecalho?.cancelado === 'S') return { status_real: 'cancelada', status_label: 'NF Cancelada' };
   if (infoNfe?.cStatus === 'DENEGADA') return { status_real: 'denegada', status_label: 'NF Denegada' };
@@ -177,11 +200,16 @@ async function upsertEspelho(base44, omieCodigoPedido, forceNumeroNf = null, for
     }
   }
 
+  // CACHE ANTI-REDUNDANTE: se este pedido já foi consultado há menos de 60s, o espelho
+  // acabou de ser atualizado — pular a nova consulta evita o "Consumo redundante" do Omie.
+  if (consultadoRecentemente(omieCodigoPedido)) return;
+
   // ConsultarPedido respeita o circuit breaker via omieCall (lança OMIE_BLOQUEADA).
   // 105/5113/"não cadastrado" = pedido não existe → TERMINAL (nunca retry, evita erro 6).
   let data;
   try {
     data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(omieCodigoPedido) }, { call: 'ConsultarPedido' });
+    marcarConsulta(omieCodigoPedido);
   } catch (e) {
     if (e.code === 'OMIE_BLOQUEADA') throw e;
     const m = String(e.message || '').toLowerCase();
@@ -675,14 +703,11 @@ Deno.serve(async (req) => {
       let processados = 0;
       let ignoradosDup = aIgnorar.length;
       let pausadoPorBloqueio = false;
-      let chamouOmie = false;
       const inicioMs = Date.now();
 
+      // Filtra duplicados de evento de negócio ANTES de lotear (reforço ao dedupe por pedido).
+      const fila = [];
       for (const log of aProcessar) {
-        // Para antes do timeout — o restante fica pendente para o próximo ciclo.
-        if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
-
-        // Dedupe por evento de negócio dentro desta rodada (reforço ao dedupe por pedido).
         const chave = chaveDedupe(log);
         if (vistos.has(chave)) {
           await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
@@ -692,27 +717,58 @@ Deno.serve(async (req) => {
           continue;
         }
         vistos.add(chave);
+        fila.push(log);
+      }
 
-        // THROTTLE GLOBAL: delay só após um item que tenha potencialmente batido na Omie.
-        if (chamouOmie) await new Promise(r => setTimeout(r, DELAY_ENTRE_ITENS_MS));
-
+      // Processa UM log isolando erros: OMIE_BLOQUEADA sinaliza pausa; erro real marca e segue.
+      // Um timeout do Omie cai aqui como erro comum → o item é marcado e o worker segue
+      // pro próximo, sem travar a fila; o retry o reprocessa depois.
+      const processarComTratamento = async (log) => {
         try {
           await processarUm(base44, log);
-          processados++;
-          // topics que podem chamar ConsultarPedido marcam para espaçar o próximo.
-          const topic = log.webhook_topic || log.call || '';
-          chamouOmie = topic.startsWith('VendaProduto.') || topic.startsWith('NFe.');
+          return { ok: true };
         } catch (e) {
-          if (e.code === 'OMIE_BLOQUEADA') {
-            // Re-enfileira: deixa como pendente para a próxima rodada (não vira erro).
-            pausadoPorBloqueio = true;
-            break;
-          }
-          // Erro real isolado deste webhook — marca erro e segue.
+          if (e.code === 'OMIE_BLOQUEADA') return { ok: false, bloqueado: true };
           await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
             status: 'erro', mensagem_erro: String(e.message || e).slice(0, 500), webhook_processado_em: new Date().toISOString()
           }).catch(() => {});
+          return { ok: false };
         }
+      };
+
+      // MICRO-LOTES DE 2 PEDIDOS DISTINTOS EM PARALELO:
+      // após o dedupe por pedido, cada item em `fila` já tem um codigo_pedido único, então
+      // um lote de 2 nunca consulta o mesmo registro (respeita "4 simultâneas com registros
+      // diferentes" do Omie, usando só 2). Itens sem código vão 1 por vez (não loteados).
+      let i = 0;
+      let primeiroLote = true;
+      while (i < fila.length) {
+        if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
+
+        // Monta um lote de até PARALELISMO itens de códigos DIFERENTES.
+        const lote = [];
+        const codigosNoLote = new Set();
+        while (i < fila.length && lote.length < PARALELISMO) {
+          const log = fila[i];
+          const cod = codigoPedidoDoLog(log);
+          // Item sem código → processa sozinho (não junta com outros no lote).
+          if (!cod) {
+            if (lote.length === 0) { lote.push(log); i++; }
+            break;
+          }
+          if (codigosNoLote.has(cod)) break; // nunca o mesmo código no mesmo lote
+          codigosNoLote.add(cod);
+          lote.push(log);
+          i++;
+        }
+
+        // THROTTLE: intervalo entre lotes (não antes do primeiro).
+        if (!primeiroLote) await new Promise(r => setTimeout(r, INTERVALO_ENTRE_PEDIDOS_MS));
+        primeiroLote = false;
+
+        const resultados = await Promise.all(lote.map(processarComTratamento));
+        if (resultados.some(r => r.bloqueado)) { pausadoPorBloqueio = true; break; }
+        processados += resultados.filter(r => r.ok).length;
       }
 
       // SELF-CHAINING: se ainda há pendentes e não pausou por bloqueio, libera o lock e
