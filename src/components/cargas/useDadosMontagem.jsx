@@ -327,6 +327,7 @@ export default function useDadosMontagem() {
 
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
+      console.log(`[DEBUG CONTAGEM] FASE 1 → vendas: ${todasVendas.length} | d1SemItens: ${d1SemItens.length} | trocasSemItens: ${trocasSemItens.length} | total Fase 1: ${pedidosFase1.length}`);
       setPedidos(pedidosFase1);
       setMotoristas(motoristasAtivos);
       setVeiculos(veiculosAtivos);
@@ -343,6 +344,10 @@ export default function useDadosMontagem() {
       if (temD1 || temTrocas || temNf55Local || vendasEnriquecidas.length > 0) {
         setCarregandoItens(true);
 
+        // BLINDAGEM: toda a Fase 2 fica dentro de um try/catch. Se QUALQUER coisa falhar
+        // (timeout, erro no backend, erro no enriquecimento), os pedidos da Fase 1 — que já
+        // incluem os D1 SEM itens — permanecem na tela. Nenhum D1 some por falha na Fase 2.
+        try {
         // Usar mapa global de clientes (já carregado no Batch 1 — sem chamadas individuais)
         const clientesMap = clientesMapGlobal;
 
@@ -430,6 +435,7 @@ export default function useDadosMontagem() {
 
         // Atualizar pedidos com itens completos
         const pedidosFinal = [...todasVendasComItens, ...d1Completos, ...trocasCompletas];
+        console.log(`[DEBUG CONTAGEM] FASE 2 → vendasComItens: ${todasVendasComItens.length} | d1Completos: ${d1Completos.length} | trocasCompletas: ${trocasCompletas.length} | total Fase 2: ${pedidosFinal.length}`);
         setPedidos(pedidosFinal);
         setCarregandoItens(false);
 
@@ -440,6 +446,18 @@ export default function useDadosMontagem() {
           veiculos: veiculosAtivos,
           cargas: carP
         });
+        } catch (fase2Err) {
+          // Fase 2 falhou — manter os pedidos da Fase 1 (já com os D1 sem itens). Nunca somem.
+          console.warn('[MontagemCarga] Fase 2 falhou, mantendo lista da Fase 1 (D1 preservados):', fase2Err?.message);
+          setCarregandoItens(false);
+          // Cachear a Fase 1 para que o próximo load não sirva um snapshot antigo sem os D1.
+          setCache({
+            pedidos: pedidosFase1,
+            motoristas: motoristasAtivos,
+            veiculos: veiculosAtivos,
+            cargas: carP
+          });
+        }
       } else {
         // Sem D1/Trocas/NF55local — cachear direto
         setCache({
