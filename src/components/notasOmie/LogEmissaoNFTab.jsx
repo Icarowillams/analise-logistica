@@ -19,9 +19,17 @@ import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
  * Log de Emissão de NF-e — histórico persistente de TODAS as tentativas
  * de emissão feitas via Omie (autorizadas, rejeitadas, pendentes e erros).
  *
- * Lê da entidade LogEmissaoNF (uma linha por pedido emitido).
- * Mostra o motivo SEFAZ (xMotivo) e o cStat retornado.
+ * Status resolvido SOB DEMANDA: ao abrir a aba (e no botão "Resolver pendentes"),
+ * os logs pendentes/erro VISÍVEIS são reconsultados ao vivo no Omie via
+ * reconsultarStatusNFsPendentes — em lotes pequenos, atualizando a UI conforme chega.
+ * Não há automação por trás; o status sempre reflete o Omie real ao abrir a tela.
  */
+
+// Teto de pedidos reconsultados por abertura/clique (evita varrer tudo).
+const TETO_RECONSULTA = 24;
+// Lote por chamada à função backend (mantém cada chamada < 180s).
+const LOTE_RECONSULTA = 4;
+
 export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsultarCodigos = [] }) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [busca, setBusca] = useState('');
@@ -32,12 +40,12 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [filtroNF, setFiltroNF] = useState('');
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
-  const [resolvendo, setResolvendo] = useState(false);
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
-  const [atualizandoOmie, setAtualizandoOmie] = useState(false);
+  const [resolvendo, setResolvendo] = useState(false);
+  const [progresso, setProgresso] = useState({ feito: 0, total: 0 });
   const [reconsultandoCod, setReconsultandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
-  const autoConsultaKeyRef = useRef('');
+  const autoResolveKeyRef = useRef('');
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -157,31 +165,116 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     return s;
   }, [logs]);
 
-  // Consulta ATIVAMENTE o Omie para resolver os logs pendentes (fallback do webhook)
-  const resolverPendentes = async () => {
-    setResolvendo(true);
-    try {
-      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {});
-      const r = resp?.data || {};
-      if (r?.sucesso) {
-        const partes = [];
-        if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
-        if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
-        if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
-        if (r.boletos_disparados > 0) partes.push(`${r.boletos_disparados} boleto(s) disparado(s)`);
-        if (partes.length === 0) {
-          toast.info('Nenhuma pendência para atualizar');
-        } else {
-          toast.success(`Processados ${r.processados} pedido(s): ${partes.join(', ')}`);
-        }
-        refetch();
-      } else {
-        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
-      }
-    } catch (e) {
-      toast.error('Falha: ' + e.message);
+  // ── Núcleo: reconsulta SOB DEMANDA via Omie em lotes pequenos, atualizando a UI a cada lote. ──
+  const reconsultarCodigos = async (codigos, { silencioso = false } = {}) => {
+    const lista = [...new Set(codigos.map(String).filter(Boolean))].slice(0, TETO_RECONSULTA);
+    if (lista.length === 0) {
+      if (!silencioso) toast.info('Nada para reconsultar.');
+      return;
     }
-    setResolvendo(false);
+
+    setResolvendo(true);
+    setProgresso({ feito: 0, total: lista.length });
+
+    let totAut = 0, totRej = 0, totPend = 0, abortado = false;
+    try {
+      for (let i = 0; i < lista.length; i += LOTE_RECONSULTA) {
+        const lote = lista.slice(i, i + LOTE_RECONSULTA);
+        let r = {};
+        try {
+          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote });
+          r = resp?.data || {};
+        } catch (e) {
+          // Falha de rede no lote não trava os demais — segue.
+          console.warn('Falha no lote de reconsulta:', e.message);
+        }
+        if (r?.abortado) {
+          abortado = true;
+          break;
+        }
+        totAut += r.autorizados || 0;
+        totRej += r.rejeitados || 0;
+        totPend += r.ainda_pendentes || 0;
+        setProgresso({ feito: Math.min(i + lote.length, lista.length), total: lista.length });
+        // Atualiza a tela conforme cada lote chega
+        await refetch();
+      }
+
+      if (!silencioso) {
+        if (abortado) {
+          toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+        } else {
+          const partes = [];
+          if (totAut > 0) partes.push(`${totAut} autorizada(s)`);
+          if (totRej > 0) partes.push(`${totRej} rejeitada(s)`);
+          if (totPend > 0) partes.push(`${totPend} ainda em processamento`);
+          toast.success(partes.length ? partes.join(', ') : 'Status já estava atualizado.');
+        }
+      }
+    } finally {
+      setResolvendo(false);
+      setProgresso({ feito: 0, total: 0 });
+    }
+  };
+
+  // Códigos pendentes/erro dentro do que está VISÍVEL na tela (respeita filtros).
+  const codigosPendentesVisiveis = useMemo(() => {
+    return [...new Set(
+      logsFiltrados
+        .filter(l => l.status === 'pendente' || l.status === 'erro')
+        .map(l => String(l.codigo_pedido))
+        .filter(Boolean)
+    )];
+  }, [logsFiltrados]);
+
+  // Ao abrir a aba (ou quando os logs carregam): resolve os pendentes visíveis em background.
+  useEffect(() => {
+    if (!ativa || isLoading) return;
+    if (codigosPendentesVisiveis.length === 0) return;
+    const key = codigosPendentesVisiveis.slice().sort().join('|');
+    if (autoResolveKeyRef.current === key) return; // já resolvido para este conjunto
+    autoResolveKeyRef.current = key;
+    const timer = setTimeout(() => {
+      reconsultarCodigos(codigosPendentesVisiveis, { silencioso: true });
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ativa, isLoading, codigosPendentesVisiveis]);
+
+  // Códigos vindos de outra tela (ex: logo após emitir) — resolve também.
+  useEffect(() => {
+    if (!ativa || autoConsultarCodigos.length === 0) return;
+    const codigos = [...new Set(autoConsultarCodigos.map(String).filter(Boolean))];
+    const key = codigos.slice().sort().join('|');
+    if (!key || autoResolveKeyRef.current === key) return;
+    autoResolveKeyRef.current = key;
+    const timer = setTimeout(() => {
+      reconsultarCodigos(codigos, { silencioso: false });
+    }, 1200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ativa, autoConsultarCodigos]);
+
+  // Botão "Resolver N pendente(s)" / "Atualizar" — reconsulta o que está visível, com progresso.
+  const resolverPendentes = () => reconsultarCodigos(codigosPendentesVisiveis, { silencioso: false });
+
+  // Reconsulta UM pedido específico (botão na linha).
+  const reconsultarPedido = async (codigoPedido) => {
+    if (!codigoPedido) return;
+    setReconsultandoCod(String(codigoPedido));
+    try {
+      const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: [String(codigoPedido)] });
+      const r = resp?.data || {};
+      if (r?.abortado) toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
+      else if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
+      else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
+      else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
+      else toast.info('Nada a atualizar para este pedido.');
+      await refetch();
+    } catch (e) {
+      toast.error('Falha ao reconsultar: ' + e.message);
+    }
+    setReconsultandoCod(null);
   };
 
   // "Buscar no Omie": para NFs emitidas DIRETO no Omie (fora da tela do app), que nunca
@@ -215,109 +308,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     setBuscandoNoOmie(false);
   };
 
-  // "Atualizar": consulta ATIVAMENTE o Omie para todos os logs visíveis cujo status ainda
-  // não é final (pendente / erro). Isso garante 100% de precisão — o status real é puxado
-  // direto do Omie (ConsultarPedido + ListarNF) e gravado no log + espelho + pedido local.
-  const atualizarConsultandoOmie = async () => {
-    setAtualizandoOmie(true);
-    try {
-      // Códigos com status não-final dentro do que está sendo exibido
-      const codigosReconsultar = [...new Set(
-        logsFiltrados
-          .filter(l => l.status === 'pendente' || l.status === 'erro')
-          .map(l => String(l.codigo_pedido))
-          .filter(Boolean)
-      )];
-
-      if (codigosReconsultar.length === 0) {
-        // Nada a reconsultar — só recarrega
-        await refetch();
-        toast.info('Nada para reconsultar — exibindo dados atualizados.');
-        return;
-      }
-
-      toast.info(`Consultando ${codigosReconsultar.length} pedido(s) no Omie...`);
-      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
-        codigos_pedido: codigosReconsultar
-      });
-      const r = resp?.data || {};
-      if (r?.sucesso) {
-        const partes = [];
-        if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
-        if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
-        if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
-        toast.success(`✅ ${r.processados} reconsultado(s)${partes.length ? ': ' + partes.join(', ') : ''}`);
-      } else {
-        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
-      }
-      await refetch();
-    } catch (e) {
-      toast.error('Falha ao atualizar: ' + e.message);
-    }
-    setAtualizandoOmie(false);
-  };
-
-  useEffect(() => {
-    if (!ativa || autoConsultarCodigos.length === 0) return;
-
-    const codigos = [...new Set(autoConsultarCodigos.map(String).filter(Boolean))];
-    const key = codigos.sort().join('|');
-    if (!key || autoConsultaKeyRef.current === key) return;
-
-    autoConsultaKeyRef.current = key;
-    const timer = setTimeout(async () => {
-      setAtualizandoOmie(true);
-      try {
-        toast.info(`Consultando status de ${codigos.length} NF(s) no Omie...`);
-        const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
-          codigos_pedido: codigos
-        });
-        const r = resp?.data || {};
-        if (r?.sucesso) {
-          const partes = [];
-          if (r.autorizados > 0) partes.push(`${r.autorizados} autorizada(s)`);
-          if (r.rejeitados > 0) partes.push(`${r.rejeitados} rejeitada(s)`);
-          if (r.ainda_pendentes > 0) partes.push(`${r.ainda_pendentes} ainda pendente(s)`);
-          toast.success(`Log atualizado${partes.length ? ': ' + partes.join(', ') : ''}`);
-        } else {
-          toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
-        }
-        await refetch();
-      } catch (e) {
-        toast.error('Falha ao consultar status: ' + e.message);
-      }
-      setAtualizandoOmie(false);
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [ativa, autoConsultarCodigos, refetch]);
-
-  // Reconsulta UM pedido específico no Omie (etapa + ListarNF) para destravar "aguardando SEFAZ".
-  const reconsultarPedido = async (codigoPedido) => {
-    if (!codigoPedido) return;
-    setReconsultandoCod(String(codigoPedido));
-    try {
-      const resp = await base44.functions.invoke('atualizarStatusLogsPendentes', {
-        codigos_pedido: [String(codigoPedido)]
-      });
-      const r = resp?.data || {};
-      if (r?.sucesso) {
-        if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
-        else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
-        else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
-        else toast.info('Nada a atualizar para este pedido.');
-      } else if (r?.abortado) {
-        toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
-      } else {
-        toast.error('Erro: ' + (r?.error || 'falha desconhecida'));
-      }
-      await refetch();
-    } catch (e) {
-      toast.error('Falha ao reconsultar: ' + e.message);
-    }
-    setReconsultandoCod(null);
-  };
-
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
@@ -331,7 +321,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
         <CardContent className="py-3 text-sm text-blue-900 flex items-start gap-2">
           <ScrollText className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <b>Log persistente de emissão.</b> Cada linha registra uma tentativa de emissão de NF-e — com o motivo retornado pela SEFAZ (autorizada, rejeitada com o xMotivo do erro, pendente ou erro de comunicação).
+            <b>Log persistente de emissão.</b> Cada linha registra uma tentativa de emissão de NF-e. Ao abrir esta aba, os pendentes são reconsultados <b>ao vivo no Omie</b> — quem já foi autorizado aparece como autorizado; quem ainda está na SEFAZ (etapa 50) segue como pendente e resolve no próximo refresh.
           </div>
         </CardContent>
       </Card>
@@ -373,25 +363,30 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                   Buscar no Omie
                 </Button>
               )}
-              {stats.pendente > 0 && (
+              {codigosPendentesVisiveis.length > 0 && (
                 <Button
                   size="sm"
                   className="bg-amber-500 hover:bg-amber-600 text-white"
                   onClick={resolverPendentes}
                   disabled={resolvendo}
+                  title="Consulta o Omie ao vivo para resolver os pendentes/erros visíveis"
                 >
-                  {resolvendo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                  Resolver {stats.pendente} pendente(s)
+                  {resolvendo
+                    ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    : <Wand2 className="w-4 h-4 mr-2" />}
+                  {resolvendo && progresso.total > 0
+                    ? `Resolvendo ${progresso.feito}/${progresso.total}...`
+                    : `Resolver ${codigosPendentesVisiveis.length} pendente(s)`}
                 </Button>
               )}
               <Button
                 size="sm"
                 variant="outline"
-                onClick={atualizarConsultandoOmie}
-                disabled={atualizandoOmie || isFetching}
-                title="Consulta o Omie em tempo real para atualizar o status de pendentes/erros"
+                onClick={() => (codigosPendentesVisiveis.length > 0 ? resolverPendentes() : refetch())}
+                disabled={resolvendo || isFetching}
+                title="Recarrega e reconsulta pendentes no Omie"
               >
-                {atualizandoOmie || isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                {resolvendo || isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                 Atualizar
               </Button>
             </div>
