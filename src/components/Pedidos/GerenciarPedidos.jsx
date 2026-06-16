@@ -84,6 +84,13 @@ const getLocalDateFromIso = (value) => {
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
 
+// Janela rígida da tela: só pedidos criados HOJE ou ONTEM (data de criação imutável).
+// Borda inferior = ontem 00:00 no fuso local (America/Fortaleza, UTC-3) convertida para UTC.
+const getCreatedDateFloorIso = () => {
+  const ontem = getYesterdayFilterDate(); // 'YYYY-MM-DD'
+  return new Date(`${ontem}T00:00:00.000-03:00`).toISOString();
+};
+
 // Bug 1: o período deve filtrar pela data correta conforme o status selecionado.
 // Faturado → data_faturamento; Liberado → data_liberacao; Cancelado → data_cancelamento;
 // demais → data_envio. Sempre com fallback para data_envio.
@@ -195,8 +202,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
     queryFn: async () => {
+      // Só carrega pedidos criados nos últimos 2 dias (ontem + hoje) — filtro server-side
+      // por created_date (data imutável). Reduz drasticamente o volume vs. 5000 registros.
+      const floorIso = getCreatedDateFloorIso();
       const listas = await Promise.all(
-        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter({ status: s }, '-created_date', 5000))
+        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter(
+          { status: s, created_date: { $gte: floorIso } }, '-created_date', 5000
+        ))
       );
       return listas.flat();
     },
@@ -208,16 +220,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: pedidosEncerrados = [] } = useQuery({
     queryKey: ['pedidos-gerenciar-encerrados', statusExtras.join('|'), envioInicio, envioFim],
     queryFn: async () => {
+      const floorIso = getCreatedDateFloorIso();
       const listas = await Promise.all(statusExtras.map(async (statusEnc) => {
         const campoData = CAMPO_DATA_ENCERRADO[statusEnc];
-        const query = { status: statusEnc };
-        if (campoData && (envioInicio || envioFim)) {
-          // Período em horário LOCAL (America/Fortaleza, UTC-3); a data é armazenada em UTC.
-          // Converte as bordas do dia local para UTC para não perder faturamentos noturnos.
-          query[campoData] = {};
-          if (envioInicio) query[campoData]['$gte'] = `${envioInicio}T03:00:00.000Z`;
-          if (envioFim) query[campoData]['$lte'] = new Date(`${envioFim}T23:59:59.999-03:00`).toISOString();
-        }
+        // Janela rígida: só pedidos CRIADOS nos últimos 2 dias (ontem + hoje), independente
+        // de quando foram faturados/cancelados — evita que pedidos antigos reprocessados vazem.
+        const query = { status: statusEnc, created_date: { $gte: floorIso } };
         return base44.entities.Pedido.filter(query, `-${campoData}`, 5000);
       }));
       const resultado = listas.flat();
@@ -228,11 +236,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 60000,
   });
 
-  // Sempre carrega ~300 faturados mais recentes (ordena por data_faturamento)
-  // para exibir os do dia anterior na visão padrão (~0,5-1s, cobre ~1-2 dias).
+  // Faturados da visão padrão: só os CRIADOS nos últimos 2 dias (ontem + hoje), por created_date.
   const { data: pedidosFaturadosRecentes = [] } = useQuery({
     queryKey: ['pedidos-gerenciar-faturados-recentes'],
-    queryFn: () => base44.entities.Pedido.filter({ status: 'faturado' }, '-data_faturamento', 300),
+    queryFn: () => base44.entities.Pedido.filter(
+      { status: 'faturado', created_date: { $gte: getCreatedDateFloorIso() } }, '-created_date', 5000
+    ),
     staleTime: 30000,
   });
 
@@ -240,8 +249,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const todayDate = useMemo(() => getTodayFilterDate(), []);
 
   const faturadosDeOntem = useMemo(() => {
+    // Janela por DATA DE CRIAÇÃO (imutável): só faturados criados ontem ou hoje.
     return pedidosFaturadosRecentes.filter(p => {
-      const d = getLocalDateFromIso(p.data_faturamento);
+      const d = getLocalDateFromIso(p.created_date);
       return d === yesterdayDate || d === todayDate;
     });
   }, [pedidosFaturadosRecentes, yesterdayDate, todayDate]);
@@ -537,14 +547,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
-    // Período — usa a data correta conforme o status REAL de CADA pedido (funciona na lista
-    // mista montagem+faturado). Os encerrados (faturado/cancelado) já vêm filtrados por período
-    // do SERVIDOR, então não os refiltramos no front (evita descarte por borda de fuso UTC↔local).
-    const statusEncerradosReais = ['faturado', 'cancelado'];
-    const analiseDoStatusReal = { faturado: 'analise_faturado', liberado: 'analise_liberado', cancelado: 'analise_cancelado' };
+    // Período — SEMPRE pela DATA DE CRIAÇÃO do pedido (created_date), que é imutável e não muda
+    // com reprocessamento de webhook. Garante que só apareçam pedidos criados dentro da janela.
     const dentroDoPeriodo = (p) => {
-      if (statusEncerradosReais.includes(p.status)) return true; // já filtrado no servidor
-      const dataLocal = getLocalDateFromIso(getDataPeriodoPedido(p, analiseDoStatusReal[p.status]));
+      const dataLocal = getLocalDateFromIso(p.created_date);
       if (envioInicio && !(dataLocal && dataLocal >= envioInicio)) return false;
       if (envioFim && !(dataLocal && dataLocal <= envioFim)) return false;
       return true;
@@ -948,13 +954,27 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </SelectContent>
           </Select>
         </div>
-        {/* Envio de */}
+        {/* Envio de — mínimo = ontem (não permite datas anteriores) */}
         <div>
-          <Input type="date" value={envioInicio} onChange={e => setEnvioInicio(e.target.value)} className="h-6 text-[10px]" title="Envio de" />
+          <Input
+            type="date"
+            value={envioInicio}
+            min={yesterdayDate}
+            onChange={e => setEnvioInicio(e.target.value < yesterdayDate ? yesterdayDate : e.target.value)}
+            className="h-6 text-[10px]"
+            title="Envio de (mínimo: ontem)"
+          />
         </div>
-        {/* Envio até */}
+        {/* Envio até — mínimo = ontem */}
         <div>
-          <Input type="date" value={envioFim} onChange={e => setEnvioFim(e.target.value)} className="h-6 text-[10px]" title="Envio até" />
+          <Input
+            type="date"
+            value={envioFim}
+            min={yesterdayDate}
+            onChange={e => setEnvioFim(e.target.value < yesterdayDate ? yesterdayDate : e.target.value)}
+            className="h-6 text-[10px]"
+            title="Envio até (mínimo: ontem)"
+          />
         </div>
         {/* Vendedor */}
         <div>
