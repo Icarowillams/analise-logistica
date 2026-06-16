@@ -190,6 +190,23 @@
       "default": [],
       "description": "Dias da semana em que aceita entrega"
     },
+    "dias_visita": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "segunda",
+          "terca",
+          "quarta",
+          "quinta",
+          "sexta",
+          "sabado",
+          "domingo"
+        ]
+      },
+      "default": [],
+      "description": "Dias da semana em que o vendedor respons\u00e1vel visita o cliente"
+    },
     "observacoes_logistica": {
       "type": "string",
       "description": "Instru\u00e7\u00f5es espec\u00edficas para entrega (portaria, acesso, etc.)"

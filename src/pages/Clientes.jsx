@@ -27,6 +27,7 @@ import AuditoriaOmieModal from '@/components/clientes/AuditoriaOmieModal';
 import AtualizarRotasClientesCSVModal from '@/components/clientes/AtualizarRotasClientesCSVModal';
 import AtualizarModalidadeClientesModal from '@/components/clientes/AtualizarModalidadeClientesModal';
 import { useOmiePermissao } from '@/components/hooks/useOmiePermissao';
+import SeletorDiasSemana, { formatarDiasSelecionados } from '@/components/clientes/SeletorDiasSemana';
 
 export default function Clientes() {
   const podeOmie = useOmiePermissao();
@@ -51,7 +52,7 @@ export default function Clientes() {
     endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
     latitude: '', longitude: '',
     segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-    data_primeiro_contato: '', status: 'ativo', tipo_nota: '55'
+    data_primeiro_contato: '', status: 'ativo', tipo_nota: '55', dias_visita: []
   });
   const [supervisorNome, setSupervisorNome] = useState('');
   const [docErro, setDocErro] = useState('');
@@ -298,7 +299,7 @@ export default function Clientes() {
       endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
       latitude: '', longitude: '',
       segmento_id: '', rede_id: '', vendedor_id: '', rota_id: '', plano_pagamento_id: '', modalidade_pagamento_id: '', tabela_id: '',
-      data_primeiro_contato: '', status: 'ativo', tipo_nota: '55'
+      data_primeiro_contato: '', status: 'ativo', tipo_nota: '55', dias_visita: []
     });
     setSupervisorNome('');
     setDocErro('');
@@ -338,7 +339,8 @@ export default function Clientes() {
       tabela_id: item.tabela_id || '',
       data_primeiro_contato: item.data_primeiro_contato || '',
       status: item.status || 'ativo',
-      tipo_nota: item.tipo_nota || '55'
+      tipo_nota: item.tipo_nota || '55',
+      dias_visita: Array.isArray(item.dias_visita) ? item.dias_visita : []
     });
     // Buscar supervisor do vendedor
     if (item.vendedor_id) {
@@ -1283,6 +1285,16 @@ export default function Clientes() {
                     placeholder="Selecionado automaticamente"
                     className="bg-slate-50"
                   />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Dias de Visita</Label>
+                  <div className="mt-1.5">
+                    <SeletorDiasSemana
+                      value={formData.dias_visita}
+                      onChange={(dias) => setFormData({ ...formData, dias_visita: dias })}
+                      disabled={!isEditing}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>Rota</Label>

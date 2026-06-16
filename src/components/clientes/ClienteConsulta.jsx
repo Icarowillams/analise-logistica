@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter';
 import AtualizacaoMassaPainel from '@/components/clientes/AtualizacaoMassaPainel';
+import { formatarDiasSelecionados } from '@/components/clientes/SeletorDiasSemana';
 
 export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
   const [selectedClienteId, setSelectedClienteId] = useState(null);
@@ -230,6 +231,7 @@ export default function ClienteConsulta({ onEdit, onDelete, onExport }) {
     { label: 'Número', value: selectedCliente?.numero || '-' },
     { label: 'CEP', value: selectedCliente?.cep || '-' },
     { label: 'Vendedor', value: selectedCliente ? getVendedorName(selectedCliente.vendedor_id) : '-' },
+    { label: 'Dias de Visita', value: formatarDiasSelecionados(selectedCliente?.dias_visita) || '-' },
     { label: 'Supervisor', value: selectedCliente ? getSupervisorNameForClient(selectedCliente) : '-' },
     { label: 'Rota', value: selectedCliente ? getName(rotas, selectedCliente.rota_id) : '-' },
     { label: 'Rede', value: selectedCliente ? getName(redes, selectedCliente.rede_id) : '-' },
