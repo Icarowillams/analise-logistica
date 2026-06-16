@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
 
       // Tópicos irrelevantes entram já como 'ignorado' — não poluem a fila de processamento.
       const statusInicial = ehTopicIrrelevante(topic) ? 'ignorado' : 'pendente';
-      await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+      const logCriado = await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: truncar('webhook'),
         call: truncar(topic || 'desconhecido'),
         operacao: 'receber_webhook',
@@ -105,6 +105,16 @@ Deno.serve(async (req) => {
         webhook_message_id: messageId ? truncar(String(messageId)) : '',
         payload_resposta: truncar(JSON.stringify(body))
       });
+
+      // ⚡ TEMPO REAL: dispara o processamento do espelho IMEDIATAMENTE (fire-and-forget),
+      // sem esperar a automação de 5min nem bloquear a resposta ao Omie.
+      // Passamos o mesmo payload que a entity automation enviaria (event + data).
+      if (statusInicial === 'pendente') {
+        base44.asServiceRole.functions.invoke('processarWebhookOmie', {
+          event: { type: 'create', entity_name: 'LogIntegracaoOmie', entity_id: logCriado.id },
+          data: logCriado
+        }).catch((e) => console.error('[receberWebhookOmie] disparo processarWebhookOmie falhou:', e?.message));
+      }
     } catch (filaErr) {
       // Único caso em que sinalizamos falha ao Omie: não conseguimos enfileirar
       console.error('[receberWebhookOmie] falha ao enfileirar:', filaErr);
