@@ -199,16 +199,23 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return statusFilters.map(s => STATUS_ENCERRADOS[s]).filter(Boolean);
   }, [statusFilters]);
 
+  const yesterdayDate = useMemo(() => getYesterdayFilterDate(), []);
+  const todayDate = useMemo(() => getTodayFilterDate(), []);
+
+  // Corte RÍGIDO da janela (sempre em memória): só pedidos criados hoje ou ontem (data local).
+  // NÃO usamos filtro de range por created_date na query — esse SDK retorna vazio com
+  // operadores de range de data ($gte/$lte), por isso todo o corte é feito aqui.
+  const dentroDaJanela = useCallback((p) => {
+    const d = getLocalDateFromIso(p.created_date);
+    return d === yesterdayDate || d === todayDate;
+  }, [yesterdayDate, todayDate]);
+
   const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
     queryFn: async () => {
-      // Só carrega pedidos criados nos últimos 2 dias (ontem + hoje) — filtro server-side
-      // por created_date (data imutável). Reduz drasticamente o volume vs. 5000 registros.
-      const floorIso = getCreatedDateFloorIso();
+      // Carrega por status (filtro de status no servidor FUNCIONA), ordenado por -created_date.
       const listas = await Promise.all(
-        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter(
-          { status: s, created_date: { $gte: floorIso } }, '-created_date', 5000
-        ))
+        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter({ status: s }, '-created_date', 5000))
       );
       return listas.flat();
     },
@@ -216,56 +223,35 @@ export default function GerenciarPedidos({ onEditPedido }) {
   });
 
   // Faturados/cancelados — carrega TODOS os status encerrados marcados (uma query por status),
-  // filtrando por período no SERVIDOR pelo campo de data correto de cada status, depois .flat().
+  // ordenado por -created_date. O corte da janela (ontem/hoje) é aplicado em memória depois.
   const { data: pedidosEncerrados = [] } = useQuery({
-    queryKey: ['pedidos-gerenciar-encerrados', statusExtras.join('|'), envioInicio, envioFim],
+    queryKey: ['pedidos-gerenciar-encerrados', statusExtras.join('|')],
     queryFn: async () => {
-      const floorIso = getCreatedDateFloorIso();
-      const listas = await Promise.all(statusExtras.map(async (statusEnc) => {
-        const campoData = CAMPO_DATA_ENCERRADO[statusEnc];
-        // Janela rígida: só pedidos CRIADOS nos últimos 2 dias (ontem + hoje), independente
-        // de quando foram faturados/cancelados — evita que pedidos antigos reprocessados vazem.
-        const query = { status: statusEnc, created_date: { $gte: floorIso } };
-        return base44.entities.Pedido.filter(query, `-${campoData}`, 5000);
-      }));
-      const resultado = listas.flat();
-      console.log('[GerenciarPedidos] DEBUG pedidosEncerrados:', resultado.length, { statusExtras });
-      return resultado;
+      const listas = await Promise.all(
+        statusExtras.map(statusEnc => base44.entities.Pedido.filter({ status: statusEnc }, '-created_date', 5000))
+      );
+      return listas.flat();
     },
     enabled: statusExtras.length > 0,
     staleTime: 60000,
   });
 
-  // Faturados da visão padrão: só os CRIADOS nos últimos 2 dias (ontem + hoje), por created_date.
+  // Faturados da visão padrão (sem filtro de status): carrega os mais recentes por -created_date.
   const { data: pedidosFaturadosRecentes = [] } = useQuery({
     queryKey: ['pedidos-gerenciar-faturados-recentes'],
-    queryFn: () => base44.entities.Pedido.filter(
-      { status: 'faturado', created_date: { $gte: getCreatedDateFloorIso() } }, '-created_date', 5000
-    ),
+    queryFn: () => base44.entities.Pedido.filter({ status: 'faturado' }, '-created_date', 5000),
     staleTime: 30000,
   });
 
-  const yesterdayDate = useMemo(() => getYesterdayFilterDate(), []);
-  const todayDate = useMemo(() => getTodayFilterDate(), []);
-
-  const faturadosDeOntem = useMemo(() => {
-    // Janela por DATA DE CRIAÇÃO (imutável): só faturados criados ontem ou hoje.
-    return pedidosFaturadosRecentes.filter(p => {
-      const d = getLocalDateFromIso(p.created_date);
-      return d === yesterdayDate || d === todayDate;
-    });
-  }, [pedidosFaturadosRecentes, yesterdayDate, todayDate]);
-
   const pedidos = useMemo(() => {
-    // Merge + dedup por id — evita que faturados/cancelados buscados por período
-    // sejam descartados ou duplicados ao combinar com os ativos.
+    // Merge + dedup por id, aplicando o corte RÍGIDO da janela (ontem/hoje) em memória.
     const mapa = new Map();
     const fonte = statusExtras.length > 0
       ? [...pedidosAtivos, ...pedidosEncerrados]
-      : [...pedidosAtivos, ...faturadosDeOntem];
-    fonte.forEach(p => { if (p?.id) mapa.set(p.id, p); });
+      : [...pedidosAtivos, ...pedidosFaturadosRecentes];
+    fonte.forEach(p => { if (p?.id && dentroDaJanela(p)) mapa.set(p.id, p); });
     return Array.from(mapa.values());
-  }, [pedidosAtivos, pedidosEncerrados, faturadosDeOntem, statusExtras]);
+  }, [pedidosAtivos, pedidosEncerrados, pedidosFaturadosRecentes, statusExtras, dentroDaJanela]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
