@@ -69,9 +69,11 @@ Deno.serve(async (req) => {
     }
 
     const { topic, messageId, appKey } = body;
-    // Estrutura esperada: pelo menos topic OU appKey
-    if (!topic && !appKey) {
-      return Response.json({ erro: 'Invalid payload' }, { status: 400 });
+
+    // Ping de validação do Omie ao cadastrar o webhook: payload sem topic
+    // (apenas ping/messageId). Precisa responder 200 para o Omie aceitar a URL.
+    if (!topic) {
+      return Response.json({ ping: 'success' });
     }
 
     // Validação extra: app_key
