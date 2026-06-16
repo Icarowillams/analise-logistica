@@ -45,22 +45,30 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   const codigoDebounced = useDebounce(searchCodigo.trim(), 350);
   const fantasiaDebounced = useDebounce(searchFantasia.trim(), 350);
 
-  // Busca SERVER-SIDE exata por código OU nome fantasia — nada antes de digitar.
-  const buscaTermo = codigoDebounced || fantasiaDebounced;
+  // Busca SERVER-SIDE PARCIAL (contém) por código, razão social ou nome fantasia.
+  // Dispara a partir de 2 caracteres — não exige termo exato. Sem filtro por vendedor:
+  // qualquer cliente ATIVO aparece para qualquer vendedor.
+  const codigoValido = codigoDebounced.length >= 2 ? codigoDebounced : '';
+  const fantasiaValido = fantasiaDebounced.length >= 2 ? fantasiaDebounced : '';
+  const buscaTermo = codigoValido || fantasiaValido;
   const { data: clientesFiltrados = [] } = useQuery({
-    queryKey: ['avulso-busca-cliente', codigoDebounced, fantasiaDebounced],
+    queryKey: ['avulso-busca-cliente', codigoValido, fantasiaValido],
     queryFn: async () => {
-      const cod = codigoDebounced;
-      const fan = fantasiaDebounced;
+      const cod = codigoValido;
+      const fan = fantasiaValido;
       let resultado = [];
       if (cod) {
         const listas = await Promise.all([
-          base44.entities.Cliente.filter({ codigo_interno: cod, status: 'ativo' }, '-created_date', 10).catch(() => []),
-          base44.entities.Cliente.filter({ codigo_integracao: cod, status: 'ativo' }, '-created_date', 10).catch(() => []),
+          base44.entities.Cliente.filter({ codigo_interno: { $contains: cod }, status: 'ativo' }, '-created_date', 50).catch(() => []),
+          base44.entities.Cliente.filter({ codigo_integracao: { $contains: cod }, status: 'ativo' }, '-created_date', 50).catch(() => []),
         ]);
         resultado = listas.flat();
       } else if (fan) {
-        resultado = await base44.entities.Cliente.filter({ nome_fantasia: fan, status: 'ativo' }, '-created_date', 10).catch(() => []);
+        const listas = await Promise.all([
+          base44.entities.Cliente.filter({ nome_fantasia: { $contains: fan }, status: 'ativo' }, '-created_date', 50).catch(() => []),
+          base44.entities.Cliente.filter({ razao_social: { $contains: fan }, status: 'ativo' }, '-created_date', 50).catch(() => []),
+        ]);
+        resultado = listas.flat();
       }
       const mapa = new Map();
       resultado.forEach(c => { if (c && !mapa.has(c.id)) mapa.set(c.id, c); });
@@ -103,7 +111,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative sm:w-40">
               <Input
-                placeholder="Código (exato)"
+                placeholder="Código"
                 value={searchCodigo}
                 onChange={(e) => setSearchCodigo(e.target.value)}
                 className="text-base"
@@ -113,7 +121,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Nome fantasia (exato)"
+                placeholder="Razão social ou nome fantasia"
                 value={searchFantasia}
                 onChange={(e) => setSearchFantasia(e.target.value)}
                 className="pl-10 text-base"
@@ -134,15 +142,15 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             <div className="text-center text-slate-500 py-16">
               <Search className="w-12 h-12 mx-auto mb-3 text-slate-300" />
               <p className="font-medium">Digite para buscar um cliente</p>
-              <p className="text-xs mt-1">Código ou nome fantasia exatos — ou use Pesquisar para filtros detalhados</p>
+              <p className="text-xs mt-1">A partir de 2 caracteres no código, razão social ou nome fantasia — ou use Pesquisar para filtros detalhados</p>
             </div>
           )}
 
           {(searchCodigo.trim() || searchFantasia.trim()) && clientesFiltrados.length === 0 && (
             <div className="text-center text-slate-500 py-12">
               <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p>Nenhum cliente encontrado com correspondência exata</p>
-              <p className="text-xs mt-1">Tente o botão "Pesquisar" para uma busca mais ampla</p>
+              <p>Nenhum cliente encontrado</p>
+              <p className="text-xs mt-1">Tente outro termo ou o botão "Pesquisar" para filtros detalhados</p>
             </div>
           )}
 
@@ -159,12 +167,14 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded font-bold">{getCodigo(cli)}</span>
-                        <span className="font-medium text-sm truncate">{cli.nome_fantasia || cli.razao_social}</span>
+                        <span className="font-medium text-sm truncate">{cli.razao_social}</span>
                       </div>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">
-                        {cli.razao_social}
-                        {cli.cnpj_cpf && <span className="ml-2 text-slate-400">• {cli.cnpj_cpf}</span>}
-                      </p>
+                      {cli.nome_fantasia && (
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
+                          {cli.nome_fantasia}
+                          {cli.cnpj_cpf && <span className="ml-2 text-slate-400">• {cli.cnpj_cpf}</span>}
+                        </p>
+                      )}
                       {(cli.cidade || cli.bairro) && (
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3" />
