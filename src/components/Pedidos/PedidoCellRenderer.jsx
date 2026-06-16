@@ -43,10 +43,11 @@ const formatCurrency = (v) => {
 };
 
 const ETAPA_OMIE_LABELS = {
-  '10': { label: 'Pedido Venda', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
-  '20': { label: 'Liberados', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-  '50': { label: 'Faturar', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
+  '10': { label: 'Pedido', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
+  '20': { label: 'Separação/Faturar', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  '50': { label: 'Conferência', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
   '60': { label: 'Faturado', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+  '70': { label: 'Entregue', bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
 };
 
 const NF_STATUS_LABELS = {
@@ -88,15 +89,17 @@ export default function PedidoCellRenderer({ col, p }) {
     if (!p.omie_codigo_pedido) {
       return <span className="block truncate text-slate-300 text-[10px]">—</span>;
     }
-    if (!p.omie_etapa_real) {
-      // Pedido tem código Omie mas não está no espelho — pode ser um problema real
+    // Fonte PRIMÁRIA: etapa do espelho (omie_etapa_real, vindo de PedidoLiberadoOmie).
+    // Fallback: Pedido.etapa_omie (se existir). Só "Sem espelho" quando nenhum dos dois tem valor.
+    const etapaExibir = p.omie_etapa_real || p.etapa_omie;
+    if (!etapaExibir) {
       return <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-[10px]" title="Pedido não encontrado no espelho. Clique Atualizar para sincronizar.">Sem espelho</Badge>;
     }
-    const e = ETAPA_OMIE_LABELS[p.omie_etapa_real];
-    if (!e) return <span className="block truncate text-[10px]">{p.omie_etapa_real}</span>;
+    const e = ETAPA_OMIE_LABELS[etapaExibir];
+    if (!e) return <span className="block truncate text-[10px]">{etapaExibir}</span>;
     return (
       <Badge className={`${e.bg} ${e.text} ${e.border} border text-[10px]`} title={p.omie_status_label || ''}>
-        {p.omie_etapa_real} - {e.label}
+        {etapaExibir} - {e.label}
       </Badge>
     );
   }
