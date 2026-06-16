@@ -279,7 +279,9 @@ Deno.serve(async (req) => {
 
     let user: any = null;
     try { user = await base44.auth.me(); } catch { user = null; }
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // origem 'auto' = chamada interna do webhook (service role, sem usuário) → permitida.
+    // origem 'manual' = ação de tela → exige usuário autenticado.
+    if (!user && origem !== 'auto') return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     let titulosParaGerar: any[] = [];
     if (origem === 'auto') {
@@ -311,7 +313,7 @@ Deno.serve(async (req) => {
       mensagem_erro: erros > 0 ? `${erros} boletos falharam` : null,
       duracao_ms,
       tentativas: titulosParaGerar.length,
-      usuario_email: user.email,
+      usuario_email: user?.email || 'sistema (auto)',
       payload_resposta: JSON.stringify(resultados).slice(0, 2000)
     }).catch(() => {});
 

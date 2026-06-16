@@ -693,6 +693,27 @@ async function handlePedido(base44, topic, evt) {
     } catch (e) {
       console.error(`[handlePedido] erro ao atualizar LogEmissaoNF pendente:`, e.message);
     }
+
+    // 🤖 Boleto automático ao faturar — SÓ para pedido A PRAZO (best-effort, não bloqueia o webhook).
+    // gerarBoletosOmie (origem=auto) já é idempotente: checa cGerado='S' por nCodPedido antes de gerar.
+    try {
+      const ehAVista = /vista/i.test(pedido.plano_pagamento_nome || '');
+      if (ehAVista) {
+        console.log(`[boleto-auto] pedido ${codigoPedido} é À VISTA — não gera boleto`);
+      } else {
+        const resBoleto = await gerarBoletoAuto(base44, codigoPedido);
+        if (resBoleto?.ok) {
+          const logsBoleto = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+            { codigo_pedido: codigoPedido }, '-created_date', 5
+          ).catch(() => []);
+          for (const log of logsBoleto) {
+            await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`[boleto-auto] erro ${codigoPedido}:`, e.message);
+    }
   } else if (topic === 'VendaProduto.Excluida') {
     // Verificar NF autorizada LOCALMENTE antes de chamar Omie
     let nfAutorizadaExcluida = false;
@@ -888,14 +909,16 @@ async function handlePedido(base44, topic, evt) {
 // 🤖 Dispara geração automática de boleto para um pedido (best-effort, não bloqueia)
 // 🐛 FIX: Referenciava 'gerarBoletosAutoPedidos' que NÃO EXISTE — corrigido para 'gerarBoletosOmie' (origem=auto)
 async function gerarBoletoAuto(base44, codigoPedido) {
-  if (!codigoPedido) return;
+  if (!codigoPedido) return { ok: false };
   try {
-    await base44.functions.invoke('gerarBoletosOmie', {
+    const res = await base44.functions.invoke('gerarBoletosOmie', {
       origem: 'auto',
       pedidos: [{ codigo_pedido: String(codigoPedido) }]
     });
+    return { ok: true, data: res?.data };
   } catch (e) {
     console.error(`[gerarBoletoAuto] erro pedido ${codigoPedido}:`, e.message);
+    return { ok: false, erro: e.message };
   }
 }
 
