@@ -134,11 +134,28 @@ async function jaEstaNaEtapa(base44, item) {
   }
 }
 
+// Consulta a etapa atual do pedido no Omie. Retorna número (ex: 20, 50, 60) ou null.
+async function consultarEtapaOmie(base44, item) {
+  const param = {};
+  if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
+  else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
+  else return null;
+  const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
+  const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
+  return etapa ? Number(etapa) : null;
+}
+
 // Executa a operação 'faturar': altera previsão + troca etapa para 50.
+// CRÍTICO: após TrocarEtapaPedido, RECONSULTA a etapa real e só retorna sucesso
+// se etapa >= destino. Se o Omie engoliu a troca (respondeu redundante/erro sem
+// faultstring detectável, ou simplesmente não avançou), lança erro — NUNCA marca
+// concluído sem a etapa ter de fato mudado.
 async function processarFaturar(base44, item) {
   const idParam = {};
   if (item.codigo_pedido_omie) idParam.codigo_pedido = Number(item.codigo_pedido_omie);
   if (item.codigo_pedido_integracao) idParam.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
+
+  const destino = Number(item.etapa_destino || 50);
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
@@ -155,7 +172,24 @@ async function processarFaturar(base44, item) {
   }
 
   // 2) Trocar etapa para destino (50)
-  await omieCall(base44, 'produtos/pedido/', { ...idParam, etapa: String(item.etapa_destino || '50') }, { call: 'TrocarEtapaPedido' });
+  await omieCall(base44, 'produtos/pedido/', { ...idParam, etapa: String(destino) }, { call: 'TrocarEtapaPedido' });
+
+  // 3) VALIDAÇÃO OBRIGATÓRIA — reconsulta a etapa real. Sem isso, "Consumo redundante"
+  // ou respostas estranhas eram marcadas como concluído mesmo com o pedido preso em 20.
+  await sleep(1500); // dá tempo do Omie consolidar a troca antes de reconsultar
+  const etapaReal = await consultarEtapaOmie(base44, item);
+  if (etapaReal === null) {
+    // Não conseguimos confirmar — trata como falha transitória para reprocessar (não engole).
+    const err = new Error('Não foi possível confirmar a etapa do pedido no Omie após a troca.');
+    err.naoConfirmado = true;
+    throw err;
+  }
+  if (etapaReal < destino) {
+    const err = new Error(`Troca de etapa não aplicada no Omie: pedido ainda em etapa ${etapaReal} (esperado >= ${destino}).`);
+    err.etapaNaoAvancou = true;
+    throw err;
+  }
+  return etapaReal;
 }
 
 // Recalcula o status de processamento da carga a partir dos itens da fila.

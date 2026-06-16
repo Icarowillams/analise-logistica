@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, Loader2 } from 'lucide-react';
+import { RotateCcw, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CONFIG = {
@@ -32,6 +32,35 @@ export default function StatusProcessamentoOmie({ carga, onReprocessar, itensFil
   const itens = itensFila || itensFallback;
   const concluidos = itens.filter(i => i.status === 'concluido').length;
   const comErro = itens.filter(i => i.status === 'erro');
+  const [revalidando, setRevalidando] = useState(false);
+
+  // Revalida consultando a ETAPA REAL no Omie e reenfileira os pedidos < 50,
+  // mesmo os que estão como "concluído" na fila (falso sucesso).
+  const revalidarCarga = async () => {
+    setRevalidando(true);
+    try {
+      const { data } = await base44.functions.invoke('revalidarCargaOmie', { carga_id: carga.id });
+      if (data?.sucesso) {
+        if (data.reenfileirados > 0) {
+          toast.success(`${data.reenfileirados} pedido(s) abaixo da etapa 50 reenfileirados. Serão faturados na próxima rodada da fila.`);
+        } else {
+          toast.success(`Tudo certo: ${data.confirmados} pedido(s) já na etapa 50+ no Omie.`);
+        }
+        if (data.inconclusivos > 0) {
+          toast.warning(`${data.inconclusivos} pedido(s) não puderam ser confirmados agora — tente novamente em instantes.`);
+        }
+        onReprocessar?.();
+      } else if (data?.omie_bloqueada) {
+        toast.error(`API Omie bloqueada. Desbloqueio: ${data.bloqueado_ate ? new Date(data.bloqueado_ate).toLocaleString('pt-BR') : 'em breve'}.`);
+      } else {
+        toast.error(data?.error || 'Falha ao revalidar a carga.');
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message || 'Falha ao revalidar a carga.');
+    } finally {
+      setRevalidando(false);
+    }
+  };
 
   const reprocessar = async () => {
     const reprocessaveis = comErro.filter(i => (i.tentativas || 0) < 3);
@@ -63,6 +92,19 @@ export default function StatusProcessamentoOmie({ carga, onReprocessar, itensFil
       {(status === 'erro' || status === 'parcial') && comErro.some(i => (i.tentativas || 0) < 3) && (
         <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] border-red-300 text-red-700 hover:bg-red-50 w-fit" onClick={reprocessar}>
           <RotateCcw className="w-3 h-3 mr-1" /> Reprocessar erros
+        </Button>
+      )}
+      {precisaDetalhe && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={revalidando}
+          className="h-6 px-2 text-[11px] border-blue-300 text-blue-700 hover:bg-blue-50 w-fit"
+          onClick={revalidarCarga}
+          title="Consulta a etapa real de cada pedido no Omie e reenfileira os que não avançaram para a etapa 50."
+        >
+          {revalidando ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <ShieldCheck className="w-3 h-3 mr-1" />}
+          {revalidando ? 'Revalidando...' : 'Revalidar carga'}
         </Button>
       )}
     </div>
