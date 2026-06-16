@@ -301,37 +301,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 300000,
   });
 
-  // Etapas Omie — lê do ESPELHO LOCAL (PedidoLiberadoOmie), atualizado em tempo real pelos webhooks.
-  // Subscription em tempo real: qualquer update no espelho reflete imediatamente na coluna "Etapa Omie".
-  const buildOmieMap = (espelho) => {
-    const map = {};
-    espelho.forEach(p => {
-      const info = {
-        etapa: String(p.etapa || ''),
-        numero_pedido: p.numero_pedido,
-        numero_nf: p.numero_nf,
-        status_real: p.status_real,
-        status_label: p.status_label,
-        codigo_pedido: p.codigo_pedido
-      };
-      if (p.codigo_pedido) {
-        const raw = String(p.codigo_pedido).trim();
-        map[raw] = info;
-        const asInt = String(parseInt(raw, 10));
-        if (asInt !== 'NaN' && asInt !== raw) map[asInt] = info;
-      }
-      if (p.numero_pedido) map[`np:${String(p.numero_pedido).trim()}`] = info;
-    });
-    return map;
-  };
-
-  // Espelho Omie (PedidoLiberadoOmie) — carrega a lista completa (~789 registros) e monta
-  // o omieMap por codigo_pedido. Comprovadamente funcional; com staleTime só busca na 1ª vez.
+  // Etapas Omie — mapa montado no BACKEND (mapaEtapasOmie, asServiceRole), entregando só os
+  // campos necessários (~165KB vs ~2MB do espelho completo). Mesmo formato do antigo buildOmieMap:
+  // chaves codigo raw, codigo como int e np:<numero_pedido>.
   const { data: omieMap = {} } = useQuery({
     queryKey: ['gerenciar-pedidos-omie-etapas'],
     queryFn: async () => {
-      const espelho = await base44.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
-      return buildOmieMap(espelho);
+      const res = await base44.functions.invoke('mapaEtapasOmie', {});
+      return res?.data?.map || {};
     },
     staleTime: 30000,
     refetchOnWindowFocus: false
