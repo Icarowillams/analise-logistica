@@ -1,0 +1,53 @@
+{
+  "name": "FilaBoletoOmie",
+  "type": "object",
+  "description": "Fila ass\u00edncrona de baixa prioridade para gera\u00e7\u00e3o de boletos no Omie. O webhook de faturamento apenas ENFILEIRA aqui; um worker agendado processa espa\u00e7ado (delay real entre cada GerarBoleto), respeitando o circuit breaker e cedendo a vez para webhooks/NF. Evita a rajada de boletos (~1/s) que estourava o rate limit global.",
+  "properties": {
+    "codigo_pedido": {
+      "type": "string",
+      "description": "nCodPed do Omie do pedido faturado a gerar boleto"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "origem": {
+      "type": "string",
+      "default": "webhook",
+      "description": "De onde veio o enfileiramento (webhook, reconsulta, manual)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "processando",
+        "concluido",
+        "erro",
+        "skip"
+      ],
+      "default": "pendente",
+      "description": "Status do processamento na fila"
+    },
+    "tentativas": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de tentativas j\u00e1 realizadas"
+    },
+    "proxima_tentativa_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "A partir de quando o item pode ser reprocessado (backoff em rate limit/redundante)"
+    },
+    "resultado": {
+      "type": "string",
+      "description": "Resumo do resultado (n\u00famero do boleto ou mensagem de erro/skip)"
+    },
+    "processado_em": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "codigo_pedido",
+    "status"
+  ]
+}

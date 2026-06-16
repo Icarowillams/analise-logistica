@@ -729,6 +729,18 @@ Deno.serve(async (req) => {
           return { ok: true };
         } catch (e) {
           if (e.code === 'OMIE_BLOQUEADA') return { ok: false, bloqueado: true };
+          // RESILIÊNCIA: erro de rate limit/redundante NÃO é falha do webhook — mantém
+          // 'pendente' para reprocessar depois, nunca descarta (causa de pedidos presos).
+          const msg = String(e.message || e).toLowerCase();
+          const ehRateLimit = msg.includes('rate limit') || msg.includes('cota') || msg.includes('redundante') ||
+            msg.includes('aguarde') || msg.includes('limite') || msg.includes('consumo indevido') ||
+            msg.includes('bloquead') || msg.includes('425') || msg.includes('429') || msg.includes('timeout');
+          if (ehRateLimit) {
+            await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
+              status: 'pendente', mensagem_erro: 'Reenfileirado (rate limit) — será reprocessado', webhook_processado_em: null
+            }).catch(() => {});
+            return { ok: false, bloqueado: true };
+          }
           await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
             status: 'erro', mensagem_erro: String(e.message || e).slice(0, 500), webhook_processado_em: new Date().toISOString()
           }).catch(() => {});

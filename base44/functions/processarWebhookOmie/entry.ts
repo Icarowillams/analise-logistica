@@ -708,25 +708,32 @@ async function handlePedido(base44, topic, evt) {
       console.error(`[handlePedido] erro ao atualizar LogEmissaoNF pendente:`, e.message);
     }
 
-    // 🤖 Boleto automático ao faturar — SÓ para pedido A PRAZO (best-effort, não bloqueia o webhook).
-    // gerarBoletosOmie (origem=auto) já é idempotente: checa cGerado='S' por nCodPedido antes de gerar.
+    // 🤖 Boleto automático ao faturar — SÓ para pedido A PRAZO.
+    // ⚡ NÃO gera inline (isso causava a rajada de boletos que estourava o rate limit global).
+    // Apenas ENFILEIRA em FilaBoletoOmie; o worker processarFilaBoletoOmie processa espaçado,
+    // em baixa prioridade, cedendo a vez para webhooks/NF.
     try {
       const ehAVista = /vista/i.test(pedido.plano_pagamento_nome || '');
       if (ehAVista) {
-        console.log(`[boleto-auto] pedido ${codigoPedido} é À VISTA — não gera boleto`);
+        console.log(`[boleto-fila] pedido ${codigoPedido} é À VISTA — não gera boleto`);
       } else {
-        const resBoleto = await gerarBoletoAuto(base44, codigoPedido);
-        if (resBoleto?.ok) {
-          const logsBoleto = await base44.asServiceRole.entities.LogEmissaoNF.filter(
-            { codigo_pedido: codigoPedido }, '-created_date', 5
-          ).catch(() => []);
-          for (const log of logsBoleto) {
-            await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { boleto_gerado: true }).catch(() => {});
-          }
+        const jaNaFila = await base44.asServiceRole.entities.FilaBoletoOmie.filter(
+          { codigo_pedido: String(codigoPedido) }, '-created_date', 1
+        ).catch(() => []);
+        const naoFinalizado = jaNaFila?.[0] && ['pendente', 'processando'].includes(jaNaFila[0].status);
+        if (!naoFinalizado) {
+          await base44.asServiceRole.entities.FilaBoletoOmie.create({
+            codigo_pedido: String(codigoPedido),
+            numero_pedido: pedido.numero_pedido || '',
+            origem: 'webhook',
+            status: 'pendente',
+            tentativas: 0
+          }).catch(() => {});
+          console.log(`[boleto-fila] pedido ${codigoPedido} enfileirado para geração de boleto`);
         }
       }
     } catch (e) {
-      console.error(`[boleto-auto] erro ${codigoPedido}:`, e.message);
+      console.error(`[boleto-fila] erro ao enfileirar ${codigoPedido}:`, e.message);
     }
   } else if (topic === 'VendaProduto.Excluida') {
     // Verificar NF autorizada LOCALMENTE antes de chamar Omie
@@ -1128,12 +1135,15 @@ Deno.serve(async (req) => {
     const topic0 = logData.webhook_topic || logData.call || '';
     const topicsQueChamam = ['VendaProduto.Faturada', 'VendaProduto.EtapaAlterada', 'VendaProduto.Incluida', 'VendaProduto.Alterada', 'VendaProduto.Excluida', 'VendaProduto.Cancelada'];
     if (cbCheck.blocked && topicsQueChamam.includes(topic0)) {
+      // RESILIÊNCIA: NUNCA descartar o webhook. Mantém 'pendente' para o worker
+      // processarFilaWebhookOmie reprocessar quando o circuit breaker liberar.
+      // (Antes virava 'erro' e o evento se perdia — causa de pedidos presos.)
       await base44.asServiceRole.entities.LogIntegracaoOmie.update(entityId, {
-        status: 'erro',
-        mensagem_erro: 'Rate limit exceeded',
-        webhook_processado_em: new Date().toISOString()
+        status: 'pendente',
+        mensagem_erro: 'Aguardando liberação do rate limit (reenfileirado)',
+        webhook_processado_em: null
       }).catch(() => {});
-      return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cbCheck.blockedUntil });
+      return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo_reenfileirado', bloqueado_ate: cbCheck.blockedUntil });
     }
 
     const topic = logData.webhook_topic || logData.call || '';

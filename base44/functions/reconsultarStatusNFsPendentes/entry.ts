@@ -309,13 +309,16 @@ Deno.serve(async (req) => {
       if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));
     }
 
-    // Boletos automáticos (não bloqueia a resposta da reconsulta)
-    if (codigosParaBoleto.length > 0) {
+    // Boletos: ENFILEIRA em FilaBoletoOmie (worker espaçado de baixa prioridade) em vez de
+    // gerar inline — evita rajada de boletos que estoura o rate limit global.
+    for (const codigo_pedido of codigosParaBoleto) {
       try {
-        await base44.asServiceRole.functions.invoke('gerarBoletosOmie', {
-          origem: 'auto', pedidos: codigosParaBoleto.map(codigo_pedido => ({ codigo_pedido }))
-        });
-      } catch (e) { console.error('[reconsultarStatusNFsPendentes] boletos:', e.message); }
+        const jaNaFila = await base44.asServiceRole.entities.FilaBoletoOmie.filter({ codigo_pedido: String(codigo_pedido) }, '-created_date', 1).catch(() => []);
+        const naoFinalizado = jaNaFila?.[0] && ['pendente', 'processando'].includes(jaNaFila[0].status);
+        if (!naoFinalizado) {
+          await base44.asServiceRole.entities.FilaBoletoOmie.create({ codigo_pedido: String(codigo_pedido), origem: 'reconsulta', status: 'pendente', tentativas: 0 }).catch(() => {});
+        }
+      } catch (e) { console.error('[reconsultarStatusNFsPendentes] enfileirar boleto:', e.message); }
     }
 
     return Response.json({
