@@ -32,7 +32,10 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor.id],
     queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id }),
-    staleTime: 30 * 1000,
+    staleTime: 10 * 1000,
+    // Auto-refresh leve (~12s, re-fetch local sem chamar o Omie): move os cards de
+    // Pendentes → Enviados sozinho quando o worker conclui o envio em background.
+    refetchInterval: 12000,
     refetchOnWindowFocus: false
   });
 
