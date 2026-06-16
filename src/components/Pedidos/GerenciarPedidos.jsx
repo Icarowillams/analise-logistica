@@ -216,20 +216,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return statusFilters.map(s => STATUS_ENCERRADOS[s]).filter(Boolean);
   }, [statusFilters]);
 
-  const yesterdayDate = useMemo(() => getYesterdayFilterDate(), []);
-  const todayDate = useMemo(() => getTodayFilterDate(), []);
-  // Início da janela = hoje menos 6 dias (total de 7 dias: hoje + 6 anteriores), data local.
-  const semanaInicioDate = useMemo(() => getDateMinusDays(6), []);
-  // Mínimo selecionável nos inputs = hoje menos 7 dias.
-  const minSelecionavelDate = useMemo(() => getDateMinusDays(7), []);
-
-  // Corte da janela (sempre em memória): pedidos criados nos últimos 7 dias (data local).
-  // NÃO usamos filtro de range por created_date na query — esse SDK retorna vazio com
-  // operadores de range de data ($gte/$lte), por isso todo o corte é feito aqui.
-  const dentroDaJanela = useCallback((p) => {
-    const d = getLocalDateFromIso(p.created_date);
-    return d >= semanaInicioDate && d <= todayDate;
-  }, [semanaInicioDate, todayDate]);
+  // Filtro de datas LIVRE: o intervalo exibido é controlado apenas pelos inputs
+  // "Envio de" (envioInicio) e "Envio até" (envioFim), aplicados em memória mais abaixo
+  // (sem range server-side por created_date, que retorna vazio neste SDK).
 
   const { data: pedidosAtivos = [], isLoading } = useQuery({
     queryKey: ['pedidos-gerenciar'],
@@ -265,14 +254,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
   });
 
   const pedidos = useMemo(() => {
-    // Merge + dedup por id, aplicando o corte RÍGIDO da janela (ontem/hoje) em memória.
+    // Merge + dedup por id, sem corte de janela fixo — o recorte por data é feito
+    // exclusivamente pelos inputs (envioInicio/envioFim) na etapa de filtragem.
     const mapa = new Map();
     const fonte = statusExtras.length > 0
       ? [...pedidosAtivos, ...pedidosEncerrados]
       : [...pedidosAtivos, ...pedidosFaturadosRecentes];
-    fonte.forEach(p => { if (p?.id && dentroDaJanela(p)) mapa.set(p.id, p); });
+    fonte.forEach(p => { if (p?.id) mapa.set(p.id, p); });
     return Array.from(mapa.values());
-  }, [pedidosAtivos, pedidosEncerrados, pedidosFaturadosRecentes, statusExtras, dentroDaJanela]);
+  }, [pedidosAtivos, pedidosEncerrados, pedidosFaturadosRecentes, statusExtras]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
@@ -961,26 +951,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
             </SelectContent>
           </Select>
         </div>
-        {/* Envio de — mínimo = ontem (não permite datas anteriores) */}
+        {/* Envio de — data livre (qualquer data) */}
         <div>
           <Input
             type="date"
             value={envioInicio}
-            min={minSelecionavelDate}
-            onChange={e => setEnvioInicio(e.target.value < minSelecionavelDate ? minSelecionavelDate : e.target.value)}
+            onChange={e => setEnvioInicio(e.target.value)}
             className="h-6 text-[10px]"
-            title="Envio de (mínimo: 7 dias atrás)"
+            title="Envio de"
           />
         </div>
-        {/* Envio até — mínimo = ontem */}
+        {/* Envio até — data livre (qualquer data) */}
         <div>
           <Input
             type="date"
             value={envioFim}
-            min={minSelecionavelDate}
-            onChange={e => setEnvioFim(e.target.value < minSelecionavelDate ? minSelecionavelDate : e.target.value)}
+            onChange={e => setEnvioFim(e.target.value)}
             className="h-6 text-[10px]"
-            title="Envio até (mínimo: 7 dias atrás)"
+            title="Envio até"
           />
         </div>
         {/* Vendedor */}
