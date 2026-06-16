@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
       registros_por_pagina = 50,
       nome_cliente,
       cnpj_cliente,
+      nf_min,
+      nf_max,
       incluir_raw = false
     } = body;
 
@@ -61,6 +63,10 @@ Deno.serve(async (req) => {
     if (data_final) param.dEmiFinal = data_final;
     if (nome_cliente) param.cRazao = nome_cliente;
     if (cnpj_cliente) param.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
+    // Filtro DIRETO por faixa de número de NF — usado na busca por carga para
+    // evitar varrer várias páginas por data (muito mais rápido).
+    if (nf_min != null && String(nf_min).trim()) param.nNfMin = Number(String(nf_min).replace(/\D/g, ''));
+    if (nf_max != null && String(nf_max).trim()) param.nNfMax = Number(String(nf_max).replace(/\D/g, ''));
 
     const t0 = Date.now();
     const data = await omieCall(base44, 'ListarNF', param);
