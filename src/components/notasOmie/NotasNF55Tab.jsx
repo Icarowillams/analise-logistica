@@ -76,19 +76,10 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     if (indicePedidosRef.current.dados && indicePedidosRef.current.expira > agora) {
       return indicePedidosRef.current.dados;
     }
-    // Projeção leve: só omie_codigo_pedido e numero_carga.
-    const pedidos = await base44.entities.Pedido.list('-created_date', 5000, ['omie_codigo_pedido', 'numero_carga']);
-    const indice = {}; // omie_codigo_pedido(=nIdPedido) → numero_carga
-    pedidos.forEach(p => {
-      const cod = String(p.omie_codigo_pedido || '');
-      if (cod && p.numero_carga != null && p.numero_carga !== '' && !indice[cod]) {
-        indice[cod] = p.numero_carga;
-      }
-    });
+    // Monta o índice via BACKEND (service-role) — Pedido.list no frontend volta vazio por RLS de created_by.
+    const { data } = await base44.functions.invoke('indiceCargasPorPedido', {});
+    const indice = data?.indice || {}; // omie_codigo_pedido(=nIdPedido) → numero_carga
     indicePedidosRef.current = { dados: indice, expira: agora + TTL_INDICE };
-    console.log('[NF55-DEBUG] getIndicePedidos: total pedidos=', pedidos.length,
-      '| com codigo=', Object.keys(indice).length,
-      '| tem 11524127880?', indice['11524127880']);
     return indice;
   };
 
@@ -158,16 +149,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         getIndiceCargas()   // FALLBACK: cargas (pedidos_omie / notas_fiscais)
       ]);
 
-      console.log('[NF55-DEBUG] buscarCargasDasNfs: nfs=', nfs.length,
-        '| idxPedido keys=', Object.keys(idxPedido).length,
-        '| sample nf=', nfs[0] ? { cNumero: nfs[0].cNumero, nIdPedido: nfs[0].nIdPedido } : null);
-
       nfs.forEach(nf => {
         const num = String(nf.cNumero || '').replace(/\D/g, '');
-        if (String(nf.cNumero).replace(/\D/g, '') === '00181706' || String(nf.nIdPedido) === '11524127880') {
-          console.log('[NF55-DEBUG] NF alvo:', { cNumero: nf.cNumero, nIdPedido: nf.nIdPedido,
-            tipoNId: typeof nf.nIdPedido, hitPedido: idxPedido[String(nf.nIdPedido)] });
-        }
         if (!num) return;
         const codPed = String(nf.nIdPedido || '');
         // 1) FONTE PRIMÁRIA: nIdPedido → Pedido.numero_carga
