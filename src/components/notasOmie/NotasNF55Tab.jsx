@@ -268,7 +268,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         }
         const apenasAutorizadas = nfsAcumuladas.filter(nf => nf.cStatus === 'autorizada');
         const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
-        const mapaCargas = await buscarCargasDasNfs(nfsFiltradas);
+        // Busca POR carga: o nº da carga já é conhecido (é o próprio filtro). Marca todas
+        // as NFs com ele direto, sem baixar o índice de TODAS as cargas (que era lento).
+        const numCarga = cargaParaFiltrar.numero_carga;
+        const mapaCargas = {};
+        nfsFiltradas.forEach(nf => {
+          const num = String(nf.cNumero || '').replace(/\D/g, '');
+          if (num) mapaCargas[num] = numCarga;
+        });
         setCargasPorNf(mapaCargas);
         setResultado({ ...(dataFinalResp || {}), nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
         setPagina(1);

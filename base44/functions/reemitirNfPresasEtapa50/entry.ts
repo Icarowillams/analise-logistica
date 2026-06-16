@@ -170,6 +170,19 @@ Deno.serve(async (req) => {
             payload_enviado: JSON.stringify({ nCodPed: cod }).slice(0, 800),
             usuario_email: 'rede_seguranca'
           }).catch(() => {});
+          // Registra também em LogEmissaoNF para aparecer na tela "Log de Emissão".
+          await base44.asServiceRole.entities.LogEmissaoNF.create({
+            codigo_pedido: String(cod),
+            numero_pedido: p.numero_pedido || '',
+            cliente_id: p.cliente_id || '',
+            cliente_nome: p.cliente_nome || '',
+            carga_id: p.carga_id || '',
+            numero_carga: p.numero_carga || '',
+            status: 'pendente',
+            mensagem: 'Reemissão automática (rede de segurança — etapa 50). Aguardando confirmação da SEFAZ.',
+            usuario_email: 'rede_seguranca',
+            usuario_nome: 'Rede de Segurança'
+          }).catch(() => {});
           detalhes.push({ codigo_pedido: cod, numero_pedido: p.numero_pedido, etapa, acao: 'reemitido' });
         } else {
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
