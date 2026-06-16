@@ -50,9 +50,10 @@ Deno.serve(async (req) => {
       data_inicial,
       data_final,
       pagina = 1,
-      registros_por_pagina = 100,
+      registros_por_pagina = 50,
       nome_cliente,
-      cnpj_cliente
+      cnpj_cliente,
+      incluir_raw = false
     } = body;
 
     const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
@@ -113,9 +114,13 @@ Deno.serve(async (req) => {
       nValorNF: nf.total?.ICMSTot?.vNF || nf.nValorNF,
       cStatus: derivarStatus(nf),
       cOperacao: nf.ide?.cNatOp || nf.cOperacao,
-      itens: nf.det || [],
-      total: nf.total || null,
-      nf_raw: nf
+      // Payload ENXUTO na listagem: só a contagem de itens. Os itens (nf.det), o total
+      // detalhado e o objeto cru (nf_raw) são pesados — multiplicados por 50-100 NFs
+      // estouravam a serialização da resposta (erro 500). O detalhe de UMA nota é
+      // carregado sob demanda via consultarDetalheNotaOmie ao abrir/imprimir.
+      qtd_itens: (nf.det || []).length,
+      // Só inclui dados completos quando o front pedir explicitamente (incluir_raw=true).
+      ...(incluir_raw ? { itens: nf.det || [], total: nf.total || null, nf_raw: nf } : {})
     }));
 
     return Response.json({
@@ -126,6 +131,19 @@ Deno.serve(async (req) => {
       total_de_registros: data.nRegistros || data.total_de_registros
     });
   } catch (error) {
+    // Loga o erro real no LogIntegracaoOmie (antes só sucessos eram registrados) para rastrear.
+    try {
+      const base44b = createClientFromRequest(req);
+      const u = await base44b.auth.me().catch(() => null);
+      await base44b.asServiceRole.entities.LogIntegracaoOmie.create({
+        endpoint: 'produtos/nfconsultar',
+        call: 'ListarNF',
+        operacao: 'listar_nfs',
+        status: 'erro',
+        mensagem_erro: String(error.message || error).slice(0, 500),
+        usuario_email: u?.email || ''
+      }).catch(() => {});
+    } catch { /* ignore log failure */ }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
