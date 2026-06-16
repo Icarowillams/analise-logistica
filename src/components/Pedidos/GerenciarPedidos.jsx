@@ -32,7 +32,7 @@ import BuscarClienteModal from './BuscarClienteModal';
 import LiberarPedidosModal from './LiberarPedidosModal';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 import { Switch } from '@/components/ui/switch';
-import useAutoRefreshPedidos from './useAutoRefreshPedidos';
+import useAutoRefreshPedidos from './useAutoRefreshPedidos.jsx';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
