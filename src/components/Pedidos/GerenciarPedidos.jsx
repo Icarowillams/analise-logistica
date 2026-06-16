@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/popover';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil
+  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil, Link2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -137,6 +137,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [viewPedidoAnaliticoIds, setViewPedidoAnaliticoIds] = useState(null);
   const [batchResult, setBatchResult] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [reconciliarLoading, setReconciliarLoading] = useState(false);
   const [modalLiberar, setModalLiberar] = useState({ open: false, pedidos: [] });
 
 
@@ -660,6 +661,45 @@ export default function GerenciarPedidos({ onEditPedido }) {
     }
   };
 
+  // Reconciliar Espelhos: reconstrói os espelhos faltantes (Pedido com omie_codigo_pedido sem
+  // registro em PedidoLiberadoOmie) consultando o Omie. Se houver um Nº Carga digitado na busca,
+  // reconcilia só aquela carga; senão roda em lote (max_cargas: 30).
+  const reconciliarEspelhos = async () => {
+    setReconciliarLoading(true);
+    try {
+      const numeroCarga = search.trim();
+      const payload = /^\d{1,4}$/.test(numeroCarga)
+        ? { numero_carga: numeroCarga }
+        : { max_cargas: 30 };
+
+      const res = await base44.functions.invoke('reconciliarEspelhoCargaCompleto', payload);
+      const data = res?.data || {};
+
+      if (data.bloqueado) {
+        toast.warning('API Omie temporariamente bloqueada. Tente novamente em alguns minutos.');
+      } else if (data.sucesso) {
+        const { pedidos_atualizados = 0, nfs_vinculadas = 0, cargas_processadas = 0 } = data;
+        if (pedidos_atualizados > 0 || nfs_vinculadas > 0) {
+          toast.success(`Reconciliado: ${pedidos_atualizados} pedido(s) atualizado(s), ${nfs_vinculadas} NF(s) vinculada(s) em ${cargas_processadas} carga(s).`);
+        } else {
+          toast.info('Nenhum espelho pendente encontrado para reconciliar.');
+        }
+        await queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] });
+      } else {
+        toast.warning(`Reconciliação falhou: ${data.error || 'erro desconhecido'}`);
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || '';
+      if (/bloquead/i.test(msg)) {
+        toast.warning('API Omie temporariamente bloqueada (limite de requisições). Tente novamente em alguns minutos.');
+      } else {
+        toast.error(`Erro ao reconciliar espelhos: ${msg || 'tente novamente em alguns minutos.'}`);
+      }
+    } finally {
+      setReconciliarLoading(false);
+    }
+  };
+
   const toggleSort = (field) => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1011,6 +1051,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
           onClick={syncEAtualizar}
         >
           {syncLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5 mr-0.5" />} Atualizar
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[10px] border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          disabled={reconciliarLoading}
+          onClick={reconciliarEspelhos}
+          title="Reconstrói espelhos faltantes consultando o Omie (pode demorar). Com um Nº de carga digitado na busca, reconcilia só aquela carga."
+        >
+          {reconciliarLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <Link2 className="w-2.5 h-2.5 mr-0.5" />} Reconciliar Espelhos
         </Button>
       </div>
 
