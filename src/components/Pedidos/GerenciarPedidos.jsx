@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,8 @@ import BatchResultToast from './BatchResultToast';
 import BuscarClienteModal from './BuscarClienteModal';
 import LiberarPedidosModal from './LiberarPedidosModal';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { Switch } from '@/components/ui/switch';
+import useAutoRefreshPedidos from './useAutoRefreshPedidos';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
@@ -150,6 +152,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
+
+  // Releitura SOMENTE local (sem chamar Omie) — usada pelo auto-refresh.
+  const recarregarLocal = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
+      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
+    ]);
+  }, [queryClient]);
+
+  const { enabled: autoRefresh, setEnabled: setAutoRefresh, textoUltima } = useAutoRefreshPedidos(recarregarLocal);
 
   const recarregarAbaAposAcao = async (resultado = null) => {
     setSelectedIds([]);
@@ -1039,6 +1052,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
         >
           {reconciliarLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <Link2 className="w-2.5 h-2.5 mr-0.5" />} Reconciliar Espelhos
         </Button>
+        {/* Auto-refresh (releitura local, sem chamar Omie) */}
+        <div className="flex items-center gap-1.5 ml-auto text-[10px] text-slate-500">
+          <span className="hidden sm:inline">Atualizado {textoUltima}</span>
+          <span className="flex items-center gap-1">
+            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 origin-right" />
+            <span className="text-slate-600 font-medium">Auto</span>
+          </span>
+        </div>
       </div>
 
       {/* Table — área rolável que ocupa o espaço restante */}
