@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
-// ─── CACHE localStorage (10 min TTL — persiste entre F5) ───
+// ─── CACHE localStorage (60s TTL — montagem é operação em tempo real) ───
 const CACHE_KEY = 'montagem_carga_v4';
-const CACHE_TTL = 10 * 60 * 1000;
+const CACHE_TTL = 60 * 1000;
 
 function getUserCacheKey() {
   try {
@@ -144,13 +144,13 @@ export default function useDadosMontagem() {
       // ⚠️ Cliente NÃO é mais carregado por inteiro (antes: list 10000 = ~958 reg / 4,4s).
       // Os clientes são buscados DEPOIS, filtrando só pelos cliente_ids referenciados.
       const [espelhoOmie, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
-        fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 2000)),
-        fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 3000)),
+        fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 5000)),
+        fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 5000)),
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
         fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Motorista.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Veiculo.list('-created_date', 500)),
-        fetchWithRetry(() => base44.entities.Carga.list('-created_date', 500))
+        fetchWithRetry(() => base44.entities.Carga.list('-created_date', 1000))
       ]);
 
       // Cliente_ids efetivamente referenciados (espelho + pedidos locais + trocas)
@@ -484,12 +484,28 @@ export default function useDadosMontagem() {
     await carregar();
   }, [carregar]);
 
+  // Re-fetch LOCAL: limpa cache e relê as entidades do Base44, SEM chamar o Omie.
+  // Usado no auto-refresh para trazer pedidos recém-liberados sem custo de API externa.
+  const recarregarLocal = useCallback(async () => {
+    localStorage.removeItem(CACHE_KEY + '_' + getUserCacheKey());
+    await carregar(true);
+  }, [carregar]);
+
   useEffect(() => {
     carregar();
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, [carregar]);
+
+  // Auto-refresh leve: a cada 20s relê as entidades locais (sem Omie) para que
+  // pedidos liberados entrem na lista sozinhos, sem o logístico clicar em Atualizar.
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      recarregarLocal();
+    }, 20000);
+    return () => clearInterval(intervalo);
+  }, [recarregarLocal]);
 
   return { loading, pedidos, motoristas, veiculos, cargas, recarregar, carregandoItens };
 }
