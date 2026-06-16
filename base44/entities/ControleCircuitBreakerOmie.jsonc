@@ -36,6 +36,16 @@
       "type": "number",
       "default": 3,
       "description": "N\u00famero de erros consecutivos necess\u00e1rios para abrir o circuit breaker"
+    },
+    "worker_rodando": {
+      "type": "boolean",
+      "default": false,
+      "description": "Lock simples: indica que uma inst\u00e2ncia do worker de fila de webhooks est\u00e1 processando agora. Impede execu\u00e7\u00e3o paralela."
+    },
+    "worker_lock_ate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Validade do lock do worker \u2014 se ultrapassada, o lock \u00e9 considerado expirado (auto-release) para evitar travamento permanente."
     }
   },
   "required": [

@@ -108,14 +108,14 @@ Deno.serve(async (req) => {
         payload_resposta: truncar(JSON.stringify(body))
       });
 
-      // ⚡ TEMPO REAL: dispara o processamento do espelho IMEDIATAMENTE (fire-and-forget),
-      // sem esperar a automação de 5min nem bloquear a resposta ao Omie.
-      // Passamos o mesmo payload que a entity automation enviaria (event + data).
+      // ⚡ Dispara o WORKER SEQUENCIAL (fire-and-forget), NÃO o processador paralelo.
+      // Antes chamávamos processarWebhookOmie diretamente por webhook — numa rajada isso
+      // virava N invocações simultâneas que faziam N ConsultarPedido em paralelo e estouravam
+      // o rate limit. Agora só enfileiramos (log pendente acima) e cutucamos o worker, que
+      // consome a fila UM por vez com throttle global e lock de instância única.
       if (statusInicial === 'pendente') {
-        base44.asServiceRole.functions.invoke('processarWebhookOmie', {
-          event: { type: 'create', entity_name: 'LogIntegracaoOmie', entity_id: logCriado.id },
-          data: logCriado
-        }).catch((e) => console.error('[receberWebhookOmie] disparo processarWebhookOmie falhou:', e?.message));
+        base44.asServiceRole.functions.invoke('processarFilaWebhookOmie', { origem: 'webhook' })
+          .catch((e) => console.error('[receberWebhookOmie] disparo do worker falhou:', e?.message));
       }
     } catch (filaErr) {
       // Único caso em que sinalizamos falha ao Omie: não conseguimos enfileirar

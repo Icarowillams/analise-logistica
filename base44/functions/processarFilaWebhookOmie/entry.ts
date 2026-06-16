@@ -24,8 +24,10 @@ const CB_ID_WEBHOOK = '6a1e06a9aa62ceab7b3b6d97';
 // usamos TEMPO_MAX_MS=150s como teto e paramos antes — o resto fica para o próximo
 // ciclo (5 min). Com ~2,5s/item, cabem ~55 itens/ciclo = ~660/h (> taxa de pico).
 const MAX_POR_RODADA = 60;
-// Teto de tempo de parede por execução — MENOR que o timeout real da função (~180s).
-const TEMPO_MAX_MS = 150000; // 2,5 min
+// Teto de tempo de parede por execução — bem MENOR que o timeout real (~180s) para
+// parar com folga e deixar o self-chain/scheduler continuar a fila. Com ~30 itens
+// (~75s a 2,5s/item) sob o teto, jamais batemos no timeout do isolate.
+const TEMPO_MAX_MS = 80000; // 80s
 // Delay entre cada item que efetivamente chama a Omie (espacar as chamadas).
 const DELAY_ENTRE_ITENS_MS = 2500;
 
@@ -574,6 +576,41 @@ function chaveDedupe(log) {
   return `${topic}|${id}|${etapa}`;
 }
 
+// Código do pedido do evento (para dedupe inteligente por pedido na rajada).
+function codigoPedidoDoLog(log) {
+  let body;
+  try { body = JSON.parse(log.payload_resposta || '{}'); } catch { body = {}; }
+  const evt = body.event || body;
+  return String(evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || evt?.codIntPedido || '');
+}
+
+// ─── Lock de instância única ────────────────────────────────────────────────
+// Garante que só UM worker processe a fila por vez. Sem isto, o disparo por
+// webhook (1 invocação por evento recebido) recriaria o problema: N workers
+// concorrentes chamando a Omie em paralelo. O lock expira sozinho (LOCK_TTL_MS)
+// para nunca travar permanentemente se uma execução morrer no meio.
+const LOCK_TTL_MS = 180000; // 3 min — acima do teto de execução
+
+async function tentarAdquirirLock(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID_WEBHOOK }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c) return false;
+  const lockAtivo = c.worker_rodando && c.worker_lock_ate && new Date(c.worker_lock_ate).getTime() > Date.now();
+  if (lockAtivo) return false;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
+    worker_rodando: true,
+    worker_lock_ate: new Date(Date.now() + LOCK_TTL_MS).toISOString(),
+    atualizado_em: new Date().toISOString()
+  }).catch(() => null);
+  return true;
+}
+
+async function liberarLock(base44) {
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID_WEBHOOK, {
+    worker_rodando: false, worker_lock_ate: null, atualizado_em: new Date().toISOString()
+  }).catch(() => null);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -584,66 +621,120 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Circuit breaker: se a Omie está bloqueando, nem começa (evita acumular erro).
-    const cb = await checkCircuitBreaker(base44);
-    if (cb.blocked) {
-      return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cb.blockedUntil, processados: 0 });
+    // LOCK DE INSTÂNCIA ÚNICA: se outra instância já está processando, sai limpo.
+    // O webhook dispara este worker a cada evento recebido — sem o lock, uma rajada
+    // criaria vários workers concorrentes (de volta ao problema). O scheduler de 5min
+    // é a rede de segurança que pega o que sobrar.
+    const adquiriu = await tentarAdquirirLock(base44);
+    if (!adquiriu) {
+      return Response.json({ sucesso: true, processados: 0, motivo: 'worker_ja_rodando' });
     }
 
-    // Busca webhooks pendentes (mais antigos primeiro) — filter por chave, nunca list total.
-    const pendentes = await base44.asServiceRole.entities.LogIntegracaoOmie.filter(
-      { endpoint: 'webhook', status: 'pendente' }, 'created_date', MAX_POR_RODADA
-    ).catch(() => []);
-
-    if (!pendentes.length) {
-      return Response.json({ sucesso: true, processados: 0, motivo: 'fila vazia' });
-    }
-
-    const vistos = new Set();
-    let processados = 0;
-    let ignoradosDup = 0;
-    let pausadoPorBloqueio = false;
-    let chamouOmie = false;
-    const inicioMs = Date.now();
-
-    for (const log of pendentes) {
-      // Para antes do timeout — o restante fica pendente para o próximo ciclo.
-      if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
-
-      // Dedupe por evento de negócio dentro desta rodada.
-      const chave = chaveDedupe(log);
-      if (vistos.has(chave)) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
-          status: 'ignorado', mensagem_erro: 'Duplicado (mesmo evento já processado)', webhook_processado_em: new Date().toISOString()
-        }).catch(() => {});
-        ignoradosDup++;
-        continue;
+    try {
+      // Circuit breaker: se a Omie está bloqueando, nem começa (evita acumular erro).
+      const cb = await checkCircuitBreaker(base44);
+      if (cb.blocked) {
+        return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cb.blockedUntil, processados: 0 });
       }
-      vistos.add(chave);
 
-      // Espaça as chamadas: delay só após um item que tenha potencialmente batido na Omie.
-      if (chamouOmie) await new Promise(r => setTimeout(r, DELAY_ENTRE_ITENS_MS));
+      // Busca webhooks pendentes (mais antigos primeiro) — filter por chave, nunca list total.
+      const pendentes = await base44.asServiceRole.entities.LogIntegracaoOmie.filter(
+        { endpoint: 'webhook', status: 'pendente' }, 'created_date', MAX_POR_RODADA
+      ).catch(() => []);
 
-      try {
-        const r = await processarUm(base44, log);
-        processados++;
-        // topics que podem chamar ConsultarPedido marcam para espaçar o próximo.
-        const topic = log.webhook_topic || log.call || '';
-        chamouOmie = topic.startsWith('VendaProduto.') || topic.startsWith('NFe.');
-      } catch (e) {
-        if (e.code === 'OMIE_BLOQUEADA') {
-          // Re-enfileira: deixa como pendente para a próxima rodada (não vira erro).
-          pausadoPorBloqueio = true;
-          break;
+      if (!pendentes.length) {
+        return Response.json({ sucesso: true, processados: 0, motivo: 'fila vazia' });
+      }
+
+      // DEDUPE INTELIGENTE POR PEDIDO: numa rajada chegam vários eventos do mesmo
+      // codigo_pedido. Mantemos só o MAIS RECENTE de cada pedido para processar agora
+      // (a fila vem ordenada por created_date asc, então o último da lista por pedido é o
+      // mais novo). Os anteriores do mesmo pedido viram 'ignorado' — evita N ConsultarPedido
+      // redundantes e garante que a etapa mais nova prevaleça sobre a antiga.
+      const maisRecentePorPedido = new Map(); // codigo_pedido -> log
+      const semPedido = []; // logs sem codigo_pedido identificável (processados normalmente)
+      const aIgnorar = [];
+      for (const log of pendentes) {
+        const cod = codigoPedidoDoLog(log);
+        if (!cod) { semPedido.push(log); continue; }
+        const anterior = maisRecentePorPedido.get(cod);
+        if (anterior) aIgnorar.push(anterior); // o anterior (mais antigo) é descartado
+        maisRecentePorPedido.set(cod, log);
+      }
+      for (const log of aIgnorar) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
+          status: 'ignorado', mensagem_erro: 'Consolidado (evento mais recente do mesmo pedido será processado)', webhook_processado_em: new Date().toISOString()
+        }).catch(() => {});
+      }
+
+      // Ordem de chegada preservada: processa na ordem original, já sem os consolidados.
+      const idsConsolidados = new Set(aIgnorar.map(l => l.id));
+      const aProcessar = pendentes.filter(l => !idsConsolidados.has(l.id));
+
+      const vistos = new Set();
+      let processados = 0;
+      let ignoradosDup = aIgnorar.length;
+      let pausadoPorBloqueio = false;
+      let chamouOmie = false;
+      const inicioMs = Date.now();
+
+      for (const log of aProcessar) {
+        // Para antes do timeout — o restante fica pendente para o próximo ciclo.
+        if (Date.now() - inicioMs > TEMPO_MAX_MS) break;
+
+        // Dedupe por evento de negócio dentro desta rodada (reforço ao dedupe por pedido).
+        const chave = chaveDedupe(log);
+        if (vistos.has(chave)) {
+          await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
+            status: 'ignorado', mensagem_erro: 'Duplicado (mesmo evento já processado)', webhook_processado_em: new Date().toISOString()
+          }).catch(() => {});
+          ignoradosDup++;
+          continue;
         }
-        // Erro real isolado deste webhook — marca erro e segue.
-        await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
-          status: 'erro', mensagem_erro: String(e.message || e).slice(0, 500), webhook_processado_em: new Date().toISOString()
-        }).catch(() => {});
-      }
-    }
+        vistos.add(chave);
 
-    return Response.json({ sucesso: true, processados, ignorados_duplicados: ignoradosDup, pausado_por_bloqueio: pausadoPorBloqueio });
+        // THROTTLE GLOBAL: delay só após um item que tenha potencialmente batido na Omie.
+        if (chamouOmie) await new Promise(r => setTimeout(r, DELAY_ENTRE_ITENS_MS));
+
+        try {
+          await processarUm(base44, log);
+          processados++;
+          // topics que podem chamar ConsultarPedido marcam para espaçar o próximo.
+          const topic = log.webhook_topic || log.call || '';
+          chamouOmie = topic.startsWith('VendaProduto.') || topic.startsWith('NFe.');
+        } catch (e) {
+          if (e.code === 'OMIE_BLOQUEADA') {
+            // Re-enfileira: deixa como pendente para a próxima rodada (não vira erro).
+            pausadoPorBloqueio = true;
+            break;
+          }
+          // Erro real isolado deste webhook — marca erro e segue.
+          await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
+            status: 'erro', mensagem_erro: String(e.message || e).slice(0, 500), webhook_processado_em: new Date().toISOString()
+          }).catch(() => {});
+        }
+      }
+
+      // SELF-CHAINING: se ainda há pendentes e não pausou por bloqueio, libera o lock e
+      // re-dispara o worker para esvaziar a fila sem esperar o scheduler de 5min.
+      let reagendado = false;
+      if (!pausadoPorBloqueio) {
+        const aindaPendentes = await base44.asServiceRole.entities.LogIntegracaoOmie.filter(
+          { endpoint: 'webhook', status: 'pendente' }, 'created_date', 1
+        ).catch(() => []);
+        if (aindaPendentes.length > 0) {
+          await liberarLock(base44);
+          base44.asServiceRole.functions.invoke('processarFilaWebhookOmie', { origem: 'self_chain' })
+            .catch((e) => console.error('[processarFilaWebhookOmie] self-chain falhou:', e?.message));
+          reagendado = true;
+        }
+      }
+
+      return Response.json({ sucesso: true, processados, ignorados_duplicados: ignoradosDup, pausado_por_bloqueio: pausadoPorBloqueio, reagendado });
+    } finally {
+      // Libera o lock sempre (se o self-chain já liberou, este update é inócuo).
+      await liberarLock(base44);
+    }
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
