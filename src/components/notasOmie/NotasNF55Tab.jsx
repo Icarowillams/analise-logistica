@@ -67,6 +67,28 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const indiceCargasRef = useRef({ dados: null, expira: 0 });
   const TTL_INDICE = 5 * 60 * 1000;
 
+  // Índice PRIMÁRIO: nIdPedido (=Pedido.omie_codigo_pedido) → Pedido.numero_carga.
+  // Pedido é a fonte da verdade do nº de carga; cacheado com o mesmo TTL de 5 min.
+  const indicePedidosRef = useRef({ dados: null, expira: 0 });
+
+  const getIndicePedidos = async () => {
+    const agora = Date.now();
+    if (indicePedidosRef.current.dados && indicePedidosRef.current.expira > agora) {
+      return indicePedidosRef.current.dados;
+    }
+    // Projeção leve: só omie_codigo_pedido e numero_carga.
+    const pedidos = await base44.entities.Pedido.list('-created_date', 5000, ['omie_codigo_pedido', 'numero_carga']);
+    const indice = {}; // omie_codigo_pedido(=nIdPedido) → numero_carga
+    pedidos.forEach(p => {
+      const cod = String(p.omie_codigo_pedido || '');
+      if (cod && p.numero_carga != null && p.numero_carga !== '' && !indice[cod]) {
+        indice[cod] = p.numero_carga;
+      }
+    });
+    indicePedidosRef.current = { dados: indice, expira: agora + TTL_INDICE };
+    return indice;
+  };
+
   const getIndiceCargas = async () => {
     const agora = Date.now();
     if (indiceCargasRef.current.dados && indiceCargasRef.current.expira > agora) {
@@ -128,18 +150,26 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     if (!nfs || nfs.length === 0) return mapa;
 
     try {
-      const indice = await getIndiceCargas(); // cacheado (TTL 5 min)
+      const [idxPedido, indice] = await Promise.all([
+        getIndicePedidos(), // FONTE PRIMÁRIA: nIdPedido → numero_carga (via Pedido)
+        getIndiceCargas()   // FALLBACK: cargas (pedidos_omie / notas_fiscais)
+      ]);
 
       nfs.forEach(nf => {
         const num = String(nf.cNumero || '').replace(/\D/g, '');
         if (!num) return;
         const codPed = String(nf.nIdPedido || '');
-        // 1) caminho original: cruza nIdPedido → codigo_pedido
+        // 1) FONTE PRIMÁRIA: nIdPedido → Pedido.numero_carga
+        if (codPed && idxPedido[codPed] != null) {
+          mapa[num] = idxPedido[codPed];
+          return;
+        }
+        // 2) fallback: cruza nIdPedido → codigo_pedido da carga
         if (codPed && indice[codPed]) {
           mapa[num] = indice[codPed];
           return;
         }
-        // 2) fallback: cruza pelo número real da NF (notas_fiscais da carga)
+        // 3) fallback: cruza pelo número real da NF (notas_fiscais da carga)
         if (indice['nf:' + num]) mapa[num] = indice['nf:' + num];
       });
     } catch { /* segue */ }
