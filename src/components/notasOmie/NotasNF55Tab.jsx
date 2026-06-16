@@ -212,11 +212,30 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           return;
         }
 
+        // Janela de datas em torno da data da carga (cobre NF emitida na véspera).
+        // O ListarNF do Omie não filtra por pedido, então o backend varre as NFs do
+        // período e cruza pelo nIdPedido. Passar a janela deixa a varredura curta e rápida.
+        const dataBase = cargaParaFiltrar.data_faturamento || cargaParaFiltrar.data_carga;
+        let janelaDatas = {};
+        if (dataBase) {
+          const d = new Date(dataBase);
+          if (!isNaN(d.getTime())) {
+            const fmt = (dt) => {
+              const dia = String(dt.getDate()).padStart(2, '0');
+              const mes = String(dt.getMonth() + 1).padStart(2, '0');
+              return `${dia}/${mes}/${dt.getFullYear()}`;
+            };
+            const ini = new Date(d.getTime() - 3 * 24 * 60 * 60 * 1000);
+            const fim = new Date(d.getTime() + 1 * 24 * 60 * 60 * 1000);
+            janelaDatas = { data_inicial: fmt(ini), data_final: fmt(fim) };
+          }
+        }
+
         // Preferimos buscar por número de NF (mais direto); se a carga ainda não tem
-        // numero_nf gravado, buscamos pelo código do pedido (nIdPedido).
+        // numero_nf gravado, buscamos pelo código do pedido (nIdPedido) + janela de datas.
         const payloadBusca = numerosNfCarga.length > 0
           ? { numeros_nf: numerosNfCarga }
-          : { codigos_pedido: codigosPedidoCarga };
+          : { codigos_pedido: codigosPedidoCarga, ...janelaDatas };
 
         let data;
         try {

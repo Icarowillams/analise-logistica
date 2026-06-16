@@ -152,32 +152,54 @@ Deno.serve(async (req) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CAMINHO RÁPIDO 2: lista de códigos de pedido (busca por CARGA).
-    // O numero_nf nem sempre está gravado na carga (só após sincronização), mas o
-    // codigo_pedido (=nIdPedido) está sempre. ListarNF aceita filtrar por nIdPedido,
-    // então consultamos a NF de cada pedido direto, em paralelo. Pedido sem NF
-    // emitida simplesmente retorna vazio — sem varrer páginas por data.
+    // CAMINHO 2: lista de códigos de pedido (busca por CARGA).
+    // IMPORTANTE: o ListarNF do Omie NÃO aceita filtrar por pedido (nIdPedido /
+    // nIdPedidoVenda / nCodPedido são rejeitados pela API). PORÉM cada NF retornada
+    // traz o nIdPedido dentro de compl.nIdPedido — então a estratégia confiável é:
+    // buscar as NFs por FAIXA DE DATAS (a data da carga / período passado pela tela,
+    // ou uma janela padrão recente), varrer as páginas e CRUZAR pelo nIdPedido.
     // ─────────────────────────────────────────────────────────────────────────
     if (Array.isArray(codigos_pedido) && codigos_pedido.length > 0) {
-      const codigos = [...new Set(
-        codigos_pedido.map(c => Number(String(c).replace(/\D/g, ''))).filter(c => c > 0)
-      )];
+      const alvo = new Set(
+        codigos_pedido.map(c => String(c).replace(/\D/g, '')).filter(Boolean)
+      );
+      if (alvo.size === 0) {
+        return Response.json({ sucesso: true, nfs: [], pagina: 1, total_de_paginas: 1, total_de_registros: 0 });
+      }
+
+      // Faixa de datas: usa data_inicial/data_final se a tela enviar (data da carga);
+      // senão, janela padrão dos últimos 15 dias até hoje (cobre NF emitida na véspera).
+      const fmt = (d) => {
+        const dia = String(d.getDate()).padStart(2, '0');
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        return `${dia}/${mes}/${d.getFullYear()}`;
+      };
+      const hoje = new Date();
+      const inicioPadrao = new Date(hoje.getTime() - 15 * 24 * 60 * 60 * 1000);
+      const dEmiInicial = data_inicial || fmt(inicioPadrao);
+      const dEmiFinal = data_final || fmt(hoje);
 
       const t0 = Date.now();
-      const LOTE = 6;
       const encontradas = [];
-      for (let i = 0; i < codigos.length; i += LOTE) {
-        const fatia = codigos.slice(i, i + LOTE);
-        const resultados = await Promise.all(fatia.map(async (idPedido) => {
-          try {
-            const d = await omieCall(base44, 'ListarNF', { pagina: 1, registros_por_pagina: 50, nIdPedido: idPedido });
-            return (d.nfCadastro || []).map(mapNf);
-          } catch {
-            return [];
-          }
-        }));
-        resultados.forEach(arr => encontradas.push(...arr));
-      }
+      let pg = 1;
+      let totalPaginas = 1;
+      const MAX_PAGINAS = 30; // teto de segurança
+      do {
+        const d = await omieCall(base44, 'ListarNF', {
+          pagina: pg,
+          registros_por_pagina: 100,
+          dEmiInicial,
+          dEmiFinal
+        });
+        totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
+        (d.nfCadastro || []).forEach((nf) => {
+          const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
+          if (idPed && alvo.has(idPed)) encontradas.push(mapNf(nf));
+        });
+        // Para cedo se já achou todas as NFs dos pedidos solicitados.
+        if (encontradas.length >= alvo.size) break;
+        pg++;
+      } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
 
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({
         endpoint: 'produtos/nfconsultar',
