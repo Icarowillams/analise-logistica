@@ -16,7 +16,6 @@ import StatusProcessamentoOmie from '@/components/cargas/StatusProcessamentoOmie
 import SoltarCargaDialog from '@/components/cargas/SoltarCargaDialog';
 import EditarCargaModal from '@/components/cargas/EditarCargaModal';
 import TransferirPedidosCargaModal from '@/components/cargas/TransferirPedidosCargaModal';
-import RevalidarEtapaOmieButton from '@/components/cargas/RevalidarEtapaOmieButton';
 import LogFilaCarga from '@/components/cargas/LogFilaCarga';
 import ObservacaoCell from '@/components/cargas/ObservacaoCell';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -595,14 +594,6 @@ export default function Cargas() {
               <Button size="icon" variant="outline" className="h-7 w-7 border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setTransferindo(row)} title="Transferir pedidos para outra carga">
                 <ArrowLeftRight className="w-3.5 h-3.5" />
               </Button>
-            )}
-            {/* Contingência: Re-sincronizar etapa Omie (corrige divergência após REDUNDANT) */}
-            {!cargaEmProcessamento(row) && (
-              <RevalidarEtapaOmieButton
-                carga={row}
-                etapaDestino="20"
-                onConcluido={() => queryClient.invalidateQueries({ queryKey: ['cargas'] })}
-              />
             )}
             {/* Contingência: Soltar carga */}
             {temPedidos && !cargaEmProcessamento(row) && (
