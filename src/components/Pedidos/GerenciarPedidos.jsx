@@ -868,6 +868,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const podeReenviarOmie = (p) => {
     if (!p) return false;
     if (p.modelo_nota === 'd1' || p.tipo === 'troca') return false;
+    // Nunca para pedidos cancelados (mesmo com status inconsistente, ex: 'liberado' + data_cancelamento)
+    if (p.status === 'cancelado' || p.data_cancelamento) return false;
     if (!['liberado', 'montagem', 'faturado'].includes(p.status)) return false;
     return !p.omie_codigo_pedido || !p.omie_enviado;
   };

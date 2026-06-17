@@ -121,7 +121,7 @@ let _unidadesCache = null;
 async function resolverContaCorrentePadrao(base44) {
     if (_contaCorrenteCache) return _contaCorrenteCache;
     try {
-        const cc = await omieCall(base44, "ListarContasCorrentes", { pagina: 1, registros_por_pagina: 50 }, { maxTentativas: 2 });
+        const cc = await omieCall(base44, "geral/contacorrente/", { pagina: 1, registros_por_pagina: 50 }, { call: 'ListarContasCorrentes', operation: 'ListarContasCorrentes', skipLog: true });
         const lista = cc?.ListarContasCorrentes || cc?.conta_corrente_lista || [];
         if (lista.length > 0) {
             const padrao = lista.find(c => c.cPadrao === "S" || c.padrao === "S") || lista[0];
@@ -327,6 +327,11 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     debugLog(base44, `[enviarPedidoOmie] Iniciando envio do pedido ID: ${pedido_id}, modelo_nota: ${pedido.modelo_nota}, tipo: ${pedido.tipo}`, { pedido_id, modelo_nota: pedido.modelo_nota, tipo: pedido.tipo, cliente_id: pedido.cliente_id, status: pedido.status });
 
+    // Pedido CANCELADO nunca é reenviado (mesmo com status inconsistente, ex: 'liberado' mas com data_cancelamento)
+    if (pedido.status === 'cancelado' || pedido.data_cancelamento) {
+        return { sucesso: false, erro: 'Pedido cancelado — não enviado', pedido_id };
+    }
+
     if (!['pendente', 'enviado', 'liberado'].includes(pedido.status)) {
         return { sucesso: false, erro: 'Status inválido para envio', pedido_id };
     }
@@ -339,7 +344,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
         let codigoOrfao = false;
         try {
-            const consulta = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(pedido.omie_codigo_pedido) }, { maxTentativas: 2 });
+            const consulta = await omieCall(base44, "produtos/pedido/", { codigo_pedido: Number(pedido.omie_codigo_pedido) }, { call: 'ConsultarPedido', operation: 'ConsultarPedido', skipLog: true });
             if (consulta?.faultstring && /não.*cadastrad|nao.*cadastrad|não.*localizad|nao.*localizad/i.test(consulta.faultstring)) {
                 codigoOrfao = true;
             }
@@ -430,7 +435,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     // ENVIAR
     const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
-    let resultado = await omieCall(base44, "IncluirPedido", payload);
+    let resultado = await omieCall(base44, "produtos/pedido/", payload, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
 
     // Se cliente não existe no Omie → exportar e tentar UMA VEZ MAIS
     const erroClienteNaoExiste = resultado?.faultstring && /cliente.*(não.*(localizado|encontrado|cadastrado)|invalid)/i.test(resultado.faultstring);
@@ -440,7 +445,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
             await sleep(1500); // Omie indexar
             clientePayload = { codigo_cliente_integracao: String(clienteBase44.id) };
             const payload2 = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
-            resultado = await omieCall(base44, "IncluirPedido", payload2);
+            resultado = await omieCall(base44, "produtos/pedido/", payload2, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
         } else {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: `Cliente não estava no Omie: ${exp.erro}`, omie_enviado: false });
             return { sucesso: false, erro: `Cliente não estava no Omie: ${exp.erro}`, pedido_id };
@@ -449,7 +454,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     // Idempotência otimizada: se já existe, altera direto sem consulta preventiva
     if (resultado?.faultstring && /(já cadastrado|já existe|código.*cadastrado|codigo.*cadastrado)/i.test(resultado.faultstring)) {
-        resultado = await omieCall(base44, "AlterarPedidoVenda", payload);
+        resultado = await omieCall(base44, "produtos/pedido/", payload, { call: 'AlterarPedidoVenda', operation: 'AlterarPedidoVenda', entityType: 'Pedido', entityId: pedido_id });
     }
 
     // REDUNDANT: Omie retorna erro de "consumo redundante" quando a mesma chamada
@@ -458,9 +463,9 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     if (resultado?.faultstring && /redundan/i.test(resultado.faultstring)) {
         debugLog(base44, `[enviarPedidoOmie] REDUNDANT detectado — consultando Omie para verificar se pedido foi criado`, { pedido_id });
         try {
-            const consulta = await omieCall(base44, "ConsultarPedido", {
+            const consulta = await omieCall(base44, "produtos/pedido/", {
                 codigo_pedido_integracao: pedido.id
-            }, { maxTentativas: 2 });
+            }, { call: 'ConsultarPedido', operation: 'ConsultarPedido', skipLog: true });
             if (consulta?.pedido_venda_produto?.cabecalho?.codigo_pedido) {
                 // Pedido existe no Omie — tratar como sucesso
                 resultado = {
