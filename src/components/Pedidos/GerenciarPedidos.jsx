@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/popover';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil, Link2
+  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil, Link2, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -164,6 +164,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [batchResult, setBatchResult] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
   const [reconciliarLoading, setReconciliarLoading] = useState(false);
+  const [reenviandoId, setReenviandoId] = useState(null);
   const [modalLiberar, setModalLiberar] = useState({ open: false, pedidos: [] });
 
 
@@ -862,6 +863,33 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
 
 
+  // Reenvio ao Omie: habilitado para pedidos liberado/montagem/faturado SEM vínculo Omie válido
+  // (código órfão ou nunca enviado). Não vale para D1/troca. O backend valida o código órfão e recria.
+  const podeReenviarOmie = (p) => {
+    if (!p) return false;
+    if (p.modelo_nota === 'd1' || p.tipo === 'troca') return false;
+    if (!['liberado', 'montagem', 'faturado'].includes(p.status)) return false;
+    return !p.omie_codigo_pedido || !p.omie_enviado;
+  };
+
+  const handleReenviarOmie = async (pedido) => {
+    setReenviandoId(pedido.id);
+    try {
+      const res = await base44.functions.invoke('enviarPedidoOmie', { pedido_id: pedido.id });
+      const d = res?.data || {};
+      if (d.sucesso) {
+        toast.success(`Pedido reenviado ao Omie${d.numero_pedido_omie ? ` (Nº ${d.numero_pedido_omie})` : ''}.`);
+        await recarregarAbaAposAcao();
+      } else {
+        toast.error(`Falha ao reenviar: ${d.erro || 'erro desconhecido'}`);
+      }
+    } catch (e) {
+      toast.error(`Erro ao reenviar: ${e?.response?.data?.error || e.message}`);
+    } finally {
+      setReenviandoId(null);
+    }
+  };
+
   // Show agrupado view
   if (showAgrupado) {
     return <PedidoAgrupado pedidoIds={selectedIds} onVoltar={() => setShowAgrupado(false)} />;
@@ -1174,6 +1202,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
                         <Button size="sm" variant="ghost" className="h-5 w-5 p-0" title="Débitos" onClick={() => { setDebitosCliente({ id: p.cliente_id, nome: p.cliente_nome }); setDebitosOpen(true); }}>
                           <DollarSign className="w-2.5 h-2.5" />
                         </Button>
+                        {podeReenviarOmie(p) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 w-5 p-0 text-orange-600 hover:bg-orange-50"
+                            title="Reenviar pro Omie (recria pedido órfão)"
+                            disabled={reenviandoId === p.id}
+                            onClick={() => handleReenviarOmie(p)}
+                          >
+                            {reenviandoId === p.id ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

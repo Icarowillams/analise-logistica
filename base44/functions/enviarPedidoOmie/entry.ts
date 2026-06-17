@@ -331,15 +331,42 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         return { sucesso: false, erro: 'Status inválido para envio', pedido_id };
     }
 
-    // Idempotência: já enviado
+    // Idempotência: já enviado — MAS valida que o código existe de verdade no Omie.
+    // Caso "código órfão": envio anterior gravou omie_codigo_pedido mas o pedido nunca
+    // foi criado no Omie (falha no meio). ConsultarPedido retorna "Pedido não cadastrado"
+    // (faultcode 105/107 ou HTTP 500 com faultstring "não cadastrado"). Nesse caso LIMPAMOS
+    // o código e seguimos para recriar via IncluirPedido. Se existir de verdade, mantém o curto-circuito.
     if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
-        return {
-            sucesso: true,
-            pedido_id,
-            codigo_pedido_omie: pedido.omie_codigo_pedido,
-            numero_pedido_omie: pedido.numero_pedido,
-            mensagem: 'Pedido já estava enviado ao Omie'
-        };
+        let codigoOrfao = false;
+        try {
+            const consulta = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(pedido.omie_codigo_pedido) }, { maxTentativas: 2 });
+            if (consulta?.faultstring && /não.*cadastrad|nao.*cadastrad|não.*localizad|nao.*localizad/i.test(consulta.faultstring)) {
+                codigoOrfao = true;
+            }
+        } catch (e) {
+            // Omie manda HTTP 500 (não 404) para pedido inexistente → faultstring "não cadastrado"
+            if (/não.*cadastrad|nao.*cadastrad|não.*localizad|nao.*localizad|faultcode.*10[57]/i.test(e.message || '')) {
+                codigoOrfao = true;
+            } else {
+                // Erro transitório (rate limit/timeout) — preserva o comportamento idempotente atual
+                throw e;
+            }
+        }
+        if (codigoOrfao) {
+            debugLog(base44, `[enviarPedidoOmie] Código órfão detectado (${pedido.omie_codigo_pedido}) — limpando e recriando no Omie`, { pedido_id, codigo_orfao: pedido.omie_codigo_pedido });
+            await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_codigo_pedido: null, omie_enviado: false, numero_pedido: null });
+            pedido.omie_codigo_pedido = null;
+            pedido.omie_enviado = false;
+            pedido.numero_pedido = null;
+        } else {
+            return {
+                sucesso: true,
+                pedido_id,
+                codigo_pedido_omie: pedido.omie_codigo_pedido,
+                numero_pedido_omie: pedido.numero_pedido,
+                mensagem: 'Pedido já estava enviado ao Omie'
+            };
+        }
     }
 
     if (!pedido.data_previsao_entrega) {
@@ -489,6 +516,48 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         updateData.dados_adicionais_nf = partes.join(' | ');
     }
     await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
+
+    // Reconcilia o espelho local (PedidoLiberadoOmie) para o "Sem espelho" sumir na hora.
+    // Upsert direto da linha do espelho com os dados que já temos (sem chamada extra ao Omie).
+    if (codigoOmie) {
+        try {
+            const cli = clienteBase44 || {};
+            const registroEspelho = {
+                codigo_pedido: String(codigoOmie),
+                codigo_pedido_integracao: pedido.id,
+                numero_pedido: numeroPedidoOmie ? String(numeroPedidoOmie) : '',
+                etapa: '20',
+                status_real: null,
+                status_label: 'Liberado',
+                numero_nf: '',
+                codigo_cliente: String(cli.codigo_omie || ''),
+                codigo_cliente_integracao: cli.codigo_integracao || cli.codigo || pedido.cliente_codigo || '',
+                codigo_cliente_cod: String(cli.codigo_interno || cli.codigo || pedido.cliente_codigo || ''),
+                cnpj_cpf_cliente: cli.cnpj_cpf || pedido.cliente_cpf_cnpj || '',
+                cliente_id: cli.id || pedido.cliente_id || null,
+                nome_cliente: cli.razao_social || pedido.cliente_nome || '',
+                nome_fantasia: cli.nome_fantasia || pedido.cliente_nome_fantasia || '',
+                cidade: cli.cidade || pedido.cliente_cidade || '',
+                tipo_nota: cli.tipo_nota || '55',
+                rota_id: cli.rota_id || pedido.rota_id || null,
+                rota_nome: pedido.rota_nome || 'Sem Rota',
+                vendedor_id: cli.vendedor_id || pedido.vendedor_id || null,
+                vendedor_nome: pedido.vendedor_nome || '',
+                data_previsao: pedido.data_previsao_entrega || '',
+                quantidade_itens: items.length,
+                valor_total_pedido: pedido.valor_total || 0,
+                pedido_id: pedido.id,
+                sincronizado_em: new Date().toISOString(),
+                origem_sync: 'webhook'
+            };
+            const existente = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigoOmie) }, '-created_date', 1).catch(() => []);
+            if (existente?.[0]) {
+                await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente[0].id, registroEspelho);
+            } else {
+                await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registroEspelho);
+            }
+        } catch (e) { console.error('[enviarPedidoOmie] reconciliar espelho:', e.message); }
+    }
 
     debugLog(base44, `[enviarPedidoOmie] Pedido enviado com sucesso, omie_id: ${codigoOmie}`, { pedido_id, omie_id: codigoOmie, numero_pedido_omie: numeroPedidoOmie });
 
