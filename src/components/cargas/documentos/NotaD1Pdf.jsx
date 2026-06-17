@@ -92,6 +92,36 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
     return [...internos, ...trocas];
   }, [carga, pedidosProp, clientesMap]);
 
+  // Os itens das notas D1 NÃO ficam em `nota.produtos` — estão na entidade PedidoItem (campo pedido_id).
+  // Buscamos por pedido_id de cada nota e montamos o mapa pedido_id -> itens[].
+  const pedidoIds = useMemo(() => notasD1.map(n => n.id).filter(Boolean), [notasD1]);
+
+  const { data: itensPedido = [], isLoading: itensLoading } = useQuery({
+    queryKey: ['itens-notad1', pedidoIds],
+    enabled: pedidoIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    queryFn: () => base44.entities.PedidoItem.filter({ pedido_id: { $in: pedidoIds } })
+  });
+
+  const itensPorPedido = useMemo(() => {
+    const m = {};
+    itensPedido.forEach(it => {
+      if (!m[it.pedido_id]) m[it.pedido_id] = [];
+      m[it.pedido_id].push({
+        codigo_produto: it.produto_codigo,
+        descricao: it.produto_nome || it.produto_descricao,
+        motivo_troca_descricao: it.motivo_troca_descricao,
+        observacao: it.observacao,
+        unidade: it.unidade_medida || 'UN',
+        quantidade: it.quantidade,
+        valor_unitario: it.valor_unitario,
+        valor_total: it.valor_total
+      });
+    });
+    return m;
+  }, [itensPedido]);
+
   const handlePrint = () => {
     if (!printRef.current) return;
     const html = `<html><head><title>Notas_D1_${carga?.numero_carga || ''}</title><meta charset="utf-8" /><style>${printStyles}</style></head><body>${printRef.current.innerHTML}</body></html>`;
@@ -116,15 +146,15 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
         <div className="text-sm text-slate-600">
           <b>{notasD1.length}</b> nota(s) D1 a imprimir
         </div>
-        <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Printer className="w-4 h-4 mr-2" /> Imprimir / PDF
+        <Button onClick={handlePrint} disabled={itensLoading} className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Printer className="w-4 h-4 mr-2" /> {itensLoading ? 'Carregando itens...' : 'Imprimir / PDF'}
         </Button>
       </div>
 
       <div ref={printRef}>
         {notasD1.map((nota, idx) => {
           const cli = nota.cliente || {};
-          const produtos = nota.produtos || [];
+          const produtos = itensPorPedido[nota.id] || nota.produtos || [];
           const totalProdutos = produtos.reduce((s, p) => s + Number(p.valor_total || 0), 0);
           const totalQtd = produtos.reduce((s, p) => s + Number(p.quantidade || 0), 0);
           const dataEmissao = fmtDate(nota.created_date || nota.data_emissao || new Date());
