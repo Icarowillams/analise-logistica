@@ -111,8 +111,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       }));
 
       const pedidosTrocaFmt = snapshotTrocas.map(t => ({
-        pedido_troca_id: t.pedido_troca_id,
-        pedido_id: t.pedido_id || '',
+        pedido_troca_id: t.pedido_troca_id || t.pedido_id || '',
+        pedido_id: t.pedido_id || t.pedido_troca_id || '',
         numero_pedido: t.numero_pedido,
         cliente_id: t.cliente_id,
         nome_cliente: t.nome_cliente,

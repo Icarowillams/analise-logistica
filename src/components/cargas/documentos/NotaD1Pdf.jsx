@@ -94,7 +94,10 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
 
   // Os itens das notas D1 NÃO ficam em `nota.produtos` — estão na entidade PedidoItem (campo pedido_id).
   // Buscamos por pedido_id de cada nota e montamos o mapa pedido_id -> itens[].
-  const pedidoIds = useMemo(() => notasD1.map(n => n.id).filter(Boolean), [notasD1]);
+  // IMPORTANTE: para D1 internos o id da nota é `n.id`; para TROCAS (vindas de carga.pedidos_troca)
+  // não há `n.id` — o pedido real está em `pedido_id` (ou `pedido_troca_id`). Resolvemos todos.
+  const resolverPedidoId = (n) => n.id || n.pedido_id || n.pedido_troca_id || null;
+  const pedidoIds = useMemo(() => notasD1.map(resolverPedidoId).filter(Boolean), [notasD1]);
 
   const { data: itensPedido = [], isLoading: itensLoading } = useQuery({
     queryKey: ['itens-notad1', pedidoIds],
@@ -154,7 +157,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
       <div ref={printRef}>
         {notasD1.map((nota, idx) => {
           const cli = nota.cliente || {};
-          const produtos = itensPorPedido[nota.id] || nota.produtos || [];
+          const produtos = itensPorPedido[resolverPedidoId(nota)] || nota.produtos || [];
           const totalProdutos = produtos.reduce((s, p) => s + Number(p.valor_total || 0), 0);
           const totalQtd = produtos.reduce((s, p) => s + Number(p.quantidade || 0), 0);
           const dataEmissao = fmtDate(nota.created_date || nota.data_emissao || new Date());
