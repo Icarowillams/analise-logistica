@@ -30,8 +30,11 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const jaEnfileiradosRef = React.useRef(new Set());
 
   const { data: pedidos = [], isLoading } = useQuery({
-    queryKey: ['pedidos', vendedor.id],
+    queryKey: ['pedidos', vendedor?.id],
     queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id }),
+    // Sem vendedor.id resolvido, Pedido.filter({ vendedor_id: undefined }) retorna TODOS os
+    // pedidos — incluindo de outros vendedores. enabled trava a query até o id existir.
+    enabled: !!vendedor?.id,
     staleTime: 10 * 1000,
     // Auto-refresh leve (~12s, re-fetch local sem chamar o Omie): move os cards de
     // Pendentes → Enviados sozinho quando o worker conclui o envio em background.
@@ -128,8 +131,11 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     return { omie: true, motivo: 'Será enviado ao Omie como Pedido de Venda (etapa 10).' };
   };
 
-  const pendentes = pedidosComCliente.filter(p => p.status === 'pendente' && !p.data_envio);
-  const enviados = pedidosComCliente.filter(p => !!p.data_envio);
+  // Cinto de segurança: além do filtro da query, garante no cliente que só aparecem
+  // pedidos DESTE vendedor — nunca alheios, mesmo que a query traga lixo.
+  const meusPedidos = pedidosComCliente.filter(p => String(p.vendedor_id) === String(vendedor?.id));
+  const pendentes = meusPedidos.filter(p => p.status === 'pendente' && !p.data_envio);
+  const enviados = meusPedidos.filter(p => !!p.data_envio);
 
   const searchDebounced = useDebounce(searchText, 300);
 
@@ -174,6 +180,11 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   // Executa o envio efetivo — internos são síncronos, externos vão para a fila
   const executarEnvio = async (pedido) => {
     if (enviandoIds.has(pedido.id)) return;
+    // Nunca enviar pedido de outro vendedor.
+    if (String(pedido.vendedor_id) !== String(vendedor?.id)) {
+      toast.error('Este pedido pertence a outro vendedor e não pode ser enviado por você.');
+      return;
+    }
     // Trava imediata e síncrona — impede 2º clique antes do React atualizar o estado
     if (!isInterno(pedido) && jaEnfileiradosRef.current.has(pedido.id)) {
       toast.info('Este pedido já foi enviado para a fila');
@@ -232,13 +243,20 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   // ========== ENVIAR TODOS via FILA ASSÍNCRONA ==========
   const enviarTodos = async () => {
-    if (pendentes.length === 0) return;
+    if (!vendedor?.id) {
+      toast.error('Vendedor não identificado. Recarregue a página antes de enviar.');
+      return;
+    }
+    // Só os pedidos DESTE vendedor — blindagem extra contra disparar pedidos alheios.
+    const meusPendentes = pendentes.filter(p => String(p.vendedor_id) === String(vendedor.id));
+    if (meusPendentes.length === 0) return;
+    if (!confirm(`Enviar os ${meusPendentes.length} pedido(s) de ${vendedor.nome || 'você'}?`)) return;
     setEnfileirandoTodos(true);
 
     // Separar internos (D1/Troca) dos que vão pro Omie
-    const internos = pendentes.filter(p => isInterno(p));
-    const externos = pendentes.filter(p => !isInterno(p) && p.data_previsao_entrega);
-    const semData = pendentes.filter(p => !isInterno(p) && !p.data_previsao_entrega);
+    const internos = meusPendentes.filter(p => isInterno(p));
+    const externos = meusPendentes.filter(p => !isInterno(p) && p.data_previsao_entrega);
+    const semData = meusPendentes.filter(p => !isInterno(p) && !p.data_previsao_entrega);
 
     let internosSucesso = 0;
 
@@ -562,7 +580,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
             );
           })()}
           {pendentes.length > 0 && (
-            <Button onClick={enviarTodos} disabled={enfileirandoTodos} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
+            <Button onClick={enviarTodos} disabled={enfileirandoTodos || !vendedor?.id} className="w-full mb-4 bg-gradient-to-r from-green-500 to-green-600">
               <Send className="w-4 h-4 mr-2" />
               {enfileirandoTodos ? 'Enfileirando...' : `Enviar Todos (${pendentes.length})`}
             </Button>
