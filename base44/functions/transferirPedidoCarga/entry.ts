@@ -175,7 +175,8 @@ Deno.serve(async (req) => {
         if (lista && lista[0]) {
           await base44.asServiceRole.entities.Pedido.update(lista[0].id, {
             carga_id: carga_destino_id,
-            numero_carga: destino.numero_carga
+            numero_carga: destino.numero_carga,
+            solto_manualmente: false
           });
         }
       } catch (_) { /* ignora — atualização opcional */ }

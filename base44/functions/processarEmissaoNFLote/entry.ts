@@ -264,6 +264,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // BLINDAGEM FISCAL: nunca emitir NF de pedido solto manualmente ou que não está numa carga ativa.
+      const pedidoLocalGuard = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
+      if (pedidoLocalGuard && (pedidoLocalGuard.solto_manualmente === true || !pedidoLocalGuard.carga_id)) {
+        const msgBloqueio = pedidoLocalGuard.solto_manualmente === true
+          ? `Pedido #${pedidoLocalGuard.numero_pedido || codigoPedido} foi solto manualmente — emissão de NF bloqueada (só por ação humana em carga ativa).`
+          : `Pedido #${pedidoLocalGuard.numero_pedido || codigoPedido} não está em carga ativa — emissão de NF bloqueada.`;
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'ignorado', mensagem: msgBloqueio });
+        erros.push({ codigo_pedido: codigoPedido, mensagem: msgBloqueio });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'ignorado', msgBloqueio, { erro_tipo: 'validacao' });
+        processados = i + 1;
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, { processados, resultados, erros, atualizado_em: new Date().toISOString() }).catch(() => {});
+        continue;
+      }
+
       try {
         const resposta = body.mock_omie_response || await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
         if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);

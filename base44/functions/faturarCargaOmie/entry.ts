@@ -164,7 +164,8 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.Pedido.update(pl.id, {
             faturado: false,
             status: 'montagem',
-            status_faturamento: 'pendente'
+            status_faturamento: 'pendente',
+            solto_manualmente: false
           });
         }
       } catch { /* não bloqueia o fluxo */ }

@@ -105,6 +105,15 @@ async function verificarNfRealOmie(base44, codigoPedidoOmie) {
 async function verificarJaFaturado(base44, codigoPedido) {
   const codigo = String(codigoPedido);
 
+  // 0. BLINDAGEM FISCAL: nunca emitir NF de pedido solto manualmente ou que não está numa carga ativa.
+  const pedidoGuard = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []))?.[0];
+  if (pedidoGuard && pedidoGuard.solto_manualmente === true) {
+    return { bloqueado: true, mensagem: `Pedido #${pedidoGuard.numero_pedido || codigo} foi solto manualmente — emissão de NF bloqueada (só por ação humana em carga ativa).` };
+  }
+  if (pedidoGuard && !pedidoGuard.carga_id) {
+    return { bloqueado: true, mensagem: `Pedido #${pedidoGuard.numero_pedido || codigo} não está em carga ativa — emissão de NF bloqueada.` };
+  }
+
   // 1. Verificar se já existe NF emitida no espelho PedidoLiberadoOmie (fonte mais confiável)
   const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: codigo }, '-updated_date', 1).catch(() => []);
   const espelho = espelhos?.[0];

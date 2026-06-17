@@ -80,9 +80,20 @@
         "faturamento",
         "logistica",
         "pos_entrega",
-        "encerrado"
+        "encerrado",
+        "montagem"
       ],
       "default": "comercial"
+    },
+    "solto_manualmente": {
+      "type": "boolean",
+      "default": false,
+      "description": "BLINDAGEM FISCAL: marca que o pedido foi solto manualmente de uma carga por um operador (voltou para Montagem). Enquanto true, NENHUMA rotina pode faturar/emitir NF deste pedido automaticamente. Zerado (false) quando o pedido \u00e9 adicionado a uma nova carga por a\u00e7\u00e3o humana."
+    },
+    "data_solto": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora em que o pedido foi solto manualmente da carga"
     },
     "cliente_id": {
       "type": "string"

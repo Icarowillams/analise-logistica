@@ -113,7 +113,13 @@ Deno.serve(async (req) => {
       faturado: false
     }, '-data_faturamento', 200).catch(() => []);
 
-    const candidatos = presos.filter(p => p.omie_codigo_pedido && p.modelo_nota !== 'd1');
+    // BLINDAGEM FISCAL: jamais reemitir pedido solto manualmente ou que não está numa carga ativa.
+    const candidatos = presos.filter(p =>
+      p.omie_codigo_pedido &&
+      p.modelo_nota !== 'd1' &&
+      p.solto_manualmente !== true &&
+      !!p.carga_id
+    );
 
     if (candidatos.length === 0) {
       return Response.json({ sucesso: true, detectados: 0, reemitidos: 0, mensagem: 'Nenhum pedido preso encontrado.' });

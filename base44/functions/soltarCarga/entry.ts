@@ -80,12 +80,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // BLINDAGEM FISCAL: ao soltar, o pedido volta para Montagem (etapa: 'montagem', NÃO 'faturamento')
+    // e recebe solto_manualmente=true para que NENHUMA rotina possa refaturar/reemitir NF dele sozinha.
     const LIBERADO = {
       carga_id: null,
       numero_carga: null,
       status: 'liberado',
       status_logistico: 'aguardando',
-      etapa: 'faturamento'
+      etapa: 'montagem',
+      solto_manualmente: true,
+      data_solto: new Date().toISOString()
     };
 
     let pedidosLiberados = 0;
