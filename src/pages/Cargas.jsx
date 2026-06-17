@@ -28,13 +28,22 @@ const FATURAVEL = ['montagem'];
 
 const STATUS_COLORS = {
   montagem: 'bg-slate-200 text-slate-700',
-  faturada: 'bg-green-100 text-green-800'
+  faturada: 'bg-green-100 text-green-800',
+  conferindo: 'bg-amber-100 text-amber-800',
+  entregue: 'bg-blue-100 text-blue-800',
+  cancelada: 'bg-red-100 text-red-800'
 };
 
 const STATUS_LABEL = {
   montagem: 'montagem',
-  faturada: 'faturada'
+  faturada: 'faturada',
+  conferindo: 'conferindo',
+  entregue: 'entregue',
+  cancelada: 'cancelada'
 };
+
+// Status com aba própria. Qualquer outro (nulo/vazio/desconhecido) cai em "Outras".
+const STATUS_COM_ABA = ['montagem', 'faturada', 'conferindo', 'entregue', 'cancelada'];
 
 export default function Cargas() {
   const navigate = useNavigate();
@@ -106,11 +115,21 @@ export default function Cargas() {
     });
   }, [cargasTodas, filtroNumero, filtroDataInicial, filtroDataFinal]);
 
-  const totalMontagem = useMemo(() => cargasFiltradas.filter(c => c.status_carga === 'montagem').length, [cargasFiltradas]);
-  const totalFaturadas = useMemo(() => cargasFiltradas.filter(c => c.status_carga === 'faturada').length, [cargasFiltradas]);
+  const contagens = useMemo(() => {
+    const c = { montagem: 0, faturada: 0, conferindo: 0, entregue: 0, cancelada: 0, outras: 0 };
+    cargasFiltradas.forEach(cg => {
+      if (STATUS_COM_ABA.includes(cg.status_carga)) c[cg.status_carga]++;
+      else c.outras++;
+    });
+    return c;
+  }, [cargasFiltradas]);
 
   const cargas = useMemo(
-    () => cargasFiltradas.filter(c => c.status_carga === abaAtiva),
+    () => cargasFiltradas.filter(c =>
+      abaAtiva === 'outras'
+        ? !STATUS_COM_ABA.includes(c.status_carga)
+        : c.status_carga === abaAtiva
+    ),
     [cargasFiltradas, abaAtiva]
   );
 
@@ -698,21 +717,51 @@ export default function Cargas() {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button
           variant={abaAtiva === 'montagem' ? 'default' : 'outline'}
           onClick={() => setAbaAtiva('montagem')}
           className={abaAtiva === 'montagem' ? '' : 'text-slate-600'}
         >
-          Em Montagem ({totalMontagem})
+          Em Montagem ({contagens.montagem})
         </Button>
         <Button
           variant={abaAtiva === 'faturada' ? 'default' : 'outline'}
           onClick={() => setAbaAtiva('faturada')}
           className={abaAtiva === 'faturada' ? 'bg-green-600 hover:bg-green-700' : 'text-slate-600'}
         >
-          Faturadas ({totalFaturadas})
+          Faturadas ({contagens.faturada})
         </Button>
+        <Button
+          variant={abaAtiva === 'conferindo' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('conferindo')}
+          className={abaAtiva === 'conferindo' ? 'bg-amber-600 hover:bg-amber-700' : 'text-slate-600'}
+        >
+          Conferindo ({contagens.conferindo})
+        </Button>
+        <Button
+          variant={abaAtiva === 'entregue' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('entregue')}
+          className={abaAtiva === 'entregue' ? 'bg-blue-600 hover:bg-blue-700' : 'text-slate-600'}
+        >
+          Entregue ({contagens.entregue})
+        </Button>
+        <Button
+          variant={abaAtiva === 'cancelada' ? 'default' : 'outline'}
+          onClick={() => setAbaAtiva('cancelada')}
+          className={abaAtiva === 'cancelada' ? 'bg-red-600 hover:bg-red-700' : 'text-slate-600'}
+        >
+          Canceladas ({contagens.cancelada})
+        </Button>
+        {contagens.outras > 0 && (
+          <Button
+            variant={abaAtiva === 'outras' ? 'default' : 'outline'}
+            onClick={() => setAbaAtiva('outras')}
+            className={abaAtiva === 'outras' ? 'bg-slate-700 hover:bg-slate-800' : 'text-slate-600'}
+          >
+            Outras ({contagens.outras})
+          </Button>
+        )}
         <Button
           variant={abaAtiva === 'log' ? 'default' : 'outline'}
           onClick={() => setAbaAtiva('log')}
