@@ -87,6 +87,20 @@ Deno.serve(async (req) => {
     // Processa apenas um LOTE por execução — re-executável até zerar (restantes > 0)
     const semEspelho = semEspelhoTotal.slice(0, limite_lote);
 
+    // Carrega os itens locais (PedidoItem) de todos os pedidos do lote — em chunks de 40 ($in).
+    // Isso garante que o espelho criado pela rede de segurança JÁ venha com produtos e quantidade
+    // reais, sem precisar consultar o Omie (zero risco de rate limit).
+    const itensPorPedido = new Map();
+    const idsLote = semEspelho.map(p => p.id).filter(Boolean);
+    for (let i = 0; i < idsLote.length; i += 40) {
+      const chunk = idsLote.slice(i, i + 40);
+      const itens = await base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 5000).catch(() => []);
+      for (const it of itens) {
+        if (!itensPorPedido.has(it.pedido_id)) itensPorPedido.set(it.pedido_id, []);
+        itensPorPedido.get(it.pedido_id).push(it);
+      }
+    }
+
     // Mapeia status local → etapa Omie estimada (sem chamar a API)
     const statusParaEtapa = { pendente: '10', enviado: '10', liberado: '20', montagem: '50', faturado: '60', cancelado: '99', cancelado_pos_faturamento: '60' };
 
@@ -108,6 +122,19 @@ Deno.serve(async (req) => {
         const cancelado = pedido.status === 'cancelado' || pedido.status === 'cancelado_pos_faturamento';
         const status_real = cancelado ? 'cancelada' : null;
         const status_label = cancelado ? 'Cancelado' : null;
+
+        // Monta os produtos a partir dos PedidoItem locais — nunca cria espelho zerado.
+        const itensLocais = itensPorPedido.get(pedido.id) || [];
+        const produtos = itensLocais.map(it => ({
+          codigo_produto: it.produto_codigo || '',
+          codigo_produto_integracao: '',
+          descricao: it.produto_descricao || it.produto_nome || '',
+          quantidade: Number(it.quantidade || 0),
+          valor_unitario: Number(it.valor_unitario || 0),
+          valor_total: Number(it.valor_total || 0),
+          unidade: it.unidade_medida || ''
+        }));
+        const quantidadeItens = produtos.reduce((s, p) => s + (p.quantidade || 0), 0);
 
         const registro = {
           codigo_pedido: codigoPedido,
@@ -136,10 +163,10 @@ Deno.serve(async (req) => {
           vendedor_id: cliente?.vendedor_id || pedido.vendedor_id || null,
           vendedor_nome: vendedorNome,
           data_previsao: pedido.data_previsao_entrega || '',
-          quantidade_itens: 0,
+          quantidade_itens: quantidadeItens,
           valor_total_pedido: pedido.valor_total || 0,
           pedido_id: pedido.id,
-          produtos: [],
+          produtos,
           sincronizado_em: new Date().toISOString(),
           origem_sync: 'reconciliacao'
         };
