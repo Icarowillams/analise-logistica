@@ -2,6 +2,28 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const LOCK_KEY = 'lock_sincronizarLiberadosOmieRapido';
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Cria 1 registro com retry/backoff em caso de rate limit (429), para nunca estourar a cota do Base44.
+async function criarComRetry(base44, registro, maxTentativas = 5) {
+  let espera = 800;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
+      return;
+    } catch (e) {
+      const msg = String(e?.message || '');
+      const isRate = msg.includes('429') || msg.toLowerCase().includes('rate limit');
+      if (isRate && tentativa < maxTentativas) {
+        await sleep(espera);
+        espera = Math.min(espera * 2, 8000);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -10,7 +32,8 @@ Deno.serve(async (req) => {
     if (user.role !== 'admin') return Response.json({ error: 'Admin apenas' }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
-    const { limpar_lock = false, dry_run = false } = body;
+    // limite_lote: quantos espelhos criar por execução (re-executável). delay_ms: pausa entre criações.
+    const { limpar_lock = false, dry_run = false, limite_lote = 150, delay_ms = 150 } = body;
 
     // Limpar lock preso se solicitado
     if (limpar_lock) {
@@ -39,20 +62,20 @@ Deno.serve(async (req) => {
     const mapaCliente = new Map((clientes || []).map(c => [c.id, c]));
 
     // Pedidos sem espelho
-    const semEspelho = (pedidos || []).filter(p => {
+    const semEspelhoTotal = (pedidos || []).filter(p => {
       if (!p.omie_codigo_pedido) return false;
       const cod = String(p.omie_codigo_pedido).trim();
       return !espelhosCodigos.has(cod) && !espelhosCodigos.has(String(parseInt(cod, 10)));
     });
 
-    console.log(`[criarEspelhosPedidosSemEspelho] ${semEspelho.length} pedidos sem espelho de ${(pedidos || []).length} total`);
+    console.log(`[criarEspelhosPedidosSemEspelho] ${semEspelhoTotal.length} pedidos sem espelho de ${(pedidos || []).length} total`);
 
     if (dry_run) {
       return Response.json({
         sucesso: true,
         dry_run: true,
-        sem_espelho: semEspelho.length,
-        pedidos: semEspelho.map(p => ({
+        sem_espelho: semEspelhoTotal.length,
+        pedidos: semEspelhoTotal.slice(0, 50).map(p => ({
           id: p.id,
           numero_pedido: p.numero_pedido,
           omie_codigo_pedido: p.omie_codigo_pedido,
@@ -61,8 +84,11 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Processa apenas um LOTE por execução — re-executável até zerar (restantes > 0)
+    const semEspelho = semEspelhoTotal.slice(0, limite_lote);
+
     // Mapeia status local → etapa Omie estimada (sem chamar a API)
-    const statusParaEtapa = { pendente: '10', enviado: '10', liberado: '20', montagem: '50', faturado: '60', cancelado: '99' };
+    const statusParaEtapa = { pendente: '10', enviado: '10', liberado: '20', montagem: '50', faturado: '60', cancelado: '99', cancelado_pos_faturamento: '60' };
 
     let criados = 0;
     let erros = 0;
@@ -79,8 +105,9 @@ Deno.serve(async (req) => {
         const etapaEstimada = statusParaEtapa[pedido.status] || '10';
 
         // Pedidos cancelados ficam com status_real cancelada
-        const status_real = pedido.status === 'cancelado' ? 'cancelada' : null;
-        const status_label = pedido.status === 'cancelado' ? 'Cancelado' : null;
+        const cancelado = pedido.status === 'cancelado' || pedido.status === 'cancelado_pos_faturamento';
+        const status_real = cancelado ? 'cancelada' : null;
+        const status_label = cancelado ? 'Cancelado' : null;
 
         const registro = {
           codigo_pedido: codigoPedido,
@@ -117,10 +144,10 @@ Deno.serve(async (req) => {
           origem_sync: 'reconciliacao'
         };
 
-        await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registro);
+        await criarComRetry(base44, registro);
         criados++;
         detalhes.push({ codigo_pedido: codigoPedido, numero_pedido: pedido.numero_pedido, etapa: etapaEstimada, status: 'criado' });
-        console.log(`[criarEspelhosPedidosSemEspelho] Criado espelho para pedido ${pedido.numero_pedido} (etapa estimada: ${etapaEstimada})`);
+        if (delay_ms > 0) await sleep(delay_ms);
       } catch (e) {
         erros++;
         detalhes.push({ codigo_pedido: codigoPedido, numero_pedido: pedido.numero_pedido, status: 'erro', erro: e.message });
@@ -128,7 +155,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ sucesso: true, sem_espelho: semEspelho.length, criados, erros, detalhes });
+    const restantes = Math.max(0, semEspelhoTotal.length - criados);
+
+    return Response.json({
+      sucesso: true,
+      sem_espelho_total: semEspelhoTotal.length,
+      processados_neste_lote: semEspelho.length,
+      criados,
+      erros,
+      restantes,
+      mensagem: restantes > 0
+        ? `${criados} espelho(s) criado(s). Ainda restam ${restantes} — execute novamente para continuar.`
+        : `${criados} espelho(s) criado(s). Todos os pedidos sem espelho foram reconciliados.`,
+      detalhes: detalhes.slice(0, 50)
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
