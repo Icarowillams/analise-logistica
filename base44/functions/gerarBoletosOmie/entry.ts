@@ -125,16 +125,21 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
   const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 
   let cnpj: string | null = null;
-  let numNf: string | null = null;
+  let numPedido: string | null = null;
   let dataPedido: Date | null = null;
   try {
     const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-created_date', 1);
     const pedido = pedidos?.[0];
     if (pedido) {
       cnpj = String(pedido.cliente_cpf_cnpj || '').replace(/\D/g, '');
-      numNf = pedido.numero_nota_fiscal ? String(pedido.numero_nota_fiscal).replace(/\D/g, '') : null;
+      numPedido = pedido.numero_pedido ? String(pedido.numero_pedido).trim() : null;
       const dataRef = pedido.data_faturamento || pedido.created_date;
       if (dataRef) dataPedido = new Date(dataRef);
+      // Pedido costuma vir sem cliente_cpf_cnpj — busca no Cliente vinculado.
+      if (!cnpj && pedido.cliente_id) {
+        const clis = await base44.asServiceRole.entities.Cliente.filter({ id: pedido.cliente_id }, '-created_date', 1).catch(() => []);
+        cnpj = String(clis?.[0]?.cnpj_cpf || '').replace(/\D/g, '') || null;
+      }
     }
   } catch { /* fallback */ }
 
@@ -148,16 +153,27 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
   const inicio = new Date(ref.getTime() - 30 * 86400000);
   const futuro = new Date(ref.getTime() + 30 * 86400000);
 
+  // Cruza SÓ pelo pedido: nCodPedido (prioridade) == omie_codigo_pedido, fallback numero_pedido.
+  // Boleto NÃO depende de NF. Se nada casar, retorna [] (pedido sem boleto = normal).
+  const codPedStr = String(codigoPedido);
+  const getCodPedido = (t: any) => String(t.nCodPedido ?? t.codigo_pedido ?? t.cabec_titulo?.nCodPedido ?? t.cabec_titulo?.codigo_pedido ?? '');
+  const getNumPedido = (t: any) => String(t.numero_pedido ?? t.cabec_titulo?.numero_pedido ?? '').trim();
+  const filtrarPorPedido = (titulos: any[]) => {
+    const porCodigo = titulos.filter((t: any) => getCodPedido(t) === codPedStr);
+    if (porCodigo.length > 0) return porCodigo;
+    if (numPedido) {
+      const porNumero = titulos.filter((t: any) => getNumPedido(t) === numPedido);
+      if (porNumero.length > 0) return porNumero;
+    }
+    return [];
+  };
+
   // Cache por CNPJ+janela — evita varreduras repetidas do mesmo cliente em sequência
   const cacheKey = `${cnpj}_${fmt(inicio)}_${fmt(futuro)}`;
   const cached = _crCache.get(cacheKey);
   if (cached && Date.now() - cached.at < CR_CACHE_TTL_MS) {
     console.log(`[listarTitulosDoPedido] Cache hit para CNPJ ${cnpj.slice(0,6)}...`);
-    if (numNf) {
-      const comNf = cached.data.filter((t: any) => String(t.numero_documento || '').replace(/\D/g, '') === numNf);
-      if (comNf.length > 0) return comNf;
-    }
-    return cached.data;
+    return filtrarPorPedido(cached.data);
   }
 
   let acumulados: any[] = [];
@@ -176,11 +192,7 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
   _crCache.set(cacheKey, { data: acumulados, at: Date.now() });
   console.log(`[listarTitulosDoPedido] ${acumulados.length} títulos para CNPJ ${cnpj.slice(0,6)}... (janela: ${fmt(inicio)} a ${fmt(futuro)})`);
 
-  if (numNf) {
-    const comNf = acumulados.filter((t: any) => String(t.numero_documento || '').replace(/\D/g, '') === numNf);
-    if (comNf.length > 0) return comNf;
-  }
-  return acumulados;
+  return filtrarPorPedido(acumulados);
 }
 
 // Processa um único título e retorna o resultado
