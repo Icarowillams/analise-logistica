@@ -13,7 +13,6 @@ import { Switch } from '@/components/ui/switch';
 import SaudeIntegracaoOmie from '@/components/integracao/SaudeIntegracaoOmie';
 import AlertaBloqueioOmie from '@/components/integracao/AlertaBloqueioOmie';
 import UsuariosAtivos from '@/components/integracao/UsuariosAtivos';
-import SaneamentoTravados from '@/components/integracao/SaneamentoTravados';
 
 export default function IntegracaoOmieDashboard() {
   const qc = useQueryClient();
@@ -245,8 +244,6 @@ export default function IntegracaoOmieDashboard() {
           <UsuariosAtivos />
         </div>
       </div>
-
-      <SaneamentoTravados />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
