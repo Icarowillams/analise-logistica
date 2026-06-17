@@ -100,34 +100,32 @@ export default function EmissaoBoletos() {
         arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
       );
 
-      const nfsCarga = new Set(pedidos.map(p => somenteNumeros(p.numero_nf)).filter(Boolean));
-      const codigosClienteCarga = new Set(pedidos.map(p => String(p.codigo_cliente || '').trim()).filter(Boolean));
-      const cnpjsCarga = new Set(pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(Boolean));
+      // Encontra o pedido da carga que corresponde a um título.
+      // Vínculo CONFIÁVEL: nCodPedido (codigo_pedido_omie) === codigo_pedido do pedido (nCodPed Omie).
+      // Fallback: numero_pedido_vinculado === numero_pedido. NÃO usa numero_documento/CNPJ
+      // (pedidos sem CNPJ e numero_documento ausente no payload geravam pendência falsa).
+      const codPedido = (p) => String(p.codigo_pedido || '').trim();
+      const numPedido = (p) => String(p.numero_pedido || '').trim();
+
+      const pedidoDoTitulo = (t) => {
+        const codT = String(t.codigo_pedido_omie || '').trim();
+        if (codT) {
+          const m = pedidos.find(p => codPedido(p) === codT);
+          if (m) return m;
+        }
+        const numT = String(t.numero_pedido_vinculado || '').trim();
+        if (numT) {
+          const m = pedidos.find(p => numPedido(p) === numT);
+          if (m) return m;
+        }
+        return null;
+      };
 
       const tituloCasaCarga = (t) => {
-        const numPedVinc = String(t.numero_pedido_vinculado || '').trim();
-        if (numPedVinc) {
-          const match = pedidos.find(p =>
-            String(p.numero_pedido || '').trim() === numPedVinc ||
-            String(p.codigo_pedido || '').trim() === numPedVinc
-          );
-          if (match) {
-            const tipo = match.tipo_operacao || match.tipo_nota || 'venda';
-            return tipo === 'venda';
-          }
-        }
-        const docT = somenteNumeros(t.numero_documento);
-        if (docT && nfsCarga.has(docT)) {
-          const pedidoNf = pedidos.find(p => somenteNumeros(p.numero_nf) === docT);
-          if (pedidoNf && (pedidoNf.tipo_operacao || pedidoNf.tipo_nota || 'venda') !== 'venda') return false;
-          return true;
-        }
-        // fallback por cliente apenas se documento da carga confere
-        const codT = String(t.codigo_cliente || '').trim();
-        const cnpjT = somenteNumeros(t.cnpj_cpf);
-        const clienteCasa = (codT && codigosClienteCarga.has(codT)) || (cnpjT && cnpjsCarga.has(cnpjT));
-        if (clienteCasa && docT && nfsCarga.has(docT)) return true;
-        return false;
+        const m = pedidoDoTitulo(t);
+        if (!m) return false;
+        const tipo = m.tipo_operacao || m.tipo_nota || 'venda';
+        return tipo === 'venda';
       };
 
       let ocultosNaoBoleto = 0;
@@ -137,15 +135,20 @@ export default function EmissaoBoletos() {
         return true;
       });
 
-      // Pendências de vínculo
-      const docsTitulos = new Set(acumulados.map(t => somenteNumeros(t.numero_documento)).filter(Boolean));
+      // Pendências de vínculo: pedido é pendência só se NENHUM título da consulta
+      // casa por nCodPedido (primário) nem por numero_pedido (fallback). Independe de NF/boleto.
+      const codsTitulos = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
+      const numsTitulos = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
       const nfSemTitulo = [];
       const semNf = [];
       pedidos.forEach(p => {
         if (p.tipo_nota === 'D1') return;
+        const temTitulo = (codPedido(p) && codsTitulos.has(codPedido(p))) ||
+                          (numPedido(p) && numsTitulos.has(numPedido(p)));
+        if (temTitulo) return;
         const nf = somenteNumeros(p.numero_nf);
-        if (nf) { if (!docsTitulos.has(nf)) nfSemTitulo.push(p); }
-        else { semNf.push(p); }
+        if (nf) nfSemTitulo.push(p);
+        else semNf.push(p);
       });
 
       return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf };

@@ -169,6 +169,8 @@ Deno.serve(async (req) => {
       codigo_barras: t.boleto?.cCodBarras || t.codigo_barras || '',
       linha_digitavel: t.boleto?.dLinhaDig || '',
       url_boleto: t.boleto?.cLinkBoleto || '',
+      // nCodPedido é o vínculo confiável título↔pedido (Omie DEVOLVE este campo no topo do título).
+      codigo_pedido_omie: t.nCodPedido != null ? String(t.nCodPedido) : '',
       numero_pedido_vinculado:
         t.numero_pedido || t.cNumPedido || t.pedido?.numero_pedido || t.pedido_venda?.numero_pedido || ''
     }));
