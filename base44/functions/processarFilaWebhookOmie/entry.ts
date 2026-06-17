@@ -340,6 +340,24 @@ async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados
 
 // === HANDLERS POR DOMÍNIO (mesma lógica de processarWebhookOmie) ===
 
+// 🛡️ REGRA DE SEGURANÇA DE CANCELAMENTO (espelhada de processarWebhookOmie)
+// Pré-faturamento → 'cancelado'. Já faturado (status/NF/data_faturamento) →
+// 'cancelado_pos_faturamento' + cancelado_no_omie=true, preservando NF/faturamento.
+function montarUpdatesCancelamento(pedido, motivo) {
+  const jaFaturado = pedido.status === 'faturado'
+    || pedido.faturado === true
+    || !!pedido.numero_nota_fiscal
+    || !!pedido.data_faturamento
+    || pedido.status === 'cancelado_pos_faturamento';
+  const updates = {
+    cancelado_no_omie: true,
+    data_cancelamento: pedido.data_cancelamento || new Date().toISOString(),
+    motivo_cancelamento: pedido.motivo_cancelamento || motivo,
+    status: jaFaturado ? 'cancelado_pos_faturamento' : 'cancelado'
+  };
+  return { updates, jaFaturado };
+}
+
 async function handlePedido(base44, topic, evt) {
   const codigoPedido = String(evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || '');
   if (!codigoPedido) return { acao: 'ignorado', motivo: 'sem codigo_pedido' };
@@ -443,8 +461,9 @@ async function handlePedido(base44, topic, evt) {
       updates.data_faturamento = pedido.data_faturamento || new Date().toISOString();
       dadosCarga.etapa = '60'; dadosCarga.status_pedido = 'faturado'; dadosCarga.numero_nf = numNf;
     } else {
-      updates.status = 'cancelado'; updates.data_cancelamento = new Date().toISOString(); updates.motivo_cancelamento = `Excluído no Omie (${topic})`;
-      dadosCarga.etapa = 'excluido'; dadosCarga.status_pedido = 'cancelado';
+      const { updates: u, jaFaturado } = montarUpdatesCancelamento(pedido, `Excluído no Omie (${topic})`);
+      Object.assign(updates, u);
+      dadosCarga.etapa = 'excluido'; dadosCarga.status_pedido = jaFaturado ? 'cancelado_pos_faturamento' : 'cancelado';
     }
   } else if (topic === 'VendaProduto.Cancelada') {
     let nfAut = false; let numNf = null;
@@ -460,8 +479,9 @@ async function handlePedido(base44, topic, evt) {
       updates.data_faturamento = pedido.data_faturamento || new Date().toISOString();
       dadosCarga.etapa = '60'; dadosCarga.status_pedido = 'faturado'; dadosCarga.numero_nf = numNf;
     } else {
-      updates.status = 'cancelado'; updates.data_cancelamento = new Date().toISOString(); updates.motivo_cancelamento = `Cancelado no Omie (${topic})`;
-      dadosCarga.etapa = '80'; dadosCarga.status_pedido = 'cancelado';
+      const { updates: u, jaFaturado } = montarUpdatesCancelamento(pedido, `Cancelado no Omie (${topic})`);
+      Object.assign(updates, u);
+      dadosCarga.etapa = '80'; dadosCarga.status_pedido = jaFaturado ? 'cancelado_pos_faturamento' : 'cancelado';
       await removerDoEspelho(base44, codigoPedido);
     }
   } else if (topic === 'VendaProduto.EtapaAlterada') {
@@ -474,7 +494,8 @@ async function handlePedido(base44, topic, evt) {
     }
     if (etapaEvento) dadosCarga.etapa = String(etapaEvento);
   } else if (topic === 'VendaProduto.Devolvida') {
-    updates.status = 'cancelado'; updates.data_cancelamento = new Date().toISOString(); updates.motivo_cancelamento = 'Pedido devolvido no Omie';
+    const { updates: u } = montarUpdatesCancelamento(pedido, 'Pedido devolvido no Omie');
+    Object.assign(updates, u);
     dadosCarga.etapa = '80'; dadosCarga.status_pedido = 'devolvido';
   } else if (topic === 'VendaProduto.Alterada' || topic === 'VendaProduto.Incluida') {
     return { acao: 'espelho_atualizado', pedido_id: pedido.id, espelho: espelhoAcao };
@@ -540,8 +561,10 @@ async function handleNFe(base44, topic, evt) {
       await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, { status: 'autorizada', numero_nf: numNf ? String(numNf) : log.numero_nf || '', codigo_sefaz: '100', mensagem: 'NF emitida (etapa 60 confirmada no Omie)', boleto_gerado: false }).catch(() => {});
     }
   } else if (topic === 'NFe.NotaCancelada') {
-    updates.status = 'cancelado'; updates.data_cancelamento = new Date().toISOString(); updates.motivo_cancelamento = 'NF-e cancelada no Omie';
-    dadosCarga.etapa = '80'; dadosCarga.status_pedido = 'cancelado';
+    const { updates: u } = montarUpdatesCancelamento(pedido, 'NF-e cancelada no Omie');
+    Object.assign(updates, u);
+    updates.status = 'cancelado_pos_faturamento';
+    dadosCarga.etapa = '80'; dadosCarga.status_pedido = 'cancelado_pos_faturamento';
   } else if (topic === 'NFe.NotaDevolucaoAutorizada') {
     updates.motivo_cancelamento = 'NF-e de devolução autorizada no Omie';
     const numNf = evt?.numero_nf || evt?.numero_nota;

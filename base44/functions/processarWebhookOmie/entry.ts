@@ -486,6 +486,34 @@ async function atualizarPedidoNaCarga(base44, omieCodigoPedido, dadosAtualizados
 
 // === HANDLERS POR DOMÍNIO ===
 
+// 🛡️ REGRA DE SEGURANÇA DE CANCELAMENTO
+// Decide como aplicar um cancelamento/exclusão/devolução vindo do Omie ao Pedido local,
+// preservando rastreabilidade financeira:
+//   - Pré-faturamento (pendente/liberado/montagem, sem NF) → status='cancelado'. Seguro.
+//   - Já faturado (status='faturado' OU tem NF/data_faturamento) → NÃO vira 'cancelado' cego
+//     (sumiria de relatórios). Usa status='cancelado_pos_faturamento' + cancelado_no_omie=true,
+//     mantendo numero_nota_fiscal/data_faturamento intactos.
+// Idempotente: se já está no status final correto, não força nada novo além da marca.
+function montarUpdatesCancelamento(pedido, motivo) {
+  const jaFaturado = pedido.status === 'faturado'
+    || pedido.faturado === true
+    || !!pedido.numero_nota_fiscal
+    || !!pedido.data_faturamento
+    || pedido.status === 'cancelado_pos_faturamento';
+  const updates = {
+    cancelado_no_omie: true,
+    data_cancelamento: pedido.data_cancelamento || new Date().toISOString(),
+    motivo_cancelamento: pedido.motivo_cancelamento || motivo
+  };
+  if (jaFaturado) {
+    // Preserva NF/faturamento; só marca o cancelamento pós-faturamento.
+    updates.status = 'cancelado_pos_faturamento';
+  } else {
+    updates.status = 'cancelado';
+  }
+  return { updates, jaFaturado };
+}
+
 async function handlePedido(base44, topic, evt) {
   const codigoPedido = String(
     evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || ''
@@ -800,11 +828,10 @@ async function handlePedido(base44, topic, evt) {
         payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, numero_nf: numeroNfExcluida }).slice(0, 2000)
       }).catch(() => {});
     } else {
-      updates.status = 'cancelado';
-      updates.data_cancelamento = new Date().toISOString();
-      updates.motivo_cancelamento = `Excluído no Omie (${topic})`;
+      const { updates: u, jaFaturado } = montarUpdatesCancelamento(pedido, `Excluído no Omie (${topic})`);
+      Object.assign(updates, u);
       dadosCarga.etapa = 'excluido';
-      dadosCarga.status_pedido = 'cancelado';
+      dadosCarga.status_pedido = jaFaturado ? 'cancelado_pos_faturamento' : 'cancelado';
     }
   } else if (topic === 'VendaProduto.Cancelada') {
     // Verificar se existe NF autorizada LOCALMENTE antes de chamar Omie.
@@ -870,12 +897,11 @@ async function handlePedido(base44, topic, evt) {
         console.warn(`[webhook] Erro ao atualizar espelho do pedido: ${e.message}`);
       }
     } else {
-      // Cancelamento real
-      updates.status = 'cancelado';
-      updates.data_cancelamento = new Date().toISOString();
-      updates.motivo_cancelamento = `Cancelado no Omie (${topic})`;
+      // Cancelamento real — com regra de segurança pré/pós-faturamento
+      const { updates: u, jaFaturado } = montarUpdatesCancelamento(pedido, `Cancelado no Omie (${topic})`);
+      Object.assign(updates, u);
       dadosCarga.etapa = '80';
-      dadosCarga.status_pedido = 'cancelado';
+      dadosCarga.status_pedido = jaFaturado ? 'cancelado_pos_faturamento' : 'cancelado';
       // Remover do espelho
       try { await removerDoEspelho(base44, codigoPedido); } catch {}
     }
@@ -904,9 +930,8 @@ async function handlePedido(base44, topic, evt) {
     }
     if (etapaEvento) dadosCarga.etapa = String(etapaEvento);
   } else if (topic === 'VendaProduto.Devolvida') {
-    updates.status = 'cancelado';
-    updates.data_cancelamento = new Date().toISOString();
-    updates.motivo_cancelamento = 'Pedido devolvido no Omie';
+    const { updates: u, jaFaturado } = montarUpdatesCancelamento(pedido, 'Pedido devolvido no Omie');
+    Object.assign(updates, u);
     dadosCarga.etapa = '80';
     dadosCarga.status_pedido = 'devolvido';
   } else if (topic === 'VendaProduto.Alterada' || topic === 'VendaProduto.Incluida') {
@@ -1036,11 +1061,12 @@ async function handleNFe(base44, topic, evt) {
       console.error(`[handleNFe] erro ao atualizar LogEmissaoNF pendente:`, e.message);
     }
   } else if (topic === 'NFe.NotaCancelada') {
-    updates.status = 'cancelado';
-    updates.data_cancelamento = new Date().toISOString();
-    updates.motivo_cancelamento = 'NF-e cancelada no Omie';
+    // NF cancelada = pedido tinha NF emitida → pós-faturamento. Preserva rastreabilidade.
+    const { updates: u } = montarUpdatesCancelamento(pedido, 'NF-e cancelada no Omie');
+    Object.assign(updates, u);
+    updates.status = 'cancelado_pos_faturamento';
     dadosCarga.etapa = '80';
-    dadosCarga.status_pedido = 'cancelado';
+    dadosCarga.status_pedido = 'cancelado_pos_faturamento';
   } else if (topic === 'NFe.NotaDevolucaoAutorizada') {
     updates.motivo_cancelamento = 'NF-e de devolução autorizada no Omie';
     const numNf = evt?.numero_nf || evt?.numero_nota;

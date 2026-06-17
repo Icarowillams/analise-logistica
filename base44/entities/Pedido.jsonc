@@ -37,10 +37,16 @@
         "liberado",
         "montagem",
         "faturado",
-        "cancelado"
+        "cancelado",
+        "cancelado_pos_faturamento"
       ],
       "default": "pendente",
-      "description": "Status do fluxo de venda"
+      "description": "Status do fluxo de venda. cancelado_pos_faturamento = pedido que j\u00e1 tinha NF/faturamento e foi cancelado/exclu\u00eddo no Omie \u2014 preserva rastreabilidade financeira (n\u00e3o some de relat\u00f3rios como um 'cancelado' puro)."
+    },
+    "cancelado_no_omie": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marca que o pedido foi cancelado/exclu\u00eddo/devolvido no Omie. Para pedidos j\u00e1 faturados, mant\u00e9m o v\u00ednculo financeiro enquanto sinaliza o cancelamento de origem."
     },
     "status_faturamento": {
       "type": "string",

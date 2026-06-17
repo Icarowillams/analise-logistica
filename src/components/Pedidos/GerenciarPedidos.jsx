@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/popover';
 import {
   Search, ChevronUp, ChevronDown, Unlock, Lock, Printer, XCircle,
-  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil, Link2, Send
+  Loader2, RefreshCw, DollarSign, Eye, List, X, Pencil, Link2, Send, Ban
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -165,6 +165,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const [syncLoading, setSyncLoading] = useState(false);
   const [reconciliarLoading, setReconciliarLoading] = useState(false);
   const [reenviandoId, setReenviandoId] = useState(null);
+  const [sincCanceladosLoading, setSincCanceladosLoading] = useState(false);
   const [modalLiberar, setModalLiberar] = useState({ open: false, pedidos: [] });
 
 
@@ -513,6 +514,19 @@ export default function GerenciarPedidos({ onEditPedido }) {
     // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
     let list = pedidosComVendedorCliente.filter(p => p.data_envio || p.status !== 'pendente');
 
+    // 👻 FILTRO ANTI-FANTASMA: pedidos cancelados/excluídos/devolvidos no Omie
+    // (data_cancelamento gravada ou cancelado_no_omie) NÃO aparecem nas visões operacionais —
+    // só quando o usuário marca explicitamente o filtro "Cancelado".
+    const vendoCancelados = statusFilters.includes('analise_cancelado');
+    if (!vendoCancelados) {
+      list = list.filter(p =>
+        p.status !== 'cancelado'
+        && p.status !== 'cancelado_pos_faturamento'
+        && !p.data_cancelamento
+        && !p.cancelado_no_omie
+      );
+    }
+
     // Status — MULTI-SELEÇÃO: OR entre os status marcados (união). Lista vazia = Todos Status.
     const STATUS_REAL = {
       'analise_pendente': 'enviado',
@@ -523,6 +537,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     };
     if (statusFilters.length > 0) {
       const statusReais = statusFilters.map(s => STATUS_REAL[s]).filter(Boolean);
+      // "Cancelado" abrange também os cancelados pós-faturamento (rastreabilidade).
+      if (statusReais.includes('cancelado')) statusReais.push('cancelado_pos_faturamento');
       const incluiSemOmie = statusFilters.includes('sem_omie');
       list = list.filter(p =>
         statusReais.includes(p.status) ||
@@ -874,6 +890,31 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return !p.omie_codigo_pedido || !p.omie_enviado;
   };
 
+  // Limpeza do backlog (admin): corrige pedidos cancelados no Omie que ficaram com status ativo,
+  // usando APENAS dados locais (sem consultar Omie em massa). Pré-faturamento → cancelado;
+  // pós-faturamento → cancelado_pos_faturamento (preserva rastreabilidade financeira).
+  const handleSincronizarCancelados = async () => {
+    setSincCanceladosLoading(true);
+    try {
+      const res = await base44.functions.invoke('sincronizarPedidosCancelados', {});
+      const d = res?.data || {};
+      if (d.sucesso) {
+        if (d.total_corrigidos > 0) {
+          toast.success(`${d.total_corrigidos} pedido(s) sincronizado(s): ${d.pre_faturamento} cancelado(s), ${d.pos_faturamento} cancelado(s) pós-faturamento.`);
+          await recarregarAbaAposAcao();
+        } else {
+          toast.info('Nenhum pedido fantasma encontrado — tudo sincronizado.');
+        }
+      } else {
+        toast.error(`Falha: ${d.error || 'erro desconhecido'}`);
+      }
+    } catch (e) {
+      toast.error(`Erro ao sincronizar cancelados: ${e?.response?.data?.error || e.message}`);
+    } finally {
+      setSincCanceladosLoading(false);
+    }
+  };
+
   const handleReenviarOmie = async (pedido) => {
     setReenviandoId(pedido.id);
     try {
@@ -1097,6 +1138,18 @@ export default function GerenciarPedidos({ onEditPedido }) {
         >
           {reconciliarLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <Link2 className="w-2.5 h-2.5 mr-0.5" />} Reconciliar Espelhos
         </Button>
+        {isAdmin && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[10px] border-red-300 text-red-700 hover:bg-red-50"
+            disabled={sincCanceladosLoading}
+            onClick={handleSincronizarCancelados}
+            title="Corrige pedidos cancelados/excluídos/devolvidos no Omie que ficaram com status ativo (fantasmas). Usa apenas dados locais — não consulta o Omie."
+          >
+            {sincCanceladosLoading ? <Loader2 className="w-2.5 h-2.5 mr-0.5 animate-spin" /> : <Ban className="w-2.5 h-2.5 mr-0.5" />} Sincronizar Cancelados
+          </Button>
+        )}
         {/* Auto-refresh (releitura local, sem chamar Omie) */}
         <div className="flex items-center gap-1.5 ml-auto text-[10px] text-slate-500">
           <span className="hidden sm:inline">Atualizado {textoUltima}</span>
