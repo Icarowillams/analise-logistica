@@ -75,12 +75,18 @@ const coordValida = (lat, lng) =>
 function FitBounds({ pontos }) {
   const map = useMap();
   useEffect(() => {
-    // Corrige render cinza quando o mapa monta dentro de aba
-    setTimeout(() => map.invalidateSize(), 100);
-    if (pontos.length > 0) {
-      const bounds = L.latLngBounds(pontos.map(p => [p.lat, p.lng]));
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-    }
+    // Corrige render cinza quando o mapa monta dentro de aba.
+    // Protege contra o caso do mapa já ter sido desmontado quando o timeout dispara
+    // (troca de aba / recarregamento), o que quebrava com "_leaflet_pos undefined".
+    const t = setTimeout(() => {
+      if (!map || !map._mapPane) return;
+      map.invalidateSize();
+      if (pontos.length > 0) {
+        const bounds = L.latLngBounds(pontos.map(p => [p.lat, p.lng]));
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      }
+    }, 200);
+    return () => clearTimeout(t);
   }, [pontos, map]);
   return null;
 }
