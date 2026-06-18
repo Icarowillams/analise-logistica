@@ -48,16 +48,13 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #000; 
 export default function PedidoPdf({ pedidoId }) {
   const printRef = useRef();
 
-  const { data: pedido } = useQuery({
+  const { data: pedido, isLoading: pedidoLoading } = useQuery({
     queryKey: ['pedido-pdf', pedidoId],
-    queryFn: async () => {
-      const list = await base44.entities.Pedido.filter({});
-      return list.find(p => p.id === pedidoId);
-    },
+    queryFn: () => base44.entities.Pedido.get(pedidoId),
     enabled: !!pedidoId
   });
 
-  const { data: items = [] } = useQuery({
+  const { data: items = [], isLoading: itensLoading, isError: itensError, refetch: refetchItens } = useQuery({
     queryKey: ['pedido-pdf-items', pedidoId],
     queryFn: () => base44.entities.PedidoItem.filter({ pedido_id: pedidoId }),
     enabled: !!pedidoId
@@ -75,7 +72,30 @@ export default function PedidoPdf({ pedidoId }) {
 
   const empresa = empresas[0];
 
-  if (!pedido) return <p className="text-center py-8 text-slate-500">Carregando...</p>;
+  // Espera pedido (cabeçalho) E itens antes de montar o documento — evita PDF zerado por race condition.
+  if (pedidoLoading || !pedido || itensLoading) {
+    return <p className="text-center py-8 text-slate-500">Carregando dados do pedido...</p>;
+  }
+
+  // Falha de rede ao buscar itens → erro com retry, nunca PDF vazio.
+  if (itensError) {
+    return (
+      <div className="text-center py-8 space-y-3">
+        <p className="text-red-600 text-sm">Não foi possível carregar os itens do pedido.</p>
+        <Button onClick={() => refetchItens()} variant="outline">Tentar novamente</Button>
+      </div>
+    );
+  }
+
+  // Itens vazios mas o pedido indica que deveria ter itens → avisa em vez de gerar "0 itens".
+  if (items.length === 0 && (pedido.qtd_total_itens > 0 || pedido.total_itens > 0)) {
+    return (
+      <div className="text-center py-8 space-y-3">
+        <p className="text-amber-600 text-sm">Os itens deste pedido ainda não foram localizados. Aguarde alguns instantes e tente novamente.</p>
+        <Button onClick={() => refetchItens()} variant="outline">Recarregar itens</Button>
+      </div>
+    );
+  }
 
   const modeloLabel = pedido.modelo_nota === 'd1' ? 'D1' : pedido.modelo_nota === 'nfce' ? 'NFCe' : '55';
   const tipoCenarioEsperado = pedido.tipo === 'troca' ? 'troca' : (pedido.tipo || 'venda');
