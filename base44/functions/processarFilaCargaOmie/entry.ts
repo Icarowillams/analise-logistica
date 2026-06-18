@@ -116,27 +116,21 @@ const LOTE = 50;
 const DELAY_ENTRE_PEDIDOS_MS = 2000;
 
 
-// Etapas que indicam pedido JÁ FATURADO no Omie — não refaturar (idempotência fiscal).
-const JA_FATURADO = new Set(['50', '60']);
-
-// Idempotência por etapa real no Omie. Classifica o estado do pedido SEM barrar a etapa 20:
-//  - 50/60 → já faturado → 'ja_faturado' (pula, não refatura)
-//  - 20    → liberado → 'pode_faturar' (estado VÁLIDO para faturar — PROSSEGUE, nunca reenfileira)
-//  - 10    → não liberado → 'nao_liberado' (conta tentativa; vira 'erro' após o teto)
-//  - null  → não confirmado → 'desconhecido' (segue para processar normalmente)
-async function classificarEtapaOmie(base44, item) {
+// Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
+// (ou além), considera concluído sem reprocessar.
+async function jaEstaNaEtapa(base44, item) {
   try {
-    const etapaNum = await consultarEtapaOmie(base44, item);
-    if (etapaNum === null) return { estado: 'desconhecido', etapa: null };
-    const etapa = String(etapaNum);
-    if (JA_FATURADO.has(etapa)) return { estado: 'ja_faturado', etapa: etapaNum };
-    if (etapa === '20') return { estado: 'pode_faturar', etapa: etapaNum };
-    if (etapa === '10') return { estado: 'nao_liberado', etapa: etapaNum };
-    // Qualquer outra etapa intermediária: tratar como apto a faturar.
-    return { estado: 'pode_faturar', etapa: etapaNum };
+    const param = {};
+    if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
+    else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
+    else return false;
+    const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
+    const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
+    const destino = String(item.etapa_destino || '60');
+    return etapa && Number(etapa) >= Number(destino);
   } catch (e) {
     if (e.bloqueio) throw e; // propaga bloqueio
-    return { estado: 'desconhecido', etapa: null };
+    return false; // qualquer outro erro de consulta: segue para processar normalmente
   }
 }
 
@@ -161,10 +155,7 @@ async function processarFaturar(base44, item) {
   if (item.codigo_pedido_omie) idParam.codigo_pedido = Number(item.codigo_pedido_omie);
   if (item.codigo_pedido_integracao) idParam.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
 
-  // A operação 'faturar' move o pedido para a etapa de FATURAMENTO (50) — NUNCA 20→60
-  // direto (o Omie recusa silenciosamente e o pedido fica preso em 20). Ignora um
-  // etapa_destino herdado errado (ex: 60) para faturar.
-  const destino = item.operacao === 'faturar' ? 50 : Number(item.etapa_destino || 50);
+  const destino = Number(item.etapa_destino || 60);
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
@@ -343,48 +334,28 @@ Deno.serve(async (req) => {
       const item = pendentes[i];
       cargasAfetadas.add(item.carga_id);
 
-      // Etapa real de destino: faturar = 50; demais operações usam etapa_destino (default 50).
-      const etapaEspelho = item.operacao === 'faturar' ? '50' : String(item.etapa_destino || '50');
-
       await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
 
       try {
-        // Classifica a etapa real no Omie só em reprocessamento (tentativas>0). Pedidos novos
-        // (tentativas=0) vão direto faturar, economizando 1 chamada Omie.
-        const classif = (Number(item.tentativas || 0) > 0 || Number(item.tentativas_redundante || 0) > 0)
-          ? await classificarEtapaOmie(base44, item)
-          : { estado: 'novo', etapa: null };
-
-        // Etapa 10 (não liberado): NÃO faturar. Conta tentativa; vira 'erro' após o teto — sem loop.
-        if (classif.estado === 'nao_liberado') {
-          const tentativas = Number(item.tentativas || 0) + 1;
-          const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
-          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
-            status: novoStatus,
-            tentativas,
-            erro_log: `Pedido em etapa 10 (não liberado) — não pode faturar (tentativa ${tentativas}/${MAX_TENTATIVAS})`
-          }).catch(() => {});
-          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
-          continue;
-        }
-
-        if (classif.estado === 'ja_faturado') {
+        // Idempotência: só consulta se já tentou antes (reprocessamento).
+        // Pedidos novos (tentativas=0) vão direto para processar, economizando 1 chamada Omie.
+        const jaFeito = (Number(item.tentativas || 0) > 0 || Number(item.tentativas_redundante || 0) > 0) ? await jaEstaNaEtapa(base44, item) : false;
+        if (jaFeito) {
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null }).catch(() => {});
           // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
           if (item.codigo_pedido_omie) {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
               { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
             ).catch(() => []);
-            if (espelhos?.[0] && String(espelhos[0].etapa) !== etapaEspelho) {
+            if (espelhos?.[0] && String(espelhos[0].etapa) !== String(item.etapa_destino || '60')) {
               await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                etapa: etapaEspelho,
+                etapa: String(item.etapa_destino || '60'),
                 sincronizado_em: new Date().toISOString()
               }).catch(() => {});
             }
           }
           processados++;
         } else {
-          // estado 'pode_faturar' (etapa 20), 'novo' ou 'desconhecido' → PROSSEGUE para faturar.
           await processarFaturar(base44, item);
           // Atualiza fila + pedido local + espelho em paralelo (não sequencial)
           const postUpdates = [
@@ -400,7 +371,7 @@ Deno.serve(async (req) => {
               ).then(espelhos => {
                 if (espelhos?.[0]) {
                   return base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                    etapa: etapaEspelho,
+                    etapa: String(item.etapa_destino || '60'),
                     data_previsao: item.data_previsao || espelhos[0].data_previsao,
                     sincronizado_em: new Date().toISOString()
                   });
