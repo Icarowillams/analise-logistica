@@ -1,9 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-/**
- * Relatório Analítico do Carregamento — consolida cargas em um período.
- * Body: { data_inicial: "YYYY-MM-DD", data_final: "YYYY-MM-DD" }
- */
+// Relatório Analítico do Carregamento (formato S7) — todas as cargas de um dia,
+// uma linha por carga, cruzando com AcertoCaixa por numero_carga.
+// payload: { data: 'YYYY-MM-DD' }
+// retorna: { data, linhas: [...], totais: {...} }
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -11,68 +12,44 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const dataInicial = body.data_inicial || '';
-    const dataFinal = body.data_final || '';
+    const data = body.data;
+    if (!data) return Response.json({ error: 'Data não informada' }, { status: 400 });
 
-    if (!dataInicial || !dataFinal) {
-      return Response.json({ error: 'Parâmetros "data_inicial" e "data_final" obrigatórios (YYYY-MM-DD)' }, { status: 400 });
-    }
+    const cargas = await base44.asServiceRole.entities.Carga.filter({ data_carga: data });
+    const acertos = await base44.asServiceRole.entities.AcertoCaixa.list('-created_date', 5000).catch(() => []);
 
-    // Busca todas as cargas (limite alto para cobrir histórico)
-    const todasCargas = await base44.asServiceRole.entities.Carga.list('-created_date', 2000);
+    // Indexa acertos por numero_carga
+    const acertoPorCarga = new Map();
+    acertos.forEach(a => {
+      if (a.numero_carga && !acertoPorCarga.has(a.numero_carga)) acertoPorCarga.set(a.numero_carga, a);
+    });
 
-    // Filtra pelo período
-    const cargasDoDia = todasCargas.filter(c => c.data_carga >= dataInicial && c.data_carga <= dataFinal);
-
-    // Para cada carga, busca o faturista (usuário que criou)
-    const linhas = [];
-    for (const carga of cargasDoDia) {
-      // Destino: primeira cidade dos pedidos Omie ou "—"
-      const pedidosOmie = carga.pedidos_omie || [];
-      const destino = pedidosOmie.length > 0
-        ? (pedidosOmie[0].cidade || '—')
-        : (carga.rota_nome || '—');
-
-      // Faturista: o usuário que criou a carga (created_by no registro)
-      const faturista = carga.created_by || '—';
-
-      // Peso bruto (kg) — do campo peso_total_kg, ou soma dos produtos se 0
-      let pesoBruto = Number(carga.peso_total_kg || 0);
-      // Peso líquido — mesmo valor se não houver distinção
-      let pesoLiq = pesoBruto;
-
-      linhas.push({
-        carregamento: carga.numero_carga || '—',
-        data_saida: carga.data_carga || '',
-        placa: carga.veiculo_placa || '—',
-        motorista: carga.motorista_nome || '—',
-        qt_pedidos: Number(carga.quantidade_pedidos || 0),
-        vl_total: Number(carga.valor_total || 0),
-        peso_bruto: pesoBruto,
-        peso_liq: pesoLiq,
-        destino,
-        dt_acerto: '', // Futuro: integrar com AcertoCaixa
-        faturista,
-        status: carga.status_carga === 'faturada' ? 'F' : 'M'
+    const linhas = cargas
+      .sort((a, b) => String(a.numero_carga || '').localeCompare(String(b.numero_carga || ''), undefined, { numeric: true }))
+      .map(c => {
+        const acerto = acertoPorCarga.get(c.numero_carga) || {};
+        return {
+          numero_carga: c.numero_carga || '-',
+          data_carga: c.data_carga || '',
+          veiculo_placa: c.veiculo_placa || '-',
+          motorista_nome: c.motorista_nome || '-',
+          quantidade_pedidos: c.quantidade_pedidos || 0,
+          quantidade_total_pacotes: c.quantidade_total_pacotes || 0,
+          valor_total_carga: c.valor_total_carga || c.valor_total || 0,
+          data_acerto: acerto.data_acerto || '',
+          faturista: acerto.finalizado_por || acerto.created_by || '',
+          status_carga: c.status_carga || '-'
+        };
       });
-    }
 
-    // Totais
     const totais = {
-      qt_pedidos: linhas.reduce((s, l) => s + l.qt_pedidos, 0),
-      vl_total: linhas.reduce((s, l) => s + l.vl_total, 0),
-      peso_bruto: linhas.reduce((s, l) => s + l.peso_bruto, 0),
-      peso_liq: linhas.reduce((s, l) => s + l.peso_liq, 0),
+      carregamentos: linhas.length,
+      pedidos: linhas.reduce((s, l) => s + l.quantidade_pedidos, 0),
+      pacotes: linhas.reduce((s, l) => s + l.quantidade_total_pacotes, 0),
+      valor: linhas.reduce((s, l) => s + l.valor_total_carga, 0)
     };
 
-    return Response.json({
-      sucesso: true,
-      data_inicial: dataInicial,
-      data_final: dataFinal,
-      total_carregamentos: linhas.length,
-      linhas,
-      totais
-    });
+    return Response.json({ data, linhas, totais });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

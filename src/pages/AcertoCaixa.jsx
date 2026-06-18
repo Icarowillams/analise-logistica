@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Wallet, Play, FileText, Loader2, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import RelatorioAnaliticoCarregamentoPdf from '@/components/acertoCaixa/RelatorioAnaliticoCarregamentoPdf';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
@@ -193,10 +194,13 @@ export default function AcertoCaixa() {
             <p className="text-sm text-slate-500">Acerto de notas e recebimentos por carga</p>
           </div>
         </div>
-        <Button onClick={sincronizarStatus} disabled={sincronizando} variant="outline" className="gap-2">
-          {sincronizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Sincronizar status com Omie
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <RelatorioAnaliticoCarregamentoPdf />
+          <Button onClick={sincronizarStatus} disabled={sincronizando} variant="outline" className="gap-2">
+            {sincronizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Sincronizar status com Omie
+          </Button>
+        </div>
       </div>
 
       <Card>
