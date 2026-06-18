@@ -219,6 +219,10 @@
       "type": "string",
       "description": "N\u00famero da carga/carregamento em que o pedido foi fechado"
     },
+    "carga_faturamento_numero": {
+      "type": "string",
+      "description": "N\u00famero da carga em que o pedido foi FATURADO (gerou a NF). Gravado no momento do envio/emiss\u00e3o. Imut\u00e1vel por transfer\u00eancia \u2014 preserva a 'CARGA FATURAMENTO' no rodap\u00e9 da NF mesmo que o pedido seja transferido depois."
+    },
     "rota_id": {
       "type": "string"
     },

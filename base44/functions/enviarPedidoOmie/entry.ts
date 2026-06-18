@@ -147,6 +147,93 @@ function formatDateOmie(dateStr) {
     return s;
 }
 
+// ============================================================
+// DADOS ADICIONAIS DA NF (rodapé "Informações Complementares")
+// Formato legado: Fantasia - Cob. - Cod.Cliente - Num.Pedido - Vendedor - <BLOCO CARGA>
+// ============================================================
+
+// Mapa de COBRANÇA derivado do PLANO DE PAGAMENTO do cliente.
+// AJUSTE AQUI se a regra mudar. Regra:
+//   "A VISTA" → PIX ; "N DIAS" (a prazo) → Boleto.
+const COBRANCA_PADRAO_AVISTA = 'PIX';      // plano à vista
+const COBRANCA_PADRAO_PRAZO = 'Boleto';    // plano a prazo (N dias)
+
+function resolverCobranca(planoNome) {
+    const nome = String(planoNome || '').trim().toUpperCase();
+    if (!nome) return '';
+    // À vista (qualquer variação que contenha "VISTA") → PIX
+    if (nome.includes('VISTA')) return COBRANCA_PADRAO_AVISTA;
+    // A prazo: "N DIAS", "DD/DD", etc. → Boleto
+    if (/\d/.test(nome)) return COBRANCA_PADRAO_PRAZO;
+    // Fallback conservador: não inferimos → vazio (não quebra a NF)
+    return '';
+}
+
+// Remove zeros à esquerda do número do pedido (ex: "0001234" → "1234")
+function numeroPedidoSemZeros(numero) {
+    const s = String(numero || '').trim();
+    if (!s) return '';
+    const limpo = s.replace(/^0+/, '');
+    return limpo || s;
+}
+
+// Monta o BLOCO DA CARGA respeitando a regra de transferência (NÃO inverter rótulos):
+//   - Sem transferência concluída → "Carga: <numero_carga>"
+//   - Com transferência concluída → duas linhas:
+//        "CARGA FATURAMENTO: <carga_origem_numero>"   (carga onde gerou a NF)
+//        "CARGA ORIGEM: <carga_destino_numero>"        (carga atual, p/ onde foi entregue)
+async function montarBlocoCarga(base44, pedido) {
+    // Carga de faturamento = onde a NF foi gerada. Preferimos o campo imutável gravado no faturamento.
+    const cargaFaturamento = pedido.carga_faturamento_numero || pedido.numero_carga || '';
+
+    // Buscar transferência concluída mais recente do pedido (por código Omie)
+    let transferencia = null;
+    const codOmie = pedido.omie_codigo_pedido ? String(pedido.omie_codigo_pedido) : '';
+    if (codOmie) {
+        const transfs = await base44.asServiceRole.entities.Transferencia
+            .filter({ pedido_codigo_omie: codOmie, status: 'concluida' }, '-updated_date', 1)
+            .catch(() => []);
+        transferencia = transfs?.[0] || null;
+    }
+
+    if (transferencia) {
+        // Mapeamento EXATO (não inverter):
+        //   CARGA FATURAMENTO ← carga_origem_numero (de onde saiu = gerou a NF)
+        //   CARGA ORIGEM      ← carga_destino_numero (p/ onde foi transferido/entregue)
+        const fat = pedido.carga_faturamento_numero || transferencia.carga_origem_numero || cargaFaturamento || '';
+        const origem = transferencia.carga_destino_numero || '';
+        const linhas = [];
+        if (fat) linhas.push(`CARGA FATURAMENTO: ${fat}`);
+        if (origem) linhas.push(`CARGA ORIGEM: ${origem}`);
+        return linhas.join(' - ');
+    }
+
+    return cargaFaturamento ? `Carga: ${cargaFaturamento}` : '';
+}
+
+// Helper central — usada por todo o envio/emissão. Texto corrido separado por " - ".
+// FISCAL: nenhum dado faltante pode quebrar a emissão — partes vazias são simplesmente omitidas.
+async function montarDadosAdicionaisNf(base44, pedido) {
+    const partes = [];
+    const fantasia = pedido.cliente_nome_fantasia || pedido.cliente_nome || '';
+    if (fantasia) partes.push(`Fantasia: ${fantasia}`);
+
+    const cobranca = resolverCobranca(pedido.plano_pagamento_nome);
+    if (cobranca) partes.push(`Cob.: ${cobranca}`);
+
+    if (pedido.cliente_codigo) partes.push(`Cod.Cliente: ${pedido.cliente_codigo}`);
+
+    const numPed = numeroPedidoSemZeros(pedido.numero_pedido);
+    if (numPed) partes.push(`Num.Pedido: ${numPed}`);
+
+    if (pedido.vendedor_nome) partes.push(`Vendedor: ${pedido.vendedor_nome}`);
+
+    const blocoCarga = await montarBlocoCarga(base44, pedido).catch(() => '');
+    if (blocoCarga) partes.push(blocoCarga);
+
+    return partes.join(' - ');
+}
+
 function gerarParcelas(plano, valorTotal) {
     const numParcelas = plano?.numero_parcelas || 1;
     const diasPrimeira = plano?.dias_primeira_parcela || 30;
@@ -223,7 +310,7 @@ async function exportarClienteSeNecessario(base44, clienteBase44) {
 // ============================================================
 // MONTAGEM DO PAYLOAD
 // ============================================================
-function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, numeroPedidoPreenchido }) {
+function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, dadosAdicNf }) {
     const dataPrevisao = formatDateOmie(pedido.data_previsao_entrega);
 
     const det = items.map((item) => {
@@ -266,17 +353,9 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
     const semFinanceiro = pedido.tipo === 'bonificacao' || pedido.tipo === 'troca';
     const parcelas = semFinanceiro ? [] : gerarParcelas(plano, pedido.valor_total || 0);
 
-    // dados_adicionais_nf: já incluímos placeholder; Omie preenche {nrPedido} se existir, senão fica vazio
-    // Como não temos o número do pedido ainda, usamos o pedido.dados_adicionais_nf direto
-    const identificacaoCliente = [
-        pedido.cliente_nome_fantasia || pedido.cliente_nome || '',
-        pedido.cliente_codigo || ''
-    ].filter(Boolean).join(' - ');
-    const dadosAdicNfOriginal = pedido.dados_adicionais_nf || '';
-    const jaTemIdentificacao = identificacaoCliente && dadosAdicNfOriginal.startsWith(identificacaoCliente);
-    const dadosAdicNf = identificacaoCliente
-        ? (jaTemIdentificacao ? dadosAdicNfOriginal : [identificacaoCliente, dadosAdicNfOriginal].filter(Boolean).join(' | '))
-        : dadosAdicNfOriginal;
+    // dados_adicionais_nf: texto montado pela helper central montarDadosAdicionaisNf (formato legado).
+    // Recebido pronto via parâmetro — fallback para o que já estiver gravado no pedido.
+    const dadosAdicNfFinal = dadosAdicNf || pedido.dados_adicionais_nf || '';
 
     const cabecalho = {
         codigo_pedido_integracao: pedido.id,
@@ -300,7 +379,7 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
             enviar_email: "N",
             codigo_conta_corrente: contaCorrente,
             ...(pedido.numero_pedido_compra ? { numero_pedido_cliente: pedido.numero_pedido_compra } : {}),
-            ...(dadosAdicNf ? { dados_adicionais_nf: dadosAdicNf } : {})
+            ...(dadosAdicNfFinal ? { dados_adicionais_nf: dadosAdicNfFinal } : {})
         }
     };
     if (parcelas.length > 0) {
@@ -433,8 +512,18 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     // Conta corrente padrão resolvida uma única vez por execução/lote
     const contaCorrente = ctx.contaCorrentePadrao || await resolverContaCorrentePadrao(base44);
 
+    // ROBUSTEZ TRANSFERÊNCIA: grava a carga de faturamento no pedido (imutável) se ainda não tiver.
+    // Assim a transferência futura não apaga a "CARGA FATURAMENTO" do rodapé da NF.
+    if (!pedido.carga_faturamento_numero && pedido.numero_carga) {
+        pedido.carga_faturamento_numero = pedido.numero_carga;
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, { carga_faturamento_numero: pedido.numero_carga }).catch(() => {});
+    }
+
+    // Texto do rodapé "Informações Complementares" (helper central). FISCAL: nunca quebra o envio.
+    const dadosAdicNf = await montarDadosAdicionaisNf(base44, pedido).catch(() => pedido.dados_adicionais_nf || '');
+
     // ENVIAR
-    const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
+    const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, dadosAdicNf });
     let resultado = await omieCall(base44, "produtos/pedido/", payload, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
 
     // Se cliente não existe no Omie → exportar e tentar UMA VEZ MAIS
@@ -444,7 +533,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         if (exp.ok) {
             await sleep(1500); // Omie indexar
             clientePayload = { codigo_cliente_integracao: String(clienteBase44.id) };
-            const payload2 = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente });
+            const payload2 = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, dadosAdicNf });
             resultado = await omieCall(base44, "produtos/pedido/", payload2, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
         } else {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: `Cliente não estava no Omie: ${exp.erro}`, omie_enviado: false });
@@ -513,12 +602,10 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     };
     if (numeroPedidoOmie) {
         updateData.numero_pedido = String(numeroPedidoOmie);
-        // Atualizar dados_adicionais_nf local com o número do pedido (sem chamada extra ao Omie — economia de 1 req/pedido)
-        const dadosAtuais = pedido.dados_adicionais_nf || '';
-        const semPrefixo = dadosAtuais.replace(/^Pedido Nº: .+?(\s*\|\s*|$)/, '').trim();
-        const partes = [`Pedido Nº: ${numeroPedidoOmie}`];
-        if (semPrefixo) partes.push(semPrefixo);
-        updateData.dados_adicionais_nf = partes.join(' | ');
+        // Reconstrói o texto legado local já com o número do pedido recém-recebido (Num.Pedido).
+        // Sem chamada extra ao Omie — mantém o local consistente com o que foi enviado.
+        pedido.numero_pedido = String(numeroPedidoOmie);
+        updateData.dados_adicionais_nf = await montarDadosAdicionaisNf(base44, pedido).catch(() => dadosAdicNf);
     }
     await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
 
