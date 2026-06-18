@@ -114,6 +114,68 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Espaçamento entre cada emissão (igual trocarEtapaPedidoOmie) para não estourar o anti-flood.
+const DELAY_ENTRE_EMISSOES_MS = 1800;
+// Retry por pedido em caso de erro transitório (rate limit / 425 / 429 / 500 / redundante).
+const MAX_RETRY_TRANSITORIO = 3;
+// Teto de espera ao aguardar uma janela de bloqueio/rate limit.
+const TETO_ESPERA_MS = 90 * 1000;
+
+// Identifica erro TRANSITÓRIO (vale retry: rate limit, bloqueio temporário, timeout, HTTP 5xx).
+// NÃO é dado inválido — esses devem ser reprocessados, não descartados.
+function isTransitorio(error) {
+  if (error?.bloqueio || error?.rateLimit) return true;
+  const m = String(error?.message || '').toLowerCase();
+  return m.includes('425') || m.includes('429') || m.includes('http 5') ||
+    m.includes('timeout') || m.includes('consumo indevido') || m.includes('bloqueada') ||
+    m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde') ||
+    m.includes('redundante') || m.includes('limite') || m.includes('misuse');
+}
+
+// Quanto esperar (ms) antes de retomar o MESMO pedido após erro transitório.
+async function calcularEsperaMs(base44, error) {
+  // Se o breaker abriu por bloqueio, respeita a janela bloqueado_ate (com teto).
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const ctrl = rows?.[0];
+  if (ctrl?.bloqueado && ctrl.bloqueado_ate) {
+    const ms = new Date(ctrl.bloqueado_ate).getTime() - Date.now();
+    if (ms > 0) return Math.min(ms, TETO_ESPERA_MS);
+  }
+  const seg = extrairSegundosBloqueio(error?.message || '');
+  return Math.min(seg * 1000, TETO_ESPERA_MS);
+}
+
+// IDEMPOTÊNCIA: já existe NF para este pedido? (espelho 60+NF, Pedido local, log autorizado).
+// Evita re-emitir nota duplicada em retries. Leitura local apenas (sem chamar a Omie).
+async function jaPossuiNf(base44, codigoPedido) {
+  const codigo = String(codigoPedido);
+  const esp = (await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: codigo }, '-updated_date', 1).catch(() => []))?.[0];
+  if (esp?.etapa === '60' && esp?.numero_nf) return { possui: true, numero_nf: esp.numero_nf };
+  const ped = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: codigo }, '-updated_date', 1).catch(() => []))?.[0];
+  if (ped?.numero_nota_fiscal) return { possui: true, numero_nf: ped.numero_nota_fiscal };
+  const log = (await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: codigo, status: 'autorizada' }, '-created_date', 1).catch(() => []))?.[0];
+  if (log?.numero_nf) return { possui: true, numero_nf: log.numero_nf };
+  return { possui: false };
+}
+
+// Limpa lixo: itens da fila presos em "executando" há mais de 15 min → marca como erro (expirado),
+// liberando a fila e deixando os pendentes visíveis para reprocessamento.
+async function limparExecucoesPresas(base44) {
+  const limite = Date.now() - 15 * 60 * 1000;
+  const presos = await base44.asServiceRole.entities.FilaEmissaoNF.filter({ status: 'executando' }, '-created_date', 50).catch(() => []);
+  for (const f of presos) {
+    const ref = new Date(f.atualizado_em || f.iniciado_em || f.created_date).getTime();
+    if (ref < limite) {
+      await base44.asServiceRole.entities.FilaEmissaoNF.update(f.id, {
+        status: 'erro',
+        mensagem: 'Lote expirado (preso em execução há mais de 15 min). Pendentes liberados para reprocessamento.',
+        atualizado_em: new Date().toISOString(),
+        concluido_em: new Date().toISOString()
+      }).catch(() => {});
+    }
+  }
+}
+
 function formatarDataBrasilia(isoDate) {
   return new Date(isoDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
@@ -216,25 +278,39 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const body = await req.json().catch(() => ({}));
+
+    // Limpa lixo: lotes presos em "executando" há +15min (ex.: travados desde 09-15/06).
+    await limparExecucoesPresas(base44);
+
     const fila = await carregarFila(base44, body);
 
     if (!fila) {
       return Response.json({ sucesso: true, mensagem: 'Nenhum lote pendente para processar' });
     }
 
-    // 1) Circuit breaker: se a API Omie estiver bloqueada, NÃO processa nada.
-    // Devolve a fila para 'pendente' (pra ser retomada depois) e retorna 425.
+    // 1) Circuit breaker no INÍCIO: bloqueio é transitório, não parada geral. Em vez de abortar o lote,
+    // aguarda a janela bloqueado_ate (com teto) e segue — o breaker continua protegendo contra rajada,
+    // mas o lote respeita a janela e retoma. Se a espera passar do teto, devolve a fila p/ pendente.
     const breaker = await verificarCircuitBreaker(base44);
     if (breaker.bloqueado) {
-      await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
-        status: 'pendente',
-        mensagem: 'API Omie bloqueada por rate limit — aguardando desbloqueio',
-        atualizado_em: new Date().toISOString()
-      }).catch(() => {});
-      return Response.json(
-        { error: 'API Omie bloqueada por rate limit', bloqueado_ate: breaker.bloqueado_ate },
-        { status: 425 }
-      );
+      const esperaMs = breaker.bloqueado_ate ? new Date(breaker.bloqueado_ate).getTime() - Date.now() : 0;
+      if (esperaMs > 0 && esperaMs <= TETO_ESPERA_MS) {
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+          mensagem: `API Omie bloqueada — aguardando ${Math.round(esperaMs / 1000)}s para retomar o lote...`,
+          atualizado_em: new Date().toISOString()
+        }).catch(() => {});
+        await sleep(esperaMs);
+      } else {
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+          status: 'pendente',
+          mensagem: 'API Omie bloqueada por rate limit — aguardando desbloqueio (lote será retomado)',
+          atualizado_em: new Date().toISOString()
+        }).catch(() => {});
+        return Response.json(
+          { error: 'API Omie bloqueada por rate limit', bloqueado_ate: breaker.bloqueado_ate },
+          { status: 425 }
+        );
+      }
     }
 
     // Dedup defensiva — nunca processa o mesmo pedido 2x na mesma rodada (evita CÓDIGO 6 redundante)
@@ -278,41 +354,79 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      try {
-        const resposta = body.mock_omie_response || await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
-        if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
-        resultados.push({
-          codigo_pedido: codigoPedido,
-          sucesso: true,
-          status: 'pendente_sefaz',
-          mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ'
-        });
+      // IDEMPOTÊNCIA: se já há NF para este pedido (retry após sucesso parcial), PULA — não duplica nota.
+      const nfExistente = await jaPossuiNf(base44, codigoPedido);
+      if (nfExistente.possui) {
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: true, status: 'ja_emitida', mensagem: `NF ${nfExistente.numero_nf} já existe — pulado.` });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'autorizada', `NF ${nfExistente.numero_nf} já existia — não re-emitida.`, { faultstring: '' }).catch(() => {});
+        processados = i + 1;
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, { processados, resultados, erros, atualizado_em: new Date().toISOString() }).catch(() => {});
+        continue;
+      }
 
-        const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
-        if (pedidosLocais?.[0]?.id) {
-          await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, { status_faturamento: 'processando' }).catch(() => {});
+      // Emite com retry resiliente: erro transitório (rate limit/425/timeout/5xx) NÃO descarta o pedido —
+      // aguarda a janela sugerida (com teto) e RETOMA o MESMO pedido. Só vira erro após esgotar as tentativas.
+      let emitido = false;
+      let ultimoErro = null;
+      for (let tentativa = 0; tentativa < MAX_RETRY_TRANSITORIO && !emitido; tentativa++) {
+        try {
+          const resposta = body.mock_omie_response || await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
+          if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
+          resultados.push({ codigo_pedido: codigoPedido, sucesso: true, status: 'pendente_sefaz', mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ' });
+
+          const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
+          if (pedidosLocais?.[0]?.id) {
+            await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, { status_faturamento: 'processando' }).catch(() => {});
+          }
+
+          await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+            endpoint: 'produtos/pedidovendafat',
+            call: 'FaturarPedidoVenda',
+            operacao: 'emitir_nf_lote_background',
+            status: 'sucesso',
+            duracao_ms: Date.now() - t0,
+            payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
+            payload_resposta: JSON.stringify(resposta).slice(0, 800),
+            usuario_email: fila.usuario_email || ''
+          }).catch(() => {});
+
+          await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', 'Emissão acionada no Omie — aguardando retorno da SEFAZ');
+          emitido = true;
+        } catch (error) {
+          ultimoErro = error;
+          // Erro transitório → aguarda a janela e retoma o MESMO pedido (não descarta os seguintes).
+          if (isTransitorio(error) && tentativa < MAX_RETRY_TRANSITORIO - 1) {
+            const esperaMs = await calcularEsperaMs(base44, error);
+            await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+              mensagem: `Omie ocupado (rate limit) no pedido ${i + 1}/${pedidos.length} — aguardando ${Math.round(esperaMs / 1000)}s e retomando...`,
+              atualizado_em: new Date().toISOString()
+            }).catch(() => {});
+            await sleep(esperaMs);
+            continue;
+          }
+          // Esgotou as tentativas (ou erro definitivo de dado): registra. Transitório fica como PENDENTE
+          // (reprocessável no Log de Emissão); erro real de dado fica como ERRO.
+          break;
         }
+      }
 
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-          endpoint: 'produtos/pedidovendafat',
-          call: 'FaturarPedidoVenda',
-          operacao: 'emitir_nf_lote_background',
-          status: 'sucesso',
-          duracao_ms: Date.now() - t0,
-          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
-          payload_resposta: JSON.stringify(resposta).slice(0, 800),
-          usuario_email: fila.usuario_email || ''
-        }).catch(() => {});
-
-        await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', 'Emissão acionada no Omie — aguardando retorno da SEFAZ');
-      } catch (error) {
+      if (!emitido) {
+        const error = ultimoErro || new Error('Erro ao emitir NF');
         const mensagem = error.message || 'Erro ao emitir NF';
-        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem });
+        const transitorio = isTransitorio(error);
+        const statusLog = transitorio ? 'pendente' : 'erro';
+
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: statusLog, mensagem });
+        // Pendente transitório NÃO entra em "erros" definitivos — fica para reprocessar sem sumir.
+        if (!transitorio) erros.push({ codigo_pedido: codigoPedido, mensagem });
+
         const pedidosLocaisErro = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
         if (pedidosLocaisErro?.[0]?.id) {
-          await base44.asServiceRole.entities.Pedido.update(pedidosLocaisErro[0].id, { status_faturamento: 'erro', omie_erro: mensagem }).catch(() => {});
+          await base44.asServiceRole.entities.Pedido.update(pedidosLocaisErro[0].id, {
+            status_faturamento: transitorio ? 'pendente' : 'erro',
+            omie_erro: mensagem
+          }).catch(() => {});
         }
-        erros.push({ codigo_pedido: codigoPedido, mensagem });
 
         const payloadEnviado = JSON.stringify({ nCodPed: codigoPedido });
         const payloadResposta = error.omiePayload ? JSON.stringify(error.omiePayload) : '';
@@ -320,7 +434,7 @@ Deno.serve(async (req) => {
           endpoint: 'produtos/pedidovendafat',
           call: 'FaturarPedidoVenda',
           operacao: 'emitir_nf_lote_background',
-          status: error.faultstring ? 'erro_omie' : 'erro',
+          status: error.faultstring ? 'erro_omie' : (transitorio ? 'warning' : 'erro'),
           codigo_erro: error.faultcode || '',
           duracao_ms: Date.now() - t0,
           mensagem_erro: mensagem,
@@ -330,27 +444,14 @@ Deno.serve(async (req) => {
           usuario_email: fila.usuario_email || ''
         }).catch(() => {});
 
-        await gravarLogEmissao(base44, fila, codigoPedido, 'erro', error.faultstring || `Erro interno: ${mensagem}`, {
+        await gravarLogEmissao(base44, fila, codigoPedido, statusLog,
+          transitorio ? `Omie ocupado (rate limit) — não emitida ainda, reprocessar. ${mensagem}` : (error.faultstring || `Erro interno: ${mensagem}`), {
           faultstring: error.faultstring || '',
           faultcode: error.faultcode || '',
-          erro_tipo: error.faultstring ? 'omie' : 'interno',
+          erro_tipo: error.faultstring ? 'omie' : (transitorio ? 'transitorio' : 'interno'),
           payload_enviado: payloadEnviado.slice(0, 2000),
           payload_resposta: payloadResposta.slice(0, 5000)
         });
-
-        if (mensagem.toLowerCase().includes('bloqueada') || mensagem.toLowerCase().includes('bloqueio')) {
-          processados = i + 1;
-          await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
-            processados,
-            resultados,
-            erros,
-            status: 'erro',
-            mensagem: `Processamento interrompido: ${mensagem}`,
-            atualizado_em: new Date().toISOString(),
-            concluido_em: new Date().toISOString()
-          });
-          return Response.json({ sucesso: false, fila_id: fila.id, erro: mensagem, processados });
-        }
       }
 
       processados = i + 1;
@@ -362,22 +463,33 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString()
       });
 
-      // Delay entre emissões para respeitar rate limit do Omie
-      if (i < pedidos.length - 1) await sleep(3000);
+      // Espaçamento entre emissões para respeitar o anti-flood do Omie (~1800ms).
+      if (i < pedidos.length - 1) await sleep(DELAY_ENTRE_EMISSOES_MS);
     }
 
+    // Pendentes transitórios (rate limit) não são erro definitivo — ficam listados no Log de Emissão
+    // para reprocessar em 1 clique, sem sumir silenciosamente.
+    const pendentesTransitorios = resultados.filter(r => !r.sucesso && r.status === 'pendente').length;
     const statusFinal = erros.length > 0 ? 'erro' : 'concluido';
+    let mensagemFinal;
+    if (statusFinal === 'concluido' && pendentesTransitorios > 0) {
+      mensagemFinal = `Lote enviado ao Omie. ${pendentesTransitorios} pedido(s) ficaram pendentes por rate limit — reprocesse no Log de Emissão.`;
+    } else if (statusFinal === 'concluido') {
+      mensagemFinal = 'Lote enviado ao Omie. Aguardando retorno da SEFAZ nos logs.';
+    } else {
+      mensagemFinal = `${erros.length} pedido(s) falharam na emissão${pendentesTransitorios > 0 ? ` e ${pendentesTransitorios} ficaram pendentes para reprocessar` : ''}.`;
+    }
     await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
       status: statusFinal,
       processados,
       resultados,
       erros,
-      mensagem: statusFinal === 'concluido' ? 'Lote enviado ao Omie. Aguardando retorno da SEFAZ nos logs.' : `${erros.length} pedido(s) falharam na emissão.`,
+      mensagem: mensagemFinal,
       atualizado_em: new Date().toISOString(),
       concluido_em: new Date().toISOString()
     });
 
-    return Response.json({ sucesso: statusFinal === 'concluido', fila_id: fila.id, status: statusFinal, processados, erros: erros.length });
+    return Response.json({ sucesso: statusFinal === 'concluido', fila_id: fila.id, status: statusFinal, processados, erros: erros.length, pendentes: pendentesTransitorios });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
