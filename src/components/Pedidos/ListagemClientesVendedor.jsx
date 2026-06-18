@@ -74,6 +74,7 @@ export default function ListagemClientesVendedor() {
   const [busca, setBusca] = useState('');
   const [vendedorId, setVendedorId] = useState('');
   const [ordenacao, setOrdenacao] = useState('dia'); // 'dia' | 'alfabetica'
+  const [diaSemana, setDiaSemana] = useState('todos'); // 'todos' | <dia> | 'sem_dia'
   const [gerando, setGerando] = useState(false);
 
   const { data: vendedores = [] } = useQuery({
@@ -164,9 +165,25 @@ export default function ListagemClientesVendedor() {
       </div>`;
   };
 
-  const montarHtml = (vendedor, clientes) => {
-    const agrupado = ordenacao === 'dia';
-    const tituloModo = agrupado ? 'Agrupado por dia da semana' : 'Ordem Alfabética';
+  const montarHtml = (vendedor, clientesTodos) => {
+    const diaEspecifico = diaSemana !== 'todos';
+    const labelDia = diaSemana === 'sem_dia'
+      ? 'Sem dia definido'
+      : (DIAS_ORDEM.find(d => d.key === diaSemana)?.label || '');
+
+    // Filtra os clientes pelo dia escolhido (quando não for "todos")
+    const clientes = !diaEspecifico
+      ? clientesTodos
+      : clientesTodos.filter(c => {
+          const dias = Array.isArray(c.dias_visita) ? c.dias_visita : [];
+          return diaSemana === 'sem_dia' ? dias.length === 0 : dias.includes(diaSemana);
+        });
+
+    // Quando um dia específico é escolhido, agrupar por dia não faz sentido (já é uma seção única).
+    const agrupado = ordenacao === 'dia' && !diaEspecifico;
+    const tituloModo = diaEspecifico
+      ? labelDia
+      : (ordenacao === 'dia' ? 'Agrupado por dia da semana' : 'Ordem Alfabética');
     const agora = new Date();
     const dtEmissao = `${agora.toLocaleDateString('pt-BR')} - ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 
@@ -260,6 +277,21 @@ export default function ListagemClientesVendedor() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dia da semana</Label>
+            <select
+              value={diaSemana}
+              onChange={(e) => setDiaSemana(e.target.value)}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="todos">Todos os dias</option>
+              {DIAS_ORDEM.map(d => (
+                <option key={d.key} value={d.key}>{d.label}</option>
+              ))}
+              <option value="sem_dia">Sem dia definido</option>
+            </select>
           </div>
 
           <div className="space-y-2">
