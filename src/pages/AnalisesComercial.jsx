@@ -7,7 +7,7 @@ import AnaliseVisitas from '@/components/analises/AnaliseVisitas';
 import DashboardTrocas from '@/components/analises/DashboardTrocas';
 import DashboardVendas from '@/components/analises/DashboardVendas';
 import DashboardVendedorComercial from '@/components/analises/DashboardVendedorComercial';
-import DashboardClientes from '@/components/analises/DashboardClientes';
+import DashboardClientesComercial from '@/components/analises/DashboardClientesComercial';
 import DashboardMetas from '@/components/analises/DashboardMetas';
 import MapaVisitas from '@/components/analises/MapaVisitas';
 import PainelMetas from '@/components/analises/PainelMetas';
@@ -101,7 +101,7 @@ export default function AnalisesComercial() {
         <TabsContent value="trocas"><DashboardTrocas /></TabsContent>
         <TabsContent value="visitas"><AnaliseVisitas /></TabsContent>
         <TabsContent value="vendedor"><DashboardVendedorComercial /></TabsContent>
-        <TabsContent value="clientes"><DashboardClientes /></TabsContent>
+        <TabsContent value="clientes"><DashboardClientesComercial /></TabsContent>
         <TabsContent value="metas"><DashboardMetas /></TabsContent>
         <TabsContent value="mapa"><MapaVisitas /></TabsContent>
       </Tabs>
