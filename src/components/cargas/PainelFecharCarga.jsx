@@ -233,7 +233,8 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             numero_pedido: v.numero_pedido || '',
             data_previsao: dataSaida,
             operacao: 'faturar',
-            etapa_destino: '50',
+            // ETAPA_FATURADO = 60 ("Faturado"). "Entregue" (50) só é marcado no Acerto de Caixa.
+            etapa_destino: '60',
             status: 'pendente',
             tentativas: 0
           }));

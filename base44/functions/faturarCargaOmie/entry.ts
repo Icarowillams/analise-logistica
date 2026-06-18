@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     await checarBloqueioOmie(base44);
 
     const body = await req.json().catch(() => ({}));
-    const { carga_id, etapa_destino = '50' } = body;
+    const { carga_id, etapa_destino = '60' } = body;
     if (!carga_id) return Response.json({ error: 'carga_id obrigatório' }, { status: 400 });
 
     let carga;

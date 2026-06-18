@@ -217,8 +217,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
         }
 
-        // Etapa padrão: 50 (Faturar)
-        const etapaDestino = etapa || "50";
+        // Etapa padrão: 60 ("Faturado"). "Entregue" (50) só é marcado no Acerto de Caixa.
+        const etapaDestino = etapa || "60";
 
         // Buscar pedido
         const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);

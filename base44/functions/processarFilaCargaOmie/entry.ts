@@ -126,7 +126,7 @@ async function jaEstaNaEtapa(base44, item) {
     else return false;
     const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
     const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
-    const destino = String(item.etapa_destino || '50');
+    const destino = String(item.etapa_destino || '60');
     return etapa && Number(etapa) >= Number(destino);
   } catch (e) {
     if (e.bloqueio) throw e; // propaga bloqueio
@@ -155,7 +155,7 @@ async function processarFaturar(base44, item) {
   if (item.codigo_pedido_omie) idParam.codigo_pedido = Number(item.codigo_pedido_omie);
   if (item.codigo_pedido_integracao) idParam.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
 
-  const destino = Number(item.etapa_destino || 50);
+  const destino = Number(item.etapa_destino || 60);
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
@@ -347,9 +347,9 @@ Deno.serve(async (req) => {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
               { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
             ).catch(() => []);
-            if (espelhos?.[0] && String(espelhos[0].etapa) !== String(item.etapa_destino || '50')) {
+            if (espelhos?.[0] && String(espelhos[0].etapa) !== String(item.etapa_destino || '60')) {
               await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                etapa: String(item.etapa_destino || '50'),
+                etapa: String(item.etapa_destino || '60'),
                 sincronizado_em: new Date().toISOString()
               }).catch(() => {});
             }
@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
               ).then(espelhos => {
                 if (espelhos?.[0]) {
                   return base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                    etapa: String(item.etapa_destino || '50'),
+                    etapa: String(item.etapa_destino || '60'),
                     data_previsao: item.data_previsao || espelhos[0].data_previsao,
                     sincronizado_em: new Date().toISOString()
                   });

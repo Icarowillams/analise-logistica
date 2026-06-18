@@ -112,8 +112,24 @@ export default function AcertoCaixaEditar() {
   };
 
   const marcarEntregue = (idx) => {
-    const nova = { ...notas[idx], status_entrega: 'entregue', data_recebimento: new Date().toISOString().slice(0, 10) };
+    const nota = notas[idx];
+    // Marca entregue LOCALMENTE primeiro — ação humana na volta da rua. Nunca trava por causa do Omie.
+    const nova = { ...nota, status_entrega: 'entregue', data_recebimento: new Date().toISOString().slice(0, 10) };
     atualizarNota(idx, nova);
+
+    // Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 50). Desacoplado da marcação local —
+    // se o Omie falhar/rate limit, marca omie_etapa_pendente para reconciliar depois, sem bloquear.
+    if (nota.codigo_pedido) {
+      base44.functions.invoke('trocarEtapaPedidoOmie', { codigo_pedido: nota.codigo_pedido, etapa: '50' })
+        .then(({ data }) => {
+          if (!data?.sucesso) {
+            setNotas(prev => prev.map((n, i) => i === idx ? { ...n, omie_etapa_pendente: true } : n));
+          }
+        })
+        .catch(() => {
+          setNotas(prev => prev.map((n, i) => i === idx ? { ...n, omie_etapa_pendente: true } : n));
+        });
+    }
   };
 
   const restaurar = (idx) => {
