@@ -9,6 +9,7 @@ import DigitarPedido from '@/components/Pedidos/DigitarPedido';
 import PedidoAvulso from '@/components/Pedidos/PedidoAvulso';
 import EnvioPedidos from '@/components/Pedidos/EnvioPedidos';
 import { usePrefetchApoioPedido } from '@/components/Pedidos/usePrefetchApoioPedido';
+import ListagemClientesVendedor from '@/components/Pedidos/ListagemClientesVendedor';
 
 export default function EmissaoPedidos() {
   // Aquece o cache das listas de apoio — adiado (~500ms) para não competir com a
@@ -99,7 +100,12 @@ export default function EmissaoPedidos() {
 
   return (
     <div>
-      <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorEfetivo?.nome || '-'}`} icon={ShoppingCart} />
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorEfetivo?.nome || '-'}`} icon={ShoppingCart} />
+        <div className="pt-1">
+          <ListagemClientesVendedor />
+        </div>
+      </div>
       
       <div>
         <div className={`inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground grid w-full ${podePedidoAvulso ? 'grid-cols-3' : 'grid-cols-2'} mb-6`}>
