@@ -102,7 +102,7 @@ export default function EmissaoPedidos() {
     <div>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <PageHeader title="Emissão de Pedidos" subtitle={`Vendedor: ${vendedorEfetivo?.nome || '-'}`} icon={ShoppingCart} />
-        <div className="pt-1">
+        <div className="pt-1 ml-auto sm:ml-0">
           <ListagemClientesVendedor />
         </div>
       </div>

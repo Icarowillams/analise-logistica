@@ -239,8 +239,10 @@ export default function ListagemClientesVendedor() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Printer className="w-4 h-4" /> Imprimir Listagem de Clientes
+        <Button variant="outline" className="gap-2 w-auto h-9 px-3 sm:px-4 text-xs sm:text-sm">
+          <Printer className="w-4 h-4 shrink-0" />
+          <span className="hidden sm:inline">Imprimir Listagem de Clientes</span>
+          <span className="inline sm:hidden">Imprimir Listagem</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
