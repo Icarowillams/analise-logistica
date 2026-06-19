@@ -190,10 +190,13 @@ function gerarParcelas(plano, valorTotal) {
 }
 
 async function resolverClienteOmie(base44, pedido, clienteBase44) {
+  // 1. PREFERENCIAL: cliente tem codigo_omie → usa codigo_cliente (entra de 1ª, sem erro 1050).
   if (clienteBase44?.codigo_omie) {
     return { ok: true, payload: { codigo_cliente: Number(clienteBase44.codigo_omie) }, fonte: 'local_codigo_omie' };
   }
-  const codIntegracao = pedido.cliente_codigo || pedido.cliente_id;
+  // 2. Sem codigo_omie → usa SEMPRE o id Base44 (código de integração REAL no Omie).
+  //    NUNCA pedido.cliente_codigo (codigo_interno, ex: 28948) — gera erro 1050.
+  const codIntegracao = clienteBase44?.id || pedido.cliente_id;
   if (codIntegracao) {
     return { ok: true, payload: { codigo_cliente_integracao: String(codIntegracao) }, fonte: 'local_codigo_integracao', precisaValidar: !clienteBase44?.codigo_omie };
   }

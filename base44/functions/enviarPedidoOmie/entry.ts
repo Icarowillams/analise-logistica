@@ -278,8 +278,11 @@ async function resolverClienteOmie(base44, pedido, clienteBase44) {
         };
     }
 
-    // 2. Tem codigo_cliente_integracao (id Base44 ou campo codigo)?
-    const codIntegracao = pedido.cliente_codigo || pedido.cliente_id;
+    // 2. Sem codigo_omie → usar SEMPRE o id Base44 como codigo_cliente_integracao.
+    //    O id Base44 é o código de integração REAL registrado no Omie (cCodInt).
+    //    NUNCA usar pedido.cliente_codigo (codigo_interno, ex: 28948) — o Omie não o
+    //    reconhece como código de integração → erro 1050 "Cliente não cadastrado".
+    const codIntegracao = clienteBase44?.id || pedido.cliente_id;
     if (codIntegracao) {
         return {
             ok: true,
