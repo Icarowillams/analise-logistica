@@ -24,7 +24,7 @@ const dateToBR = (d) => {
 export default function FiltrosBoletos({ onResultado }) {
   const [dataDe, setDataDe] = useState(() => subDays(new Date(), 30));
   const [dataAte, setDataAte] = useState(() => addDays(new Date(), 90));
-  const [filtrarPor, setFiltrarPor] = useState('V');
+  const [filtrarPor, setFiltrarPor] = useState('E');
   const [cnpj, setCnpj] = useState('');
   const [apenasComBoleto, setApenasComBoleto] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -218,7 +218,7 @@ export default function FiltrosBoletos({ onResultado }) {
       } else {
         setOcultosNaoBoleto(0);
       }
-      onResultado(titulosFiltrados);
+      onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor);
       if (carga && titulosFiltrados.length === 0) {
         toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);
       } else if (carga) {

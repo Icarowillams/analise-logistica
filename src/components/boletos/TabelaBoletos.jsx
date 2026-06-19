@@ -15,7 +15,9 @@ const base64ToUint8Array = (b64) => {
   return arr;
 };
 
-export default function TabelaBoletos({ titulos, selecionados, setSelecionados }) {
+export default function TabelaBoletos({ titulos, selecionados, setSelecionados, filtradoPor = 'E' }) {
+  const destEmissao = filtradoPor === 'E';
+  const destVencimento = filtradoPor === 'V';
   const [filtro, setFiltro] = useState('');
   const [verLoading, setVerLoading] = useState(null);
 
@@ -97,7 +99,8 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
               <th className="p-2 text-left">Cliente</th>
               <th className="p-2 text-left">Documento</th>
               <th className="p-2 text-left">Parcela</th>
-              <th className="p-2 text-left">Vencimento</th>
+              <th className={`p-2 text-left ${destEmissao ? 'bg-amber-100 text-amber-800' : ''}`}>Emissão</th>
+              <th className={`p-2 text-left ${destVencimento ? 'bg-amber-100 text-amber-800' : ''}`}>Vencimento</th>
               <th className="p-2 text-right">Valor</th>
               <th className="p-2 text-center">Status</th>
               <th className="p-2 text-center">Nº Boleto</th>
@@ -117,7 +120,8 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
                 <td className="p-2">{t.nome_fantasia || t.nome_cliente || '-'}</td>
                 <td className="p-2 font-mono">{t.numero_documento}</td>
                 <td className="p-2">{t.numero_parcela}</td>
-                <td className="p-2">{t.data_vencimento}</td>
+                <td className={`p-2 ${destEmissao ? 'bg-amber-50 font-medium' : ''}`}>{t.data_emissao || '-'}</td>
+                <td className={`p-2 ${destVencimento ? 'bg-amber-50 font-medium' : ''}`}>{t.data_vencimento}</td>
                 <td className="p-2 text-right">R$ {Number(t.valor_documento || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td className="p-2 text-center">
                   {(() => {
@@ -158,7 +162,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados }
               </tr>
             ))}
             {filtrados.length === 0 && (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-slate-500">Nenhum título encontrado</td></tr>
             )}
           </tbody>
         </table>

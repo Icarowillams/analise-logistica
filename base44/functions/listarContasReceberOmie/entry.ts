@@ -3,6 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 
+// Converte data Omie (dd/mm/aaaa) → número AAAAMMDD para comparação por DIA (ignora horas).
+// Retorna null se a data não existir/for inválida.
+function diaNumOmie(s: any): number | null {
+  const m = String(s || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]);
+}
+
 let _credsCache: any = null;
 async function resolverCredsOmie(base44: any) {
   if (_credsCache && _credsCache.app_key && _credsCache.app_secret && Date.now() - _credsCache.at < 30000) return _credsCache;
@@ -41,10 +49,19 @@ async function omieCall(base44: any, call: string, param: any, options: any = {}
       }
       if (res.status === 425) {
         const corpo = await res.text().catch(() => '');
+        // 425 = consumo indevido/concorrência → backoff e re-tenta (em vez de falhar de imediato).
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
         throw new Error(`HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
       }
       const data = await res.json();
-      if (data.faultstring) throw new Error(data.faultstring);
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        // Concorrência do Omie (REDUNDANT / código 6 / método já em execução / aguarde) → backoff e re-tenta.
+        const concorrencia = msg.includes('redundant') || msg.includes('código 6') || msg.includes('codigo 6') ||
+          msg.includes('já em execução') || msg.includes('ja em execucao') || msg.includes('aguarde') || msg.includes('1880');
+        if (concorrencia && attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
+        throw new Error(data.faultstring);
+      }
       return data;
     } catch (err) {
       clearTimeout(timeoutId);
@@ -104,14 +121,17 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const {
       data_de, data_ate,
-      filtrar_por_data = 'V',
+      filtrar_por_data = 'E',
       cnpj_cpf,
-      pagina = 1,
+      pagina,
       registros_por_pagina = 100,
       apenas_pendentes = true,
       bypassCache = false,
       cacheMinutes
     } = body;
+    // Se o chamador NÃO especificar página, a função pagina por completo (todas as páginas).
+    // Se especificar (pagina: N), retorna só aquela página (compatibilidade com chamadas antigas).
+    const paginarTudo = pagina == null;
 
     // bypassCache (ou cacheMinutes: 0) força dados frescos — útil logo após emitir boletos,
     // quando o cache de clientes/Omie ainda reflete boleto.cGerado = "N".
@@ -121,28 +141,52 @@ Deno.serve(async (req) => {
       _credsCache = null;
     }
 
-    const param: any = {
-      pagina,
-      registros_por_pagina: Math.min(registros_por_pagina, 100),
-      apenas_importado_api: 'N',
-      exibir_obs: 'S'
+    const montarParam = (pag: number): any => {
+      const p: any = {
+        pagina: pag,
+        registros_por_pagina: Math.min(registros_por_pagina, 100),
+        apenas_importado_api: 'N',
+        exibir_obs: 'S'
+      };
+      if (filtrar_por_data === 'E') {
+        if (data_de) p.filtrar_por_emissao_de = data_de;
+        if (data_ate) p.filtrar_por_emissao_ate = data_ate;
+      } else {
+        if (data_de) p.filtrar_por_data_de = data_de;
+        if (data_ate) p.filtrar_por_data_ate = data_ate;
+      }
+      if (cnpj_cpf) p.filtrar_por_cpf_cnpj = cnpj_cpf;
+      if (apenas_pendentes) p.filtrar_apenas_titulos_em_aberto = 'S';
+      return p;
     };
-    if (filtrar_por_data === 'E') {
-      if (data_de) param.filtrar_por_emissao_de = data_de;
-      if (data_ate) param.filtrar_por_emissao_ate = data_ate;
-    } else {
-      if (data_de) param.filtrar_por_data_de = data_de;
-      if (data_ate) param.filtrar_por_data_ate = data_ate;
-    }
-    if (cnpj_cpf) param.filtrar_por_cpf_cnpj = cnpj_cpf;
-    if (apenas_pendentes) param.filtrar_apenas_titulos_em_aberto = 'S';
 
     const t0 = Date.now();
-    const data = await omieCall(base44, 'ListarContasReceber', param, { creds });
+    // Paginação: se o chamador pediu uma página específica, busca só ela.
+    // Caso contrário, itera total_de_paginas, concatenando, com espaçamento entre páginas (anti rate-limit).
+    let registrosBrutos: any[] = [];
+    let infoPagina = { pagina: paginarTudo ? 1 : pagina, total_de_paginas: 1, total_de_registros: 0 };
+    {
+      const primeira = await omieCall(base44, 'ListarContasReceber', montarParam(paginarTudo ? 1 : pagina), { creds });
+      registrosBrutos = registrosBrutos.concat(primeira.conta_receber_cadastro || []);
+      const totalPag = Number(primeira.total_de_paginas || 1);
+      infoPagina = { pagina: primeira.pagina, total_de_paginas: totalPag, total_de_registros: primeira.total_de_registros };
+      if (paginarTudo && totalPag > 1) {
+        for (let pag = 2; pag <= totalPag; pag++) {
+          await new Promise(r => setTimeout(r, 700)); // espaça ~700ms p/ não estourar rate-limit do Omie
+          const prox = await omieCall(base44, 'ListarContasReceber', montarParam(pag), { creds });
+          registrosBrutos = registrosBrutos.concat(prox.conta_receber_cadastro || []);
+        }
+      }
+    }
     const duracao = Date.now() - t0;
 
+    // Dedup por codigo_lancamento_omie (idempotência entre páginas)
+    registrosBrutos = registrosBrutos.filter((t: any, i: number, arr: any[]) =>
+      arr.findIndex((x: any) => x.codigo_lancamento_omie === t.codigo_lancamento_omie) === i
+    );
+
     const STATUS_EXCLUIR = new Set(['LIQUIDADO', 'PAGO', 'CANCELADO', 'RECEBIDO']);
-    const titulosRaw = (data.conta_receber_cadastro || []).filter((t: any) => {
+    const titulosRaw = registrosBrutos.filter((t: any) => {
       if (apenas_pendentes && t.status_titulo && STATUS_EXCLUIR.has(t.status_titulo.toUpperCase())) return false;
       return true;
     });
@@ -174,6 +218,29 @@ Deno.serve(async (req) => {
       numero_pedido_vinculado:
         t.numero_pedido || t.cNumPedido || t.pedido?.numero_pedido || t.pedido_venda?.numero_pedido || ''
     }));
+
+    // 🛡️ REDE DE SEGURANÇA — refiltra por data sobre os títulos retornados.
+    // O Omie às vezes devolve títulos fora do range pedido; aqui garantimos o range.
+    // 'E' → compara data_emissao; 'V' (ou qualquer outro) → data_vencimento. Inclusivo nos extremos,
+    // por DIA (horas zeradas). Título sem a data escolhida → descartado.
+    {
+      const deNum = diaNumOmie(data_de);
+      const ateNum = diaNumOmie(data_ate);
+      if (deNum != null || ateNum != null) {
+        const campo = filtrar_por_data === 'E' ? 'data_emissao' : 'data_vencimento';
+        const antes = titulos.length;
+        titulos = titulos.filter((t: any) => {
+          const d = diaNumOmie(t[campo]);
+          if (d == null) return false; // sem a data escolhida → descarta
+          if (deNum != null && d < deNum) return false;
+          if (ateNum != null && d > ateNum) return false;
+          return true;
+        });
+        if (antes !== titulos.length) {
+          console.log(`[listarContasReceber] filtro de data (${campo}) descartou ${antes - titulos.length} título(s) fora do range ${data_de || '-'}..${data_ate || '-'}`);
+        }
+      }
+    }
 
     // ✅ ENRIQUECIMENTO BULK — carrega todos os clientes em 1 chamada, faz lookup local.
     // REGRA ESTRITA: o nome SEMPRE vem do título do Omie quando presente. Quando o Omie
@@ -226,9 +293,9 @@ Deno.serve(async (req) => {
     return Response.json({
       sucesso: true,
       titulos,
-      pagina: data.pagina,
-      total_de_paginas: data.total_de_paginas,
-      total_de_registros: data.total_de_registros
+      pagina: infoPagina.pagina,
+      total_de_paginas: infoPagina.total_de_paginas,
+      total_de_registros: infoPagina.total_de_registros
     });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
