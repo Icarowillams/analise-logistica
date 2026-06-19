@@ -8,8 +8,8 @@ const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
 const valorValido = (valor) => valor !== undefined && valor !== null && String(valor).trim() !== '';
 
 async function consultarClienteOmie(codigoClienteOmie) {
-  const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-  const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
+  const OMIE_APP_KEY = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const OMIE_APP_SECRET = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
   if (!OMIE_APP_KEY || !OMIE_APP_SECRET || !codigoClienteOmie) return null;
 
   const response = await fetch(OMIE_CLIENTES_URL, {

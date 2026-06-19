@@ -1,6 +1,6 @@
 export const CONTA_CORRENTE_PADRAO = 11464371392;
-export const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-export const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+export const OMIE_APP_KEY = (Deno.env.get("OMIE_APP_KEY") || '').trim();
+export const OMIE_APP_SECRET = (Deno.env.get("OMIE_APP_SECRET") || '').trim();
 // Régua REAL de etapas Omie desta empresa (confirmado pelo suporte Omie em 19/06):
 // 10=Pedido de Venda | 20=Pedidos Liberados | 50=Faturar (A Faturar) | 60=Faturado | 70=Entrega/Entregue | 80=Cancelado.
 // Faturamento manda o pedido 50→60. "Entregue" (70) só é marcado pelo Acerto de Caixa.

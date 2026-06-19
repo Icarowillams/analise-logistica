@@ -245,11 +245,11 @@ export async function getOmieCredentials(base44: Base44Client): Promise<{ appKey
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
   if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret), at: Date.now() };
+    _credsCache = { appKey: String(ativo.app_key).trim(), appSecret: String(ativo.app_secret).trim(), at: Date.now() };
     return { appKey: _credsCache.appKey, appSecret: _credsCache.appSecret };
   }
-  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  const appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
   console.warn('[omieClient] Nenhuma ConfiguracaoOmie ativa — usando fallback dos Secrets.');
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };

@@ -8,9 +8,9 @@ async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  let appKey = String(cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '').trim();
+  let appSecret = String(cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (!appKey || !appSecret) { appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim(); appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim(); }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }
@@ -90,9 +90,9 @@ const PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
 async function getCredenciais(base44) {
   const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: configs[0].app_key, app_secret: configs[0].app_secret };
-  const key = Deno.env.get('OMIE_APP_KEY');
-  const secret = Deno.env.get('OMIE_APP_SECRET');
+  if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: String(configs[0].app_key).trim(), app_secret: String(configs[0].app_secret).trim() };
+  const key = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const secret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
   if (key && secret) return { app_key: key, app_secret: secret };
   throw new Error('Credenciais Omie não configuradas');
 }

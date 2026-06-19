@@ -13,10 +13,10 @@ async function getOmieCredentials(base44) {
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
   if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret), at: Date.now() };
+    _credsCache = { appKey: String(ativo.app_key).trim(), appSecret: String(ativo.app_secret).trim(), at: Date.now() };
     return _credsCache;
   }
-  _credsCache = { appKey: Deno.env.get('OMIE_APP_KEY') || '', appSecret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
+  _credsCache = { appKey: (Deno.env.get('OMIE_APP_KEY') || '').trim(), appSecret: (Deno.env.get('OMIE_APP_SECRET') || '').trim(), at: Date.now() };
   return _credsCache;
 }
 

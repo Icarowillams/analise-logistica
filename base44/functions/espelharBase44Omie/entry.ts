@@ -27,8 +27,8 @@ function erroEhRateLimit(resultado) {
 }
 
 async function chamarOmieComRetry(callName, param, maxRetries = 2) {
-    const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-    const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
+    const OMIE_APP_KEY = (Deno.env.get("OMIE_APP_KEY") || '').trim();
+    const OMIE_APP_SECRET = (Deno.env.get("OMIE_APP_SECRET") || '').trim();
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetch(OMIE_URL, {
             method: "POST",
@@ -149,8 +149,8 @@ Deno.serve(async (req) => {
         // LISTAR OMIE — Lista clientes do Omie paginado
         // =====================================================================
         if (etapa === 'listar_omie') {
-            const OMIE_APP_KEY2 = Deno.env.get("OMIE_APP_KEY");
-            const OMIE_APP_SECRET2 = Deno.env.get("OMIE_APP_SECRET");
+            const OMIE_APP_KEY2 = (Deno.env.get("OMIE_APP_KEY") || '').trim();
+            const OMIE_APP_SECRET2 = (Deno.env.get("OMIE_APP_SECRET") || '').trim();
             const response = await fetch(OMIE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

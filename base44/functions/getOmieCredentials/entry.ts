@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
       if (existentes && existentes.length > 0) {
         return Response.json({ sucesso: true, criado: false, mensagem: 'Já existe configuração no banco.' });
       }
-      const appKey = Deno.env.get('OMIE_APP_KEY');
-      const appSecret = Deno.env.get('OMIE_APP_SECRET');
+      const appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+      const appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
       if (!appKey || !appSecret) {
         return Response.json({ sucesso: false, erro: 'Secrets OMIE_APP_KEY/OMIE_APP_SECRET não configurados para seed.' });
       }
@@ -52,8 +52,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const appKey = Deno.env.get('OMIE_APP_KEY');
-    const appSecret = Deno.env.get('OMIE_APP_SECRET');
+    const appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+    const appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
     console.warn('[getOmieCredentials] Nenhuma ConfiguracaoOmie ativa no banco — usando fallback dos Secrets.');
     return Response.json({
       fonte: 'secrets_fallback',
