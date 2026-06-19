@@ -191,16 +191,23 @@ Deno.serve(async (req) => {
         }
         const itensOmieAtuais = pedidoOmieAtual.det || [];
         
-        // Criar um mapa de itens do Omie por codigo_produto_integracao (= produto_id no Base44)
-        // para podermos reusar o codigo_item_integracao existente
-        const omieItemsByProduto = {};
+        // Criar mapas de itens do Omie para reusar o codigo_item_integracao existente e
+        // EVITAR DUPLICAÇÃO. O Omie pode devolver a referência do produto de duas formas:
+        //   - produto.codigo_produto_integracao (string = produto_id Base44)  → nem sempre vem
+        //   - produto.codigo_produto (número = codigo_omie do produto)        → sempre vem
+        // Indexamos por AMBOS para garantir o casamento.
+        const omieItemsByProdutoInteg = {}; // chave: codigo_produto_integracao
+        const omieItemsByCodigoOmie = {};    // chave: String(codigo_produto)
         for (const itemOmie of itensOmieAtuais) {
-            const prodInteg = (itemOmie.produto || {}).codigo_produto_integracao;
+            const p = itemOmie.produto || {};
+            const itemIntegracao = (itemOmie.ide || {}).codigo_item_integracao;
+            if (!itemIntegracao) continue;
+            const prodInteg = p.codigo_produto_integracao;
             if (prodInteg) {
-                if (!omieItemsByProduto[prodInteg]) {
-                    omieItemsByProduto[prodInteg] = [];
-                }
-                omieItemsByProduto[prodInteg].push((itemOmie.ide || {}).codigo_item_integracao);
+                (omieItemsByProdutoInteg[prodInteg] ||= []).push(itemIntegracao);
+            }
+            if (p.codigo_produto != null) {
+                (omieItemsByCodigoOmie[String(p.codigo_produto)] ||= []).push(itemIntegracao);
             }
         }
         
@@ -292,11 +299,15 @@ Deno.serve(async (req) => {
             const unidade = prod.unidade_medida_id ? unidadesMap[prod.unidade_medida_id] : null;
             const unidadeStr = unidade?.nome || 'UN';
 
-            // Tentar reusar um codigo_item_integracao existente no Omie para este produto
+            // Tentar reusar um codigo_item_integracao existente no Omie para este produto.
+            // 1º tenta casar por codigo_produto_integracao (produto_id), depois por codigo_omie.
             let codigoItemIntegracao = item.id; // fallback: usar o ID do Base44 (item novo)
-            
-            const omieIdsForProduct = omieItemsByProduto[item.produto_id] || [];
-            for (const omieId of omieIdsForProduct) {
+
+            const candidatos = [
+                ...(omieItemsByProdutoInteg[item.produto_id] || []),
+                ...(prod.codigo_omie ? (omieItemsByCodigoOmie[String(prod.codigo_omie)] || []) : [])
+            ];
+            for (const omieId of candidatos) {
                 if (!usedOmieIds.has(omieId)) {
                     codigoItemIntegracao = omieId;
                     usedOmieIds.add(omieId);
@@ -313,15 +324,17 @@ Deno.serve(async (req) => {
                     peso_liquido: (prod.peso || 0) * item.quantidade
                 },
                 produto: {
-                    codigo_produto_integracao: item.produto_id,
-                    codigo: prod.codigo || '',
+                    ...(prod.codigo_omie
+                        ? { codigo_produto: Number(prod.codigo_omie) }
+                        : { codigo_produto_integracao: item.produto_id }),
                     descricao: item.produto_nome || prod.nome || '',
                     ncm: prod.ncm || '',
                     quantidade: item.quantidade,
                     valor_unitario: item.valor_unitario,
                     tipo_desconto: "V",
                     valor_desconto: 0,
-                    unidade: unidadeStr
+                    unidade: unidadeStr,
+                    ...(pedido.tipo === 'troca' ? { cfop: "5.949" } : {})
                 }
             });
         }
