@@ -97,6 +97,49 @@ function setMemoryCache(key, data) {
   memoryCache.set(key, { data, ts: Date.now() });
 }
 
+// Formata data DD/MM/YYYY (sem deslocamento de timezone)
+function formatDateOmie(dateStr) {
+    if (!dateStr) {
+        return new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
+    }
+    const s = String(dateStr).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        const [y, m, d] = s.split('T')[0].split('-');
+        return `${d}/${m}/${y}`;
+    }
+    return s;
+}
+
+function gerarParcelas(plano, valorTotal) {
+    const numParcelas = plano?.numero_parcelas || 1;
+    const diasPrimeira = plano?.dias_primeira_parcela || 30;
+    const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
+    const parcelas = [];
+    const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Recife' });
+    const [yy, mm, dd] = hojeStr.split('-').map(Number);
+    for (let i = 0; i < numParcelas; i++) {
+        const diasOffset = diasPrimeira + (i * 30);
+        const dataVenc = new Date(Date.UTC(yy, mm - 1, dd));
+        dataVenc.setUTCDate(dataVenc.getUTCDate() + diasOffset);
+        const d = String(dataVenc.getUTCDate()).padStart(2, '0');
+        const m = String(dataVenc.getUTCMonth() + 1).padStart(2, '0');
+        const y = dataVenc.getUTCFullYear();
+        let valor = valorParcela;
+        if (i === numParcelas - 1) {
+            const totalAnterior = parcelas.reduce((s, p) => s + p.valor, 0);
+            valor = Math.round((valorTotal - totalAnterior) * 100) / 100;
+        }
+        parcelas.push({
+            numero_parcela: i + 1,
+            data_vencimento: `${d}/${m}/${y}`,
+            percentual: Math.round((100 / numParcelas) * 100) / 100,
+            valor
+        });
+    }
+    return parcelas;
+}
+
 
 Deno.serve(async (req) => {
     try {
@@ -134,7 +177,7 @@ Deno.serve(async (req) => {
         // ====================================================================
         console.log(`[editarPedidoOmie] Consultando pedido ${pedido.omie_codigo_pedido} no Omie...`);
         
-        const consultaResult = await omieCall(base44, "ConsultarPedido", { codigo_pedido: Number(pedido.omie_codigo_pedido) });
+        const consultaResult = await omieCall(base44, "produtos/pedido/", { codigo_pedido: Number(pedido.omie_codigo_pedido) }, { call: 'ConsultarPedido', operation: 'ConsultarPedido', skipLog: true });
         
         if (consultaResult.faultstring) {
             console.error('[editarPedidoOmie] Erro ao consultar pedido no Omie:', consultaResult.faultstring);
@@ -142,7 +185,8 @@ Deno.serve(async (req) => {
         }
 
         const pedidoOmieAtual = consultaResult.pedido_venda_produto || consultaResult;
-        if (JSON.stringify(pedidoOmieAtual).toLowerCase().includes('cancelado') || JSON.stringify(pedidoOmieAtual).toLowerCase().includes('cancelada')) {
+        const infoCad = pedidoOmieAtual.infoCadastro || {};
+        if (infoCad.cancelado === 'S' || infoCad.denegado === 'S') {
             return Response.json({ sucesso: false, erro: 'Pedido cancelado: não é permitido editar ou ajustar.' });
         }
         const itensOmieAtuais = pedidoOmieAtual.det || [];
@@ -188,7 +232,7 @@ Deno.serve(async (req) => {
         let codigoClienteIntegracao = pedido.cliente_codigo || pedido.cliente_id;
 
         const tentarConsultarCliente = async (codIntegracao) => {
-            return await omieCall(base44, "ConsultarCliente", { codigo_cliente_integracao: codIntegracao });
+            return await omieCall(base44, "geral/clientes/", { codigo_cliente_integracao: codIntegracao }, { call: 'ConsultarCliente', operation: 'ConsultarCliente', skipLog: true });
         };
 
         const isErroBloqueio = (fault) => {
@@ -221,7 +265,7 @@ Deno.serve(async (req) => {
             const cpfCnpj = (pedido.cliente_cpf_cnpj || '').replace(/[^\d]/g, '');
             if (cpfCnpj) {
                 try {
-                    const dataCpf = await omieCall(base44, "ListarClientes", { pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: cpfCnpj } });
+                    const dataCpf = await omieCall(base44, "geral/clientes/", { pagina: 1, registros_por_pagina: 5, clientesFiltro: { cnpj_cpf: cpfCnpj } }, { call: 'ListarClientes', operation: 'ListarClientes', skipLog: true });
                     if (!dataCpf.faultstring && dataCpf.clientes_cadastro?.length > 0) {
                         codigoClienteIntegracao = dataCpf.clientes_cadastro[0].codigo_cliente_integracao;
                         clienteEncontradoOmie = true;
@@ -329,7 +373,7 @@ Deno.serve(async (req) => {
         // Buscar conta corrente
         let codigoContaCorrente = null;
         try {
-            const ccData = await omieCall(base44, "ListarContasCorrentes", { pagina: 1, registros_por_pagina: 50 });
+            const ccData = await omieCall(base44, "geral/contacorrente/", { pagina: 1, registros_por_pagina: 50 }, { call: 'ListarContasCorrentes', operation: 'ListarContasCorrentes', skipLog: true });
             if (ccData.ListarContasCorrentes?.length > 0) {
                 const contaPadrao = ccData.ListarContasCorrentes.find(c => c.cPadrao === "S") || ccData.ListarContasCorrentes[0];
                 codigoContaCorrente = contaPadrao.nCodCC;
@@ -348,7 +392,7 @@ Deno.serve(async (req) => {
 
         console.log('[editarPedidoOmie] Alterando pedido Omie:', pedido.omie_codigo_pedido, '- Cliente:', pedido.cliente_nome);
 
-        const resultado = await omieCall(base44, "AlterarPedidoVenda", pedidoOmie);
+        const resultado = await omieCall(base44, "produtos/pedido/", pedidoOmie, { call: 'AlterarPedidoVenda', operation: 'AlterarPedidoVenda', entityType: 'Pedido', entityId: pedido_id });
         console.log('[editarPedidoOmie] Resposta Omie:', JSON.stringify(resultado).substring(0, 1000));
 
         if (resultado.faultstring) {
