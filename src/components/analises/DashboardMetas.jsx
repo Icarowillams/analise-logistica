@@ -89,42 +89,60 @@ export default function DashboardMetas() {
     queryFn: () => base44.entities.Cliente.list('-created_date', 20000)
   });
 
-  // Enriquecer cada meta com o valor realizado calculado dinamicamente
+  // Quais vendedor_ids pertencem à carteira de cada meta — seguindo a cascata da documentação.
+  // Vendedor: o próprio. Supervisor: todos os vendedores cuja meta-filha aponta para ele.
+  // Gerente/raiz: todos os vendedores na sub-árvore (vendedores -> supervisores -> este gerente).
+  const carteiraPorMeta = useMemo(() => {
+    const map = {};
+    const metasVendedor = metas.filter(m => m.nivel === 'vendedor' && m.vendedor_id);
+    metas.forEach(meta => {
+      if (meta.nivel === 'vendedor') {
+        map[meta.id] = meta.vendedor_id ? [meta.vendedor_id] : [];
+      } else if (meta.nivel === 'supervisor') {
+        map[meta.id] = metasVendedor.filter(v => v.meta_pai_id === meta.id).map(v => v.vendedor_id);
+      } else {
+        // gerente/raiz: vendedores cujos supervisores (meta_pai dos vendedores) são filhos desta raiz
+        const supIds = metas.filter(s => s.nivel === 'supervisor' && s.meta_pai_id === meta.id).map(s => s.id);
+        map[meta.id] = metasVendedor.filter(v => supIds.includes(v.meta_pai_id)).map(v => v.vendedor_id);
+      }
+    });
+    return map;
+  }, [metas]);
+
+  // Enriquecer cada meta com realizado/pacotes/PM calculados pela carteira da cascata (sem duplicar faturamento).
   const metasEnriquecidas = useMemo(() => metas.map(meta => {
     let realizado = meta.valor_realizado || 0;
-    // Calcular realizado em tempo real baseado no período e tipo
+    let pacotes = 0;
+    let pm = 0;
     if (meta.periodo_inicio && meta.periodo_fim) {
       const ini = meta.periodo_inicio;
       const fim = meta.periodo_fim;
-      const pedVend = pedidos.filter(p =>
-        (!meta.vendedor_id || p.vendedor_id === meta.vendedor_id) &&
-        (p.data_faturamento || '').slice(0, 10) >= ini &&
-        (p.data_faturamento || '').slice(0, 10) <= fim
-      );
-      const visVend = visitas.filter(v =>
-        (!meta.vendedor_id || v.vendedor_id === meta.vendedor_id) &&
-        (v.data_visita || '').slice(0, 10) >= ini &&
-        (v.data_visita || '').slice(0, 10) <= fim
-      );
-      const cliVend = clientes.filter(c =>
-        (!meta.vendedor_id || c.vendedor_id === meta.vendedor_id) &&
-        (c.created_date || '').slice(0, 10) >= ini &&
-        (c.created_date || '').slice(0, 10) <= fim
-      );
+      const carteira = carteiraPorMeta[meta.id] || [];
+      const noPeriodo = (data) => {
+        const d = (data || '').slice(0, 10);
+        return d >= ini && d <= fim;
+      };
+      // Pedidos da carteira desta meta (vendedor / supervisor / gerente). Nunca "todos da empresa".
+      const pedVend = pedidos.filter(p => carteira.includes(p.vendedor_id) && noPeriodo(p.data_faturamento));
+      const visVend = visitas.filter(v => carteira.includes(v.vendedor_id) && noPeriodo(v.data_visita));
+      const cliVend = clientes.filter(c => carteira.includes(c.vendedor_id) && noPeriodo(c.created_date));
 
-      if (meta.tipo === 'vendas') realizado = pedVend.reduce((a, p) => a + (p.valor_total || 0), 0);
+      const totalRs = pedVend.reduce((a, p) => a + (p.valor_total || 0), 0);
+      pacotes = pedVend.reduce((a, p) => a + (p.qtd_total_itens || 0), 0);
+      pm = pacotes > 0 ? totalRs / pacotes : 0;
+
+      if (meta.tipo === 'vendas') realizado = totalRs;
       else if (meta.tipo === 'visitas') realizado = visVend.filter(v => v.status === 'visitado').length;
       else if (meta.tipo === 'clientes_novos') realizado = cliVend.length;
       else if (meta.tipo === 'ticket_medio') {
-        realizado = pedVend.length > 0 ? pedVend.reduce((a, p) => a + (p.valor_total || 0), 0) / pedVend.length : 0;
+        realizado = pedVend.length > 0 ? totalRs / pedVend.length : 0;
       } else if (meta.tipo === 'trocas_max') {
-        // para trocas_max, quanto menor melhor — inverter a lógica
         realizado = meta.valor_realizado || 0;
       }
     }
     const perc = meta.valor_meta > 0 ? Math.round((realizado / meta.valor_meta) * 100) : 0;
-    return { ...meta, realizado_calc: realizado, perc_calc: perc };
-  }), [metas, pedidos, visitas, clientes]);
+    return { ...meta, realizado_calc: realizado, pacotes_calc: pacotes, pm_calc: pm, perc_calc: perc };
+  }), [metas, pedidos, visitas, clientes, carteiraPorMeta]);
 
   // Filtrar
   const metasFiltradas = useMemo(() => metasEnriquecidas.filter(m => {
@@ -146,16 +164,21 @@ export default function DashboardMetas() {
     const abaixo50 = metasFiltradas.filter(m => m.status === 'ativa' && m.perc_calc < 50).length;
     const mediaPerc = metasFiltradas.length > 0
       ? Math.round(metasFiltradas.reduce((a, m) => a + m.perc_calc, 0) / metasFiltradas.length) : 0;
-    // Total faturado nas metas de venda ativas
-    const totalMetaVendas = metasFiltradas.filter(m => m.tipo === 'vendas').reduce((a, m) => a + (m.valor_meta || 0), 0);
-    const totalRealizadoVendas = metasFiltradas.filter(m => m.tipo === 'vendas').reduce((a, m) => a + m.realizado_calc, 0);
-    return { total: metasFiltradas.length, ativas, concluidas, abaixo50, mediaPerc, totalMetaVendas, totalRealizadoVendas };
+    // Total faturado nas metas de venda — SÓ nível vendedor (folhas) p/ não duplicar o faturamento da cascata
+    const metasVendaFolha = metasFiltradas.filter(m => m.tipo === 'vendas' && m.nivel === 'vendedor');
+    const totalMetaVendas = metasVendaFolha.reduce((a, m) => a + (m.valor_meta || 0), 0);
+    const totalRealizadoVendas = metasVendaFolha.reduce((a, m) => a + m.realizado_calc, 0);
+    const totalPacotes = metasVendaFolha.reduce((a, m) => a + (m.pacotes_calc || 0), 0);
+    const pmGeral = totalPacotes > 0 ? totalRealizadoVendas / totalPacotes : 0;
+    return { total: metasFiltradas.length, ativas, concluidas, abaixo50, mediaPerc, totalMetaVendas, totalRealizadoVendas, totalPacotes, pmGeral };
   }, [metasFiltradas]);
+
+  const PM_BENCHMARK = 5.17;
 
   // Ranking de vendedores por % de atingimento (metas de vendas)
   const rankingVendedores = useMemo(() => {
     const v = {};
-    metasFiltradas.filter(m => m.tipo === 'vendas' && m.vendedor_id).forEach(m => {
+    metasFiltradas.filter(m => m.tipo === 'vendas' && m.nivel === 'vendedor' && m.vendedor_id).forEach(m => {
       if (!v[m.vendedor_id]) v[m.vendedor_id] = { nome: m.vendedor_nome || '-', metas: 0, percTotal: 0, realizado: 0, meta: 0 };
       v[m.vendedor_id].metas++;
       v[m.vendedor_id].percTotal += m.perc_calc;
@@ -238,14 +261,15 @@ export default function DashboardMetas() {
       </Card>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <KpiCard titulo="Total metas" valor={formatarNumero(kpis.total)} icon={Target} cor="slate" />
-        <KpiCard titulo="Ativas" valor={formatarNumero(kpis.ativas)} icon={Activity} cor="cyan" />
         <KpiCard titulo="Concluídas" valor={formatarNumero(kpis.concluidas)} icon={CheckCircle2} cor="emerald" />
         <KpiCard titulo="Abaixo 50%" valor={formatarNumero(kpis.abaixo50)} icon={XCircle} cor="red" />
         <KpiCard titulo="Média atingimento" valor={`${kpis.mediaPerc}%`} icon={TrendingUp} cor="amber" />
         <KpiCard titulo="Meta vendas" valor={formatarMoeda(kpis.totalMetaVendas)} icon={DollarSign} cor="indigo" />
         <KpiCard titulo="Realizado" valor={formatarMoeda(kpis.totalRealizadoVendas)} sub={`${kpis.totalMetaVendas > 0 ? Math.round((kpis.totalRealizadoVendas/kpis.totalMetaVendas)*100) : 0}% da meta`} icon={Award} cor="emerald" />
+        <KpiCard titulo="Pacotes" valor={formatarNumero(kpis.totalPacotes)} sub="realizados" icon={Activity} cor="cyan" />
+        <KpiCard titulo="PM atual" valor={formatarMoeda(kpis.pmGeral)} sub={`benchmark ${formatarMoeda(PM_BENCHMARK)}`} icon={TrendingUp} cor={kpis.pmGeral >= PM_BENCHMARK ? 'emerald' : 'red'} />
       </div>
 
       {/* Ranking vendedores + Distribuição por tipo */}
