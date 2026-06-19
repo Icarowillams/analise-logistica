@@ -275,7 +275,25 @@ export default function useDadosMontagem() {
         tipo_operacao: p.cenario_local_tipo || 'venda'
       }));
 
-      const todasVendas = [...vendasEnriquecidas, ...vendasLocais];
+      // ─── DEDUPLICAÇÃO (exibição) ───
+      // O mesmo pedido pode chegar pelo espelho Omie (codigo_pedido "limpo", ex: 1999)
+      // E como NF55 local (codigo_pedido = String(omie_codigo_pedido), que pode vir com
+      // padding, ex: 000000000001999). Mesmo omie_codigo_pedido = MESMO pedido.
+      // Chave = codigo_pedido sem zeros à esquerda; fallback = numero_pedido normalizado + cliente.
+      // Preferimos SEMPRE o registro do espelho Omie (tem a quantidade/itens corretos).
+      const chaveVenda = (p) => {
+        const cod = String(p.codigo_pedido || '').replace(/^0+/, '');
+        if (cod) return `cod:${cod}`;
+        const num = String(p.numero_pedido || '').replace(/^0+/, '');
+        return `num:${num}|cli:${p.cliente_id || ''}`;
+      };
+      const dedupVendasMap = new Map();
+      // Espelho Omie primeiro → fica como base; locais só entram se a chave ainda não existe.
+      [...vendasEnriquecidas, ...vendasLocais].forEach(p => {
+        const k = chaveVenda(p);
+        if (!dedupVendasMap.has(k)) dedupVendasMap.set(k, p);
+      });
+      const todasVendas = Array.from(dedupVendasMap.values());
 
       // D1 disponíveis (sem itens ainda)
       const d1Todos = (todosPedidosLocais || []).filter(p =>
@@ -393,7 +411,13 @@ export default function useDadosMontagem() {
           };
         });
 
-        const todasVendasComItens = [...vendasOmieEnriquecidas, ...(temNf55Local ? vendasLocaisComItens : vendasLocais)];
+        // Mesma deduplicação da Fase 1 (espelho Omie tem prioridade sobre o NF55 local)
+        const dedupVendasItensMap = new Map();
+        [...vendasOmieEnriquecidas, ...(temNf55Local ? vendasLocaisComItens : vendasLocais)].forEach(p => {
+          const k = chaveVenda(p);
+          if (!dedupVendasItensMap.has(k)) dedupVendasItensMap.set(k, p);
+        });
+        const todasVendasComItens = Array.from(dedupVendasItensMap.values());
 
         // Montar D1 completos com itens
         const d1Completos = d1SemItens.map(p => {
