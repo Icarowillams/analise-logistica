@@ -1,66 +1,50 @@
-import React, { useState } from 'react';
-import { Receipt, Printer, Layers } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import FiltrosBoletos from '@/components/boletos/FiltrosBoletos';
-import TabelaBoletos from '@/components/boletos/TabelaBoletos';
-import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
-
-import { toast } from 'sonner';
+import React, { useEffect, useState } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Receipt, FileSignature, Printer } from 'lucide-react';
+import EmissaoBoletosConteudo from '@/components/boletos/EmissaoBoletosConteudo';
+import BoletosConsultaTab from '@/components/boletos/BoletosConsultaTab';
 
 export default function BoletosOmie() {
-  const [titulos, setTitulos] = useState([]);
-  const [selecionados, setSelecionados] = useState([]);
-  const [imprimirOpen, setImprimirOpen] = useState(false);
-  const [modoImpressao, setModoImpressao] = useState('individual');
+  // Abas:
+  // - emissao    → seleciona carga, escolhe títulos e gera boletos no Omie (+ gerar faltantes por prazo)
+  // - impressao  → consulta e impressão de boletos (2ª via): individual ou agrupado
+  const [tab, setTab] = useState('emissao');
 
-  const titulosSelecionados = titulos.filter(t => selecionados.includes(t.codigo_lancamento));
-  // Não pré-filtra por cache (boleto_gerado/numero_boleto pode estar defasado logo após emitir).
-  // baixarPdfBoletoOmie consulta o Omie em tempo real e reporta se algum realmente não tiver boleto.
-  const titulosComBoleto = titulosSelecionados;
-
-  const abrirImpressao = (modo) => {
-    if (titulosSelecionados.length === 0) {
-      toast.error('Selecione ao menos um título');
-      return;
-    }
-    setModoImpressao(modo);
-    setImprimirOpen(true);
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'impressao' || tabParam === 'consulta') setTab('impressao');
+    else if (tabParam === 'emissao') setTab('emissao');
+  }, []);
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Receipt className="w-8 h-8 text-amber-500" />
-          <div>
-            <h1 className="text-2xl font-bold">Boletos Omie</h1>
-            <p className="text-sm text-slate-500">Consulta e impressão de boletos (2ª via)</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => abrirImpressao('individual')} disabled={titulosSelecionados.length === 0}>
-            <Printer className="w-4 h-4 mr-2" />
-            Imprimir
-          </Button>
-          <Button variant="outline" className="bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100" onClick={() => abrirImpressao('agrupado')} disabled={titulosSelecionados.length === 0}>
-            <Layers className="w-4 h-4 mr-2" />
-            Imprimir Agrupado
-          </Button>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Receipt className="w-8 h-8 text-amber-500" />
+        <div>
+          <h1 className="text-2xl font-bold">Boletos Omie</h1>
+          <p className="text-sm text-slate-500">Emissão de boletos por carga e consulta/impressão (2ª via)</p>
         </div>
       </div>
 
-      <BoletosImpressaoDialog
-        open={imprimirOpen}
-        onOpenChange={setImprimirOpen}
-        titulos={titulosComBoleto}
-        modo={modoImpressao}
-      />
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="emissao" className="flex items-center gap-2">
+            <FileSignature className="w-4 h-4" /> Emissão
+          </TabsTrigger>
+          <TabsTrigger value="impressao" className="flex items-center gap-2">
+            <Printer className="w-4 h-4" /> Consulta / Impressão
+          </TabsTrigger>
+        </TabsList>
 
-      <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); }} />
+        <TabsContent value="emissao" className="mt-4">
+          <EmissaoBoletosConteudo ativa={tab === 'emissao'} />
+        </TabsContent>
 
-      {titulos.length > 0 && (
-        <TabelaBoletos titulos={titulos} selecionados={selecionados} setSelecionados={setSelecionados} />
-      )}
+        <TabsContent value="impressao" className="mt-4">
+          <BoletosConsultaTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

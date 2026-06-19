@@ -1,0 +1,56 @@
+import React, { useState } from 'react';
+import { Printer, Layers } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import FiltrosBoletos from '@/components/boletos/FiltrosBoletos';
+import TabelaBoletos from '@/components/boletos/TabelaBoletos';
+import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
+import { toast } from 'sonner';
+
+export default function BoletosConsultaTab() {
+  const [titulos, setTitulos] = useState([]);
+  const [selecionados, setSelecionados] = useState([]);
+  const [imprimirOpen, setImprimirOpen] = useState(false);
+  const [modoImpressao, setModoImpressao] = useState('individual');
+
+  const titulosSelecionados = titulos.filter(t => selecionados.includes(t.codigo_lancamento));
+  // Não pré-filtra por cache (boleto_gerado/numero_boleto pode estar defasado logo após emitir).
+  // baixarPdfBoletoOmie consulta o Omie em tempo real e reporta se algum realmente não tiver boleto.
+  const titulosComBoleto = titulosSelecionados;
+
+  const abrirImpressao = (modo) => {
+    if (titulosSelecionados.length === 0) {
+      toast.error('Selecione ao menos um título');
+      return;
+    }
+    setModoImpressao(modo);
+    setImprimirOpen(true);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" onClick={() => abrirImpressao('individual')} disabled={titulosSelecionados.length === 0}>
+          <Printer className="w-4 h-4 mr-2" />
+          Imprimir
+        </Button>
+        <Button variant="outline" className="bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100" onClick={() => abrirImpressao('agrupado')} disabled={titulosSelecionados.length === 0}>
+          <Layers className="w-4 h-4 mr-2" />
+          Imprimir Agrupado
+        </Button>
+      </div>
+
+      <BoletosImpressaoDialog
+        open={imprimirOpen}
+        onOpenChange={setImprimirOpen}
+        titulos={titulosComBoleto}
+        modo={modoImpressao}
+      />
+
+      <FiltrosBoletos onResultado={(t) => { setTitulos(t); setSelecionados([]); }} />
+
+      {titulos.length > 0 && (
+        <TabelaBoletos titulos={titulos} selecionados={selecionados} setSelecionados={setSelecionados} />
+      )}
+    </div>
+  );
+}

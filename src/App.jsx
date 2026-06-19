@@ -5,7 +5,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import EnviarRotasOmie from './pages/EnviarRotasOmie';
 import ControlePedidosVenda from './pages/ControlePedidosVenda';
@@ -37,7 +37,6 @@ import AcertoCaixaPage from './pages/AcertoCaixa.jsx';
 import AcertoCaixaEditar from './pages/AcertoCaixaEditar.jsx';
 import AcertoResumoPDF from './pages/AcertoResumoPDF.jsx';
 import LogGerencial from './pages/LogGerencial.jsx';
-import EmissaoBoletos from './pages/EmissaoBoletos.jsx';
 import ConfiguracaoOmie from './pages/ConfiguracaoOmie.jsx';
 import CommitsGithub from './pages/CommitsGithub.jsx';
 import CorrecaoManual from './pages/CorrecaoManual.jsx';
@@ -153,7 +152,7 @@ const AuthenticatedApp = () => {
       <Route path="/AcertoCaixaEditar" element={<LayoutWrapper currentPageName="AcertoCaixa"><AcertoCaixaEditar /></LayoutWrapper>} />
       <Route path="/AcertoResumoPDF" element={<AcertoResumoPDF />} />
       <Route path="/LogGerencial" element={<LayoutWrapper currentPageName="LogGerencial"><LogGerencial /></LayoutWrapper>} />
-      <Route path="/EmissaoBoletos" element={<LayoutWrapper currentPageName="EmissaoBoletos"><EmissaoBoletos /></LayoutWrapper>} />
+      <Route path="/EmissaoBoletos" element={<Navigate to="/BoletosOmie?tab=emissao" replace />} />
       <Route path="/ConfiguracaoOmie" element={<LayoutWrapper currentPageName="ConfiguracaoOmie"><ConfiguracaoOmie /></LayoutWrapper>} />
       <Route path="/CommitsGithub" element={<LayoutWrapper currentPageName="CommitsGithub"><CommitsGithub /></LayoutWrapper>} />
       <Route path="/correcao-manual" element={<LayoutWrapper currentPageName="CorrecaoManual"><CorrecaoManual /></LayoutWrapper>} />
