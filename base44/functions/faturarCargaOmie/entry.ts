@@ -16,7 +16,8 @@ async function checarBloqueioOmie(base44) {
   }
 }
 
-// Fatura uma carga: muda etapa de cada pedido da etapa atual → etapa destino (default 60 = faturar)
+// Fatura uma carga: marca pedidos como faturados localmente (etapa Omie 50 = "Faturar").
+// A etapa 60 ("Faturado") só é atingida ao emitir a NF — passo separado, nunca por troca de etapa.
 // bloqueia tipo_nota='D1' (venda interna sem NF)
 Deno.serve(async (req) => {
   try {
@@ -28,7 +29,7 @@ Deno.serve(async (req) => {
     await checarBloqueioOmie(base44);
 
     const body = await req.json().catch(() => ({}));
-    const { carga_id, etapa_destino = '60' } = body;
+    const { carga_id, etapa_destino = '50' } = body;
     if (!carga_id) return Response.json({ error: 'carga_id obrigatório' }, { status: 400 });
 
     let carga;

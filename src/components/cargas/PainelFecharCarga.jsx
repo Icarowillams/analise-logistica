@@ -233,8 +233,9 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
             numero_pedido: v.numero_pedido || '',
             data_previsao: dataSaida,
             operacao: 'faturar',
-            // ETAPA_FATURADO = 60 ("Faturado"). "Entregue" (50) só é marcado no Acerto de Caixa.
-            etapa_destino: '60',
+            // ETAPA 50 = "Faturar". A NF (passo separado) é que leva 50→60.
+            // NUNCA enfileirar destino 60 — o Omie recusa TrocarEtapaPedido para 60.
+            etapa_destino: '50',
             status: 'pendente',
             tentativas: 0
           }));

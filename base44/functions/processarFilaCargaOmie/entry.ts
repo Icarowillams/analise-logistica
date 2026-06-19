@@ -85,6 +85,14 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           redErr.segundosEspera = extrairSegundosRedundante(data.faultstring);
           throw redErr;
         }
+        // DESTINO DE ETAPA INVÁLIDO (codigo_status "3"): regra de negócio do Omie, NÃO é
+        // rate limit. Ex: "Não é possível trocar a etapa desse pedido para [60]. Utilize o
+        // processo de faturamento". NUNCA fazer retry — propaga como erro definitivo.
+        if (String(data.faultcode || '') === '3' || msg.includes('utilize o processo de faturamento') || (msg.includes('não é possível trocar a etapa') || msg.includes('nao e possivel trocar a etapa'))) {
+          const destErr = new Error(data.faultstring);
+          destErr.destinoInvalido = true;
+          throw destErr;
+        }
         // Outros rate limits temporários (aguarde, cota, limite, timeout) — retry rápido
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
@@ -97,6 +105,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
     } catch (e: any) {
       // Redundante propaga imediatamente (sem retry rápido) — o worker re-agenda a janela de 60s.
       if (e.redundante) throw e;
+      // Destino de etapa inválido (regra Omie) — propaga sem retry, é erro definitivo.
+      if (e.destinoInvalido) throw e;
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
@@ -126,8 +136,11 @@ async function jaEstaNaEtapa(base44, item) {
     else return false;
     const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
     const etapa = String(resp?.pedido_venda_produto?.cabecalho?.etapa || resp?.cabecalho?.etapa || '');
-    const destino = String(item.etapa_destino || '60');
-    return etapa && Number(etapa) >= Number(destino);
+    // Destino efetivo: na operação 'faturar' o teto é SEMPRE 50 (a etapa 60 só vem da NF).
+    // Considera concluído quando o pedido já está em etapa >= 50.
+    let destino = Number(item.etapa_destino || '50');
+    if (destino >= 60) destino = 50;
+    return etapa && Number(etapa) >= destino;
   } catch (e) {
     if (e.bloqueio) throw e; // propaga bloqueio
     return false; // qualquer outro erro de consulta: segue para processar normalmente
@@ -155,7 +168,11 @@ async function processarFaturar(base44, item) {
   if (item.codigo_pedido_omie) idParam.codigo_pedido = Number(item.codigo_pedido_omie);
   if (item.codigo_pedido_integracao) idParam.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
 
-  const destino = Number(item.etapa_destino || 60);
+  // BLINDAGEM: a operação 'faturar' NUNCA leva direto à etapa 60 — o Omie recusa
+  // TrocarEtapaPedido para 60 (etapa 60 só se atinge emitindo NF, passo separado).
+  // Se vier etapa_destino 60 (legado), faz clamp para 50.
+  let destino = Number(item.etapa_destino || 50);
+  if (destino >= 60) destino = 50;
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
@@ -347,9 +364,10 @@ Deno.serve(async (req) => {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
               { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
             ).catch(() => []);
-            if (espelhos?.[0] && String(espelhos[0].etapa) !== String(item.etapa_destino || '60')) {
+            const etapaEfetiva = Number(item.etapa_destino || 50) >= 60 ? '50' : String(item.etapa_destino || '50');
+            if (espelhos?.[0] && String(espelhos[0].etapa) !== etapaEfetiva) {
               await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                etapa: String(item.etapa_destino || '60'),
+                etapa: etapaEfetiva,
                 sincronizado_em: new Date().toISOString()
               }).catch(() => {});
             }
@@ -370,8 +388,9 @@ Deno.serve(async (req) => {
                 { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
               ).then(espelhos => {
                 if (espelhos?.[0]) {
+                  const etapaEfetiva = Number(item.etapa_destino || 50) >= 60 ? '50' : String(item.etapa_destino || '50');
                   return base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
-                    etapa: String(item.etapa_destino || '60'),
+                    etapa: etapaEfetiva,
                     data_previsao: item.data_previsao || espelhos[0].data_previsao,
                     sincronizado_em: new Date().toISOString()
                   });
@@ -406,6 +425,19 @@ Deno.serve(async (req) => {
             }).catch(() => {});
           }
           // Não interrompe o lote: segue para os próximos itens (de outros pedidos).
+          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
+          continue;
+        }
+
+        // DESTINO DE ETAPA INVÁLIDO (regra Omie, codigo_status "3"): NÃO é rate limit.
+        // Marca como erro definitivo SEM retry — reprocessar só pioraria. Com a correção do
+        // destino para 50, novos itens não caem mais aqui.
+        if (e.destinoInvalido || /utilize o processo de faturamento/i.test(e.message)) {
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+            status: 'erro',
+            tentativas: Number(item.tentativas || 0) + 1,
+            erro_log: `Destino de etapa inválido (regra Omie): ${String(e.message).slice(0, 800)}`
+          }).catch(() => {});
           if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
           continue;
         }
