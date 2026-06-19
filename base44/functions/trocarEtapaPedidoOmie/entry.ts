@@ -196,13 +196,37 @@ Deno.serve(async (req) => {
         return true;
       });
       const resultados = [];
+      let bloqueio425 = false;
       for (let i = 0; i < pedidosUnicos.length; i++) {
-        resultados.push(await trocarUmPedido(base44, pedidosUnicos[i], body.etapa_destino));
-        // Intervalo entre pedidos para reduzir REDUNDANT (não após o último)
-        if (i < pedidosUnicos.length - 1) await new Promise(r => setTimeout(r, 1800));
+        try {
+          resultados.push(await trocarUmPedido(base44, pedidosUnicos[i], body.etapa_destino));
+        } catch (e) {
+          // 425 / circuit breaker aberto: PARAR o laço imediatamente — não martelar o Omie
+          // durante a janela de penalidade. Os restantes ficam como "aguardando".
+          if (e.code === 'OMIE_425') {
+            bloqueio425 = true;
+            for (let j = i; j < pedidosUnicos.length; j++) {
+              const p = pedidosUnicos[j];
+              resultados.push({
+                codigo_pedido: p.codigo_pedido,
+                codigo_pedido_integracao: p.codigo_pedido_integracao,
+                numero_pedido: p.numero_pedido,
+                etapa: String(p.etapa || body.etapa_destino || ''),
+                sucesso: false,
+                aguardando: true,
+                mensagem: 'API Omie bloqueada (425) — aguardando próxima janela'
+              });
+            }
+            break;
+          }
+          throw e;
+        }
+        // Intervalo ENTRE pedidos para reduzir REDUNDANT (não após o último)
+        if (i < pedidosUnicos.length - 1) await new Promise(r => setTimeout(r, 1500));
       }
       const sucessos = resultados.filter(r => r.sucesso).length;
       const ignorados = resultados.filter(r => r.sucesso && r.ignorado).length;
+      const aguardando = resultados.filter(r => r.aguardando).length;
       const erros = resultados.filter(r => !r.sucesso).length;
       const errosDetalhe = resultados
         .filter(r => !r.sucesso)
@@ -218,7 +242,7 @@ Deno.serve(async (req) => {
         payload_resposta: JSON.stringify(resultados).substring(0, 2000),
         usuario_email: user.email
       }).catch(() => {});
-      return Response.json({ sucesso: true, total: pedidos.length, sucessos, ignorados, erros, resultados });
+      return Response.json({ sucesso: true, total: pedidos.length, sucessos, ignorados, aguardando, erros, omie_bloqueada: bloqueio425, resultados });
     }
 
     const resultado = await trocarUmPedido(base44, body, body.etapa);
