@@ -99,6 +99,24 @@ Deno.serve(async (req) => {
 
       await base44.asServiceRole.entities.FilaBoletoOmie.update(item.id, { status: 'processando' }).catch(() => {});
 
+      // 🛡️ IDEMPOTÊNCIA LOCAL: se o espelho local já indica boleto gerado para este pedido,
+      // NÃO chama o Omie (evita ListarContasReceber + GerarBoleto redundantes — maior ofensor do rate limit).
+      try {
+        const logsBoleto = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+          { codigo_pedido: String(item.codigo_pedido) }, '-created_date', 5
+        ).catch(() => []);
+        if (logsBoleto.some(l => l.boleto_gerado === true)) {
+          await base44.asServiceRole.entities.FilaBoletoOmie.update(item.id, {
+            status: 'concluido',
+            tentativas: Number(item.tentativas || 0) + 1,
+            resultado: 'Boleto já gerado (idempotência local) — não chamou Omie',
+            processado_em: new Date().toISOString()
+          }).catch(() => {});
+          processados++;
+          continue;
+        }
+      } catch { /* segue para geração normal se a checagem falhar */ }
+
       try {
         const res = await base44.asServiceRole.functions.invoke('gerarBoletosOmie', {
           origem: 'auto',
@@ -125,6 +143,20 @@ Deno.serve(async (req) => {
             resultado: `${sucessos} gerado(s), ${skips} ignorado(s), ${errosBoleto} erro(s)`,
             processado_em: new Date().toISOString()
           }).catch(() => {});
+          // Marca o espelho local como boleto_gerado quando houve sucesso OU já existia (skip por "já gerado") —
+          // garante que próximas rodadas/lotes não reprocessem o mesmo pedido (idempotência local).
+          if (sucessos > 0 || skips > 0) {
+            try {
+              const logsMarcar = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+                { codigo_pedido: String(item.codigo_pedido) }, '-created_date', 5
+              ).catch(() => []);
+              for (const l of logsMarcar) {
+                if (l.boleto_gerado !== true) {
+                  await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { boleto_gerado: true }).catch(() => {});
+                }
+              }
+            } catch { /* best-effort */ }
+          }
           processados++;
         }
       } catch (e) {

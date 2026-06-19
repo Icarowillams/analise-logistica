@@ -112,14 +112,16 @@ async function listarTitulosDoCliente(base44, codigoClienteOmie) {
   const codCli = Number(codigoClienteOmie);
   if (!codCli) return [];
   let acumulados = [];
-  for (let pag = 1; pag <= 10; pag++) {
+  // Teto de 3 páginas (antes 10): o casamento é por nCodPedido e títulos muito antigos não interessam.
+  // Menos páginas = menos chamadas ListarContasReceber por pedido (maior ofensor do rate limit).
+  for (let pag = 1; pag <= 3; pag++) {
     const data = await omieCall(base44, 'financas/contareceber/', {
       pagina: pag, registros_por_pagina: 100, apenas_importado_api: 'N',
       codigo_cliente_fornecedor: codCli
     }, { call: 'ListarContasReceber' });
     acumulados.push(...(data?.conta_receber_cadastro || []));
     if (pag >= (data?.total_de_paginas || 1)) break;
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 1500));
   }
   return acumulados;
 }

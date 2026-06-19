@@ -89,7 +89,7 @@ const OMIE_URL_BOLETO = 'https://app.omie.com.br/api/v1/financas/contareceberbol
 const OMIE_URL_CR = 'https://app.omie.com.br/api/v1/financas/contareceber/';
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 // GerarBoleto Omie só aceita 1 requisição simultânea (erro 8020 se paralelo)
-const DELAY_ENTRE_BOLETOS_MS = 1200; // delay entre cada boleto (sequencial)
+const DELAY_ENTRE_BOLETOS_MS = 1800; // delay entre cada boleto (sequencial) — espaçamento anti-flood Omie
 const DELAY_ENTRE_CR_MS = 800; // delay entre chamadas ListarContasReceber por pedido
 
 // Detecta erros de concorrência/redundância do Omie (8020 / CÓDIGO 6)

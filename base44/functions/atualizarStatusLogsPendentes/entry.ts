@@ -430,9 +430,9 @@ Deno.serve(async (req) => {
     // Debounce aumentado de 5min→15min para reduzir carga na API Omie
     const ultimosProcessamentos = await base44.asServiceRole.entities.LogIntegracaoOmie.filter({ operacao: 'atualizar_log_pendente' }, '-created_date', 1).catch(() => []);
     const ultimo = ultimosProcessamentos?.[0];
-    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 5 * 60 * 1000) {
+    if (!Array.isArray(codigos_pedido) && ultimo && Date.now() - new Date(ultimo.created_date || ultimo.updated_date || 0).getTime() < 15 * 60 * 1000) {
       await liberarLock();
-      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_5min' });
+      return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: logs.length, resultados: [], otimizado: true, motivo: 'debounce_15min' });
     }
 
     // 🐛 FIX 5: Deduplicar logs por codigo_pedido ANTES de iterar.
