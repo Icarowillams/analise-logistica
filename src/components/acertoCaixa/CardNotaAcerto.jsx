@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_COLORS = {
   pendente: 'bg-slate-200 text-slate-700',
@@ -33,7 +34,7 @@ export default function CardNotaAcerto({ nota, onChange, onMarcarEntregue, onMar
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm truncate">
               {nota.numero_pedido && <span className="text-slate-500">Pedido </span>}
-              {nota.numero_pedido || nota.codigo_pedido}
+              {nota.numero_pedido ? formatarNumeroPedido(nota.numero_pedido, nota.tipo) : nota.codigo_pedido}
               {nota.numero_nfe && <span className="text-slate-500 text-xs ml-2">NF-e {nota.numero_nfe}</span>}
             </div>
             <div className="text-xs text-slate-600 truncate">{nota.nome_cliente || nota.razao_social}</div>

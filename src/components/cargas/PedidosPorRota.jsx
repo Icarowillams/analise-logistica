@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronDown, ChevronRight, Layers, MousePointer2 } from 'lucide-react';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function PedidosPorRota({ pedidos, selecionados, setSelecionados }) {
   const [colapsadas, setColapsadas] = useState(new Set());
@@ -148,13 +149,7 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                                   return <Badge className={info.cls}>{info.label}</Badge>;
                                 })()}
                               </td>
-                              <td className="p-2 font-mono text-xs text-slate-700">{(() => {
-                                const n = String(p.numero_pedido || '');
-                                if (!n) return '-';
-                                // Trocas / IDs terminados em "D": zeros fazem parte do código, manter intacto
-                                if (p.tipo === 'troca' || /D$/i.test(n)) return n;
-                                return n.replace(/^0+/, '') || n;
-                              })()}</td>
+                              <td className="p-2 font-mono text-xs text-slate-700">{formatarNumeroPedido(p.numero_pedido, p.tipo) || '-'}</td>
                               <td className="p-2 font-mono text-xs text-slate-500">{p.codigo_cliente_cod || '-'}</td>
                               <td className="p-2">
                                 <div className="font-medium text-slate-900 truncate" title={p.nome_fantasia || p.nome_cliente || ''}>{p.nome_fantasia || p.nome_cliente || '-'}</div>

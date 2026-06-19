@@ -1,37 +1,43 @@
-// Remove zeros à esquerda de um número de pedido para EXIBIÇÃO.
-// Preserva sufixo não-numérico (ex: pedidos D1 terminam em "D" → "00005D" vira "5D").
-// NUNCA usar em filtros/payloads enviados ao Omie.
-export function formatNumeroPedido(v) {
-  const s = String(v ?? '').trim();
-  if (!s) return '';
-  // Mantém qualquer sufixo de letras (D1 etc.) e remove só os zeros do início da parte numérica.
-  const m = s.match(/^(\d+)(\D*)$/);
-  if (m) {
-    const num = m[1].replace(/^0+/, '') || '0';
-    return num + m[2];
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper CENTRAL de EXIBIÇÃO do número do pedido.
+// No banco todo numero_pedido vem com padding de 15 dígitos ("000000000001456").
+// O espelho Omie expõe limpo ("1456"). Para manter a UI consistente, SEMPRE exibir
+// vendas/bonificações sem zeros à esquerda — e preservar trocas exatas.
+//
+// ⚠️ USO EXCLUSIVO DE EXIBIÇÃO (label). NUNCA usar o retorno como chave de seleção,
+// dedup, filtro/busca ou payload enviado ao Omie/backend — a chave interna continua
+// zero-padded.
+//
+// Regra:
+//  - Troca (tipo === 'troca') ou ID terminado em "D" (ex "00711D"): retorna SEM alterar.
+//  - Numérico puro (venda/bonificação): remove zeros à esquerda.
+//  - null/undefined/vazio: retorna ''.
+//
+// Aceita DUAS formas de chamada (compatibilidade):
+//  - formatarNumeroPedido(numero, tipo)   → ex: ('000...1456', 'venda')
+//  - formatarNumeroPedido(pedido)         → objeto { numero_pedido, tipo }
+// ─────────────────────────────────────────────────────────────────────────────
+export function formatarNumeroPedido(numeroOuPedido, tipo) {
+  let numero = numeroOuPedido;
+  let tipoPedido = tipo;
+
+  // Compatibilidade: se receberam o objeto pedido inteiro, extrai os campos.
+  if (numeroOuPedido && typeof numeroOuPedido === 'object') {
+    numero = numeroOuPedido.numero_pedido;
+    tipoPedido = numeroOuPedido.tipo;
   }
-  return s.replace(/^0+/, '') || '0';
+
+  const s = String(numero ?? '').trim();
+  if (!s) return '';
+  // Trocas e qualquer ID terminado em "D" preservam zeros e o sufixo.
+  if (String(tipoPedido || '').toLowerCase() === 'troca' || /D$/i.test(s)) return s;
+  // Numérico puro: remove zeros à esquerda (mantém ao menos 1 dígito).
+  if (/^\d+$/.test(s)) return s.replace(/^0+/, '') || s;
+  // Qualquer outro formato (já limpo, com letras no meio, etc.): devolve como está.
+  return s;
 }
 
-export function formatarNumeroPedido(pedido) {
-  if (!pedido?.numero_pedido) return '';
-
-  const numeroOriginal = String(pedido.numero_pedido);
-  const modeloNota = String(pedido.modelo_nota || '').toLowerCase();
-  const tipo = String(pedido.tipo || '').toLowerCase();
-  const baseNumerica = numeroOriginal.replace(/\D/g, '');
-
-  const numeroSemSufixo = baseNumerica || numeroOriginal;
-  const isNaoFiscal = tipo === 'troca' || (modeloNota && modeloNota !== '55');
-
-  if (isNaoFiscal) {
-    return baseNumerica ? `${baseNumerica.padStart(5, '0')}D` : `${numeroOriginal}D`;
-  }
-
-  // Remove zeros à esquerda apenas se for numérico puro
-  if (/^\d+$/.test(numeroSemSufixo)) {
-    return String(Number(numeroSemSufixo)) || '0';
-  }
-
-  return numeroSemSufixo;
+// Alias de compatibilidade: recebe só o número (sem tipo).
+export function formatNumeroPedido(v) {
+  return formatarNumeroPedido(v);
 }
