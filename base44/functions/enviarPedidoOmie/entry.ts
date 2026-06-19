@@ -328,8 +328,14 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
             infAdic.numero_pedido_compra = pedido.numero_pedido_compra;
             infAdic.dados_adicionais_item = `Pedido de Compra: ${pedido.numero_pedido_compra}`;
         }
+        // BLINDAGEM PRODUTO ERRADO (caso pedido 1760 — Artesanal faturado como 450G):
+        // NUNCA enviar só o codigo_produto numérico. Se o codigo_omie gravado no produto
+        // estiver desencontrado do cadastro Omie, o item era faturado errado em silêncio.
+        // Enviamos SEMPRE o codigo_produto_integracao (id Base44 do produto — único e imutável).
+        // Com os dois presentes, o Omie casa o item pelo código de integração vinculado àquele
+        // produto específico, eliminando a ambiguidade de um número quase-idêntico (…273 vs …243).
         const produtoRef = prod.codigo_omie
-            ? { codigo_produto: Number(prod.codigo_omie) }
+            ? { codigo_produto: Number(prod.codigo_omie), codigo_produto_integracao: item.produto_id }
             : { codigo_produto_integracao: item.produto_id };
         const produtoPayload = {
             ...produtoRef,
