@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_CONFIG = {
   pendente:    { label: 'Pendente',    bg: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -184,7 +185,7 @@ export default function LogFilaCarga() {
           <div className="flex flex-wrap gap-2">
             {emProcessamento.map(item => (
               <span key={item.id} className="text-xs bg-white border border-blue-200 rounded px-2 py-1 text-slate-700 font-mono">
-                Carga <b>{item.numero_carga}</b> · {item.numero_pedido || item.codigo_pedido_omie || '—'}
+                Carga <b>{item.numero_carga}</b> · {item.numero_pedido ? formatarNumeroPedido(item.numero_pedido) : (item.codigo_pedido_omie || '—')}
               </span>
             ))}
           </div>
@@ -266,7 +267,7 @@ export default function LogFilaCarga() {
                       {item.numero_carga || '—'}
                       {isOrfao && <span className="ml-1 text-orange-400" title="Carga excluída">✕</span>}
                     </td>
-                    <td className="px-3 py-2 font-mono text-slate-600">{item.numero_pedido || item.codigo_pedido_omie || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-slate-600">{item.numero_pedido ? formatarNumeroPedido(item.numero_pedido) : (item.codigo_pedido_omie || '—')}</td>
                     <td className="px-3 py-2">
                       <Badge className={`${cfg.bg} text-[10px] flex items-center gap-1 w-fit border-0`}>
                         <Icon className={`w-3 h-3 ${item.status === 'processando' ? 'animate-spin' : ''}`} />
@@ -333,7 +334,7 @@ export default function LogFilaCarga() {
                     const Icon = cfg.icon;
                     return (
                       <div key={item.id} className="px-3 py-2 flex items-center gap-3 text-xs">
-                        <span className="font-mono text-slate-700 w-20">{item.numero_pedido || item.codigo_pedido_omie || '—'}</span>
+                        <span className="font-mono text-slate-700 w-20">{item.numero_pedido ? formatarNumeroPedido(item.numero_pedido) : (item.codigo_pedido_omie || '—')}</span>
                         <Badge className={`${cfg.bg} text-[10px] flex items-center gap-1 border-0`}>
                           <Icon className="w-3 h-3" />
                           {cfg.label}
