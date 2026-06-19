@@ -2,9 +2,41 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const MAX_TENTATIVAS = 3;
+const MAX_TENTATIVAS_LEITURA = 5;       // teto de retries por falha transitória de leitura do Pedido (antes de virar erro)
 const INTERVALO_ENTRE_PEDIDOS_MS = 450; // ~2 req/s — margem segura abaixo do limite Omie (4 req/s)
 const MAX_PEDIDOS_POR_RODADA = 30;      // tamanho de cada busca interna de pendentes
 const TETO_EXECUCAO_MS = 150000;        // 150s — abaixo do timeout (180s); drena a fila numa execução
+
+// ============================================================
+// LEITURA SEGURA DO PEDIDO — distingue "não existe" de "falha ao ler".
+// Retorna { pedido } se achou, { naoExiste:true } se comprovadamente inexistente
+// (404 confirmado por 2ª leitura), { transitorio:true } se falha de rede/429/timeout.
+// NUNCA confunde "não consegui ler agora" com "foi excluído".
+// ============================================================
+async function lerPedidoSeguro(base44, pedido_id) {
+  try {
+    const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
+    if (pedido) return { pedido };
+    // get retornou null/undefined sem throw — tratar como possível inexistência, confirmar
+  } catch (e) {
+    const msg = String(e?.message || e);
+    const naoExiste = e?.status === 404 || /not found|não encontrad|nao encontrad|does not exist/i.test(msg);
+    if (!naoExiste) {
+      // Erro TRANSITÓRIO (429/timeout/rede) → não descartar
+      return { transitorio: true, erro: msg };
+    }
+  }
+  // Chegou aqui = 1ª leitura indicou inexistência. CONFIRMAR com 2ª leitura (via filter) antes de descartar.
+  await new Promise(r => setTimeout(r, 300));
+  try {
+    const conf = await base44.asServiceRole.entities.Pedido.filter({ id: pedido_id });
+    if (conf && conf.length) return { pedido: conf[0] };
+    return { naoExiste: true };
+  } catch (e2) {
+    // 2ª leitura também falhou, mas com erro (não confirmou inexistência) → tratar como transitório
+    return { transitorio: true, erro: String(e2?.message || e2) };
+  }
+}
 
 const OMIE_BASE_URL = "https://app.omie.com.br/api/v1/";
 const CONTA_CORRENTE_PADRAO = 11464371392;
@@ -264,8 +296,13 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
 // ============================================================
 async function enviarUmPedido(base44, pedido_id, ctx = {}) {
   const t0 = Date.now();
-  const pedido = ctx.pedido || await base44.asServiceRole.entities.Pedido.get(pedido_id).catch(() => null);
-  if (!pedido) return { sucesso: false, erro: 'Pedido não encontrado', pedido_id };
+  let pedido = ctx.pedido || null;
+  if (!pedido) {
+    const leitura = await lerPedidoSeguro(base44, pedido_id);
+    if (leitura.transitorio) return { sucesso: false, erro: 'Falha transitória ao ler pedido (retry)', pedido_id, transitorio: true };
+    if (leitura.naoExiste) return { sucesso: false, erro: 'Pedido não encontrado', pedido_id, terminal: true };
+    pedido = leitura.pedido;
+  }
 
   debugLog(base44, `[fila] Iniciando envio pedido ${pedido_id}, modelo=${pedido.modelo_nota}, tipo=${pedido.tipo}`, { pedido_id });
 
@@ -430,18 +467,30 @@ Deno.serve(async (req) => {
       const marcadoEm = new Date(item.updated_date || item.processado_em || 0).getTime();
       if (agora - marcadoEm < LIMITE_STUCK_MS) continue; // ainda dentro da janela — pode estar rodando agora
 
-      const pedidoOrigem = item.pedido_id
-        ? await base44.asServiceRole.entities.Pedido.get(item.pedido_id).catch(() => null)
-        : null;
+      const leituraStuck = item.pedido_id
+        ? await lerPedidoSeguro(base44, item.pedido_id)
+        : { naoExiste: true };
+      const pedidoOrigem = leituraStuck.pedido || null;
+
+      if (!pedidoOrigem && leituraStuck.transitorio) {
+        // Falha transitória de leitura — NÃO descartar. Volta a pendente para reprocessar.
+        await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+          status: 'pendente',
+          erro_log: 'Falha transitória ao ler pedido (anti-stuck) — mantido para retry'
+        }).catch(() => {});
+        recuperados++;
+        continue;
+      }
 
       if (!pedidoOrigem) {
+        // Inexistente confirmado 2x → órfão real, erro terminal.
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
           status: 'erro',
-          erro_log: 'Pedido de origem não existe mais (excluído) — item descartado',
+          erro_log: 'Pedido de origem não existe mais (excluído, confirmado 2x) — item descartado',
           processado_em: new Date().toISOString()
         }).catch(() => {});
         orfaos++;
-        console.log(`[processarFila][anti-stuck] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente) → erro terminal`);
+        console.log(`[processarFila][anti-stuck] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente, confirmado) → erro terminal`);
         continue;
       }
 
@@ -488,12 +537,23 @@ Deno.serve(async (req) => {
     // ============================================================
     const pedidoIds = pendentes.map(p => p.pedido_id).filter(Boolean);
 
-    // Buscar todos os pedidos em paralelo
-    const todosPedidos = await Promise.all(
-      pedidoIds.map(id => base44.asServiceRole.entities.Pedido.get(id).catch(() => null))
-    );
+    // Buscar pedidos em LOTES SERIALIZADOS (5 por vez) para não saturar o banco
+    // e gerar o 429 interno que originava o falso "Pedido não encontrado".
+    // Cada leitura distingue inexistente (404 confirmado 2x) de falha transitória.
     const pedidosMap = {};
-    todosPedidos.forEach(p => { if (p) pedidosMap[p.id] = p; });
+    const pedidoLeituraStatus = {}; // pedido_id → 'ok' | 'naoExiste' | 'transitorio'
+    const LOTE_LEITURA = 5;
+    for (let li = 0; li < pedidoIds.length; li += LOTE_LEITURA) {
+      const fatia = pedidoIds.slice(li, li + LOTE_LEITURA);
+      const leituras = await Promise.all(fatia.map(id => lerPedidoSeguro(base44, id)));
+      fatia.forEach((id, idx) => {
+        const r = leituras[idx];
+        if (r.pedido) { pedidosMap[id] = r.pedido; pedidoLeituraStatus[id] = 'ok'; }
+        else if (r.naoExiste) { pedidoLeituraStatus[id] = 'naoExiste'; }
+        else { pedidoLeituraStatus[id] = 'transitorio'; }
+      });
+      if (li + LOTE_LEITURA < pedidoIds.length) await sleep(120); // pequena pausa entre lotes
+    }
 
     // Buscar todos os itens em paralelo
     const todosItems = await Promise.all(
@@ -540,14 +600,41 @@ Deno.serve(async (req) => {
       const pedido = pedidosMap[item.pedido_id];
 
       if (!pedido) {
-        // TERMINAL: o Pedido de origem não existe mais (foi excluído após entrar na fila).
-        // Nunca reprocessar — vira erro definitivo (órfão descartado). Logado como info.
+        const statusLeitura = pedidoLeituraStatus[item.pedido_id];
+
+        if (statusLeitura === 'transitorio') {
+          // FALHA TRANSITÓRIA de leitura (429/timeout/rede) → NÃO descartar.
+          // Mantém pendente, incrementa tentativas e reprocessa no próximo ciclo (com teto).
+          const tentativas = (item.tentativas || 0) + 1;
+          if (tentativas >= MAX_TENTATIVAS_LEITURA) {
+            await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+              status: 'erro',
+              erro_log: `Falha ao ler pedido após ${tentativas} tentativas — erro terminal`,
+              tentativas,
+              processado_em: new Date().toISOString()
+            });
+            resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Falha de leitura persistente' });
+          } else {
+            await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+              status: 'pendente',
+              erro_log: 'Falha transitória ao ler pedido — mantido pendente para retry',
+              tentativas,
+              processado_em: null
+            });
+            console.log(`[processarFila] Item ${item.id}: leitura transitória do pedido ${item.pedido_id} → retry (${tentativas}/${MAX_TENTATIVAS_LEITURA})`);
+            resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Leitura transitória (retry)', transitorio: true });
+          }
+          continue;
+        }
+
+        // TERMINAL: pedido comprovadamente inexistente (404 confirmado por 2ª leitura).
+        // Foi excluído após entrar na fila. Nunca reprocessar — órfão descartado.
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
           status: 'erro',
-          erro_log: 'Pedido de origem não existe mais (excluído) — item descartado',
+          erro_log: 'Pedido de origem não existe mais (excluído, confirmado 2x) — item descartado',
           processado_em: new Date().toISOString()
         });
-        console.log(`[processarFila] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente) → erro terminal`);
+        console.log(`[processarFila] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente, confirmado) → erro terminal`);
         resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Pedido de origem inexistente (órfão)' });
         continue;
       }
