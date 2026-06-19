@@ -411,6 +411,57 @@ Deno.serve(async (req) => {
     let rodadas = 0;
 
     // ============================================================
+    // ANTI-STUCK — recupera itens presos em "processando" há >15min.
+    // Causa típica: a função morreu (timeout/deploy) deixando o item
+    // marcado, OU o Pedido de origem foi excluído após entrar na fila.
+    // - Pedido inexistente  → erro terminal (órfão, descartado).
+    // - Pedido existe + tentativas < 3 → volta a 'pendente' (reprocessa).
+    // - tentativas >= 3 → erro terminal.
+    // ============================================================
+    const LIMITE_STUCK_MS = 15 * 60 * 1000; // 15min
+    const presos = await base44.asServiceRole.entities.FilaEnvioPedidoOmie
+      .filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
+    const agora = Date.now();
+    let recuperados = 0, orfaos = 0;
+    for (const item of presos) {
+      const marcadoEm = new Date(item.updated_date || item.processado_em || 0).getTime();
+      if (agora - marcadoEm < LIMITE_STUCK_MS) continue; // ainda dentro da janela — pode estar rodando agora
+
+      const pedidoOrigem = item.pedido_id
+        ? await base44.asServiceRole.entities.Pedido.get(item.pedido_id).catch(() => null)
+        : null;
+
+      if (!pedidoOrigem) {
+        await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+          status: 'erro',
+          erro_log: 'Pedido de origem não existe mais (excluído) — item descartado',
+          processado_em: new Date().toISOString()
+        }).catch(() => {});
+        orfaos++;
+        console.log(`[processarFila][anti-stuck] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente) → erro terminal`);
+        continue;
+      }
+
+      if ((item.tentativas || 0) >= MAX_TENTATIVAS) {
+        await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+          status: 'erro',
+          erro_log: `Preso em processando há >15min e já tentou ${item.tentativas}x — erro terminal`,
+          processado_em: new Date().toISOString()
+        }).catch(() => {});
+        continue;
+      }
+
+      await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
+        status: 'pendente',
+        erro_log: 'Recuperado: estava preso em processando há >15min'
+      }).catch(() => {});
+      recuperados++;
+    }
+    if (presos.length > 0) {
+      console.log(`[processarFila][anti-stuck] ${presos.length} em processando | recuperados=${recuperados} | órfãos=${orfaos}`);
+    }
+
+    // ============================================================
     // LOOP EXTERNO — drena a fila numa única execução até esvaziar
     // ou bater o teto de tempo seguro (abaixo do timeout de 180s).
     // A próxima execução continua de onde parou.
@@ -486,10 +537,15 @@ Deno.serve(async (req) => {
       const pedido = pedidosMap[item.pedido_id];
 
       if (!pedido) {
+        // TERMINAL: o Pedido de origem não existe mais (foi excluído após entrar na fila).
+        // Nunca reprocessar — vira erro definitivo (órfão descartado). Logado como info.
         await base44.asServiceRole.entities.FilaEnvioPedidoOmie.update(item.id, {
-          status: 'erro', erro_log: 'Pedido não encontrado', processado_em: new Date().toISOString()
+          status: 'erro',
+          erro_log: 'Pedido de origem não existe mais (excluído) — item descartado',
+          processado_em: new Date().toISOString()
         });
-        resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Pedido não encontrado' });
+        console.log(`[processarFila] Item ${item.id} órfão (pedido ${item.pedido_id} inexistente) → erro terminal`);
+        resultados.push({ pedido_id: item.pedido_id, sucesso: false, erro: 'Pedido de origem inexistente (órfão)' });
         continue;
       }
 
