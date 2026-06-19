@@ -12,6 +12,25 @@ import MotivoNaoEntregueModal from '@/components/acertoCaixa/MotivoNaoEntregueMo
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+// Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 70 — régua real Omie).
+// Retry backoff 3x só para transitórios (HTTP 425/429/500/REDUNDANT). Erros permanentes
+// (etapa não regride / codigo_status 6) o backend já trata como sucesso/ignorado.
+async function sincronizarEntregaOmie(codigoPedido, tentativas = 3) {
+  for (let t = 0; t < tentativas; t++) {
+    try {
+      const { data } = await base44.functions.invoke('trocarEtapaPedidoOmie', { codigo_pedido: codigoPedido, etapa: '70' });
+      if (data?.sucesso) return true;
+      return false; // rejeição permanente — não adianta repetir
+    } catch (e) {
+      const msg = String(e?.message || '');
+      const transitorio = /425|429|500|redundant|bloquead/i.test(msg);
+      if (!transitorio || t === tentativas - 1) return false;
+      await new Promise(r => setTimeout(r, 1800 * (t + 1)));
+    }
+  }
+  return false;
+}
+
 export default function AcertoCaixaEditar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -117,18 +136,12 @@ export default function AcertoCaixaEditar() {
     const nova = { ...nota, status_entrega: 'entregue', data_recebimento: new Date().toISOString().slice(0, 10) };
     atualizarNota(idx, nova);
 
-    // Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 50). Desacoplado da marcação local —
+    // Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 70). Desacoplado da marcação local —
     // se o Omie falhar/rate limit, marca omie_etapa_pendente para reconciliar depois, sem bloquear.
     if (nota.codigo_pedido) {
-      base44.functions.invoke('trocarEtapaPedidoOmie', { codigo_pedido: nota.codigo_pedido, etapa: '50' })
-        .then(({ data }) => {
-          if (!data?.sucesso) {
-            setNotas(prev => prev.map((n, i) => i === idx ? { ...n, omie_etapa_pendente: true } : n));
-          }
-        })
-        .catch(() => {
-          setNotas(prev => prev.map((n, i) => i === idx ? { ...n, omie_etapa_pendente: true } : n));
-        });
+      sincronizarEntregaOmie(nota.codigo_pedido).then(ok => {
+        if (!ok) setNotas(prev => prev.map((n, i) => i === idx ? { ...n, omie_etapa_pendente: true } : n));
+      });
     }
   };
 
@@ -240,6 +253,10 @@ export default function AcertoCaixaEditar() {
   const finalizar = async () => {
     if (!confirm('Finalizar acerto? Notas pendentes serão marcadas como ENTREGUES.')) return;
     setFinalizando(true);
+    // Pedidos Omie que passam de pendente→entregue agora — sync de entrega (etapa 70) best-effort.
+    const pedidosParaSincronizar = notas
+      .filter(n => n.status_entrega === 'pendente' && n.codigo_pedido)
+      .map(n => n.codigo_pedido);
     const finais = notas.map(n => n.status_entrega === 'pendente' ? {
       ...n, status_entrega: 'entregue', data_recebimento: n.data_recebimento || new Date().toISOString().slice(0, 10)
     } : n);
@@ -257,6 +274,13 @@ export default function AcertoCaixaEditar() {
       if (acerto?.carga_id) {
         try { await base44.entities.Carga.update(acerto.carga_id, { status_carga: 'entregue' }); } catch (_) {}
       }
+      // Best-effort: sincroniza entrega (etapa 70) dos pedidos finalizados, espaçado ~1,8s. Não trava a finalização.
+      (async () => {
+        for (let i = 0; i < pedidosParaSincronizar.length; i++) {
+          await sincronizarEntregaOmie(pedidosParaSincronizar[i]);
+          if (i < pedidosParaSincronizar.length - 1) await new Promise(r => setTimeout(r, 1800));
+        }
+      })();
       toast.success('Acerto finalizado');
       queryClient.invalidateQueries({ queryKey: ['acertos'] });
       queryClient.invalidateQueries({ queryKey: ['cargas-acerto'] });

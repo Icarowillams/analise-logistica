@@ -1,11 +1,40 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Ordem da régua real Omie — usada para nunca retroceder etapa.
+const ORDEM_ETAPA = { '10': 1, '20': 2, '50': 3, '60': 4, '70': 5, '80': 6 };
+
+// Busca a etapa ATUAL do pedido preferindo estado LOCAL (espelho PedidoLiberadoOmie).
+// Retorna string da etapa ou null se não encontrado localmente.
+async function getEtapaAtualLocal(base44, pedido) {
+  const cod = String(pedido.codigo_pedido || '');
+  if (!cod) return null;
+  try {
+    const rows = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1);
+    if (rows?.[0]?.etapa) return String(rows[0].etapa);
+  } catch (_) { /* ignore */ }
+  return null;
+}
 
 async function trocarUmPedido(base44, pedido, etapaDestino) {
   const etapa = String(pedido.etapa || etapaDestino || '');
   if (!etapa) return { sucesso: false, mensagem: 'etapa obrigatória', ...pedido };
   if (!pedido.codigo_pedido && !pedido.codigo_pedido_integracao) {
     return { sucesso: false, mensagem: 'Informe codigo_pedido ou codigo_pedido_integracao', ...pedido };
+  }
+
+  // Guarda de idempotência anti-retrocesso: se a etapa de destino já foi alcançada (≤ etapa atual local),
+  // PULA a chamada e trata como sucesso idempotente — etapa não retrocede.
+  const etapaAtual = await getEtapaAtualLocal(base44, pedido);
+  if (etapaAtual && ORDEM_ETAPA[etapa] && ORDEM_ETAPA[etapaAtual] && ORDEM_ETAPA[etapa] <= ORDEM_ETAPA[etapaAtual]) {
+    return {
+      codigo_pedido: pedido.codigo_pedido,
+      codigo_pedido_integracao: pedido.codigo_pedido_integracao,
+      numero_pedido: pedido.numero_pedido,
+      etapa,
+      sucesso: true,
+      ignorado: true,
+      mensagem: `Etapa não retrocede (atual ${etapaAtual} ≥ destino ${etapa}) — ignorado`
+    };
   }
 
   const param = { etapa };
@@ -15,9 +44,23 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     try {
       const resposta = await omieCall(base44, 'produtos/pedido/', param, { call: 'TrocarEtapaPedido' });
-      // Omie pode retornar codigo_status != "0" indicando que a troca foi recusada
+      // Omie pode retornar codigo_status != "0" indicando que a troca foi recusada.
       const codStatus = String(resposta?.codigo_status || '0');
       const descStatus = resposta?.descricao_status || '';
+      // codigo_status "6" ("pode ser alterado apenas para: 60,70,80") = INFO/idempotente, não erro vermelho.
+      // É permanente (não adianta retry): o pedido já passou da etapa solicitada. Tratar como ignorado/sucesso.
+      if (codStatus === '6') {
+        return {
+          codigo_pedido: pedido.codigo_pedido,
+          codigo_pedido_integracao: pedido.codigo_pedido_integracao,
+          numero_pedido: pedido.numero_pedido,
+          etapa,
+          sucesso: true,
+          ignorado: true,
+          mensagem: `Omie codigo_status 6 (etapa não regride): ${descStatus}`,
+          resposta
+        };
+      }
       const rejeitado = codStatus !== '0' && descStatus.toLowerCase().includes('não é possível');
       return {
         codigo_pedido: pedido.codigo_pedido,
@@ -159,7 +202,8 @@ Deno.serve(async (req) => {
         if (i < pedidosUnicos.length - 1) await new Promise(r => setTimeout(r, 1800));
       }
       const sucessos = resultados.filter(r => r.sucesso).length;
-      const erros = resultados.length - sucessos;
+      const ignorados = resultados.filter(r => r.sucesso && r.ignorado).length;
+      const erros = resultados.filter(r => !r.sucesso).length;
       const errosDetalhe = resultados
         .filter(r => !r.sucesso)
         .map(r => `Ped ${r.numero_pedido || r.codigo_pedido}: ${r.mensagem || 'sem detalhe'}`)
@@ -168,13 +212,13 @@ Deno.serve(async (req) => {
         endpoint: 'produtos/pedido',
         call: 'TrocarEtapaPedido',
         operacao: `trocar_etapa_lote_${body.etapa_destino || 'multi'}`,
-        status: erros > 0 ? 'warning' : 'sucesso',
+        status: erros > 0 ? 'warning' : (ignorados > 0 ? 'ignorado' : 'sucesso'),
         mensagem_erro: erros > 0 ? `${erros} pedidos falharam: ${errosDetalhe}`.substring(0, 2000) : null,
         erro_detalhado: erros > 0 ? errosDetalhe.substring(0, 2000) : null,
         payload_resposta: JSON.stringify(resultados).substring(0, 2000),
         usuario_email: user.email
       }).catch(() => {});
-      return Response.json({ sucesso: true, total: pedidos.length, sucessos, erros, resultados });
+      return Response.json({ sucesso: true, total: pedidos.length, sucessos, ignorados, erros, resultados });
     }
 
     const resultado = await trocarUmPedido(base44, body, body.etapa);
@@ -182,7 +226,7 @@ Deno.serve(async (req) => {
       endpoint: 'produtos/pedido',
       call: 'TrocarEtapaPedido',
       operacao: 'trocar_etapa',
-      status: resultado.sucesso ? 'sucesso' : (resultado.redundant ? 'warning' : 'erro'),
+      status: resultado.ignorado ? 'ignorado' : (resultado.sucesso ? 'sucesso' : (resultado.redundant ? 'warning' : 'erro')),
       mensagem_erro: resultado.sucesso ? null : resultado.mensagem,
       payload_enviado: JSON.stringify(body).substring(0, 1500),
       payload_resposta: JSON.stringify(resultado).substring(0, 1500),
