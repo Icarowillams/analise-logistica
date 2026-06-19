@@ -77,7 +77,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId }).catch(() => null);
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType, entidade_id: options.entityId, payload_enviado: (() => { try { return JSON.stringify(param).slice(0, 8000); } catch { return ''; } })(), payload_resposta: (() => { try { return JSON.stringify(data).slice(0, 4000); } catch { return ''; } })() }).catch(() => null);
       }
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update('6a1e06a9aa62ceab7b3b6d97', { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
       return data;
