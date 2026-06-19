@@ -136,6 +136,8 @@ const AuthenticatedApp = () => {
       <Route path="/AnalisesComercial" element={<LayoutWrapper currentPageName="AnalisesComercial"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardVendedor" element={<LayoutWrapper currentPageName="DashboardVendedor"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardTrocas" element={<LayoutWrapper currentPageName="DashboardTrocas"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/MetasTroca" element={<LayoutWrapper currentPageName="MetasTroca"><AnalisesComercial /></LayoutWrapper>} />
+      <Route path="/metastroca" element={<LayoutWrapper currentPageName="MetasTroca"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardVendas" element={<LayoutWrapper currentPageName="DashboardVendas"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/DashboardClientes" element={<LayoutWrapper currentPageName="DashboardClientes"><AnalisesComercial /></LayoutWrapper>} />
       <Route path="/AnaliseDeVisitas" element={<LayoutWrapper currentPageName="AnaliseDeVisitas"><AnalisesComercial /></LayoutWrapper>} />

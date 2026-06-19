@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, Activity, ArrowLeftRight, TrendingUp, User, Users, Target, Map, Zap, CreditCard, MapPin } from 'lucide-react';
+import { BarChart3, Activity, ArrowLeftRight, TrendingUp, User, Users, Target, Map, Zap, CreditCard, MapPin, AlertTriangle } from 'lucide-react';
 import AnaliseVisitas from '@/components/analises/AnaliseVisitas';
 import DashboardTrocas from '@/components/analises/DashboardTrocas';
 import DashboardVendas from '@/components/analises/DashboardVendas';
@@ -14,6 +14,7 @@ import PainelMetas from '@/components/analises/PainelMetas';
 import AtingimentoDiario from '@/components/analises/AtingimentoDiario';
 import PainelCobrancas from '@/components/analises/PainelCobrancas';
 import CoberturaVisitas from '@/components/analises/CoberturaVisitas';
+import MetasTrocaVencido from '@/components/analises/MetasTrocaVencido';
 
 // Mapa rota → tab
 const ROTA_TAB = {
@@ -29,6 +30,8 @@ const ROTA_TAB = {
   '/dashboardvendas': 'vendas',
   '/DashboardTrocas': 'trocas',
   '/dashboardtrocas': 'trocas',
+  '/MetasTroca': 'metas_troca',
+  '/metastroca': 'metas_troca',
   '/DashboardVendedor': 'vendedor',
   '/dashboardvendedor': 'vendedor',
   '/DashboardClientes': 'clientes',
@@ -76,6 +79,9 @@ export default function AnalisesComercial() {
           <TabsTrigger value="trocas" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <ArrowLeftRight className="w-3.5 h-3.5" />Trocas
           </TabsTrigger>
+          <TabsTrigger value="metas_troca" className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <AlertTriangle className="w-3.5 h-3.5" />Metas Troca
+          </TabsTrigger>
           <TabsTrigger value="visitas" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <Activity className="w-3.5 h-3.5" />Visitas
           </TabsTrigger>
@@ -99,6 +105,7 @@ export default function AnalisesComercial() {
         <TabsContent value="cobertura"><CoberturaVisitas /></TabsContent>
         <TabsContent value="vendas"><DashboardVendas /></TabsContent>
         <TabsContent value="trocas"><DashboardTrocas /></TabsContent>
+        <TabsContent value="metas_troca"><MetasTrocaVencido /></TabsContent>
         <TabsContent value="visitas"><AnaliseVisitas /></TabsContent>
         <TabsContent value="vendedor"><DashboardVendedorComercial /></TabsContent>
         <TabsContent value="clientes"><DashboardClientesComercial /></TabsContent>

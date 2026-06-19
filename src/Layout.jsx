@@ -119,6 +119,7 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Metas', path: 'Metas' },
           { title: 'Dashboard Vendedor', path: 'DashboardVendedor' },
           { title: 'Dashboard Trocas', path: 'DashboardTrocas' },
+          { title: 'Metas de Troca (Vencido)', path: 'MetasTroca' },
           { title: 'Dashboard Vendas', path: 'DashboardVendas' },
           { title: 'Dashboard Clientes', path: 'DashboardClientes' },
           { title: 'Análise de Visitas', path: 'AnaliseDeVisitas' },
