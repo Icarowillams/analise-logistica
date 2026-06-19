@@ -148,7 +148,13 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
                                   return <Badge className={info.cls}>{info.label}</Badge>;
                                 })()}
                               </td>
-                              <td className="p-2 font-mono text-xs text-slate-700">{p.numero_pedido || '-'}</td>
+                              <td className="p-2 font-mono text-xs text-slate-700">{(() => {
+                                const n = String(p.numero_pedido || '');
+                                if (!n) return '-';
+                                // Trocas / IDs terminados em "D": zeros fazem parte do código, manter intacto
+                                if (p.tipo === 'troca' || /D$/i.test(n)) return n;
+                                return n.replace(/^0+/, '') || n;
+                              })()}</td>
                               <td className="p-2 font-mono text-xs text-slate-500">{p.codigo_cliente_cod || '-'}</td>
                               <td className="p-2">
                                 <div className="font-medium text-slate-900 truncate" title={p.nome_fantasia || p.nome_cliente || ''}>{p.nome_fantasia || p.nome_cliente || '-'}</div>
