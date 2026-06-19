@@ -251,6 +251,19 @@
     "numero_nota_fiscal": {
       "type": "string"
     },
+    "chave_nfe": {
+      "type": "string",
+      "description": "Chave de acesso da NF-e (44 d\u00edgitos), gravada a partir da resposta do faturamento ou do webhook"
+    },
+    "omie_id_nf": {
+      "type": "string",
+      "description": "nIdNF retornado pelo Omie no faturamento"
+    },
+    "nf_aguardando_autorizacao": {
+      "type": "boolean",
+      "default": false,
+      "description": "Pedido faturado no Omie cuja NF ainda n\u00e3o retornou o n\u00famero (autoriza\u00e7\u00e3o ass\u00edncrona pela SEFAZ). Preenchido pela reconcilia\u00e7\u00e3o/webhook; limpo quando o n\u00famero \u00e9 gravado."
+    },
     "data_faturamento": {
       "type": "string",
       "format": "date-time"

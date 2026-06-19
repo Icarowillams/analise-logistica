@@ -189,6 +189,54 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
+    // ════════════════════════════════════════════════════════════════════
+    // CAMADA 1 — Gravar no Pedido TUDO que JÁ vem na resposta do faturamento,
+    // SEM nenhuma chamada extra ao Omie (evita a rajada de ConsultarNF → 425).
+    // Se a resposta trouxer nNF/cChaveNFe/nIdNF → grava número/chave/id e limpa a flag.
+    // Se NÃO trouxer (autorização assíncrona pela SEFAZ) → marca nf_aguardando_autorizacao=true.
+    // Idempotente por omie_codigo_pedido. NÃO refatura nada — só grava o resultado.
+    // ════════════════════════════════════════════════════════════════════
+    if (!validar_apenas) {
+      try {
+        // Extrai número/chave/id da resposta — o Omie varia o nome dos campos.
+        const nNF = resposta?.nNF || resposta?.numero_nf || resposta?.cabecalho?.nNF || null;
+        const cChaveNFe = resposta?.cChaveNFe || resposta?.chave_nfe || resposta?.cChNFe || null;
+        const nIdNF = resposta?.nIdNF || resposta?.id_nf || resposta?.nCodNF || null;
+
+        // Localiza o pedido local por omie_codigo_pedido (idempotente).
+        let pedidoLocalFat = null;
+        if (codigo_pedido) {
+          const rows = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigo_pedido) }, '-updated_date', 1).catch(() => []);
+          pedidoLocalFat = rows?.[0] || null;
+        } else if (codigo_pedido_integracao) {
+          const pl = await base44.asServiceRole.entities.Pedido.get(codigo_pedido_integracao).catch(() => null);
+          pedidoLocalFat = pl || null;
+        }
+
+        if (pedidoLocalFat) {
+          const updateFat = {
+            faturado: true,
+            status: 'faturado',
+            status_faturamento: 'faturado',
+            data_faturamento: pedidoLocalFat.data_faturamento || new Date().toISOString()
+          };
+          if (nNF && !pedidoLocalFat.numero_nota_fiscal) {
+            updateFat.numero_nota_fiscal = String(nNF).padStart(6, '0');
+            updateFat.nf_aguardando_autorizacao = false;
+          } else if (!nNF && !pedidoLocalFat.numero_nota_fiscal) {
+            // Autorização assíncrona — número virá por webhook (NFe.NotaAutorizada) ou reconciliação.
+            updateFat.nf_aguardando_autorizacao = true;
+          }
+          if (cChaveNFe) updateFat.chave_nfe = String(cChaveNFe);
+          if (nIdNF) updateFat.omie_id_nf = String(nIdNF);
+
+          await base44.asServiceRole.entities.Pedido.update(pedidoLocalFat.id, updateFat).catch(() => {});
+        }
+      } catch (gravarErr) {
+        console.error('[emitirNfPedidoOmie] erro ao gravar resultado do faturamento:', gravarErr.message);
+      }
+    }
+
     return Response.json({
       sucesso: true,
       mensagem: resposta?.cDescStatus || 'Pedido enviado para emissão de NF-e. Aguarde alguns minutos para o Omie processar.',
