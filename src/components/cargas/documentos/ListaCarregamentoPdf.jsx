@@ -12,8 +12,32 @@ import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
  * cálculo de caixas usando fator_caixa do cadastro de produto,
  * e bloco de assinaturas fixado no rodapé da folha.
  */
-export default function ListaCarregamentoPdf({ carga, pedidosManuais, meta = {} }) {
+export default function ListaCarregamentoPdf({ carga: cargaProp, pedidosManuais, meta = {} }) {
   const printRef = useRef();
+
+  // AUTO-REPARO: se a carga tem pedido de VENDA com produtos vazios, reparar do
+  // espelho/PedidoItem (100% local) e recarregar a carga já preenchida.
+  const cargaVaziaPrecisaReparo = useMemo(() => {
+    if (!cargaProp?.id) return false;
+    return (cargaProp.pedidos_omie || []).some(p => !(Array.isArray(p.produtos) && p.produtos.length > 0));
+  }, [cargaProp]);
+
+  const { data: cargaReparada } = useQuery({
+    queryKey: ['carga-auto-reparo', cargaProp?.id],
+    queryFn: async () => {
+      const resp = await base44.functions.invoke('repararProdutosCarga', { carga_id: cargaProp.id });
+      if (resp.data?.reparada) {
+        const atualizada = await base44.entities.Carga.filter({ id: cargaProp.id }, '-created_date', 1);
+        return atualizada?.[0] || null;
+      }
+      return null;
+    },
+    enabled: !!cargaProp?.id && cargaVaziaPrecisaReparo,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false
+  });
+
+  const carga = cargaReparada || cargaProp;
 
   const { data: empresas = [] } = useQuery({
     queryKey: ['empresa-lista-carregamento'],

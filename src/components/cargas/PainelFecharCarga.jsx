@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, LockKeyhole, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // Gera o próximo número de carga a partir de uma sequência PERSISTENTE (ContadorCarga).
 // Importante: nunca decrementa, mesmo se a última carga for cancelada ou excluída.
@@ -48,6 +49,51 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
   const qtdPacotesTotal = pedidosSel.reduce((s, p) => s + qtdPacotesPedido(p), 0);
   const produtosDistintos = new Set(pedidosSel.flatMap(p => (p.produtos || []).map(pr => pr.codigo_produto || pr.descricao))).size;
 
+  // Preenche produtos vazios de pedidos de VENDA a partir de fontes LOCAIS
+  // (espelho PedidoLiberadoOmie → PedidoItem). Retorna { vendas, semItens }.
+  const preencherProdutosVendas = async (vendasSel) => {
+    const vazios = vendasSel.filter(v => !(Array.isArray(v.produtos) && v.produtos.length > 0));
+    if (vazios.length === 0) return { vendas: vendasSel, semItens: [] };
+
+    // 1) Espelho por codigo_pedido
+    const codigos = [...new Set(vazios.map(v => String(v.codigo_pedido || '')).filter(Boolean))];
+    const espelhoPorCodigo = new Map();
+    for (let i = 0; i < codigos.length; i += 40) {
+      const chunk = codigos.slice(i, i + 40);
+      const espelhos = await base44.entities.PedidoLiberadoOmie.filter({ codigo_pedido: { $in: chunk } }, '-created_date', 200);
+      (espelhos || []).forEach(e => espelhoPorCodigo.set(String(e.codigo_pedido), e));
+    }
+
+    // 2) PedidoItem por pedido_id (só p/ quem o espelho não resolveu)
+    const semItens = [];
+    const vendasPreenchidas = [];
+    for (const v of vendasSel) {
+      if (Array.isArray(v.produtos) && v.produtos.length > 0) { vendasPreenchidas.push(v); continue; }
+
+      const esp = espelhoPorCodigo.get(String(v.codigo_pedido || ''));
+      let produtos = (esp?.produtos || []).map(pr => ({
+        codigo_produto: pr.codigo_produto || '', codigo_produto_integracao: pr.codigo_produto_integracao || '',
+        descricao: pr.descricao || '', quantidade: Number(pr.quantidade) || 0,
+        valor_unitario: Number(pr.valor_unitario) || 0, valor_total: Number(pr.valor_total) || 0,
+        unidade: pr.unidade || 'UN'
+      }));
+
+      if (produtos.length === 0 && v.pedido_id) {
+        const itens = await base44.entities.PedidoItem.filter({ pedido_id: v.pedido_id }, '-created_date', 500);
+        produtos = (itens || []).map(i => ({
+          codigo_produto: i.produto_codigo || '', codigo_produto_integracao: '',
+          descricao: i.produto_nome || '', quantidade: Number(i.quantidade) || 0,
+          valor_unitario: Number(i.valor_unitario) || 0, valor_total: Number(i.valor_total) || 0,
+          unidade: i.unidade_medida || 'UN'
+        }));
+      }
+
+      if (produtos.length === 0) { semItens.push(v.numero_pedido || v.codigo_pedido); }
+      vendasPreenchidas.push({ ...v, produtos, quantidade_itens: produtos.length || v.quantidade_itens || 0 });
+    }
+    return { vendas: vendasPreenchidas, semItens };
+  };
+
   const fecharCarga = async () => {
     if (pedidosSel.length === 0) { toast.error('Selecione ao menos 1 pedido'); return; }
     if (!motoristaId || !veiculoId || !dataSaida) {
@@ -55,18 +101,31 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       return;
     }
 
+    // BLINDAGEM CARGA EM BRANCO: garantir que todo pedido de VENDA tenha produtos.
+    // Se algum continuar sem itens (espelho ainda não sincronizou), BLOQUEIA o fechamento.
+    setSalvando(true);
+    const { vendas: vendasComProdutos, semItens } = await preencherProdutosVendas(vendas);
+    if (semItens.length > 0) {
+      setSalvando(false);
+      const lista = semItens.map(n => formatarNumeroPedido(n, 'venda')).join(', ');
+      toast.error(
+        `O(s) pedido(s) Nº ${lista} ainda não sincronizaram os itens — aguarde alguns segundos e tente de novo.`,
+        { duration: 8000 }
+      );
+      return;
+    }
+
     // SNAPSHOT dos dados ANTES de qualquer await — evita que re-renders
     // durante operações assíncronas esvaziem os arrays (bug cargas com 0 pedidos)
     const snapshotPedidos = [...pedidosSel];
-    const snapshotVendas = [...vendas];
+    const snapshotVendas = [...vendasComProdutos];
     const snapshotD1 = [...pedidosD1];
     const snapshotTrocas = [...trocas];
     const snapshotValorTotal = valorTotal;
     const snapshotQtdPacotes = qtdPacotesTotal;
 
-    if (snapshotPedidos.length === 0) { toast.error('Nenhum pedido selecionado (snapshot vazio)'); return; }
+    if (snapshotPedidos.length === 0) { setSalvando(false); toast.error('Nenhum pedido selecionado (snapshot vazio)'); return; }
 
-    setSalvando(true);
     try {
       const motorista = motoristas.find(m => m.id === motoristaId);
       const veiculo = veiculos.find(v => v.id === veiculoId);
