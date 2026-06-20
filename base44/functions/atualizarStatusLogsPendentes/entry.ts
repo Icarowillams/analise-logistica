@@ -77,7 +77,10 @@ async function omieCall(base44, endpoint, param, options = {}) {
           blockedErr.bloqueio = true;
           throw blockedErr;
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // Erros ESTRUTURAIS (tag/parâmetro fora da estrutura, 5001) são TERMINAIS: falham 100% das
+        // vezes → NUNCA fazer retry (só desperdiça cota e dispara "consumo redundante" no Omie).
+        const ehTerminal = msg.includes('não faz parte da estrutura') || msg.includes('nao faz parte da estrutura') || msg.includes('5001');
+        if (!ehTerminal && (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error'))) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -125,40 +128,28 @@ function classificarNF(nfEncontrada, codigoPedido) {
   return null;
 }
 
-// Consulta a NF de UM pedido via ConsultarNF (endpoint produtos/nfconsultar/, call ConsultarNF).
-// ConsultarNF aceita { nIdPedido } e retorna ide.nNF, ide.serie, compl.cChaveNFe, compl.nIdNF.
-// Retry único espaçado (3s) em caso de CÓDIGO 6 / "redundante" / "aguarde".
+// NF de UM pedido SEM chamada extra ao Omie. ConsultarNF (produtos/nfconsultar/) só aceita nCodNF
+// (ID interno da NF); nNF/nIdPedido → erro 5001 "Tag não faz parte da estrutura" + "consumo
+// redundante". O número da NF de etapa 60 já vem do ConsultarPedido; este fallback LÊ do espelho
+// local (PedidoLiberadoOmie.numero_nf) em vez de disparar a chamada inválida.
 async function consultarNFporPedido(base44, codigoPedido) {
-  let tentativa = 0;
-  while (tentativa < 2) {
-    try {
-      const resp = await omieCall(base44, 'produtos/nfconsultar/', {
-        nIdPedido: Number(codigoPedido)
-      }, { call: 'ConsultarNF', cacheMinutes: 5 });
-      const ide = resp?.ide || {};
-      const compl = resp?.compl || {};
-      const numero = ide.nNF || resp?.cNumero || '';
-      if (!numero) return null;
-      return {
-        numero_nf: String(numero),
-        serie: String(ide.serie || ''),
-        cStat: String(ide.cStat || compl.cStat || '100'),
-        xMotivo: ide.xMotivo || compl.xMotivo || '',
-        chave_nfe: compl.cChaveNFe || '',
-        id_nf: compl.nIdNF ? String(compl.nIdNF) : ''
-      };
-    } catch (e) {
-      const msg = String(e.message || '').toLowerCase();
-      const redundante = msg.includes('redundante') || msg.includes('aguarde') || msg.includes('código 6') || msg.includes('codigo 6');
-      if (redundante && tentativa === 0) {
-        await new Promise(r => setTimeout(r, 3000));
-        tentativa++;
-        continue;
-      }
-      throw e;
-    }
+  try {
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+      { codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1).catch(() => []);
+    const esp = espelhos?.[0];
+    const numero = String(esp?.numero_nf || '').trim();
+    if (!numero) return null;
+    return {
+      numero_nf: numero,
+      serie: '',
+      cStat: '100',
+      xMotivo: String(esp?.status_label || ''),
+      chave_nfe: '',
+      id_nf: ''
+    };
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // Consulta etapa atual do pedido no Omie via ConsultarPedido.
@@ -197,8 +188,7 @@ async function consultarStatusReal(base44, codigoPedido, mockOmieResponse = null
   // CÓDIGO 6 ao varrer páginas. ConsultarNF retorna a NF do pedido em UMA única chamada.
   if (etapa === '60') {
     try {
-      // Delay entre ConsultarPedido e ConsultarNF — evita 2 chamadas em rajada (gatilho "consumo indevido")
-      await new Promise(r => setTimeout(r, 6000));
+      // consultarNFporPedido agora LÊ do espelho local (sem chamada Omie) — sem rajada, sem delay.
       const nfData = await consultarNFporPedido(base44, codigoPedido);
       if (nfData?.numero_nf) {
         const classificadaReal = classificarNF(

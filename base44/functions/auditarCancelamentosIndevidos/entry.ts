@@ -8,7 +8,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // Se encontrar NF autorizada, restaura o pedido para "faturado".
 // ═══════════════════════════════════════════════════════════════
 
-const OMIE_NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function resolverCreds(base44) {
@@ -20,42 +19,28 @@ async function resolverCreds(base44) {
   return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
 }
 
-async function consultarNfDoPedido(app_key, app_secret, codigoPedido) {
+// NF autorizada de um pedido SEM chamar o Omie. ConsultarNF NÃO aceita filtrar por pedido
+// (nIdPedido → erro 5001 "Tag não faz parte da estrutura"; só aceita nCodNF/ID interno da NF).
+// O número da NF autorizada já está gravado localmente quando o pedido foi faturado
+// (PedidoLiberadoOmie.numero_nf / LogEmissaoNF) — lemos do local para decidir restauração.
+async function consultarNfDoPedido(base44, codigoPedido) {
+  const cod = String(codigoPedido);
   try {
-    const res = await fetch(OMIE_NF_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarNF', app_key, app_secret, param: [{ nIdPedido: Number(codigoPedido) }] })
-    });
-    if (res.status >= 500 || res.status === 429 || res.status === 425) {
-      const corpo = await res.text().catch(() => '');
-      const e = new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
-      if (res.status === 425) e.bloqueio = true; else e.retry = true;
-      throw e;
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1).catch(() => []);
+    const esp = espelhos?.[0];
+    const nfEsp = String(esp?.numero_nf || '').trim();
+    const statusReal = String(esp?.status_real || '').toLowerCase();
+    if (nfEsp) {
+      const naoAutorizada = statusReal.includes('cancel') || statusReal.includes('deneg');
+      return { autorizada: !naoAutorizada, numero_nf: nfEsp, data_emissao: '' };
     }
-    const data = await res.json();
-    if (data.faultstring) {
-      const msg = String(data.faultstring).toLowerCase();
-      if (msg.includes('consumo indevido') || msg.includes('bloquead')) {
-        const e = new Error(data.faultstring); e.bloqueio = true; throw e;
-      }
-      if (msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante')) {
-        const e = new Error(data.faultstring); e.retry = true; throw e;
-      }
-      return null; // NF não encontrada
-    }
-    if (!data?.ide?.nNF) return null;
-    const dCan = String(data.ide?.dCan || '').trim();
-    const cDeneg = String(data.ide?.cDeneg || '').trim();
-    return {
-      autorizada: !dCan && cDeneg !== 'S' && cDeneg !== 'D',
-      numero_nf: String(data.ide.nNF),
-      data_emissao: data.ide?.dEmi || ''
-    };
-  } catch (e) {
-    if (e.bloqueio || e.retry) throw e;
-    return null;
-  }
+  } catch { /* ignora */ }
+  try {
+    const logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: cod, status: 'autorizada' }, '-created_date', 1).catch(() => []);
+    const nfLog = String(logs?.[0]?.numero_nf || '').trim();
+    if (nfLog) return { autorizada: true, numero_nf: nfLog, data_emissao: '' };
+  } catch { /* ignora */ }
+  return null;
 }
 
 async function verificarCircuitBreaker(base44) {
@@ -104,8 +89,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { app_key, app_secret } = await resolverCreds(base44);
-
     // Buscar TODOS os pedidos cancelados com omie_enviado: true (paginado)
     const BATCH = 50;
     let allPedidos = [];
@@ -134,7 +117,7 @@ Deno.serve(async (req) => {
 
     for (const pedido of pedidos) {
       try {
-        const nfInfo = await consultarNfDoPedido(app_key, app_secret, pedido.omie_codigo_pedido);
+        const nfInfo = await consultarNfDoPedido(base44, pedido.omie_codigo_pedido);
         verificados++;
 
         if (!nfInfo) {

@@ -65,7 +65,10 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // Erros ESTRUTURAIS (tag/parâmetro fora da estrutura, 5001) são TERMINAIS: falham 100% das
+        // vezes → NUNCA fazer retry (só desperdiça cota e dispara "consumo redundante" no Omie).
+        const ehTerminal = msg.includes('não faz parte da estrutura') || msg.includes('nao faz parte da estrutura') || msg.includes('5001');
+        if (!ehTerminal && (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error'))) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -105,31 +108,30 @@ function classificarCStat(cStat) {
 }
 
 
-// Método correto p/ obter o número de NF de um pedido: ConsultarNF (produtos/nfconsultar/)
-// com { nIdPedido }. ListarNF + nIdPedido é rejeitado pelo Omie ("Tag NIDPEDIDO não faz
-// parte da estrutura"). ConsultarNF retorna a NF única do pedido em ide.nNF / ide.cStat.
+// NF de um pedido SEM chamada extra ao Omie. A API ConsultarNF/ListarNF NÃO aceita filtrar por
+// pedido: ConsultarNF só aceita nCodNF (ID interno da NF) e ListarNF nem aceita nNF/nIdPedido —
+// qualquer um deles → erro 5001 "Tag não faz parte da estrutura" + "consumo redundante". O número
+// da NF já vem do ConsultarPedido (etapa 60); este fallback apenas LÊ do espelho/log local.
 async function buscarNfPorPedido(base44, codigoPedido) {
+  const cod = String(codigoPedido);
   try {
-    const data = await omieCall(base44, 'produtos/nfconsultar/', {
-      nIdPedido: Number(codigoPedido)
-    }, { call: 'ConsultarNF' });
-    const ide = data?.ide || data?.nfConsultada?.ide || {};
-    const compl = data?.compl || data?.nfConsultada?.compl || {};
-    const cStat = String(ide.cStat || '');
-    const numeroNf = String(ide.nNF || '');
-    if (!numeroNf && !cStat) return null;
-    return {
-      numero_nf: numeroNf,
-      serie: ide.serie || '',
-      chave: compl.cChaveNFe || '',
-      cStat,
-      xMotivo: ide.xMotivo || compl.cMensagem || '',
-      classificacao: classificarCStat(cStat)
-    };
-  } catch {
-    // Falha de consulta (incl. comunicação) → null: nunca infere rejeição daqui.
-    return null;
-  }
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1).catch(() => []);
+    const esp = espelhos?.[0];
+    const numeroNf = String(esp?.numero_nf || '').trim();
+    if (numeroNf) {
+      return { numero_nf: numeroNf, serie: '', chave: '', cStat: '', xMotivo: '', classificacao: 'autorizada' };
+    }
+  } catch { /* ignora */ }
+  try {
+    const logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: cod }, '-created_date', 1).catch(() => []);
+    const log = logs?.[0];
+    const numeroNf = String(log?.numero_nf || '').trim();
+    const cStat = String(log?.codigo_sefaz || '').trim();
+    if (numeroNf || cStat) {
+      return { numero_nf: numeroNf, serie: '', chave: '', cStat, xMotivo: String(log?.mensagem || ''), classificacao: classificarCStat(cStat) };
+    }
+  } catch { /* ignora */ }
+  return null;
 }
 
 function extrairPedido(consulta, pedidoOriginal) {
@@ -311,6 +313,7 @@ Deno.serve(async (req) => {
           let classificacao = classificarCStat(cStatFinal);
 
           if (status.etapa === '60' && (!classificacao || !numeroNfFinal)) {
+            // Lê do espelho/log local — sem chamada Omie (evita o ConsultarNF inválido que dava 5001).
             const nfInfo = await buscarNfPorPedido(base44, codigo);
             if (nfInfo) {
               if (nfInfo.numero_nf) numeroNfFinal = nfInfo.numero_nf;
@@ -318,7 +321,6 @@ Deno.serve(async (req) => {
               if (nfInfo.xMotivo) xMotivoFinal = nfInfo.xMotivo;
               if (nfInfo.classificacao) classificacao = nfInfo.classificacao;
             }
-            await new Promise(r => setTimeout(r, DELAY_ENTRE_CHAMADAS_MS));
           }
 
           // Rejeição SÓ vem de cStat real (já refletido em `classificacao` via classificarCStat).

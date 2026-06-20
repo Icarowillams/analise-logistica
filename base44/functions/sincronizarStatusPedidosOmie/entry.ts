@@ -1,7 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = "https://app.omie.com.br/api/v1/produtos/pedido/";
-const OMIE_NF_URL = "https://app.omie.com.br/api/v1/produtos/nfconsultar/";
 
 async function resolverCreds(base44) {
   try {
@@ -12,23 +11,30 @@ async function resolverCreds(base44) {
   return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
 }
 
+// NF autorizada de um pedido SEM chamar o Omie. ConsultarNF NÃO aceita filtrar por pedido
+// (nIdPedido → erro 5001 "Tag não faz parte da estrutura"; só aceita nCodNF/ID interno da NF).
+// O número da NF autorizada já está gravado localmente quando o pedido foi faturado
+// (PedidoLiberadoOmie.numero_nf / LogEmissaoNF). Lemos do local para proteger o pedido de
+// cancelamento indevido sem disparar a chamada inválida.
 async function consultarNfDoPedido(base44, codigoPedido) {
+  const cod = String(codigoPedido);
   try {
-    const { app_key, app_secret } = await resolverCreds(base44);
-    const res = await fetch(OMIE_NF_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarNF', app_key, app_secret, param: [{ nIdPedido: Number(codigoPedido) }] })
-    });
-    const data = await res.json();
-    if (!data?.ide?.nNF) return null;
-    const dCan = String(data.ide?.dCan || '').trim();
-    const cDeneg = String(data.ide?.cDeneg || '').trim();
-    return {
-      autorizada: !dCan && cDeneg !== 'S' && cDeneg !== 'D',
-      numero_nf: String(data.ide.nNF)
-    };
-  } catch { return null; }
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1).catch(() => []);
+    const esp = espelhos?.[0];
+    const nfEsp = String(esp?.numero_nf || '').trim();
+    const statusReal = String(esp?.status_real || '').toLowerCase();
+    if (nfEsp) {
+      // Só considera autorizada se o espelho não marca a NF como cancelada/denegada.
+      const naoAutorizada = statusReal.includes('cancel') || statusReal.includes('deneg');
+      return { autorizada: !naoAutorizada, numero_nf: nfEsp };
+    }
+  } catch { /* ignora */ }
+  try {
+    const logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: cod, status: 'autorizada' }, '-created_date', 1).catch(() => []);
+    const nfLog = String(logs?.[0]?.numero_nf || '').trim();
+    if (nfLog) return { autorizada: true, numero_nf: nfLog };
+  } catch { /* ignora */ }
+  return null;
 }
 
 // NOVA VERSÃO: Consulta APENAS pedidos com status 'faturado' para detectar cancelamentos no Omie.

@@ -62,7 +62,10 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           { const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // Erros ESTRUTURAIS (tag/parâmetro fora da estrutura, 5001) são TERMINAIS: falham 100% das
+        // vezes → NUNCA fazer retry (só desperdiça cota e dispara "consumo redundante" no Omie).
+        const ehTerminal = msg.includes('não faz parte da estrutura') || msg.includes('nao faz parte da estrutura') || msg.includes('5001');
+        if (!ehTerminal && (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error'))) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -105,34 +108,23 @@ async function consultarPedido(base44: any, codigoPedido: string | number) {
   }
 }
 
-// ListarNF por pedido - busca NF AUTORIZADA (ignora cancelada/denegada)
-async function buscarNfAutorizada(base44: any, codigoPedido: string | number) {
+// NF de um pedido SEM chamada extra ao Omie. A API ListarNF NÃO aceita filtrar por pedido
+// (nIdPedido → erro 5001 "Tag não faz parte da estrutura") e ConsultarNF só aceita nCodNF (ID
+// interno da NF), que aqui não temos. O número da NF já vem do ConsultarPedido (etapa 60) e/ou
+// está gravado no espelho/log local — então lemos do local em vez de chamar o Omie.
+async function buscarNfLocal(base44: any, codigoPedido: string | number) {
+  const cod = String(codigoPedido);
   try {
-    const data = await omieCall(base44, 'produtos/nfconsultar/', {
-      pagina: 1,
-      registros_por_pagina: 50,
-      nIdPedido: Number(codigoPedido)
-    }, { call: 'ListarNF', skipLog: true });
-
-    const nfs = data?.nfCadastro || [];
-    if (nfs.length === 0) return null;
-
-    // Prioriza NF autorizada (cStat 100 ou 150)
-    for (const nf of nfs) {
-      const ide = nf.ide || {};
-      const cStat = String(ide.cStat || '');
-      const nNF = String(ide.nNF || nf.cNumero || '');
-      if (!nNF) continue;
-      const dCan = String(ide.dCan || '').trim();
-      const cDeneg = String(ide.cDeneg || '').trim();
-      if (dCan || cDeneg === 'S' || cDeneg === 'D') continue;
-      if (['101', '135'].includes(cStat)) continue;
-      return nNF;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+    const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1).catch(() => []);
+    const nfEsp = String(espelhos?.[0]?.numero_nf || '').trim();
+    if (nfEsp) return nfEsp;
+  } catch { /* ignora */ }
+  try {
+    const logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: cod, status: 'autorizada' }, '-created_date', 1).catch(() => []);
+    const nfLog = String(logs?.[0]?.numero_nf || '').trim();
+    if (nfLog) return nfLog;
+  } catch { /* ignora */ }
+  return null;
 }
 
 async function logCarga(base44: any, cargaId: string, numeroCarga: string, pedidoId: string, numeroPedido: string, campos: string[], numeroNf: string, motivo: string, status = 'sucesso') {
@@ -245,9 +237,9 @@ Deno.serve(async (req) => {
         if (precisaNf) {
           let nf = String(consulta.numero_nf || '').trim();
           if (!nf) {
-            const nfConfirmada = await buscarNfAutorizada(base44, p.codigo_pedido);
-            await sleep(DELAY_MS);
-            if (nfConfirmada) nf = nfConfirmada;
+            // Sem NF no ConsultarPedido → lê do espelho/log local (sem chamada Omie inválida).
+            const nfLocal = await buscarNfLocal(base44, p.codigo_pedido);
+            if (nfLocal) nf = nfLocal;
           }
           if (nf) {
             p.numero_nf = nf;
