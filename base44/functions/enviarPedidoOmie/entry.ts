@@ -83,7 +83,16 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       return data;
     } catch (e: any) {
       lastErr = e.message;
+      const isTimeoutOuRede = e.name === 'AbortError' || /network|fetch failed|connection|econn|socket/i.test(e.message || '');
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      // ESCRITA + timeout/erro de rede: o Omie PODE já ter criado o registro mas a resposta
+      // não voltou. NUNCA reenviar cegamente (gera pedido duplicado). Lança erro marcado para
+      // o caller verificar idempotência (ConsultarPedido por codigo_pedido_integracao) antes de recriar.
+      if (options.isWrite && isTimeoutOuRede) {
+        const err: any = new Error(lastErr);
+        err.timeoutEscrita = true;
+        throw err;
+      }
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
       throw new Error(lastErr);
     }
@@ -391,6 +400,40 @@ function montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, c
     return payload;
 }
 
+// Consulta idempotente: o pedido já foi criado no Omie? (busca por codigo_pedido_integracao = id Base44)
+// Retorna { codigo_pedido, numero_pedido } se existe, ou null se não existe.
+async function consultarPedidoCriado(base44, pedidoIdBase44) {
+    try {
+        const consulta = await omieCall(base44, "produtos/pedido/", { codigo_pedido_integracao: String(pedidoIdBase44) }, { call: 'ConsultarPedido', operation: 'ConsultarPedido', skipLog: true, timeoutMs: 20000 });
+        const cab = consulta?.pedido_venda_produto?.cabecalho;
+        if (cab?.codigo_pedido) {
+            return { codigo_pedido: cab.codigo_pedido, numero_pedido: cab.numero_pedido };
+        }
+    } catch { /* não existe ou consulta falhou → trata como não criado */ }
+    return null;
+}
+
+// IncluirPedido com proteção anti-duplicata: em timeout/erro de rede (escrita), NÃO reenvia cego.
+// Verifica via ConsultarPedido(codigo_pedido_integracao) se o Omie já criou o pedido e reaproveita.
+async function incluirPedidoIdempotente(base44, payload, pedido_id) {
+    try {
+        return await omieCall(base44, "produtos/pedido/", payload, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id, isWrite: true, timeoutMs: 40000 });
+    } catch (e) {
+        if (e.timeoutEscrita) {
+            debugLog(base44, `[enviarPedidoOmie] Timeout no IncluirPedido — verificando se o pedido já foi criado no Omie antes de reenviar`, { pedido_id, erro: e.message });
+            const existente = await consultarPedidoCriado(base44, pedido_id);
+            if (existente) {
+                debugLog(base44, `[enviarPedidoOmie] Pedido JÁ criado no Omie (codigo ${existente.codigo_pedido}) — reaproveitando, sem recriar`, { pedido_id, codigo_omie: existente.codigo_pedido });
+                return { codigo_pedido: existente.codigo_pedido, numero_pedido: existente.numero_pedido };
+            }
+            // Confirmado que NÃO existe → reenviar UMA vez (agora é seguro)
+            debugLog(base44, `[enviarPedidoOmie] Pedido NÃO encontrado no Omie após timeout — reenviando uma vez`, { pedido_id });
+            return await omieCall(base44, "produtos/pedido/", payload, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id, isWrite: true, timeoutMs: 40000 });
+        }
+        throw e;
+    }
+}
+
 // ============================================================
 // CORE: envia 1 pedido
 // ============================================================
@@ -527,7 +570,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
 
     // ENVIAR
     const payload = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, dadosAdicNf });
-    let resultado = await omieCall(base44, "produtos/pedido/", payload, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
+    let resultado = await incluirPedidoIdempotente(base44, payload, pedido_id);
 
     // Se cliente não existe no Omie → exportar e tentar UMA VEZ MAIS
     const erroClienteNaoExiste = resultado?.faultstring && /cliente.*(não.*(localizado|encontrado|cadastrado)|invalid)/i.test(resultado.faultstring);
@@ -537,7 +580,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
             await sleep(1500); // Omie indexar
             clientePayload = { codigo_cliente_integracao: String(clienteBase44.id) };
             const payload2 = montarPayloadPedido({ pedido, items, produtosMap, unidadesMap, plano, clientePayload, contaCorrente, dadosAdicNf });
-            resultado = await omieCall(base44, "produtos/pedido/", payload2, { call: 'IncluirPedido', operation: 'IncluirPedido', entityType: 'Pedido', entityId: pedido_id });
+            resultado = await incluirPedidoIdempotente(base44, payload2, pedido_id);
         } else {
             await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: `Cliente não estava no Omie: ${exp.erro}`, omie_enviado: false });
             return { sucesso: false, erro: `Cliente não estava no Omie: ${exp.erro}`, pedido_id };
