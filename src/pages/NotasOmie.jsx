@@ -6,7 +6,6 @@ import NotasNF55Tab from '@/components/notasOmie/NotasNF55Tab';
 import NotasD1Tab from '@/components/notasOmie/NotasD1Tab';
 import EmissaoNFTab from '@/components/notasOmie/EmissaoNFTab';
 import LogEmissaoNFTab from '@/components/notasOmie/LogEmissaoNFTab';
-import ReemitirNfPresasButton from '@/components/notasOmie/ReemitirNfPresasButton';
 
 export default function NotasOmie() {
   // Abas:
@@ -53,7 +52,6 @@ export default function NotasOmie() {
             <p className="text-sm text-slate-500">Emissão, consulta e impressão de NF-e (Omie) e notas D1 internas</p>
           </div>
         </div>
-        {tab === 'emissao' && <ReemitirNfPresasButton />}
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
