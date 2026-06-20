@@ -19,6 +19,24 @@ export default function CardClienteVisita({ cliente, ordem, roteiro, vendedor, v
   const [visita, setVisita] = useState(visitaExistente || null);
   const [carregando, setCarregando] = useState(false);
 
+  // DEFENSIVO: o cliente_id é a fonte da verdade. Deriva o rótulo exibido do cadastro
+  // real (não do rótulo gravado no roteiro), blindando contra dados legados desalinhados.
+  const [cadastro, setCadastro] = useState(null);
+  useEffect(() => {
+    let ativo = true;
+    if (cliente.cliente_id) {
+      base44.entities.Cliente.filter({ id: cliente.cliente_id })
+        .then(r => { if (ativo) setCadastro(r?.[0] || null); })
+        .catch(() => {});
+    }
+    return () => { ativo = false; };
+  }, [cliente.cliente_id]);
+
+  const nomeExibido = cadastro ? (cadastro.nome_fantasia || cadastro.razao_social) : cliente.cliente_nome;
+  const codigoExibido = cadastro?.codigo_interno || cliente.cliente_codigo;
+  const cidadeExibida = cadastro?.cidade || cliente.cliente_cidade;
+  const enderecoExibido = cadastro?.endereco || cliente.cliente_endereco;
+
   // estado de não atendimento
   const [naoAtendimentoOpen, setNaoAtendimentoOpen] = useState(false);
   const [motivoNao, setMotivoNao] = useState('');
@@ -160,8 +178,8 @@ export default function CardClienteVisita({ cliente, ordem, roteiro, vendedor, v
         <div className="flex items-start gap-3">
           <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-amber-400 text-neutral-900 text-sm font-bold shrink-0">{ordem}</span>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-slate-900">{cliente.cliente_codigo} - {cliente.cliente_nome}</p>
-            <p className="text-xs text-slate-500 uppercase tracking-wide mt-0.5">{cliente.cliente_cidade || '-'}{cliente.cliente_endereco ? `, ${cliente.cliente_endereco}` : ''}</p>
+            <p className="font-semibold text-slate-900">{codigoExibido} - {nomeExibido}</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide mt-0.5">{cidadeExibida || '-'}{enderecoExibido ? `, ${enderecoExibido}` : ''}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => window.location.href = '/EmissaoPedidos'}>

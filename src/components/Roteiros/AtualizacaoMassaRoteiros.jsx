@@ -102,7 +102,11 @@ export default function AtualizacaoMassaRoteiros() {
           novosDetalhes = novosDetalhes.filter(d => !idsRemover.includes(d.cliente_id)).map((d, i) => ({ ...d, ordem: i + 1 }));
         }
 
-        await base44.entities.Roteiro.update(r.id, { clientes_ids: novosIds, clientes_detalhes: novosDetalhes });
+        // clientes_ids SEMPRE derivado 1:1 dos detalhes (mesma ordem) — nunca dessincronizado.
+        await base44.entities.Roteiro.update(r.id, {
+          clientes_ids: novosDetalhes.map(d => d.cliente_id),
+          clientes_detalhes: novosDetalhes
+        });
         atualizados++;
         detalhes.push({ roteiro: `${r.vendedor_nome} - ${getDiaLabel(r.dia_semana)}`, sucesso: true });
       } catch (err) {

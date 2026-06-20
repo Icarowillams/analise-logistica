@@ -36,24 +36,51 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
   const supervisores = vendedores.filter(v => vendedores.some(vend => vend.supervisor_id === v.id));
 
   useEffect(() => {
+    let cancelado = false;
     if (roteiro && isEditing) {
+      const detalhes = roteiro.clientes_detalhes || [];
+      // REGRA DE OURO: o cliente_id é a fonte da verdade. Todo rótulo (código, nome,
+      // cidade, bairro) é SEMPRE derivado do cadastro de Cliente daquele id — nunca
+      // do rótulo gravado e nunca por fallback de código (causa do desalinhamento).
+      const ids = [...new Set(detalhes.map(d => d.cliente_id).filter(Boolean))];
+
+      // Pré-preenche com placeholder e resolve cada item pelo cadastro real.
       setFormData({
         vendedor_id: roteiro.vendedor_id || '',
         dia_semana: roteiro.dia_semana || '',
-        // Usa diretamente os dados já persistidos em clientes_detalhes (nome, código, cidade)
-        clientes_selecionados: roteiro.clientes_detalhes?.map(c => ({
-          id: c.cliente_id,
-          nome: c.cliente_nome,
-          nome_fantasia: c.nome_fantasia || '',
-          codigo: c.cliente_codigo,
-          cidade: c.cliente_cidade,
-          bairro: c.cliente_bairro,
-          ordem: c.ordem
-        })) || []
+        clientes_selecionados: detalhes.map(c => ({
+          id: c.cliente_id, nome: '', nome_fantasia: '', codigo: '',
+          cidade: '', bairro: '', ordem: c.ordem, _carregando: true
+        }))
       });
+
+      (async () => {
+        const registros = ids.length
+          ? await base44.entities.Cliente.filter({ id: { $in: ids } })
+          : [];
+        if (cancelado) return;
+        const porId = new Map(registros.map(r => [r.id, r]));
+        const selecionados = detalhes.map(c => {
+          const reg = porId.get(c.cliente_id);
+          if (!reg) {
+            // ID não existe mais no cadastro → item órfão, marcado para aviso visual.
+            return {
+              id: c.cliente_id, nome: c.cliente_nome || '(cliente não encontrado)',
+              nome_fantasia: '', codigo: c.cliente_codigo || '', cidade: '', bairro: '',
+              ordem: c.ordem, _orfao: true
+            };
+          }
+          return {
+            id: reg.id, nome: reg.razao_social, nome_fantasia: reg.nome_fantasia || '',
+            codigo: reg.codigo_interno, cidade: reg.cidade, bairro: reg.bairro, ordem: c.ordem
+          };
+        });
+        setFormData(prev => ({ ...prev, clientes_selecionados: selecionados }));
+      })();
     } else {
       setFormData({ vendedor_id: '', dia_semana: '', clientes_selecionados: [] });
     }
+    return () => { cancelado = true; };
   }, [roteiro, isEditing, open]);
 
   const createMutation = useMutation({
@@ -309,8 +336,13 @@ export default function CriarRoteiroModal({ open, onOpenChange, roteiro, isEditi
                               <div {...p.dragHandleProps} className="cursor-grab"><GripVertical className="w-4 h-4 text-slate-400" /></div>
                               <Badge className="bg-amber-100 text-amber-700">{index + 1}</Badge>
                               <div className="flex-1">
-                                <p className="font-medium text-sm">{c.nome_fantasia || c.nome}</p>
+                                <p className="font-medium text-sm">
+                                  {c._carregando ? 'Carregando...' : (c.nome_fantasia || c.nome)}
+                                </p>
                                 <p className="text-xs text-slate-500">{c.codigo} • {c.cidade}</p>
+                                {c._orfao && (
+                                  <p className="text-xs text-red-600 font-medium">⚠ Cliente não encontrado no cadastro</p>
+                                )}
                               </div>
                               <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCliente(c.id)}>
                                 <X className="w-4 h-4 text-red-500" />
