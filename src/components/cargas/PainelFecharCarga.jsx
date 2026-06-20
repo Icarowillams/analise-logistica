@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
+const LIMITE_AVISO_CARGA = 25;
+
 // Gera o próximo número de carga a partir de uma sequência PERSISTENTE (ContadorCarga).
 // Importante: nunca decrementa, mesmo se a última carga for cancelada ou excluída.
 // Fallback: se o contador ainda não existir, inicializa a partir do maior número já usado nas cargas.
@@ -99,6 +101,16 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
     if (!motoristaId || !veiculoId || !dataSaida) {
       toast.error('Motorista, Veículo e Data de Saída são obrigatórios');
       return;
+    }
+
+    // AVISO CARGA GIGANTE: cargas costumam ser por rota. Acima do limite, confirmar.
+    if (pedidosSel.length > LIMITE_AVISO_CARGA) {
+      const rotasDistintas = new Set(pedidosSel.map(p => p.rota_nome || 'Sem Rota')).size;
+      const ok = window.confirm(
+        `Você está fechando uma carga com ${pedidosSel.length} pedidos (${rotasDistintas} rota(s)), ${formatCurrency(valorTotal)}.\n\n` +
+        `Isso é muito acima do normal — cargas costumam ser por rota. Deseja realmente fechar?`
+      );
+      if (!ok) return;
     }
 
     // BLINDAGEM CARGA EM BRANCO: garantir que todo pedido de VENDA tenha produtos.

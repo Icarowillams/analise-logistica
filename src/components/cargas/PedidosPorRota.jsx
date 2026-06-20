@@ -7,7 +7,7 @@ import { ChevronDown, ChevronRight, Layers, MousePointer2 } from 'lucide-react';
 import { formatCurrency, qtdPacotesPedido } from './montagemUtils';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
-export default function PedidosPorRota({ pedidos, selecionados, setSelecionados }) {
+export default function PedidosPorRota({ pedidos, selecionados, setSelecionados, filtroAtivo = false }) {
   const [colapsadas, setColapsadas] = useState(new Set());
   const selSet = useMemo(() => new Set(selecionados), [selecionados]);
 
@@ -32,6 +32,18 @@ export default function PedidosPorRota({ pedidos, selecionados, setSelecionados 
   const selecionarTodos = () => {
     const ids = pedidos.map(p => p.codigo_pedido);
     const todosSelecionados = ids.length > 0 && ids.every(id => selSet.has(id));
+
+    // Proteção: sem filtro aplicado, "Selecionar filtrados" pegaria TODOS os pedidos
+    // de TODAS as rotas numa carga só. Exige confirmação explícita (só ao MARCAR).
+    if (!todosSelecionados && !filtroAtivo) {
+      const totalRotas = grupos.length;
+      const ok = window.confirm(
+        `Nenhum filtro aplicado. Isso vai selecionar TODOS os ${ids.length} pedidos de ${totalRotas} rota(s) numa única carga.\n\n` +
+        `Tem certeza? O recomendado é montar uma carga por rota.`
+      );
+      if (!ok) return;
+    }
+
     setSelecionados(prev => todosSelecionados ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
   };
 

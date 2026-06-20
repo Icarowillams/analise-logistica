@@ -20,6 +20,17 @@ export default function MontagemCarga() {
   const pedidosFiltrados = useMemo(() => filtrarPedidosMontagem(pedidos, filtros, selecionados), [pedidos, filtros, selecionados]);
   const pedidosSelecionados = useMemo(() => pedidos.filter(p => selecionados.includes(p.codigo_pedido)), [pedidos, selecionados]);
 
+  const filtroAtivo = useMemo(() => (
+    (filtros.tipo && filtros.tipo !== '__all__') ||
+    (filtros.rota && filtros.rota !== '__all__') ||
+    (filtros.cidade && filtros.cidade !== '__all__') ||
+    (filtros.vendedor && filtros.vendedor !== '__all__') ||
+    !!filtros.valorMin ||
+    !!filtros.valorMax ||
+    (filtros.texto || '').trim() !== '' ||
+    filtros.apenasSelecionados
+  ), [filtros]);
+
   return (
     <div className="min-h-screen -m-3 sm:-m-4 md:-m-6 lg:-m-8 bg-[#eefcff] p-3 md:p-5">
       <div className="space-y-3 w-full max-w-none mx-auto">
@@ -61,7 +72,7 @@ export default function MontagemCarga() {
             ) : (
               <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
                 <div className="relative">
-                  <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} />
+                  <PedidosPorRota pedidos={pedidosFiltrados} selecionados={selecionados} setSelecionados={setSelecionados} filtroAtivo={filtroAtivo} />
                   {carregandoItens && (
                     <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-white/90 px-3 py-1.5 rounded-full shadow text-xs text-slate-500 z-10">
                       <Loader2 className="w-3 h-3 animate-spin" />
