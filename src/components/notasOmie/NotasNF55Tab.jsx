@@ -234,7 +234,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         // Preferimos buscar por número de NF (mais direto); se a carga ainda não tem
         // numero_nf gravado, buscamos pelo código do pedido (nIdPedido) + janela de datas.
         const payloadBusca = numerosNfCarga.length > 0
-          ? { numeros_nf: numerosNfCarga }
+          ? { numeros_nf: numerosNfCarga, ...janelaDatas }
           : { codigos_pedido: codigosPedidoCarga, ...janelaDatas };
 
         let data;
@@ -297,9 +297,9 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     setLoadingDetalhe(nf.nIdNF || nf.nCodNF || nf.cNumero);
     try {
       const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
+        // Envia SÓ o ID interno — o número da NF (cNumero) não é aceito como filtro de API.
         nIdNF: nf.nIdNF || nf.nCodNF,
         nCodNF: nf.nCodNF || nf.nIdNF,
-        nNF: nf.cNumero,
         nIdPedido: nf.nIdPedido
       });
       if (data?.sucesso) setDetalheCompleto(data);

@@ -65,7 +65,10 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error') || msg.includes('chave de acesso') || msg.includes('chave inválid') || msg.includes('chave invalid') || msg.includes('acesso está inválid') || msg.includes('acesso esta invalid')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        // Erros ESTRUTURAIS (parâmetro/chave inválida, tag fora da estrutura) são TERMINAIS:
+        // falham 100% das vezes, então NÃO faz retry — só desperdiça cota e polui o log do Omie.
+        const ehTerminal = msg.includes('chave de acesso') || msg.includes('chave inválid') || msg.includes('chave invalid') || msg.includes('acesso está inválid') || msg.includes('acesso esta invalid') || msg.includes('não faz parte da estrutura') || msg.includes('nao faz parte da estrutura') || msg.includes('5001');
+        if (!ehTerminal && (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error'))) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
@@ -104,15 +107,12 @@ function pickId(detalhe, body) {
 
 function nfChaveFromBody(body) {
   const chave: any = {};
-  // PRIORIZAR nCodNF (identificador numérico interno) — Omie rejeita (erro 101)
-  // quando nCodNF e nNF são enviados no mesmo param. Só um identificador por vez.
-  if (body.nIdNF) chave.nCodNF = Number(body.nIdNF);
-  else if (body.nCodNF) chave.nCodNF = Number(body.nCodNF);
-  // nNF só como fallback quando NÃO há nCodNF
-  if (!chave.nCodNF) {
-    if (body.nNF) chave.nNF = String(body.nNF);
-    else if (body.cNumero) chave.nNF = String(body.cNumero);
-  }
+  // ConsultarNF (produtos/nfconsultar) SÓ aceita o ID interno nCodNF.
+  // O campo nNF (número da nota) NÃO faz parte da estrutura → erro 5001.
+  // Por isso só montamos a chave quando temos o ID interno; o número da NF (cNumero)
+  // é apenas rótulo de exibição, nunca filtro de API.
+  const id = Number(body.nIdNF || body.nCodNF || 0);
+  if (id > 0) chave.nCodNF = id;
   return chave;
 }
 
@@ -130,8 +130,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const chaveNF = nfChaveFromBody(body);
-    if (!chaveNF.nCodNF && !chaveNF.nNF && !body.nIdPedido && !body.codigo_pedido) {
-      return Response.json({ error: 'Informe nIdNF/nCodNF, número da NF ou pedido' }, { status: 400 });
+    if (!chaveNF.nCodNF) {
+      return Response.json({ error: 'Informe o ID interno da NF (nIdNF/nCodNF). O número da NF (cNumero) não é aceito como filtro pela API Omie.' }, { status: 400 });
     }
 
     const t0 = Date.now();
@@ -145,7 +145,10 @@ Deno.serve(async (req) => {
     }
 
     const nIdNfe = pickId(detalhe, body);
-    const nIdPedido = body.nIdPedido || detalhe?.compl?.nIdPedido || detalhe?.nIdPedido || null;
+    // nIdPedido só é legítimo se vier do próprio detalhe da NF (compl.nIdPedido) ou
+    // for explicitamente enviado pelo front. NUNCA usar o ID da nota como código de
+    // pedido — isso gerava "A chave de acesso está inválida" no ConsultarPedido.
+    const nIdPedido = detalhe?.compl?.nIdPedido || detalhe?.nIdPedido || body.nIdPedido || null;
 
     const chamadas = [];
     if (nIdNfe) {

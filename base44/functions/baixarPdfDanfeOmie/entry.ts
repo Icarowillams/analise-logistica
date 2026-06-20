@@ -142,14 +142,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Estratégia 2 (principal): resolver via ConsultarNF usando nNF (número da nota)
-    if (!nIdNfe && nNF) {
-      const detalhe = await omieCall(base44, NF_URL, { nNF: String(nNF) }, { call: 'ConsultarNF', skipLog: true });
+    // Estratégia 2 (fallback): resolver via ConsultarNF usando o ID interno (nCodNF).
+    // ConsultarNF NÃO aceita nNF (número da nota) → erro 5001. Por isso só consultamos
+    // quando temos o ID interno; o número (nNF) serve apenas como rótulo de exibição.
+    if (!nIdNfe && candidato > 0) {
+      const detalhe = await omieCall(base44, NF_URL, { nCodNF: candidato }, { call: 'ConsultarNF', skipLog: true });
       nIdNfe = detalhe?.compl?.nIdNF || detalhe?.nIdNF || detalhe?.nCodNF || null;
     }
 
     if (!nIdNfe) {
-      return Response.json({ error: 'Não foi possível resolver o ID da NF. Informe nNF (número da nota).' }, { status: 400 });
+      return Response.json({ error: 'Não foi possível resolver o ID interno da NF. Informe nIdNF/nCodNF (a listagem de NFs já o fornece).' }, { status: 400 });
     }
 
     const nfe = await omieCall(base44, DFE_URL, { nIdNfe: Number(nIdNfe) }, { call: 'ObterNfe', skipLog: true });

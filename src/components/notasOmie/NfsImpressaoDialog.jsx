@@ -48,10 +48,10 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
   };
 
   const fetchDetalhe = async (nf) => {
+    // Envia SÓ o ID interno (nIdNF/nCodNF) — número da NF (cNumero) não é filtro de API.
     const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
-      nNF: nf.cNumero,
       nIdPedido: nf.nIdPedido
     });
     if (!data?.sucesso) throw new Error(data?.error || `Falha ao obter NF ${nf.cNumero}`);
@@ -62,7 +62,6 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     const { data } = await base44.functions.invoke('baixarPdfDanfeOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
-      nNF: nf.cNumero,
       nIdPedido: nf.nIdPedido
     });
     if (!data?.sucesso) {
