@@ -111,12 +111,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     return indice;
   };
 
-  // Filtra NFs pela carga cruzando por DOIS critérios (qualquer um casa):
-  //  1. nIdPedido da NF == codigo_pedido do pedido na carga (caminho normal)
-  //  2. nNF normalizado da NF == numero_nf do pedido na carga (fallback quando o
-  //     ListarNF do Omie não devolve nIdPedido — comum para NFs antigas ou
-  //     emitidas via outros canais)
-  const filtrarNfsPorCarga = (nfs, carga) => {
+  // Filtra NFs pela carga. CRITÉRIO PRINCIPAL = codigo_pedido (estável, nunca
+  //   depende de webhook). numero_nf é só FALLBACK.
+  //  1. nIdPedido da NF == codigo_pedido do pedido na carga (principal)
+  //  2. nNF normalizado da NF == numero_nf gravado na carga (fallback)
+  //  3. nNF normalizado da NF == numero_nf do LogEmissaoNF autorizado daquele
+  //     codigo_pedido (PONTE: quando o ListarNF do Omie não devolve nIdPedido e
+  //     a carga ficou sem numero_nf gravado — usa a fonte local autorizada)
+  const filtrarNfsPorCarga = (nfs, carga, mapaNfLog = {}) => {
     if (!carga) return nfs;
     const pedidos = carga.pedidos_omie || [];
     const codigosPedido = new Set(
@@ -127,6 +129,10 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         .map(p => p.numero_nf && String(p.numero_nf).replace(/\D/g, ''))
         .filter(Boolean)
     );
+    // Ponte LogEmissaoNF: nº de NF autorizado de cada codigo_pedido da carga.
+    Object.entries(mapaNfLog).forEach(([cod, num]) => {
+      if (codigosPedido.has(String(cod)) && num) numerosNf.add(String(num).replace(/\D/g, ''));
+    });
     if (codigosPedido.size === 0 && numerosNf.size === 0) return [];
     return (nfs || []).filter(nf => {
       const idPedido = String(nf.nIdPedido || '');
@@ -259,7 +265,17 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         }
         dataFinalResp = data;
         const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
-        const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar);
+
+        // RECONCILIAÇÃO SILENCIOSA (sem botão, sem aviso): regrava numero_nf vazio/divergente
+        // em pedidos_omie a partir do LogEmissaoNF autorizado e devolve a ponte
+        // codigo_pedido → numero_nf usada já neste cruzamento. Fonte 100% local, idempotente.
+        let mapaNfLog = {};
+        try {
+          const { data: rec } = await base44.functions.invoke('reconciliarNumeroNfCarga', { carga_id: cargaParaFiltrar.id });
+          if (rec?.sucesso) mapaNfLog = rec.mapaNf || {};
+        } catch (_) { /* reconciliação é best-effort; nunca bloqueia a listagem */ }
+
+        const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar, mapaNfLog);
         // Busca POR carga: o nº da carga já é conhecido (é o próprio filtro). Marca todas
         // as NFs com ele direto, sem baixar o índice de TODAS as cargas (que era lento).
         const numCarga = cargaParaFiltrar.numero_carga;

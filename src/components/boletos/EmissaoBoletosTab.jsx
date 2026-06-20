@@ -121,7 +121,19 @@ export default function EmissaoBoletosTab() {
     queryFn: async () => {
       if (!cargaSelecionada) return { titulos: [], totalCarga: 0, ocultosComBoleto: 0, ocultosSemModalidade: 0 };
 
-      const pedidos = cargaSelecionada.pedidos_omie || [];
+      // RECONCILIAÇÃO SILENCIOSA do numero_nf (mesmo cruzamento das NFs): regrava
+      // numero_nf vazio/divergente em pedidos_omie a partir do LogEmissaoNF autorizado,
+      // para que o match de título por NF (encontrarPedidoDaCarga) volte a casar.
+      // Best-effort, idempotente, sem chamar Omie — usa a carga já corrigida.
+      let pedidos = cargaSelecionada.pedidos_omie || [];
+      try {
+        const { data: rec } = await base44.functions.invoke('reconciliarNumeroNfCarga', { carga_id: cargaSelecionada.id });
+        if (rec?.sucesso && rec.regravados > 0) {
+          const cargaAtual = await base44.entities.Carga.get(cargaSelecionada.id);
+          if (cargaAtual?.pedidos_omie) pedidos = cargaAtual.pedidos_omie;
+        }
+      } catch (_) { /* não bloqueia a consulta de títulos */ }
+
       if (pedidos.length === 0) return { titulos: [], totalCarga: 0, ocultosComBoleto: 0, ocultosSemModalidade: 0 };
 
       const hoje = new Date();
