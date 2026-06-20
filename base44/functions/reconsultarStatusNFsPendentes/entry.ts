@@ -194,6 +194,28 @@ async function cancelarPedidoLocal(base44, codigoPedido, motivo, user) {
   } catch (e) { console.error('[reconsultarStatusNFsPendentes] cancelar local:', e.message); }
 }
 
+// "Falso pendente": pedido em etapa 50 cuja NF NUNCA foi transmitida (faturado=N, autorizado=N).
+// Não há nada a aguardar da SEFAZ. Em vez de manter o pedido em loop "processando",
+// reverte ao estado DETECTÁVEL pelo banner (montagem + pendente + pendente_emissao=true),
+// sem emitir NF. Assim ele sai do limbo e o operador decide reemitir por clique humano.
+async function reverterParaDetectavel(base44, codigoPedido, etapa) {
+  try {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1);
+    const p = pedidos?.[0];
+    if (!p) return false;
+    // Só reverte se ainda não foi faturado de verdade (evita mexer em pedido já emitido).
+    if (p.faturado === true || p.status === 'faturado') return false;
+    await base44.asServiceRole.entities.Pedido.update(p.id, {
+      status: 'montagem',
+      status_faturamento: 'pendente',
+      faturado: false,
+      pendente_emissao: true,
+      motivo_pendencia_emissao: `Faturado na carga, sem NF (preso em etapa ${etapa || '50'}) — NF nunca transmitida`
+    });
+    return true;
+  } catch (e) { console.error('[reconsultarStatusNFsPendentes] reverter detectavel:', e.message); return false; }
+}
+
 async function deveGerarBoletoAuto(base44, codigoPedido) {
   try {
     const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) });
@@ -263,8 +285,23 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Etapa < 60 / sem NF confirmada → segue PENDENTE (real). Não altera o log.
+      // Etapa < 60 / sem NF confirmada → SEFAZ ainda processando OU "falso pendente".
       if (real.status_real === 'aguardando') {
+        const etapaNum = Number(real.etapa) || 0;
+        // Etapa 50 = faturado localmente mas NF nunca transmitida → não há nada a aguardar.
+        // Reverte o pedido ao estado DETECTÁVEL (volta ao banner) e tira do loop de "pendentes",
+        // marcando os logs como erro com motivo claro. NUNCA emite NF aqui.
+        if (etapaNum === 50) {
+          const revertido = await reverterParaDetectavel(base44, codPed, real.etapa);
+          const msgFalso = 'Faturado na carga, sem NF (etapa 50) — NF nunca transmitida. Reabra pelo banner de pendências para reemitir manualmente.';
+          for (const l of logsDoPedido) {
+            await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem: msgFalso }).catch(() => {});
+          }
+          resultados.push({ codigo_pedido: codPed, sucesso: false, falso_pendente: true, revertido, etapa: real.etapa, mensagem: msgFalso });
+          if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));
+          continue;
+        }
+        // Etapa 10/20 ou outra < 60 → de fato ainda em fluxo; segue pendente (real).
         resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, etapa: real.etapa, mensagem: real.mensagem });
         if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));
         continue;

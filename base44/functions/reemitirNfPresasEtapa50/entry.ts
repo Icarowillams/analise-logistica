@@ -111,41 +111,96 @@ Deno.serve(async (req) => {
     }
 
     // Fonte confiável e barata: pedidos locais presos no estado "faturado localmente, sem NF".
-    const presos = await base44.asServiceRole.entities.Pedido.filter({
+    // Inclui também os que ficaram em status_faturamento='processando' SEM nota (ex: 1867 órfão por
+    // reconsulta antiga) — desde que NÃO estejam faturados de verdade.
+    const presosPendente = await base44.asServiceRole.entities.Pedido.filter({
       status: 'montagem',
       status_faturamento: 'pendente',
       faturado: false
     }, '-data_faturamento', 200).catch(() => []);
+    const presosProcessando = await base44.asServiceRole.entities.Pedido.filter({
+      status: 'montagem',
+      status_faturamento: 'processando',
+      faturado: false
+    }, '-data_faturamento', 100).catch(() => []);
+    const vistos = new Set();
+    const presos = [...presosPendente, ...presosProcessando].filter(p => {
+      if (vistos.has(p.id)) return false;
+      vistos.add(p.id);
+      // Sem número de NF — se já tem NF não é "preso".
+      return !p.numero_nota_fiscal;
+    });
 
     // BLINDAGEM FISCAL: jamais reemitir pedido solto manualmente ou que não está numa carga ativa.
+    // codigo_pedido_omie nulo será resolvido abaixo pelo espelho PedidoLiberadoOmie — não descarta aqui.
     const candidatos = presos.filter(p =>
-      p.omie_codigo_pedido &&
       p.modelo_nota !== 'd1' &&
       p.solto_manualmente !== true &&
       !!p.carga_id
     );
 
-    if (candidatos.length === 0) {
+    // BUG-FIX codigo_pedido_omie nulo: pedido existe no Omie mas o vínculo local ficou em branco.
+    // Resolve pelo espelho PedidoLiberadoOmie (match por numero_pedido) e grava de volta no Pedido —
+    // barato, sem bater no Omie. Geral, não só pro 1867.
+    for (const p of candidatos) {
+      if (p.omie_codigo_pedido) continue;
+      const numPed = String(p.numero_pedido || '').replace(/^0+/, '');
+      if (!numPed) continue;
+      const esp = await base44.asServiceRole.entities.PedidoLiberadoOmie
+        .filter({ numero_pedido: p.numero_pedido }, '-sincronizado_em', 1).catch(() => []);
+      let codOmie = esp?.[0]?.codigo_pedido;
+      // Tenta também sem zeros à esquerda, caso o espelho guarde normalizado.
+      if (!codOmie && numPed !== p.numero_pedido) {
+        const esp2 = await base44.asServiceRole.entities.PedidoLiberadoOmie
+          .filter({ numero_pedido: numPed }, '-sincronizado_em', 1).catch(() => []);
+        codOmie = esp2?.[0]?.codigo_pedido;
+      }
+      if (codOmie) {
+        p.omie_codigo_pedido = String(codOmie);
+        await base44.asServiceRole.entities.Pedido.update(p.id, { omie_codigo_pedido: String(codOmie) }).catch(() => {});
+      }
+    }
+
+    // Após tentar preencher, só seguem os que têm código Omie (sem código não há como consultar/reemitir).
+    const candidatosComCodigo = candidatos.filter(p => p.omie_codigo_pedido);
+
+    // NORMALIZAÇÃO DO LIMBO (operação LOCAL, sem Omie, sem emitir NF):
+    // pedidos que ficaram em status_faturamento='processando' sem nota (ex: 1867 órfão por reconsulta)
+    // são revertidos para 'pendente' + pendente_emissao=true, voltando a ser detectáveis pelo banner.
+    for (const p of candidatosComCodigo) {
+      if (p.status_faturamento === 'processando' && !p.numero_nota_fiscal && p.faturado !== true) {
+        p.status_faturamento = 'pendente';
+        p.pendente_emissao = true;
+        if (!p.motivo_pendencia_emissao) p.motivo_pendencia_emissao = 'Faturado na carga, sem NF — saiu de "processando" sem transmitir';
+        await base44.asServiceRole.entities.Pedido.update(p.id, {
+          status_faturamento: 'pendente',
+          pendente_emissao: true,
+          motivo_pendencia_emissao: p.motivo_pendencia_emissao
+        }).catch(() => {});
+      }
+    }
+
+    if (candidatosComCodigo.length === 0) {
       return Response.json({ sucesso: true, detectados: 0, reemitidos: 0, presos: [], mensagem: 'Nenhum pedido preso encontrado.' });
     }
 
     // DETECÇÃO BARATA (alerta automático): só dados locais, SEM consultar o Omie em rajada.
     // Os pedidos já estão flagueados como "faturado localmente, sem NF" — basta listá-los.
     if (apenasDetectar) {
-      const presosLista = candidatos.slice(0, limite).map(p => ({
+      const presosLista = candidatosComCodigo.slice(0, limite).map(p => ({
         codigo_pedido: p.omie_codigo_pedido,
         numero_pedido: p.numero_pedido || '',
         cliente_nome: p.cliente_nome || '',
         numero_carga: p.numero_carga || '',
         carga_id: p.carga_id || '',
-        motivo: p.omie_erro || 'Faturado na carga, sem NF (preso em etapa 50)'
+        motivo: p.motivo_pendencia_emissao || p.omie_erro || 'Faturado na carga, sem NF (preso em etapa 50)'
       }));
       return Response.json({
         sucesso: true,
         apenas_detectar: true,
-        detectados: candidatos.length,
+        detectados: candidatosComCodigo.length,
         presos: presosLista,
-        mensagem: `${candidatos.length} pedido(s) faturados sem NF.`
+        mensagem: `${candidatosComCodigo.length} pedido(s) faturados sem NF.`
       });
     }
 
@@ -153,7 +208,7 @@ Deno.serve(async (req) => {
     let reemitidos = 0;
     let processadosNoOmie = 0;
 
-    for (const p of candidatos) {
+    for (const p of candidatosComCodigo) {
       if (processadosNoOmie >= limite) break;
       // Reverificar circuit breaker a cada iteração
       if (await circuitBloqueado(base44)) break;
@@ -247,10 +302,10 @@ Deno.serve(async (req) => {
 
     return Response.json({
       sucesso: true,
-      candidatos: candidatos.length,
+      candidatos: candidatosComCodigo.length,
       verificados_omie: detalhes.length,
       reemitidos,
-      mensagem: `${reemitidos} NF reemitida(s). ${candidatos.length} pedido(s) presos candidatos no total.`,
+      mensagem: `${reemitidos} NF reemitida(s). ${candidatosComCodigo.length} pedido(s) presos candidatos no total.`,
       detalhes
     });
   } catch (error) {
