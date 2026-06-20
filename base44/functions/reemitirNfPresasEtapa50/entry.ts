@@ -93,8 +93,12 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const limite = Math.min(Number(body.limite) || 12, 25); // teto de pedidos por execução
     const apenasDetectar = body.apenas_detectar === true; // dry-run: só lista, não reemite
+    // Na detecção (dry-run) varremos mais pedidos para o alerta refletir a realidade;
+    // na reemissão real mantemos o teto baixo (consumo Omie + timeout).
+    const limite = apenasDetectar
+      ? Math.min(Number(body.limite) || 60, 100)
+      : Math.min(Number(body.limite) || 12, 25);
 
     // Circuit breaker
     if (await circuitBloqueado(base44)) {
@@ -122,7 +126,27 @@ Deno.serve(async (req) => {
     );
 
     if (candidatos.length === 0) {
-      return Response.json({ sucesso: true, detectados: 0, reemitidos: 0, mensagem: 'Nenhum pedido preso encontrado.' });
+      return Response.json({ sucesso: true, detectados: 0, reemitidos: 0, presos: [], mensagem: 'Nenhum pedido preso encontrado.' });
+    }
+
+    // DETECÇÃO BARATA (alerta automático): só dados locais, SEM consultar o Omie em rajada.
+    // Os pedidos já estão flagueados como "faturado localmente, sem NF" — basta listá-los.
+    if (apenasDetectar) {
+      const presosLista = candidatos.slice(0, limite).map(p => ({
+        codigo_pedido: p.omie_codigo_pedido,
+        numero_pedido: p.numero_pedido || '',
+        cliente_nome: p.cliente_nome || '',
+        numero_carga: p.numero_carga || '',
+        carga_id: p.carga_id || '',
+        motivo: p.omie_erro || 'Faturado na carga, sem NF (preso em etapa 50)'
+      }));
+      return Response.json({
+        sucesso: true,
+        apenas_detectar: true,
+        detectados: candidatos.length,
+        presos: presosLista,
+        mensagem: `${candidatos.length} pedido(s) faturados sem NF.`
+      });
     }
 
     const detalhes = [];
@@ -148,7 +172,9 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.Pedido.update(p.id, {
           status: 'faturado',
           status_faturamento: 'faturado',
-          faturado: true
+          faturado: true,
+          pendente_emissao: false,
+          motivo_pendencia_emissao: ''
         }).catch(() => {});
         detalhes.push({ codigo_pedido: cod, numero_pedido: p.numero_pedido, etapa, acao: 'ja_emitido_status_corrigido' });
         continue;
@@ -165,7 +191,11 @@ Deno.serve(async (req) => {
         const r = await emitirNf(appKey, appSecret, cod);
         if (r.ok) {
           reemitidos++;
-          await base44.asServiceRole.entities.Pedido.update(p.id, { status_faturamento: 'processando' }).catch(() => {});
+          await base44.asServiceRole.entities.Pedido.update(p.id, {
+            status_faturamento: 'processando',
+            pendente_emissao: false,
+            motivo_pendencia_emissao: ''
+          }).catch(() => {});
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
             endpoint: 'produtos/pedidovendafat',
             call: 'FaturarPedidoVenda',

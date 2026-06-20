@@ -376,7 +376,11 @@ Deno.serve(async (req) => {
 
           const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
           if (pedidosLocais?.[0]?.id) {
-            await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, { status_faturamento: 'processando' }).catch(() => {});
+            await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, {
+              status_faturamento: 'processando',
+              pendente_emissao: false,
+              motivo_pendencia_emissao: ''
+            }).catch(() => {});
           }
 
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -424,7 +428,12 @@ Deno.serve(async (req) => {
         if (pedidosLocaisErro?.[0]?.id) {
           await base44.asServiceRole.entities.Pedido.update(pedidosLocaisErro[0].id, {
             status_faturamento: transitorio ? 'pendente' : 'erro',
-            omie_erro: mensagem
+            omie_erro: mensagem,
+            // RASTREABILIDADE: pendente por rate limit → flag visível no alerta da aba Emissão (nunca some sem rastro).
+            ...(transitorio ? {
+              pendente_emissao: true,
+              motivo_pendencia_emissao: 'Emissão não concluiu por rate limit do Omie — reprocessar.'
+            } : {})
           }).catch(() => {});
         }
 

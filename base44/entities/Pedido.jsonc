@@ -95,6 +95,15 @@
       "format": "date-time",
       "description": "Data/hora em que o pedido foi solto manualmente da carga"
     },
+    "pendente_emissao": {
+      "type": "boolean",
+      "default": false,
+      "description": "RASTREABILIDADE DE NF: marca que o pedido foi faturado na carga mas a emiss\u00e3o de NF N\u00c3O concluiu (ficou preso em etapa 50 \u2014 ex: lote abortado por rate limit). Usado pelo alerta na aba Emiss\u00e3o. Limpo quando a NF \u00e9 efetivamente emitida (etapa 60)."
+    },
+    "motivo_pendencia_emissao": {
+      "type": "string",
+      "description": "Motivo da pend\u00eancia de emiss\u00e3o (ex: 'Lote abortado por rate limit', 'Consumo indevido 425'). Mostrado na lista do alerta."
+    },
     "cliente_id": {
       "type": "string"
     },
