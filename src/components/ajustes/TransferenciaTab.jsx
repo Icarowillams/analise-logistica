@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
 import SeletorCargaBusca from './SeletorCargaBusca';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function TransferenciaTab() {
   const queryClient = useQueryClient();
@@ -241,7 +242,7 @@ export default function TransferenciaTab() {
                       return (
                         <tr key={cod} className={`border-t hover:bg-slate-50 ${checked ? 'bg-indigo-50' : ''}`}>
                           <td className="p-2"><Checkbox checked={checked} onCheckedChange={() => toggleSelecionado(cod)} /></td>
-                          <td className="p-2 font-medium">{p.numero_pedido || '-'}</td>
+                          <td className="p-2 font-medium">{p.numero_pedido ? formatarNumeroPedido({ numero_pedido: p.numero_pedido, modelo_nota: p.__interno ? 'd1' : p.modelo_nota, tipo: p.tipo }) : '-'}</td>
                           <td className="p-2">
                             {p.__interno
                               ? <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-300">D1 / Interno</span>

@@ -15,23 +15,45 @@
 //
 // Aceita DUAS formas de chamada (compatibilidade):
 //  - formatarNumeroPedido(numero, tipo)   → ex: ('000...1456', 'venda')
-//  - formatarNumeroPedido(pedido)         → objeto { numero_pedido, tipo }
+//  - formatarNumeroPedido(pedido)         → objeto { numero_pedido, tipo, modelo_nota, cenario_local_tipo }
+//
+// IDENTIFICAÇÃO DE TROCA/D1 (fonte confiável — NÃO confiar no "D" gravado no número,
+// que está inconsistente no banco): tipo === 'troca' OU modelo_nota !== '55' (ex 'd1')
+// OU cenario_local_tipo === 'troca'. Toda troca/D1 SEMPRE exibe sufixo "D".
 // ─────────────────────────────────────────────────────────────────────────────
 export function formatarNumeroPedido(numeroOuPedido, tipo) {
   let numero = numeroOuPedido;
   let tipoPedido = tipo;
+  let modeloNota;
+  let cenarioLocalTipo;
 
   // Compatibilidade: se receberam o objeto pedido inteiro, extrai os campos.
   if (numeroOuPedido && typeof numeroOuPedido === 'object') {
     numero = numeroOuPedido.numero_pedido;
     tipoPedido = numeroOuPedido.tipo;
+    modeloNota = numeroOuPedido.modelo_nota;
+    cenarioLocalTipo = numeroOuPedido.cenario_local_tipo;
   }
 
   const s = String(numero ?? '').trim();
   if (!s) return '';
-  // Trocas e qualquer ID terminado em "D" preservam zeros e o sufixo.
-  if (String(tipoPedido || '').toLowerCase() === 'troca' || /D$/i.test(s)) return s;
-  // Numérico puro: remove zeros à esquerda (mantém ao menos 1 dígito).
+
+  const tipoLower = String(tipoPedido || '').toLowerCase();
+  const isTroca =
+    tipoLower === 'troca' ||
+    tipoLower === 'd1' ||
+    String(cenarioLocalTipo || '').toLowerCase() === 'troca' ||
+    (modeloNota != null && String(modeloNota) !== '55') ||
+    /D$/i.test(s);
+
+  if (isTroca) {
+    // Sufixo "D" SEMPRE. Base numérica → padroniza em 5 dígitos (00767D); senão, anexa "D".
+    const baseNumerica = s.replace(/D$/i, '').replace(/^0+/, '');
+    if (/^\d+$/.test(baseNumerica)) return `${baseNumerica.padStart(5, '0')}D`;
+    return /D$/i.test(s) ? s : `${s}D`;
+  }
+
+  // Venda/bonificação numérica pura: remove zeros à esquerda (mantém ao menos 1 dígito).
   if (/^\d+$/.test(s)) return s.replace(/^0+/, '') || s;
   // Qualquer outro formato (já limpo, com letras no meio, etc.): devolve como está.
   return s;

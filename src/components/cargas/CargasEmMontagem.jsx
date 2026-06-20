@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Truck, PackageX } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const formatarMoeda = (v) =>
   (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -9,19 +10,20 @@ function CargaCard({ carga }) {
 
   const pedidos = useMemo(() => {
     const omie = (carga.pedidos_omie || []).map((p) => ({
-      numero: p.numero_pedido,
+      numero: formatarNumeroPedido({ numero_pedido: p.numero_pedido, tipo: p.tipo, modelo_nota: p.modelo_nota }),
       cliente: p.nome_fantasia || p.nome_cliente,
       rota: p.rota_cliente,
       valor: p.valor_total_pedido,
     }));
     const internos = (carga.pedidos_internos || []).map((p) => ({
-      numero: p.numero_pedido,
+      numero: formatarNumeroPedido({ numero_pedido: p.numero_pedido, tipo: p.tipo, modelo_nota: p.modelo_nota }),
       cliente: p.nome_fantasia || p.nome_cliente,
       rota: p.rota_cliente,
       valor: p.valor_total_pedido,
     }));
     const trocas = (carga.pedidos_troca || []).map((p) => ({
-      numero: p.numero_pedido,
+      // pedidos_troca são sempre D1/troca → força o sufixo "D"
+      numero: formatarNumeroPedido({ numero_pedido: p.numero_pedido, tipo: 'troca' }),
       cliente: p.nome_fantasia || p.nome_cliente,
       rota: p.rota_cliente,
       valor: p.valor_total_pedido,

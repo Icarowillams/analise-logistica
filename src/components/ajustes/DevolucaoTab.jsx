@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SeletorPedidoOmie from './SeletorPedidoOmie';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function DevolucaoTab() {
   const [pedido, setPedido] = useState(null);
@@ -77,7 +78,7 @@ export default function DevolucaoTab() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Undo2 className="w-5 h-5 text-orange-500" />
-              Devolver do pedido {pedido.cabecalho?.numero_pedido}
+              Devolver do pedido {formatarNumeroPedido(pedido.cabecalho?.numero_pedido, pedido.cabecalho?.tipo)}
             </CardTitle>
           </CardHeader>
           <CardContent>

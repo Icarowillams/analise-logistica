@@ -9,6 +9,7 @@ import { Ban, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import SeletorPedidoOmie from './SeletorPedidoOmie';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function CancelamentoTab() {
   const [pedido, setPedido] = useState(null);
@@ -29,7 +30,7 @@ export default function CancelamentoTab() {
       return;
     }
     const codigoPedido = pedido.cabecalho?.codigo_pedido;
-    if (!confirm(`Cancelar pedido ${pedido.cabecalho?.numero_pedido}? Esta ação é IRREVERSÍVEL no Omie.`)) return;
+    if (!confirm(`Cancelar pedido ${formatarNumeroPedido(pedido.cabecalho?.numero_pedido, pedido.cabecalho?.tipo)}? Esta ação é IRREVERSÍVEL no Omie.`)) return;
 
     setLoading(true);
     try {
@@ -74,7 +75,7 @@ export default function CancelamentoTab() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Ban className="w-5 h-5 text-red-500" />
-              Cancelar Pedido {pedido.cabecalho?.numero_pedido} — Etapa {pedido.cabecalho?.etapa}
+              Cancelar Pedido {formatarNumeroPedido(pedido.cabecalho?.numero_pedido, pedido.cabecalho?.tipo)} — Etapa {pedido.cabecalho?.etapa}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

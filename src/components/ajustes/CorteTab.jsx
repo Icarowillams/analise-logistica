@@ -11,6 +11,7 @@ import { Loader2, Scissors, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import SeletorCargaBusca from './SeletorCargaBusca';
 import MotivoComboBox from './MotivoComboBox';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 /**
  * Corte por Carga + Produto.
@@ -242,7 +243,7 @@ export default function CorteTab() {
                               onCheckedChange={(v) => atualizarSel(key, { selecionado: !!v, qtde_separada: sel.qtde_separada ?? qOrig })}
                             />
                           </td>
-                          <td className="p-2">{ped.numero_pedido || '-'} {ped._origem === 'interno' && <span className="text-amber-600 text-xs">(D1)</span>}</td>
+                          <td className="p-2">{ped.numero_pedido ? formatarNumeroPedido({ numero_pedido: ped.numero_pedido, modelo_nota: ped._origem === 'interno' ? 'd1' : ped.modelo_nota, tipo: ped.tipo }) : '-'} {ped._origem === 'interno' && <span className="text-amber-600 text-xs">(D1)</span>}</td>
                           <td className="p-2">{ped.nome_fantasia || ped.nome_cliente || '-'}</td>
                           <td className="p-2 uppercase text-xs text-slate-600">{ped.tipo_nota || ped.modelo_nota || '-'}</td>
                           <td className="p-2 text-right">{qOrig}</td>

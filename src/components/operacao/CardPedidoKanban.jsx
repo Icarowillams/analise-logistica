@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronRight, MapPin, User, Package, Receipt, AlertCircle } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // Card mais rico que mostra TUDO que o Omie tem sobre o pedido
 export default function CardPedidoKanban({
@@ -29,7 +30,7 @@ export default function CardPedidoKanban({
     >
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Ped</span>
-        <span className="text-xs font-bold text-slate-700">#{pedido.numero_pedido || pedido.codigo_pedido}</span>
+        <span className="text-xs font-bold text-slate-700">#{pedido.numero_pedido ? formatarNumeroPedido(pedido) : pedido.codigo_pedido}</span>
         {pedido.numero_nf && (
           <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 flex items-center gap-1">
             <Receipt className="w-2.5 h-2.5" /> NF {pedido.numero_nf}

@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, XCircle, AlertTriangle } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function CancelarPedidoModal({ open, onOpenChange, pedido, onConfirm }) {
   const [motivo, setMotivo] = useState('');
@@ -56,7 +57,7 @@ export default function CancelarPedidoModal({ open, onOpenChange, pedido, onConf
             <p className="font-semibold">
               {pedidos.length > 1
                 ? `${pedidos.length} pedidos selecionados para cancelamento`
-                : `Pedido ${primeiroPedido?.numero_pedido ? `#${primeiroPedido.numero_pedido}` : ''} — ${primeiroPedido?.cliente_nome || ''}`}
+                : `Pedido ${primeiroPedido?.numero_pedido ? `#${formatarNumeroPedido(primeiroPedido)}` : ''} — ${primeiroPedido?.cliente_nome || ''}`}
             </p>
             {pedidos.length === 1 && (
               <p className="text-xs mt-1">

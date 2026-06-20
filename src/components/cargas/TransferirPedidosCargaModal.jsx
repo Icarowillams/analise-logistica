@@ -37,7 +37,8 @@ export default function TransferirPedidosCargaModal({ open, onOpenChange, carga,
       lista.push({
         id: p.codigo_pedido,
         tipo: 'omie',
-        numero: p.numero_pedido || p.codigo_pedido,
+        // numeroLabel = só EXIBIÇÃO (com "D" se D1/troca); pedido_tipo p/ o helper.
+        numeroLabel: formatarNumeroPedido({ numero_pedido: p.numero_pedido || p.codigo_pedido, tipo: p.tipo, modelo_nota: p.modelo_nota }),
         cliente: p.nome_fantasia || p.nome_cliente || '',
         valor: p.valor_total_pedido || 0,
         nf: p.numero_nf || ''
@@ -47,7 +48,7 @@ export default function TransferirPedidosCargaModal({ open, onOpenChange, carga,
       lista.push({
         id: p.pedido_id,
         tipo: 'interno',
-        numero: p.numero_pedido || p.pedido_id,
+        numeroLabel: formatarNumeroPedido({ numero_pedido: p.numero_pedido || p.pedido_id, tipo: p.tipo, modelo_nota: p.modelo_nota || 'd1' }),
         cliente: p.nome_fantasia || p.nome_cliente || '',
         valor: p.valor_total_pedido || 0,
         nf: ''
@@ -57,7 +58,7 @@ export default function TransferirPedidosCargaModal({ open, onOpenChange, carga,
       lista.push({
         id: p.pedido_troca_id || p.numero_pedido,
         tipo: 'troca',
-        numero: p.numero_pedido || '',
+        numeroLabel: formatarNumeroPedido({ numero_pedido: p.numero_pedido || '', tipo: 'troca' }),
         cliente: p.nome_fantasia || p.nome_cliente || '',
         valor: p.valor_total_pedido || 0,
         nf: ''
@@ -174,7 +175,7 @@ export default function TransferirPedidosCargaModal({ open, onOpenChange, carga,
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">#{formatarNumeroPedido(p.numero)}</span>
+                      <span className="text-sm font-medium">#{p.numeroLabel}</span>
                       <Badge variant="outline" className="text-[10px]">{p.tipo}</Badge>
                       {p.nf && <Badge className="bg-green-100 text-green-700 text-[10px]">NF {p.nf}</Badge>}
                     </div>

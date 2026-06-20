@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ShoppingCart, Search, Eye, RefreshCw, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS = {
   rascunho: { label: 'Rascunho', color: 'bg-slate-100 text-slate-700' },
@@ -133,7 +134,7 @@ export default function ControlePedidosVenda() {
                         <ShoppingCart className="w-4 h-4 text-amber-600" />
                       </div>
                       <div>
-                        <div className="font-semibold text-sm text-slate-800">{p.numero_pedido} {p.numero_nota_fiscal && <span className="text-slate-500 font-normal">· NF: {p.numero_nota_fiscal}</span>}</div>
+                        <div className="font-semibold text-sm text-slate-800">{formatarNumeroPedido(p)} {p.numero_nota_fiscal && <span className="text-slate-500 font-normal">· NF: {p.numero_nota_fiscal}</span>}</div>
                         <div className="text-xs text-slate-500">{p.cliente_nome} · {p.vendedor_nome}</div>
                         <div className="text-xs text-slate-400">{p.data_pedido && new Date(p.data_pedido + 'T12:00:00').toLocaleDateString('pt-BR')} · {p.plano_pagamento_nome}</div>
                       </div>
@@ -154,7 +155,7 @@ export default function ControlePedidosVenda() {
       {/* Modal Detalhe (read-only) */}
       <Dialog open={!!pedidoDetalhe} onOpenChange={() => setPedidoDetalhe(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Pedido {pedidoDetalhe?.numero_pedido}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Pedido {pedidoDetalhe ? formatarNumeroPedido(pedidoDetalhe) : ''}</DialogTitle></DialogHeader>
           {pedidoDetalhe && (
             <div className="space-y-3 mt-2 text-sm">
               <div className="grid grid-cols-2 gap-2">
