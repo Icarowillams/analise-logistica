@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function TransferirPedidosCargaModal({ open, onOpenChange, carga, onTransferido }) {
   const [selecionados, setSelecionados] = useState([]);
@@ -173,7 +174,7 @@ export default function TransferirPedidosCargaModal({ open, onOpenChange, carga,
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">#{p.numero}</span>
+                      <span className="text-sm font-medium">#{formatarNumeroPedido(p.numero)}</span>
                       <Badge variant="outline" className="text-[10px]">{p.tipo}</Badge>
                       {p.nf && <Badge className="bg-green-100 text-green-700 text-[10px]">NF {p.nf}</Badge>}
                     </div>
