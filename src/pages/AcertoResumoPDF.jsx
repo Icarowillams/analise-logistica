@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Printer, Loader2 } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
@@ -93,7 +94,7 @@ export default function AcertoResumoPDF() {
                 <tr><td colSpan="7" className="p-2 text-center text-slate-400">—</td></tr>
               ) : entregues.map((n, i) => (
                 <tr key={i} className={i % 2 ? 'bg-slate-50' : ''}>
-                  <td className="p-1 border-b">{n.numero_pedido}</td>
+                  <td className="p-1 border-b">{formatarNumeroPedido(n.numero_pedido)}</td>
                   <td className="p-1 border-b">{n.numero_nfe || '-'}</td>
                   <td className="p-1 border-b">{n.nome_cliente}</td>
                   <td className="p-1 border-b uppercase">{n.forma_pagamento}</td>
@@ -124,7 +125,7 @@ export default function AcertoResumoPDF() {
                 <tr><td colSpan="5" className="p-2 text-center text-slate-400">—</td></tr>
               ) : naoEntregues.map((n, i) => (
                 <tr key={i} className={i % 2 ? 'bg-slate-50' : ''}>
-                  <td className="p-1 border-b">{n.numero_pedido}</td>
+                  <td className="p-1 border-b">{formatarNumeroPedido(n.numero_pedido)}</td>
                   <td className="p-1 border-b">{n.numero_nfe || '-'}</td>
                   <td className="p-1 border-b">{n.nome_cliente}</td>
                   <td className="p-1 border-b text-right">{fmt(n.valor_original)}</td>

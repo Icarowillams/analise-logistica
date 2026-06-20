@@ -10,6 +10,7 @@ import { Eye, Loader2, FileText } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DataTable from '@/components/ui/DataTable';
 import NotaD1Pdf from '@/components/cargas/documentos/NotaD1Pdf';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 /**
  * Aba de listagem das Notas D1 — vendas internas (sem NF-e Omie).
@@ -95,7 +96,7 @@ export default function NotasD1Tab({ cargaFiltroId, cargaFiltro, ativa = true })
   const totalValor = filtradas.reduce((s, l) => s + Number(l.valor_total_pedido || 0), 0);
 
   const columns = [
-    { key: 'numero_pedido', label: 'Nº Pedido', width: '110px', sortable: true },
+    { key: 'numero_pedido', label: 'Nº Pedido', width: '110px', sortable: true, render: (v) => v ? formatarNumeroPedido({ numero_pedido: v, modelo_nota: 'd1' }) : '-' },
     { key: 'numero_carga', label: 'Carga', width: '90px', sortable: true },
     {
       key: 'data_carga',
@@ -215,7 +216,7 @@ export default function NotasD1Tab({ cargaFiltroId, cargaFiltro, ativa = true })
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Nota D1 — Pedido {notaSelecionada?.numero_pedido} (Carga {notaSelecionada?.numero_carga})
+              Nota D1 — Pedido {notaSelecionada ? formatarNumeroPedido({ numero_pedido: notaSelecionada.numero_pedido, modelo_nota: 'd1' }) : ''} (Carga {notaSelecionada?.numero_carga})
             </DialogTitle>
           </DialogHeader>
           {notaSelecionada && (

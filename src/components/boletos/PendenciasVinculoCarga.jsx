@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Link2Off } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const formatarValor = (v) =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -43,7 +44,7 @@ export default function PendenciasVinculoCarga({ nfSemTitulo = [], semNf = [] })
                 {nfSemTitulo.map((p) => (
                   <tr key={`nf-${p.codigo_pedido}`} className="border-t border-red-200">
                     <td className="p-2 text-red-900">{p.nome_fantasia || p.nome_cliente || '—'}</td>
-                    <td className="p-2 text-red-900">{p.numero_pedido || '—'}</td>
+                    <td className="p-2 text-red-900">{p.numero_pedido ? formatarNumeroPedido(p) : '—'}</td>
                     <td className="p-2 font-mono text-red-900">{p.numero_nf}</td>
                     <td className="p-2 text-right text-red-900">{formatarValor(p.valor_total_pedido)}</td>
                   </tr>
@@ -71,7 +72,7 @@ export default function PendenciasVinculoCarga({ nfSemTitulo = [], semNf = [] })
                 {semNf.map((p) => (
                   <tr key={`semnf-${p.codigo_pedido || p.numero_pedido}`} className="border-t border-amber-200">
                     <td className="p-2 text-amber-900">{p.nome_fantasia || p.nome_cliente || '—'}</td>
-                    <td className="p-2 text-amber-900">{p.numero_pedido || '—'}</td>
+                    <td className="p-2 text-amber-900">{p.numero_pedido ? formatarNumeroPedido(p) : '—'}</td>
                     <td className="p-2 font-mono text-amber-900">{p.codigo_pedido || '—'}</td>
                     <td className="p-2 text-right text-amber-900">{formatarValor(p.valor_total_pedido)}</td>
                   </tr>

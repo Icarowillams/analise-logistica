@@ -2,6 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowRight, AlertTriangle } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 export default function ConfirmarAcaoModal({ open, onOpenChange, acao, onConfirmar, loading }) {
   if (!acao) return null;
@@ -23,7 +24,7 @@ export default function ConfirmarAcaoModal({ open, onOpenChange, acao, onConfirm
           <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-1.5">
             <div className="flex justify-between">
               <span className="text-xs text-slate-500">Pedido</span>
-              <span className="text-sm font-semibold">Nº {pedido.numero_pedido}</span>
+              <span className="text-sm font-semibold">Nº {formatarNumeroPedido(pedido)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-xs text-slate-500">Cliente</span>

@@ -13,6 +13,7 @@ import {
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
 import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey } from './utilsAnalises';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const CORES = ['#dc2626', '#f59e0b', '#0891b2', '#7c3aed', '#16a34a', '#f97316', '#64748b'];
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -168,7 +169,7 @@ export default function DashboardTrocas() {
     ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Valor', 'Status'],
     filtradas.map(t => [
       (t.data_faturamento || t.created_date)?.slice(0,10),
-      t.numero_pedido, t.cliente_nome, t.vendedor_nome, t.rota_nome,
+      formatarNumeroPedido(t), t.cliente_nome, t.vendedor_nome, t.rota_nome,
       t.motivo_troca_descricao, t.valor_total, t.status
     ])
   );
@@ -338,7 +339,7 @@ export default function DashboardTrocas() {
               {filtradas.slice(0, 200).map(t => (
                 <tr key={t.id} className="border-t hover:bg-slate-50">
                   <td className="p-2 text-xs">{(t.data_faturamento || t.created_date || '').slice(0,10)}</td>
-                  <td className="p-2 font-mono text-xs">{t.numero_pedido || '-'}</td>
+                  <td className="p-2 font-mono text-xs">{t.numero_pedido ? formatarNumeroPedido(t) : '-'}</td>
                   <td className="p-2 max-w-[180px] truncate">{t.cliente_nome || '-'}</td>
                   <td className="p-2 max-w-[120px] truncate">{t.vendedor_nome || '-'}</td>
                   <td className="p-2 text-xs text-slate-600">{t.rota_nome || '-'}</td>

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Loader2, RefreshCw, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import useDebounce from '@/hooks/useDebounce';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const ETAPA_LABELS = {
   '10': { label: 'Pedido Venda', color: 'bg-amber-100 text-amber-800' },
@@ -195,7 +196,7 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
                     const etapa = cancelado ? ETAPA_LABELS.cancelado : (ETAPA_LABELS[p.etapa] || { label: p.etapa, color: 'bg-slate-100' });
                     return (
                       <tr key={p.codigo_pedido} className={`border-t ${cancelado ? 'bg-red-50 text-slate-500' : 'hover:bg-amber-50'}`}>
-                        <td className="p-2 font-medium">{String(p.numero_pedido || p.codigo_pedido).replace(/^0+/, '') || '0'}</td>
+                        <td className="p-2 font-medium">{formatarNumeroPedido(p.numero_pedido || p.codigo_pedido) || '0'}</td>
                         <td className="p-2 truncate max-w-[260px]" title={p.cliente_nome}>
                           {p.cliente_nome || '-'}
                         </td>

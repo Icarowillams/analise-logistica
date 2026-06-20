@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Download, Share2 } from 'lucide-react';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png";
 
@@ -221,7 +222,7 @@ export default function PedidoPdf({ pedidoId }) {
               </td>
               <td style={{ width:'140px', borderLeft:'1.5px solid #000', padding:'6px', fontSize:'10px' }}>
                 <div><span style={{ fontWeight:700 }}>Pedido</span></div>
-                <div style={{ fontSize:'14px', fontWeight:700 }}>{pedido.numero_pedido || '-'}</div>
+                <div style={{ fontSize:'14px', fontWeight:700 }}>{pedido.numero_pedido ? formatarNumeroPedido(pedido) : '-'}</div>
                 <div style={{ marginTop:'4px' }}>{dataEmissao}</div>
                 <div>Folha 1/1</div>
               </td>

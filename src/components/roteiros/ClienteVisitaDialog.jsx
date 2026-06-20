@@ -10,6 +10,7 @@ import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { Clock, MapPin, Phone, ShoppingCart, Save, Upload } from 'lucide-react';
 import { hojeISO, formatarStatus, statusVisitaClasses } from './roteirosUtils';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const estadoInicial = {
   status: 'planejada', inicio_visita: '', fim_visita: '', motivo_nao_visita: '', nova_data: '',
@@ -76,7 +77,7 @@ export default function ClienteVisitaDialog({ open, onOpenChange, roteiro, clien
             <h3 className="font-semibold flex items-center gap-2"><ShoppingCart className="w-4 h-4" />Histórico recente</h3>
             {comprasCliente.length === 0 ? <p className="text-slate-500">Sem pedidos recentes.</p> : comprasCliente.map(p => (
               <div key={p.id} className="text-xs border-b last:border-0 py-1">
-                Pedido {p.numero_pedido || p.id.slice(0, 6)} • R$ {(p.valor_total || 0).toFixed(2)} • {p.status}
+                Pedido {p.numero_pedido ? formatarNumeroPedido(p) : p.id.slice(0, 6)} • R$ {(p.valor_total || 0).toFixed(2)} • {p.status}
               </div>
             ))}
           </div>

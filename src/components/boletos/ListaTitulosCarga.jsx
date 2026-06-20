@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Eye } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 // Status que NUNCA podem virar boleto (já encerrados)
@@ -124,7 +125,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                   )}
                 </td>
                 <td className="p-2">{t.nome_fantasia || t.nome_cliente || '—'}</td>
-                <td className="p-2">{t.numero_pedido_vinculado || '—'}</td>
+                <td className="p-2">{t.numero_pedido_vinculado ? formatarNumeroPedido(t.numero_pedido_vinculado) : '—'}</td>
                 <td className="p-2">{t.numero_documento || '—'}</td>
                 <td className="p-2">{t.data_vencimento || '—'}</td>
                 <td className="p-2 text-right">{formatarValor(t.valor_documento)}</td>

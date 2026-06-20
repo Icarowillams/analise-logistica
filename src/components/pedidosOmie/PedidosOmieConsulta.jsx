@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import DuplicarPedidosButton from './DuplicarPedidosButton';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // Mapa etapa Omie -> label/cor
 const etapaInfo = {
@@ -75,7 +76,7 @@ export default function PedidosOmieConsulta() {
       const info = etapaInfo[etapaKey] || { label: etapaKey || '-', color: 'bg-slate-100 text-slate-700' };
       return {
         ...p,
-        numero: p.numero_pedido || p.codigo_pedido,
+        numero: formatarNumeroPedido({ numero_pedido: p.numero_pedido || p.codigo_pedido, tipo: p.tipo, modelo_nota: p.modelo_nota, cenario_local_tipo: p.tipo_operacao }),
         data: p.data_previsao || p.data_faturamento || p.sincronizado_em,
         valor_total: p.valor_total_pedido || 0,
         cliente_label: p.nome_fantasia || p.nome_cliente || p.cnpj_cpf_cliente || '-',

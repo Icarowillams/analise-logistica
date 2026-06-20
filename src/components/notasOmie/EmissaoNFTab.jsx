@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import AlertaPendenciasEmissao from '@/components/notasOmie/AlertaPendenciasEmissao';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // REGRA DE EXIBIÇÃO: Apenas etapa 50 no Omie.
 // status_real é apenas indicador visual (badge) e NÃO filtra exibição.
@@ -382,7 +383,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                       </td>
                       <td className="p-2 font-medium">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span>{p.numero_pedido}</span>
+                          <span>{formatarNumeroPedido(p.numero_pedido)}</span>
                           <StatusHistoricoBadge status={p.status_real} />
                         </div>
                       </td>

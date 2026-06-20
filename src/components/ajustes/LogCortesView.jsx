@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { History, Search, Scissors, Loader2 } from 'lucide-react';
 import { fmtDataHora } from '@/lib/dateFormat';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const fmtMoney = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
@@ -102,7 +103,7 @@ export default function LogCortesView() {
                   <tr key={l.id} className="border-t hover:bg-slate-50">
                     <td className="p-2 whitespace-nowrap">{fmtDataHora(l.created_date)}</td>
                     <td className="p-2">{l.carga_numero || <span className="text-slate-400">-</span>}</td>
-                    <td className="p-2 font-medium">{l.numero_pedido || '-'}</td>
+                    <td className="p-2 font-medium">{l.numero_pedido ? formatarNumeroPedido({ numero_pedido: l.numero_pedido, modelo_nota: l.origem_pedido === 'interno_d1' ? 'd1' : '55' }) : '-'}</td>
                     <td className="p-2 font-mono text-xs">{l.cliente_codigo || '-'}</td>
                     <td className="p-2">{l.cliente_nome || '-'}</td>
                     <td className="p-2">

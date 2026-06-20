@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
 import { abrirImpressao } from './printHelper';
+import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png";
 
@@ -186,7 +187,7 @@ export default function NotaD1Pdf({ carga, pedidos: pedidosProp }) {
                     </td>
                     <td style={{ width:'140px', borderLeft:'1.5px solid #000', padding:'6px', fontSize:'10px' }}>
                       <div><span style={{ fontWeight:700 }}>Nota D1</span></div>
-                      <div style={{ fontSize:'14px', fontWeight:700 }}>{nota.numero_pedido || '-'}</div>
+                      <div style={{ fontSize:'14px', fontWeight:700 }}>{nota.numero_pedido ? formatarNumeroPedido({ numero_pedido: nota.numero_pedido, modelo_nota: 'd1' }) : '-'}</div>
                       <div style={{ marginTop:'4px' }}>{dataEmissao}</div>
                       <div>Folha 1/1</div>
                     </td>
