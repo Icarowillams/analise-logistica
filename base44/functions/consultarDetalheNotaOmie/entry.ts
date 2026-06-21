@@ -91,6 +91,15 @@ const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';
 const PEDIDO_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
+// Resolve o ID interno (nCodNF) a partir do NÚMERO da NF (nNF), via ConsultarNF.
+// ConsultarNF aceita { nNF } SOZINHO e devolve compl.nIdNF na hora — 1 chamada, sem varredura.
+async function resolverNCodNfPorNumero(base44: any, nNF: any) {
+  const alvo = String(nNF || '').replace(/\D/g, '');
+  if (!alvo) return null;
+  const d = await omieCall(base44, NF_URL, { nNF: Number(alvo) }, { call: 'ConsultarNF', skipLog: true });
+  return d?.compl?.nIdNF || d?.nIdNF || d?.nCodNF || null;
+}
+
 async function getCredenciais(base44) {
   const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: String(configs[0].app_key).trim(), app_secret: String(configs[0].app_secret).trim() };
@@ -129,7 +138,12 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const chaveNF = nfChaveFromBody(body);
+    let chaveNF = nfChaveFromBody(body);
+    // Lista vinda da fonte LOCAL não traz ID interno — só nNF. Resolve o ID pelo número.
+    if (!chaveNF.nCodNF && (body.nNF || body.cNumero)) {
+      const resolvido = await resolverNCodNfPorNumero(base44, body.nNF || body.cNumero).catch(() => null);
+      if (resolvido) chaveNF = { nCodNF: Number(resolvido) };
+    }
     if (!chaveNF.nCodNF) {
       return Response.json({ error: 'Informe o ID interno da NF (nIdNF/nCodNF). O número da NF (cNumero) não é aceito como filtro pela API Omie.' }, { status: 400 });
     }

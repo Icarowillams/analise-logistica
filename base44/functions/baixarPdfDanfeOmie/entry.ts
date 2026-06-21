@@ -95,6 +95,16 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const NF_URL = 'https://app.omie.com.br/api/v1/produtos/nfconsultar/';
 const DFE_URL = 'https://app.omie.com.br/api/v1/produtos/dfedocs/';
 
+// Resolve o ID interno (nIdNF) a partir do NÚMERO da NF (nNF), via ConsultarNF.
+// ConsultarNF aceita { nNF } SOZINHO como filtro e devolve compl.nIdNF na hora —
+// 1 chamada pontual, sem varrer páginas. (Mandar nNF junto com outras tags gera 5001.)
+async function resolverNIdNfPorNumero(base44: any, nNF: any) {
+  const alvo = String(nNF || '').replace(/\D/g, '');
+  if (!alvo) return null;
+  const d = await omieCall(base44, NF_URL, { nNF: Number(alvo) }, { call: 'ConsultarNF', skipLog: true });
+  return d?.compl?.nIdNF || d?.nIdNF || d?.nCodNF || null;
+}
+
 async function getCredenciais(base44) {
   const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: configs[0].app_key, app_secret: configs[0].app_secret };
@@ -119,8 +129,14 @@ Deno.serve(async (req) => {
     // que nIdNfe do ObterNfe (dfedocs). Precisamos resolver via ConsultarNF.
     let nIdNfe = null;
 
-    // Estratégia 1: se já temos nIdNF numérico válido, tenta direto (1 chamada)
-    const candidato = Number(nIdNF || nCodNF || 0);
+    // Estratégia 1: se já temos nIdNF numérico válido, tenta direto (1 chamada).
+    // Quando a lista vem da fonte LOCAL (LogEmissaoNF), não há ID interno — só o
+    // número da NF (nNF). Nesse caso resolvemos o ID interno pelo número, no clique.
+    let candidato = Number(nIdNF || nCodNF || 0);
+    if (candidato <= 0 && nNF) {
+      const resolvido = await resolverNIdNfPorNumero(base44, nNF).catch(() => null);
+      if (resolvido) candidato = Number(resolvido);
+    }
     if (candidato > 0) {
       // Tenta usar direto — se ObterNfe falhar, cairá no fallback abaixo
       try {
