@@ -172,10 +172,11 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
         const temTitulo = (codPedido(p) && codsTitulos.has(codPedido(p))) ||
                           (numPedido(p) && numsTitulos.has(numPedido(p)));
         if (temTitulo) return;
+        // Pendência FALSA: já existe boleto local (LogEmissaoBoleto) para este pedido/NF.
+        // Checa ANTES de classificar — vale tanto p/ caixa vermelha quanto amarela.
+        if (temBoletoLocal(p)) return;
         const nf = somenteNumeros(p.numero_nf);
         if (!nf) { semNf.push(p); return; }
-        // Pendência FALSA: já existe boleto local (LogEmissaoBoleto) para este pedido/NF.
-        if (temBoletoLocal(p)) return;
         if (cnpjFalhou(p)) {
           // Busca não confirmou (Omie limitou) → trata como emitível, NÃO como pendência.
           if (!isClienteBoleto(tituloDoPedido(p))) { ocultosNaoBoleto++; return; }
