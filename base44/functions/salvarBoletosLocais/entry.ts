@@ -64,6 +64,8 @@ Deno.serve(async (req) => {
           const upd = { ...payload };
           if (!payload.numero_carga && existentes[0].numero_carga) upd.numero_carga = existentes[0].numero_carga;
           if (!payload.carga_id && existentes[0].carga_id) upd.carga_id = existentes[0].carga_id;
+          if (!payload.cliente_nome && existentes[0].cliente_nome) upd.cliente_nome = existentes[0].cliente_nome;
+          if (!payload.cliente_id && existentes[0].cliente_id) upd.cliente_id = existentes[0].cliente_id;
           await base44.asServiceRole.entities.LogEmissaoBoleto.update(existentes[0].id, upd);
           atualizados++;
         } else {

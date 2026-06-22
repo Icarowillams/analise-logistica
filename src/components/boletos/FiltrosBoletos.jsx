@@ -178,7 +178,14 @@ export default function FiltrosBoletos({ onResultado }) {
         setOcultosNaoBoleto(0);
       }
       onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor);
-      if (carga && houveFalhaOmie) {
+      // Só avisa "Omie limitou" se REALMENTE faltar boleto: pedidos de venda (com NF) da carga
+      // que NÃO foram resolvidos nem pelo local nem pelo Omie. Se tudo foi resolvido, não assusta.
+      const pedidosEsperados = (carga?.pedidos_omie || []).filter(p => {
+        const tipo = p.tipo_operacao || p.tipo_nota || 'venda';
+        return tipo === 'venda' && somenteNumeros(p.numero_nf);
+      }).length;
+      const faltamTitulos = houveFalhaOmie && pedidosEsperados > acumulados.length;
+      if (carga && faltamTitulos) {
         toast.warning(`Omie limitou o ritmo — alguns títulos da carga ${carga.numero_carga} podem não ter sido verificados. Tente Buscar novamente em instantes.`);
       } else if (carga && titulosFiltrados.length === 0) {
         toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);

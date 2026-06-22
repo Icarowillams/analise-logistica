@@ -14,6 +14,8 @@ import { base44 } from '@/api/base44Client';
 import { runPool } from '@/lib/concurrentPool';
 
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
+// Normaliza nº de pedido p/ casar Pedido (zero-padded 15 díg.) com título (sem padding).
+const numLimpo = (v) => String(v || '').trim().replace(/^0+/, '');
 const fmtBR = (d) =>
   `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
@@ -116,6 +118,32 @@ export async function buscarTitulosCarga(carga) {
     pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean)
   );
 
+  // Map numero_pedido (sem padding) → { nome, id } a partir dos Pedidos da carga.
+  // O ListarContasReceber do Omie NÃO retorna nome do cliente — preenchemos daqui.
+  const numerosPedido = [...new Set(pedidos.map(p => numLimpo(p.numero_pedido)).filter(Boolean))];
+  const mapaCliente = new Map();
+  if (numerosPedido.length > 0) {
+    const pedidosLocais = await base44.entities.Pedido.filter({}, '-created_date', 2000).catch(() => []);
+    for (const pl of pedidosLocais) {
+      const k = numLimpo(pl.numero_pedido);
+      if (k && numerosPedido.includes(k) && pl.cliente_nome) {
+        if (!mapaCliente.has(k)) mapaCliente.set(k, { nome: pl.cliente_nome, fantasia: pl.cliente_nome_fantasia || '', id: pl.cliente_id || '' });
+      }
+    }
+  }
+  // Preenche nome/fantasia/id de um título a partir do Pedido (só quando faltar).
+  const enriquecerCliente = (t) => {
+    if (t.nome_cliente && String(t.nome_cliente).trim()) return t;
+    const k = numLimpo(t.numero_pedido_vinculado || t.numero_pedido);
+    const info = k && mapaCliente.get(k);
+    if (info) {
+      t.nome_cliente = info.nome;
+      if (!t.nome_fantasia) t.nome_fantasia = info.fantasia;
+      if (!t.cliente_id) t.cliente_id = info.id;
+    }
+    return t;
+  };
+
   // ── A) LOCAL: boletos já emitidos, casados por numero_pedido ──────────────
   const logs = await base44.entities.LogEmissaoBoleto.list('-created_date', 1000).catch(() => []);
   const boletosLocais = logs.filter(l =>
@@ -179,7 +207,7 @@ export async function buscarTitulosCarga(carga) {
     const numV = String(t.numero_pedido_vinculado || '').trim();
     const codV = String(t.codigo_pedido_omie || '').trim();
     return (numV && numPedidosCarga.has(numV)) || (codV && codPedidosCarga.has(codV));
-  });
+  }).map(enriquecerCliente);
 
   // ── WRITE-THROUGH: grava localmente os boletos do OMIE que ainda não estão no log ──
   // Ao abrir a carga uma vez, popula o LogEmissaoBoleto → próximo F5 vem do LOCAL,
