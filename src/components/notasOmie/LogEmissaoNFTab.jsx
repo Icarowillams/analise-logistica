@@ -85,17 +85,42 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     return m;
   }, [clientes]);
 
-  // Enriquece cada log com dados do cliente
+  // Carrega Pedidos recentes para FALLBACK instantâneo de Nº NF e nome — sem esperar o
+  // write-through do LogEmissaoNF nem precisar sair/voltar da aba. Cruzamento 100% local.
+  const { data: pedidos = [] } = useQuery({
+    queryKey: ['pedidosParaLogNF'],
+    queryFn: () => base44.entities.Pedido.filter(
+      { faturado: true }, '-data_faturamento', 500,
+      ['numero_pedido', 'numero_nota_fiscal', 'cliente_nome', 'cliente_nome_fantasia']
+    ),
+    enabled: ativa,
+    staleTime: 15000
+  });
+
+  const pedidoPorNumero = useMemo(() => {
+    const m = new Map();
+    pedidos.forEach(p => {
+      const chave = formatNumeroPedido(p.numero_pedido || '');
+      if (chave) m.set(chave, p);
+    });
+    return m;
+  }, [pedidos]);
+
+  // Enriquece cada log com dados do cliente + FALLBACK do Pedido (Nº NF e nome instantâneos)
   const logsEnriquecidos = useMemo(() => {
     return logs.map(l => {
       const c = l.cliente_id ? clientePorId.get(l.cliente_id) : null;
+      const chavePed = formatNumeroPedido(l.numero_pedido || l.codigo_pedido || '');
+      const ped = chavePed ? pedidoPorNumero.get(chavePed) : null;
       return {
         ...l,
+        numero_nf: l.numero_nf || ped?.numero_nota_fiscal || '',
+        cliente_nome: l.cliente_nome || ped?.cliente_nome || ped?.cliente_nome_fantasia || '',
         codigo_interno: c?.codigo_interno || '',
         nome_fantasia: c?.nome_fantasia || ''
       };
     });
-  }, [logs, clientePorId]);
+  }, [logs, clientePorId, pedidoPorNumero]);
 
   useEffect(() => {
     if (cargaFiltro?.numero_carga) {

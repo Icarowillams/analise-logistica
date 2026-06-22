@@ -11,6 +11,7 @@ import { Search, RefreshCw, Printer, Layers, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
 import { formatarNumeroBoleto } from '@/lib/formatarNumeroBoleto';
+import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_BADGE = {
   gerado: 'bg-green-100 text-green-800 border-green-300',
@@ -34,12 +35,45 @@ export default function LogEmissaoBoletoTab() {
   const [imprimirOpen, setImprimirOpen] = useState(false);
   const [modoImpressao, setModoImpressao] = useState('individual');
 
-  const { data: logs = [], isLoading, refetch } = useQuery({
+  const { data: logsBrutos = [], isLoading, refetch } = useQuery({
     queryKey: ['log-emissao-boleto'],
     queryFn: () => base44.entities.LogEmissaoBoleto.list('-created_date', 500),
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false
   });
+
+  // Pedidos recentes para FALLBACK instantâneo de Cliente e Nº NF (cruzamento local).
+  const { data: pedidos = [] } = useQuery({
+    queryKey: ['pedidosParaLogBoleto'],
+    queryFn: () => base44.entities.Pedido.filter(
+      { faturado: true }, '-data_faturamento', 500,
+      ['numero_pedido', 'numero_nota_fiscal', 'cliente_nome', 'cliente_nome_fantasia']
+    ),
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false
+  });
+
+  const pedidoPorNumero = useMemo(() => {
+    const m = new Map();
+    pedidos.forEach(p => {
+      const chave = formatNumeroPedido(p.numero_pedido || '');
+      if (chave) m.set(chave, p);
+    });
+    return m;
+  }, [pedidos]);
+
+  // Resolve Cliente e Nº NF na renderização, sem depender de releitura/write-through.
+  const logs = useMemo(() => {
+    return logsBrutos.map(l => {
+      const chave = formatNumeroPedido(l.numero_pedido || '');
+      const ped = chave ? pedidoPorNumero.get(chave) : null;
+      return {
+        ...l,
+        cliente_nome: l.cliente_nome || ped?.cliente_nome || ped?.cliente_nome_fantasia || '',
+        numero_nf: l.numero_nf || ped?.numero_nota_fiscal || ''
+      };
+    });
+  }, [logsBrutos, pedidoPorNumero]);
 
   const filtrados = useMemo(() => {
     const termo = filtroTexto.trim().toLowerCase();

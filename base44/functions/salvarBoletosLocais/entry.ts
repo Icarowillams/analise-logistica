@@ -49,13 +49,34 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 2.1) FALLBACK pelos Pedidos: nome do cliente e Nº NF vêm dos campos REAIS do Pedido
+    //      (cliente_nome / numero_nota_fiscal), nunca de nome_cliente/numero_nf inexistentes.
+    //      Cruzamento por numero_pedido normalizado (sem zeros à esquerda).
+    const normPed = (v) => String(v || '').trim().replace(/^0+/, '');
+    const numerosPedido = [...new Set(titulosUnicos
+      .map(t => normPed(t.numero_pedido_vinculado || t.numero_pedido))
+      .filter(Boolean))];
+    const pedidoPorNumero = new Map();
+    for (let i = 0; i < numerosPedido.length; i += 100) {
+      const lote = numerosPedido.slice(i, i + 100);
+      const peds = await base44.asServiceRole.entities.Pedido.filter(
+        { numero_pedido: { $in: lote } }, '-data_faturamento', 200
+      ).catch(() => []);
+      (peds || []).forEach(p => {
+        const chave = normPed(p.numero_pedido);
+        if (chave && !pedidoPorNumero.has(chave)) pedidoPorNumero.set(chave, p);
+      });
+    }
+
     for (const t of titulosUnicos) {
       const codigo = t._codigo;
+      const numeroPedidoNorm = normPed(t.numero_pedido_vinculado || t.numero_pedido);
+      const ped = numeroPedidoNorm ? pedidoPorNumero.get(numeroPedidoNorm) : null;
 
       const payload = {
         codigo_lancamento: codigo,
-        numero_pedido: String(t.numero_pedido_vinculado || t.numero_pedido || '').trim().replace(/^0+/, ''),
-        numero_nf: String(t.numero_documento || t.numero_nf || '').trim(),
+        numero_pedido: numeroPedidoNorm,
+        numero_nf: String(t.numero_documento || t.numero_nf || '').trim() || String(ped?.numero_nota_fiscal || '').trim(),
         numero_parcela: String(t.numero_parcela || '').trim() || '001/001',
         numero_boleto: String(t.numero_boleto || '').trim(),
         numero_bancario: String(t.numero_bancario || '').trim(),
@@ -65,7 +86,7 @@ Deno.serve(async (req) => {
         valor: Number(t.valor_documento || t.valor || 0),
         data_emissao_boleto: t.data_emissao_boleto || '',
         data_vencimento: t.data_vencimento || '',
-        cliente_nome: t.nome_cliente || t.cliente_nome || '',
+        cliente_nome: t.nome_cliente || t.cliente_nome || ped?.cliente_nome || ped?.cliente_nome_fantasia || '',
         cliente_id: t.cliente_id || '',
         numero_carga: String(numero_carga || ''),
         carga_id: String(carga_id || ''),
