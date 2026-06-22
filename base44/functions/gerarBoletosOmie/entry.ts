@@ -17,7 +17,8 @@ async function getOmieCredentials(base44: any) {
 }
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  // Lê o registro ÚNICO pelo ID fixo (compartilhado entre todas as funções).
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: '6a1e06a9aa62ceab7b3b6d97' }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
@@ -27,6 +28,22 @@ async function checkCircuitBreaker(base44: any) {
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
 }
 
+// Throttle GLOBAL compartilhado — respeita o mesmo registro 'rate_limit_global' das demais funções,
+// garantindo intervalo mínimo entre QUALQUER chamada Omie do app (não estoura o limite global).
+const GLOBAL_RATE_KEY = 'rate_limit_global';
+const GLOBAL_MIN_INTERVAL_MS = 1500;
+async function throttleGlobal(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
+    const row = rows?.[0];
+    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
+    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    if (row?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, { atualizado_em: new Date().toISOString() }).catch(() => null);
+    else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+  } catch { /* falha no rate limiter não bloqueia a chamada */ }
+}
+
 async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const call = options.call || '';
@@ -34,6 +51,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   if (!call) throw new Error('Informe options.call com o método Omie.');
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  await throttleGlobal(base44);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
   const RETRIES = [1000, 2000, 4000];
   let lastErr = '';

@@ -1,7 +1,81 @@
-// v3 — 2026-06-11 — enriquecimento estrito (match exato cod/cnpj do próprio título, sem trocar identidade) + creds nunca cacheia vazio
+// v4 — Fase 1 — chamadas Omie passam pelo omieClient com throttle/circuit breaker global compartilhado (mesma tabela ControleCircuitBreakerOmie)
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/financas/contareceber/';
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+const OMIE_ENDPOINT_CR = 'financas/contareceber/';
+
+// ═══ omieClient inline — espelha o _shared/omieClient: circuit breaker pelo ID fixo + throttle GLOBAL persistido ═══
+const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
+const GLOBAL_RATE_KEY = 'rate_limit_global';
+const GLOBAL_MIN_INTERVAL_MS = 1500;
+
+async function omieCheckCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_FIXED_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return { blocked: false };
+  }
+  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+}
+
+// Throttle GLOBAL compartilhado: respeita o mesmo registro 'rate_limit_global' usado pelas demais funções.
+async function omieThrottleGlobal(base44: any) {
+  try {
+    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
+    const row = rows?.[0];
+    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
+    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    if (row?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, { atualizado_em: new Date().toISOString() }).catch(() => null);
+    else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+  } catch { /* falha no rate limiter não bloqueia a chamada */ }
+}
+
+async function omieCall(base44: any, call: string, param: any, options: any = {}) {
+  const creds = options.creds || await resolverCredsOmie(base44);
+  if (!creds.app_key || !creds.app_secret) throw new Error('Credenciais Omie não configuradas.');
+  const cb = await omieCheckCircuitBreaker(base44);
+  if (cb.blocked) { const err: any = new Error(`API Omie bloqueada até ${cb.blockedUntil}`); err.omie_bloqueada = true; throw err; }
+  await omieThrottleGlobal(base44);
+  const url = OMIE_BASE_URL + OMIE_ENDPOINT_CR;
+  const body = { call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] };
+  let lastError: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.status === 429 || res.status >= 500) {
+        await res.text().catch(() => '');
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); continue; }
+        throw new Error(`HTTP ${res.status} Omie — tentativas esgotadas`);
+      }
+      if (res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
+        throw new Error(`HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
+      }
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        const concorrencia = msg.includes('redundant') || msg.includes('código 6') || msg.includes('codigo 6') ||
+          msg.includes('já em execução') || msg.includes('ja em execucao') || msg.includes('aguarde') || msg.includes('1880');
+        if (concorrencia && attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
+        throw new Error(data.faultstring);
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
+}
+// ═══ fim omieClient inline ═══
 
 // Converte data Omie (dd/mm/aaaa) → número AAAAMMDD para comparação por DIA (ignora horas).
 // Retorna null se a data não existir/for inválida.
@@ -29,47 +103,6 @@ async function resolverCredsOmie(base44: any) {
     return _credsCache;
   }
   return { app_key: '', app_secret: '', at: 0 };
-}
-
-async function omieCall(base44: any, call: string, param: any, options: any = {}) {
-  const creds = options.creds || await resolverCredsOmie(base44);
-  const body = { call, app_key: creds.app_key, app_secret: creds.app_secret, param: [param] };
-  let lastError: any;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-    try {
-      const res = await fetch(OMIE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
-      clearTimeout(timeoutId);
-      // Tratamento de status HTTP ANTES de res.json() — num 5xx/429/425 o corpo não costuma ser JSON.
-      if (res.status === 429 || res.status >= 500) {
-        await res.text().catch(() => '');
-        if (attempt < 2) { await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); continue; }
-        throw new Error(`HTTP ${res.status} Omie — tentativas esgotadas`);
-      }
-      if (res.status === 425) {
-        const corpo = await res.text().catch(() => '');
-        // 425 = consumo indevido/concorrência → backoff e re-tenta (em vez de falhar de imediato).
-        if (attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
-        throw new Error(`HTTP 425 — consumo indevido${corpo ? ': ' + corpo.slice(0, 200) : ''}`);
-      }
-      const data = await res.json();
-      if (data.faultstring) {
-        const msg = String(data.faultstring).toLowerCase();
-        // Concorrência do Omie (REDUNDANT / código 6 / método já em execução / aguarde) → backoff e re-tenta.
-        const concorrencia = msg.includes('redundant') || msg.includes('código 6') || msg.includes('codigo 6') ||
-          msg.includes('já em execução') || msg.includes('ja em execucao') || msg.includes('aguarde') || msg.includes('1880');
-        if (concorrencia && attempt < 2) { await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt))); continue; }
-        throw new Error(data.faultstring);
-      }
-      return data;
-    } catch (err) {
-      clearTimeout(timeoutId);
-      lastError = err;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastError;
 }
 
 // Carrega clientes em bulk (uma única chamada) e indexa por codigo_omie e CNPJ
@@ -302,6 +335,19 @@ Deno.serve(async (req) => {
       total_de_registros: infoPagina.total_de_registros
     });
   } catch (error: any) {
+    // Circuit breaker compartilhado ativo → não joga erro vermelho na tela.
+    // Retorna resultado vazio sinalizando o bloqueio; a aba continua funcionando.
+    if (error?.omie_bloqueada || String(error?.message || '').toLowerCase().includes('bloqueada')) {
+      return Response.json({
+        sucesso: true,
+        titulos: [],
+        pagina: 1,
+        total_de_paginas: 1,
+        total_de_registros: 0,
+        omie_bloqueada: true,
+        aviso: 'API Omie temporariamente em controle de ritmo — tente novamente em instantes.'
+      });
+    }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

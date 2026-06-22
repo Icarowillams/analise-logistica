@@ -803,7 +803,7 @@ async function handlePedido(base44, topic, evt) {
     // 4) Fallback: Omie apenas se necessário
     if (!nfAutorizadaExcluida) {
       try {
-        const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
+        const nfData = await omieCall(base44, 'produtos/nfconsultar/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
         if (nfData?.ide?.nNF) {
           const dCan = String(nfData.ide?.dCan || '').trim();
           const cDeneg = String(nfData.ide?.cDeneg || '').trim();
@@ -874,7 +874,7 @@ async function handlePedido(base44, topic, evt) {
     // 4) Fallback: consultar Omie APENAS se nenhum dado local confirmou NF
     if (!nfAutorizada) {
       try {
-        const nfData = await omieCall(base44, 'produtos/pedidovendafat/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
+        const nfData = await omieCall(base44, 'produtos/nfconsultar/', { nIdPedido: Number(codigoPedido) }, { call: 'ConsultarNF', skipLog: true });
         if (nfData?.ide?.nNF) {
           const dCan = String(nfData.ide?.dCan || '').trim();
           const cDeneg = String(nfData.ide?.cDeneg || '').trim();
