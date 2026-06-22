@@ -28,6 +28,25 @@
       ],
       "default": "em_andamento"
     },
+    "checkin_saida": {
+      "type": "object",
+      "description": "Check-in de localiza\u00e7\u00e3o do motorista ao SAIR com a carga (espelhado da Carga). Capturado uma \u00fanica vez ao iniciar o acerto.",
+      "properties": {
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        },
+        "precisao": {
+          "type": "number"
+        },
+        "capturado_em": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "valor_total_original": {
       "type": "number",
       "default": 0
@@ -104,6 +123,25 @@
           "data_recebimento": {
             "type": "string",
             "format": "date"
+          },
+          "checkin_entrega": {
+            "type": "object",
+            "description": "Check-in de localiza\u00e7\u00e3o ao DEIXAR a mercadoria no cliente. Capturado ao marcar a nota como entregue.",
+            "properties": {
+              "latitude": {
+                "type": "number"
+              },
+              "longitude": {
+                "type": "number"
+              },
+              "precisao": {
+                "type": "number"
+              },
+              "capturado_em": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           },
           "motivo_cancelamento": {
             "type": "string"

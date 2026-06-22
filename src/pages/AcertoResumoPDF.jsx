@@ -72,6 +72,9 @@ export default function AcertoResumoPDF() {
           <span><b>Motorista:</b> {acerto.motorista_nome || '-'}</span>
           {carga && <><span><b>Veículo:</b> {carga.veiculo_placa || '-'}</span><span><b>Rota:</b> {carga.rota_nome || '-'}</span></>}
           <span><b>Status:</b> {acerto.status_acerto}</span>
+          {acerto.checkin_saida?.capturado_em && (
+            <span><b>Check-in saída:</b> {new Date(acerto.checkin_saida.capturado_em).toLocaleString('pt-BR')} ({acerto.checkin_saida.latitude?.toFixed(5)}, {acerto.checkin_saida.longitude?.toFixed(5)})</span>
+          )}
         </div>
 
         {/* Notas Entregues */}
@@ -87,11 +90,12 @@ export default function AcertoResumoPDF() {
                 <th className="p-1 text-right">Original</th>
                 <th className="p-1 text-right">Recebido</th>
                 <th className="p-1 text-right">Diferença</th>
+                <th className="p-1 text-left">Localização</th>
               </tr>
             </thead>
             <tbody>
               {entregues.length === 0 ? (
-                <tr><td colSpan="7" className="p-2 text-center text-slate-400">—</td></tr>
+                <tr><td colSpan="8" className="p-2 text-center text-slate-400">—</td></tr>
               ) : entregues.map((n, i) => (
                 <tr key={i} className={i % 2 ? 'bg-slate-50' : ''}>
                   <td className="p-1 border-b">{formatarNumeroPedido(n.numero_pedido)}</td>
@@ -101,6 +105,7 @@ export default function AcertoResumoPDF() {
                   <td className="p-1 border-b text-right">{fmt(n.valor_original)}</td>
                   <td className="p-1 border-b text-right">{fmt(n.valor_recebido)}</td>
                   <td className={`p-1 border-b text-right font-semibold ${Number(n.diferenca) < 0 ? 'text-red-600' : Number(n.diferenca) > 0 ? 'text-emerald-600' : ''}`}>{fmt(n.diferenca)}</td>
+                  <td className="p-1 border-b">{n.checkin_entrega?.latitude ? `${n.checkin_entrega.latitude.toFixed(5)}, ${n.checkin_entrega.longitude.toFixed(5)}` : '-'}</td>
                 </tr>
               ))}
             </tbody>

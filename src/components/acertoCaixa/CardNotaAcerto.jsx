@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { CheckCircle2, XCircle, RotateCcw, MapPin } from 'lucide-react';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_COLORS = {
@@ -80,6 +80,17 @@ export default function CardNotaAcerto({ nota, onChange, onMarcarEntregue, onMar
             />
           </div>
         </div>
+
+        {nota.checkin_entrega?.latitude && (
+          <a
+            href={`https://www.google.com/maps?q=${nota.checkin_entrega.latitude},${nota.checkin_entrega.longitude}`}
+            target="_blank" rel="noopener noreferrer"
+            className="text-xs text-emerald-700 hover:underline inline-flex items-center gap-1"
+          >
+            <MapPin className="w-3 h-3" />
+            Entregue em {nota.checkin_entrega.latitude.toFixed(5)}, {nota.checkin_entrega.longitude.toFixed(5)}
+          </a>
+        )}
 
         {nota.motivo_cancelamento && (
           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">

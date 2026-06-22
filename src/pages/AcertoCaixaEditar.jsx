@@ -9,6 +9,8 @@ import { Wallet, RefreshCw, CheckCircle2, FileText, Loader2, ArrowLeft } from 'l
 import { toast } from 'sonner';
 import CardNotaAcerto from '@/components/acertoCaixa/CardNotaAcerto';
 import MotivoNaoEntregueModal from '@/components/acertoCaixa/MotivoNaoEntregueModal';
+import { capturarLocalizacaoObrigatoria } from '@/lib/capturarLocalizacao';
+import { MapPin } from 'lucide-react';
 
 const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
@@ -43,6 +45,8 @@ export default function AcertoCaixaEditar() {
   const [finalizando, setFinalizando] = useState(false);
   const [sincInicialFeita, setSincInicialFeita] = useState(false);
 
+  const [checkinSaida, setCheckinSaida] = useState(null);
+  const [capturandoSaida, setCapturandoSaida] = useState(false);
   const [modalNaoEntregue, setModalNaoEntregue] = useState({ open: false, index: null, loading: false });
   const saveTimer = useRef(null);
   const saveInProgress = useRef(false);
@@ -58,8 +62,26 @@ export default function AcertoCaixaEditar() {
     if (acerto) {
       setNotas(acerto.notas || []);
       setObs(acerto.observacao_geral || '');
+      setCheckinSaida(acerto.checkin_saida || null);
     }
   }, [acerto]);
+
+  // Check-in de SAÍDA: capturado uma única vez ao iniciar o acerto (motorista saiu com a carga).
+  const registrarCheckinSaida = async () => {
+    setCapturandoSaida(true);
+    try {
+      const loc = await capturarLocalizacaoObrigatoria('Confirme a localização de saída com a carga.');
+      setCheckinSaida(loc);
+      await base44.entities.AcertoCaixa.update(acertoId, { checkin_saida: loc });
+      if (acerto?.carga_id) {
+        try { await base44.entities.Carga.update(acerto.carga_id, { checkin_saida: loc }); } catch (_) {}
+      }
+      toast.success('Check-in de saída registrado');
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setCapturandoSaida(false);
+  };
 
   // Sincronização inicial bloqueante
   useEffect(() => {
@@ -130,11 +152,26 @@ export default function AcertoCaixaEditar() {
     agendarSalvar(novas, obs);
   };
 
-  const marcarEntregue = (idx) => {
+  const marcarEntregue = async (idx) => {
     const nota = notas[idx];
+    // CHECK-IN NO CLIENTE: precisa capturar a localização ANTES de marcar entregue.
+    // Pede de novo e só segue após capturar (regra de negócio).
+    let checkinEntrega;
+    try {
+      checkinEntrega = await capturarLocalizacaoObrigatoria(`Confirme a localização da entrega para ${nota.nome_cliente || 'o cliente'}.`);
+    } catch (e) {
+      toast.error(e.message);
+      return;
+    }
     // Marca entregue LOCALMENTE primeiro — ação humana na volta da rua. Nunca trava por causa do Omie.
-    const nova = { ...nota, status_entrega: 'entregue', data_recebimento: new Date().toISOString().slice(0, 10) };
+    const nova = {
+      ...nota,
+      status_entrega: 'entregue',
+      data_recebimento: new Date().toISOString().slice(0, 10),
+      checkin_entrega: checkinEntrega
+    };
     atualizarNota(idx, nova);
+    toast.success('Entrega registrada com localização');
 
     // Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 70). Desacoplado da marcação local —
     // se o Omie falhar/rate limit, marca omie_etapa_pendente para reconciliar depois, sem bloquear.
@@ -335,6 +372,35 @@ export default function AcertoCaixaEditar() {
           )}
         </div>
       </div>
+
+      {/* Check-in de saída */}
+      {!finalizado && (
+        <Card className={checkinSaida ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-300 bg-amber-50/40'}>
+          <CardContent className="p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className={`w-5 h-5 ${checkinSaida ? 'text-emerald-600' : 'text-amber-600'}`} />
+              {checkinSaida ? (
+                <span className="text-emerald-800">
+                  Saída registrada em {new Date(checkinSaida.capturado_em).toLocaleString('pt-BR')} —{' '}
+                  {checkinSaida.latitude.toFixed(5)}, {checkinSaida.longitude.toFixed(5)}
+                </span>
+              ) : (
+                <span className="text-amber-800 font-medium">Registre o check-in de saída com a carga.</span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant={checkinSaida ? 'outline' : 'default'}
+              onClick={registrarCheckinSaida}
+              disabled={capturandoSaida}
+              className={checkinSaida ? '' : 'bg-amber-600 hover:bg-amber-700'}
+            >
+              {capturandoSaida ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <MapPin className="w-4 h-4 mr-1" />}
+              {checkinSaida ? 'Atualizar saída' : 'Check-in de saída'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

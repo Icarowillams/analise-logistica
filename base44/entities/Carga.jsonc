@@ -44,6 +44,25 @@
     "ajudante_nome": {
       "type": "string"
     },
+    "checkin_saida": {
+      "type": "object",
+      "description": "Check-in de localiza\u00e7\u00e3o do motorista ao SAIR com a carga. Capturado uma \u00fanica vez no in\u00edcio do acerto/sa\u00edda.",
+      "properties": {
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        },
+        "precisao": {
+          "type": "number"
+        },
+        "capturado_em": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "pedidos_omie": {
       "type": "array",
       "items": {
@@ -340,10 +359,11 @@
       "type": "string",
       "enum": [
         "montagem",
-        "faturada"
+        "faturada",
+        "entregue"
       ],
       "default": "montagem",
-      "description": "Status LOCAL bin\u00e1rio da carga: montagem = em prepara\u00e7\u00e3o (ainda n\u00e3o enviada ao Omie); faturada = enviada ao Omie. O ciclo fiscal detalhado (cancelada, rejeitada, em rota, entregue) permanece no Omie e nas entidades de espelho, n\u00e3o na Carga."
+      "description": "Status LOCAL da carga: montagem = em prepara\u00e7\u00e3o; faturada = enviada ao Omie; entregue = acerto finalizado. O ciclo fiscal detalhado permanece no Omie e nas entidades de espelho."
     },
     "processamento_omie_status": {
       "type": "string",
