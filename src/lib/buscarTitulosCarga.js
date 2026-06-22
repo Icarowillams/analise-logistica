@@ -112,10 +112,10 @@ async function buscarTitulosCnpj(cnpj, janela) {
 export async function buscarBoletosLocaisCarga(carga) {
   const pedidos = carga?.pedidos_omie || [];
   if (pedidos.length === 0) return [];
-  const numPedidosCarga = new Set(pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean));
+  const numPedidosCarga = new Set(pedidos.map(p => numLimpo(p.numero_pedido)).filter(Boolean));
   const logs = await base44.entities.LogEmissaoBoleto.list('-created_date', 1000).catch(() => []);
   return logs
-    .filter(l => l.status === 'gerado' && numPedidosCarga.has(String(l.numero_pedido || '').trim()))
+    .filter(l => l.status === 'gerado' && numPedidosCarga.has(numLimpo(l.numero_pedido)))
     .map(logParaTitulo);
 }
 
@@ -132,7 +132,7 @@ export async function buscarTitulosCarga(carga) {
   if (pedidos.length === 0) return { titulos: [], cnpjsComFalha: new Set(), houveFalhaOmie: false };
 
   const numPedidosCarga = new Set(
-    pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean)
+    pedidos.map(p => numLimpo(p.numero_pedido)).filter(Boolean)
   );
 
   // Map numero_pedido (sem padding) → { nome, id } a partir dos Pedidos da carga.
@@ -165,17 +165,17 @@ export async function buscarTitulosCarga(carga) {
   const logs = await base44.entities.LogEmissaoBoleto.list('-created_date', 1000).catch(() => []);
   const boletosLocais = logs.filter(l =>
     l.status === 'gerado' &&
-    numPedidosCarga.has(String(l.numero_pedido || '').trim())
+    numPedidosCarga.has(numLimpo(l.numero_pedido))
   );
   const titulosLocais = boletosLocais.map(logParaTitulo);
   const pedidosComBoletoLocal = new Set(
-    boletosLocais.map(l => String(l.numero_pedido || '').trim())
+    boletosLocais.map(l => numLimpo(l.numero_pedido))
   );
 
   // ── B) OMIE PARALELO: só CNPJs de pedidos SEM boleto local ────────────────
   const cnpjsFaltantes = [...new Set(
     pedidos
-      .filter(p => !pedidosComBoletoLocal.has(String(p.numero_pedido || '').trim()))
+      .filter(p => !pedidosComBoletoLocal.has(numLimpo(p.numero_pedido)))
       .map(p => somenteNumeros(p.cnpj_cpf_cliente))
       .filter(c => c.length >= 11)
   )];
@@ -221,7 +221,7 @@ export async function buscarTitulosCarga(carga) {
   const codPedidosCarga = new Set(pedidos.map(p => String(p.codigo_pedido || '').trim()).filter(Boolean));
   const titulos = [...porCodigo.values()].filter(t => {
     if (t._origem === 'local') return true; // já filtrado por numero_pedido
-    const numV = String(t.numero_pedido_vinculado || '').trim();
+    const numV = numLimpo(t.numero_pedido_vinculado);
     const codV = String(t.codigo_pedido_omie || '').trim();
     return (numV && numPedidosCarga.has(numV)) || (codV && codPedidosCarga.has(codV));
   }).map(enriquecerCliente);

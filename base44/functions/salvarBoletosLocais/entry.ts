@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
       const payload = {
         codigo_lancamento: codigo,
-        numero_pedido: String(t.numero_pedido_vinculado || t.numero_pedido || '').trim(),
+        numero_pedido: String(t.numero_pedido_vinculado || t.numero_pedido || '').trim().replace(/^0+/, ''),
         numero_nf: String(t.numero_documento || t.numero_nf || '').trim(),
         numero_parcela: String(t.numero_parcela || '').trim() || '001/001',
         numero_boleto: String(t.numero_boleto || '').trim(),
