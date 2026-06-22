@@ -194,98 +194,63 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           return;
         }
       }
-      // Quando filtra por CARGA, precisamos varrer TODAS as páginas do período
-      // (uma NF da carga pode estar em qualquer página). Caso contrário, só busca a página pg.
-      let dataFinalResp = null;
+      // Quando filtra por CARGA, a lista é montada 100% LOCAL (LogEmissaoNF autorizado),
+      // SEM tocar no Omie. A impressão resolve o ID interno via ConsultarNF só no clique.
       if (cargaParaFiltrar) {
-        // OTIMIZAÇÃO REAL: a carga já conhece os números de NF dos pedidos. A API
-        // ListarNF do Omie só filtra por UMA NF exata (nNF) — não por faixa. Então
-        // mandamos a LISTA de números e o backend consulta cada uma direto por nNF,
-        // em paralelo, numa única invocação. Sem varrer páginas por data → ~poucos seg.
-        const numerosNfCarga = (cargaParaFiltrar.pedidos_omie || [])
-          .map(p => Number(String(p.numero_nf || '').replace(/\D/g, '')))
-          .filter(n => n > 0);
-
-        // Códigos de pedido (nIdPedido) — sempre presentes, mesmo sem numero_nf gravado.
-        const codigosPedidoCarga = (cargaParaFiltrar.pedidos_omie || [])
-          .map(p => Number(String(p.codigo_pedido || '').replace(/\D/g, '')))
-          .filter(c => c > 0);
-
-        if (numerosNfCarga.length === 0 && codigosPedidoCarga.length === 0) {
-          toast.warning('Esta carga não tem pedidos vinculados.');
-          setResultado({ nfs: [], total_de_registros: 0, total_de_paginas: 1 });
-          setLoading(false);
-          return;
-        }
-
-        // Janela de datas em torno da data da carga (cobre NF emitida na véspera).
-        // O ListarNF do Omie não filtra por pedido, então o backend varre as NFs do
-        // período e cruza pelo nIdPedido. Passar a janela deixa a varredura curta e rápida.
-        const dataBase = cargaParaFiltrar.data_faturamento || cargaParaFiltrar.data_carga;
-        let janelaDatas = {};
-        if (dataBase) {
-          const d = new Date(dataBase);
-          if (!isNaN(d.getTime())) {
-            const fmt = (dt) => {
-              const dia = String(dt.getDate()).padStart(2, '0');
-              const mes = String(dt.getMonth() + 1).padStart(2, '0');
-              return `${dia}/${mes}/${dt.getFullYear()}`;
-            };
-            const ini = new Date(d.getTime() - 3 * 24 * 60 * 60 * 1000);
-            const fim = new Date(d.getTime() + 1 * 24 * 60 * 60 * 1000);
-            janelaDatas = { data_inicial: fmt(ini), data_final: fmt(fim) };
-          }
-        }
-
-        // Preferimos buscar por número de NF (mais direto); se a carga ainda não tem
-        // numero_nf gravado, buscamos pelo código do pedido (nIdPedido) + janela de datas.
-        const payloadBusca = numerosNfCarga.length > 0
-          ? { numeros_nf: numerosNfCarga, ...janelaDatas }
-          : { codigos_pedido: codigosPedidoCarga, ...janelaDatas };
-
-        let data;
+        // RECONCILIAÇÃO SILENCIOSA (best-effort): regrava numero_nf em pedidos_omie a
+        // partir do LogEmissaoNF autorizado. Recarrega a carga para pegar os dados frescos.
         try {
-          data = await listarNfsComRetry(payloadBusca);
-        } catch (e) {
-          if (ehBloqueioOmie(e.message)) {
-            toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
-            setLoading(false);
-            return;
-          }
-          throw e;
-        }
-        if (!data?.sucesso) {
-          if (ehBloqueioOmie(data?.error)) {
-            toast.error('Omie temporariamente indisponível. Aguarde ~1 min e tente novamente.');
-          } else {
-            toast.error(data?.error || 'Erro ao consultar NFs');
-          }
-          setLoading(false);
-          return;
-        }
-        dataFinalResp = data;
-        const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
-
-        // RECONCILIAÇÃO SILENCIOSA (sem botão, sem aviso): regrava numero_nf vazio/divergente
-        // em pedidos_omie a partir do LogEmissaoNF autorizado e devolve a ponte
-        // codigo_pedido → numero_nf usada já neste cruzamento. Fonte 100% local, idempotente.
-        let mapaNfLog = {};
-        try {
-          const { data: rec } = await base44.functions.invoke('reconciliarNumeroNfCarga', { carga_id: cargaParaFiltrar.id });
-          if (rec?.sucesso) mapaNfLog = rec.mapaNf || {};
+          await base44.functions.invoke('reconciliarNumeroNfCarga', { carga_id: cargaParaFiltrar.id });
+          const recarregada = await base44.entities.Carga.filter({ id: cargaParaFiltrar.id });
+          if (recarregada?.[0]) cargaParaFiltrar = recarregada[0];
         } catch (_) { /* reconciliação é best-effort; nunca bloqueia a listagem */ }
 
-        const nfsFiltradas = filtrarNfsPorCarga(apenasAutorizadas, cargaParaFiltrar, mapaNfLog);
-        // Busca POR carga: o nº da carga já é conhecido (é o próprio filtro). Marca todas
-        // as NFs com ele direto, sem baixar o índice de TODAS as cargas (que era lento).
+        // FONTE DA LISTA: LogEmissaoNF autorizado da carga (por numero_carga; fallback carga_id).
         const numCarga = cargaParaFiltrar.numero_carga;
-        const mapaCargas = {};
-        nfsFiltradas.forEach(nf => {
-          const num = String(nf.cNumero || '').replace(/\D/g, '');
-          if (num) mapaCargas[num] = numCarga;
+        let logs = [];
+        if (numCarga) logs = await base44.entities.LogEmissaoNF.filter({ numero_carga: String(numCarga), status: 'autorizada' });
+        if (logs.length === 0) logs = await base44.entities.LogEmissaoNF.filter({ carga_id: cargaParaFiltrar.id, status: 'autorizada' });
+
+        if (logs.length === 0) {
+          toast.warning('Nenhuma NF autorizada registrada para esta carga.');
+          setResultado({ nfs: [], total_de_registros: 0, total_de_paginas: 1 });
+          setCargasPorNf({});
+          setLoading(false);
+          return;
+        }
+
+        // Índice codigo_pedido → dados do cliente (a partir de pedidos_omie da carga).
+        const porCodigo = {};
+        (cargaParaFiltrar.pedidos_omie || []).forEach(p => {
+          if (p.codigo_pedido) porCodigo[String(p.codigo_pedido)] = p;
         });
+
+        // Monta cada linha a partir do log + dados do pedido na carga.
+        // Dedup por numero_nf.
+        const vistos = new Set();
+        const mapaCargas = {};
+        const nfsFiltradas = [];
+        logs.forEach(log => {
+          const numNf = String(log.numero_nf || '').replace(/\D/g, '');
+          if (!numNf || vistos.has(numNf)) return;
+          vistos.add(numNf);
+          const ped = porCodigo[String(log.codigo_pedido)] || {};
+          mapaCargas[numNf] = numCarga;
+          nfsFiltradas.push({
+            cNumero: log.numero_nf,
+            nIdPedido: log.codigo_pedido,           // impressão resolve nIdNF via ConsultarNF no clique
+            cSerie: ped.serie_nf || '',
+            dEmiNF: ped.data_previsao || '',
+            cRazao: ped.nome_cliente || log.cliente_nome || '',
+            cNomeFantasia: ped.nome_fantasia || '',
+            cCPFCNPJDest: ped.cnpj_cpf_cliente || '',
+            nValorNF: ped.valor_total_pedido || 0,
+            cStatus: 'autorizada'
+          });
+        });
+
         setCargasPorNf(mapaCargas);
-        setResultado({ ...(dataFinalResp || {}), nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
+        setResultado({ nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
         setPagina(1);
       } else {
         const { data } = await base44.functions.invoke('listarNfsOmie', {
