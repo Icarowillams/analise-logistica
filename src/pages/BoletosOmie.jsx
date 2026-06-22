@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Receipt, FileSignature, Printer } from 'lucide-react';
+import { Receipt, FileSignature, Printer, History } from 'lucide-react';
 import EmissaoBoletosConteudo from '@/components/boletos/EmissaoBoletosConteudo';
 import BoletosConsultaTab from '@/components/boletos/BoletosConsultaTab';
+import LogEmissaoBoletoTab from '@/components/boletos/LogEmissaoBoletoTab';
 
 export default function BoletosOmie() {
   // Abas:
@@ -14,6 +15,7 @@ export default function BoletosOmie() {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     if (tabParam === 'impressao' || tabParam === 'consulta') setTab('impressao');
+    else if (tabParam === 'historico') setTab('historico');
     else if (tabParam === 'emissao') setTab('emissao');
   }, []);
 
@@ -28,9 +30,12 @@ export default function BoletosOmie() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-xl">
           <TabsTrigger value="emissao" className="flex items-center gap-2">
             <FileSignature className="w-4 h-4" /> Emissão
+          </TabsTrigger>
+          <TabsTrigger value="historico" className="flex items-center gap-2">
+            <History className="w-4 h-4" /> Histórico
           </TabsTrigger>
           <TabsTrigger value="impressao" className="flex items-center gap-2">
             <Printer className="w-4 h-4" /> Consulta / Impressão
@@ -39,6 +44,10 @@ export default function BoletosOmie() {
 
         <TabsContent value="emissao" className="mt-4">
           <EmissaoBoletosConteudo ativa={tab === 'emissao'} />
+        </TabsContent>
+
+        <TabsContent value="historico" className="mt-4">
+          <LogEmissaoBoletoTab />
         </TabsContent>
 
         <TabsContent value="impressao" className="mt-4">

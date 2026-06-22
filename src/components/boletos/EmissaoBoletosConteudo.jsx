@@ -70,6 +70,7 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       const pedidos = cargaSelecionada.pedidos_omie || [];
       if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
 
+      console.log('[Boletos] BUSCA POR PERIODO ATIVA — carga', cargaSelecionada?.numero_carga, 'pedidos', pedidos.length);
       const hoje = new Date();
       const inicio = new Date(hoje.getTime() - 60 * 86400000);   // -60 dias
       const fim = new Date(hoje.getTime() + 120 * 86400000);     // +120 dias
@@ -100,7 +101,10 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       );
 
       // Completude: pedidos da carga que ainda não casaram com nenhum título do período.
-      // Fallback APENAS para esses (por CNPJ), nunca para todos.
+      // Fallback APENAS para esses (por CNPJ), com TETO RÍGIDO para nunca virar rajada.
+      // Se a janela já trouxe a maioria, isso fica em 0-2 chamadas; se algo está estruturalmente
+      // errado (período não casa), o teto evita repetir a rajada de N CNPJs.
+      const TETO_FALLBACK_CNPJ = 6;
       const codsAcum = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
       const numsAcum = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
       const cnpjsFaltantes = [...new Set(
@@ -113,7 +117,8 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
           })
           .map(p => somenteNumeros(p.cnpj_cpf_cliente))
           .filter(c => c.length >= 11)
-      )];
+      )].slice(0, TETO_FALLBACK_CNPJ);
+      console.log('[Boletos] fallback por CNPJ:', cnpjsFaltantes.length, 'chamada(s)');
       for (const cnpj of cnpjsFaltantes) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: dataDeStr,
