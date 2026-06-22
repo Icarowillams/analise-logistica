@@ -14,6 +14,14 @@
       "type": "string",
       "description": "N\u00famero da NF autorizada (preenchido apenas se emitida)"
     },
+    "nid_nf": {
+      "type": "string",
+      "description": "ID interno da NF no Omie (nIdNF). Fixo ap\u00f3s autoriza\u00e7\u00e3o. Cacheado para impress\u00e3o instant\u00e2nea \u2014 pula a chamada ConsultarNF e vai direto ao ObterNfe."
+    },
+    "chave_nfe": {
+      "type": "string",
+      "description": "Chave de acesso da NF-e (44 d\u00edgitos)"
+    },
     "cliente_id": {
       "type": "string"
     },

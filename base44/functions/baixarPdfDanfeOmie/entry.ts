@@ -102,7 +102,27 @@ async function resolverNIdNfPorNumero(base44: any, nNF: any) {
   const alvo = String(nNF || '').replace(/\D/g, '');
   if (!alvo) return null;
   const d = await omieCall(base44, NF_URL, { nNF: Number(alvo) }, { call: 'ConsultarNF', skipLog: true });
-  return d?.compl?.nIdNF || d?.nIdNF || d?.nCodNF || null;
+  const nId = d?.compl?.nIdNF || d?.nIdNF || d?.nCodNF || null;
+  const chave = d?.compl?.cChaveNFe || d?.nfDestInt?.cChaveNFe || d?.cChaveNFe || '';
+  return { nId, chave };
+}
+
+// Write-through cache: grava nid_nf (e chave_nfe) no LogEmissaoNF correspondente.
+// Idempotente — se já tem nid_nf, não regrava. Match por numero_nf=nNF (fallback codigo_pedido=nIdPedido).
+// Best-effort: nunca quebra o download da NF.
+async function cachearNidNf(base44: any, nNF: any, nIdPedido: any, nIdNf: any, chave: any) {
+  try {
+    if (!nIdNf) return;
+    const numNf = String(nNF || '').replace(/\D/g, '');
+    let logs = [];
+    if (numNf) logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ numero_nf: numNf, status: 'autorizada' }, '-created_date', 1).catch(() => []);
+    if ((!logs || logs.length === 0) && nIdPedido) logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(nIdPedido), status: 'autorizada' }, '-created_date', 1).catch(() => []);
+    const log = logs?.[0];
+    if (!log || log.nid_nf) return; // idempotente
+    const patch: any = { nid_nf: String(nIdNf) };
+    if (chave) patch.chave_nfe = String(chave);
+    await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, patch).catch(() => null);
+  } catch { /* best-effort */ }
 }
 
 async function getCredenciais(base44) {
@@ -129,13 +149,18 @@ Deno.serve(async (req) => {
     // que nIdNfe do ObterNfe (dfedocs). Precisamos resolver via ConsultarNF.
     let nIdNfe = null;
 
-    // Estratégia 1: se já temos nIdNF numérico válido, tenta direto (1 chamada).
-    // Quando a lista vem da fonte LOCAL (LogEmissaoNF), não há ID interno — só o
-    // número da NF (nNF). Nesse caso resolvemos o ID interno pelo número, no clique.
+    // Estratégia 1: se já temos nIdNF numérico válido (cache do front), vai DIRETO ao
+    // ObterNfe — pula ConsultarNF (a chamada cara). Esse é o caminho instantâneo.
+    // Quando a lista vem da fonte LOCAL sem cache, só há o número (nNF): resolvemos o
+    // ID interno via ConsultarNF { nNF } no clique (fallback — rede de segurança) e
+    // gravamos no LogEmissaoNF (write-through) para os próximos cliques serem instantâneos.
     let candidato = Number(nIdNF || nCodNF || 0);
     if (candidato <= 0 && nNF) {
       const resolvido = await resolverNIdNfPorNumero(base44, nNF).catch(() => null);
-      if (resolvido) candidato = Number(resolvido);
+      if (resolvido?.nId) {
+        candidato = Number(resolvido.nId);
+        await cachearNidNf(base44, nNF, nIdPedido, resolvido.nId, resolvido.chave);
+      }
     }
     if (candidato > 0) {
       // Tenta usar direto — se ObterNfe falhar, cairá no fallback abaixo

@@ -61,6 +61,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
   const [impressaoModo, setImpressaoModo] = useState('individual'); // 'individual' | 'agrupado'
   const [nfsParaImprimir, setNfsParaImprimir] = useState([]);
   const [cargasPorNf, setCargasPorNf] = useState({}); // cNumero(normalizado) → numero_carga
+  const [preaquecimento, setPreaquecimento] = useState(null); // { atual, total } enquanto roda; null quando ocioso
+  const preaquecendoRef = useRef(false);
 
   // Índice codigo_pedido → numero_carga cacheado em memória com TTL de 5 min.
   // Evita rebaixar todas as cargas a cada busca (eram ~2 MB / chamada).
@@ -238,7 +240,8 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           mapaCargas[numNf] = numCarga;
           nfsFiltradas.push({
             cNumero: log.numero_nf,
-            nIdPedido: log.codigo_pedido,           // impressão resolve nIdNF via ConsultarNF no clique
+            nIdNF: log.nid_nf || null,              // cache: se preenchido, impressão pula ConsultarNF
+            nIdPedido: log.codigo_pedido,           // sem cache: impressão resolve nIdNF via ConsultarNF no clique
             cSerie: ped.serie_nf || '',
             dEmiNF: ped.data_previsao || '',
             cRazao: ped.nome_cliente || log.cliente_nome || '',
@@ -252,6 +255,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         setCargasPorNf(mapaCargas);
         setResultado({ nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
         setPagina(1);
+
+        // PRÉ-AQUECIMENTO em background: se há NFs sem nIdNF cacheado, resolve por baixo
+        // (não trava a UI). A lista já está na tela. Quando terminar, recarrega os
+        // nid_nf recém-gravados para o clique em imprimir já usar o atalho.
+        const faltaCache = nfsFiltradas.some(nf => !nf.nIdNF);
+        if (faltaCache) {
+          preaquecerCarga(cargaParaFiltrar, numCarga);
+        }
       } else {
         const { data } = await base44.functions.invoke('listarNfsOmie', {
           ...filtrosBusca,
@@ -290,6 +301,49 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       toast.error(e.message);
     }
     setLoadingDetalhe(null);
+  };
+
+  // Pré-aquecimento do cache de nIdNF da carga, em background (não trava a UI).
+  // Dispara prepararNidNfCarga, mostra "Preparando impressão rápida (X/Y)" e, ao
+  // terminar, relê os logs e atualiza as linhas com os nid_nf recém-gravados.
+  const preaquecerCarga = async (carga, numCarga) => {
+    if (preaquecendoRef.current) return;
+    preaquecendoRef.current = true;
+    try {
+      // Conta quantas faltam para o indicador (X/Y)
+      const total = (resultado?.nfs || []).filter(nf => !nf.nIdNF).length || 1;
+      setPreaquecimento({ atual: 0, total });
+      const { data } = await base44.functions.invoke('prepararNidNfCarga', {
+        carga_id: carga?.id,
+        numero_carga: numCarga
+      });
+      // Relê os logs para pegar os nid_nf recém-gravados e atualiza as linhas locais
+      let logs = [];
+      if (numCarga) logs = await base44.entities.LogEmissaoNF.filter({ numero_carga: String(numCarga), status: 'autorizada' });
+      if (logs.length === 0 && carga?.id) logs = await base44.entities.LogEmissaoNF.filter({ carga_id: carga.id, status: 'autorizada' });
+      const cachePorNf = {};
+      logs.forEach(l => {
+        const n = String(l.numero_nf || '').replace(/\D/g, '');
+        if (n && l.nid_nf) cachePorNf[n] = l.nid_nf;
+      });
+      setResultado(prev => prev ? {
+        ...prev,
+        nfs: prev.nfs.map(nf => {
+          if (nf.nIdNF) return nf;
+          const n = String(nf.cNumero || '').replace(/\D/g, '');
+          return cachePorNf[n] ? { ...nf, nIdNF: cachePorNf[n] } : nf;
+        })
+      } : prev);
+      if (data?.bloqueado) {
+        // API bloqueada no meio — o cache fica parcial; o clique resolve o resto (rede de segurança).
+        setPreaquecimento(null);
+      }
+    } catch (_) {
+      /* pré-aquecimento é só otimização — nunca impacta a impressão */
+    } finally {
+      preaquecendoRef.current = false;
+      setPreaquecimento(null);
+    }
   };
 
   // Ao receber cargaFiltro pela URL, zera o período e dispara busca pela carga
@@ -408,6 +462,12 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                 {resultado.total_de_registros || 0} NFs encontradas
                 {selecionadas.size > 0 && (
                   <span className="ml-2 text-sm font-normal text-cyan-700">({selecionadas.size} selecionada{selecionadas.size > 1 ? 's' : ''})</span>
+                )}
+                {preaquecimento && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-slate-500">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Preparando impressão rápida…
+                  </span>
                 )}
               </span>
               <div className="flex items-center gap-2">
