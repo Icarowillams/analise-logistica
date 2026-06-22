@@ -71,32 +71,61 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
 
       const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 365 * 86400000);
-      const fim = new Date(hoje.getTime() + 90 * 86400000);
+      const inicio = new Date(hoje.getTime() - 60 * 86400000);   // -60 dias
+      const fim = new Date(hoje.getTime() + 120 * 86400000);     // +120 dias
       const dataDeStr = fmt(inicio);
       const dataAteStr = fmt(fim);
 
-      // Busca sequencial por CNPJ — evita erro 8020 / rate limit do Omie
-      const cnpjsUnicos = [...new Set(
-        pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(c => c.length >= 11)
-      )];
-
+      // ⚠️ Busca UMA varredura paginada por PERÍODO (SEM cnpj_cpf), filtra localmente.
+      // Substitui o loop por-CNPJ (rajada de 13-22 chamadas → ~3-5). O vínculo título↔pedido
+      // usa codigo_pedido_omie/numero_pedido_vinculado (independe de CNPJ), então nada se perde.
+      // SEM apenas_pendentes: queremos também os títulos já com boleto/recebidos da carga.
       let acumulados = [];
-      for (const cnpj of cnpjsUnicos) {
+      for (let pagina = 1; pagina <= 8; pagina++) {
+        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+          data_de: dataDeStr,
+          data_ate: dataAteStr,
+          filtrar_por_data: 'V',
+          pagina,
+          registros_por_pagina: 200
+        });
+        if (!data?.sucesso) break;
+        acumulados = acumulados.concat(data.titulos || []);
+        if (pagina >= (data.total_de_paginas || 1)) break;
+      }
+
+      // Dedup
+      acumulados = acumulados.filter((t, i, arr) =>
+        arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
+      );
+
+      // Completude: pedidos da carga que ainda não casaram com nenhum título do período.
+      // Fallback APENAS para esses (por CNPJ), nunca para todos.
+      const codsAcum = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
+      const numsAcum = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
+      const cnpjsFaltantes = [...new Set(
+        pedidos
+          .filter(p => p.tipo_nota !== 'D1')
+          .filter(p => {
+            const cod = String(p.codigo_pedido || '').trim();
+            const num = String(p.numero_pedido || '').trim();
+            return !((cod && codsAcum.has(cod)) || (num && numsAcum.has(num)));
+          })
+          .map(p => somenteNumeros(p.cnpj_cpf_cliente))
+          .filter(c => c.length >= 11)
+      )];
+      for (const cnpj of cnpjsFaltantes) {
         const { data } = await base44.functions.invoke('listarContasReceberOmie', {
           data_de: dataDeStr,
           data_ate: dataAteStr,
           filtrar_por_data: 'V',
           cnpj_cpf: cnpj,
-          apenas_pendentes: false,
           registros_por_pagina: 100
         });
         if (data?.sucesso && data.titulos?.length > 0) {
           acumulados = acumulados.concat(data.titulos);
         }
       }
-
-      // Dedup
       acumulados = acumulados.filter((t, i, arr) =>
         arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
       );
@@ -155,6 +184,9 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf };
     },
     enabled: ativa && !!cargaSelecionada && !loadingClientes,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
     refetchOnWindowFocus: false
   });
 
