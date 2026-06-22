@@ -238,7 +238,21 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
   const jaTemBoleto = !!(titulo.numero_boleto && String(titulo.numero_boleto).trim()) || titulo.boleto?.cGerado === 'S';
 
   if (!aberto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Título ${status}`, ...ctx };
-  if (jaTemBoleto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Boleto já gerado: ${titulo.numero_boleto || ''}`, ...ctx };
+  // Boleto JÁ existe no Omie → NÃO é simples skip: recupera os dados do próprio título e
+  // devolve sucesso+recuperado para o write-through gravar local (idempotente).
+  if (jaTemBoleto) {
+    return {
+      codigo_lancamento: codigo, sucesso: true, recuperado: true,
+      numero_boleto: titulo.numero_boleto || titulo.boleto?.cNumBoleto || '',
+      numero_bancario: titulo.numero_bancario || titulo.boleto?.cNumBancario || '',
+      codigo_barras: titulo.codigo_barras || titulo.boleto?.cCodBarras || '',
+      linha_digitavel: titulo.linha_digitavel || titulo.boleto?.dLinhaDig || '',
+      link_boleto: titulo.url_boleto || titulo.link_boleto || titulo.boleto?.cLinkBoleto || '',
+      data_emissao_boleto: titulo.data_emissao_boleto || titulo.boleto?.dDtEmBol || '',
+      mensagem: `Boleto já gerado (recuperado): ${titulo.numero_boleto || titulo.boleto?.cNumBoleto || ''}`,
+      ...ctx
+    };
+  }
 
   const isRateLimit = (msg: string) => {
     const m = String(msg || '').toLowerCase();
@@ -406,7 +420,8 @@ Deno.serve(async (req) => {
       await gravarLogBoleto(base44, r, ctxCarga, user);
     }
 
-    const sucessos = resultados.filter(r => r.sucesso).length;
+    const recuperados = resultados.filter(r => r.sucesso && r.recuperado).length;
+    const sucessos = resultados.filter(r => r.sucesso && !r.recuperado).length;
     const erros = resultados.filter(r => !r.sucesso && !r.skip).length;
     const skips = resultados.filter(r => r.skip).length;
 
@@ -425,7 +440,7 @@ Deno.serve(async (req) => {
     return Response.json({
       sucesso: true, origem,
       total: titulosParaGerar.length, processados: titulosParaGerar.length,
-      sucessos, erros, skips, duracao_ms,
+      sucessos, recuperados, erros, skips, duracao_ms,
       resultados
     });
   } catch (error: any) {

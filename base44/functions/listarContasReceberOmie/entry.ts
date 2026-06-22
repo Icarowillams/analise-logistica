@@ -209,6 +209,8 @@ Deno.serve(async (req) => {
       id_conta_corrente: t.id_conta_corrente,
       boleto_gerado: t.boleto?.cGerado === 'S',
       numero_boleto: t.boleto?.cNumBoleto || t.numero_boleto || '',
+      numero_bancario: t.boleto?.cNumBancario || t.numero_bancario || '',
+      data_emissao_boleto: t.boleto?.dDtEmBol || '',
       observacao: t.observacao,
       codigo_barras: t.boleto?.cCodBarras || t.codigo_barras || '',
       linha_digitavel: t.boleto?.dLinhaDig || '',

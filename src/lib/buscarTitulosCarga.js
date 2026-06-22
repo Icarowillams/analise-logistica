@@ -181,5 +181,19 @@ export async function buscarTitulosCarga(carga) {
     return (numV && numPedidosCarga.has(numV)) || (codV && codPedidosCarga.has(codV));
   });
 
+  // ── WRITE-THROUGH: grava localmente os boletos do OMIE que ainda não estão no log ──
+  // Ao abrir a carga uma vez, popula o LogEmissaoBoleto → próximo F5 vem do LOCAL,
+  // imune a rate limit. Fire-and-forget: não atrasa nem quebra a tela.
+  const novosDoOmie = titulos.filter(t =>
+    t._origem !== 'local' && t.boleto_gerado === true && String(t.codigo_lancamento || '').trim()
+  );
+  if (novosDoOmie.length > 0) {
+    base44.functions.invoke('salvarBoletosLocais', {
+      titulos: novosDoOmie,
+      numero_carga: carga?.numero_carga || '',
+      carga_id: carga?.id || ''
+    }).catch(() => {});
+  }
+
   return { titulos, cnpjsComFalha, houveFalhaOmie: cnpjsComFalha.size > 0 };
 }
