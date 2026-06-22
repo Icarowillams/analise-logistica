@@ -126,21 +126,21 @@ export async function buscarTitulosCarga(carga) {
     const pedidosLocais = await base44.entities.Pedido.filter({}, '-created_date', 2000).catch(() => []);
     for (const pl of pedidosLocais) {
       const k = numLimpo(pl.numero_pedido);
-      if (k && numerosPedido.includes(k) && pl.cliente_nome) {
-        if (!mapaCliente.has(k)) mapaCliente.set(k, { nome: pl.cliente_nome, fantasia: pl.cliente_nome_fantasia || '', id: pl.cliente_id || '' });
+      if (k && numerosPedido.includes(k) && (pl.cliente_nome || pl.numero_nota_fiscal)) {
+        if (!mapaCliente.has(k)) mapaCliente.set(k, { nome: pl.cliente_nome || '', fantasia: pl.cliente_nome_fantasia || '', id: pl.cliente_id || '', nf: pl.numero_nota_fiscal || '' });
       }
     }
   }
-  // Preenche nome/fantasia/id de um título a partir do Pedido (só quando faltar).
+  // Preenche nome/fantasia/id/NF de um título a partir do Pedido (só quando faltar).
   const enriquecerCliente = (t) => {
-    if (t.nome_cliente && String(t.nome_cliente).trim()) return t;
     const k = numLimpo(t.numero_pedido_vinculado || t.numero_pedido);
     const info = k && mapaCliente.get(k);
-    if (info) {
-      t.nome_cliente = info.nome;
-      if (!t.nome_fantasia) t.nome_fantasia = info.fantasia;
-      if (!t.cliente_id) t.cliente_id = info.id;
-    }
+    if (!info) return t;
+    if ((!t.nome_cliente || !String(t.nome_cliente).trim()) && info.nome) t.nome_cliente = info.nome;
+    if (!t.nome_fantasia && info.fantasia) t.nome_fantasia = info.fantasia;
+    if (!t.cliente_id && info.id) t.cliente_id = info.id;
+    // Nº NF não vem do ListarContasReceber → preenche de Pedido.numero_nota_fiscal.
+    if ((!t.numero_documento || !String(t.numero_documento).trim()) && info.nf) t.numero_documento = info.nf;
     return t;
   };
 

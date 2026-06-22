@@ -178,11 +178,17 @@ export default function FiltrosBoletos({ onResultado }) {
         setOcultosNaoBoleto(0);
       }
       onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor);
-      // Só avisa "Omie limitou" se REALMENTE faltar boleto: pedidos de venda (com NF) da carga
-      // que NÃO foram resolvidos nem pelo local nem pelo Omie. Se tudo foi resolvido, não assusta.
+      // Só avisa "Omie limitou" se REALMENTE faltar boleto: pedidos de venda com NF E
+      // modalidade Boleto Bancário (à vista não gera boleto). Se houve falha mas todos os
+      // pedidos-boleto já foram resolvidos (local+Omie), não assusta.
       const pedidosEsperados = (carga?.pedidos_omie || []).filter(p => {
         const tipo = p.tipo_operacao || p.tipo_nota || 'venda';
-        return tipo === 'venda' && somenteNumeros(p.numero_nf);
+        if (tipo !== 'venda' || !somenteNumeros(p.numero_nf)) return false;
+        return isClienteBoleto({
+          cnpj_cpf: p.cnpj_cpf_cliente,
+          codigo_cliente: p.codigo_cliente,
+          codigo_cliente_cod: p.codigo_cliente_cod
+        });
       }).length;
       const faltamTitulos = houveFalhaOmie && pedidosEsperados > acumulados.length;
       if (carga && faltamTitulos) {
