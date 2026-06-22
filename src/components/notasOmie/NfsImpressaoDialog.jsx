@@ -48,10 +48,12 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
   };
 
   const fetchDetalhe = async (nf) => {
-    // Envia SÓ o ID interno (nIdNF/nCodNF) — número da NF (cNumero) não é filtro de API.
+    // Quando a lista vem LOCAL não há nIdNF/nCodNF — manda também nNF (cNumero)
+    // para o backend resolver o ID interno via ConsultarNF.
     const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
+      nNF: nf.cNumero,
       nIdPedido: nf.nIdPedido
     });
     if (!data?.sucesso) throw new Error(data?.error || `Falha ao obter NF ${nf.cNumero}`);
@@ -62,6 +64,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     const { data } = await base44.functions.invoke('baixarPdfDanfeOmie', {
       nIdNF: nf.nIdNF || nf.nCodNF,
       nCodNF: nf.nCodNF || nf.nIdNF,
+      nNF: nf.cNumero,
       nIdPedido: nf.nIdPedido
     });
     if (!data?.sucesso) {
@@ -93,6 +96,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
     setProgresso({ atual: 0, total });
     const falhas = [];
     const falhasSefaz = [];
+    let primeiroErro = null;
 
     // Baixa TODAS as DANFEs em paralelo (pool limitado) — ObterDanfe só recupera
     // um PDF já gerado, então é seguro paralelizar.
@@ -108,7 +112,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
             setProgresso({ atual: feito, total });
             if (!r.ok) {
               if (r.error?.motivo === 'aguardando_sefaz') falhasSefaz.push(r.item.cNumero || '?');
-              else falhas.push(r.item.cNumero || '?');
+              else { falhas.push(r.item.cNumero || '?'); if (!primeiroErro) primeiroErro = r.error?.message; }
             } else if (!r.value || r.value.length === 0) {
               falhas.push(r.item.cNumero || '?');
             }
@@ -129,7 +133,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
         if (ok > 0) toast.success(`${ok} PDF(s) gerado(s)`);
         if (falhasSefaz.length > 0) toast.warning(`${falhasSefaz.length} NF(s) aguardando SEFAZ (tente novamente em alguns minutos): ${falhasSefaz.join(', ')}`, { duration: 8000 });
         if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) não baixadas: ${falhas.join(', ')}`);
-        if (ok === 0) toast.error('Nenhuma NF pôde ser baixada.');
+        if (ok === 0) toast.error(primeiroErro ? `Nenhuma NF pôde ser baixada: ${primeiroErro}` : 'Nenhuma NF pôde ser baixada.');
       } else {
         const resultados = await baixarTodas();
         const merged = await PDFDocument.create();
@@ -147,7 +151,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
         const ok = total - totalFalhas;
         if (ok === 0) { 
           if (falhasSefaz.length > 0) toast.error(`Todas as ${falhasSefaz.length} NF(s) estão aguardando processamento SEFAZ. Tente novamente em alguns minutos.`, { duration: 8000 });
-          else toast.error('Nenhuma NF pôde ser baixada.'); 
+          else toast.error(primeiroErro ? `Nenhuma NF pôde ser baixada: ${primeiroErro}` : 'Nenhuma NF pôde ser baixada.'); 
           setTipoLoading(null); return; 
         }
         const out = await merged.save();

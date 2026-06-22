@@ -278,9 +278,10 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     setLoadingDetalhe(nf.nIdNF || nf.nCodNF || nf.cNumero);
     try {
       const { data } = await base44.functions.invoke('consultarDetalheNotaOmie', {
-        // Envia SÓ o ID interno — o número da NF (cNumero) não é aceito como filtro de API.
+        // Lista local não tem ID interno — manda nNF (cNumero) para resolver via ConsultarNF.
         nIdNF: nf.nIdNF || nf.nCodNF,
         nCodNF: nf.nCodNF || nf.nIdNF,
+        nNF: nf.cNumero,
         nIdPedido: nf.nIdPedido
       });
       if (data?.sucesso) setDetalheCompleto(data);
