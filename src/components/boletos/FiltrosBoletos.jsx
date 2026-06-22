@@ -123,11 +123,14 @@ export default function FiltrosBoletos({ onResultado }) {
     try {
       let acumulados = [];
 
+      let houveFalhaOmie = false;
       if (carga) {
         // ✅ Helper UNIFICADO (mesmo da aba Emissão): boletos já emitidos do LOCAL
         // (instantâneo) + títulos sem boleto buscados no Omie EM PARALELO. Já vem filtrado
         // pelos pedidos da carga e deduplicado por codigo_lancamento.
-        acumulados = await buscarTitulosCarga(carga);
+        const resp = await buscarTitulosCarga(carga);
+        acumulados = resp.titulos;
+        houveFalhaOmie = resp.houveFalhaOmie;
       } else {
         // BUSCA GENÉRICA (sem carga): mantém comportamento original
         const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDe) || undefined;
@@ -175,7 +178,9 @@ export default function FiltrosBoletos({ onResultado }) {
         setOcultosNaoBoleto(0);
       }
       onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor);
-      if (carga && titulosFiltrados.length === 0) {
+      if (carga && houveFalhaOmie) {
+        toast.warning(`Omie limitou o ritmo — alguns títulos da carga ${carga.numero_carga} podem não ter sido verificados. Tente Buscar novamente em instantes.`);
+      } else if (carga && titulosFiltrados.length === 0) {
         toast.warning(`Nenhum boleto encontrado para os pedidos da carga ${carga.numero_carga}. Os títulos do cliente existem no Omie, mas não correspondem aos pedidos desta carga.`);
       } else if (carga) {
         toast.success(`${titulosFiltrados.length} boleto(s) da carga ${carga.numero_carga}`);

@@ -15,6 +15,11 @@ const STATUS_BLOQUEADOS = new Set(['CANCELADO', 'LIQUIDADO', 'PAGO']);
 const formatarValor = (v) =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+// Chave estável de seleção: nem todo título tem codigo_lancamento (os emitíveis "pelo pedido"
+// vêm sem nCodTitulo). Usa codigo_lancamento quando existe, senão o código do pedido Omie.
+const chaveTitulo = (t) =>
+  String(t._chave || t.codigo_lancamento || (t.codigo_pedido_omie ? `pedido:${t.codigo_pedido_omie}` : ''));
+
 const base64ToUint8Array = (b64) => {
   const bin = atob(b64);
   const arr = new Uint8Array(bin.length);
@@ -52,14 +57,14 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
 
   const todosMarcados =
     elegiveis.length > 0 &&
-    elegiveis.every(t => selecionados.has(String(t.codigo_lancamento)));
+    elegiveis.every(t => selecionados.has(chaveTitulo(t)));
 
   const toggleTodos = () => {
     const novo = new Set(selecionados);
     if (todosMarcados) {
-      elegiveis.forEach(t => novo.delete(String(t.codigo_lancamento)));
+      elegiveis.forEach(t => novo.delete(chaveTitulo(t)));
     } else {
-      elegiveis.forEach(t => novo.add(String(t.codigo_lancamento)));
+      elegiveis.forEach(t => novo.add(chaveTitulo(t)));
     }
     setSelecionados(novo);
   };
@@ -113,7 +118,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
             const aberto = STATUS_ABERTOS.has(status);
             const jaTemBoleto = !!(t.numero_boleto && String(t.numero_boleto).trim());
             const elegivel = !STATUS_BLOQUEADOS.has(status);
-            const k = String(t.codigo_lancamento);
+            const k = chaveTitulo(t);
             const marcado = selecionados.has(k);
 
             return (
@@ -125,7 +130,12 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                     <span className="text-slate-300">—</span>
                   )}
                 </td>
-                <td className="p-2">{t.nome_fantasia || t.nome_cliente || '—'}</td>
+                <td className="p-2">
+                  {t.nome_fantasia || t.nome_cliente || '—'}
+                  {t._pendenteVerificacao && (
+                    <Badge className="ml-2 bg-amber-100 text-amber-800 text-[10px]" title="Omie limitou — título não confirmado, mas emitível pelo pedido">A verificar</Badge>
+                  )}
+                </td>
                 <td className="p-2">{t.numero_pedido_vinculado ? formatarNumeroPedido(t.numero_pedido_vinculado) : '—'}</td>
                 <td className="p-2">{t.numero_documento || '—'}</td>
                 <td className="p-2">{t.data_vencimento || '—'}</td>

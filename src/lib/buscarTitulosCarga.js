@@ -56,14 +56,61 @@ function logParaTitulo(l) {
   };
 }
 
+// Detecta rate-limit / bloqueio temporário do Omie (425/429/"consumo indevido"/"bloqueada"/"aguarde").
+// Falha por rate limit ≠ "título inexistente" — precisamos distinguir os dois.
+function isRateLimit(msg) {
+  const m = String(msg || '').toLowerCase();
+  return m.includes('425') || m.includes('429') || m.includes('consumo indevido') ||
+         m.includes('bloqueada') || m.includes('bloqueio') || m.includes('aguarde') ||
+         m.includes('cota') || m.includes('redundant') || m.includes('timeout') ||
+         m.includes('abort') || m.includes('failed to fetch');
+}
+
+// Busca títulos de UM CNPJ no Omie com retry/backoff (2s, 5s, 10s) em rate limit.
+// Retorna { titulos } em sucesso, ou { falha: true } se esgotar as tentativas (rate limit/erro).
+async function buscarTitulosCnpj(cnpj, janela) {
+  const esperas = [2000, 5000, 10000]; // backoff crescente
+  for (let tentativa = 0; tentativa <= esperas.length; tentativa++) {
+    try {
+      const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+        data_de: janela.data_de,
+        data_ate: janela.data_ate,
+        filtrar_por_data: 'E',
+        cnpj_cpf: cnpj,
+        apenas_pendentes: false,
+        pagina: 1,
+        registros_por_pagina: 100
+      });
+      if (data?.sucesso) return { titulos: data.titulos || [] };
+      // Resposta de erro: só re-tenta se for rate limit e ainda houver tentativas
+      if (isRateLimit(data?.error) && tentativa < esperas.length) {
+        await new Promise(r => setTimeout(r, esperas[tentativa]));
+        continue;
+      }
+      // Erro NÃO rate-limit (ex: credenciais) — não é "título inexistente", marca falha
+      return { falha: true };
+    } catch (e) {
+      if (isRateLimit(e.message) && tentativa < esperas.length) {
+        await new Promise(r => setTimeout(r, esperas[tentativa]));
+        continue;
+      }
+      return { falha: true };
+    }
+  }
+  return { falha: true };
+}
+
 /**
  * Busca os títulos/boletos de uma carga (local + Omie paralelo).
  * @param {object} carga objeto Carga (com pedidos_omie)
- * @returns {Promise<Array>} títulos no formato unificado (dedup por codigo_lancamento)
+ * @returns {Promise<{titulos: Array, cnpjsComFalha: Set<string>, houveFalhaOmie: boolean}>}
+ *   titulos: formato unificado (dedup por codigo_lancamento)
+ *   cnpjsComFalha: CNPJs cuja busca no Omie FALHOU (rate limit/erro) — "não consegui verificar"
+ *   houveFalhaOmie: true se qualquer CNPJ falhou
  */
 export async function buscarTitulosCarga(carga) {
   const pedidos = carga?.pedidos_omie || [];
-  if (pedidos.length === 0) return [];
+  if (pedidos.length === 0) return { titulos: [], cnpjsComFalha: new Set(), houveFalhaOmie: false };
 
   const numPedidosCarga = new Set(
     pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean)
@@ -93,25 +140,28 @@ export async function buscarTitulosCarga(carga) {
   );
 
   let titulosOmie = [];
+  const cnpjsComFalha = new Set();
   if (cnpjsFaltantes.length > 0) {
-    const { data_de, data_ate } = janelaEmissao(carga);
+    const janela = janelaEmissao(carga);
     const resultados = await runPool(
       cnpjsFaltantes,
+      // Cada CNPJ tem retry/backoff próprio e devolve { cnpj, titulos } OU { cnpj, falha }.
       async (cnpj) => {
-        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de,
-          data_ate,
-          filtrar_por_data: 'E',
-          cnpj_cpf: cnpj,
-          apenas_pendentes: false,
-          pagina: 1,
-          registros_por_pagina: 100
-        });
-        return data?.sucesso ? (data.titulos || []) : [];
+        const r = await buscarTitulosCnpj(cnpj, janela);
+        return { cnpj, ...r };
       },
       { concorrencia: 5 }
     );
-    titulosOmie = resultados.flatMap(r => (r.ok ? r.value : []));
+    for (const r of resultados) {
+      // Erro do próprio runPool (não capturado) também conta como falha de verificação.
+      if (!r.ok) continue;
+      const val = r.value;
+      if (val.falha) cnpjsComFalha.add(val.cnpj);
+      else titulosOmie = titulosOmie.concat(val.titulos || []);
+    }
+    if (cnpjsComFalha.size > 0) {
+      console.warn(`[Boletos] carga ${carga?.numero_carga}: ${cnpjsComFalha.size} CNPJ(s) com FALHA de busca (Omie limitou) — NÃO são "sem título"`);
+    }
   }
 
   // ── C) FUNDE local + Omie, dedup por codigo_lancamento (local tem prioridade) ──
@@ -124,10 +174,12 @@ export async function buscarTitulosCarga(carga) {
 
   // Mantém só títulos que casam com pedidos desta carga (por numero_pedido_vinculado/codigo_pedido).
   const codPedidosCarga = new Set(pedidos.map(p => String(p.codigo_pedido || '').trim()).filter(Boolean));
-  return [...porCodigo.values()].filter(t => {
+  const titulos = [...porCodigo.values()].filter(t => {
     if (t._origem === 'local') return true; // já filtrado por numero_pedido
     const numV = String(t.numero_pedido_vinculado || '').trim();
     const codV = String(t.codigo_pedido_omie || '').trim();
     return (numV && numPedidosCarga.has(numV)) || (codV && codPedidosCarga.has(codV));
   });
+
+  return { titulos, cnpjsComFalha, houveFalhaOmie: cnpjsComFalha.size > 0 };
 }

@@ -210,8 +210,29 @@ function contextoTitulo(titulo: any) {
 
 // Processa um único título e retorna o resultado
 async function processarTitulo(base44: any, titulo: any): Promise<any> {
-  const codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento || titulo;
+  let codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento || (typeof titulo !== 'object' ? titulo : '');
   const ctx = contextoTitulo(titulo);
+
+  // EMITIR DIRETO PELO PEDIDO: título veio sem nCodTitulo mas com codigo_pedido_omie
+  // (busca de título falhou/não retornou). Resolve o título no Omie pelo pedido — afinal o
+  // objetivo é gerar o boleto, e o pedido com NF tem título lá. Se não houver título de verdade,
+  // o Omie retorna vazio e marcamos pendência real.
+  if (!codigo && titulo?.codigo_pedido_omie) {
+    try {
+      const titulosPedido = await listarTitulosDoPedido(base44, titulo.codigo_pedido_omie);
+      if (!titulosPedido || titulosPedido.length === 0) {
+        return { codigo_lancamento: '', sucesso: false, mensagem: 'Nenhum título encontrado no Omie para este pedido', ...ctx };
+      }
+      // Usa o primeiro título aberto do pedido; reaproveita o objeto Omie (tem nCodTitulo/status/boleto).
+      const tomie = titulosPedido[0];
+      codigo = tomie.codigo_lancamento_omie || tomie.nCodTitulo || '';
+      // Reaproveita status/boleto do Omie para a validação abaixo.
+      titulo = { ...titulo, status_titulo: tomie.status_titulo || titulo.status_titulo, boleto: tomie.boleto, codigo_lancamento: codigo };
+    } catch (e: any) {
+      return { codigo_lancamento: '', sucesso: false, mensagem: `Falha ao resolver título do pedido: ${e.message}`, ...ctx };
+    }
+  }
+  if (!codigo) return { codigo_lancamento: '', sucesso: false, mensagem: 'Título sem código de lançamento', ...ctx };
   const status = String(titulo.status_titulo || '').toUpperCase();
   const aberto = !status || STATUS_ABERTOS.has(status);
   const jaTemBoleto = !!(titulo.numero_boleto && String(titulo.numero_boleto).trim()) || titulo.boleto?.cGerado === 'S';
@@ -322,12 +343,15 @@ async function gravarLogBoleto(base44: any, r: any, ctxCarga: any, user: any) {
 async function gerarBoletosTitulos(base44: any, titulosEntrada: any[]) {
   const resultados: any[] = [];
 
-  // Dedup por código de lançamento — nunca gera o mesmo boleto 2x na mesma rodada (evita CÓDIGO 6 redundante)
+  // Dedup — nunca gera o mesmo boleto 2x na mesma rodada (evita CÓDIGO 6 redundante).
+  // Chave = codigo_lancamento quando houver; senão pedido:<codigo_pedido_omie> (títulos emitíveis
+  // direto pelo pedido, sem nCodTitulo resolvido ainda).
   const vistos = new Set<string>();
   const titulos = (titulosEntrada || []).filter((t: any) => {
-    const cod = String(t.codigo_lancamento_omie || t.codigo_lancamento || t || '');
-    if (!cod || vistos.has(cod)) return false;
-    vistos.add(cod);
+    const cod = String(t.codigo_lancamento_omie || t.codigo_lancamento || (typeof t !== 'object' ? t : '') || '');
+    const chave = cod || (t?.codigo_pedido_omie ? `pedido:${t.codigo_pedido_omie}` : '');
+    if (!chave || vistos.has(chave)) return false;
+    vistos.add(chave);
     return true;
   });
 

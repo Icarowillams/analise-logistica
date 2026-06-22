@@ -60,17 +60,42 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
 
   const { isClienteBoleto, loadingClientes } = useModalidadeBoleto(contextoClientes);
 
+  // Constrói um título sintético a partir de um pedido da carga (que tem NF) — para emitir
+  // boleto direto pelo pedido quando a busca de título falhou ou não retornou. O backend
+  // gerarBoletosOmie resolve o título/boleto a partir do nCodPedido.
+  const tituloDoPedido = (p, pendenteVerificacao = false) => ({
+    codigo_lancamento: '',                          // não temos o nCodTitulo — backend resolve via pedido
+    codigo_pedido_omie: String(p.codigo_pedido || ''),
+    numero_pedido_vinculado: String(p.numero_pedido || ''),
+    numero_documento: somenteNumeros(p.numero_nf) || '',
+    numero_parcela: '',
+    data_emissao: '',
+    data_vencimento: '',
+    valor_documento: p.valor_total_pedido || 0,
+    status_titulo: 'ABERTO',
+    cnpj_cpf: p.cnpj_cpf_cliente || '',
+    nome_cliente: p.nome_cliente || '',
+    nome_fantasia: p.nome_fantasia || '',
+    boleto_gerado: false,
+    numero_boleto: '',
+    url_boleto: '',
+    _origem: 'pedido',
+    _pendenteVerificacao: pendenteVerificacao       // true = busca falhou (Omie limitou)
+  });
+
   // Busca títulos filtrando por CNPJ de cada pedido sequencialmente (evita rate-limit Omie)
   const { data: titulosResp, isLoading: loadingTitulos, refetch: refetchTitulos } = useQuery({
     queryKey: ['titulos-carga', cargaId],
     queryFn: async () => {
-      if (!cargaSelecionada) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
+      const vazio = { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [], naoVerificados: 0 };
+      if (!cargaSelecionada) return vazio;
       const pedidos = cargaSelecionada.pedidos_omie || [];
-      if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
+      if (pedidos.length === 0) return vazio;
 
       // ✅ Helper UNIFICADO: boletos já emitidos do LOCAL (instantâneo) + títulos sem boleto
       // buscados no Omie EM PARALELO (runPool, ±7 dias emissão, 1 página/CNPJ).
-      const acumulados = await buscarTitulosCarga(cargaSelecionada);
+      // Retorna { titulos, cnpjsComFalha, houveFalhaOmie } — falha de busca ≠ título inexistente.
+      const { titulos: acumulados, cnpjsComFalha } = await buscarTitulosCarga(cargaSelecionada);
 
       // Encontra o pedido da carga que corresponde a um título.
       // Vínculo CONFIÁVEL: nCodPedido (codigo_pedido_omie) === codigo_pedido do pedido (nCodPed Omie).
@@ -110,23 +135,40 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
         return true;
       });
 
-      // Pendências de vínculo: pedido é pendência só se NENHUM título da consulta
-      // casa por nCodPedido (primário) nem por numero_pedido (fallback). Independe de NF/boleto.
+      // Códigos/números já cobertos por algum título confirmado da consulta.
       const codsTitulos = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
       const numsTitulos = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
+      const cnpjFalhou = (p) => cnpjsComFalha.has(somenteNumeros(p.cnpj_cpf_cliente));
+
+      // Classifica cada pedido SEM título confirmado:
+      //  - tem NF + busca FALHOU (rate limit) → linha selecionável "pendente de verificação"
+      //    (NÃO vai pra Pendências) — o usuário ainda consegue emitir pelo pedido.
+      //  - tem NF + busca OK e vazia → Pendências reais (NF sem título no Omie).
+      //  - sem NF → "Pedidos sem NF emitida".
       const nfSemTitulo = [];
       const semNf = [];
+      let naoVerificados = 0;
       pedidos.forEach(p => {
         if (p.tipo_nota === 'D1') return;
+        const tipo = p.tipo_operacao || p.tipo_nota || 'venda';
+        if (tipo !== 'venda') return;
         const temTitulo = (codPedido(p) && codsTitulos.has(codPedido(p))) ||
                           (numPedido(p) && numsTitulos.has(numPedido(p)));
         if (temTitulo) return;
         const nf = somenteNumeros(p.numero_nf);
-        if (nf) nfSemTitulo.push(p);
-        else semNf.push(p);
+        if (!nf) { semNf.push(p); return; }
+        if (cnpjFalhou(p)) {
+          // Busca não confirmou (Omie limitou) → trata como emitível, NÃO como pendência.
+          if (!isClienteBoleto(tituloDoPedido(p))) { ocultosNaoBoleto++; return; }
+          titulos.push(tituloDoPedido(p, true));
+          naoVerificados++;
+        } else {
+          // Busca foi bem-sucedida e realmente não há título → pendência real.
+          nfSemTitulo.push(p);
+        }
       });
 
-      return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf };
+      return { titulos, ocultosNaoBoleto, nfSemTitulo, semNf, naoVerificados };
     },
     enabled: ativa && !!cargaSelecionada && !loadingClientes,
     staleTime: 5 * 60 * 1000,
@@ -135,10 +177,14 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
     refetchOnWindowFocus: false
   });
 
-  const titulosTodos = titulosResp?.titulos || [];
+  const titulosTodos = (titulosResp?.titulos || []).map(t => ({
+    ...t,
+    _chave: String(t.codigo_lancamento || (t.codigo_pedido_omie ? `pedido:${t.codigo_pedido_omie}` : ''))
+  }));
   const ocultosNaoBoleto = titulosResp?.ocultosNaoBoleto || 0;
   const nfSemTitulo = titulosResp?.nfSemTitulo || [];
   const semNf = titulosResp?.semNf || [];
+  const naoVerificados = titulosResp?.naoVerificados || 0;
 
   const titulos = useMemo(() => {
     const termo = filtroCliente.trim().toLowerCase();
@@ -167,8 +213,10 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
 
     // Envia o OBJETO completo de cada título selecionado (não só o código) — assim o backend
     // grava o LogEmissaoBoleto com numero_pedido, cliente, valor, NF (write-through completo).
-    const porCodigo = new Map(titulosTodos.map(t => [String(t.codigo_lancamento), t]));
-    const objetos = codigos.map(c => porCodigo.get(String(c)) || { codigo_lancamento: c });
+    // Chave de seleção = _chave (codigo_lancamento, ou pedido:<cod> quando emitível pelo pedido).
+    const chaveDe = (t) => String(t._chave || t.codigo_lancamento || (t.codigo_pedido_omie ? `pedido:${t.codigo_pedido_omie}` : ''));
+    const porChave = new Map(titulosTodos.map(t => [chaveDe(t), t]));
+    const objetos = codigos.map(c => porChave.get(String(c)) || { codigo_lancamento: c });
 
     // Processa em lotes de 5 (backend é sequencial, mas split evita timeout)
     const LOTE = 5;
@@ -298,6 +346,18 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
           )}
         </CardContent>
       </Card>
+
+      {cargaSelecionada && naoVerificados > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            Omie limitou o ritmo — {naoVerificados} título(s) não verificado(s). Eles aparecem como "A verificar" e podem ser emitidos pelo pedido; ou recarregue para confirmar.
+          </span>
+          <Button size="sm" variant="outline" className="shrink-0 border-amber-400 text-amber-800 hover:bg-amber-100" onClick={() => refetchTitulos()} disabled={loadingTitulos}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${loadingTitulos ? 'animate-spin' : ''}`} /> Recarregar títulos
+          </Button>
+        </div>
+      )}
 
       {cargaSelecionada && (
         <Card>
