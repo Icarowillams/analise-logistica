@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import AlertaPendenciasEmissao from '@/components/notasOmie/AlertaPendenciasEmissao';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 // REGRA DE EXIBIÇÃO: Apenas etapa 50 no Omie.
@@ -234,13 +233,6 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
 
   return (
     <div className="space-y-4">
-      {/* Alerta automático: pedidos faturados na carga que ficaram SEM NF (presos etapa 50).
-          Só aparece quando há pendência. Botão de reemissão resiliente embutido. */}
-      <AlertaPendenciasEmissao
-        ativa={ativa}
-        onReemitido={() => { if (carregamentoIniciado) refetch(); }}
-      />
-
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="py-3 text-sm text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
