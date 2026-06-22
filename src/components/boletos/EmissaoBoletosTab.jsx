@@ -220,7 +220,10 @@ export default function EmissaoBoletosTab() {
       };
     },
     enabled: !!cargaSelecionada && !loadingClientes,
-    refetchOnWindowFocus: false
+    staleTime: 5 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false
   });
 
   const titulos = useMemo(() => {

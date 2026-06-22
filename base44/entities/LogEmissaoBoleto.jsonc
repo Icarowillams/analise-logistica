@@ -1,0 +1,95 @@
+{
+  "name": "LogEmissaoBoleto",
+  "type": "object",
+  "description": "Hist\u00f3rico persistente de cada boleto gerado via Omie \u2014 uma linha por t\u00edtulo, com o resultado real do GerarBoleto. Espelha o LogEmissaoNF: grava write-through na emiss\u00e3o e cacheia o link para impress\u00e3o instant\u00e2nea (fallback ObterBoleto sempre ativo).",
+  "properties": {
+    "codigo_lancamento": {
+      "type": "string",
+      "description": "nCodTitulo do Omie \u2014 CHAVE para ObterBoleto e para idempot\u00eancia (n\u00e3o duplicar linha por t\u00edtulo)."
+    },
+    "numero_titulo": {
+      "type": "string",
+      "description": "N\u00famero do documento/t\u00edtulo, se houver"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "numero_nf": {
+      "type": "string",
+      "description": "NF vinculada ao t\u00edtulo, se houver (\u00fatil pra cruzar com a carga)"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "carga_id": {
+      "type": "string"
+    },
+    "numero_carga": {
+      "type": "string"
+    },
+    "lote_id": {
+      "type": "string",
+      "description": "Agrupa boletos gerados no mesmo clique"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "gerado",
+        "erro",
+        "ignorado"
+      ],
+      "description": "Resultado da gera\u00e7\u00e3o"
+    },
+    "numero_boleto": {
+      "type": "string",
+      "description": "cNumBoleto"
+    },
+    "codigo_barras": {
+      "type": "string",
+      "description": "cCodBarras"
+    },
+    "link_boleto": {
+      "type": "string",
+      "description": "cLinkBoleto (URL do PDF) \u2014 cacheado para impress\u00e3o instant\u00e2nea"
+    },
+    "numero_bancario": {
+      "type": "string",
+      "description": "cNumBancario"
+    },
+    "linha_digitavel": {
+      "type": "string"
+    },
+    "valor": {
+      "type": "number",
+      "description": "Valor do t\u00edtulo"
+    },
+    "data_vencimento": {
+      "type": "string"
+    },
+    "data_emissao_boleto": {
+      "type": "string",
+      "description": "dDtEmBol"
+    },
+    "codigo_status_omie": {
+      "type": "string",
+      "description": "cCodStatus"
+    },
+    "mensagem": {
+      "type": "string",
+      "description": "cDesStatus / motivo (ex: liquidado, previs\u00e3o atrasada)"
+    },
+    "usuario_email": {
+      "type": "string"
+    },
+    "usuario_nome": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "codigo_lancamento",
+    "status"
+  ]
+}

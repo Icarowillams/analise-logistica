@@ -6,6 +6,7 @@ import { Loader2, Eye } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { formatarNumeroBoleto } from '@/lib/formatarNumeroBoleto';
 
 const STATUS_ABERTOS = new Set(['ABERTO', 'A VENCER', 'A PAGAR', 'A RECEBER', 'VENCIDO', 'PARCIAL', 'ATRASADO']);
 // Status que NUNCA podem virar boleto (já encerrados)
@@ -142,7 +143,7 @@ export default function ListaTitulosCarga({ titulos = [], loading, selecionados,
                 <td className="p-2">
                   {jaTemBoleto ? (
                     <div className="flex items-center gap-1">
-                      <Badge className="bg-green-100 text-green-800">{t.numero_boleto || 'Sim'}</Badge>
+                      <Badge className="bg-green-100 text-green-800">{t.numero_boleto ? formatarNumeroBoleto(t.numero_bancario, t.numero_boleto) : 'Sim'}</Badge>
                       <Button
                         size="sm"
                         variant="ghost"
