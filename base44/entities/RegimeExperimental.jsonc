@@ -1,0 +1,94 @@
+{
+  "name": "RegimeExperimental",
+  "type": "object",
+  "description": "Controle do per\u00edodo de calibra\u00e7\u00e3o (shadow mode, 30 dias) dos par\u00e2metros ainda n\u00e3o maduros: pesos dos blocos Cobertura e Mix, e teto da trava de seguran\u00e7a financeira (decis\u00f5es #2 e #3). Ao fim do per\u00edodo dispara alerta e gera relat\u00f3rio para a Gest\u00e3o decidir.",
+  "properties": {
+    "parametro_alvo": {
+      "type": "string",
+      "enum": [
+        "PESO_BLOCO_COBERTURA",
+        "PESO_BLOCO_MIX",
+        "TETO_SEGURANCA_FINANCEIRA"
+      ],
+      "description": "O que est\u00e1 sendo calibrado."
+    },
+    "data_inicio": {
+      "type": "string",
+      "format": "date",
+      "description": "In\u00edcio da janela de 30 dias."
+    },
+    "data_fim_prevista": {
+      "type": "string",
+      "format": "date",
+      "description": "data_inicio + 30 dias."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "EM_ANDAMENTO",
+        "CONCLUIDO_AGUARDANDO_DECISAO",
+        "ENCERRADO"
+      ],
+      "default": "EM_ANDAMENTO"
+    },
+    "canal_alerta": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "email",
+          "in_app"
+        ]
+      },
+      "default": [
+        "email",
+        "in_app"
+      ],
+      "description": "Como a equipe de desenvolvimento e a Gest\u00e3o s\u00e3o notificadas ao fim do per\u00edodo."
+    },
+    "emails_alerta": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lista de e-mails que recebem o alerta de conclus\u00e3o."
+    },
+    "alerta_disparado": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marca que o alerta de conclus\u00e3o j\u00e1 foi enviado (idempot\u00eancia do job agendado)."
+    },
+    "relatorio_resultado": {
+      "type": "object",
+      "description": "Resumo estat\u00edstico gerado ao final (m\u00e9dias, desvio padr\u00e3o, distribui\u00e7\u00e3o por n\u00edvel, custo % do faturamento) para apoiar a decis\u00e3o da Gest\u00e3o.",
+      "default": {}
+    },
+    "observacao": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "parametro_alvo",
+    "data_inicio",
+    "data_fim_prevista"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

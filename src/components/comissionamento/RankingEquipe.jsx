@@ -1,36 +1,47 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Medal } from 'lucide-react';
-import { brl } from './scorecardUtils.js';
+import { Badge } from '@/components/ui/badge';
+import { Trophy } from 'lucide-react';
+import { brl } from './scorecardUtils';
 
-// Ranking por pontuação composta (gamificação — seção 6.4).
-export default function RankingEquipe({ usuarios, titulo = 'Ranking' }) {
-  const ordenados = [...usuarios].sort((a, b) => b.pontos - a.pontos);
-  const medalha = (i) => i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-700' : 'text-slate-300';
+const MEDALHA = ['🥇', '🥈', '🥉'];
+
+export default function RankingEquipe({ usuarios = [], titulo = 'Ranking' }) {
+  const ordenado = [...usuarios].sort((a, b) => b.pontos - a.pontos);
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Trophy className="w-4 h-4 text-amber-500" /> {titulo}
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Trophy className="w-5 h-5 text-amber-500" /> {titulo}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1.5">
-        {ordenados.length === 0 && <p className="text-sm text-slate-400">Sem dados na competência.</p>}
-        {ordenados.map((u, i) => (
-          <div key={u.usuario_id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 hover:bg-slate-50">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={`w-6 text-center font-bold ${medalha(i)}`}>
-                {i < 3 ? <Medal className="w-4 h-4 inline" /> : i + 1}
+      <CardContent className="p-0">
+        {ordenado.length === 0 ? (
+          <p className="p-8 text-center text-slate-400">Nenhum dado apurado nesta competência.</p>
+        ) : (
+          <div className="divide-y">
+            {ordenado.map((u, i) => (
+              <div key={u.usuario_id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
+                <div className="w-8 text-center text-lg font-bold text-slate-400">
+                  {MEDALHA[i] || (i + 1)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-slate-800 truncate">{u.usuario_nome}</p>
+                  <p className="text-xs text-slate-400">{u.perfil} · {u.pontos.toFixed(1)} pts</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-emerald-700">{brl(u.comissao_oficial)}</p>
+                  {u.comissao_experimental > 0 && (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-[10px]">
+                      +{brl(u.comissao_experimental)} exp
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <span className="text-sm font-medium text-slate-700 truncate">{u.usuario_nome}</span>
-            </div>
-            <div className="flex items-center gap-4 shrink-0">
-              <span className="text-xs text-slate-400">{Math.round(u.pontos)} pts</span>
-              <span className="text-sm font-semibold text-emerald-700">{brl(u.comissao_oficial)}</span>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </CardContent>
     </Card>
   );

@@ -1,0 +1,50 @@
+{
+  "name": "MotivoTrocaMapeamento",
+  "type": "object",
+  "description": "Mapeamento de responsabilidade dos motivos de troca j\u00e1 existentes no sistema (decis\u00e3o #5). N\u00c3O altera o schema de PedidoTroca/MotivoTroca \u2014 apenas referencia o motivo existente e atribui a responsabilidade (Vendedor x Empresa). Qualquer motivo novo sem mapeamento entra automaticamente em pend\u00eancia de classifica\u00e7\u00e3o e fica fora do c\u00e1lculo de ambos os lados at\u00e9 ser classificado.",
+  "properties": {
+    "motivo_id": {
+      "type": "string",
+      "description": "ID do MotivoTroca j\u00e1 existente (refer\u00eancia, n\u00e3o FK r\u00edgida)."
+    },
+    "motivo_descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do motivo (c\u00f3pia para leitura r\u00e1pida nos pain\u00e9is)."
+    },
+    "responsabilidade": {
+      "type": "string",
+      "enum": [
+        "VENDEDOR",
+        "EMPRESA"
+      ],
+      "description": "\u00danico campo realmente novo deste bloco. VENDEDOR = entra no bloco Qualidade; EMPRESA = n\u00e3o impacta comiss\u00e3o."
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Permite desativar um mapeamento sem apagar hist\u00f3rico."
+    }
+  },
+  "required": [
+    "motivo_id",
+    "responsabilidade"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

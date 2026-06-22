@@ -1,0 +1,71 @@
+{
+  "name": "PrecoMedioItem",
+  "type": "object",
+  "description": "Pre\u00e7o m\u00e9dio praticado por item em 3 n\u00edveis hier\u00e1rquicos de agrega\u00e7\u00e3o (decis\u00e3o #6): F\u00e1brica, Supervisor e Vendedor/Promotor (misto). Alimenta o tipo_meta PRECO_MEDIO_REF e os pain\u00e9is de compara\u00e7\u00e3o. Idempotente por (item_id, nivel_agregacao, referencia_id, competencia).",
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "description": "ID do Produto/item do mix."
+    },
+    "item_nome": {
+      "type": "string",
+      "description": "Nome do item (c\u00f3pia para leitura nos pain\u00e9is)."
+    },
+    "nivel_agregacao": {
+      "type": "string",
+      "enum": [
+        "FABRICA",
+        "SUPERVISOR",
+        "VENDEDOR_PROMOTOR"
+      ],
+      "description": "N\u00edvel a que este registro se refere."
+    },
+    "referencia_id": {
+      "type": "string",
+      "description": "Vazio quando FABRICA (pre\u00e7o \u00fanico da empresa). ID do supervisor ou do vendedor/promotor nos demais n\u00edveis."
+    },
+    "referencia_nome": {
+      "type": "string"
+    },
+    "competencia": {
+      "type": "string",
+      "description": "M\u00eas de refer\u00eancia no formato YYYY-MM."
+    },
+    "preco_tabela": {
+      "type": "number",
+      "description": "Pre\u00e7o de refer\u00eancia da empresa para o item (n\u00edvel F\u00e1brica)."
+    },
+    "preco_medio_praticado": {
+      "type": "number",
+      "description": "Soma do valor vendido do item \u00f7 quantidade vendida, agregado conforme nivel_agregacao."
+    },
+    "qtd_vendida": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade vendida do item no m\u00eas, no n\u00edvel correspondente."
+    }
+  },
+  "required": [
+    "item_id",
+    "nivel_agregacao",
+    "competencia"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
