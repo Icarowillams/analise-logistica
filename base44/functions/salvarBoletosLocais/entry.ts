@@ -23,16 +23,34 @@ Deno.serve(async (req) => {
     let gravados = 0;
     let atualizados = 0;
     let ignorados = 0;
+    let duplicados_removidos = 0;
 
-    // Dedup por codigo_lancamento na própria entrada
+    // 1) DEDUPE da lista de entrada por codigo_lancamento (não gravar o mesmo 2x no lote).
     const vistos = new Set();
-
+    const titulosUnicos = [];
     for (const t of titulos) {
       const codigo = String(t.codigo_lancamento || '').trim();
-      const temBoleto = t.boleto_gerado === true ||
-        !!(String(t.numero_boleto || '').trim());
+      const temBoleto = t.boleto_gerado === true || !!(String(t.numero_boleto || '').trim());
       if (!codigo || !temBoleto || vistos.has(codigo)) { ignorados++; continue; }
       vistos.add(codigo);
+      titulosUnicos.push({ ...t, _codigo: codigo });
+    }
+
+    // 2) PRÉ-CARGA em lote dos existentes por codigo_lancamento (decisão em memória, sem corrida).
+    //    Mapa codigo_lancamento (string) -> array de registros existentes (para auto-cura).
+    const existentesPorCodigo = new Map();
+    const codigosLote = titulosUnicos.map(t => t._codigo);
+    for (const codigo of codigosLote) {
+      const achados = await base44.asServiceRole.entities.LogEmissaoBoleto.filter(
+        { codigo_lancamento: codigo }, '-created_date', 50
+      ).catch(() => []);
+      if (achados?.length) {
+        existentesPorCodigo.set(codigo, achados.filter(r => String(r.codigo_lancamento || '').trim() === codigo));
+      }
+    }
+
+    for (const t of titulosUnicos) {
+      const codigo = t._codigo;
 
       const payload = {
         codigo_lancamento: codigo,
@@ -57,23 +75,33 @@ Deno.serve(async (req) => {
       };
 
       try {
-        const existentes = await base44.asServiceRole.entities.LogEmissaoBoleto.filter(
-          { codigo_lancamento: codigo }, '-created_date', 1
-        ).catch(() => []);
-        if (existentes?.[0]) {
-          // Não sobrescreve numero_carga/carga_id já preenchidos com vazio.
+        const existentes = existentesPorCodigo.get(codigo) || [];
+        if (existentes.length > 0) {
+          // Mais recente fica como canônico (lista já vem ordenada por -created_date).
+          const canonico = existentes[0];
+
+          // AUTO-CURA: se houver mais de um com o mesmo codigo_lancamento, remove os demais.
+          for (let i = 1; i < existentes.length; i++) {
+            await base44.asServiceRole.entities.LogEmissaoBoleto.delete(existentes[i].id).catch(() => {});
+            duplicados_removidos++;
+          }
+
+          // Não sobrescreve campos já preenchidos com vazio.
           const upd = { ...payload };
-          if (!payload.numero_carga && existentes[0].numero_carga) upd.numero_carga = existentes[0].numero_carga;
-          if (!payload.carga_id && existentes[0].carga_id) upd.carga_id = existentes[0].carga_id;
-          if (!payload.cliente_nome && existentes[0].cliente_nome) upd.cliente_nome = existentes[0].cliente_nome;
-          if (!payload.cliente_id && existentes[0].cliente_id) upd.cliente_id = existentes[0].cliente_id;
-          if (!payload.numero_nf && existentes[0].numero_nf) upd.numero_nf = existentes[0].numero_nf;
-          if ((!payload.data_vencimento) && existentes[0].data_vencimento) upd.data_vencimento = existentes[0].data_vencimento;
-          if ((!payload.numero_parcela || payload.numero_parcela === '001/001') && existentes[0].numero_parcela) upd.numero_parcela = existentes[0].numero_parcela;
-          await base44.asServiceRole.entities.LogEmissaoBoleto.update(existentes[0].id, upd);
+          if (!payload.numero_carga && canonico.numero_carga) upd.numero_carga = canonico.numero_carga;
+          if (!payload.carga_id && canonico.carga_id) upd.carga_id = canonico.carga_id;
+          if (!payload.cliente_nome && canonico.cliente_nome) upd.cliente_nome = canonico.cliente_nome;
+          if (!payload.cliente_id && canonico.cliente_id) upd.cliente_id = canonico.cliente_id;
+          if (!payload.numero_nf && canonico.numero_nf) upd.numero_nf = canonico.numero_nf;
+          if (!payload.data_vencimento && canonico.data_vencimento) upd.data_vencimento = canonico.data_vencimento;
+          if ((!payload.numero_parcela || payload.numero_parcela === '001/001') && canonico.numero_parcela) upd.numero_parcela = canonico.numero_parcela;
+          await base44.asServiceRole.entities.LogEmissaoBoleto.update(canonico.id, upd);
+          existentesPorCodigo.set(codigo, [{ ...canonico, ...upd }]);
           atualizados++;
         } else {
-          await base44.asServiceRole.entities.LogEmissaoBoleto.create(payload);
+          const criado = await base44.asServiceRole.entities.LogEmissaoBoleto.create(payload);
+          // Registra na pré-carga para blindar contra duplicata dentro do mesmo lote.
+          existentesPorCodigo.set(codigo, [criado]);
           gravados++;
         }
       } catch (e) {
@@ -82,7 +110,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ sucesso: true, gravados, atualizados, ignorados });
+    return Response.json({ sucesso: true, gravados, atualizados, ignorados, duplicados_removidos });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
