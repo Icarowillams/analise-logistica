@@ -154,24 +154,14 @@ export default function AcertoCaixaEditar() {
 
   const marcarEntregue = async (idx) => {
     const nota = notas[idx];
-    // CHECK-IN NO CLIENTE: precisa capturar a localização ANTES de marcar entregue.
-    // Pede de novo e só segue após capturar (regra de negócio).
-    let checkinEntrega;
-    try {
-      checkinEntrega = await capturarLocalizacaoObrigatoria(`Confirme a localização da entrega para ${nota.nome_cliente || 'o cliente'}.`);
-    } catch (e) {
-      toast.error(e.message);
-      return;
-    }
-    // Marca entregue LOCALMENTE primeiro — ação humana na volta da rua. Nunca trava por causa do Omie.
+    // Marca entregue na hora — sem captura de GPS (decisão da logística: localização só no futuro app de motoristas).
     const nova = {
       ...nota,
       status_entrega: 'entregue',
-      data_recebimento: new Date().toISOString().slice(0, 10),
-      checkin_entrega: checkinEntrega
+      data_recebimento: new Date().toISOString().slice(0, 10)
     };
     atualizarNota(idx, nova);
-    toast.success('Entrega registrada com localização');
+    toast.success('Entrega registrada');
 
     // Best-effort: avisa o Omie que o pedido foi ENTREGUE (etapa 70). Desacoplado da marcação local —
     // se o Omie falhar/rate limit, marca omie_etapa_pendente para reconciliar depois, sem bloquear.
