@@ -135,10 +135,27 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
         return true;
       });
 
+      // Normaliza nº de pedido (remove zero-padding) p/ casar com boleto local.
+      const numLimpo = (v) => String(v || '').trim().replace(/^0+/, '');
+
       // Códigos/números já cobertos por algum título confirmado da consulta.
       const codsTitulos = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
       const numsTitulos = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
       const cnpjFalhou = (p) => cnpjsComFalha.has(somenteNumeros(p.cnpj_cpf_cliente));
+
+      // Boletos JÁ no LogEmissaoBoleto (origem 'local', status 'gerado') — cruzar por
+      // numero_pedido E por NF. Um pedido com boleto local NUNCA é "NF sem título".
+      const pedidosComBoletoLocal = new Set(
+        acumulados.filter(t => t._origem === 'local')
+          .map(t => numLimpo(t.numero_pedido_vinculado)).filter(Boolean)
+      );
+      const nfsComBoletoLocal = new Set(
+        acumulados.filter(t => t._origem === 'local')
+          .map(t => somenteNumeros(t.numero_documento)).filter(Boolean)
+      );
+      const temBoletoLocal = (p) =>
+        pedidosComBoletoLocal.has(numLimpo(p.numero_pedido)) ||
+        (somenteNumeros(p.numero_nf) && nfsComBoletoLocal.has(somenteNumeros(p.numero_nf)));
 
       // Classifica cada pedido SEM título confirmado:
       //  - tem NF + busca FALHOU (rate limit) → linha selecionável "pendente de verificação"
@@ -157,6 +174,8 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
         if (temTitulo) return;
         const nf = somenteNumeros(p.numero_nf);
         if (!nf) { semNf.push(p); return; }
+        // Pendência FALSA: já existe boleto local (LogEmissaoBoleto) para este pedido/NF.
+        if (temBoletoLocal(p)) return;
         if (cnpjFalhou(p)) {
           // Busca não confirmou (Omie limitou) → trata como emitível, NÃO como pendência.
           if (!isClienteBoleto(tituloDoPedido(p))) { ocultosNaoBoleto++; return; }
