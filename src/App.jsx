@@ -45,6 +45,7 @@ import RelatorioCarregamento from './pages/RelatorioCarregamento';
 import SupervisaoFilaEnvio from './pages/SupervisaoFilaEnvio';
 import CorrigirPlanosPlanilhaPage from './pages/CorrigirPlanosPlanilha.jsx';
 import GestaoMetas from './pages/GestaoMetas.jsx';
+import Comissionamento from './pages/Comissionamento.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -163,6 +164,8 @@ const AuthenticatedApp = () => {
       <Route path="/CorrigirPlanosPlanilha" element={<LayoutWrapper currentPageName="CorrigirPlanosPlanilha"><CorrigirPlanosPlanilhaPage /></LayoutWrapper>} />
       <Route path="/RelatorioCarregamento" element={<LayoutWrapper currentPageName="RelatorioCarregamento"><RelatorioCarregamento /></LayoutWrapper>} />
       <Route path="/CadastrosHub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
+      <Route path="/Comissionamento" element={<LayoutWrapper currentPageName="Comissionamento"><Comissionamento /></LayoutWrapper>} />
+      <Route path="/comissionamento" element={<LayoutWrapper currentPageName="Comissionamento"><Comissionamento /></LayoutWrapper>} />
       <Route path="/cadastroshub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
