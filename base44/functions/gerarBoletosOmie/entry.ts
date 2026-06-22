@@ -195,15 +195,29 @@ async function listarTitulosDoPedido(base44: any, codigoPedido: string | number)
   return filtrarPorPedido(acumulados);
 }
 
+// Extrai os campos de contexto do título de entrada (para gravar no LogEmissaoBoleto).
+// O frontend agora envia o objeto completo do título, não só o código.
+function contextoTitulo(titulo: any) {
+  return {
+    numero_pedido: String(titulo.numero_pedido_vinculado || titulo.numero_pedido || '').trim(),
+    numero_nf: String(titulo.numero_documento || titulo.numero_nf || '').trim(),
+    cliente_nome: titulo.nome_cliente || titulo.cliente_nome || '',
+    cliente_id: titulo.cliente_id || '',
+    valor: Number(titulo.valor_documento || titulo.valor || 0),
+    data_vencimento: titulo.data_vencimento || ''
+  };
+}
+
 // Processa um único título e retorna o resultado
 async function processarTitulo(base44: any, titulo: any): Promise<any> {
   const codigo = titulo.codigo_lancamento_omie || titulo.codigo_lancamento || titulo;
+  const ctx = contextoTitulo(titulo);
   const status = String(titulo.status_titulo || '').toUpperCase();
   const aberto = !status || STATUS_ABERTOS.has(status);
   const jaTemBoleto = !!(titulo.numero_boleto && String(titulo.numero_boleto).trim()) || titulo.boleto?.cGerado === 'S';
 
-  if (!aberto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Título ${status}` };
-  if (jaTemBoleto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Boleto já gerado: ${titulo.numero_boleto || ''}` };
+  if (!aberto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Título ${status}`, ...ctx };
+  if (jaTemBoleto) return { codigo_lancamento: codigo, sucesso: false, skip: true, mensagem: `Boleto já gerado: ${titulo.numero_boleto || ''}`, ...ctx };
 
   const isRateLimit = (msg: string) => {
     const m = String(msg || '').toLowerCase();
@@ -246,15 +260,61 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
       numero_boleto: numBoleto, codigo_barras: codBarras, linha_digitavel: '',
       link_boleto: linkBoleto, numero_bancario: numBancario,
       data_emissao_boleto: data.dDtEmBol || '',
-      mensagem: sucessoReal ? 'Boleto gerado com sucesso' : 'Omie respondeu sem dados de boleto — verifique a conta corrente/convênio bancário no Omie'
+      mensagem: sucessoReal ? 'Boleto gerado com sucesso' : 'Omie respondeu sem dados de boleto — verifique a conta corrente/convênio bancário no Omie',
+      ...ctx
     };
   } catch (err: any) {
     const msg = err.message || '';
     return {
       codigo_lancamento: codigo, sucesso: false,
       skip: msg.toLowerCase().includes('liquidado') || msg.toLowerCase().includes('baixado') || msg.toLowerCase().includes('cancelado'),
-      mensagem: msg
+      mensagem: msg,
+      ...ctx
     };
+  }
+}
+
+// Write-through COMPLETO no LogEmissaoBoleto (idempotente por codigo_lancamento).
+// Para cada boleto gerado com sucesso, cria OU atualiza a linha local — assim a próxima
+// abertura da carga vem 100% do local (instantâneo) sem consultar o Omie.
+// Falha de gravação local NÃO quebra o fluxo (o boleto no Omie é o que importa).
+async function gravarLogBoleto(base44: any, r: any, ctxCarga: any, user: any) {
+  if (!r?.sucesso) return;
+  const codigo = String(r.codigo_lancamento || '').trim();
+  if (!codigo) return;
+  try {
+    const payload: any = {
+      codigo_lancamento: codigo,
+      numero_pedido: r.numero_pedido || '',
+      numero_nf: r.numero_nf || '',
+      numero_boleto: r.numero_boleto || '',
+      numero_bancario: r.numero_bancario || '',
+      codigo_barras: r.codigo_barras || '',
+      linha_digitavel: r.linha_digitavel || '',
+      link_boleto: r.link_boleto || '',
+      valor: Number(r.valor || 0),
+      data_emissao_boleto: r.data_emissao_boleto || '',
+      data_vencimento: r.data_vencimento || '',
+      cliente_nome: r.cliente_nome || '',
+      cliente_id: r.cliente_id || '',
+      numero_carga: ctxCarga.numero_carga || '',
+      carga_id: ctxCarga.carga_id || '',
+      lote_id: ctxCarga.lote_id || '',
+      status: 'gerado',
+      usuario_email: user?.email || 'sistema (auto)',
+      usuario_nome: user?.full_name || ''
+    };
+    // Idempotência: 1 linha por codigo_lancamento — atualiza se já existir.
+    const existentes = await base44.asServiceRole.entities.LogEmissaoBoleto.filter(
+      { codigo_lancamento: codigo }, '-created_date', 1
+    ).catch(() => []);
+    if (existentes?.[0]) {
+      await base44.asServiceRole.entities.LogEmissaoBoleto.update(existentes[0].id, payload);
+    } else {
+      await base44.asServiceRole.entities.LogEmissaoBoleto.create(payload);
+    }
+  } catch (e: any) {
+    console.warn('[gravarLogBoleto] falha ao gravar log local do boleto', codigo, e?.message);
   }
 }
 
@@ -287,7 +347,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const body = await req.json().catch(() => ({}));
-    const { origem = 'manual', pedidos = [], titulos = [], id_conta_corrente } = body;
+    const { origem = 'manual', pedidos = [], titulos = [], id_conta_corrente, numero_carga = '', carga_id = '' } = body;
 
     let user: any = null;
     try { user = await base44.auth.me(); } catch { user = null; }
@@ -313,6 +373,15 @@ Deno.serve(async (req) => {
     const startedAt = Date.now();
     const resultados = await gerarBoletosTitulos(base44, titulosParaGerar);
     const duracao_ms = Date.now() - startedAt;
+
+    // Write-through local: grava TODO boleto gerado com sucesso no LogEmissaoBoleto
+    // (idempotente por codigo_lancamento). Próxima abertura da carga vem do local.
+    const loteId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const ctxCarga = { numero_carga: String(numero_carga || ''), carga_id: String(carga_id || ''), lote_id: loteId };
+    for (const r of resultados) {
+      await gravarLogBoleto(base44, r, ctxCarga, user);
+    }
+
     const sucessos = resultados.filter(r => r.sucesso).length;
     const erros = resultados.filter(r => !r.sucesso && !r.skip).length;
     const skips = resultados.filter(r => r.skip).length;

@@ -165,10 +165,15 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
     if (codigos.length === 0) { toast.warning('Selecione ao menos um título para gerar boleto.'); return; }
     if (!confirm(`Gerar ${codigos.length} boleto(s) no Omie?`)) return;
 
+    // Envia o OBJETO completo de cada título selecionado (não só o código) — assim o backend
+    // grava o LogEmissaoBoleto com numero_pedido, cliente, valor, NF (write-through completo).
+    const porCodigo = new Map(titulosTodos.map(t => [String(t.codigo_lancamento), t]));
+    const objetos = codigos.map(c => porCodigo.get(String(c)) || { codigo_lancamento: c });
+
     // Processa em lotes de 5 (backend é sequencial, mas split evita timeout)
     const LOTE = 5;
     const lotes = [];
-    for (let i = 0; i < codigos.length; i += LOTE) lotes.push(codigos.slice(i, i + LOTE));
+    for (let i = 0; i < objetos.length; i += LOTE) lotes.push(objetos.slice(i, i + LOTE));
 
     setGerando(true);
     setResultado(null);
@@ -194,7 +199,11 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       while (true) {
         let bloqueou = false;
         try {
-          const { data } = await base44.functions.invoke('gerarBoletosOmie', { titulos: lote });
+          const { data } = await base44.functions.invoke('gerarBoletosOmie', {
+            titulos: lote,
+            numero_carga: cargaSelecionada?.numero_carga || '',
+            carga_id: cargaSelecionada?.id || ''
+          });
           if (data?.sucesso) {
             // Se algum resultado do lote indicou rate-limit, re-tenta o lote inteiro.
             const algumBloqueio = (data.resultados || []).some(r => !r.sucesso && !r.skip && isRateLimit(r.mensagem));
@@ -208,14 +217,14 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
           } else if (isRateLimit(data?.error) && tentativa < maxTentativas) {
             bloqueou = true;
           } else {
-            lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: data?.error || 'Erro' }));
+            lote.forEach(t => todosResultados.push({ codigo_lancamento: t.codigo_lancamento, sucesso: false, mensagem: data?.error || 'Erro' }));
             totalErros += lote.length;
           }
         } catch (e) {
           if (isRateLimit(e.message) && tentativa < maxTentativas) {
             bloqueou = true;
           } else {
-            lote.forEach(cod => todosResultados.push({ codigo_lancamento: cod, sucesso: false, mensagem: e.message }));
+            lote.forEach(t => todosResultados.push({ codigo_lancamento: t.codigo_lancamento, sucesso: false, mensagem: e.message }));
             totalErros += lote.length;
           }
         }
@@ -237,8 +246,12 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
     }
 
     setResultado({ sucesso: true, total: codigos.length, processados: codigos.length, sucessos: totalSucessos, erros: totalErros, skips: totalSkips, resultados: todosResultados });
-    if (totalSucessos > 0) toast.success(`${totalSucessos} boleto(s) gerado(s)`);
-    if (totalErros > 0) toast.error(`${totalErros} boleto(s) falharam`);
+    const partes = [`${totalSucessos} gerado(s)`];
+    if (totalSkips > 0) partes.push(`${totalSkips} já existente(s)`);
+    if (totalErros > 0) partes.push(`${totalErros} com erro`);
+    if (totalSucessos > 0) toast.success(partes.join(', '));
+    else if (totalErros > 0) toast.error(partes.join(', '));
+    else toast.info(partes.join(', '));
     setSelecionados(new Set());
     queryClient.invalidateQueries({ queryKey: ['titulos-carga', cargaId] });
     setGerando(false);
@@ -306,13 +319,16 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
                   className="bg-amber-600 hover:bg-amber-700 text-white"
                 >
                   {gerando
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gerando {progresso.atual}/{progresso.total}...</>
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gerando {progresso.atual} de {progresso.total} boleto(s)...</>
                     : <><Receipt className="w-4 h-4 mr-2" /> Gerar {selecionados.size} boleto(s)</>}
                 </Button>
                 {gerando && progresso.total > 0 && (
-                  <div className="w-48 bg-slate-200 rounded-full h-1.5">
-                    <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${(progresso.atual / progresso.total) * 100}%` }} />
-                  </div>
+                  <>
+                    <div className="w-48 bg-slate-200 rounded-full h-1.5">
+                      <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${(progresso.atual / progresso.total) * 100}%` }} />
+                    </div>
+                    <span className="text-xs text-slate-500">{progresso.atual} de {progresso.total} processado(s)</span>
+                  </>
                 )}
               </div>
             </CardTitle>
