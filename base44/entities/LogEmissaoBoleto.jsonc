@@ -11,6 +11,10 @@
       "type": "string",
       "description": "N\u00famero do documento/t\u00edtulo, se houver"
     },
+    "numero_parcela": {
+      "type": "string",
+      "description": "Parcela do t\u00edtulo no formato \"001/001\" (cNumParcela do Omie). Padr\u00e3o \"001/001\" quando o t\u00edtulo n\u00e3o trouxer parcela (empresa emite quase tudo em parcela \u00fanica)."
+    },
     "numero_pedido": {
       "type": "string"
     },

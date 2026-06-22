@@ -38,7 +38,7 @@ function logParaTitulo(l) {
   return {
     codigo_lancamento: l.codigo_lancamento,
     numero_documento: l.numero_nf || '',
-    numero_parcela: '',
+    numero_parcela: l.numero_parcela || '001/001',
     data_emissao: l.data_emissao_boleto || '',
     data_vencimento: l.data_vencimento || '',
     valor_documento: l.valor || 0,
@@ -100,6 +100,23 @@ async function buscarTitulosCnpj(cnpj, janela) {
     }
   }
   return { falha: true };
+}
+
+/**
+ * Fallback LOCAL puro: lê só o LogEmissaoBoleto casado pelos pedidos da carga.
+ * Usado quando a busca completa (com Omie) falha — degrada com elegância mostrando
+ * o que já está no cache local, sem quebrar a tela com erro vermelho.
+ * @param {object} carga objeto Carga (com pedidos_omie)
+ * @returns {Promise<Array>} títulos no formato unificado
+ */
+export async function buscarBoletosLocaisCarga(carga) {
+  const pedidos = carga?.pedidos_omie || [];
+  if (pedidos.length === 0) return [];
+  const numPedidosCarga = new Set(pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean));
+  const logs = await base44.entities.LogEmissaoBoleto.list('-created_date', 1000).catch(() => []);
+  return logs
+    .filter(l => l.status === 'gerado' && numPedidosCarga.has(String(l.numero_pedido || '').trim()))
+    .map(logParaTitulo);
 }
 
 /**

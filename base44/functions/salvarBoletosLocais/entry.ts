@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
         codigo_lancamento: codigo,
         numero_pedido: String(t.numero_pedido_vinculado || t.numero_pedido || '').trim(),
         numero_nf: String(t.numero_documento || t.numero_nf || '').trim(),
+        numero_parcela: String(t.numero_parcela || '').trim() || '001/001',
         numero_boleto: String(t.numero_boleto || '').trim(),
         numero_bancario: String(t.numero_bancario || '').trim(),
         codigo_barras: String(t.codigo_barras || '').trim(),
@@ -67,6 +68,8 @@ Deno.serve(async (req) => {
           if (!payload.cliente_nome && existentes[0].cliente_nome) upd.cliente_nome = existentes[0].cliente_nome;
           if (!payload.cliente_id && existentes[0].cliente_id) upd.cliente_id = existentes[0].cliente_id;
           if (!payload.numero_nf && existentes[0].numero_nf) upd.numero_nf = existentes[0].numero_nf;
+          if ((!payload.data_vencimento) && existentes[0].data_vencimento) upd.data_vencimento = existentes[0].data_vencimento;
+          if ((!payload.numero_parcela || payload.numero_parcela === '001/001') && existentes[0].numero_parcela) upd.numero_parcela = existentes[0].numero_parcela;
           await base44.asServiceRole.entities.LogEmissaoBoleto.update(existentes[0].id, upd);
           atualizados++;
         } else {

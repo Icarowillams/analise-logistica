@@ -13,7 +13,7 @@ import { format, subDays, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
-import { buscarTitulosCarga } from '@/lib/buscarTitulosCarga';
+import { buscarTitulosCarga, buscarBoletosLocaisCarga } from '@/lib/buscarTitulosCarga';
 
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
 
@@ -201,10 +201,30 @@ export default function FiltrosBoletos({ onResultado }) {
         toast.success(`${titulosFiltrados.length} boleto(s) encontrado(s)`);
       }
     } catch (e) {
-      toast.error(e.message);
+      // Degrada com elegância: se a busca completa falhar (ex: Omie limitou/500 em carga
+      // grande), ainda mostra os boletos JÁ gravados no LOCAL em vez de quebrar a tela.
+      if (carga) {
+        try {
+          let locais = await buscarBoletosLocaisCarga(carga);
+          if (apenasComBoleto) {
+            locais = locais.filter(t => t.boleto_gerado || (t.numero_boleto && String(t.numero_boleto).trim()) || (t.url_boleto && String(t.url_boleto).trim()) || (t.codigo_barras && String(t.codigo_barras).trim()));
+          }
+          if (nfFiltro.trim()) {
+            const nfBusca = nfFiltro.trim().replace(/\D/g, '');
+            locais = locais.filter(t => String(t.numero_documento || '').replace(/\D/g, '').includes(nfBusca));
+          }
+          if (apenasClientesBoleto) locais = locais.filter(isClienteBoleto);
+          onResultado(locais, filtrarPor);
+          toast.warning(`Omie indisponível agora — exibindo ${locais.length} boleto(s) do cache local. Alguns títulos podem não ter sido verificados; tente Buscar novamente.`);
+        } catch {
+          toast.error('Não foi possível carregar os boletos. Tente novamente.');
+        }
+      } else {
+        toast.error(e.message);
+      }
     }
     setLoading(false);
-  }, [cargaFiltro, dataDe, dataAte, filtrarPor, cnpj, apenasComBoleto, apenasClientesBoleto]);
+  }, [cargaFiltro, dataDe, dataAte, filtrarPor, cnpj, apenasComBoleto, apenasClientesBoleto, nfFiltro]);
 
   const buscarCarga = async () => {
     if (!cargaBusca.trim()) return;

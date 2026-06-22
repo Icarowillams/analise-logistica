@@ -197,7 +197,9 @@ Deno.serve(async (req) => {
       codigo_lancamento_integracao: t.codigo_lancamento_integracao,
       codigo_cliente: t.codigo_cliente_fornecedor,
       numero_documento: t.numero_documento,
-      numero_parcela: t.numero_parcela,
+      // Parcela: Omie envia em cNumParcela/numero_parcela ("001/001"). Empresa emite quase
+      // tudo em parcela única → fallback "001/001" para nunca exibir/gravar vazio.
+      numero_parcela: String(t.cNumParcela || t.numero_parcela || '').trim() || '001/001',
       data_emissao: t.data_emissao,
       data_vencimento: t.data_vencimento,
       valor_documento: t.valor_documento,

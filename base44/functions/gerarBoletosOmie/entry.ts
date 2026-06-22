@@ -204,7 +204,8 @@ function contextoTitulo(titulo: any) {
     cliente_nome: titulo.nome_cliente || titulo.cliente_nome || '',
     cliente_id: titulo.cliente_id || '',
     valor: Number(titulo.valor_documento || titulo.valor || 0),
-    data_vencimento: titulo.data_vencimento || ''
+    data_vencimento: titulo.data_vencimento || '',
+    numero_parcela: String(titulo.numero_parcela || titulo.cNumParcela || '').trim() || '001/001'
   };
 }
 
@@ -226,8 +227,13 @@ async function processarTitulo(base44: any, titulo: any): Promise<any> {
       // Usa o primeiro título aberto do pedido; reaproveita o objeto Omie (tem nCodTitulo/status/boleto).
       const tomie = titulosPedido[0];
       codigo = tomie.codigo_lancamento_omie || tomie.nCodTitulo || '';
-      // Reaproveita status/boleto do Omie para a validação abaixo.
+      // Reaproveita status/boleto/vencimento/parcela do título Omie resolvido pelo pedido.
+      // Vencimento e parcela REAIS vêm do TÍTULO (não do Pedido) — preenche o que faltava no ctx.
       titulo = { ...titulo, status_titulo: tomie.status_titulo || titulo.status_titulo, boleto: tomie.boleto, codigo_lancamento: codigo };
+      if (!ctx.data_vencimento) ctx.data_vencimento = tomie.data_vencimento || '';
+      if (!ctx.numero_parcela || ctx.numero_parcela === '001/001') {
+        ctx.numero_parcela = String(tomie.numero_parcela || tomie.cNumParcela || '').trim() || ctx.numero_parcela || '001/001';
+      }
     } catch (e: any) {
       return { codigo_lancamento: '', sucesso: false, mensagem: `Falha ao resolver título do pedido: ${e.message}`, ...ctx };
     }
@@ -322,6 +328,7 @@ async function gravarLogBoleto(base44: any, r: any, ctxCarga: any, user: any) {
       codigo_lancamento: codigo,
       numero_pedido: r.numero_pedido || '',
       numero_nf: r.numero_nf || '',
+      numero_parcela: String(r.numero_parcela || '').trim() || '001/001',
       numero_boleto: r.numero_boleto || '',
       numero_bancario: r.numero_bancario || '',
       codigo_barras: r.codigo_barras || '',
