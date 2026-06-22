@@ -48,11 +48,12 @@ export default function CorteTab() {
         '-data_carga',
         200
       );
-      // Filtra: só cargas onde pedidos_omie estão TODOS em 10/20/50 (ou carga sem pedidos_omie/só internos)
+      // Filtra: bloqueia APENAS cargas com algum pedido JÁ FATURADO (etapa 60) — trava fiscal.
+      // Etapa vazia/None no snapshot = pedido ainda em montagem = pode cortar (não descarta a carga).
       return todas.filter(c => {
         const pedidos = c.pedidos_omie || [];
         if (pedidos.length === 0) return true; // só internos/trocas — pode cortar
-        return pedidos.every(p => ['10', '20', '50'].includes(String(p.etapa || '').trim()));
+        return !pedidos.some(p => String(p.etapa || '').trim() === '60');
       });
     }
   });
