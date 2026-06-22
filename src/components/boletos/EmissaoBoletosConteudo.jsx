@@ -17,9 +17,6 @@ import GerarBoletosFaltantesPrazo from '@/components/boletos/GerarBoletosFaltant
 
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
-const fmt = (d) =>
-  `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-
 export default function EmissaoBoletosConteudo({ ativa = true }) {
   const queryClient = useQueryClient();
   const [cargaId, setCargaId] = useState('');
@@ -70,67 +67,34 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       const pedidos = cargaSelecionada.pedidos_omie || [];
       if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
 
-      console.log('[Boletos] BUSCA POR PERIODO ATIVA — carga', cargaSelecionada?.numero_carga, 'pedidos', pedidos.length);
-      const hoje = new Date();
-      const inicio = new Date(hoje.getTime() - 60 * 86400000);   // -60 dias
-      const fim = new Date(hoje.getTime() + 120 * 86400000);     // +120 dias
-      const dataDeStr = fmt(inicio);
-      const dataAteStr = fmt(fim);
+      // ✅ BUSCA POR CNPJ (1 chamada por CNPJ). Validado ao vivo: cada CNPJ da carga
+      // tem poucos títulos e quase sempre 1 página — paginar só se houver +1 página real.
+      // O Omie IGNORA filtro por pedido; só aceita DATA ou CNPJ → CNPJ é o caminho direcionado.
+      // apenas_pendentes:false → traz também os já com boleto/recebidos (casa carga já emitida).
+      const cnpjsUnicos = [...new Set(
+        pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(c => c.length >= 11)
+      )];
+      console.log('[Boletos] BUSCA POR CNPJ — carga', cargaSelecionada?.numero_carga, '→', cnpjsUnicos.length, 'CNPJ(s)');
 
-      // ⚠️ Busca UMA varredura paginada por PERÍODO (SEM cnpj_cpf), filtra localmente.
-      // Substitui o loop por-CNPJ (rajada de 13-22 chamadas → ~3-5). O vínculo título↔pedido
-      // usa codigo_pedido_omie/numero_pedido_vinculado (independe de CNPJ), então nada se perde.
-      // SEM apenas_pendentes: queremos também os títulos já com boleto/recebidos da carga.
       let acumulados = [];
-      for (let pagina = 1; pagina <= 8; pagina++) {
-        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de: dataDeStr,
-          data_ate: dataAteStr,
-          filtrar_por_data: 'V',
-          pagina,
-          registros_por_pagina: 200
-        });
-        if (!data?.sucesso) break;
-        acumulados = acumulados.concat(data.titulos || []);
-        if (pagina >= (data.total_de_paginas || 1)) break;
-      }
-
-      // Dedup
-      acumulados = acumulados.filter((t, i, arr) =>
-        arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
-      );
-
-      // Completude: pedidos da carga que ainda não casaram com nenhum título do período.
-      // Fallback APENAS para esses (por CNPJ), com TETO RÍGIDO para nunca virar rajada.
-      // Se a janela já trouxe a maioria, isso fica em 0-2 chamadas; se algo está estruturalmente
-      // errado (período não casa), o teto evita repetir a rajada de N CNPJs.
-      const TETO_FALLBACK_CNPJ = 6;
-      const codsAcum = new Set(acumulados.map(t => String(t.codigo_pedido_omie || '').trim()).filter(Boolean));
-      const numsAcum = new Set(acumulados.map(t => String(t.numero_pedido_vinculado || '').trim()).filter(Boolean));
-      const cnpjsFaltantes = [...new Set(
-        pedidos
-          .filter(p => p.tipo_nota !== 'D1')
-          .filter(p => {
-            const cod = String(p.codigo_pedido || '').trim();
-            const num = String(p.numero_pedido || '').trim();
-            return !((cod && codsAcum.has(cod)) || (num && numsAcum.has(num)));
-          })
-          .map(p => somenteNumeros(p.cnpj_cpf_cliente))
-          .filter(c => c.length >= 11)
-      )].slice(0, TETO_FALLBACK_CNPJ);
-      console.log('[Boletos] fallback por CNPJ:', cnpjsFaltantes.length, 'chamada(s)');
-      for (const cnpj of cnpjsFaltantes) {
-        const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-          data_de: dataDeStr,
-          data_ate: dataAteStr,
-          filtrar_por_data: 'V',
-          cnpj_cpf: cnpj,
-          registros_por_pagina: 100
-        });
-        if (data?.sucesso && data.titulos?.length > 0) {
-          acumulados = acumulados.concat(data.titulos);
+      for (const cnpj of cnpjsUnicos) {
+        let pagina = 1;
+        while (true) {
+          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
+            cnpj_cpf: cnpj,
+            apenas_pendentes: false,
+            pagina,
+            registros_por_pagina: 100
+          });
+          if (!data?.sucesso) break;
+          acumulados = acumulados.concat(data.titulos || []);
+          if (pagina >= (data.total_de_paginas || 1)) break;
+          pagina++;
+          if (pagina > 3) break; // teto de segurança por CNPJ
         }
       }
+
+      // Dedup por codigo_lancamento (um CNPJ pode repetir entre páginas)
       acumulados = acumulados.filter((t, i, arr) =>
         arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
       );
