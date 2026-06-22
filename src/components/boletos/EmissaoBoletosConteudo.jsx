@@ -14,6 +14,7 @@ import ResultadoGeracaoBoletos from '@/components/boletos/ResultadoGeracaoBoleto
 import PendenciasVinculoCarga from '@/components/boletos/PendenciasVinculoCarga';
 import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
 import GerarBoletosFaltantesPrazo from '@/components/boletos/GerarBoletosFaltantesPrazo';
+import { buscarTitulosCarga } from '@/lib/buscarTitulosCarga';
 
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
@@ -67,37 +68,9 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       const pedidos = cargaSelecionada.pedidos_omie || [];
       if (pedidos.length === 0) return { titulos: [], ocultosNaoBoleto: 0, nfSemTitulo: [], semNf: [] };
 
-      // ✅ BUSCA POR CNPJ (1 chamada por CNPJ). Validado ao vivo: cada CNPJ da carga
-      // tem poucos títulos e quase sempre 1 página — paginar só se houver +1 página real.
-      // O Omie IGNORA filtro por pedido; só aceita DATA ou CNPJ → CNPJ é o caminho direcionado.
-      // apenas_pendentes:false → traz também os já com boleto/recebidos (casa carga já emitida).
-      const cnpjsUnicos = [...new Set(
-        pedidos.map(p => somenteNumeros(p.cnpj_cpf_cliente)).filter(c => c.length >= 11)
-      )];
-      console.log('[Boletos] BUSCA POR CNPJ — carga', cargaSelecionada?.numero_carga, '→', cnpjsUnicos.length, 'CNPJ(s)');
-
-      let acumulados = [];
-      for (const cnpj of cnpjsUnicos) {
-        let pagina = 1;
-        while (true) {
-          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-            cnpj_cpf: cnpj,
-            apenas_pendentes: false,
-            pagina,
-            registros_por_pagina: 100
-          });
-          if (!data?.sucesso) break;
-          acumulados = acumulados.concat(data.titulos || []);
-          if (pagina >= (data.total_de_paginas || 1)) break;
-          pagina++;
-          if (pagina > 3) break; // teto de segurança por CNPJ
-        }
-      }
-
-      // Dedup por codigo_lancamento (um CNPJ pode repetir entre páginas)
-      acumulados = acumulados.filter((t, i, arr) =>
-        arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === i
-      );
+      // ✅ Helper UNIFICADO: boletos já emitidos do LOCAL (instantâneo) + títulos sem boleto
+      // buscados no Omie EM PARALELO (runPool, ±7 dias emissão, 1 página/CNPJ).
+      const acumulados = await buscarTitulosCarga(cargaSelecionada);
 
       // Encontra o pedido da carga que corresponde a um título.
       // Vínculo CONFIÁVEL: nCodPedido (codigo_pedido_omie) === codigo_pedido do pedido (nCodPed Omie).
@@ -130,6 +103,9 @@ export default function EmissaoBoletosConteudo({ ativa = true }) {
       let ocultosNaoBoleto = 0;
       const titulos = acumulados.filter(t => {
         if (!tituloCasaCarga(t)) return false;
+        // Boleto JÁ emitido (origem local ou com nº de boleto) é comprovadamente boleto → sempre passa.
+        const jaEmitido = t._origem === 'local' || t.boleto_gerado || (t.numero_boleto && String(t.numero_boleto).trim());
+        if (jaEmitido) return true;
         if (!isClienteBoleto(t)) { ocultosNaoBoleto++; return false; }
         return true;
       });

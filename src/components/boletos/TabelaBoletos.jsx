@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Eye, Loader2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { formatarNumeroBoleto } from '@/lib/formatarNumeroBoleto';
 
 const base64ToUint8Array = (b64) => {
   const bin = atob(b64);
@@ -136,7 +137,7 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados, 
                   })()}
                 </td>
                 <td className="p-2 text-center font-mono text-xs">
-                  {t.numero_boleto ? t.numero_boleto : '-'}
+                  {(t.numero_boleto || t.numero_bancario) ? formatarNumeroBoleto(t.numero_bancario, t.numero_boleto) : '-'}
                 </td>
                 <td className="p-2 text-center">
                   {(() => {

@@ -13,6 +13,7 @@ import { format, subDays, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useModalidadeBoleto } from '@/components/boletos/useModalidadeBoleto';
+import { buscarTitulosCarga } from '@/lib/buscarTitulosCarga';
 
 const somenteNumeros = (valor) => String(valor || '').replace(/\D/g, '');
 
@@ -123,56 +124,10 @@ export default function FiltrosBoletos({ onResultado }) {
       let acumulados = [];
 
       if (carga) {
-        // BUSCA POR CARGA: sequencial por CNPJ + filtro de emissão
-        // Resolve rate limit silencioso do Omie e garante cobertura completa
-        const pedidos = carga.pedidos_omie || [];
-        const cnpjsUnicos = [...new Set(
-          pedidos
-            .map(p => String(p.cnpj_cpf_cliente || '').replace(/\D/g, ''))
-            .filter(c => c.length >= 11)
-        )];
-
-        // Determinar range de emissão baseado na data da carga
-        let dataDeStr, dataAteStr;
-        if (filtrosBusca.dataDe) {
-          dataDeStr = filtrosBusca.dataDe;
-          dataAteStr = filtrosBusca.dataAte;
-        } else if (carga.data_carga) {
-          // Usa data da carga como referência (±7 dias de margem)
-          const [y, m, d] = carga.data_carga.split('-');
-          const dataCarga = new Date(Number(y), Number(m) - 1, Number(d));
-          const margem7antes = new Date(dataCarga.getTime() - 7 * 86400000);
-          const margem7depois = new Date(dataCarga.getTime() + 7 * 86400000);
-          dataDeStr = dateToBR(margem7antes);
-          dataAteStr = dateToBR(margem7depois);
-        } else {
-          dataDeStr = dateToBR(subDays(new Date(), 30));
-          dataAteStr = dateToBR(addDays(new Date(), 7));
-        }
-
-        // ⚠️ Regra Omie: NUNCA chamar o mesmo método em rajada/concorrência.
-        // Chamadas por CNPJ em loop disparam erro 1880 ("método já em execução") e 6 (REDUNDANT).
-        // Solução: UMA busca paginada por PERÍODO (sem cnpj_cpf), sequencial, + filtro local por carga.
-        void cnpjsUnicos; // mantido apenas para referência; não usado para chamadas
-        for (let pagina = 1; pagina <= 10; pagina++) {
-          const { data } = await base44.functions.invoke('listarContasReceberOmie', {
-            data_de: dataDeStr,
-            data_ate: dataAteStr,
-            filtrar_por_data: filtrosBusca.filtrarPor || 'E',
-            apenas_pendentes: false,
-            pagina,
-            registros_por_pagina: 100,
-            bypassCache: true
-          });
-          if (!data?.sucesso) break;
-          acumulados = acumulados.concat(data.titulos || []);
-          if (pagina >= (data.total_de_paginas || 1)) break;
-        }
-
-        // Dedup por codigo_lancamento
-        acumulados = acumulados.filter((t, idx, arr) =>
-          arr.findIndex(x => x.codigo_lancamento === t.codigo_lancamento) === idx
-        );
+        // ✅ Helper UNIFICADO (mesmo da aba Emissão): boletos já emitidos do LOCAL
+        // (instantâneo) + títulos sem boleto buscados no Omie EM PARALELO. Já vem filtrado
+        // pelos pedidos da carga e deduplicado por codigo_lancamento.
+        acumulados = await buscarTitulosCarga(carga);
       } else {
         // BUSCA GENÉRICA (sem carga): mantém comportamento original
         const dataDeStr = filtrosBusca.dataDe || dateToBR(dataDe) || undefined;
@@ -195,7 +150,8 @@ export default function FiltrosBoletos({ onResultado }) {
         acumulados = data.titulos || [];
       }
 
-      let titulosFiltrados = filtrarTitulosPorCarga(acumulados, carga);
+      // Quando há carga, buscarTitulosCarga já filtrou pelos pedidos da carga.
+      let titulosFiltrados = carga ? acumulados : filtrarTitulosPorCarga(acumulados, carga);
       if (apenasComBoleto) {
         titulosFiltrados = titulosFiltrados.filter(t =>
           t.boleto_gerado ||
