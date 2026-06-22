@@ -11,12 +11,12 @@ import { Trophy, Calculator, Settings2, Loader2, FlaskConical } from 'lucide-rea
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { Award } from 'lucide-react';
-import PainelVendedor from '@/components/comissionamento/PainelVendedor.jsx';
-import RankingEquipe from '@/components/comissionamento/RankingEquipe.jsx';
-import GerenciarMetas from '@/components/comissionamento/GerenciarMetas.jsx';
-import GerenciarMapeamentoTrocas from '@/components/comissionamento/GerenciarMapeamentoTrocas.jsx';
-import RegimeExperimentalPainel from '@/components/comissionamento/RegimeExperimentalPainel.jsx';
-import { agruparPorUsuario, competenciaAtual, competenciaLabel, brl } from '@/components/comissionamento/scorecardUtils.js';
+import PainelVendedor from '@/components/comissionamento/PainelVendedor';
+import RankingEquipe from '@/components/comissionamento/RankingEquipe';
+import GerenciarMetas from '@/components/comissionamento/GerenciarMetas';
+import GerenciarMapeamentoTrocas from '@/components/comissionamento/GerenciarMapeamentoTrocas';
+import RegimeExperimentalPainel from '@/components/comissionamento/RegimeExperimentalPainel';
+import { agruparPorUsuario, competenciaAtual, competenciaLabel, brl } from '@/components/comissionamento/scorecardUtils';
 
 function ultimasCompetencias(n = 6) {
   const out = [];

@@ -1,31 +1,23 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, FlaskConical } from 'lucide-react';
-import { brl } from './scorecardUtils.js';
+import { brl } from './scorecardUtils';
 
-// Card "Comissão do mês" — separa OFICIAL (garantido) de EXPERIMENTAL (estimado, em calibração).
-// Nunca soma os dois num único número sem flag (seção 7 / considerações técnicas).
+// Cards de comissão: separa claramente OFICIAL (folha real) de EXPERIMENTAL (calibração).
 export default function CardComissao({ oficial, experimental }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+      <Card className="border-emerald-200 bg-emerald-50/50">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-emerald-700 mb-1">
-            <TrendingUp className="w-4 h-4" />
-            <span className="text-xs font-semibold uppercase tracking-wide">Comissão Oficial</span>
-          </div>
-          <p className="text-2xl font-bold text-emerald-700">{brl(oficial)}</p>
-          <p className="text-[11px] text-emerald-600/80 mt-0.5">Valor garantido para pagamento</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Comissão Oficial</p>
+          <p className="text-3xl font-bold text-emerald-700 mt-1">{brl(oficial)}</p>
+          <p className="text-[11px] text-emerald-600/70 mt-1">Compõe sua folha de pagamento.</p>
         </CardContent>
       </Card>
-      <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+      <Card className="border-amber-200 bg-amber-50/50">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-amber-700 mb-1">
-            <FlaskConical className="w-4 h-4" />
-            <span className="text-xs font-semibold uppercase tracking-wide">Experimental</span>
-          </div>
-          <p className="text-2xl font-bold text-amber-700">{brl(experimental)}</p>
-          <p className="text-[11px] text-amber-600/80 mt-0.5">Estimado — em calibração, não afeta pagamento</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Experimental</p>
+          <p className="text-3xl font-bold text-amber-700 mt-1">{brl(experimental)}</p>
+          <p className="text-[11px] text-amber-600/70 mt-1">Em calibração — não impacta pagamento.</p>
         </CardContent>
       </Card>
     </div>
