@@ -215,6 +215,7 @@ export default function useDadosMontagem() {
         const etapa = String(e?.etapa ?? 'sem_etapa');
         etapasContagem[etapa] = (etapasContagem[etapa] || 0) + 1;
       });
+      console.log(`[DEBUG MC] Total no espelho Omie: ${(espelhoOmie || []).length} | por etapa:`, etapasContagem);
 
       // Vendas Omie etapas 10 e 20
       const ETAPAS_PERMITIDAS = ['20', '50']; // Apenas Liberados (20) e Em montagem (50)
