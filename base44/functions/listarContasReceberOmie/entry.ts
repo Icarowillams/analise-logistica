@@ -20,16 +20,47 @@ async function omieCheckCircuitBreaker(base44: any) {
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
 }
 
-// Throttle GLOBAL compartilhado: respeita o mesmo registro 'rate_limit_global' usado pelas demais funções.
+// Throttle GLOBAL ATÔMICO compartilhado (reserva de slot) — espelha _shared/omieClient.
+// 'atualizado_em' do registro 'rate_limit_global' guarda o PRÓXIMO SLOT reservado (timestamp futuro);
+// worker_lock_ate é o mutex curto da seção de reserva. Duas instâncias pegam slots distintos.
+const SLOT_LOCK_MS = 4000;
+const SLOT_WAIT_CAP_MS = 30000;
+const _sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function getSlotRow(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 50).catch(() => []);
+  if (!rows?.[0]?.id) {
+    return await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+  }
+  for (const extra of rows.slice(1)) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+  return rows[0];
+}
+
 async function omieThrottleGlobal(base44: any) {
   try {
-    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
-    const row = rows?.[0];
-    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
-    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    if (row?.id) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, { atualizado_em: new Date().toISOString() }).catch(() => null);
-    else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+    const row = await getSlotRow(base44);
+    if (!row?.id) return;
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let gotLock = false;
+    for (let i = 0; i < 12; i++) {
+      const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+      const cur = fresh?.[0];
+      const lockedUntil = cur?.worker_lock_ate ? new Date(cur.worker_lock_ate).getTime() : 0;
+      if (!lockedUntil || lockedUntil <= Date.now()) {
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, { worker_lock_ate: new Date(Date.now() + SLOT_LOCK_MS).toISOString(), ultimo_erro: lockId }).catch(() => null);
+        const confirm = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+        if (confirm?.[0]?.ultimo_erro === lockId) { gotLock = true; break; }
+      }
+      await _sleep(200 + Math.floor(Math.random() * 200));
+    }
+    const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+    const cur = fresh?.[0] || row;
+    const proximoSlot = cur?.atualizado_em ? new Date(cur.atualizado_em).getTime() : 0;
+    const now = Date.now();
+    const meuSlot = Math.max(now, proximoSlot);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, { atualizado_em: new Date(meuSlot + GLOBAL_MIN_INTERVAL_MS).toISOString(), ...(gotLock ? { worker_lock_ate: null } : {}) }).catch(() => null);
+    const espera = Math.min(meuSlot - now, SLOT_WAIT_CAP_MS);
+    if (espera > 0) await _sleep(espera);
   } catch { /* falha no rate limiter não bloqueia a chamada */ }
 }
 

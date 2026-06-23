@@ -39,32 +39,70 @@ const lastCallAt = new Map<string, number>(); // método → timestamp da últim
 // da última chamada e garantimos no mínimo GLOBAL_MIN_INTERVAL_MS entre chamadas.
 const GLOBAL_MIN_INTERVAL_MS = 1_500; // no máx ~1 chamada a cada 1,5s globalmente
 const GLOBAL_RATE_KEY = 'rate_limit_global';
+const SLOT_LOCK_MS = 4_000;     // validade do mutex curto da reserva de slot (auto-release)
+const SLOT_WAIT_CAP_MS = 30_000; // teto de espera por slot (segurança contra slot longe demais)
 
-// Upsert seguro contra concorrência: sempre que houver mais de um registro com a
-// mesma chave (corrida entre execuções paralelas), mantém o mais antigo e remove
-// os demais — evitando o acúmulo de duplicados que renovava o bloqueio em loop.
-async function upsertControle(base44: Base44Client, chave: string, payload: Record<string, unknown>): Promise<void> {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave }, 'created_date', 50).catch(() => []);
-  const principal = rows?.[0];
-  if (principal?.id) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(principal.id, payload).catch(() => null);
-    // Remove qualquer duplicado remanescente da mesma chave.
-    for (const extra of (rows || []).slice(1)) {
-      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
-    }
-  } else {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave, ...payload }).catch(() => null);
+// Garante UM único registro 'rate_limit_global' (mantém o mais antigo, remove duplicados)
+// e devolve seu id — corrige o acúmulo dos 22 duplicados que renovava o bloqueio em loop.
+async function getSlotRow(base44: Base44Client): Promise<{ id: string; atualizado_em?: string; worker_lock_ate?: string } | null> {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 50).catch(() => []);
+  if (!rows?.[0]?.id) {
+    const created = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return created?.id ? created : null;
   }
+  for (const extra of rows.slice(1)) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+  }
+  return rows[0];
 }
 
+// ── Throttle global ATÔMICO por reserva de slot ──
+// O problema do read-then-write antigo: N instâncias liam o MESMO 'atualizado_em', calculavam
+// o MESMO wait e disparavam juntas (não serializava entre processos).
+//
+// Solução: 'atualizado_em' do registro 'rate_limit_global' guarda o PRÓXIMO SLOT reservado
+// (timestamp futuro). Cada instância:
+//   1. Adquire um mutex curto (worker_lock_ate) sobre a seção de reserva.
+//   2. slot = max(agora, proximo_slot); grava proximo_slot = slot + intervalo; libera o lock.
+//   3. Dorme até o SEU slot.
+// Assim 2 instâncias pegam slots distintos (agora+1,5s, agora+3,0s, ...) e não disparam juntas.
 async function throttleGlobal(base44: Base44Client): Promise<void> {
   try {
-    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
-    const row = rows?.[0];
-    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
-    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
-    if (wait > 0) await sleep(wait);
-    await upsertControle(base44, GLOBAL_RATE_KEY, { atualizado_em: new Date().toISOString() });
+    const row = await getSlotRow(base44);
+    if (!row?.id) return; // sem registro → não trava a chamada
+
+    // 1) Mutex curto: tenta adquirir o lock da seção de reserva, com pequenas esperas.
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let gotLock = false;
+    for (let i = 0; i < 12; i++) {
+      const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+      const cur = fresh?.[0];
+      const lockedUntil = cur?.worker_lock_ate ? new Date(cur.worker_lock_ate).getTime() : 0;
+      if (!lockedUntil || lockedUntil <= Date.now()) {
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+          worker_lock_ate: new Date(Date.now() + SLOT_LOCK_MS).toISOString(),
+          ultimo_erro: lockId // marca o dono do lock para confirmar na releitura
+        }).catch(() => null);
+        const confirm = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+        if (confirm?.[0]?.ultimo_erro === lockId) { gotLock = true; break; }
+      }
+      await sleep(200 + Math.floor(Math.random() * 200)); // jitter para evitar lockstep
+    }
+
+    // 2) Reserva atômica do slot (dentro do lock; se não pegou lock, faz reserva best-effort).
+    const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+    const cur = fresh?.[0] || row;
+    const proximoSlot = cur?.atualizado_em ? new Date(cur.atualizado_em).getTime() : 0;
+    const now = Date.now();
+    const meuSlot = Math.max(now, proximoSlot);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+      atualizado_em: new Date(meuSlot + GLOBAL_MIN_INTERVAL_MS).toISOString(),
+      ...(gotLock ? { worker_lock_ate: null } : {}) // libera o lock se o detínhamos
+    }).catch(() => null);
+
+    // 3) Dorme até o meu slot.
+    const espera = Math.min(meuSlot - now, SLOT_WAIT_CAP_MS);
+    if (espera > 0) await sleep(espera);
   } catch {
     // Em caso de falha no rate limiter, não bloqueia a chamada — apenas segue.
   }
