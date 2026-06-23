@@ -233,10 +233,18 @@ export default function useDadosMontagem() {
           .filter(Boolean)
       );
 
+      const codigosFaturadosLocais = new Set(
+        (todosPedidosLocais || [])
+          .filter(p => p.status === 'faturado' || p.faturado === true)
+          .map(p => String(p.omie_codigo_pedido || ''))
+          .filter(Boolean)
+      );
+
       const vendasSemCarga = vendasBruto.filter(e =>
         e?.codigo_pedido &&
         !codigosEmCarga.has(String(e.codigo_pedido)) &&
-        !codigosCancelados.has(String(e.codigo_pedido))
+        !codigosCancelados.has(String(e.codigo_pedido)) &&
+        !codigosFaturadosLocais.has(String(e.codigo_pedido))
       );
 
       const vendasEnriquecidas = vendasSemCarga.map(montarVendaOmie);
