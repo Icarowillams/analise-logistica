@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,10 +19,11 @@ import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
  * Log de Emissão de NF-e — histórico persistente de TODAS as tentativas
  * de emissão feitas via Omie (autorizadas, rejeitadas, pendentes e erros).
  *
- * Status resolvido SOB DEMANDA: ao abrir a aba (e no botão "Resolver pendentes"),
- * os logs pendentes/erro VISÍVEIS são reconsultados ao vivo no Omie via
- * reconsultarStatusNFsPendentes — em lotes pequenos, atualizando a UI conforme chega.
- * Não há automação por trás; o status sempre reflete o Omie real ao abrir a tela.
+ * Status resolvido 100% POR AÇÃO HUMANA — ZERO AUTOMAÇÃO. Nada é reconsultado ao abrir a aba.
+ * O operador clica em "Atualizar pendentes" (só lê o status no Omie) ou em
+ * "Confirmar/Reprocessar pendentes" (lê ao vivo e, nos presos de verdade na etapa 50,
+ * reaciona a emissão após confirmar que não está faturado). Em lotes pequenos e sequenciais,
+ * com backoff/circuit breaker, atualizando a UI conforme cada lote chega.
  */
 
 // Teto de pedidos reconsultados por abertura/clique (evita varrer tudo).
@@ -46,7 +47,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [progresso, setProgresso] = useState({ feito: 0, total: 0 });
   const [reconsultandoCod, setReconsultandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
-  const autoResolveKeyRef = useRef('');
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -204,7 +204,8 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   }, [logs]);
 
   // ── Núcleo: reconsulta SOB DEMANDA via Omie em lotes pequenos, atualizando a UI a cada lote. ──
-  const reconsultarCodigos = async (codigos, { silencioso = false } = {}) => {
+  // reprocessar=true → além de ler o status, reaciona a emissão dos presos de verdade na etapa 50.
+  const reconsultarCodigos = async (codigos, { silencioso = false, reprocessar = false } = {}) => {
     const lista = [...new Set(codigos.map(String).filter(Boolean))].slice(0, TETO_RECONSULTA);
     if (lista.length === 0) {
       if (!silencioso) toast.info('Nada para reconsultar.');
@@ -220,7 +221,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
         const lote = lista.slice(i, i + LOTE_RECONSULTA);
         let r = {};
         try {
-          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote });
+          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote, reprocessar });
           r = resp?.data || {};
         } catch (e) {
           // Falha de rede no lote não trava os demais — segue.
@@ -265,48 +266,26 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     )];
   }, [logsFiltrados]);
 
-  // Ao abrir a aba (ou quando os logs carregam): resolve os pendentes visíveis em background.
-  useEffect(() => {
-    if (!ativa || isLoading) return;
-    if (codigosPendentesVisiveis.length === 0) return;
-    const key = codigosPendentesVisiveis.slice().sort().join('|');
-    if (autoResolveKeyRef.current === key) return; // já resolvido para este conjunto
-    autoResolveKeyRef.current = key;
-    const timer = setTimeout(() => {
-      reconsultarCodigos(codigosPendentesVisiveis, { silencioso: true });
-    }, 800);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ativa, isLoading, codigosPendentesVisiveis]);
+  // SEM AUTOMAÇÃO: a aba NÃO reconsulta nada ao abrir nem em background. Tudo é por clique humano.
 
-  // Códigos vindos de outra tela (ex: logo após emitir) — resolve também.
-  useEffect(() => {
-    if (!ativa || autoConsultarCodigos.length === 0) return;
-    const codigos = [...new Set(autoConsultarCodigos.map(String).filter(Boolean))];
-    const key = codigos.slice().sort().join('|');
-    if (!key || autoResolveKeyRef.current === key) return;
-    autoResolveKeyRef.current = key;
-    const timer = setTimeout(() => {
-      reconsultarCodigos(codigos, { silencioso: false });
-    }, 1200);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ativa, autoConsultarCodigos]);
-
-  // Botão "Resolver N pendente(s)" / "Atualizar" — reconsulta o que está visível, com progresso.
+  // Botão "Atualizar pendentes" — só LÊ o status no Omie dos pendentes/erros visíveis (não reemite).
   const resolverPendentes = () => reconsultarCodigos(codigosPendentesVisiveis, { silencioso: false });
 
-  // Reconsulta UM pedido específico (botão na linha).
-  const reconsultarPedido = async (codigoPedido) => {
+  // Botão "Confirmar/Reprocessar pendentes" — lê ao vivo E reaciona a emissão dos presos na etapa 50.
+  const reprocessarPendentes = () => reconsultarCodigos(codigosPendentesVisiveis, { silencioso: false, reprocessar: true });
+
+  // Reconsulta UM pedido específico (botão na linha). reprocessar=true → reaciona se estiver preso.
+  const reconsultarPedido = async (codigoPedido, { reprocessar = false } = {}) => {
     if (!codigoPedido) return;
     setReconsultandoCod(String(codigoPedido));
     try {
-      const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: [String(codigoPedido)] });
+      const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: [String(codigoPedido)], reprocessar });
       const r = resp?.data || {};
       const resultado = r?.resultados?.[0] || {};
       if (resultado.abortado || r?.abortado) toast.info('Omie pediu para aguardar — atualize novamente em ~1 min.');
       else if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
       else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
+      else if (resultado.reacionado) toast.info('Emissão reprocessada — aguardando a SEFAZ. Atualize em ~1 min.');
       else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
       else toast.info('Nada a atualizar para este pedido.');
       await refetch();
@@ -360,7 +339,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
         <CardContent className="py-3 text-sm text-blue-900 flex items-start gap-2">
           <ScrollText className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <b>Log persistente de emissão.</b> Cada linha registra uma tentativa de emissão de NF-e. Ao abrir esta aba, os pendentes são reconsultados <b>ao vivo no Omie</b> — quem já foi autorizado aparece como autorizado; quem ainda está na SEFAZ (etapa 50) segue como pendente e resolve no próximo refresh.
+            <b>Log persistente de emissão.</b> Cada linha registra uma tentativa de emissão de NF-e. <b>Nada é consultado automaticamente</b> — use <b>Atualizar pendentes</b> para ler o status real no Omie, ou <b>Confirmar/Reprocessar</b> para reacionar a emissão dos pedidos presos na etapa 50 (faturados sem NF). Quem está na SEFAZ aparece como <b>pendente — aguardando SEFAZ</b>; impedimentos reais (ex: cliente bloqueado) aparecem como <b>erro</b> com o motivo.
           </div>
         </CardContent>
       </Card>
@@ -403,30 +382,47 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                 </Button>
               )}
               {codigosPendentesVisiveis.length > 0 && (
-                <Button
-                  size="sm"
-                  className="bg-amber-500 hover:bg-amber-600 text-white"
-                  onClick={resolverPendentes}
-                  disabled={resolvendo}
-                  title="Consulta o Omie ao vivo para resolver os pendentes/erros visíveis"
-                >
-                  {resolvendo
-                    ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    : <Wand2 className="w-4 h-4 mr-2" />}
-                  {resolvendo && progresso.total > 0
-                    ? `Resolvendo ${progresso.feito}/${progresso.total}...`
-                    : `Resolver ${codigosPendentesVisiveis.length} pendente(s)`}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    onClick={resolverPendentes}
+                    disabled={resolvendo}
+                    title="Lê o status real no Omie dos pendentes/erros visíveis (não reemite)"
+                  >
+                    {resolvendo
+                      ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      : <RefreshCw className="w-4 h-4 mr-2" />}
+                    {resolvendo && progresso.total > 0
+                      ? `Verificando ${progresso.feito}/${progresso.total}...`
+                      : `Atualizar ${codigosPendentesVisiveis.length} pendente(s)`}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                    onClick={reprocessarPendentes}
+                    disabled={resolvendo}
+                    title="Lê ao vivo e REACIONA a emissão dos pedidos presos na etapa 50 (faturados sem NF)"
+                  >
+                    {resolvendo
+                      ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      : <Wand2 className="w-4 h-4 mr-2" />}
+                    {resolvendo && progresso.total > 0
+                      ? `Reprocessando ${progresso.feito}/${progresso.total}...`
+                      : `Confirmar/Reprocessar`}
+                  </Button>
+                </>
               )}
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => (codigosPendentesVisiveis.length > 0 ? resolverPendentes() : refetch())}
+                onClick={() => refetch()}
                 disabled={resolvendo || isFetching}
-                title="Recarrega e reconsulta pendentes no Omie"
+                title="Recarrega o histórico (sem consultar o Omie)"
               >
-                {resolvendo || isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                Atualizar
+                {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Recarregar
               </Button>
             </div>
           </CardTitle>
@@ -558,17 +554,28 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
                     <td className="p-2 text-center">
                       {(l.status === 'pendente' || l.status === 'erro') && l.codigo_pedido ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => reconsultarPedido(l.codigo_pedido)}
-                          disabled={reconsultandoCod === String(l.codigo_pedido)}
-                          title="Reconsultar status deste pedido no Omie"
-                        >
-                          {reconsultandoCod === String(l.codigo_pedido)
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <RefreshCw className="w-4 h-4" />}
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => reconsultarPedido(l.codigo_pedido)}
+                            disabled={reconsultandoCod === String(l.codigo_pedido)}
+                            title="Ler status deste pedido no Omie (não reemite)"
+                          >
+                            {reconsultandoCod === String(l.codigo_pedido)
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <RefreshCw className="w-4 h-4" />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-amber-500 hover:bg-amber-600 text-white"
+                            onClick={() => reconsultarPedido(l.codigo_pedido, { reprocessar: true })}
+                            disabled={reconsultandoCod === String(l.codigo_pedido)}
+                            title="Reprocessar emissão deste pedido se estiver preso na etapa 50"
+                          >
+                            <Wand2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}

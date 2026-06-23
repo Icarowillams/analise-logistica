@@ -2,17 +2,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // 🔎 RECONSULTA SOB DEMANDA — resolve o status real de NFs "pendentes"/"erro" consultando o Omie AO VIVO.
 //
-// Filosofia: confiar no Omie em tempo real, não no estado local atrasado.
-// Chamada pela tela "Notas Fiscais Omie" (aba Log) — ao carregar e no botão "Resolver N pendente(s)".
-// O FRONTEND orquestra os lotes (envia poucos códigos por vez) para nunca estourar o teto de 180s
-// e para atualizar a UI conforme cada lote chega. Esta função NÃO tem lock/debounce/cooldown global
-// e NÃO faz varredura de 500 — só processa exatamente os codigos_pedido recebidos.
+// 100% POR AÇÃO HUMANA — ZERO AUTOMAÇÃO. Nenhum schedule chama esta função; ela só roda quando o
+// operador abre a aba (reconsulta) ou clica em "Confirmar/Reprocessar pendentes" (reprocessar=true).
+// O FRONTEND orquestra os lotes (poucos códigos por vez) para não estourar o teto de 180s e atualizar
+// a UI conforme cada lote chega. Sem lock/debounce/cooldown global; processa só os codigos_pedido recebidos.
 //
-// Idempotência: só marca 'autorizada' quando confirmado etapa >= 60 com nNF real.
-//   - etapa 50 (SEFAZ processando) → segue 'pendente' (real, resolve no próximo refresh)
-//   - rejeitada/denegada/cancelada → 'rejeitada'
+// Consulta o Omie AO VIVO (ConsultarPedido) ANTES de qualquer decisão:
+//   - etapa 60 / NF presente → grava 'autorizada' (só leitura).
+//   - etapa 50 com autorização em curso → segue 'pendente' (aguardando SEFAZ), só reconsulta.
+//   - etapa 50 PRESO de verdade + reprocessar=true → reaciona a emissão (após confirmar não-faturado).
+//   - recusa real do Omie (cCodStatus≠100, ex: cliente bloqueado) → 'erro' com o motivo real.
+//   - rejeitada/denegada/cancelada → 'rejeitada'.
 //
-// body: { codigos_pedido: [string] }  (recomendado: até 4 por chamada)
+// body: { codigos_pedido: [string], reprocessar?: boolean }  (recomendado: até 4 por chamada)
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
@@ -215,6 +217,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const codigos = [...new Set((Array.isArray(body?.codigos_pedido) ? body.codigos_pedido : []).map(String).filter(Boolean))];
+    // reprocessar=true → o operador clicou em "Confirmar/Reprocessar pendentes": além de
+    // reconsultar ao vivo, reaciona a emissão dos que estão PRESOS de verdade na etapa 50.
+    // Sem isso (reconsulta normal / abertura da aba), só lê o status, nunca reemite.
+    const reprocessar = body?.reprocessar === true;
     if (codigos.length === 0) {
       return Response.json({ sucesso: true, processados: 0, autorizados: 0, rejeitados: 0, ainda_pendentes: 0, resultados: [] });
     }
@@ -263,19 +269,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Etapa < 60 / sem NF confirmada → SEFAZ ainda processando.
-      // IMPORTANTE: etapa 50 (faturado na carga, aguardando transmissão da NF) é estado
-      // TRANSITÓRIO logo após emitir. MAS um pedido que fica PRESO em etapa 50 (lote abortado
-      // por rate limit) NUNCA emite sozinho — o Omie não transmite por conta própria. Por isso:
-      //   • etapa 50 recente (log < 10min) → mantém pendente, deixa o Omie transmitir.
-      //   • etapa 50 PRESA (log mais antigo que 10min) → REACIONA a emissão automaticamente
-      //     via emitirNfPedidoOmie (FaturarPedidoVenda). Essa função tem blindagem anti-duplicidade
-      //     (bloqueia se o pedido local já estiver faturado/com NF), então é seguro chamar.
+      // Etapa < 60 / sem NF confirmada → SEFAZ ainda processando, OU pedido preso de verdade.
+      // AÇÃO HUMANA APENAS — nada de reacionamento por schedule. Aqui, com `reprocessar=true`
+      // (botão "Confirmar/Reprocessar pendentes"), distinguimos:
+      //   • etapa 50 com NF saindo (autorização assíncrona em curso) → segue pendente, só reconsulta.
+      //   • etapa 50 PRESO de verdade (faturado=N há mais de 10min) → reaciona a emissão por clique,
+      //     mas SOMENTE após confirmar que NÃO está faturado. emitirNfPedidoOmie tem blindagem
+      //     anti-duplicidade adicional. Recusa real do Omie (cCodStatus≠100) vira erro com motivo real.
+      //   • sem reprocessar → mantém honesto: "aguardando SEFAZ".
       if (real.status_real === 'aguardando') {
         const etapaNum = Number(real.etapa) || 0;
         let msgPend = etapaNum === 50
-          ? 'Faturado na carga — aguardando emissão da NF (etapa 50). Resolve automaticamente quando o Omie transmitir.'
-          : real.mensagem;
+          ? 'Faturado na carga — aguardando autorização da SEFAZ (etapa 50).'
+          : (real.mensagem || 'Aguardando SEFAZ');
+        let novoStatusLog = 'pendente';
 
         // Detecta "preso": o log pendente mais antigo deste pedido tem mais de 10 minutos.
         const PRESO_MS = 10 * 60 * 1000;
@@ -285,42 +292,41 @@ Deno.serve(async (req) => {
         }, Date.now());
         const estaPreso = etapaNum === 50 && (Date.now() - maisAntigo) > PRESO_MS;
 
-        // novoStatusLog: por padrão mantém 'pendente'. Vira 'erro' apenas quando o Omie informa
-        // um impedimento REAL e persistente (ex: cliente bloqueado) — aí mostramos o motivo de verdade.
-        let novoStatusLog = 'pendente';
-        if (estaPreso) {
+        // Só reaciona a emissão quando o operador clicou em REPROCESSAR e o pedido está preso.
+        // NUNCA reemite sem antes confirmar que o pedido não está faturado (já confirmado acima:
+        // real.status_real === 'aguardando' significa etapa < 60, faturado=N no Omie).
+        let reacionado = false;
+        if (reprocessar && estaPreso) {
           try {
             const respEmit = await base44.asServiceRole.functions.invoke('emitirNfPedidoOmie', { codigo_pedido: String(codPed) });
             const re = respEmit?.data || {};
             const cCod = String(re?.cCodStatus || re?.resposta?.cCodStatus || '');
             const cDesc = re?.cDescStatus || re?.resposta?.cDescStatus || '';
+            reacionado = true;
             if (re.numero_nf || /já foi faturado/i.test(re.error || '')) {
-              // Já tinha NF — não está preso de verdade; o próximo refresh corrige para autorizada.
               msgPend = re.error || 'Pedido já faturado — atualizando status.';
             } else if (cCod && cCod !== '100' && cCod !== '0') {
-              // Omie recusou o faturamento com um motivo real (cliente bloqueado, sem cenário, etc).
-              // Isso NÃO se resolve sozinho — mostra o motivo real e marca como erro p/ visibilidade.
+              // Recusa REAL do Omie (cliente bloqueado, sem cenário fiscal, etc.) — não emite sozinho.
               msgPend = `Não emite: ${cDesc || 'recusado pelo Omie'}`;
               novoStatusLog = 'erro';
             } else if (re.sucesso) {
-              msgPend = 'Emissão reacionada automaticamente (estava presa na etapa 50) — aguardando a SEFAZ.';
+              msgPend = 'Emissão reprocessada (estava presa na etapa 50) — aguardando a SEFAZ.';
             } else {
-              msgPend = 'Tentativa de reemissão da etapa 50 não concluiu: ' + (re.error || 'erro Omie') + '. Nova tentativa no próximo ciclo.';
+              msgPend = 'Reprocessamento não concluiu: ' + (re.error || 'erro Omie') + '. Tente novamente.';
             }
           } catch (emitErr) {
-            // Bloqueio/rate limit na reemissão → não é erro do pedido; tenta no próximo ciclo.
-            msgPend = 'Reemissão adiada (Omie ocupado) — nova tentativa no próximo ciclo.';
+            // Bloqueio/rate limit na reemissão → não é erro do pedido; o operador tenta de novo.
+            msgPend = 'Omie ocupado no momento — tente reprocessar novamente em ~1 min.';
           }
         }
 
-        // Atualiza o log com a mensagem real. Mantém 'pendente' (amarelo) salvo impedimento real.
         for (const l of logsDoPedido) {
           await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, {
             status: novoStatusLog,
             mensagem: msgPend
           }).catch(() => {});
         }
-        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: novoStatusLog === 'pendente', etapa: real.etapa, reacionado: estaPreso, mensagem: msgPend });
+        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: novoStatusLog === 'pendente', etapa: real.etapa, reacionado, mensagem: msgPend });
         if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));
         continue;
       }
