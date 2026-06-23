@@ -1,6 +1,38 @@
 // Helpers puros extraídos das functions backend — espelhados aqui para serem testáveis no frontend.
 // IMPORTANTE: se alterar uma função aqui, alterar também na function correspondente.
 
+// === Paginação completa (contorna o truncamento de 5.000 da SDK) ===
+// A SDK Base44 trunca QUALQUER consulta em 5.000 registros, mesmo passando limite maior.
+// Este helper percorre páginas de 500 até esvaziar — use quando a intenção for "todos".
+export async function listarTudo(entity, query = {}, sort = '-created_date', pageSize = 500) {
+  const out = [];
+  let skip = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const page = await entity.filter(query, sort, pageSize, skip);
+    out.push(...page);
+    if (!page || page.length < pageSize) break;
+    skip += pageSize;
+  }
+  return out;
+}
+
+// Itens de PedidoItem APENAS dos pedidos informados — busca por pedido_id em lotes paralelos,
+// cada um paginado por completo. Nunca baixa o banco inteiro de itens.
+export async function listarItensDePedidos(entity, pedidoIds = [], { loteParalelo = 8 } = {}) {
+  const ids = (pedidoIds || []).filter(Boolean);
+  if (ids.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += loteParalelo) {
+    const slice = ids.slice(i, i + loteParalelo);
+    const resultados = await Promise.all(
+      slice.map(pid => listarTudo(entity, { pedido_id: pid }))
+    );
+    resultados.forEach(r => out.push(...r));
+  }
+  return out;
+}
+
 // === enviarClienteOmie ===
 export const estadoParaUF = {
   'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',

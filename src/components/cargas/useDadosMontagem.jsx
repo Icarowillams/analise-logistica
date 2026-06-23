@@ -34,6 +34,21 @@ function setCache(data) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Paginação completa (contorna o truncamento de 5.000 da SDK) usando fetchWithRetry
+// para manter o tratamento de rate-limit/retry já existente neste hook.
+async function listarTudoComRetry(entity, sort = '-created_date', pageSize = 500) {
+  const out = [];
+  let skip = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const page = await fetchWithRetry(() => entity.filter({}, sort, pageSize, skip));
+    out.push(...(page || []));
+    if (!page || page.length < pageSize) break;
+    skip += pageSize;
+  }
+  return out;
+}
+
 async function fetchWithRetry(fn, retries = 3, delay = 1500) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -144,8 +159,8 @@ export default function useDadosMontagem() {
       // ⚠️ Cliente NÃO é mais carregado por inteiro (antes: list 10000 = ~958 reg / 4,4s).
       // Os clientes são buscados DEPOIS, filtrando só pelos cliente_ids referenciados.
       const [espelhoOmie, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
-        fetchWithRetry(() => base44.entities.PedidoLiberadoOmie.list('-created_date', 5000)),
-        fetchWithRetry(() => base44.entities.Pedido.list('-created_date', 5000)),
+        listarTudoComRetry(base44.entities.PedidoLiberadoOmie),
+        listarTudoComRetry(base44.entities.Pedido),
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
         fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Motorista.list('-created_date', 500)),

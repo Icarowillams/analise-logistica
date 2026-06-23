@@ -39,10 +39,8 @@ export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, on
   // If editing, load pedido and jump to form
   const { data: editingPedido } = useQuery({
     queryKey: ['pedido-edit', editingPedidoId],
-    queryFn: async () => {
-      const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
-      return allPedidos.find(p => p.id === editingPedidoId);
-    },
+    // Busca o pedido DIRETO por id (sem baixar o banco inteiro de pedidos).
+    queryFn: () => base44.entities.Pedido.get(editingPedidoId),
     enabled: !!editingPedidoId
   });
 

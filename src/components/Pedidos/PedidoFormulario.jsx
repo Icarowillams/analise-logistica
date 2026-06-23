@@ -213,11 +213,8 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Load existing pedido if editing
   const { data: existingPedido } = useQuery({
     queryKey: ['pedido-detail', editingPedidoId],
-    queryFn: async () => {
-      if (!editingPedidoId) return null;
-      const p = await base44.entities.Pedido.list('-created_date', 5000);
-      return p.find(x => x.id === editingPedidoId);
-    },
+    // Busca o pedido DIRETO por id (sem baixar o banco inteiro de pedidos).
+    queryFn: () => editingPedidoId ? base44.entities.Pedido.get(editingPedidoId) : null,
     enabled: !!editingPedidoId
   });
 

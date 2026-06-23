@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { listarTudo } from '@/lib/omieHelpers';
 import { ClipboardList } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import GerenciarPedidos from '@/components/Pedidos/GerenciarPedidos.jsx';
@@ -18,7 +19,7 @@ export default function GerenciarPedidosPage() {
 
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes-gerenciar-page'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000)
+    queryFn: () => listarTudo(base44.entities.Cliente)
   });
 
   useEffect(() => {
@@ -43,9 +44,8 @@ export default function GerenciarPedidosPage() {
 
   const handleEditPedido = async (pedidoId) => {
     setEditingPedidoId(pedidoId);
-    // Buscar o vendedor do pedido para poder abrir o formulário
-    const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
-    const pedido = allPedidos.find(p => p.id === pedidoId);
+    // Buscar o pedido DIRETO por id (sem baixar o banco inteiro de pedidos).
+    const pedido = await base44.entities.Pedido.get(pedidoId).catch(() => null);
     if (pedido) {
       const cliente = clientes.find(c => c.id === pedido.cliente_id);
       const vend = vendedores.find(v => v.id === cliente?.vendedor_id) || vendedores.find(v => v.id === pedido.vendedor_id);

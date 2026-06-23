@@ -31,6 +31,7 @@ import BatchResultToast from './BatchResultToast';
 import BuscarClienteModal from './BuscarClienteModal';
 import LiberarPedidosModal from './LiberarPedidosModal';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { listarTudo } from '@/lib/omieHelpers';
 import { Switch } from '@/components/ui/switch';
 import useAutoRefreshPedidos from './useAutoRefreshPedidos.jsx';
 
@@ -226,8 +227,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryKey: ['pedidos-gerenciar'],
     queryFn: async () => {
       // Carrega por status (filtro de status no servidor FUNCIONA), ordenado por -created_date.
+      // Paginação completa por status — não confia no limite único de 5.000 (Pedido vai crescer).
       const listas = await Promise.all(
-        STATUS_ATIVOS.map(s => base44.entities.Pedido.filter({ status: s }, '-created_date', 5000))
+        STATUS_ATIVOS.map(s => listarTudo(base44.entities.Pedido, { status: s }))
       );
       return listas.flat();
     },
@@ -240,7 +242,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
     queryKey: ['pedidos-gerenciar-encerrados', statusExtras.join('|')],
     queryFn: async () => {
       const listas = await Promise.all(
-        statusExtras.map(statusEnc => base44.entities.Pedido.filter({ status: statusEnc }, '-created_date', 5000))
+        statusExtras.map(statusEnc => listarTudo(base44.entities.Pedido, { status: statusEnc }))
       );
       return listas.flat();
     },
@@ -251,7 +253,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Faturados da visão padrão (sem filtro de status): carrega os mais recentes por -created_date.
   const { data: pedidosFaturadosRecentes = [] } = useQuery({
     queryKey: ['pedidos-gerenciar-faturados-recentes'],
-    queryFn: () => base44.entities.Pedido.filter({ status: 'faturado' }, '-created_date', 5000),
+    queryFn: () => listarTudo(base44.entities.Pedido, { status: 'faturado' }),
     staleTime: 30000,
   });
 
@@ -282,7 +284,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // e fazia a query de faturados voltar vazia. Agora é 1 request, independente do volume.
   const { data: clientesDosPedidos = [] } = useQuery({
     queryKey: ['clientes-dos-pedidos-gerenciar'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 5000),
+    queryFn: () => listarTudo(base44.entities.Cliente),
     staleTime: 300000,
     refetchOnWindowFocus: false,
   });
@@ -351,19 +353,19 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: pedidoItems = [] } = useQuery({
     queryKey: ['pedidoItems-gerenciar-filtro', produtoIds.join('|'), produtoSearch.trim()],
     queryFn: async () => {
-      // Por seleção de produto: filtra no SERVIDOR por produto_id (lotes).
+      // Por seleção de produto: filtra no SERVIDOR por produto_id (paginação completa por produto).
       if (produtoIds.length > 0) {
         const itens = [];
         for (const pid of produtoIds) {
-          const lista = await base44.entities.PedidoItem.filter({ produto_id: pid }, '-created_date', 20000);
+          const lista = await listarTudo(base44.entities.PedidoItem, { produto_id: pid });
           itens.push(...lista);
         }
         return itens;
       }
       // Por texto: não há índice de texto no servidor, então carrega itens e filtra no cliente.
-      // Só ocorre quando o usuário digita um produto — não no load inicial.
+      // Só ocorre quando o usuário digita um produto — não no load inicial. Paginado para não truncar.
       if (produtoSearch.trim()) {
-        return base44.entities.PedidoItem.list('-created_date', 20000);
+        return listarTudo(base44.entities.PedidoItem);
       }
       return [];
     },

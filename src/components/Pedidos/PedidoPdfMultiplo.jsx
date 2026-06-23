@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Download, ArrowLeft, Loader2 } from 'lucide-react';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { listarItensDePedidos } from '@/lib/omieHelpers';
 
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6926e3c1dcadc4e314506362/7c2bd1831_8297750cb_cropped-cropped-logo.png";
 
@@ -208,14 +209,25 @@ export default function PedidoPdfMultiplo({ pedidoIds, onVoltar }) {
   });
 
   const { data: pedidos = [], isLoading: loadingPedidos } = useQuery({
-    queryKey: ['pedido-pdf-multiplo-pedidos', pedidoIds.join(',')],
-    queryFn: () => base44.entities.Pedido.list('-created_date', 5000),
+    queryKey: ['pedido-pdf-multiplo-pedidos', [...pedidoIds].sort().join(',')],
+    // Busca SÓ os pedidos a imprimir, por id (lotes) — nunca o banco inteiro.
+    queryFn: async () => {
+      const out = [];
+      const LOTE = 50;
+      for (let i = 0; i < pedidoIds.length; i += LOTE) {
+        const slice = pedidoIds.slice(i, i + LOTE);
+        const resultados = await Promise.all(slice.map(id => base44.entities.Pedido.filter({ id })));
+        resultados.forEach(r => out.push(...r));
+      }
+      return out;
+    },
     enabled: pedidoIds.length > 0,
   });
 
   const { data: allItems = [], isLoading: loadingItems } = useQuery({
-    queryKey: ['pedido-pdf-multiplo-items'],
-    queryFn: () => base44.entities.PedidoItem.list('-created_date', 10000),
+    queryKey: ['pedido-pdf-multiplo-items', [...pedidoIds].sort().join(',')],
+    // Itens SÓ dos pedidos selecionados, por pedido_id paginado (contorna o truncamento de 5.000).
+    queryFn: () => listarItensDePedidos(base44.entities.PedidoItem, pedidoIds),
     enabled: pedidoIds.length > 0,
   });
 

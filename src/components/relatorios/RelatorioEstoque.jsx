@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { listarTudo } from '@/lib/omieHelpers';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import FiltrosBase from '@/components/analises/FiltrosBase';
 import KpiCard from '@/components/analises/KpiCard';
@@ -11,8 +12,8 @@ export default function RelatorioEstoque() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '' });
   const { data: vendedores = [] } = useQuery({ queryKey: ['vendedores'], queryFn: () => base44.entities.Vendedor.list() });
   const { data: cargas = [] } = useQuery({ queryKey: ['cargas'], queryFn: () => base44.entities.Carga.list('-data_carga', 2000) });
-  const { data: pedidos = [] } = useQuery({ queryKey: ['pedidos'], queryFn: () => base44.entities.Pedido.list('-created_date', 5000) });
-  const { data: trocas = [] } = useQuery({ queryKey: ['pedidosTroca'], queryFn: () => base44.entities.PedidoTroca.list('-data_troca', 5000) });
+  const { data: pedidos = [] } = useQuery({ queryKey: ['pedidos'], queryFn: () => listarTudo(base44.entities.Pedido) });
+  const { data: trocas = [] } = useQuery({ queryKey: ['pedidosTroca'], queryFn: () => listarTudo(base44.entities.PedidoTroca, {}, '-data_troca') });
 
   const linhas = useMemo(() => {
     const cargasFiltradas = cargas.filter(c => {

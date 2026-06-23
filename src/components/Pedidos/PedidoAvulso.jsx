@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { listarTudo } from '@/lib/omieHelpers';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -21,10 +22,8 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   // If editing, load pedido and jump to form
   const { data: editingPedido } = useQuery({
     queryKey: ['pedido-edit-avulso', editingPedidoId],
-    queryFn: async () => {
-      const allPedidos = await base44.entities.Pedido.list('-created_date', 5000);
-      return allPedidos.find(p => p.id === editingPedidoId);
-    },
+    // Busca o pedido DIRETO por id (sem baixar o banco inteiro de pedidos).
+    queryFn: () => base44.entities.Pedido.get(editingPedidoId),
     enabled: !!editingPedidoId
   });
 
@@ -44,7 +43,7 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   // Sem filtro por vendedor: todo cliente ativo aparece para qualquer vendedor.
   const { data: todosClientes = [] } = useQuery({
     queryKey: ['avulso-todos-clientes'],
-    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 5000),
+    queryFn: () => listarTudo(base44.entities.Cliente, { status: 'ativo' }, 'razao_social'),
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
