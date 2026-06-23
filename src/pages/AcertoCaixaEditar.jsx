@@ -61,10 +61,12 @@ export default function AcertoCaixaEditar() {
     }
   }, [acerto]);
 
-  // Sincronização inicial bloqueante
+  // Sincronização inicial em SEGUNDO PLANO — não bloqueia a tela.
+  // A tela já abre com as notas salvas; a sync (cruzamento local rápido) atualiza quando volta.
   useEffect(() => {
     const run = async () => {
       if (!acerto || sincInicialFeita || acerto.status_acerto === 'finalizado') return;
+      setSincInicialFeita(true);
       setSincronizando(true);
       try {
         const { data } = await base44.functions.invoke('sincronizarAcertoOmie', { acerto_id: acertoId });
@@ -75,7 +77,6 @@ export default function AcertoCaixaEditar() {
         }
       } catch (_) {}
       setSincronizando(false);
-      setSincInicialFeita(true);
     };
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -300,22 +301,13 @@ export default function AcertoCaixaEditar() {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      {sincronizando && !sincInicialFeita && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 flex items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-            <span className="font-medium">Sincronizando com Omie...</span>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate('/AcertoCaixa')}><ArrowLeft className="w-5 h-5" /></Button>
           <Wallet className="w-7 h-7 text-emerald-500" />
           <div>
             <h1 className="text-xl font-bold">Acerto — Carga {acerto.numero_carga}</h1>
-            <p className="text-xs text-slate-500">{acerto.motorista_nome} • Saída {acerto.data_saida_carga} {salvando && <span className="ml-2 text-amber-600">salvando...</span>}</p>
+            <p className="text-xs text-slate-500">{acerto.motorista_nome} • Saída {acerto.data_saida_carga} {salvando && <span className="ml-2 text-amber-600">salvando...</span>} {sincronizando && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600"><Loader2 className="w-3 h-3 animate-spin" />sincronizando Omie...</span>}</p>
           </div>
         </div>
         <div className="flex gap-2">

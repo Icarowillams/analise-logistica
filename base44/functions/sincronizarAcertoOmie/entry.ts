@@ -1,59 +1,18 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// Sincroniza notas do AcertoCaixa com o status atual no Omie.
-// Para cada nota, chama ConsultarPedido. Se etapa indicar cancelamento ou
-// pedido em etapa de "não entregue", marca como nao_entregue com valor_recebido = 0.
-// Também troca a etapa no Omie para "não entregue" quando apropriado.
+// Sincroniza notas do AcertoCaixa detectando NFs canceladas — via CRUZAMENTO LOCAL (rápido).
+// O webhook já mantém o Pedido local atualizado: NF cancelada após faturamento deixa
+// Pedido.status = 'cancelado_pos_faturamento'. Em vez de consultar o Omie nota por nota
+// (lento, 1,2s cada + rate limit), cruzamos as notas com os Pedidos locais em lote.
 
-async function getOmieCredentials(base44: any) {
-  try {
-    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-    if (rows.length > 0) return { appKey: rows[0].app_key, appSecret: rows[0].app_secret };
-  } catch (_) { /* ignore */ }
-  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
-}
-
-async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
-  if (rows.length > 0 && rows[0].bloqueado) {
-    const ate = new Date(rows[0].bloqueado_ate || 0);
-    if (ate > new Date()) throw new Error(`Circuit breaker ativo até ${ate.toISOString()}`);
-  }
-}
-
-async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
-  await checkCircuitBreaker(base44);
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
-  const call = options.call || endpoint;
-  const url = `https://app.omie.com.br/api/v1/${endpoint}`;
-  const body = JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] });
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`Omie ${call} HTTP ${resp.status}: ${text}`);
-  }
-  return resp.json();
-}
-
-async function consultarPedidoComRetry(base44: any, codigoPedido: number, tentativa = 1): Promise<any> {
-  try {
-    return await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
-  } catch (e) {
-    const msg = (e.message || '').toLowerCase();
-    const transient = msg.includes('429') || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite');
-    if (transient && tentativa < 4) {
-      await new Promise(r => setTimeout(r, 3000 * tentativa));
-      return consultarPedidoComRetry(base44, codigoPedido, tentativa + 1);
-    }
-    throw e;
-  }
+function isPedidoCancelado(ped: any): boolean {
+  if (!ped) return false;
+  const status = String(ped.status || '').toLowerCase();
+  const statusNf = String(ped.status_nota_fiscal || '').toLowerCase();
+  return status === 'cancelado_pos_faturamento' ||
+         status === 'cancelado' ||
+         statusNf === 'cancelada' ||
+         ped.cancelado_no_omie === true;
 }
 
 Deno.serve(async (req) => {
@@ -69,54 +28,44 @@ Deno.serve(async (req) => {
     if (!acerto) return Response.json({ error: 'Acerto não encontrado' }, { status: 404 });
 
     const notas = acerto.notas || [];
-    let alteradas = 0;
-    const etapasTrocadas = [];
 
+    // Códigos de pedido das notas (cruzam com Pedido.omie_codigo_pedido)
+    const codigos = [...new Set(
+      notas.map((n: any) => String(n.codigo_pedido || '').trim()).filter(Boolean)
+    )];
+
+    // Buscar Pedidos locais em lote (sem delay, sem Omie). Paginação por blocos de 'in'.
+    const pedidosMap = new Map<string, any>();
+    const LOTE = 100;
+    for (let i = 0; i < codigos.length; i += LOTE) {
+      const bloco = codigos.slice(i, i + LOTE);
+      const pedidos = await base44.asServiceRole.entities.Pedido
+        .filter({ omie_codigo_pedido: { $in: bloco } })
+        .catch(() => []);
+      for (const p of (pedidos || [])) {
+        if (p.omie_codigo_pedido) pedidosMap.set(String(p.omie_codigo_pedido), p);
+      }
+    }
+
+    let alteradas = 0;
     for (const nota of notas) {
       if (!nota.codigo_pedido) continue;
-      // Pula notas já marcadas como não entregue pelo Omie
+      // Pula notas já marcadas como canceladas no Omie
       if (nota.status_entrega === 'nao_entregue' && (nota.motivo_cancelamento || '').toLowerCase().includes('cancelada no omie')) continue;
 
-      let data: any;
-      try {
-        data = await consultarPedidoComRetry(base44, nota.codigo_pedido);
-      } catch (e) {
-        const msg = (e.message || '').toLowerCase();
-        // Pedido não encontrado/cancelado = tratar como cancelado
-        if (msg.includes('cancelad') || msg.includes('exclu') || msg.includes('não encontrad') || msg.includes('nao encontrad')) {
-          nota.status_entrega = 'nao_entregue';
-          nota.valor_recebido = 0;
-          nota.diferenca = -Number(nota.valor_original || 0);
-          nota.motivo_cancelamento = 'Cancelada no Omie';
-          alteradas++;
-          continue;
-        }
-        console.warn(`[sincronizarAcertoOmie] Erro ao consultar pedido ${nota.codigo_pedido}: ${e.message}`);
-        continue;
-      }
-
-      const fs = (data?.faultstring || '').toLowerCase();
-      const ped = data?.pedido_venda_produto || {};
-      const etapa = ped?.cabecalho?.etapa || '';
-      const numeroNfRet = ped?.informacoes_adicionais?.numero_pedido_cliente || '';
-      const isCancelado = fs.includes('cancelad') || fs.includes('excluíd') || fs.includes('excluid') || etapa === '99' || etapa === '80' || etapa === 'cancelado';
-
-      if (isCancelado) {
+      const ped = pedidosMap.get(String(nota.codigo_pedido).trim());
+      if (isPedidoCancelado(ped)) {
         nota.status_entrega = 'nao_entregue';
         nota.valor_recebido = 0;
         nota.diferenca = -Number(nota.valor_original || 0);
         nota.motivo_cancelamento = 'Cancelada no Omie';
-        if (!nota.numero_nfe && numeroNfRet) nota.numero_nfe = String(numeroNfRet);
         alteradas++;
       }
-
-      // Delay entre consultas para não estourar rate limit
-      await new Promise(r => setTimeout(r, 1200));
     }
 
     // Recalcula totais
-    const valor_total_recebido = notas.reduce((s, n) => s + Number(n.valor_recebido || 0), 0);
-    const valor_total_diferenca = notas.reduce((s, n) => s + Number(n.diferenca || 0), 0);
+    const valor_total_recebido = notas.reduce((s: number, n: any) => s + Number(n.valor_recebido || 0), 0);
+    const valor_total_diferenca = notas.reduce((s: number, n: any) => s + Number(n.diferenca || 0), 0);
 
     const updates: any = {
       notas,
@@ -138,7 +87,7 @@ Deno.serve(async (req) => {
 
     await base44.asServiceRole.entities.AcertoCaixa.update(acerto_id, updates);
 
-    return Response.json({ sucesso: true, alteradas, total: notas.length, autoFinalizado, etapasTrocadas: etapasTrocadas.length });
+    return Response.json({ sucesso: true, alteradas, total: notas.length, autoFinalizado });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
