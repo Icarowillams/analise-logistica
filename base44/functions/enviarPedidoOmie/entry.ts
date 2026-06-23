@@ -502,6 +502,12 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     if (!pedido.data_previsao_entrega) {
         return { sucesso: false, erro: 'Data de Previsão de Entrega é obrigatória', pedido_id };
     }
+    // 🛡️ BLINDAGEM D1/TROCA — simétrica ao processarFilaEnvioPedidoOmie.
+    // Troca e D1 são INTERNOS: NUNCA vão ao Omie e NUNCA recebem omie_codigo_pedido.
+    if (pedido.tipo === 'troca') {
+        debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: tipo === 'troca'`, { pedido_id, motivo: 'troca' });
+        return { sucesso: true, pedido_id, codigo_pedido_omie: null, mensagem: 'Troca não gera venda no Omie' };
+    }
     if (pedido.modelo_nota === 'd1') {
         debugLog(base44, `[enviarPedidoOmie] Pedido tratado como interno — abortando envio ao Omie. Motivo: modelo_nota === 'd1'`, { pedido_id, motivo: 'd1' });
         return { sucesso: false, erro: 'Pedido modelo D1 não é enviado ao Omie (venda interna)', pedido_id };
@@ -639,6 +645,17 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
     const codigoOmie = resultado.codigo_pedido || resultado.codigo_pedido_omie || null;
     const numeroPedidoOmie = resultado.numero_pedido || resultado.numero_pedido_omie || null;
 
+    // 🛡️ GUARDA ANTI-CRUZAMENTO: confere que o pedido devolvido pelo Omie pertence a ESTE pedido local.
+    // Se o resultado veio de uma consulta (REDUNDANT/timeout) e o codigo_pedido_integracao não bate
+    // com pedido.id, NÃO grava — evita herdar a venda de outro cliente por colisão de código.
+    const integracaoRetorno = resultado.codigo_pedido_integracao ?? resultado.cabecalho?.codigo_pedido_integracao ?? null;
+    if (integracaoRetorno && String(integracaoRetorno) !== String(pedido.id)) {
+        const msgCruz = `Anti-cruzamento: codigo_pedido_integracao retornado (${integracaoRetorno}) ≠ pedido.id (${pedido.id}). Código Omie ${codigoOmie} NÃO gravado.`;
+        debugLog(base44, `[enviarPedidoOmie] ${msgCruz}`, { pedido_id, erro: msgCruz });
+        await base44.asServiceRole.entities.Pedido.update(pedido_id, { omie_erro: msgCruz, omie_enviado: false }).catch(() => {});
+        return { sucesso: false, erro: msgCruz, pedido_id, duracao_ms: Date.now() - t0 };
+    }
+
     const updateData = {
         omie_codigo_pedido: codigoOmie != null ? String(codigoOmie) : null,
         omie_enviado: true,
@@ -688,9 +705,27 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
                 sincronizado_em: new Date().toISOString(),
                 origem_sync: 'webhook'
             };
-            const existente = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigoOmie) }, '-created_date', 1).catch(() => []);
-            if (existente?.[0]) {
-                await base44.asServiceRole.entities.PedidoLiberadoOmie.update(existente[0].id, registroEspelho);
+            // 🛡️ UPSERT IDEMPOTENTE por codigo_pedido — NUNCA INSERT cego.
+            // Busca TODOS os registros (não só 1). Atualiza o principal, deleta duplicatas.
+            // Preserva produtos: este registro pós-envio vem com produtos vazio (etapa 20, antes do
+            // ConsultarPedido). Se já existe um espelho COM produtos, não os zera.
+            const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie
+                .filter({ codigo_pedido: String(codigoOmie) }, '-sincronizado_em', 50).catch(() => []);
+            if (existentes.length) {
+                // Mantém o que TEM produtos (preferência), depois o mais recente.
+                const peso = (r) => ((r.produtos || []).length > 0 ? 1e15 : 0) + new Date(r.sincronizado_em || 0).getTime();
+                existentes.sort((a, b) => peso(b) - peso(a));
+                const principal = existentes[0];
+                const dadosUpsert = { ...registroEspelho };
+                // Se a nova lista de produtos vier vazia e o registro já tinha produtos, preserva.
+                if ((!registroEspelho.produtos || registroEspelho.produtos.length === 0) && (principal.produtos || []).length > 0) {
+                    delete dadosUpsert.produtos;
+                    if (!registroEspelho.quantidade_itens) delete dadosUpsert.quantidade_itens;
+                }
+                await base44.asServiceRole.entities.PedidoLiberadoOmie.update(principal.id, dadosUpsert).catch(() => {});
+                for (const dup of existentes.slice(1)) {
+                    await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(dup.id).catch(() => {});
+                }
             } else {
                 await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registroEspelho);
             }

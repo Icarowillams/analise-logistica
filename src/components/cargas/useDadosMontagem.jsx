@@ -158,7 +158,7 @@ export default function useDadosMontagem() {
       // OTIMIZAÇÃO: pedidos/espelho/trocas/listas pequenas em PARALELO.
       // ⚠️ Cliente NÃO é mais carregado por inteiro (antes: list 10000 = ~958 reg / 4,4s).
       // Os clientes são buscados DEPOIS, filtrando só pelos cliente_ids referenciados.
-      const [espelhoOmie, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
+      const [espelhoOmieBruto, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
         listarTudoComRetry(base44.entities.PedidoLiberadoOmie),
         listarTudoComRetry(base44.entities.Pedido),
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
@@ -167,6 +167,22 @@ export default function useDadosMontagem() {
         fetchWithRetry(() => base44.entities.Veiculo.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Carga.list('-created_date', 1000))
       ]);
+
+      // 🛡️ DEDUPE DEFENSIVO DO ESPELHO (BUG espelho duplicado/vazio):
+      // Podem coexistir 2+ registros PedidoLiberadoOmie para o MESMO codigo_pedido — um COM
+      // produtos e um VAZIO (origem antiga de INSERT-cego). A Montagem calcula pacotes pelo
+      // produtos[]; se pegar o vazio, mostra "0 pacotes" indevidamente. Aqui mantemos, por
+      // codigo_pedido, o registro com produtos preenchido (e mais recente como desempate).
+      const espelhoDedupMap = new Map();
+      (espelhoOmieBruto || []).forEach(e => {
+        const k = String(e?.codigo_pedido || '');
+        if (!k) return;
+        const atual = espelhoDedupMap.get(k);
+        if (!atual) { espelhoDedupMap.set(k, e); return; }
+        const peso = (r) => ((r.produtos || []).length > 0 ? 1e15 : 0) + new Date(r.sincronizado_em || 0).getTime();
+        if (peso(e) > peso(atual)) espelhoDedupMap.set(k, e);
+      });
+      const espelhoOmie = Array.from(espelhoDedupMap.values());
 
       // Cliente_ids efetivamente referenciados (espelho + pedidos locais + trocas)
       const clienteIdsRef = new Set();
