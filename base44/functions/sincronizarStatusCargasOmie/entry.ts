@@ -470,20 +470,45 @@ Deno.serve(async (req) => {
           } catch { /* não bloqueia */ }
         }
 
-        // ═══ FURO 3 (destino 3) — LogEmissaoNF idempotente ═══
-        // A impressão (NotasNF55Tab) cruza por LogEmissaoNF; o webhook que faltou nunca criou esse log.
-        // Criamos AQUI por reconciliação de leitura, só se ainda não existir (não duplica o que o Paulo
-        // já criou na mão). NF zero-padded 8 dígitos. NÃO inclui numero_carga (causa 422).
+        // ═══ FURO 3 (destino 3) — LogEmissaoNF UPSERT por codigo_pedido (um pedido = um log vivo) ═══
+        // A impressão (NotasNF55Tab) cruza por LogEmissaoNF. Aqui reconciliamos por LEITURA pura.
+        // Regra anti-duplicidade (busca TODOS os logs do pedido antes de escrever):
+        //   (1) já tem autorizada COM numero_nf → não faz nada;
+        //   (2) tem autorizada SEM nf e o número apareceu → atualiza o existente;
+        //   (3) tem pendente/erro e a NF saiu → atualiza pra autorizada;
+        //   (4) não existe nenhum log → cria.
+        // NUNCA marca autorizada sem numero_nf (etapa 60 com ListaNfe vazia → mantém pendente).
         for (const p of pedidosAtualizados) {
           if (!p.codigo_pedido) continue;
           const etapa60 = String(p.etapa || '') === '60';
           const nf = String(p.numero_nf || '').trim();
-          const autorizada = p.status_nf === 'autorizada' || (etapa60 && nf && !['rejeitada', 'denegada', 'cancelada'].includes(p.status_nf));
-          if (!etapa60 || !nf || !autorizada) continue;
+          // Só consideramos AUTORIZADA com número de NF real — etapa 60 sem nf NÃO autoriza.
+          const autorizada = etapa60 && nf && !['rejeitada', 'denegada', 'cancelada'].includes(p.status_nf);
+          if (!autorizada) continue; // sem número de NF não há o que reconciliar como autorizada
           try {
-            const jaExiste = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(p.codigo_pedido) }, '-created_date', 1).catch(() => []);
-            if (jaExiste?.[0]) continue; // idempotente — não duplica
             const nfPad = nf.replace(/\D/g, '').padStart(8, '0');
+            const logsPedido = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(p.codigo_pedido) }, '-created_date', 50).catch(() => []);
+
+            // (1) Já existe um log autorizada COM numero_nf → nada a fazer.
+            const autorizadaComNf = (logsPedido || []).find(l => l.status === 'autorizada' && String(l.numero_nf || '').trim());
+            if (autorizadaComNf) continue;
+
+            // (2)/(3) Reaproveita um log existente sem número (autorizada-sem-nf, pendente ou erro) → atualiza para autorizada com a NF.
+            const logParaAtualizar = (logsPedido || []).find(l =>
+              ['autorizada', 'pendente', 'erro'].includes(l.status) && !String(l.numero_nf || '').trim()
+            );
+            if (logParaAtualizar) {
+              await base44.asServiceRole.entities.LogEmissaoNF.update(logParaAtualizar.id, {
+                numero_nf: nfPad,
+                chave_nfe: p.chave_nfe || logParaAtualizar.chave_nfe || '',
+                status: 'autorizada',
+                nid_nf: p.nid_nf || logParaAtualizar.nid_nf || '',
+                mensagem: 'Reconciliação por leitura — número da NF capturado'
+              }).catch(() => {});
+              continue;
+            }
+
+            // (4) Nenhum log existente → cria um novo.
             await base44.asServiceRole.entities.LogEmissaoNF.create({
               codigo_pedido: String(p.codigo_pedido),
               numero_pedido: String(p.numero_pedido || ''),
