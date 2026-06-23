@@ -40,6 +40,66 @@ async function checkCircuitBreaker(base44: any) {
 // ID fixo do único registro de circuit breaker — NUNCA criar novos
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
+// ── Slot ATÔMICO de faturamento (chave separada por método) ──
+// Causa raiz do "consumo redundante / REDUNDANT / Client-6": o Omie trava 2 FaturarPedidoVenda/
+// EmitirNF muito próximos. O throttle global de 1,5s das consultas é pouco para faturar. Aqui
+// reservamos um slot futuro persistente, com intervalo de 5s SÓ para os métodos de faturamento,
+// usando o mesmo mecanismo de reserva de slot do rate_limit_global, mas em chave separada — assim
+// não desacelera as demais chamadas (que seguem 1,5s).
+const FAT_SLOT_KEY = 'rate_limit_faturamento';
+const FAT_SLOT_INTERVAL_MS = 5000;   // 5s entre faturamentos
+const FAT_SLOT_LOCK_MS = 8000;       // validade do mutex curto (auto-release)
+const FAT_SLOT_WAIT_CAP_MS = 60000;  // teto de espera por slot
+const FAT_METHODS = new Set(['FaturarPedidoVenda', 'EmitirNFS', 'EmitirNF']);
+
+async function getFatSlotRow(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: FAT_SLOT_KEY }, 'created_date', 50).catch(() => []);
+  if (!rows?.[0]?.id) {
+    const created = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: FAT_SLOT_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return created?.id ? created : null;
+  }
+  for (const extra of rows.slice(1)) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+  }
+  return rows[0];
+}
+
+// Reserva atômica de slot de faturamento, espaçando FaturarPedidoVenda/EmitirNF em 5s entre si
+// — mesmo entre processos paralelos (lote + faturamento manual).
+async function reservarSlotFaturamento(base44) {
+  try {
+    const row = await getFatSlotRow(base44);
+    if (!row?.id) return;
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let gotLock = false;
+    for (let i = 0; i < 12; i++) {
+      const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+      const cur = fresh?.[0];
+      const lockedUntil = cur?.worker_lock_ate ? new Date(cur.worker_lock_ate).getTime() : 0;
+      if (!lockedUntil || lockedUntil <= Date.now()) {
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+          worker_lock_ate: new Date(Date.now() + FAT_SLOT_LOCK_MS).toISOString(),
+          ultimo_erro: lockId
+        }).catch(() => null);
+        const confirm = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+        if (confirm?.[0]?.ultimo_erro === lockId) { gotLock = true; break; }
+      }
+      await sleep(250 + Math.floor(Math.random() * 250));
+    }
+    const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+    const cur = fresh?.[0] || row;
+    const proximoSlot = cur?.atualizado_em ? new Date(cur.atualizado_em).getTime() : 0;
+    const now = Date.now();
+    const meuSlot = Math.max(now, proximoSlot);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+      atualizado_em: new Date(meuSlot + FAT_SLOT_INTERVAL_MS).toISOString(),
+      ...(gotLock ? { worker_lock_ate: null } : {})
+    }).catch(() => null);
+    const espera = Math.min(meuSlot - now, FAT_SLOT_WAIT_CAP_MS);
+    if (espera > 0) await sleep(espera);
+  } catch { /* nunca bloqueia a chamada */ }
+}
+
 function extrairSegundosBloqueio(msg) {
   const match = String(msg).match(/(\d+)\s*segundo/i);
   if (match) return Math.min(Number(match[1]), 1800);
@@ -54,6 +114,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  // FATURAMENTO: espaça FaturarPedidoVenda/EmitirNF em 5s entre si (slot atômico persistente,
+  // chave separada). É a defesa na ORIGEM contra o "consumo redundante" — Omie trava 2 muito próximos.
+  if (FAT_METHODS.has(call)) await reservarSlotFaturamento(base44);
   // SEM retries automáticos para emissão de NF — cada retry consome cota.
   // Se falhar por rate limit, o circuit breaker protege o restante do lote.
   try {
@@ -87,8 +150,26 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         err.bloqueio = true;
         throw err;
       }
+      // CONSUMO REDUNDANTE (REDUNDANT / Client-6): o slot de 5s já previne na origem. Se mesmo
+      // assim vier, faz RETRY SILENCIOSO com backoff maior — reserva novo slot e refaz a chamada,
+      // sem propagar o texto cru. Até 3 tentativas; depois propaga como transitório (vira "pendente").
+      if (msg.includes('redundante') || String(data.faultcode || '').toLowerCase().includes('client-6')) {
+        const tentativaRed = (options._tentativaRedundante || 0) + 1;
+        if (tentativaRed <= 3 && FAT_METHODS.has(call)) {
+          const segs = Number(String(data.faultstring).match(/(\d+)\s*segundo/i)?.[1] || 0);
+          const backoff = Math.max(segs * 1000, 6000 * tentativaRed); // 6s, 12s, 18s (ou o tempo do Omie)
+          await sleep(backoff);
+          return await omieCall(base44, endpoint, param, { ...options, _tentativaRedundante: tentativaRed });
+        }
+        const err = new Error(data.faultstring);
+        err.faultstring = data.faultstring;
+        err.faultcode = data.faultcode || '';
+        err.omiePayload = data;
+        err.rateLimit = true; // transitório → "Aguardando emissão no Omie", nunca erro
+        throw err;
+      }
       // Rate limit suave (429/cota/aguarde) — NÃO faz retry, apenas propaga erro com flag
-      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite')) {
+      if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite')) {
         const err = new Error(data.faultstring);
         err.faultstring = data.faultstring;
         err.faultcode = data.faultcode || '';
@@ -442,9 +523,9 @@ Deno.serve(async (req) => {
         let real = await consultarStatusPedido(base44, codigoPedido);
 
         if (real?.erro) {
-          // Falha de consulta (não é rate limit): mantém pendente honesto.
+          // Falha de consulta (não é rate limit): mantém pendente honesto, mensagem limpa.
           statusFinalPedido = 'pendente';
-          mensagemPedido = `Não foi possível confirmar no Omie: ${real.erro}`;
+          mensagemPedido = 'Aguardando emissão no Omie — será confirmado automaticamente.';
         } else if (real.status_real === 'emitida') {
           // Já estava emitida (etapa 60 / faturada=S) — anti-dup: só grava autorizada.
           statusFinalPedido = 'autorizada';
@@ -493,8 +574,9 @@ Deno.serve(async (req) => {
         transitorioPedido = isTransitorio(error);
         // Transitório (rate limit/425/timeout) → pendente reprocessável; erro de dado → erro real.
         statusFinalPedido = transitorioPedido ? 'pendente' : 'erro';
+        // Transitório → mensagem LIMPA para o operador (sem "redundante/REDUNDANT/Client-6/ocupado").
         mensagemPedido = transitorioPedido
-          ? `Omie ocupado no momento — emissão não confirmada, será retomada. ${error.message || ''}`.trim()
+          ? 'Aguardando emissão no Omie — será confirmado automaticamente.'
           : (error.faultstring || `Erro: ${error.message || 'falha na emissão'}`);
       }
 
