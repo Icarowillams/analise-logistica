@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select';
-import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Wand2, Search } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
@@ -19,20 +19,13 @@ import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
  * Log de Emissão de NF-e — histórico persistente de TODAS as tentativas
  * de emissão feitas via Omie (autorizadas, rejeitadas, pendentes e erros).
  *
- * Status resolvido 100% POR AÇÃO HUMANA — ZERO AUTOMAÇÃO. Nada é reconsultado ao abrir a aba.
- * O operador clica em "Atualizar pendentes" (só lê o status no Omie) ou em
- * "Confirmar/Reprocessar pendentes" (lê ao vivo e, nos presos de verdade na etapa 50,
- * reaciona a emissão após confirmar que não está faturado). Em lotes pequenos e sequenciais,
- * com backoff/circuit breaker, atualizando a UI conforme cada lote chega.
+ * APENAS LEITURA. Cada NF é emitida E CONFIRMADA no próprio lote de emissão (StatusPedido
+ * após FaturarPedidoVenda), de forma lenta e sequencial. Esta aba só exibe o resultado real:
+ * autorizada (NF emitida), pendente (etapa 50 — aguardando SEFAZ) ou erro (motivo real).
+ * Sem botão de reprocessar e sem automação.
  */
 
-// Teto de pedidos reconsultados por abertura/clique (evita varrer tudo).
-const TETO_RECONSULTA = 24;
-// Lote por chamada à função backend = 1 → consultas estritamente sequenciais, sem rajada.
-// O backend serializa internamente com ~9s entre consultas; aqui processamos 1 pedido por chamada.
-const LOTE_RECONSULTA = 1;
-
-export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsultarCodigos = [] }) {
+export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [busca, setBusca] = useState('');
   const [filtroCarga, setFiltroCarga] = useState('');
@@ -43,9 +36,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
-  const [resolvendo, setResolvendo] = useState(false);
-  const [progresso, setProgresso] = useState({ feito: 0, total: 0 });
-  const [reconsultandoCod, setReconsultandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
@@ -203,98 +193,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     return s;
   }, [logs]);
 
-  // ── Núcleo: reconsulta SOB DEMANDA via Omie em lotes pequenos, atualizando a UI a cada lote. ──
-  // reprocessar=true → além de ler o status, reaciona a emissão dos presos de verdade na etapa 50.
-  const reconsultarCodigos = async (codigos, { silencioso = false, reprocessar = false } = {}) => {
-    const lista = [...new Set(codigos.map(String).filter(Boolean))].slice(0, TETO_RECONSULTA);
-    if (lista.length === 0) {
-      if (!silencioso) toast.info('Nada para reconsultar.');
-      return;
-    }
-
-    setResolvendo(true);
-    setProgresso({ feito: 0, total: lista.length });
-
-    let totAut = 0, totRej = 0, totPend = 0, abortado = false;
-    try {
-      for (let i = 0; i < lista.length; i += LOTE_RECONSULTA) {
-        const lote = lista.slice(i, i + LOTE_RECONSULTA);
-        let r = {};
-        try {
-          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote, reprocessar });
-          r = resp?.data || {};
-        } catch (e) {
-          // Falha de rede no lote não trava os demais — segue.
-          console.warn('Falha no lote de reconsulta:', e.message);
-        }
-        if (r?.abortado) {
-          abortado = true;
-          break;
-        }
-        totAut += r.autorizados || 0;
-        totRej += r.rejeitados || 0;
-        totPend += r.ainda_pendentes || 0;
-        setProgresso({ feito: Math.min(i + lote.length, lista.length), total: lista.length });
-        // Atualiza a tela conforme cada lote chega
-        await refetch();
-      }
-
-      if (!silencioso) {
-        if (abortado) {
-          toast.info('Omie pediu para aguardar antes de consultar de novo. Atualize em ~1 min — quem já foi autorizado aparece como autorizado.');
-        } else {
-          const partes = [];
-          if (totAut > 0) partes.push(`${totAut} autorizada(s)`);
-          if (totRej > 0) partes.push(`${totRej} rejeitada(s)`);
-          if (totPend > 0) partes.push(`${totPend} ainda em processamento`);
-          toast.success(partes.length ? partes.join(', ') : 'Status já estava atualizado.');
-        }
-      }
-    } finally {
-      setResolvendo(false);
-      setProgresso({ feito: 0, total: 0 });
-    }
-  };
-
-  // Códigos pendentes/erro dentro do que está VISÍVEL na tela (respeita filtros).
-  const codigosPendentesVisiveis = useMemo(() => {
-    return [...new Set(
-      logsFiltrados
-        .filter(l => l.status === 'pendente' || l.status === 'erro')
-        .map(l => String(l.codigo_pedido))
-        .filter(Boolean)
-    )];
-  }, [logsFiltrados]);
-
-  // SEM AUTOMAÇÃO: a aba NÃO reconsulta nada ao abrir nem em background. Tudo é por clique humano.
-
-  // Botão "Atualizar pendentes" — só LÊ o status no Omie dos pendentes/erros visíveis (não reemite).
-  const resolverPendentes = () => reconsultarCodigos(codigosPendentesVisiveis, { silencioso: false });
-
-  // Botão "Confirmar/Reprocessar pendentes" — lê ao vivo E reaciona a emissão dos presos na etapa 50.
-  const reprocessarPendentes = () => reconsultarCodigos(codigosPendentesVisiveis, { silencioso: false, reprocessar: true });
-
-  // Reconsulta UM pedido específico (botão na linha). reprocessar=true → reaciona se estiver preso.
-  const reconsultarPedido = async (codigoPedido, { reprocessar = false } = {}) => {
-    if (!codigoPedido) return;
-    setReconsultandoCod(String(codigoPedido));
-    try {
-      const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: [String(codigoPedido)], reprocessar });
-      const r = resp?.data || {};
-      const resultado = r?.resultados?.[0] || {};
-      if (resultado.abortado || r?.abortado) toast.info('Omie pediu para aguardar — atualize novamente em ~1 min.');
-      else if (r.autorizados > 0) toast.success('NF autorizada — pedido destravado.');
-      else if (r.rejeitados > 0) toast.warning('NF rejeitada/cancelada no Omie.');
-      else if (resultado.reacionado) toast.info('Emissão reprocessada — aguardando a SEFAZ. Atualize em ~1 min.');
-      else if (r.ainda_pendentes > 0) toast.info('Ainda aguardando a SEFAZ. Tente novamente em ~1 min.');
-      else toast.info('Nada a atualizar para este pedido.');
-      await refetch();
-    } catch (e) {
-      toast.error('Falha ao reconsultar: ' + e.message);
-    }
-    setReconsultandoCod(null);
-  };
-
   // "Buscar no Omie": para NFs emitidas DIRETO no Omie (fora da tela do app), que nunca
   // geraram log local. Busca as NFs reais da carga filtrada no Omie e cria os logs faltantes.
   const buscarLogsNoOmie = async () => {
@@ -339,7 +237,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
         <CardContent className="py-3 text-sm text-blue-900 flex items-start gap-2">
           <ScrollText className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <b>Log persistente de emissão.</b> Cada linha registra uma tentativa de emissão de NF-e. <b>Nada é consultado automaticamente</b> — use <b>Atualizar pendentes</b> para ler o status real no Omie, ou <b>Confirmar/Reprocessar</b> para reacionar a emissão dos pedidos presos na etapa 50 (faturados sem NF). Quem está na SEFAZ aparece como <b>pendente — aguardando SEFAZ</b>; impedimentos reais (ex: cliente bloqueado) aparecem como <b>erro</b> com o motivo.
+            <b>Log persistente de emissão.</b> Cada NF é emitida e <b>confirmada</b> no próprio processo de emissão (lento e sequencial). Quem foi autorizada pela SEFAZ aparece como <b>autorizada</b> com o número da NF; quem ainda está na etapa 50 aparece como <b>pendente — aguardando SEFAZ</b> (será confirmada na próxima emissão); impedimentos reais (ex: cliente bloqueado, rejeição SEFAZ) aparecem como <b>erro</b> com o motivo.
           </div>
         </CardContent>
       </Card>
@@ -381,45 +279,12 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                   Buscar no Omie
                 </Button>
               )}
-              {codigosPendentesVisiveis.length > 0 && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                    onClick={resolverPendentes}
-                    disabled={resolvendo}
-                    title="Lê o status real no Omie dos pendentes/erros visíveis (não reemite)"
-                  >
-                    {resolvendo
-                      ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      : <RefreshCw className="w-4 h-4 mr-2" />}
-                    {resolvendo && progresso.total > 0
-                      ? `Verificando ${progresso.feito}/${progresso.total}...`
-                      : `Atualizar ${codigosPendentesVisiveis.length} pendente(s)`}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-amber-500 hover:bg-amber-600 text-white"
-                    onClick={reprocessarPendentes}
-                    disabled={resolvendo}
-                    title="Lê ao vivo e REACIONA a emissão dos pedidos presos na etapa 50 (faturados sem NF)"
-                  >
-                    {resolvendo
-                      ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      : <Wand2 className="w-4 h-4 mr-2" />}
-                    {resolvendo && progresso.total > 0
-                      ? `Reprocessando ${progresso.feito}/${progresso.total}...`
-                      : `Confirmar/Reprocessar`}
-                  </Button>
-                </>
-              )}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => refetch()}
-                disabled={resolvendo || isFetching}
-                title="Recarrega o histórico (sem consultar o Omie)"
+                disabled={isFetching}
+                title="Recarrega o histórico"
               >
                 {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                 Recarregar
@@ -496,17 +361,16 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                   <th className="p-2 text-center font-semibold">cStat</th>
                   <th className="p-2 text-left font-semibold">Motivo / Mensagem SEFAZ</th>
                   <th className="p-2 text-left font-semibold">Usuário</th>
-                  <th className="p-2 text-center font-semibold">Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan="10" className="text-center py-12 text-slate-500">
+                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Carregando histórico...
                   </td></tr>
                 ) : logsFiltrados.length === 0 ? (
-                  <tr><td colSpan="10" className="text-center py-12 text-slate-500">
+                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
                     Nenhum registro encontrado
                   </td></tr>
                 ) : logsFiltrados.map((l) => (
@@ -552,34 +416,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                       )}
                     </td>
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
-                    <td className="p-2 text-center">
-                      {(l.status === 'pendente' || l.status === 'erro') && l.codigo_pedido ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => reconsultarPedido(l.codigo_pedido)}
-                            disabled={reconsultandoCod === String(l.codigo_pedido)}
-                            title="Ler status deste pedido no Omie (não reemite)"
-                          >
-                            {reconsultandoCod === String(l.codigo_pedido)
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <RefreshCw className="w-4 h-4" />}
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="bg-amber-500 hover:bg-amber-600 text-white"
-                            onClick={() => reconsultarPedido(l.codigo_pedido, { reprocessar: true })}
-                            disabled={reconsultandoCod === String(l.codigo_pedido)}
-                            title="Reprocessar emissão deste pedido se estiver preso na etapa 50"
-                          >
-                            <Wand2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -15,7 +15,7 @@ export default function NotasOmie() {
   const [tab, setTab] = useState('impressao_nf55');
   const [cargaFiltro, setCargaFiltro] = useState(null);
   const [cargaFiltroId, setCargaFiltroId] = useState(null);
-  const [codigosUltimaEmissao, setCodigosUltimaEmissao] = useState([]);
+
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -74,10 +74,7 @@ export default function NotasOmie() {
           <EmissaoNFTab
             cargaFiltro={cargaFiltro}
             ativa={tab === 'emissao'}
-            onEmissionComplete={(codigos) => {
-              setCodigosUltimaEmissao(codigos);
-              setTab('log_emissao');
-            }}
+            onEmissionComplete={() => setTab('log_emissao')}
           />
         </TabsContent>
 
@@ -85,7 +82,6 @@ export default function NotasOmie() {
           <LogEmissaoNFTab
             ativa={tab === 'log_emissao'}
             cargaFiltro={cargaFiltro}
-            autoConsultarCodigos={codigosUltimaEmissao}
           />
         </TabsContent>
 

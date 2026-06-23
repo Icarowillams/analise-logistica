@@ -114,11 +114,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Espaçamento entre cada emissão (igual trocarEtapaPedidoOmie) para não estourar o anti-flood.
-const DELAY_ENTRE_EMISSOES_MS = 1800;
-// Retry por pedido em caso de erro transitório (rate limit / 425 / 429 / 500 / redundante).
-const MAX_RETRY_TRANSITORIO = 3;
-// Teto de espera ao aguardar uma janela de bloqueio/rate limit.
+// Teto de espera ao aguardar uma janela de bloqueio/rate limit do circuit breaker no início do lote.
 const TETO_ESPERA_MS = 90 * 1000;
 
 // Identifica erro TRANSITÓRIO (vale retry: rate limit, bloqueio temporário, timeout, HTTP 5xx).
@@ -130,19 +126,6 @@ function isTransitorio(error) {
     m.includes('timeout') || m.includes('consumo indevido') || m.includes('bloqueada') ||
     m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde') ||
     m.includes('redundante') || m.includes('limite') || m.includes('misuse');
-}
-
-// Quanto esperar (ms) antes de retomar o MESMO pedido após erro transitório.
-async function calcularEsperaMs(base44, error) {
-  // Se o breaker abriu por bloqueio, respeita a janela bloqueado_ate (com teto).
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
-  const ctrl = rows?.[0];
-  if (ctrl?.bloqueado && ctrl.bloqueado_ate) {
-    const ms = new Date(ctrl.bloqueado_ate).getTime() - Date.now();
-    if (ms > 0) return Math.min(ms, TETO_ESPERA_MS);
-  }
-  const seg = extrairSegundosBloqueio(error?.message || '');
-  return Math.min(seg * 1000, TETO_ESPERA_MS);
 }
 
 // IDEMPOTÊNCIA: já existe NF para este pedido? (espelho 60+NF, Pedido local, log autorizado).
@@ -186,6 +169,78 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
   error.faultcode = data?.faultcode || '';
   error.omiePayload = data || null;
   return error;
+}
+
+// ── Confirmação da NF via StatusPedido (ConsultarPedido) ──
+// CHAVE: "sucesso" do FaturarPedidoVenda só significa que o Omie ACEITOU o pedido — NÃO que
+// a NF saiu. A NF só está realmente emitida quando faturada=S / etapa 60 / ListaNfe com nNF.
+// StatusPedido aceita codigo_pedido (ListarNF não). Retorna o estado real classificado.
+const TENTATIVAS_CONFIRMA = 4;          // re-consultas do StatusPedido após faturar
+const ESPERA_CONFIRMA_MIN_MS = 8000;    // 8s
+const ESPERA_CONFIRMA_MAX_MS = 12000;   // 12s — janela generosa pra SEFAZ responder
+const DELAY_ENTRE_PEDIDOS_MS = 6000;    // espaçamento generoso entre pedidos (lento de propósito)
+
+// Lê o status real do pedido no Omie. Resolve só com NF confirmada (etapa>=60 / faturada=S / nNF);
+// rejeição SEFAZ (cStat>=200) vira "rejeitada" com motivo; etapa<60 sem NF = "aguardando".
+async function consultarStatusPedido(base44, codigoPedido) {
+  let pedido;
+  try {
+    const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
+    pedido = r?.pedido_venda_produto || r || {};
+  } catch (e) {
+    if (e.bloqueio || e.rateLimit) throw e; // transitório → o chamador trata como "ainda processando"
+    return { erro: e.message };
+  }
+  const cab = pedido.cabecalho || {};
+  const infoCad = pedido.infoCadastro || pedido.info_cadastro || {};
+  const infoNfe = pedido.infoNfe || pedido.info_nf || pedido.informacoes_nfe || {};
+  const etapa = String(cab.etapa || '');
+  const etapaNum = Number(etapa) || 0;
+  const faturada = String(infoCad.faturado || infoNfe.faturado || '').toUpperCase();
+  const nNF = infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || infoCad.nNumeroNFe || infoCad.numero_nfe || '';
+  const cStat = String(infoNfe.cStat || infoNfe.cStatus || '');
+  const xMotivo = infoNfe.xMotivo || infoNfe.cMensStatus || infoNfe.motivo || '';
+
+  // Rejeição real da SEFAZ
+  if (cStat && Number(cStat) >= 200 && !['100', '150', '101', '135'].includes(cStat)) {
+    return { etapa, status_real: 'rejeitada', codigo_sefaz: cStat, numero_nf: '', mensagem: `NF rejeitada [SEFAZ ${cStat}]${xMotivo ? ' — ' + xMotivo : ''}` };
+  }
+  // NF emitida e autorizada
+  if (nNF || etapaNum >= 60 || faturada === 'S') {
+    return { etapa, status_real: 'emitida', codigo_sefaz: cStat || '100', numero_nf: String(nNF || ''), mensagem: nNF ? `NF ${nNF} autorizada` : 'NF autorizada (etapa 60)' };
+  }
+  // Etapa < 60, sem NF, faturada=N → SEFAZ ainda processando
+  return { etapa, status_real: 'aguardando', numero_nf: '', mensagem: `Pedido em etapa ${etapa || '?'} — aguardando autorização da SEFAZ` };
+}
+
+// Aplica o resultado confirmado: atualiza Pedido local, espelho e log.
+async function aplicarResultadoConfirmado(base44, codigoPedido, real) {
+  if (real.status_real === 'emitida') {
+    const pedidos = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
+    const p = pedidos?.[0];
+    if (p?.id) {
+      await base44.asServiceRole.entities.Pedido.update(p.id, {
+        status: 'faturado', status_faturamento: 'faturado', faturado: true,
+        pendente_emissao: false, motivo_pendencia_emissao: '', omie_erro: '',
+        ...(p.data_faturamento ? {} : { data_faturamento: new Date().toISOString() }),
+        ...(real.numero_nf ? { numero_nota_fiscal: real.numero_nf } : {})
+      }).catch(() => {});
+    }
+  }
+  // Espelho PedidoLiberadoOmie
+  try {
+    const esp = (await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1).catch(() => []))?.[0];
+    if (esp) {
+      await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+        etapa: real.etapa || esp.etapa,
+        status_real: real.status_real,
+        status_label: real.mensagem,
+        numero_nf: real.numero_nf || esp.numero_nf || '',
+        sincronizado_em: new Date().toISOString(),
+        origem_sync: 'reconciliacao'
+      }).catch(() => {});
+    }
+  } catch { /* ignore */ }
 }
 
 
@@ -364,103 +419,125 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Emite com retry resiliente: erro transitório (rate limit/425/timeout/5xx) NÃO descarta o pedido —
-      // aguarda a janela sugerida (com teto) e RETOMA o MESMO pedido. Só vira erro após esgotar as tentativas.
-      let emitido = false;
-      let ultimoErro = null;
-      for (let tentativa = 0; tentativa < MAX_RETRY_TRANSITORIO && !emitido; tentativa++) {
-        try {
-          const resposta = body.mock_omie_response || await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
-          if (body.mock_omie_response) console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
-          resultados.push({ codigo_pedido: codigoPedido, sucesso: true, status: 'pendente_sefaz', mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ' });
+      // ── EMITIR LENTO E CONFIRMAR CADA PEDIDO ──
+      // 1) StatusPedido ANTES: etapa 60/NF já existe → só grava autorizada (anti-duplicidade).
+      // 2) Etapa 50 sem NF → FaturarPedidoVenda (Omie só ACEITA aqui).
+      // 3) Confirma em laço espaçado (StatusPedido) até faturada=S/NF → autorizada;
+      //    rejeição SEFAZ → erro com motivo real; ainda etapa 50 → pendente honesto.
+      // Circuit breaker + slot (omieCall) antes de CADA chamada.
+      let statusFinalPedido = null; // 'autorizada' | 'rejeitada' | 'pendente' | 'erro'
+      let realConfirmado = null;
+      let mensagemPedido = '';
+      let erroPedido = null;
+      let transitorioPedido = false;
 
-          const pedidosLocais = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
-          if (pedidosLocais?.[0]?.id) {
-            await base44.asServiceRole.entities.Pedido.update(pedidosLocais[0].id, {
-              status_faturamento: 'processando',
-              pendente_emissao: false,
-              motivo_pendencia_emissao: ''
-            }).catch(() => {});
+      try {
+        // (1) Estado real ANTES de faturar — não refatura quem já tem NF.
+        let real = await consultarStatusPedido(base44, codigoPedido);
+
+        if (real?.erro) {
+          // Falha de consulta (não é rate limit): mantém pendente honesto.
+          statusFinalPedido = 'pendente';
+          mensagemPedido = `Não foi possível confirmar no Omie: ${real.erro}`;
+        } else if (real.status_real === 'emitida') {
+          // Já estava emitida (etapa 60 / faturada=S) — anti-dup: só grava autorizada.
+          statusFinalPedido = 'autorizada';
+          realConfirmado = real;
+          mensagemPedido = real.mensagem;
+        } else if (real.status_real === 'rejeitada') {
+          statusFinalPedido = 'rejeitada';
+          realConfirmado = real;
+          mensagemPedido = real.mensagem;
+        } else {
+          // (2) Etapa 50 sem NF → aciona a emissão.
+          if (body.mock_omie_response) {
+            console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
+          } else {
+            await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
           }
-
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: 'produtos/pedidovendafat',
-            call: 'FaturarPedidoVenda',
-            operacao: 'emitir_nf_lote_background',
-            status: 'sucesso',
-            duracao_ms: Date.now() - t0,
+            endpoint: 'produtos/pedidovendafat', call: 'FaturarPedidoVenda',
+            operacao: 'emitir_nf_lote_background', status: 'sucesso', duracao_ms: Date.now() - t0,
             payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 800),
-            payload_resposta: JSON.stringify(resposta).slice(0, 800),
             usuario_email: fila.usuario_email || ''
           }).catch(() => {});
 
-          await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', 'Emissão acionada no Omie — aguardando retorno da SEFAZ');
-          emitido = true;
-        } catch (error) {
-          ultimoErro = error;
-          // Erro transitório → aguarda a janela e retoma o MESMO pedido (não descarta os seguintes).
-          if (isTransitorio(error) && tentativa < MAX_RETRY_TRANSITORIO - 1) {
-            const esperaMs = await calcularEsperaMs(base44, error);
+          // (3) Confirma em laço espaçado: "sucesso" do faturar ≠ NF emitida.
+          for (let c = 0; c < TENTATIVAS_CONFIRMA; c++) {
+            const espera = ESPERA_CONFIRMA_MIN_MS + Math.round(Math.random() * (ESPERA_CONFIRMA_MAX_MS - ESPERA_CONFIRMA_MIN_MS));
             await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
-              mensagem: `Omie ocupado (rate limit) no pedido ${i + 1}/${pedidos.length} — aguardando ${Math.round(esperaMs / 1000)}s e retomando...`,
+              mensagem: `Confirmando NF do pedido ${i + 1}/${pedidos.length} (tentativa ${c + 1}/${TENTATIVAS_CONFIRMA})...`,
               atualizado_em: new Date().toISOString()
             }).catch(() => {});
-            await sleep(esperaMs);
-            continue;
+            await sleep(espera);
+            const conf = await consultarStatusPedido(base44, codigoPedido);
+            if (conf?.erro) continue; // tenta de novo na próxima volta
+            if (conf.status_real === 'emitida') { statusFinalPedido = 'autorizada'; realConfirmado = conf; mensagemPedido = conf.mensagem; break; }
+            if (conf.status_real === 'rejeitada') { statusFinalPedido = 'rejeitada'; realConfirmado = conf; mensagemPedido = conf.mensagem; break; }
+            // segue 'aguardando' → tenta de novo
           }
-          // Esgotou as tentativas (ou erro definitivo de dado): registra. Transitório fica como PENDENTE
-          // (reprocessável no Log de Emissão); erro real de dado fica como ERRO.
-          break;
+          if (!statusFinalPedido) {
+            // Esgotou as tentativas e continua na etapa 50 → pendente HONESTO (não é erro nem rate limit).
+            statusFinalPedido = 'pendente';
+            mensagemPedido = 'Faturado na carga — aguardando autorização da SEFAZ (etapa 50). Será confirmado na próxima emissão.';
+          }
         }
+      } catch (error) {
+        erroPedido = error;
+        transitorioPedido = isTransitorio(error);
+        // Transitório (rate limit/425/timeout) → pendente reprocessável; erro de dado → erro real.
+        statusFinalPedido = transitorioPedido ? 'pendente' : 'erro';
+        mensagemPedido = transitorioPedido
+          ? `Omie ocupado no momento — emissão não confirmada, será retomada. ${error.message || ''}`.trim()
+          : (error.faultstring || `Erro: ${error.message || 'falha na emissão'}`);
       }
 
-      if (!emitido) {
-        const error = ultimoErro || new Error('Erro ao emitir NF');
-        const mensagem = error.message || 'Erro ao emitir NF';
-        const transitorio = isTransitorio(error);
-        const statusLog = transitorio ? 'pendente' : 'erro';
-
-        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: statusLog, mensagem });
-        // Pendente transitório NÃO entra em "erros" definitivos — fica para reprocessar sem sumir.
-        if (!transitorio) erros.push({ codigo_pedido: codigoPedido, mensagem });
-
-        const pedidosLocaisErro = await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []);
-        if (pedidosLocaisErro?.[0]?.id) {
-          await base44.asServiceRole.entities.Pedido.update(pedidosLocaisErro[0].id, {
-            status_faturamento: transitorio ? 'pendente' : 'erro',
-            omie_erro: mensagem,
-            // RASTREABILIDADE: pendente por rate limit → flag visível no alerta da aba Emissão (nunca some sem rastro).
-            ...(transitorio ? {
-              pendente_emissao: true,
-              motivo_pendencia_emissao: 'Emissão não concluiu por rate limit do Omie — reprocessar.'
-            } : {})
-          }).catch(() => {});
-        }
-
-        const payloadEnviado = JSON.stringify({ nCodPed: codigoPedido });
-        const payloadResposta = error.omiePayload ? JSON.stringify(error.omiePayload) : '';
+      // ── Aplica o resultado confirmado (Pedido local + espelho + log) ──
+      if (statusFinalPedido === 'autorizada') {
+        if (realConfirmado) await aplicarResultadoConfirmado(base44, codigoPedido, realConfirmado);
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: true, status: 'autorizada', numero_nf: realConfirmado?.numero_nf || '', mensagem: mensagemPedido });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'autorizada', mensagemPedido, {
+          faultstring: '', faultcode: realConfirmado?.codigo_sefaz || '100'
+        });
+      } else if (statusFinalPedido === 'rejeitada') {
+        if (realConfirmado) await aplicarResultadoConfirmado(base44, codigoPedido, realConfirmado);
+        const pedRej = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
+        if (pedRej?.id) await base44.asServiceRole.entities.Pedido.update(pedRej.id, { status_faturamento: 'rejeitado', omie_erro: mensagemPedido }).catch(() => {});
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'rejeitada', mensagem: mensagemPedido });
+        erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'rejeitada', mensagemPedido, {
+          faultcode: realConfirmado?.codigo_sefaz || '', erro_tipo: 'sefaz'
+        });
+      } else if (statusFinalPedido === 'erro') {
+        const pedErr = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
+        if (pedErr?.id) await base44.asServiceRole.entities.Pedido.update(pedErr.id, { status_faturamento: 'erro', omie_erro: mensagemPedido }).catch(() => {});
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem: mensagemPedido });
+        erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-          endpoint: 'produtos/pedidovendafat',
-          call: 'FaturarPedidoVenda',
-          operacao: 'emitir_nf_lote_background',
-          status: error.faultstring ? 'erro_omie' : (transitorio ? 'warning' : 'erro'),
-          codigo_erro: error.faultcode || '',
-          duracao_ms: Date.now() - t0,
-          mensagem_erro: mensagem,
-          erro_detalhado: error.faultstring || `Erro interno: ${mensagem}`,
-          payload_enviado: payloadEnviado.slice(0, 2000),
-          payload_resposta: payloadResposta.slice(0, 5000),
+          endpoint: 'produtos/pedidovendafat', call: 'FaturarPedidoVenda', operacao: 'emitir_nf_lote_background',
+          status: erroPedido?.faultstring ? 'erro_omie' : 'erro', codigo_erro: erroPedido?.faultcode || '',
+          duracao_ms: Date.now() - t0, mensagem_erro: mensagemPedido,
+          erro_detalhado: erroPedido?.faultstring || mensagemPedido,
+          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 2000),
+          payload_resposta: erroPedido?.omiePayload ? JSON.stringify(erroPedido.omiePayload).slice(0, 5000) : '',
           usuario_email: fila.usuario_email || ''
         }).catch(() => {});
-
-        await gravarLogEmissao(base44, fila, codigoPedido, statusLog,
-          transitorio ? `Omie ocupado (rate limit) — não emitida ainda, reprocessar. ${mensagem}` : (error.faultstring || `Erro interno: ${mensagem}`), {
-          faultstring: error.faultstring || '',
-          faultcode: error.faultcode || '',
-          erro_tipo: error.faultstring ? 'omie' : (transitorio ? 'transitorio' : 'interno'),
-          payload_enviado: payloadEnviado.slice(0, 2000),
-          payload_resposta: payloadResposta.slice(0, 5000)
+        await gravarLogEmissao(base44, fila, codigoPedido, 'erro', mensagemPedido, {
+          faultstring: erroPedido?.faultstring || '', faultcode: erroPedido?.faultcode || '',
+          erro_tipo: erroPedido?.faultstring ? 'omie' : 'interno',
+          payload_enviado: JSON.stringify({ nCodPed: codigoPedido }).slice(0, 2000),
+          payload_resposta: erroPedido?.omiePayload ? JSON.stringify(erroPedido.omiePayload).slice(0, 5000) : ''
         });
+      } else {
+        // pendente honesto (etapa 50 não confirmou ou transitório)
+        const pedPend = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
+        if (pedPend?.id) await base44.asServiceRole.entities.Pedido.update(pedPend.id, {
+          status_faturamento: 'processando',
+          pendente_emissao: true,
+          motivo_pendencia_emissao: mensagemPedido
+        }).catch(() => {});
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'pendente', mensagem: mensagemPedido });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', mensagemPedido);
       }
 
       processados = i + 1;
@@ -472,21 +549,21 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString()
       });
 
-      // Espaçamento entre emissões para respeitar o anti-flood do Omie (~1800ms).
-      if (i < pedidos.length - 1) await sleep(DELAY_ENTRE_EMISSOES_MS);
+      // Espaçamento GENEROSO entre pedidos — emite lento de propósito (confirma cada um).
+      if (i < pedidos.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
     }
 
-    // Pendentes transitórios (rate limit) não são erro definitivo — ficam listados no Log de Emissão
-    // para reprocessar em 1 clique, sem sumir silenciosamente.
-    const pendentesTransitorios = resultados.filter(r => !r.sucesso && r.status === 'pendente').length;
+    // Conta resultados confirmados: autorizadas, pendentes honestos (SEFAZ ainda processando).
+    const autorizadas = resultados.filter(r => r.status === 'autorizada' || r.status === 'ja_emitida').length;
+    const pendentesHonestos = resultados.filter(r => !r.sucesso && r.status === 'pendente').length;
     const statusFinal = erros.length > 0 ? 'erro' : 'concluido';
     let mensagemFinal;
-    if (statusFinal === 'concluido' && pendentesTransitorios > 0) {
-      mensagemFinal = `Lote enviado ao Omie. ${pendentesTransitorios} pedido(s) ficaram pendentes por rate limit — reprocesse no Log de Emissão.`;
+    if (statusFinal === 'concluido' && pendentesHonestos > 0) {
+      mensagemFinal = `${autorizadas} NF(s) confirmada(s). ${pendentesHonestos} ainda aguardando autorização da SEFAZ (etapa 50).`;
     } else if (statusFinal === 'concluido') {
-      mensagemFinal = 'Lote enviado ao Omie. Aguardando retorno da SEFAZ nos logs.';
+      mensagemFinal = `${autorizadas} NF(s) emitida(s) e confirmada(s).`;
     } else {
-      mensagemFinal = `${erros.length} pedido(s) falharam na emissão${pendentesTransitorios > 0 ? ` e ${pendentesTransitorios} ficaram pendentes para reprocessar` : ''}.`;
+      mensagemFinal = `${erros.length} pedido(s) falharam${pendentesHonestos > 0 ? ` e ${pendentesHonestos} aguardando a SEFAZ` : ''}.`;
     }
     await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
       status: statusFinal,
@@ -498,7 +575,7 @@ Deno.serve(async (req) => {
       concluido_em: new Date().toISOString()
     });
 
-    return Response.json({ sucesso: statusFinal === 'concluido', fila_id: fila.id, status: statusFinal, processados, erros: erros.length, pendentes: pendentesTransitorios });
+    return Response.json({ sucesso: statusFinal === 'concluido', fila_id: fila.id, status: statusFinal, processados, autorizadas, erros: erros.length, pendentes: pendentesHonestos });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
