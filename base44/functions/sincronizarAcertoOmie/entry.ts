@@ -6,6 +6,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // (lento, 1,2s cada + rate limit), cruzamos as notas com os Pedidos locais em lote.
 
 function isPedidoCancelado(ped: any): boolean {
+  // BLINDAGEM: só cancela quando o Pedido local FOI encontrado no cruzamento.
+  // Ausência (ped indefinido) NUNCA marca cancelado — protege notas D1/troca e
+  // qualquer nota cujo Pedido não tenha match por omie_codigo_pedido.
   if (!ped) return false;
   const status = String(ped.status || '').toLowerCase();
   const statusNf = String(ped.status_nota_fiscal || '').toLowerCase();
