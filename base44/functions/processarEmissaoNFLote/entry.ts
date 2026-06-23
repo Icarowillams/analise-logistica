@@ -121,10 +121,13 @@ const TETO_ESPERA_MS = 90 * 1000;
 // NÃO é dado inválido — esses devem ser reprocessados, não descartados.
 function isTransitorio(error) {
   if (error?.bloqueio || error?.rateLimit) return true;
-  const m = String(error?.message || '').toLowerCase();
+  const code = String(error?.faultcode || '').toLowerCase();
+  // SOAP-ENV:Client-6 / faultcode 6 = consumo redundante do Omie → transitório, NUNCA erro terminal.
+  if (code.includes('client-6') || code === '6' || code.endsWith('-6')) return true;
+  const m = String(error?.message || error?.faultstring || '').toLowerCase();
   return m.includes('425') || m.includes('429') || m.includes('http 5') ||
-    m.includes('timeout') || m.includes('consumo indevido') || m.includes('bloqueada') ||
-    m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde') ||
+    m.includes('timeout') || m.includes('consumo indevido') || m.includes('consumo redundante') ||
+    m.includes('bloqueada') || m.includes('bloqueio') || m.includes('cota') || m.includes('aguarde') ||
     m.includes('redundante') || m.includes('limite') || m.includes('misuse');
 }
 
@@ -178,7 +181,10 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
 const TENTATIVAS_CONFIRMA = 4;          // re-consultas do StatusPedido após faturar
 const ESPERA_CONFIRMA_MIN_MS = 8000;    // 8s
 const ESPERA_CONFIRMA_MAX_MS = 12000;   // 12s — janela generosa pra SEFAZ responder
-const DELAY_ENTRE_PEDIDOS_MS = 6000;    // espaçamento generoso entre pedidos (lento de propósito)
+// Espaçamento entre pedidos = 0. O throttle global atômico (omieCall) já serializa as chamadas
+// em ~1,5s; um delay fixo extra aqui só dobra a lentidão (ex.: 42s perdidos em 14 pedidos) sem
+// proteger nada. O circuit breaker continua cobrindo rajada/rate limit.
+const DELAY_ENTRE_PEDIDOS_MS = 0;
 
 // Lê o status real do pedido no Omie. Resolve só com NF confirmada (etapa>=60 / faturada=S / nNF);
 // rejeição SEFAZ (cStat>=200) vira "rejeitada" com motivo; etapa<60 sem NF = "aguardando".
