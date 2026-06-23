@@ -247,7 +247,27 @@ export default function useDadosMontagem() {
         !codigosFaturadosLocais.has(String(e.codigo_pedido))
       );
 
-      const vendasEnriquecidas = vendasSemCarga.map(montarVendaOmie);
+      // Mapa id→Pedido local para fallback de rota pelo cliente (espelho sem rota_id)
+      const pedidosLocaisMap = new Map((todosPedidosLocais || []).map(p => [String(p.id), p]));
+
+      const vendasEnriquecidas = vendasSemCarga.map(e => {
+        const venda = montarVendaOmie(e);
+        // FALLBACK: espelho de VENDA sem rota → derivar do cliente do pedido (mesma lógica do D1/troca)
+        if (!venda.rota_id || venda.rota_nome === 'Sem Rota') {
+          const pedidoLocal = venda.pedido_id ? pedidosLocaisMap.get(String(venda.pedido_id)) : null;
+          const clienteIdFallback = venda.cliente_id || pedidoLocal?.cliente_id;
+          const cliente = clienteIdFallback ? clientesMapGlobal.get(clienteIdFallback) : null;
+          if (cliente?.rota_id) {
+            const nomeRota = rotasMap.get(cliente.rota_id);
+            if (nomeRota) {
+              venda.rota_id = cliente.rota_id;
+              venda.rota_nome = nomeRota;
+              venda.rota_cliente = nomeRota;
+            }
+          }
+        }
+        return venda;
+      });
 
       // ─── Pedidos NF55 locais liberados que NÃO estão no espelho ───
       // Captura pedidos que foram enviados ao Omie mas cujo webhook
