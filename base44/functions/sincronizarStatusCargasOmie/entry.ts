@@ -214,8 +214,20 @@ function definirStatusCarga(pedidosStatus, statusAtual) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const body = await req.json().catch(() => ({}));
+
+    // ═══ FURO 1 — MODO SERVIÇO (automação) ═══
+    // A automação roda sem usuário logado. Aceita modo serviço via body.modo='reconciliacao_automatica'
+    // OU header x-automation. Nesse modo PULA o auth.me() e usa asServiceRole.
+    // Uso manual da UI continua exigindo login.
+    const modoAutomatico = body.modo === 'reconciliacao_automatica' || req.headers.get('x-automation') === 'true';
+
+    let user = { email: 'automacao@sistema' };
+    if (!modoAutomatico) {
+      user = await base44.auth.me();
+      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { appKey: _ak, appSecret: _as } = await getOmieCredentials(base44);
     if (!_ak || !_as) {
@@ -223,7 +235,6 @@ Deno.serve(async (req) => {
     }
     console.log(`[sincronizarStatusCargasOmie] Usando APP_KEY: ...${String(_ak).slice(-4)}`);
 
-    const body = await req.json().catch(() => ({}));
     const listLimit = Math.min(Number(body.list_limit || 500), 500);
     // Máximo absoluto de 10 cargas por execução para evitar rate limit (cada carga = N chamadas × N pedidos)
     const syncLimit = Math.min(Number(body.sync_limit || 10), 10);
@@ -241,8 +252,24 @@ Deno.serve(async (req) => {
     if (cargaIds && cargaIds.length > 0) {
       const set = new Set(cargaIds.map(String));
       cargas = cargas.filter(c => set.has(String(c.id)));
+    } else if (modoAutomatico) {
+      // ═══ FURO 2 — MODO AUTOMÁTICO reconcilia justamente as cargas FATURADAS recentes ═══
+      // O webhook NFe.NotaAutorizada nem sempre chega; cargas 'faturada' são as que mais precisam
+      // de reconciliação por leitura. Aqui incluímos faturada/conferindo/em_rota/aguardando_nf
+      // dentro da janela curta (dias_retroativos_auto, padrão 2 dias = ~48h).
+      // Cargas antigas e cancelada/entregue continuam puladas.
+      const diasAuto = Number(body.dias_retroativos_auto || 2);
+      const limiteDataAuto = Date.now() - diasAuto * 24 * 60 * 60 * 1000;
+      const statusReconciliavel = new Set(['faturada', 'conferindo', 'em_rota', 'aguardando_nf', 'aguardando_nf', 'faturada_parcial', 'aguardando']);
+      cargas = (cargas || []).filter(c =>
+        statusReconciliavel.has(String(c.status_carga || '').toLowerCase()) &&
+        new Date(c.data_faturamento || c.created_date || c.updated_date || 0).getTime() >= limiteDataAuto
+      );
+      if (cargas.length === 0) {
+        return Response.json({ sucesso: true, cargas: [], sincronizadas: 0, otimizado: true, modo: 'reconciliacao_automatica', motivo: 'sem_cargas_reconciliaveis_na_janela' });
+      }
     } else {
-      // Sincronização SELETIVA: só cargas que realmente precisam.
+      // Sincronização SELETIVA (uso manual): só cargas que realmente precisam.
       // Ignora cargas já finalizadas (faturada/cancelada/entregue) e mais antigas que diasRetroativos.
       const limiteData = Date.now() - diasRetroativos * 24 * 60 * 60 * 1000;
       const statusFinalizado = new Set(['faturada', 'cancelada', 'entregue']);
@@ -417,9 +444,13 @@ Deno.serve(async (req) => {
                   cancelado_por_nome: 'Sincronização Omie'
                 });
               } else if (p.status_nf === 'autorizada' && p.numero_nf && pl.numero_nota_fiscal !== String(p.numero_nf)) {
+                // ═══ FURO 3 (destino 1) — Pedido local: NF + faturado + status ═══
                 await base44.asServiceRole.entities.Pedido.update(pl.id, {
                   numero_nota_fiscal: String(p.numero_nf),
+                  chave_nfe: p.chave_nfe || pl.chave_nfe || undefined,
                   faturado: true,
+                  status: 'faturado',
+                  status_faturamento: 'faturado',
                   data_faturamento: pl.data_faturamento || new Date().toISOString()
                 });
               } else if (p.status_nf === 'rejeitada' || p.status_nf === 'denegada') {
@@ -436,6 +467,35 @@ Deno.serve(async (req) => {
                 }).catch(() => {});
               }
             }
+          } catch { /* não bloqueia */ }
+        }
+
+        // ═══ FURO 3 (destino 3) — LogEmissaoNF idempotente ═══
+        // A impressão (NotasNF55Tab) cruza por LogEmissaoNF; o webhook que faltou nunca criou esse log.
+        // Criamos AQUI por reconciliação de leitura, só se ainda não existir (não duplica o que o Paulo
+        // já criou na mão). NF zero-padded 8 dígitos. NÃO inclui numero_carga (causa 422).
+        for (const p of pedidosAtualizados) {
+          if (!p.codigo_pedido) continue;
+          const etapa60 = String(p.etapa || '') === '60';
+          const nf = String(p.numero_nf || '').trim();
+          const autorizada = p.status_nf === 'autorizada' || (etapa60 && nf && !['rejeitada', 'denegada', 'cancelada'].includes(p.status_nf));
+          if (!etapa60 || !nf || !autorizada) continue;
+          try {
+            const jaExiste = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(p.codigo_pedido) }, '-created_date', 1).catch(() => []);
+            if (jaExiste?.[0]) continue; // idempotente — não duplica
+            const nfPad = nf.replace(/\D/g, '').padStart(8, '0');
+            await base44.asServiceRole.entities.LogEmissaoNF.create({
+              codigo_pedido: String(p.codigo_pedido),
+              numero_pedido: String(p.numero_pedido || ''),
+              numero_nf: nfPad,
+              chave_nfe: p.chave_nfe || '',
+              status: 'autorizada',
+              cliente_nome: p.nome_cliente || '',
+              cliente_id: p.cliente_id || '',
+              carga_id: carga.id,
+              nid_nf: p.nid_nf || '',
+              mensagem: 'Reconciliação automática por leitura (webhook ausente)'
+            }).catch(() => {});
           } catch { /* não bloqueia */ }
         }
 
