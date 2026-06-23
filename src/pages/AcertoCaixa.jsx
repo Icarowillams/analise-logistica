@@ -16,7 +16,7 @@ const fmt = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractio
 // Status válidos pra acerto: APENAS cargas faturadas (status_carga é binário:
 // montagem/faturada). REGRA: o acerto só acontece DEPOIS que a NF foi emitida
 // (etapa Omie 60) — validado no front via pedidos_omie com etapa === '60'.
-const STATUS_ACERTO = ['faturada'];
+const STATUS_ACERTO = ['faturada', 'conferindo', 'em_rota'];
 
 const STATUS_BADGE = {
   faturada: { label: 'Faturada', cls: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
@@ -73,10 +73,16 @@ export default function AcertoCaixa() {
       if (a?.status_acerto === 'finalizado') return false;
       // REGRA: só mostrar cargas cujos pedidos Omie já estão faturados (etapa 60).
       // Se a carga só tem pedidos internos/trocas (sem omie), também aparece.
+      // Não depender SÓ do snapshot pedidos_omie[].etapa — durante faturamento em massa
+      // o webhook/sync pode estar defasado (etapa vazia/20/80) mesmo com NF já emitida no Omie.
+      // Usar também o estado de faturamento da própria carga.
       const pedidosOmie = c.pedidos_omie || [];
-      if (pedidosOmie.length > 0) {
-        const algumFaturado = pedidosOmie.some(p => String(p.etapa || '').trim() === '60');
-        if (!algumFaturado) return false;
+      const cargaJaFaturada =
+        c.processamento_omie_status === 'concluido' ||
+        ['conferindo', 'em_rota', 'entregue', 'faturada'].includes(c.status_carga);
+      const algumFaturadoNoSnapshot = pedidosOmie.some(p => String(p.etapa || '').trim() === '60');
+      if (pedidosOmie.length > 0 && !algumFaturadoNoSnapshot && !cargaJaFaturada) {
+        return false;
       }
       if (filtroIni && c.data_carga < filtroIni) return false;
       if (filtroFim && c.data_carga > filtroFim) return false;
@@ -110,11 +116,28 @@ export default function AcertoCaixa() {
         navigate(`/AcertoCaixaEditar?id=${existente.id}`);
         return;
       }
+      // Reforço: snapshot pode ter numero_nf vazio (webhook defasado no faturamento em massa).
+      // Cruza codigo_pedido → Pedido.omie_codigo_pedido para preencher pela NF local. Sem chamar Omie.
+      const codigosOmie = [...new Set(
+        (carga.pedidos_omie || []).map(p => String(p.codigo_pedido || '').trim()).filter(Boolean)
+      )];
+      const nfPorCodigo = new Map();
+      for (let i = 0; i < codigosOmie.length; i += 100) {
+        const bloco = codigosOmie.slice(i, i + 100);
+        const pedidosLocais = await base44.entities.Pedido
+          .filter({ omie_codigo_pedido: { $in: bloco } }).catch(() => []);
+        for (const pl of (pedidosLocais || [])) {
+          if (pl.omie_codigo_pedido && pl.numero_nota_fiscal) {
+            nfPorCodigo.set(String(pl.omie_codigo_pedido), String(pl.numero_nota_fiscal));
+          }
+        }
+      }
+
       // Cria snapshot — inclui pedidos Omie, Internos (D1) e Trocas
       const notasOmie = (carga.pedidos_omie || []).map(p => ({
         codigo_pedido: String(p.codigo_pedido || ''),
         numero_pedido: String(p.numero_pedido || ''),
-        numero_nfe: String(p.numero_nf || ''),
+        numero_nfe: String(p.numero_nf || nfPorCodigo.get(String(p.codigo_pedido || '').trim()) || ''),
         nome_cliente: p.nome_fantasia || p.nome_cliente || '',
         razao_social: p.nome_cliente || '',
         codigo_cliente: String(p.codigo_cliente || ''),
