@@ -308,29 +308,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
-    // outra instância está ativa — aborta para não duplicar chamadas Omie.
-    const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
-    if (emProcessamento.length > 0) {
-      const age = Date.now() - new Date(emProcessamento[0].updated_date).getTime();
-      if (age < 2 * 60 * 1000) {
-        return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', mensagem: 'Outra instância já está processando a fila. Aguarde.' });
-      }
-    }
-
     // ═══ PASSO 1: ATUALIZAR STATUS DE CARGAS (otimizado) ═══
-    // Busca em paralelo todas as cargas e itens da fila com limite maior para não perder registros.
+    // RODA ANTES DO PORTÃO DE CONCORRÊNCIA: é só STATUS LOCAL (zero Omie), então mesmo
+    // que outra instância esteja processando itens, o clique humano fecha as cargas órfãs
+    // (100% concluídas presas em em_andamento). Busca em paralelo todas as cargas e itens.
     let cargasPreAtualizadasCount = 0;
     {
+      // -created_date (mais recentes primeiro) para não deixar cargas novas de fora do limite.
       const [todasCargas, filaItens] = await Promise.all([
         base44.asServiceRole.entities.Carga.list('-updated_date', 1000).catch(() => []),
-        base44.asServiceRole.entities.FilaCargaOmie.list('created_date', 2000).catch(() => [])
+        base44.asServiceRole.entities.FilaCargaOmie.list('-created_date', 2000).catch(() => [])
       ]);
       const STATUS_INTERMEDIARIOS = new Set(['em_andamento', 'parcial', 'processando', 'nao_iniciado']);
       const cargaIdsComFilaQualquer = new Set(filaItens.map(i => i.carga_id));
 
       const cargasParaAtualizar = todasCargas.filter(c => {
-        // Recalcula cargas em status intermediário ativo QUE tenham itens na fila
+        // Recalcula TODA carga em status intermediário que tenha itens na fila.
+        // Inclui as órfãs: 100% concluídas mas que travaram em em_andamento/parcial porque
+        // o último item concluiu numa rodada que não as recalculou. atualizarStatusCarga
+        // fecha para 'concluido' quando concluidos === total.
         if (STATUS_INTERMEDIARIOS.has(c.processamento_omie_status)) return cargaIdsComFilaQualquer.has(c.id);
         return false;
       });
@@ -339,6 +335,17 @@ Deno.serve(async (req) => {
       if (cargasParaAtualizar.length > 0) {
         console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo`);
         await Promise.all(cargasParaAtualizar.map(c => atualizarStatusCarga(base44, c.id)));
+      }
+    }
+
+    // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
+    // outra instância está ativa — aborta o PROCESSAMENTO (chamadas Omie) para não duplicar.
+    // O Passo 1 acima (status local) já rodou, então as órfãs já foram fechadas mesmo aqui.
+    const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
+    if (emProcessamento.length > 0) {
+      const age = Date.now() - new Date(emProcessamento[0].updated_date).getTime();
+      if (age < 2 * 60 * 1000) {
+        return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Outra instância já está processando a fila. Status das cargas concluídas foi atualizado.' });
       }
     }
 
@@ -420,6 +427,8 @@ Deno.serve(async (req) => {
             }
           }
           processados++;
+          // Fecha o status da carga NA HORA (não espera rodada futura) — corrige órfãs travadas.
+          await atualizarStatusCarga(base44, item.carga_id).catch(() => {});
         } else {
           await processarFaturar(base44, item);
           // Atualiza fila + pedido local + espelho em paralelo (não sequencial)
@@ -447,6 +456,8 @@ Deno.serve(async (req) => {
           }
           await Promise.all(postUpdates);
           processados++;
+          // Fecha o status da carga NA HORA (não espera rodada futura) — corrige órfãs travadas.
+          await atualizarStatusCarga(base44, item.carga_id).catch(() => {});
         }
       } catch (e) {
         console.error(`[FILA ERRO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}):`, e.message);
