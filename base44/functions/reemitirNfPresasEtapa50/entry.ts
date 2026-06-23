@@ -85,8 +85,9 @@ Deno.serve(async (req) => {
 
     // Autenticação: apenas admin pode disparar manualmente; automação roda como serviço.
     const ehAutomacao = !!(req.headers.get('x-base44-automation') || req.headers.get('X-Base44-Automation'));
+    let user = null;
     if (!ehAutomacao) {
-      const user = await base44.auth.me().catch(() => null);
+      user = await base44.auth.me().catch(() => null);
       if (!user || user.role !== 'admin') {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -94,6 +95,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const apenasDetectar = body.apenas_detectar === true; // dry-run: só lista, não reemite
+    // Reprocessar UM pedido específico (clique humano no Log de Emissão), por código Omie.
+    const codigoUnico = body.codigo_pedido ? String(body.codigo_pedido).trim() : '';
     // Na detecção (dry-run) varremos mais pedidos para o alerta refletir a realidade;
     // na reemissão real mantemos o teto baixo (consumo Omie + timeout).
     const limite = apenasDetectar
@@ -108,6 +111,68 @@ Deno.serve(async (req) => {
     const { appKey, appSecret } = await getCredenciais(base44);
     if (!appKey || !appSecret) {
       return Response.json({ error: 'Credenciais Omie não configuradas.' }, { status: 500 });
+    }
+
+    // ── REPROCESSAR UM PEDIDO ESPECÍFICO (clique humano no Log de Emissão) ──
+    // ConsultarPedido ao vivo ANTES de qualquer ação:
+    //   • etapa 60 → NF já existe: só corrige o status/log local, NUNCA reemite.
+    //   • etapa 50 → faturado sem NF: aciona FaturarPedidoVenda (com retry anti-concorrência).
+    //   • outras etapas → não mexe.
+    if (codigoUnico) {
+      const { etapa, erro } = await consultarEtapa(appKey, appSecret, codigoUnico);
+      if (erro) {
+        return Response.json({ sucesso: false, codigo_pedido: codigoUnico, acao: 'erro_consulta', mensagem: erro }, { status: 200 });
+      }
+
+      const pedidoLocal = (await base44.asServiceRole.entities.Pedido
+        .filter({ omie_codigo_pedido: String(codigoUnico) }, '-updated_date', 1).catch(() => []))?.[0];
+
+      // BLINDAGEM FISCAL: nunca reemitir pedido solto manualmente ou fora de carga ativa.
+      if (pedidoLocal && (pedidoLocal.solto_manualmente === true || !pedidoLocal.carga_id)) {
+        return Response.json({
+          sucesso: false, codigo_pedido: codigoUnico, acao: 'bloqueado',
+          mensagem: pedidoLocal.solto_manualmente === true
+            ? 'Pedido foi solto manualmente — reemissão bloqueada.'
+            : 'Pedido não está em carga ativa — reemissão bloqueada.'
+        }, { status: 200 });
+      }
+
+      if (String(etapa) === '60') {
+        if (pedidoLocal?.id) {
+          await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
+            status: 'faturado', status_faturamento: 'faturado', faturado: true,
+            pendente_emissao: false, motivo_pendencia_emissao: ''
+          }).catch(() => {});
+        }
+        return Response.json({ sucesso: true, codigo_pedido: codigoUnico, etapa, acao: 'ja_emitido_status_corrigido', mensagem: 'Pedido já está em etapa 60 (NF emitida). Status corrigido — não reemitido.' });
+      }
+
+      if (String(etapa) === '50') {
+        const r = await emitirNf(appKey, appSecret, codigoUnico);
+        if (r.ok) {
+          if (pedidoLocal?.id) {
+            await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
+              status_faturamento: 'processando', pendente_emissao: false, motivo_pendencia_emissao: ''
+            }).catch(() => {});
+          }
+          await base44.asServiceRole.entities.LogEmissaoNF.create({
+            codigo_pedido: String(codigoUnico),
+            numero_pedido: pedidoLocal?.numero_pedido || '',
+            cliente_id: pedidoLocal?.cliente_id || '',
+            cliente_nome: pedidoLocal?.cliente_nome || '',
+            carga_id: pedidoLocal?.carga_id || '',
+            numero_carga: pedidoLocal?.numero_carga || '',
+            status: 'pendente',
+            mensagem: 'Reprocessamento manual (preso em etapa 50). Aguardando confirmação da SEFAZ.',
+            usuario_email: user?.email || 'reprocessamento_manual',
+            usuario_nome: user?.full_name || 'Reprocessamento Manual'
+          }).catch(() => {});
+          return Response.json({ sucesso: true, codigo_pedido: codigoUnico, etapa, acao: 'reemitido', mensagem: 'Emissão acionada no Omie — aguardando retorno da SEFAZ.' });
+        }
+        return Response.json({ sucesso: false, codigo_pedido: codigoUnico, etapa, acao: 'falha_reemissao', mensagem: r.msg }, { status: 200 });
+      }
+
+      return Response.json({ sucesso: false, codigo_pedido: codigoUnico, etapa, acao: 'etapa_anterior_ignorado', mensagem: `Pedido em etapa ${etapa || '?'} — ainda não pronto para emissão.` });
     }
 
     // Fonte confiável e barata: pedidos locais presos no estado "faturado localmente, sem NF".
