@@ -31,7 +31,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['pedidos', vendedor?.id],
-    queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id }),
+    // Limite alto explícito + ordenação estável: sem isso a SDK trunca e a ordem varia
+    // entre recarregamentos (causa da instabilidade "hora aparece, hora não").
+    queryFn: () => base44.entities.Pedido.filter({ vendedor_id: vendedor.id }, '-created_date', 3000),
     // Sem vendedor.id resolvido, Pedido.filter({ vendedor_id: undefined }) retorna TODOS os
     // pedidos — incluindo de outros vendedores. enabled trava a query até o id existir.
     enabled: !!vendedor?.id,
@@ -48,10 +50,19 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     queryKey: ['pedidoItems-vendedor', vendedor.id, pedidoIds.length],
     queryFn: async () => {
       if (pedidoIds.length === 0) return [];
-      const batches = await Promise.all(
-        pedidoIds.map(id => base44.entities.PedidoItem.filter({ pedido_id: id }).catch(() => []))
-      );
-      return batches.flat();
+      // Busca em lotes controlados (não 500+ chamadas simultâneas) para não derrubar a tela.
+      // Cada pedido tem poucos itens, então .filter por pedido_id nunca trunca.
+      const LOTE = 30;
+      const out = [];
+      for (let i = 0; i < pedidoIds.length; i += LOTE) {
+        const lote = pedidoIds.slice(i, i + LOTE);
+        const listas = await Promise.all(
+          lote.map(id => base44.entities.PedidoItem.filter({ pedido_id: id }).catch(() => []))
+        );
+        out.push(...listas.flat());
+        if (i + LOTE < pedidoIds.length) await new Promise(r => setTimeout(r, 100));
+      }
+      return out;
     },
     enabled: pedidoIds.length > 0,
     staleTime: 30 * 1000,
@@ -366,7 +377,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     }
     await base44.entities.Pedido.delete(pedido.id);
     queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-    queryClient.invalidateQueries({ queryKey: ['pedidoItems-all'] });
+    queryClient.invalidateQueries({ queryKey: ['pedidoItems-vendedor'] });
     toast.success('Pedido excluído');
   };
 
