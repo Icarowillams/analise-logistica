@@ -2,9 +2,8 @@ import React, { useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Printer, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { consolidarProdutos, fmtDateTime, fmtInt, abrirImpressao } from './printHelper';
-import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 /**
  * Lista de Carregamento — orientação paisagem (landscape) A4.
@@ -58,20 +57,6 @@ export default function ListaCarregamentoPdf({ carga: cargaProp, pedidosManuais,
       : Promise.resolve([]),
     enabled: !!carga?.id
   });
-
-  // Verificação de faturamento — fonte de verdade: entidade Pedido (não snapshot da carga).
-  // Considera apenas pedidos não-cancelados; conta quantos NÃO estão com status 'faturado'.
-  const statusFaturamento = useMemo(() => {
-    const ativos = pedidosCarga.filter(p => p.status !== 'cancelado');
-    const naoFaturados = ativos.filter(p => p.status !== 'faturado');
-    return {
-      total: ativos.length,
-      faturados: ativos.length - naoFaturados.length,
-      naoFaturados,
-      todosFaturados: ativos.length > 0 && naoFaturados.length === 0,
-      temPendentes: naoFaturados.length > 0
-    };
-  }, [pedidosCarga]);
 
   const cancelados = useMemo(() => {
     const omieSet = new Set();
@@ -201,12 +186,6 @@ export default function ListaCarregamentoPdf({ carga: cargaProp, pedidosManuais,
 
   const handlePrint = () => {
     if (!printRef.current) return;
-    if (statusFaturamento.temPendentes) {
-      const ok = window.confirm(
-        `Esta carga ainda tem ${statusFaturamento.naoFaturados.length} pedido(s) não faturado(s). A lista pode estar incompleta.\n\nImprimir mesmo assim?`
-      );
-      if (!ok) return;
-    }
     // CSS específico para landscape + footer fixo no rodapé + preservar cores
     const styles = `
       <style>
@@ -234,29 +213,6 @@ export default function ListaCarregamentoPdf({ carga: cargaProp, pedidosManuais,
         </Button>
       </div>
 
-      {carga && statusFaturamento.total > 0 && (
-        statusFaturamento.temPendentes ? (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900" data-no-print>
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-semibold">
-                  ⚠️ Atenção: esta carga ainda tem {statusFaturamento.naoFaturados.length} pedido(s) não faturado(s). A lista pode estar incompleta. Aguarde o faturamento de todos antes de imprimir para a expedição.
-                </p>
-                <p className="mt-1">
-                  <span className="font-medium">Pedidos pendentes: </span>
-                  {statusFaturamento.naoFaturados.map(p => formatNumeroPedido(p.numero_pedido) || '—').join(', ')}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-600" data-no-print>
-            <CheckCircle2 className="w-4 h-4" /> Carga completa
-          </div>
-        )
-      )}
-
       <div ref={printRef} className="bg-white mx-auto shadow-lg border border-slate-200 rounded-lg overflow-hidden" style={{ width: '1080px', maxWidth: '100%', fontFamily: 'Arial, sans-serif', fontSize: '10px', color: '#1e293b' }}>
         <div className="doc-page" style={{ position: 'relative', paddingBottom: '80px', padding: '16px 20px 80px' }}>
           {/* CABEÇALHO CORPORATIVO */}
@@ -268,9 +224,6 @@ export default function ListaCarregamentoPdf({ carga: cargaProp, pedidosManuais,
             <div style={{ fontSize: '9.5px', color: '#333', textAlign: 'right' }}>
               <div><strong>Nº Carga:</strong> {info.numero_carga}</div>
               <div><strong>Emissão:</strong> {dataRelatorio}</div>
-              {carga && statusFaturamento.total > 0 && (
-                <div><strong>Pedidos faturados:</strong> {statusFaturamento.faturados} de {statusFaturamento.total}</div>
-              )}
             </div>
           </div>
 
