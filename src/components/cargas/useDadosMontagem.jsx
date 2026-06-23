@@ -208,9 +208,11 @@ export default function useDadosMontagem() {
       );
 
       // Mapear pedidos locais cancelados pelo codigo_pedido_omie
+      // Fonte da verdade = status. data_cancelamento/cancelado_por podem ficar residuais
+      // (cancelamento fantasma revertido) e NÃO devem, sozinhos, esconder um liberado da montagem.
       const codigosCancelados = new Set(
         (todosPedidosLocais || [])
-          .filter(p => p.status === 'cancelado' || p.data_cancelamento || p.cancelado_por)
+          .filter(p => p.status === 'cancelado')
           .map(p => String(p.omie_codigo_pedido || ''))
           .filter(Boolean)
       );
