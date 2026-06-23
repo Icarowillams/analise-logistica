@@ -324,7 +324,13 @@ export default function Cargas() {
     setProcessandoFila(false);
   };
 
+  // Há itens na fila ainda não concluídos (pendentes, em processamento ou aguardando janela do Omie).
   const temPendentesNaFila = todosItensFila.some(i => i.status === 'pendente' || i.status === 'processando');
+  // Itens REALMENTE prontos para processar agora (fora da janela de espera por consumo redundante/indevido).
+  const agoraMs = Date.now();
+  const temItensProntosAgora = todosItensFila.some(i =>
+    i.status === 'pendente' && (!i.proxima_tentativa_em || new Date(i.proxima_tentativa_em).getTime() <= agoraMs)
+  );
 
   const cargasTravadas = useMemo(() => {
     const DEZ_MINUTOS = 10 * 60 * 1000;
@@ -640,12 +646,13 @@ export default function Cargas() {
           {temPendentesNaFila && (
             <Button
               onClick={processarFilaAgora}
-              disabled={processandoFila}
+              disabled={processandoFila || !temItensProntosAgora}
               variant="outline"
               className="border-amber-400 text-amber-700 hover:bg-amber-50"
+              title={!temItensProntosAgora ? 'Pedidos aguardando a janela de reenvio do Omie. O processamento ocorre automaticamente quando o Omie liberar.' : undefined}
             >
               {processandoFila ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
-              Processar Fila Agora
+              {!temItensProntosAgora ? 'Aguardando Omie liberar' : 'Processar Fila Agora'}
             </Button>
           )}
           {selecionadas.length > 0 && (

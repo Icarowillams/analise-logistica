@@ -32,6 +32,18 @@ export default function StatusProcessamentoOmie({ carga, onReprocessar, itensFil
   const itens = itensFila || itensFallback;
   const concluidos = itens.filter(i => i.status === 'concluido').length;
   const comErro = itens.filter(i => i.status === 'erro');
+  // Total REAL = todos os itens da fila (inclui pendentes que ainda não entraram na conta
+  // salva em processamento_omie_total — ex.: itens reenfileirados aguardando janela do Omie).
+  const totalReal = Math.max(total, itens.length);
+  // Itens pendentes aguardando a janela de espera do Omie (consumo redundante/indevido):
+  // pendentes com proxima_tentativa_em no futuro. A UI precisa mostrá-los, senão parece
+  // "22 de 22 concluído" mesmo havendo 1 pedido travado esperando o desbloqueio.
+  const aguardandoReenvio = itens.filter(i =>
+    i.status === 'pendente' && i.proxima_tentativa_em && new Date(i.proxima_tentativa_em).getTime() > Date.now()
+  );
+  const proximaTentativa = aguardandoReenvio.length > 0
+    ? new Date(Math.min(...aguardandoReenvio.map(i => new Date(i.proxima_tentativa_em).getTime())))
+    : null;
   const [revalidando, setRevalidando] = useState(false);
 
   // Revalida consultando a ETAPA REAL no Omie e reenfileira os pedidos < 50,
@@ -81,8 +93,14 @@ export default function StatusProcessamentoOmie({ carga, onReprocessar, itensFil
   return (
     <div className="flex flex-col gap-1">
       <Badge className={`${cfg.cls} text-xs w-fit`}>{cfg.label}</Badge>
-      {precisaDetalhe && total > 0 && (
-        <span className="text-[11px] text-slate-500">{concluidos} de {total} processados</span>
+      {precisaDetalhe && totalReal > 0 && (
+        <span className="text-[11px] text-slate-500">{concluidos} de {totalReal} processados</span>
+      )}
+      {aguardandoReenvio.length > 0 && (
+        <span className="text-[11px] text-amber-600">
+          {aguardandoReenvio.length} aguardando reenvio
+          {proximaTentativa ? ` (Omie liberou p/ ${proximaTentativa.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})` : ''}
+        </span>
       )}
       {status === 'erro' && comErro.length > 0 && (
         <span className="text-[11px] text-red-600 max-w-[180px] truncate" title={comErro[0]?.erro_log}>
