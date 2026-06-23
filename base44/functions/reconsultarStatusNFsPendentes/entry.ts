@@ -265,22 +265,62 @@ Deno.serve(async (req) => {
 
       // Etapa < 60 / sem NF confirmada → SEFAZ ainda processando.
       // IMPORTANTE: etapa 50 (faturado na carga, aguardando transmissão da NF) é estado
-      // TRANSITÓRIO — não é erro. O Omie costuma resolver em minutos (fila atrasada / rate
-      // limit). Mantemos o log como PENDENTE (amarelo) e deixamos o backoff agir; jamais
-      // marcamos 'erro' nem revertemos o pedido aqui. Só vira 'rejeitada' por cStat da SEFAZ
-      // (tratado abaixo) ou por reemissão manual confirmada como presa.
+      // TRANSITÓRIO logo após emitir. MAS um pedido que fica PRESO em etapa 50 (lote abortado
+      // por rate limit) NUNCA emite sozinho — o Omie não transmite por conta própria. Por isso:
+      //   • etapa 50 recente (log < 10min) → mantém pendente, deixa o Omie transmitir.
+      //   • etapa 50 PRESA (log mais antigo que 10min) → REACIONA a emissão automaticamente
+      //     via emitirNfPedidoOmie (FaturarPedidoVenda). Essa função tem blindagem anti-duplicidade
+      //     (bloqueia se o pedido local já estiver faturado/com NF), então é seguro chamar.
       if (real.status_real === 'aguardando') {
         const etapaNum = Number(real.etapa) || 0;
-        const msgPend = etapaNum === 50
+        let msgPend = etapaNum === 50
           ? 'Faturado na carga — aguardando emissão da NF (etapa 50). Resolve automaticamente quando o Omie transmitir.'
           : real.mensagem;
-        // Garante que o log fique 'pendente' (amarelo), nunca 'erro'.
-        for (const l of logsDoPedido) {
-          if (l.status === 'erro') {
-            await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'pendente', mensagem: msgPend }).catch(() => {});
+
+        // Detecta "preso": o log pendente mais antigo deste pedido tem mais de 10 minutos.
+        const PRESO_MS = 10 * 60 * 1000;
+        const maisAntigo = logsDoPedido.reduce((min, l) => {
+          const t = new Date(l.created_date || l.updated_date || Date.now()).getTime();
+          return t < min ? t : min;
+        }, Date.now());
+        const estaPreso = etapaNum === 50 && (Date.now() - maisAntigo) > PRESO_MS;
+
+        // novoStatusLog: por padrão mantém 'pendente'. Vira 'erro' apenas quando o Omie informa
+        // um impedimento REAL e persistente (ex: cliente bloqueado) — aí mostramos o motivo de verdade.
+        let novoStatusLog = 'pendente';
+        if (estaPreso) {
+          try {
+            const respEmit = await base44.asServiceRole.functions.invoke('emitirNfPedidoOmie', { codigo_pedido: String(codPed) });
+            const re = respEmit?.data || {};
+            const cCod = String(re?.cCodStatus || re?.resposta?.cCodStatus || '');
+            const cDesc = re?.cDescStatus || re?.resposta?.cDescStatus || '';
+            if (re.numero_nf || /já foi faturado/i.test(re.error || '')) {
+              // Já tinha NF — não está preso de verdade; o próximo refresh corrige para autorizada.
+              msgPend = re.error || 'Pedido já faturado — atualizando status.';
+            } else if (cCod && cCod !== '100' && cCod !== '0') {
+              // Omie recusou o faturamento com um motivo real (cliente bloqueado, sem cenário, etc).
+              // Isso NÃO se resolve sozinho — mostra o motivo real e marca como erro p/ visibilidade.
+              msgPend = `Não emite: ${cDesc || 'recusado pelo Omie'}`;
+              novoStatusLog = 'erro';
+            } else if (re.sucesso) {
+              msgPend = 'Emissão reacionada automaticamente (estava presa na etapa 50) — aguardando a SEFAZ.';
+            } else {
+              msgPend = 'Tentativa de reemissão da etapa 50 não concluiu: ' + (re.error || 'erro Omie') + '. Nova tentativa no próximo ciclo.';
+            }
+          } catch (emitErr) {
+            // Bloqueio/rate limit na reemissão → não é erro do pedido; tenta no próximo ciclo.
+            msgPend = 'Reemissão adiada (Omie ocupado) — nova tentativa no próximo ciclo.';
           }
         }
-        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, etapa: real.etapa, mensagem: msgPend });
+
+        // Atualiza o log com a mensagem real. Mantém 'pendente' (amarelo) salvo impedimento real.
+        for (const l of logsDoPedido) {
+          await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, {
+            status: novoStatusLog,
+            mensagem: msgPend
+          }).catch(() => {});
+        }
+        resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: novoStatusLog === 'pendente', etapa: real.etapa, reacionado: estaPreso, mensagem: msgPend });
         if (idx < lote.length - 1) await new Promise(r => setTimeout(r, DELAY_ENTRE));
         continue;
       }

@@ -45,7 +45,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
   const [resolvendo, setResolvendo] = useState(false);
   const [progresso, setProgresso] = useState({ feito: 0, total: 0 });
   const [reconsultandoCod, setReconsultandoCod] = useState(null);
-  const [reprocessandoCod, setReprocessandoCod] = useState(null);
   const [erroDetalhe, setErroDetalhe] = useState(null);
   const autoResolveKeyRef = useRef('');
 
@@ -317,28 +316,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
     setReconsultandoCod(null);
   };
 
-  // Reprocessar UM pedido preso em etapa 50 (faturado sem NF). Confirma a etapa ao vivo no
-  // Omie ANTES de agir: etapa 60 → só corrige o status; etapa 50 → aciona a emissão. Clique humano.
-  const reprocessarPreso = async (codigoPedido) => {
-    if (!codigoPedido) return;
-    setReprocessandoCod(String(codigoPedido));
-    try {
-      const resp = await base44.functions.invoke('reemitirNfPresasEtapa50', { codigo_pedido: String(codigoPedido) });
-      const r = resp?.data || {};
-      if (r.acao === 'reemitido') toast.success('Emissão acionada no Omie — aguardando a SEFAZ.');
-      else if (r.acao === 'ja_emitido_status_corrigido') toast.success('NF já existia no Omie — status corrigido.');
-      else if (r.acao === 'bloqueado') toast.warning(r.mensagem || 'Reemissão bloqueada para este pedido.');
-      else if (r.acao === 'falha_reemissao') toast.error('Falha na reemissão: ' + (r.mensagem || 'erro Omie'));
-      else if (r.acao === 'erro_consulta') toast.error('Não foi possível consultar o pedido no Omie: ' + (r.mensagem || ''));
-      else toast.info(r.mensagem || 'Pedido ainda não está pronto para emissão.');
-      await refetch();
-    } catch (e) {
-      const msg = e?.response?.data?.error || e.message;
-      toast.error('Falha ao reprocessar: ' + msg);
-    }
-    setReprocessandoCod(null);
-  };
-
   // "Buscar no Omie": para NFs emitidas DIRETO no Omie (fora da tela do app), que nunca
   // geraram log local. Busca as NFs reais da carga filtrada no Omie e cria os logs faltantes.
   const buscarLogsNoOmie = async () => {
@@ -581,31 +558,17 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro, autoConsult
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
                     <td className="p-2 text-center">
                       {(l.status === 'pendente' || l.status === 'erro') && l.codigo_pedido ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => reconsultarPedido(l.codigo_pedido)}
-                            disabled={reconsultandoCod === String(l.codigo_pedido)}
-                            title="Reconsultar status deste pedido no Omie"
-                          >
-                            {reconsultandoCod === String(l.codigo_pedido)
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <RefreshCw className="w-4 h-4" />}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                            onClick={() => reprocessarPreso(l.codigo_pedido)}
-                            disabled={reprocessandoCod === String(l.codigo_pedido)}
-                            title="Pedido preso em etapa 50? Confirma a etapa no Omie e reaciona a emissão (não reemite se já houver NF)."
-                          >
-                            {reprocessandoCod === String(l.codigo_pedido)
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <Wand2 className="w-4 h-4" />}
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => reconsultarPedido(l.codigo_pedido)}
+                          disabled={reconsultandoCod === String(l.codigo_pedido)}
+                          title="Reconsultar status deste pedido no Omie"
+                        >
+                          {reconsultandoCod === String(l.codigo_pedido)
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <RefreshCw className="w-4 h-4" />}
+                        </Button>
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}

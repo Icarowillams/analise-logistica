@@ -541,11 +541,53 @@ Deno.serve(async (req) => {
         }
 
         if (real.status_real === 'aguardando') {
-          // 🛡️ FIX CRÍTICO: registrar cooldown LONGO (60min) para pedidos "aguardando".
-          // Sem isso, os MESMOS pedidos travados na etapa 60 sem NF eram reconsultados
-          // a cada execução (30min) eternamente — causa raiz dos bloqueios por consumo indevido.
-          await registrarCooldownConsulta(base44, codPed, { aguardando: true, mensagem: real.mensagem }, 240);
-          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, mensagem: real.mensagem });
+          const etapaNum = Number(real.etapa) || 0;
+          let msgPend = real.mensagem;
+          let novoStatusLog = null; // null = não mexe no status; 'erro' = impedimento real
+
+          // 🔧 AUTO-CORREÇÃO DE PRESOS EM ETAPA 50: um pedido faturado na carga que ficou preso
+          // em etapa 50 (lote abortado por rate limit) NUNCA emite sozinho — o Omie não transmite
+          // por conta própria. Se o log mais antigo deste pedido tem mais de 10min, REACIONA a
+          // emissão via emitirNfPedidoOmie (que tem blindagem anti-duplicidade). Se o Omie recusar
+          // por motivo real (cliente bloqueado, etc.), grava o motivo verdadeiro e marca 'erro'.
+          const PRESO_MS = 10 * 60 * 1000;
+          const maisAntigoLog = logsDoPedido.reduce((min, l) => {
+            const t = new Date(l.created_date || l.updated_date || Date.now()).getTime();
+            return t < min ? t : min;
+          }, Date.now());
+          const estaPreso = etapaNum === 50 && (Date.now() - maisAntigoLog) > PRESO_MS;
+
+          if (estaPreso) {
+            try {
+              const respEmit = await base44.asServiceRole.functions.invoke('emitirNfPedidoOmie', { codigo_pedido: String(codPed) });
+              const re = respEmit?.data || {};
+              const cCod = String(re?.cCodStatus || re?.resposta?.cCodStatus || '');
+              const cDesc = re?.cDescStatus || re?.resposta?.cDescStatus || '';
+              if (re.numero_nf || /já foi faturado/i.test(re.error || '')) {
+                msgPend = re.error || 'Pedido já faturado — atualizando status.';
+              } else if (cCod && cCod !== '100' && cCod !== '0') {
+                msgPend = `Não emite: ${cDesc || 'recusado pelo Omie'}`;
+                novoStatusLog = 'erro';
+              } else if (re.sucesso) {
+                msgPend = 'Emissão reacionada automaticamente (estava presa na etapa 50) — aguardando a SEFAZ.';
+              } else {
+                msgPend = 'Tentativa de reemissão da etapa 50 não concluiu: ' + (re.error || 'erro Omie') + '. Nova tentativa no próximo ciclo.';
+              }
+            } catch (emitErr) {
+              msgPend = 'Reemissão adiada (Omie ocupado) — nova tentativa no próximo ciclo.';
+            }
+            // Atualiza a mensagem (e status se for impedimento real) nos logs deste pedido.
+            for (const l of logsDoPedido) {
+              await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, {
+                status: novoStatusLog || 'pendente',
+                mensagem: msgPend
+              }).catch(() => {});
+            }
+          }
+
+          // 🛡️ Cooldown LONGO (60min) para "aguardando" — evita reconsultar eternamente os mesmos.
+          await registrarCooldownConsulta(base44, codPed, { aguardando: true, mensagem: msgPend }, estaPreso ? 12 : 240);
+          resultados.push({ codigo_pedido: codPed, sucesso: false, ainda_pendente: true, reacionado: estaPreso, mensagem: msgPend });
           continue;
         }
 
