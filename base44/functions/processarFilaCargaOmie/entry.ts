@@ -227,6 +227,53 @@ async function atualizarStatusCarga(base44, carga_id) {
   else if (erros > 0 && concluidos + erros === total) status = 'parcial';
   else status = 'em_andamento';
 
+  // Quando a carga termina de faturar, os pedidos D1/troca (venda interna sem Omie)
+  // também precisam virar 'faturado' — eles não passam pela fila do Omie (não emitem NF).
+  // Espelha o bloco da função síncrona faturarCargaOmie. Idempotente: só promove o que
+  // ainda não está faturado/cancelado; nunca rebaixa nem reverte status.
+  if (status === 'concluido') {
+    try {
+      const carga = await base44.asServiceRole.entities.Carga.filter({ id: carga_id }, '-created_date', 1)
+        .then(r => r?.[0]).catch(() => null);
+      if (carga) {
+        const internosCarga = carga.pedidos_internos || [];
+        const trocasCarga = carga.pedidos_troca || [];
+        const idsInternos = [
+          ...internosCarga.map(p => p.pedido_id).filter(Boolean),
+          ...trocasCarga.map(t => t.pedido_id).filter(Boolean)
+        ];
+        for (const pedidoId of idsInternos) {
+          try {
+            const pl = await base44.asServiceRole.entities.Pedido.filter({ id: pedidoId }, '-created_date', 1).then(r => r?.[0]).catch(() => null);
+            if (pl && pl.status !== 'faturado' && pl.status !== 'cancelado' && pl.status !== 'cancelado_pos_faturamento') {
+              await base44.asServiceRole.entities.Pedido.update(pedidoId, {
+                faturado: true,
+                data_faturamento: new Date().toISOString(),
+                status: 'faturado'
+              });
+            }
+          } catch { /* não bloqueia */ }
+        }
+        // Trocas via entidade PedidoTroca sem pedido_id: casar por numero_pedido + tipo='troca'
+        for (const t of trocasCarga) {
+          if (t.pedido_id || !t.numero_pedido) continue;
+          try {
+            const matches = await base44.asServiceRole.entities.Pedido.filter({ numero_pedido: t.numero_pedido, tipo: 'troca' });
+            for (const pl of (matches || [])) {
+              if (pl.status !== 'faturado' && pl.status !== 'cancelado' && pl.status !== 'cancelado_pos_faturamento') {
+                await base44.asServiceRole.entities.Pedido.update(pl.id, {
+                  faturado: true,
+                  data_faturamento: new Date().toISOString(),
+                  status: 'faturado'
+                });
+              }
+            }
+          } catch { /* não bloqueia */ }
+        }
+      }
+    } catch { /* não bloqueia o fluxo de status da carga */ }
+  }
+
   await base44.asServiceRole.entities.Carga.update(carga_id, {
     processamento_omie_status: status,
     processamento_omie_total: total
