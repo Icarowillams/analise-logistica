@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProdutoCardList from './ProdutoCardList';
+import { registrarGeoPedido } from '@/lib/registrarGeoPedido';
 
 // Regra de prioridade de preço (escopo Omie):
 // 1. AcaoPromocional ativa (status=ativa, dentro do período, vinculada ao cliente OU à tabela do cliente)
@@ -482,7 +483,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       // Soma das QUANTIDADES (não nº de linhas) — usada no preço médio de Gerenciar Pedidos
       // sem precisar varrer PedidoItem. Persistir aqui evita carregar milhares de itens no load.
       qtd_total_itens: itensLocal.reduce((s, i) => s + (Number(i.quantidade) || 0), 0),
-      valor_total: totalPedido
+      valor_total: totalPedido,
+      // Cobertura Inteligente: herda o canal preferencial do cliente (informativo).
+      canal_pedido: cliente.canal_preferencial || null,
     };
 
     let savedPedidoId = pedidoId;
@@ -498,6 +501,11 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       const created = await base44.entities.Pedido.create(pedidoData);
       savedPedidoId = created.id;
       setPedidoId(created.id);
+      // Cobertura Inteligente: captura GPS do lançamento (informativo, não-bloqueante).
+      // Não usamos await — nunca atrasa nem impede o salvamento do pedido.
+      registrarGeoPedido({ pedido: created, cliente, usuario: vendedor })
+        .then((geo) => { if (geo) base44.entities.Pedido.update(created.id, geo).catch(() => {}); })
+        .catch(() => {});
     }
 
     // Create items

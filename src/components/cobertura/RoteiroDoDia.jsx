@@ -4,9 +4,10 @@ import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Loader2, CheckCircle2, Navigation } from 'lucide-react';
+import { MapPin, Loader2, CheckCircle2, Navigation, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { capturarPosicao, distanciaMetros } from '@/lib/coberturaUtils';
+import CheckoutVisitaModal from './CheckoutVisitaModal';
 
 function hojeStr() {
   const d = new Date();
@@ -17,10 +18,15 @@ export default function RoteiroDoDia() {
   const [userId, setUserId] = useState(null);
   const hoje = hojeStr();
 
+  const [tipoPromotor, setTipoPromotor] = useState(null); // ['venda'] | ['reposicao'] | ['venda','reposicao'] | null
+
   useEffect(() => {
     base44.auth.me().then(async (u) => {
       const vends = await base44.entities.Vendedor.filter({ email: u.email });
-      setUserId(vends[0]?.id || u.id);
+      const me = vends[0];
+      setUserId(me?.id || u.id);
+      const ehPromotor = me?.papeis?.includes('promotor');
+      setTipoPromotor(ehPromotor && me?.tipo_promotor?.length ? me.tipo_promotor : null);
     }).catch(() => {});
   }, []);
 
@@ -36,8 +42,26 @@ export default function RoteiroDoDia() {
   });
   const clientePorId = useMemo(() => Object.fromEntries(clientes.map((c) => [c.id, c])), [clientes]);
 
+  // Visitas de hoje deste usuário — para localizar a visita ligada à agenda (check-out)
+  const { data: visitasHoje = [], refetch: refetchVisitas } = useQuery({
+    queryKey: ['visitas-hoje', userId, hoje],
+    queryFn: () => base44.entities.Visita.filter({ vendedor_id: userId, data_visita: hoje }, '-created_date', 500),
+    enabled: !!userId,
+  });
+  const visitaPorAgenda = useMemo(() => Object.fromEntries(visitasHoje.map((v) => [v.agenda_id, v])), [visitasHoje]);
+
+  const [checkoutVisita, setCheckoutVisita] = useState(null);
+
+  // Diferenciador por tipo de promotor: promotor só-venda vê visitas de venda,
+  // só-reposição vê reposição; misto/demais papéis veem tudo.
+  const visiveis = useMemo(() => {
+    if (!tipoPromotor || (tipoPromotor.includes('venda') && tipoPromotor.includes('reposicao'))) return agendas;
+    const alvo = tipoPromotor.includes('reposicao') ? 'reposicao' : 'venda';
+    return agendas.filter((a) => (a.finalidade_visita || 'venda') === alvo);
+  }, [agendas, tipoPromotor]);
+
   // ordena por região (agrupado) — atraso já é refletido por estarem na agenda do dia
-  const ordenadas = useMemo(() => [...agendas].sort((a, b) => (a.cliente_regiao || '').localeCompare(b.cliente_regiao || '')), [agendas]);
+  const ordenadas = useMemo(() => [...visiveis].sort((a, b) => (a.cliente_regiao || '').localeCompare(b.cliente_regiao || '')), [visiveis]);
 
   const fazerCheckin = async (agenda) => {
     try {
@@ -68,6 +92,7 @@ export default function RoteiroDoDia() {
       await base44.entities.AgendaComercial.update(agenda.id, { status_visita: 'realizada', visita_id: visita.id });
       toast.success(fora ? `Check-in feito (FORA do raio: ${dist}m)` : `Check-in feito${dist != null ? ` (${dist}m)` : ''}`);
       refetch();
+      refetchVisitas();
     } catch (e) {
       toast.error('Não foi possível capturar a localização: ' + (e?.message || ''));
     }
@@ -98,7 +123,13 @@ export default function RoteiroDoDia() {
                 </div>
               </div>
               {a.status_visita === 'realizada' ? (
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1"><CheckCircle2 className="w-3 h-3" /> Visitado</Badge>
+                (() => {
+                  const v = visitaPorAgenda[a.id];
+                  if (v && v.checkout_pendente) {
+                    return <Button size="sm" variant="outline" onClick={() => setCheckoutVisita(v)} className="gap-1 border-amber-300 text-amber-700"><LogOut className="w-3 h-3" /> Check-out</Button>;
+                  }
+                  return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1"><CheckCircle2 className="w-3 h-3" /> Concluído</Badge>;
+                })()
               ) : (
                 <Button size="sm" onClick={() => fazerCheckin(a)} className="gap-1"><MapPin className="w-3 h-3" /> Check-in</Button>
               )}
@@ -106,6 +137,13 @@ export default function RoteiroDoDia() {
           ))}
         </div>
       )}
+
+      <CheckoutVisitaModal
+        visita={checkoutVisita}
+        open={!!checkoutVisita}
+        onClose={() => setCheckoutVisita(null)}
+        onDone={() => { refetchVisitas(); refetch(); }}
+      />
     </div>
   );
 }
