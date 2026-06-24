@@ -85,6 +85,10 @@
     "bairro": {
       "type": "string"
     },
+    "regiao": {
+      "type": "string",
+      "description": "Regi\u00e3o/agrupamento de bairros do cliente (usado no roteiro di\u00e1rio e relat\u00f3rios de cobertura)"
+    },
     "cidade": {
       "type": "string"
     },
@@ -143,6 +147,10 @@
       "type": "string",
       "description": "Vendedor/representante respons\u00e1vel"
     },
+    "responsavel_id": {
+      "type": "string",
+      "description": "Vendedor ou promotor respons\u00e1vel pela cobertura/visita do cliente (cobertura inteligente). Default = vendedor_id quando vazio."
+    },
     "supervisor_id": {
       "type": "string"
     },
@@ -164,6 +172,29 @@
     "modalidade_pagamento_id": {
       "type": "string",
       "description": "ID da ModalidadePagamento padr\u00e3o do cliente (ex: BOLETO BANCARIO, PIX, DINHEIRO). Usado para determinar se boletos devem ser gerados automaticamente."
+    },
+    "frequencia_visita_dias": {
+      "type": "number",
+      "description": "Periodicidade esperada de visita, em dias (ex.: 7, 15, 30)"
+    },
+    "periodicidade_visita": {
+      "type": "string",
+      "enum": [
+        "semanal",
+        "quinzenal",
+        "mensal"
+      ],
+      "description": "Periodicidade de visita combinada com os dias da semana (dias_visita)"
+    },
+    "canal_preferencial": {
+      "type": "string",
+      "enum": [
+        "presencial",
+        "ligacao",
+        "whatsapp",
+        "app"
+      ],
+      "description": "Canal preferencial de pedido do cliente. Preenche automaticamente o canal_pedido. Quando vazio, o sistema sinaliza pend\u00eancia."
     },
     "janela_entrega_inicio": {
       "type": "string",

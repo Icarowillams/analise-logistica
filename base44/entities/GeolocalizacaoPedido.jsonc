@@ -1,0 +1,62 @@
+{
+  "name": "GeolocalizacaoPedido",
+  "type": "object",
+  "description": "Localiza\u00e7\u00e3o capturada no momento em que qualquer pedido \u00e9 lan\u00e7ado por qualquer perfil do time comercial. Informativo \u2014 gera alerta quando fora do raio, sem bloquear o lan\u00e7amento.",
+  "properties": {
+    "pedido_id": {
+      "type": "string",
+      "description": "Pedido relacionado"
+    },
+    "numero_pedido": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "usuario_id": {
+      "type": "string",
+      "description": "Quem lan\u00e7ou o pedido"
+    },
+    "usuario_nome": {
+      "type": "string"
+    },
+    "latitude": {
+      "type": "number",
+      "description": "Latitude capturada no momento do lan\u00e7amento"
+    },
+    "longitude": {
+      "type": "number",
+      "description": "Longitude capturada no momento do lan\u00e7amento"
+    },
+    "distancia_cadastro_m": {
+      "type": "number",
+      "description": "Dist\u00e2ncia entre a geolocaliza\u00e7\u00e3o capturada e o endere\u00e7o cadastrado do cliente, em metros"
+    },
+    "fora_do_raio": {
+      "type": "boolean",
+      "default": false,
+      "description": "Captura fora do raio aceit\u00e1vel do cliente"
+    },
+    "canal_pedido": {
+      "type": "string",
+      "enum": [
+        "presencial",
+        "ligacao",
+        "whatsapp",
+        "app"
+      ],
+      "description": "Canal do pedido (herdado do canal_preferencial do cliente)"
+    },
+    "criado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp da captura"
+    }
+  },
+  "required": [
+    "usuario_id"
+  ]
+}

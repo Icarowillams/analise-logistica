@@ -44,6 +44,10 @@
       "default": [],
       "description": "IDs dos supervisores vinculados"
     },
+    "supervisor_promotores_id": {
+      "type": "string",
+      "description": "ID do Supervisor de Promotores respons\u00e1vel \u2014 direciona os relat\u00f3rios de gest\u00e3o de reposi\u00e7\u00e3o a essa pessoa"
+    },
     "papeis": {
       "type": "array",
       "items": {
@@ -54,11 +58,26 @@
           "ajudante",
           "supervisor",
           "gerente",
-          "admin_logistica"
+          "admin_logistica",
+          "coordenador",
+          "analista_comercial",
+          "promotor"
         ]
       },
       "default": [],
       "description": "Pap\u00e9is operacionais do funcion\u00e1rio \u2014 um mesmo funcion\u00e1rio pode ter m\u00faltiplos pap\u00e9is"
+    },
+    "tipo_promotor": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "venda",
+          "reposicao"
+        ]
+      },
+      "default": [],
+      "description": "Aplic\u00e1vel a promotores: venda, reposi\u00e7\u00e3o ou ambos (misto). Determina quais telas/fluxos o usu\u00e1rio v\u00ea."
     },
     "cnh_numero": {
       "type": "string",

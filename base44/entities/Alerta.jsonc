@@ -1,0 +1,80 @@
+{
+  "name": "Alerta",
+  "type": "object",
+  "description": "Alerta de cobertura gerado em cascata quando uma agenda de visita n\u00e3o \u00e9 cumprida (cliente \u2192 supervisor \u2192 coordenador \u2192 ger\u00eancia) ou quando h\u00e1 check-out pendente / pedido fora do raio.",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "agenda_nao_cumprida",
+        "checkout_pendente",
+        "geolocalizacao_fora_raio"
+      ],
+      "default": "agenda_nao_cumprida",
+      "description": "Tipo do alerta"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "Cliente ao qual o alerta se refere"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "papel_origem": {
+      "type": "string",
+      "enum": [
+        "gerencia",
+        "coordenador",
+        "supervisor",
+        "vendedor",
+        "promotor"
+      ],
+      "description": "Papel que n\u00e3o cumpriu a agenda"
+    },
+    "responsavel_id": {
+      "type": "string",
+      "description": "Usu\u00e1rio respons\u00e1vel que falhou a agenda"
+    },
+    "responsavel_nome": {
+      "type": "string"
+    },
+    "destinatario_id": {
+      "type": "string",
+      "description": "Quem deve visualizar/tratar o alerta (Supervisor, Coordenador ou Ger\u00eancia conforme escalonamento)"
+    },
+    "destinatario_nome": {
+      "type": "string"
+    },
+    "nivel": {
+      "type": "string",
+      "enum": [
+        "atencao",
+        "alerta",
+        "critico"
+      ],
+      "description": "atencao (1\u00aa falha, amarelo) / alerta (2\u00aa falha, vermelho) / critico (3\u00aa+ falha, ger\u00eancia)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "aberto",
+        "visualizado",
+        "resolvido"
+      ],
+      "default": "aberto"
+    },
+    "mensagem": {
+      "type": "string",
+      "description": "Texto leg\u00edvel do alerta"
+    },
+    "criado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de gera\u00e7\u00e3o do alerta"
+    }
+  },
+  "required": [
+    "tipo",
+    "cliente_id"
+  ]
+}

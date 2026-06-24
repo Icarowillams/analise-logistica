@@ -1,0 +1,60 @@
+{
+  "name": "EstoqueVisitaItem",
+  "type": "object",
+  "description": "Registro unificado de movimenta\u00e7\u00e3o de estoque do cliente durante uma visita \u2014 diferenciado por tipo_registro: LEITURA_ESTOQUE (vendedor confere estoque do cliente, para c\u00e1lculo de giro) ou REPOSICAO (promotor rep\u00f5e g\u00f4ndola/expositor).",
+  "properties": {
+    "visita_id": {
+      "type": "string",
+      "description": "Visita em que o registro foi feito"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "Cliente avaliado"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "item_id": {
+      "type": "string",
+      "description": "Produto avaliado"
+    },
+    "item_codigo": {
+      "type": "string"
+    },
+    "item_nome": {
+      "type": "string"
+    },
+    "tipo_registro": {
+      "type": "string",
+      "enum": [
+        "leitura_estoque",
+        "reposicao"
+      ],
+      "description": "leitura_estoque = confer\u00eancia de estoque (venda); reposicao = reposi\u00e7\u00e3o de g\u00f4ndola (promotor)"
+    },
+    "quantidade": {
+      "type": "number",
+      "description": "Quantidade f\u00edsica encontrada (leitura) ou colocada em g\u00f4ndola (reposi\u00e7\u00e3o)"
+    },
+    "unidade": {
+      "type": "string",
+      "description": "Unidade de medida do item (cx, un, kg...)"
+    },
+    "usuario_id": {
+      "type": "string"
+    },
+    "usuario_nome": {
+      "type": "string"
+    },
+    "criado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp da coleta"
+    }
+  },
+  "required": [
+    "cliente_id",
+    "item_id",
+    "tipo_registro"
+  ]
+}

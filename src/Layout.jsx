@@ -147,6 +147,11 @@ export default function Layout({ children, currentPageName }) {
         ]
       },
       {
+        title: 'Cobertura Inteligente',
+        icon: MapPin,
+        path: 'CoberturaInteligente'
+      },
+      {
         title: 'Logística',
         icon: Warehouse,
         submenu: [

@@ -1,0 +1,66 @@
+{
+  "name": "CoberturaStatus",
+  "type": "object",
+  "description": "Status de cobertura calculado por cliente e por papel \u2014 baseado na sequ\u00eancia de agendas consecutivas n\u00e3o cumpridas (n\u00e3o em dias de atraso). Recalculado diariamente pelo job recalcularCobertura ou sob demanda.",
+  "properties": {
+    "cliente_id": {
+      "type": "string",
+      "description": "Cliente avaliado"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "papel": {
+      "type": "string",
+      "enum": [
+        "gerencia",
+        "coordenador",
+        "supervisor",
+        "vendedor",
+        "promotor"
+      ],
+      "description": "Papel para o qual o status \u00e9 calculado \u2014 cada papel tem sua pr\u00f3pria periodicidade"
+    },
+    "responsavel_id": {
+      "type": "string",
+      "description": "Usu\u00e1rio respons\u00e1vel pela cobertura deste cliente neste papel"
+    },
+    "responsavel_nome": {
+      "type": "string"
+    },
+    "supervisor_id": {
+      "type": "string",
+      "description": "Supervisor respons\u00e1vel (desnormalizado para performance)"
+    },
+    "falhas_consecutivas": {
+      "type": "number",
+      "default": 0,
+      "description": "Agendas consecutivas deste papel/cliente marcadas como NAO_REALIZADA. Zera quando uma visita \u00e9 REALIZADA."
+    },
+    "status_cobertura": {
+      "type": "string",
+      "enum": [
+        "em_dia",
+        "atencao",
+        "atrasado",
+        "critico"
+      ],
+      "default": "em_dia",
+      "description": "em_dia (0 falhas) / atencao (1) / atrasado (2) / critico (3+)"
+    },
+    "ultima_visita_em": {
+      "type": "string",
+      "format": "date",
+      "description": "Data da \u00faltima visita REALIZADA deste papel para o cliente"
+    },
+    "atualizado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp do \u00faltimo rec\u00e1lculo"
+    }
+  },
+  "required": [
+    "cliente_id",
+    "papel"
+  ]
+}

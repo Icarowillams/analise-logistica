@@ -1,0 +1,91 @@
+{
+  "name": "AgendaComercial",
+  "type": "object",
+  "description": "Agenda mensal de visitas por usu\u00e1rio e papel. A periodicidade \u00e9 definida por papel (Ger\u00eancia mensal, Coordenador quinzenal, Supervisor/Vendedor/Promotor semanal), parametriz\u00e1vel por rota/carteira. A contagem de falhas consecutivas da cobertura usa o hist\u00f3rico de status_visita = nao_realizada desta tabela.",
+  "properties": {
+    "usuario_id": {
+      "type": "string",
+      "description": "Profissional escalado"
+    },
+    "usuario_nome": {
+      "type": "string"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "Cliente a ser visitado"
+    },
+    "cliente_nome": {
+      "type": "string"
+    },
+    "cliente_regiao": {
+      "type": "string"
+    },
+    "data_prevista": {
+      "type": "string",
+      "format": "date",
+      "description": "Data da visita dentro do m\u00eas de refer\u00eancia"
+    },
+    "papel": {
+      "type": "string",
+      "enum": [
+        "gerencia",
+        "coordenador",
+        "supervisor",
+        "vendedor",
+        "promotor"
+      ],
+      "description": "Papel respons\u00e1vel pela visita naquele dia"
+    },
+    "finalidade_visita": {
+      "type": "string",
+      "enum": [
+        "venda",
+        "reposicao"
+      ],
+      "default": "venda",
+      "description": "Natureza da visita agendada"
+    },
+    "periodicidade_papel": {
+      "type": "string",
+      "enum": [
+        "mensal",
+        "quinzenal",
+        "semanal"
+      ],
+      "description": "Herdada da parametriza\u00e7\u00e3o por papel"
+    },
+    "meio_comprovacao": {
+      "type": "string",
+      "enum": [
+        "geolocalizacao",
+        "whatsapp"
+      ],
+      "default": "geolocalizacao",
+      "description": "Para Ger\u00eancia/Coordenador pode ser WhatsApp; demais exigem geolocaliza\u00e7\u00e3o"
+    },
+    "mes_referencia": {
+      "type": "string",
+      "format": "date",
+      "description": "1\u00ba dia do m\u00eas ao qual a agenda pertence"
+    },
+    "status_visita": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "realizada",
+        "nao_realizada"
+      ],
+      "default": "pendente"
+    },
+    "visita_id": {
+      "type": "string",
+      "description": "ID da Visita que cumpriu esta agenda, quando realizada"
+    }
+  },
+  "required": [
+    "usuario_id",
+    "cliente_id",
+    "data_prevista",
+    "papel"
+  ]
+}

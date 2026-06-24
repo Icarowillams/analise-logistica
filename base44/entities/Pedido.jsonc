@@ -325,6 +325,33 @@
     "motivo_troca_descricao": {
       "type": "string"
     },
+    "canal_pedido": {
+      "type": "string",
+      "enum": [
+        "presencial",
+        "ligacao",
+        "whatsapp",
+        "app"
+      ],
+      "description": "Canal do pedido (Cobertura Inteligente). Herdado do canal_preferencial do cliente; quando vazio, sinaliza pend\u00eancia."
+    },
+    "geo_latitude": {
+      "type": "number",
+      "description": "Latitude capturada no lan\u00e7amento do pedido"
+    },
+    "geo_longitude": {
+      "type": "number",
+      "description": "Longitude capturada no lan\u00e7amento do pedido"
+    },
+    "geo_distancia_m": {
+      "type": "number",
+      "description": "Dist\u00e2ncia entre a captura e o endere\u00e7o do cliente, em metros (informativo)"
+    },
+    "geo_fora_do_raio": {
+      "type": "boolean",
+      "default": false,
+      "description": "Pedido lan\u00e7ado fora do raio aceit\u00e1vel do cliente"
+    },
     "observacoes": {
       "type": "string"
     },

@@ -47,6 +47,7 @@ import CorrigirPlanosPlanilhaPage from './pages/CorrigirPlanosPlanilha.jsx';
 import GestaoMetas from './pages/GestaoMetas.jsx';
 import Comissionamento from './pages/Comissionamento.jsx';
 import MontarRota from './pages/MontarRota.jsx';
+import CoberturaInteligente from './pages/CoberturaInteligente.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -170,6 +171,8 @@ const AuthenticatedApp = () => {
       <Route path="/cadastroshub" element={<LayoutWrapper currentPageName="CadastrosHub"><CadastrosHub /></LayoutWrapper>} />
       <Route path="/MontarRota" element={<LayoutWrapper currentPageName="MontarRota"><MontarRota /></LayoutWrapper>} />
       <Route path="/montarrota" element={<LayoutWrapper currentPageName="MontarRota"><MontarRota /></LayoutWrapper>} />
+      <Route path="/CoberturaInteligente" element={<LayoutWrapper currentPageName="CoberturaInteligente"><CoberturaInteligente /></LayoutWrapper>} />
+      <Route path="/coberturainteligente" element={<LayoutWrapper currentPageName="CoberturaInteligente"><CoberturaInteligente /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
