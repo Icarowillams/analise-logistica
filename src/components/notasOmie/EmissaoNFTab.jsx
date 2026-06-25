@@ -161,7 +161,11 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     return espelho.filter(p => {
       // Esconde pedidos que já têm NF autorizada no log (espelho pode estar desatualizado).
       if (codigosComNf.has(String(p.codigo_pedido))) return false;
-      const numCarga = cargaPorPedido.get(String(p.codigo_pedido))?.carga?.numero_carga || '';
+      const vinculo = cargaPorPedido.get(String(p.codigo_pedido));
+      const numCarga = vinculo?.carga?.numero_carga || '';
+      // Só mostra pedidos que pertencem a uma carga — etapa 50 solta (ex: NF cancelada)
+      // não representa "pronto para faturamento" no fluxo de cargas.
+      if (!vinculo) return false;
       if (cargaTermo && !String(numCarga).includes(cargaTermo)) return false;
       if (!termo) return true;
       return (
