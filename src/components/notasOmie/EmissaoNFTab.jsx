@@ -186,6 +186,14 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         codigos_pedido: codigos
       });
 
+      // Nada a emitir: todos já tinham NF. Mostra como aviso informativo (não erro) e atualiza a lista.
+      if (data?.nada_a_emitir) {
+        toast.info(data?.mensagem || 'Pedido(s) já possuem NF emitida — nada a emitir.');
+        setSelecionados(new Set());
+        refetch();
+        return;
+      }
+
       setLoteAtivoId(data?.fila_id || null);
       setLoteNotificado(null);
       toast.message(data?.mensagem || 'Faturamento iniciado em background. Acompanhe o progresso na tela.');

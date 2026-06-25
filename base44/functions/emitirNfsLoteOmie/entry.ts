@@ -254,7 +254,17 @@ Deno.serve(async (req) => {
     }
 
     if (errosDuplicidade.length > 0 && codigosValidos.length === 0) {
-      return Response.json({ sucesso: false, error: errosDuplicidade[0].mensagem, erros: errosDuplicidade }, { status: 409 });
+      // NÃO é erro: todos os pedidos selecionados já possuem NF emitida. É uma situação
+      // informativa (nada a emitir) — retorna sucesso com flag para o frontend mostrar como aviso.
+      return Response.json({
+        sucesso: true,
+        nada_a_emitir: true,
+        ja_emitidos: errosDuplicidade.length,
+        erros: errosDuplicidade,
+        mensagem: errosDuplicidade.length === 1
+          ? errosDuplicidade[0].mensagem
+          : `${errosDuplicidade.length} pedido(s) já possuem NF emitida — nada a emitir.`
+      });
     }
 
     const loteId = `LOTE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
