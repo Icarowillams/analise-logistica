@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
         await emLotes(filaPendentes, async (item) => {
           await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
             status: 'erro', erro_log: 'Cancelado: carga solta pelo usuário'
-          }).catch(() => {});
+          }).catch((e) => { console.error('[soltarCarga] falha ao cancelar item da fila:', e?.message || e); });
         });
       } catch (e) {
         console.warn('Falha ao cancelar fila (best-effort):', e.message);

@@ -238,7 +238,7 @@ async function limparExecucoesPresas(base44) {
         mensagem: 'Lote expirado (preso em execução há mais de 15 min). Pendentes liberados para reprocessamento.',
         atualizado_em: new Date().toISOString(),
         concluido_em: new Date().toISOString()
-      }).catch(() => {});
+      }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao expirar lote preso:', e?.message || e); });
     }
   }
 }
@@ -311,7 +311,7 @@ async function aplicarResultadoConfirmado(base44, codigoPedido, real) {
         pendente_emissao: false, motivo_pendencia_emissao: '', omie_erro: '',
         ...(p.data_faturamento ? {} : { data_faturamento: new Date().toISOString() }),
         ...(real.numero_nf ? { numero_nota_fiscal: real.numero_nf } : {})
-      }).catch(() => {});
+      }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido faturado:', e?.message || e); });
     }
   }
   // Espelho PedidoLiberadoOmie
@@ -325,7 +325,7 @@ async function aplicarResultadoConfirmado(base44, codigoPedido, real) {
         numero_nf: real.numero_nf || esp.numero_nf || '',
         sincronizado_em: new Date().toISOString(),
         origem_sync: 'reconciliacao'
-      }).catch(() => {});
+      }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao atualizar espelho (confirmado):', e?.message || e); });
     }
   } catch { /* ignore */ }
 }
@@ -590,7 +590,7 @@ Deno.serve(async (req) => {
       } else if (statusFinalPedido === 'rejeitada') {
         if (realConfirmado) await aplicarResultadoConfirmado(base44, codigoPedido, realConfirmado);
         const pedRej = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
-        if (pedRej?.id) await base44.asServiceRole.entities.Pedido.update(pedRej.id, { status_faturamento: 'rejeitado', omie_erro: mensagemPedido }).catch(() => {});
+        if (pedRej?.id) await base44.asServiceRole.entities.Pedido.update(pedRej.id, { status_faturamento: 'rejeitado', omie_erro: mensagemPedido }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido rejeitado:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'rejeitada', mensagem: mensagemPedido });
         erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
         await gravarLogEmissao(base44, fila, codigoPedido, 'rejeitada', mensagemPedido, {
@@ -598,7 +598,7 @@ Deno.serve(async (req) => {
         });
       } else if (statusFinalPedido === 'erro') {
         const pedErr = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
-        if (pedErr?.id) await base44.asServiceRole.entities.Pedido.update(pedErr.id, { status_faturamento: 'erro', omie_erro: mensagemPedido }).catch(() => {});
+        if (pedErr?.id) await base44.asServiceRole.entities.Pedido.update(pedErr.id, { status_faturamento: 'erro', omie_erro: mensagemPedido }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido com erro de faturamento:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem: mensagemPedido });
         erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
@@ -623,7 +623,7 @@ Deno.serve(async (req) => {
           status_faturamento: 'processando',
           pendente_emissao: true,
           motivo_pendencia_emissao: mensagemPedido
-        }).catch(() => {});
+        }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido pendente de emissão:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'pendente', mensagem: mensagemPedido });
         await gravarLogEmissao(base44, fila, codigoPedido, 'pendente', mensagemPedido);
       }

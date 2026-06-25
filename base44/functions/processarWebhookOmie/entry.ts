@@ -151,7 +151,7 @@ async function upsertEspelhoUnico(base44, codigoPedido, dados) {
   const peso = (r) => (Number(r.etapa) || 0) * 1e13 + new Date(r.sincronizado_em || 0).getTime();
   existentes.sort((a, b) => peso(b) - peso(a));
   const principal = existentes[0];
-  await base44.asServiceRole.entities.PedidoLiberadoOmie.update(principal.id, dados).catch(() => {});
+  await base44.asServiceRole.entities.PedidoLiberadoOmie.update(principal.id, dados).catch((e) => { console.error('[processarWebhookOmie] falha ao atualizar espelho (upsert):', e?.message || e); });
   for (const dup of existentes.slice(1)) {
     await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(dup.id).catch(() => {});
   }
@@ -1177,7 +1177,7 @@ Deno.serve(async (req) => {
         status: 'pendente',
         mensagem_erro: 'Aguardando liberação do rate limit (reenfileirado)',
         webhook_processado_em: null
-      }).catch(() => {});
+      }).catch((e) => { console.error('[processarWebhookOmie] falha ao reenfileirar webhook (circuit breaker):', e?.message || e); });
       return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo_reenfileirado', bloqueado_ate: cbCheck.blockedUntil });
     }
 
