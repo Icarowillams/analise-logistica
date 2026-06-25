@@ -479,10 +479,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ============================================================
+    // LOCK "1 CADEIA POR VEZ" — adquirido no INÍCIO, segurado por TODO o
+    // processamento e liberado na ordem certa no fim (try/finally). TTL de
+    // ~2min é a rede de segurança se a função morrer. Se já há uma cadeia
+    // ativa (worker_rodando + worker_lock_ate no futuro) → retorna skipped.
+    // ============================================================
+    const lock = await adquirirLockEncadeamento(base44);
+    if (!lock.adquirido) {
+      console.log('[processarFila] Lock ativo — outra cadeia já está processando. Skipped.');
+      return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', processados: 0 });
+    }
+
     const inicioExecucao = Date.now();
     const resultadosGlobais = [];
     let cbAtivadoGlobal = false;
     let rodadas = 0;
+
+    try {
 
     // ============================================================
     // ANTI-STUCK — recupera itens presos em "processando" há >15min.
@@ -794,9 +808,12 @@ Deno.serve(async (req) => {
 
     // ============================================================
     // AUTO-ENCADEAMENTO — mata o atraso de 5min entre lotes.
-    // Se ainda há pendente na fila E o circuit breaker está liberado,
-    // re-invoca a si mesma (fire-and-forget) protegido por lock dedicado
-    // (1 cadeia por vez). Fila vazia / breaker aberto → não encadeia.
+    // O lock JÁ está nosso (adquirido no início). Se ainda há pendente E o
+    // circuit breaker está liberado, renovamos o lock (estende o TTL para a
+    // próxima cadeia herdar a janela), disparamos o invoke fire-and-forget e
+    // SÓ DEPOIS, no finally, liberamos — sem janela onde ninguém segura o lock.
+    // Importante: a re-invocação tentará adquirir o lock; como a nova execução
+    // só roda após esta liberar (no finally), ela o adquire normalmente.
     // ============================================================
     let encadeou = false;
     if (!cbAtivadoGlobal) {
@@ -805,25 +822,19 @@ Deno.serve(async (req) => {
       if (restantes.length > 0) {
         const breaker = await checkCircuitBreaker(base44);
         if (!breaker.blocked) {
-          const lock = await adquirirLockEncadeamento(base44);
-          if (lock.adquirido) {
-            // fire-and-forget: não aguarda a resposta para não somar latência
-            base44.asServiceRole.functions.invoke('processarFilaEnvioPedidoOmie', {}).catch(() => {});
-            encadeou = true;
-            console.log('[processarFila] Auto-encadeamento disparado — fila ainda tem pendentes.');
-          }
+          // fire-and-forget: não aguarda a resposta para não somar latência
+          base44.asServiceRole.functions.invoke('processarFilaEnvioPedidoOmie', {}).catch(() => {});
+          encadeou = true;
+          console.log('[processarFila] Auto-encadeamento disparado — fila ainda tem pendentes.');
         }
       }
     }
 
-    // Libera o lock SEMPRE no fim (a próxima cadeia adquire o seu próprio).
-    await liberarLockEncadeamento(base44);
+    console.log(`[PERF] Execução concluída: ${rodadas} rodada(s), ${resultadosGlobais.length} pedidos em ${Date.now() - inicioExecucao}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
 
     if (resultadosGlobais.length === 0) {
       return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0, encadeou });
     }
-
-    console.log(`[PERF] Execução concluída: ${rodadas} rodada(s), ${resultadosGlobais.length} pedidos em ${Date.now() - inicioExecucao}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
 
     return Response.json({
       sucesso: true,
@@ -835,13 +846,14 @@ Deno.serve(async (req) => {
       duracao_ms: Date.now() - inicioExecucao,
       resultados: resultadosGlobais
     });
+
+    } finally {
+      // Libera o lock SEMPRE ao fim do processamento (sucesso, retorno antecipado
+      // ou exceção). A re-invocação encadeada adquire o seu próprio lock em seguida.
+      await liberarLockEncadeamento(base44).catch(() => {});
+    }
   } catch (error) {
     console.error('[processarFila] Erro fatal:', error.message);
-    // Garante liberação do lock mesmo em falha fatal — não trava a cadeia.
-    try {
-      const base44err = createClientFromRequest(req);
-      await liberarLockEncadeamento(base44err);
-    } catch (_) { /* nada a fazer */ }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
