@@ -109,6 +109,21 @@ async function consultarNFporPedido(base44, codigoPedido) {
 
 // Consulta etapa do pedido. Só resolve quando etapa >= 60 com NF real; etapa < 60 = aguardando (pendente).
 async function consultarStatusReal(base44, codigoPedido) {
+  // ATALHO RÁPIDO: tenta ConsultarNF direto pelo pedido ANTES do ConsultarPedido.
+  // Se a NF já existe no Omie, resolve "autorizada" em 1 única chamada — sem depender da
+  // etapa do pedido (que demora a virar 60) e sem a 2ª chamada/delay. Elimina o delay no caso comum.
+  try {
+    const nfData = await consultarNFporPedido(base44, codigoPedido);
+    if (nfData?.numero_nf) {
+      const c = classificarNF(nfData.cStat, nfData.numero_nf, nfData.xMotivo)
+        || { status_real: 'emitida', numero_nf: nfData.numero_nf, codigo_sefaz: nfData.cStat || '100', mensagem: `NF ${nfData.numero_nf} autorizada` };
+      return { etapa: '60', ...c };
+    }
+  } catch (e) {
+    if (e.bloqueio || e.redundante) throw e; // rate limit → chamador trata como "verificando"
+    // Sem NF ainda (ou erro de "NF não encontrada") → segue pro ConsultarPedido normal abaixo.
+  }
+
   let pedido;
   try {
     const r = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido' });
@@ -130,22 +145,9 @@ async function consultarStatusReal(base44, codigoPedido) {
   if (classDireta) return { etapa, ...classDireta };
 
   // Etapa 60 SEM cStat/nNF na resposta direta. IMPORTANTE: etapa 60 = pedido faturado/NF autorizada.
-  // Tentamos enriquecer com ConsultarNF para pegar o número, mas se o rate limit atrapalhar,
-  // NÃO marcamos erro nem deixamos pendente injustamente — etapa 60 já indica NF emitida.
+  // O ConsultarNF já foi tentado no atalho rápido no topo desta função; se não trouxe número,
+  // ainda assim etapa 60 indica NF emitida — autorizada (sem número ainda, resolve num refresh futuro).
   if (etapaNum >= 60) {
-    try {
-      await new Promise(r => setTimeout(r, 6000)); // delay anti-rajada antes da 2ª chamada
-      const nfData = await consultarNFporPedido(base44, codigoPedido);
-      if (nfData?.numero_nf) {
-        const c = classificarNF(nfData.cStat, nfData.numero_nf, nfData.xMotivo) || { status_real: 'emitida', numero_nf: nfData.numero_nf, codigo_sefaz: nfData.cStat || '100', mensagem: `NF ${nfData.numero_nf} autorizada` };
-        return { etapa, ...c };
-      }
-    } catch (e) {
-      if (e.bloqueio || e.redundante) throw e; // rate limit no ConsultarNF → tratar como "verificando"
-      console.warn(`[reconsultarStatusNFsPendentes] ConsultarNF falhou p/ ${codigoPedido}: ${e.message}`);
-    }
-    // Etapa 60 confirmada mas sem número de NF nesta consulta → autorizada (sem número ainda).
-    // Resolve o número num refresh futuro; nunca vira erro.
     return { etapa, status_real: 'emitida', numero_nf: nNF || '', codigo_sefaz: '100', mensagem: nNF ? `NF ${nNF} autorizada` : 'NF autorizada (etapa 60)' };
   }
 
@@ -229,7 +231,7 @@ Deno.serve(async (req) => {
     // para nunca disparar em rajada (gatilho de "consumo redundante").
     const LIMITE = 4;
     const lote = codigos.slice(0, LIMITE);
-    const DELAY_ENTRE = 9000; // ~9s entre ConsultarPedido (backoff suave aumenta isso)
+    const DELAY_ENTRE = 4000; // ~4s entre pedidos (agora 1 chamada/pedido via atalho ConsultarNF)
 
     const breaker = await checkCircuitBreaker(base44);
     if (breaker.blocked) {
