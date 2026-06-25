@@ -10,10 +10,17 @@ const RETRY_DELAY_MS = 3000;
 const TIMEOUT_MS = 15000;
 
 function classificarStatus(pedido, etapa) {
-  const texto = JSON.stringify(pedido || {}).toLowerCase();
-  if (pedido?.infoCadastro?.cancelado === 'S' || texto.includes('cancelad')) return 'cancelada';
-  if (texto.includes('rejeitad')) return 'rejeitada';
-  if (texto.includes('denegad')) return 'denegada';
+  // CANCELAMENTO só é determinado pelos FLAGS oficiais do cabeçalho/infoCadastro do Omie.
+  // NÃO varrer o JSON inteiro com texto.includes('cancelad'): o objeto do pedido tem
+  // campos como "cancelar_op"/"bloquear_cancelamento" que contêm "cancelad" mesmo em
+  // pedidos faturados normais — isso marcava NFs autorizadas (etapa 60) como canceladas.
+  const cab = pedido?.cabecalho || {};
+  const info = pedido?.infoCadastro || {};
+  const cancelado = info?.cancelado === 'S'
+    || cab?.cancelado === 'S'
+    || String(cab?.codigo_status || '') === '90'   // etapa/status 90 = cancelado no Omie
+    || String(etapa) === '90';
+  if (cancelado) return 'cancelada';
   if (etapa === '50') return 'faturar';
   if (etapa === '60') return 'faturado';
   if (etapa === '20') return 'liberado';
