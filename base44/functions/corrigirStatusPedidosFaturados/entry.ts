@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
     const simular = body.simular !== false;
     const limite = Number(body.limite || 80);
     const delayMs = Number(body.delay_ms || 300);
+    const concorrencia = Math.max(1, Number(body.concorrencia || 4));
     const somenteDivergentes = body.somente_divergentes !== false;
 
     const todosPedidos = await base44.asServiceRole.entities.Pedido.list('-updated_date', 5000);
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
     const semMudanca = [];
     const erros = [];
 
-    for (const pedido of pedidos) {
+    async function processarPedido(pedido) {
       try {
         const pedidoOmie = await consultarPedidoOmie(pedido.omie_codigo_pedido);
         const etapa = String(pedidoOmie?.cabecalho?.etapa || '');
@@ -130,8 +131,14 @@ Deno.serve(async (req) => {
       } catch (error) {
         erros.push({ id: pedido.id, numero_pedido: pedido.numero_pedido || '', omie_codigo_pedido: pedido.omie_codigo_pedido, erro: error.message });
       }
+    }
 
-      await esperar(delayMs);
+    // Processa em grupos concorrentes (respeitando o rate limit do Omie),
+    // com pequena pausa entre cada grupo. Drena tudo de uma vez, na hora.
+    for (let i = 0; i < pedidos.length; i += concorrencia) {
+      const grupo = pedidos.slice(i, i + concorrencia);
+      await Promise.all(grupo.map(processarPedido));
+      if (i + concorrencia < pedidos.length) await esperar(delayMs);
     }
 
     return Response.json({
@@ -143,6 +150,7 @@ Deno.serve(async (req) => {
       total_corrigidos: corrigidos.length,
       total_sem_mudanca: semMudanca.length,
       total_erros: erros.length,
+      restante_estimado: Math.max(0, pedidosElegiveis.length - corrigidos.length),
       corrigidos,
       erros,
       aviso: simular ? 'Simulação apenas: nada foi alterado. Para aplicar, chame com simular=false.' : 'Correções aplicadas.'
