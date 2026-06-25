@@ -264,17 +264,19 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           preaquecerCarga(cargaParaFiltrar, numCarga);
         }
       } else {
+        // Busca por data/cliente: PAGINADA no servidor — traz só a página pedida do Omie.
         const { data } = await base44.functions.invoke('listarNfsOmie', {
           ...filtrosBusca,
+          pagina: pg,
+          registros_por_pagina: 50,
           apenas_autorizadas: true
         });
         if (data?.sucesso) {
-          // Backend já varre todas as páginas, filtra autorizadas e ordena por emissão DESC.
           const apenasAutorizadas = data.nfs || [];
           const mapaCargas = await buscarCargasDasNfs(apenasAutorizadas);
           setCargasPorNf(mapaCargas);
-          setResultado({ ...data, nfs: apenasAutorizadas, total_de_registros: apenasAutorizadas.length });
-          setPagina(1);
+          setResultado({ ...data, nfs: apenasAutorizadas, paginacaoServidor: true });
+          setPagina(data.pagina || pg);
         } else {
           toast.error(data?.error || 'Erro ao consultar NFs');
         }
@@ -370,6 +372,24 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       String(nf.cChaveNFe || '').toLowerCase().includes(termo)
     );
   }, [nfs, busca]);
+
+  // Paginação: por DATA é do SERVIDOR (cada página = 1 chamada Omie); por CARGA é
+  // local (a lista já está toda em memória). Não faz sentido renderizar milhares de linhas.
+  const POR_PAGINA = 50;
+  const paginacaoServidor = !!resultado?.paginacaoServidor;
+  const totalPaginasLocal = Math.max(1, Math.ceil(nfsFiltradas.length / POR_PAGINA));
+  const totalPaginas = paginacaoServidor ? (resultado?.total_de_paginas || 1) : totalPaginasLocal;
+  const paginaSegura = paginacaoServidor ? pagina : Math.min(pagina, totalPaginasLocal);
+  // Servidor já entrega a página fatiada; local fatia em memória.
+  const nfsPagina = useMemo(
+    () => paginacaoServidor
+      ? nfsFiltradas
+      : nfsFiltradas.slice((paginaSegura - 1) * POR_PAGINA, paginaSegura * POR_PAGINA),
+    [nfsFiltradas, paginaSegura, paginacaoServidor]
+  );
+
+  // Ao filtrar localmente (campo "Buscar..."), volta para a primeira página da exibição local.
+  useEffect(() => { if (!paginacaoServidor) setPagina(1); }, [busca]);
 
   const todasMarcadas = nfsFiltradas.length > 0 && nfsFiltradas.every(nf => selecionadas.has(keyOf(nf)));
   const algumasMarcadas = nfsFiltradas.some(nf => selecionadas.has(keyOf(nf)));
@@ -495,7 +515,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           <CardContent>
             <div className="relative max-w-sm mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input placeholder="Buscar..." value={busca} onChange={(e) => setBusca(e.target.value)} className="pl-9" />
+              <Input placeholder={paginacaoServidor ? 'Buscar nesta página…' : 'Buscar…'} value={busca} onChange={(e) => setBusca(e.target.value)} className="pl-9" />
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm overflow-x-auto">
@@ -521,7 +541,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
                     <tr>
                       <td colSpan="10" className="text-center py-12 text-slate-500">Nenhuma NF encontrada</td>
                     </tr>
-                  ) : nfsFiltradas.map((nf) => {
+                  ) : nfsPagina.map((nf) => {
                     const k = keyOf(nf);
                     const marcada = selecionadas.has(k);
                     return (
@@ -562,11 +582,34 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
               </table>
             </div>
 
-            {resultado.total_de_paginas > 1 && (
-              <div className="flex justify-end gap-2 items-center text-sm mt-3">
-                <Button size="sm" variant="outline" disabled={pagina <= 1 || loading} onClick={() => buscar(pagina - 1)}>Anterior</Button>
-                <span>Página {pagina} / {resultado.total_de_paginas}</span>
-                <Button size="sm" variant="outline" disabled={pagina >= resultado.total_de_paginas || loading} onClick={() => buscar(pagina + 1)}>Próxima</Button>
+            {totalPaginas > 1 && (
+              <div className="flex flex-wrap justify-end gap-2 items-center text-sm mt-3">
+                {paginacaoServidor ? (
+                  <span className="text-slate-500 mr-auto">
+                    {resultado.total_de_registros} NFs no período · {POR_PAGINA} por página
+                  </span>
+                ) : (
+                  <span className="text-slate-500 mr-auto">
+                    Exibindo {(paginaSegura - 1) * POR_PAGINA + 1}–{Math.min(paginaSegura * POR_PAGINA, nfsFiltradas.length)} de {nfsFiltradas.length}
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={paginaSegura <= 1 || loading}
+                  onClick={() => paginacaoServidor ? buscar(paginaSegura - 1) : setPagina(p => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <span>Página {paginaSegura} / {totalPaginas}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={paginaSegura >= totalPaginas || loading}
+                  onClick={() => paginacaoServidor ? buscar(paginaSegura + 1) : setPagina(p => Math.min(totalPaginas, p + 1))}
+                >
+                  Próxima
+                </Button>
               </div>
             )}
           </CardContent>

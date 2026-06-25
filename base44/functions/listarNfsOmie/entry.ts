@@ -243,58 +243,53 @@ Deno.serve(async (req) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CAMINHO PADRÃO: busca por data / nome / CNPJ.
-    // Varre TODAS as páginas do período (o Omie pagina de 100 em 100) e devolve
-    // tudo de uma vez, ordenado das mais RECENTES para as mais antigas. Antes só a
-    // página 1 era buscada (~49 NFs visíveis) e a ordem vinha crescente (antigas no topo).
+    // CAMINHO PADRÃO: busca por data / nome / CNPJ — PAGINADO no servidor.
+    // Busca SÓ a página solicitada do Omie (100 por página). Antes varria TODAS as
+    // páginas do período (ex: 2300+ NFs = ~24 chamadas sequenciais), o que deixava a
+    // consulta lentíssima. Agora 1 página = 1 chamada. A navegação entre páginas
+    // refaz a busca apenas da página pedida.
     // ─────────────────────────────────────────────────────────────────────────
-    const paramBase = { registros_por_pagina: 100 };
+    const paramBase = { registros_por_pagina: Math.min(Number(registros_por_pagina) || 50, 100) };
     if (data_inicial) paramBase.dEmiInicial = data_inicial;
     if (data_final) paramBase.dEmiFinal = data_final;
     if (nome_cliente) paramBase.cRazao = nome_cliente;
     if (cnpj_cliente) paramBase.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
 
     const t0 = Date.now();
-    const todasNfs = [];
-    let pg = 1;
-    let totalPaginas = 1;
-    const MAX_PAGINAS = 50; // teto de segurança (até 5000 NFs)
-    do {
-      const d = await omieCall(base44, 'ListarNF', { ...paramBase, pagina: pg });
-      totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
-      (d.nfCadastro || []).forEach((nf) => {
-        const mapped = mapNf(nf);
-        // Quando a tela só mostra autorizadas, filtra já aqui — corta o payload bastante.
-        if (apenas_autorizadas && mapped.cStatus !== 'autorizada') return;
-        todasNfs.push(mapped);
-      });
-      pg++;
-    } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
-    const duracao = Date.now() - t0;
+    const d = await omieCall(base44, 'ListarNF', { ...paramBase, pagina: Number(pagina) || 1 });
+    const totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
+    const totalRegistros = d.nTotRegistros || d.total_de_registros || (d.nfCadastro || []).length;
 
-    // Ordena por data de emissão DESC (mais recentes primeiro). dEmiNF vem como DD/MM/AAAA.
+    const nfsPagina = [];
+    (d.nfCadastro || []).forEach((nf) => {
+      const mapped = mapNf(nf);
+      if (apenas_autorizadas && mapped.cStatus !== 'autorizada') return;
+      nfsPagina.push(mapped);
+    });
+
+    // Ordena a página por data de emissão DESC (mais recentes primeiro). DD/MM/AAAA.
     const paraTime = (nf) => {
       const [dd, mm, aaaa] = String(nf.dEmiNF || '').split('/');
       if (!aaaa) return 0;
       return new Date(`${aaaa}-${mm}-${dd}T${(nf.hEmiNF || '00:00:00')}`).getTime() || 0;
     };
-    todasNfs.sort((a, b) => paraTime(b) - paraTime(a));
+    nfsPagina.sort((a, b) => paraTime(b) - paraTime(a));
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/nfconsultar',
       call: 'ListarNF',
       operacao: 'listar_nfs',
       status: 'sucesso',
-      duracao_ms: duracao,
+      duracao_ms: Date.now() - t0,
       usuario_email: user.email
     }).catch(() => {});
 
     return Response.json({
       sucesso: true,
-      nfs: todasNfs,
-      pagina: 1,
-      total_de_paginas: 1,
-      total_de_registros: todasNfs.length
+      nfs: nfsPagina,
+      pagina: Number(pagina) || 1,
+      total_de_paginas: totalPaginas,
+      total_de_registros: totalRegistros
     });
   } catch (error) {
     // Loga o erro real no LogIntegracaoOmie (antes só sucessos eram registrados) para rastrear.
