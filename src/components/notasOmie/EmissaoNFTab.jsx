@@ -196,8 +196,23 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
 
       setLoteAtivoId(data?.fila_id || null);
       setLoteNotificado(null);
-      toast.message(data?.mensagem || 'Faturamento iniciado em background. Acompanhe o progresso na tela.');
       setSelecionados(new Set());
+
+      // Emissão SÍNCRONA: a resposta já traz o estado final do lote (NF emitida ou erro).
+      const okCount = (data?.resultados || []).filter(r => r.status === 'autorizada' || r.status === 'ja_emitida').length;
+      const pendCount = (data?.resultados || []).filter(r => r.status === 'pendente').length;
+      const falhasCount = (data?.erros || []).length;
+      if (data?.status === 'concluido' || data?.status === 'erro') {
+        setLoteNotificado(data?.fila_id || null);
+        if (okCount > 0) toast.success(`${okCount} NF(s) emitida(s) com sucesso. Veja no Log de Emissão.`);
+        if (pendCount > 0) toast.info(`${pendCount} aguardando autorização da SEFAZ — será confirmado automaticamente.`);
+        if (falhasCount > 0) toast.error(`${falhasCount} pedido(s) não emitido(s). Veja os detalhes abaixo e no Log de Emissão.`);
+        if (okCount === 0 && pendCount === 0 && falhasCount === 0) toast.message(data?.mensagem || 'Emissão processada.');
+        refetch();
+        onEmissionComplete?.(data?.pedidos || []);
+      } else {
+        toast.message(data?.mensagem || 'Faturamento em processamento. Acompanhe o progresso na tela.');
+      }
     } catch (e) {
       const msg = e?.response?.data?.error || e?.response?.data?.mensagem || e.message;
       toast.error('Erro ao emitir NFs: ' + msg);
