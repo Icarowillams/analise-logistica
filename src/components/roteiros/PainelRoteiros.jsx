@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Filter, ChevronDown, Users, MapPin, CheckCircle2, ShoppingCart, XCircle, ClipboardList } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Filter, ChevronDown, Users, MapPin, CheckCircle2, ShoppingCart, XCircle, ClipboardList, UserPlus } from 'lucide-react';
 import { DIAS_SEMANA, diaParaKey } from './roteirosUtils';
+import CriarRoteiroModal from '@/components/Roteiros/CriarRoteiroModal';
 
 const KpiPainel = ({ titulo, valor, sub, icon: Icon, cor }) => (
   <div className={`rounded-2xl p-4 text-white shadow-md ${cor}`}>
@@ -17,6 +19,7 @@ const KpiPainel = ({ titulo, valor, sub, icon: Icon, cor }) => (
 
 export default function PainelRoteiros({ vendedores, supervisores }) {
   const [filtros, setFiltros] = useState({ dia: '', vendedor_id: '', funcao: '', supervisor_id: '', inicio: '', fim: '', busca: '' });
+  const [modalAberto, setModalAberto] = useState(false);
   const { data: roteiros = [] } = useQuery({ queryKey: ['roteiros'], queryFn: () => base44.entities.Roteiro.list('-updated_date', 5000) });
   const { data: visitas = [] } = useQuery({ queryKey: ['visitasNova'], queryFn: () => base44.entities.Visita.list('-data_visita', 10000) });
 
@@ -84,6 +87,11 @@ export default function PainelRoteiros({ vendedores, supervisores }) {
         </TabsList>
 
         <TabsContent value="roteiros" className="space-y-4 pt-4">
+          <div className="flex justify-end">
+            <Button onClick={() => setModalAberto(true)} className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900">
+              <UserPlus className="w-4 h-4 mr-2" />Cadastrar Cliente no Roteiro
+            </Button>
+          </div>
           <Card>
             <CardContent className="p-4 space-y-3">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Filter className="w-4 h-4" />Filtros</h3>
@@ -147,6 +155,8 @@ export default function PainelRoteiros({ vendedores, supervisores }) {
           <Card><CardContent className="p-6 text-center text-slate-500">Análises consolidadas disponíveis em <strong>Análises Comercial</strong>.</CardContent></Card>
         </TabsContent>
       </Tabs>
+
+      <CriarRoteiroModal open={modalAberto} onOpenChange={setModalAberto} roteiro={null} isEditing={false} />
     </div>
   );
 }
