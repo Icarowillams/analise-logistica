@@ -113,9 +113,44 @@ export default function PainelFecharCarga({ pedidos, selecionados, motoristas, v
       if (!ok) return;
     }
 
+    setSalvando(true);
+
+    // BLINDAGEM CONTRA CARGA DUPLICADA: antes de fechar, verifica se algum pedido
+    // selecionado já está vinculado a uma carga ATIVA (montagem/faturada/entregue).
+    // Isso evita o bug de "duas cargas idênticas" quando a mesma seleção é fechada
+    // duas vezes (re-render lento / clique repetido / carga montada em 2 momentos).
+    try {
+      const idsParaChecar = [...new Set(
+        [...vendas, ...pedidosD1, ...trocas]
+          .map(p => p.pedido_id || p.pedido_troca_id)
+          .filter(Boolean)
+      )];
+      const jaVinculados = [];
+      for (let i = 0; i < idsParaChecar.length; i += 40) {
+        const chunk = idsParaChecar.slice(i, i + 40);
+        const peds = await base44.entities.Pedido.filter({ id: { $in: chunk } }, '-updated_date', 80);
+        (peds || []).forEach(p => {
+          if (p.carga_id && !['cancelado', 'cancelado_pos_faturamento'].includes(p.status)) {
+            jaVinculados.push(`Nº ${p.numero_pedido} (carga ${p.numero_carga || '?'})`);
+          }
+        });
+      }
+      if (jaVinculados.length > 0) {
+        setSalvando(false);
+        toast.error(
+          `Estes pedidos já estão em outra carga: ${jaVinculados.slice(0, 6).join(', ')}` +
+          (jaVinculados.length > 6 ? ` e mais ${jaVinculados.length - 6}` : '') +
+          '. Solte-os da carga atual antes de fechar uma nova.',
+          { duration: 10000 }
+        );
+        return;
+      }
+    } catch (e) {
+      console.warn('Falha na verificação de carga duplicada:', e.message);
+    }
+
     // BLINDAGEM CARGA EM BRANCO: garantir que todo pedido de VENDA tenha produtos.
     // Se algum continuar sem itens (espelho ainda não sincronizou), BLOQUEIA o fechamento.
-    setSalvando(true);
     const { vendas: vendasComProdutos, semItens } = await preencherProdutosVendas(vendas);
     if (semItens.length > 0) {
       setSalvando(false);
