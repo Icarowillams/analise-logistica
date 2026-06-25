@@ -335,19 +335,27 @@ Deno.serve(async (req) => {
 
     try {
 
-    // ═══ PASSO 0: TIMEOUT — Limpar itens travados em "processando" há mais de 3 minutos ═══
+    // ═══ PASSO 0: TIMEOUT — Resgatar itens órfãos travados em "processando" ═══
     // DEVE rodar ANTES da checagem de concorrência, senão itens travados bloqueiam a fila indefinidamente.
-    const TIMEOUT_MS = 8 * 60 * 1000;
+    // Um item fica órfão quando a execução morre DEPOIS de marcá-lo "processando" e ANTES de concluí-lo
+    // (plataforma matou a função, rede pendurou a chamada Omie...). Usamos processando_em (timestamp
+    // dedicado, gravado só na entrada do processamento) em vez de updated_date — que muda por qualquer
+    // update e poderia mascarar o tempo real de travamento. 3 min é folgado: o pior caso real de
+    // processarFaturar (2 calls + retries + reconsulta) fica em ~30s.
+    const TIMEOUT_MS = 3 * 60 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
-      const updatedAt = new Date(item.updated_date).getTime();
-      if (Date.now() - updatedAt > TIMEOUT_MS) {
+      // Fallback para updated_date em itens antigos que ainda não têm processando_em.
+      const refTs = item.processando_em || item.updated_date;
+      const startedAt = new Date(refTs).getTime();
+      if (Date.now() - startedAt > TIMEOUT_MS) {
         const tentativas = Number(item.tentativas || 0) + 1;
         const novoStatus = tentativas >= MAX_TENTATIVAS ? 'erro' : 'pendente';
         await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
           status: novoStatus,
           tentativas,
-          erro_log: `Timeout: travado em "processando" por mais de 8 minutos (tentativa ${tentativas})`
+          processando_em: null,
+          erro_log: `Timeout: item órfão em "processando" por mais de 3 minutos (tentativa ${tentativas})`
         }).catch(() => {});
         console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
       }
@@ -388,8 +396,11 @@ Deno.serve(async (req) => {
     // O Passo 1 acima (status local) já rodou, então as órfãs já foram fechadas mesmo aqui.
     const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
     if (emProcessamento.length > 0) {
-      const age = Date.now() - new Date(emProcessamento[0].updated_date).getTime();
-      if (age < 2 * 60 * 1000) {
+      const refProc = emProcessamento[0].processando_em || emProcessamento[0].updated_date;
+      const age = Date.now() - new Date(refProc).getTime();
+      // Só considera "outra instância ativa" enquanto o item estiver dentro da janela de resgate.
+      // Passou de 3min sem concluir = órfão (PASSO 0 já o resgatou acima), não bloqueia a fila.
+      if (age < TIMEOUT_MS) {
         return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Outra instância já está processando a fila. Status das cargas concluídas foi atualizado.' });
       }
     }
@@ -450,14 +461,14 @@ Deno.serve(async (req) => {
       const item = pendentes[i];
       cargasAfetadas.add(item.carga_id);
 
-      await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando' }).catch(() => {});
+      await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'processando', processando_em: new Date().toISOString() }).catch(() => {});
 
       try {
         // Idempotência: só consulta se já tentou antes (reprocessamento).
         // Pedidos novos (tentativas=0) vão direto para processar, economizando 1 chamada Omie.
         const jaFeito = (Number(item.tentativas || 0) > 0 || Number(item.tentativas_redundante || 0) > 0) ? await jaEstaNaEtapa(base44, item) : false;
         if (jaFeito) {
-          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null }).catch(() => {});
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null, processando_em: null }).catch(() => {});
           // Garante que o espelho reflita a etapa correta mesmo em reprocessamento
           if (item.codigo_pedido_omie) {
             const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
@@ -478,7 +489,7 @@ Deno.serve(async (req) => {
           await processarFaturar(base44, item);
           // Atualiza fila + pedido local + espelho em paralelo (não sequencial)
           const postUpdates = [
-            base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null }).catch(() => {})
+            base44.asServiceRole.entities.FilaCargaOmie.update(item.id, { status: 'concluido', processado_em: new Date().toISOString(), erro_log: '', proxima_tentativa_em: null, processando_em: null }).catch(() => {})
           ];
           if (item.pedido_id) {
             postUpdates.push(base44.asServiceRole.entities.Pedido.update(item.pedido_id, { etapa: 'logistica', status_logistico: 'em_carga' }).catch(() => {}));

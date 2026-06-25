@@ -72,6 +72,11 @@
       "format": "date-time",
       "description": "Data/hora a partir da qual o item pode ser reprocessado. Usado para respeitar a janela de ~60s do Omie no caso 'Consumo redundante'. O worker pula itens cujo valor ainda \u00e9 futuro."
     },
+    "processando_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp gravado no momento exato em que o item entra em 'processando'. Usado pelo PASSO 0 para detectar itens \u00f3rf\u00e3os (execu\u00e7\u00e3o morreu no meio) e resgat\u00e1-los ap\u00f3s o timeout, sem depender do updated_date (que muda por qualquer update). Limpo ao concluir/resetar."
+    },
     "erro_log": {
       "type": "string",
       "description": "Mensagem do \u00faltimo erro ao processar"
