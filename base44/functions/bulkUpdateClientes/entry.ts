@@ -7,6 +7,9 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: requer admin' }, { status: 403 });
+    }
 
     const { clientes, enviar_omie = true } = await req.json();
 
