@@ -409,7 +409,7 @@ async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, ex
   }
 
   const ctx = await buscarContextoPedido(base44, codigoPedido);
-  await base44.asServiceRole.entities.LogEmissaoNF.create({
+  const novo = await base44.asServiceRole.entities.LogEmissaoNF.create({
     codigo_pedido: String(codigoPedido),
     numero_pedido: ctx.numero_pedido,
     cliente_id: ctx.cliente_id,
@@ -426,7 +426,20 @@ async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, ex
     payload_resposta: extra.payload_resposta || '',
     boleto_gerado: false,
     usuario_email: fila.usuario_email || ''
-  }).catch(() => {});
+  }).catch(() => null);
+
+  // ANTI-CORRIDA: re-checa logo após o create. Se outro processo criou outra linha para o mesmo
+  // pedido entre o filter inicial e este create, sobra duplicata. Mantém a mais antiga e apaga o resto.
+  if (novo?.id) {
+    const todos = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+      { codigo_pedido: String(codigoPedido) }, 'created_date', 50
+    ).catch(() => []);
+    if (todos.length > 1) {
+      for (const dup of todos.slice(1)) {
+        await base44.asServiceRole.entities.LogEmissaoNF.delete(dup.id).catch(() => {});
+      }
+    }
+  }
 }
 
 async function carregarFila(base44, body) {
