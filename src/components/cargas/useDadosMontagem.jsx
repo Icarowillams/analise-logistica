@@ -36,12 +36,14 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // Paginação completa (contorna o truncamento de 5.000 da SDK) usando fetchWithRetry
 // para manter o tratamento de rate-limit/retry já existente neste hook.
-async function listarTudoComRetry(entity, sort = '-created_date', pageSize = 500) {
+// OTIMIZAÇÃO: aceita um filtro para reduzir o volume lido já na consulta (server-side),
+// em vez de baixar a tabela inteira e filtrar depois no navegador.
+async function listarTudoComRetry(entity, sort = '-created_date', pageSize = 500, query = {}) {
   const out = [];
   let skip = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const page = await fetchWithRetry(() => entity.filter({}, sort, pageSize, skip));
+    const page = await fetchWithRetry(() => entity.filter(query, sort, pageSize, skip));
     out.push(...(page || []));
     if (!page || page.length < pageSize) break;
     skip += pageSize;
@@ -153,14 +155,17 @@ export default function useDadosMontagem() {
       // ═══════════════════════════════════════
       // FASE 1: Dados essenciais (libera tela)
       // ═══════════════════════════════════════
-      await sleep(isRetry ? 2000 : 500);
+      if (isRetry) await sleep(2000);
 
       // OTIMIZAÇÃO: pedidos/espelho/trocas/listas pequenas em PARALELO.
       // ⚠️ Cliente NÃO é mais carregado por inteiro (antes: list 10000 = ~958 reg / 4,4s).
       // Os clientes são buscados DEPOIS, filtrando só pelos cliente_ids referenciados.
+      // ⚡ FILTRO SERVER-SIDE: o espelho só traz etapas 20/50 (únicas usadas na montagem) e os
+      // pedidos locais só os status que a lógica consome (liberado/cancelado/faturado) — evita
+      // baixar o histórico inteiro a cada abertura.
       const [espelhoOmieBruto, todosPedidosLocais, trocasAprovadas, rotas, motP, veiP, carP] = await Promise.all([
-        listarTudoComRetry(base44.entities.PedidoLiberadoOmie),
-        listarTudoComRetry(base44.entities.Pedido),
+        listarTudoComRetry(base44.entities.PedidoLiberadoOmie, '-created_date', 500, { etapa: { $in: ['20', '50'] } }),
+        listarTudoComRetry(base44.entities.Pedido, '-created_date', 500, { status: { $in: ['liberado', 'cancelado', 'faturado'] } }),
         fetchWithRetry(() => base44.entities.PedidoTroca.filter({ status: 'aprovado' }, '-created_date', 500)),
         fetchWithRetry(() => base44.entities.Rota.list('-created_date', 500)),
         fetchWithRetry(() => base44.entities.Motorista.list('-created_date', 500)),
@@ -602,12 +607,12 @@ export default function useDadosMontagem() {
     };
   }, [carregar]);
 
-  // Auto-refresh leve: a cada 20s relê as entidades locais (sem Omie) para que
+  // Auto-refresh leve: a cada 60s relê as entidades locais (sem Omie) para que
   // pedidos liberados entrem na lista sozinhos, sem o logístico clicar em Atualizar.
   useEffect(() => {
     const intervalo = setInterval(() => {
       recarregarLocal();
-    }, 20000);
+    }, 60000);
     return () => clearInterval(intervalo);
   }, [recarregarLocal]);
 
