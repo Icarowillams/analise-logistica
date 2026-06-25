@@ -36,8 +36,8 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
-  const [preenchendoNF, setPreenchendoNF] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState(null);
+  const [preenchimentoFeito, setPreenchimentoFeito] = useState(false);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -232,28 +232,23 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   };
 
   // Preenche Nº NF / cStat / chave dos logs autorizados que ficaram em branco (etapa 60 sem NF real).
-  const preencherDadosNF = async () => {
-    setPreenchendoNF(true);
-    try {
-      toast.info('Buscando os números de NF reais no Omie...');
-      const resp = await base44.functions.invoke('preencherDadosNFLogs', { dias: 30 });
-      const r = resp?.data || {};
-      if (r?.sucesso) {
-        if (r.preenchidos > 0) {
-          toast.success(`✅ ${r.preenchidos} NF(s) preenchida(s) com número, cStat e chave.`);
-        } else {
-          toast.info('Nenhuma NF pendente encontrada para preencher.');
+  // Roda AUTOMATICAMENTE (sem botão e sem automação): ao detectar logs autorizados sem número,
+  // busca os dados reais no Omie em background, uma única vez por carregamento da aba.
+  useEffect(() => {
+    if (!ativa || autorizadosSemNF === 0 || preenchimentoFeito) return;
+    setPreenchimentoFeito(true);
+    (async () => {
+      try {
+        const resp = await base44.functions.invoke('preencherDadosNFLogs', { dias: 30 });
+        const r = resp?.data || {};
+        if (r?.sucesso && r.preenchidos > 0) {
+          await refetch();
         }
-        if (r.circuit_breaker) toast.warning('Omie bloqueou parte da consulta — tente novamente em alguns minutos.');
-        await refetch();
-      } else {
-        toast.error('Erro: ' + (r?.error || r?.motivo || 'falha desconhecida'));
+      } catch {
+        // Silencioso — é um enriquecimento de fundo; o usuário não disparou nada manualmente.
       }
-    } catch (e) {
-      toast.error('Falha ao preencher NFs: ' + (e?.response?.data?.error || e.message));
-    }
-    setPreenchendoNF(false);
-  };
+    })();
+  }, [ativa, autorizadosSemNF, preenchimentoFeito, refetch]);
 
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
@@ -299,19 +294,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
           <CardTitle className="text-base flex items-center justify-between">
             <span>Histórico de emissões ({logsFiltrados.length})</span>
             <div className="flex gap-2">
-              {autorizadosSemNF > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                  onClick={preencherDadosNF}
-                  disabled={preenchendoNF}
-                  title="Busca no Omie o número/cStat/chave das NFs autorizadas que ficaram sem número e preenche as colunas"
-                >
-                  {preenchendoNF ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
-                  Preencher {autorizadosSemNF} NF{autorizadosSemNF > 1 ? 's' : ''} sem número
-                </Button>
-              )}
               {filtroCarga.trim() && (
                 <Button
                   size="sm"
