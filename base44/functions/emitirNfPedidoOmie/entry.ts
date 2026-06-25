@@ -160,6 +160,24 @@ Deno.serve(async (req) => {
     let resposta;
     try {
       resposta = await omieCall(base44, 'produtos/pedidovendafat/', param, { call: callName });
+
+      // RECUSA DO OMIE: o FaturarPedidoVenda pode retornar HTTP 200 mas com cCodStatus != "0"
+      // e uma mensagem de recusa (ex: "Cliente com o cadastro bloqueado para faturar esta venda").
+      // Isso NÃO é emissão — é uma rejeição. Não trazem nNF/chave. Tratamos como erro real.
+      const cCod = String(resposta?.cCodStatus ?? '').trim();
+      const cDesc = String(resposta?.cDescStatus ?? '');
+      const temNf = resposta?.nNF || resposta?.numero_nf || resposta?.cChaveNFe || resposta?.chave_nfe;
+      if (!validar_apenas && !temNf && cCod && cCod !== '0' && /n[ãa]o foi poss[íi]vel|bloquead|bloqueio|recusad|n[ãa]o.*faturar|inadimpl/i.test(cDesc)) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
+          endpoint: 'produtos/pedidovendafat', call: callName, operacao: 'emitir_nf',
+          status: 'erro_omie', codigo_erro: cCod, duracao_ms: Date.now() - t0,
+          mensagem_erro: cDesc, erro_detalhado: cDesc,
+          payload_enviado: JSON.stringify(param).substring(0, 2000),
+          payload_resposta: JSON.stringify(resposta).substring(0, 5000),
+          usuario_email: user.email
+        }).catch(() => {});
+        return Response.json({ sucesso: false, error: cDesc, faultstring: cDesc, faultcode: cCod, recusa_omie: true }, { status: 400 });
+      }
     } catch (e) {
       if (e.code === 'OMIE_425') throw e; // propaga bloqueio ao catch externo
       await base44.asServiceRole.entities.LogIntegracaoOmie.create({

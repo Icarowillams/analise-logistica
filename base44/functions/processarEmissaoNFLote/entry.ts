@@ -539,11 +539,29 @@ Deno.serve(async (req) => {
           mensagemPedido = real.mensagem;
         } else {
           // (2) Etapa 50 sem NF → aciona a emissão.
+          let respFat = null;
           if (body.mock_omie_response) {
             console.log(`[processarEmissaoNFLote] MOCK Omie usado para pedido ${codigoPedido}; nenhuma emissão real realizada`);
           } else {
-            await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
+            respFat = await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
           }
+
+          // RECUSA DO OMIE no faturamento: HTTP 200 com cCodStatus != "0" e mensagem de bloqueio
+          // (ex: "Cliente com o cadastro bloqueado para faturar"). NÃO é NF — é rejeição.
+          // Marca como rejeitada (motivo real) e o loop segue para o PRÓXIMO pedido.
+          {
+            const cCod = String(respFat?.cCodStatus ?? '').trim();
+            const cDesc = String(respFat?.cDescStatus ?? '');
+            const temNf = respFat?.nNF || respFat?.numero_nf || respFat?.cChaveNFe || respFat?.chave_nfe;
+            if (!temNf && cCod && cCod !== '0' && /n[ãa]o foi poss[íi]vel|bloquead|bloqueio|recusad|n[ãa]o.*faturar|inadimpl/i.test(cDesc)) {
+              statusFinalPedido = 'rejeitada';
+              realConfirmado = { status_real: 'rejeitada', codigo_sefaz: cCod, numero_nf: '', mensagem: cDesc };
+              mensagemPedido = cDesc;
+            }
+          }
+          if (statusFinalPedido === 'rejeitada') {
+            // pula a confirmação — já sabemos que foi recusado
+          } else {
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
             endpoint: 'produtos/pedidovendafat', call: 'FaturarPedidoVenda',
             operacao: 'emitir_nf_lote_background', status: 'sucesso', duracao_ms: Date.now() - t0,
@@ -571,6 +589,7 @@ Deno.serve(async (req) => {
             statusFinalPedido = 'pendente';
             mensagemPedido = 'Faturado na carga — aguardando autorização da SEFAZ (etapa 50). Será confirmado na próxima emissão.';
           }
+          } // fim do else (não foi recusa do Omie)
         }
       } catch (error) {
         erroPedido = error;
