@@ -374,10 +374,17 @@ async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, ex
     for (const dup of existentes.slice(1)) {
       await base44.asServiceRole.entities.LogEmissaoNF.delete(dup.id).catch(() => {});
     }
+    // Garante o contexto (Nº pedido, cliente, carga) preenchido mesmo no update — completa o que estiver vazio.
+    const ctxUp = await buscarContextoPedido(base44, codigoPedido);
     await base44.asServiceRole.entities.LogEmissaoNF.update(principal.id, {
       lote_id: fila.lote_id,
       status,
       mensagem,
+      numero_pedido: principal.numero_pedido || ctxUp.numero_pedido || '',
+      cliente_id: principal.cliente_id || ctxUp.cliente_id || '',
+      cliente_nome: principal.cliente_nome || ctxUp.cliente_nome || '',
+      carga_id: principal.carga_id || ctxUp.carga_id || fila.carga_id || '',
+      numero_carga: principal.numero_carga || ctxUp.numero_carga || fila.numero_carga || '',
       faultstring: extra.faultstring || '',
       faultcode: extra.faultcode || '',
       erro_tipo: extra.erro_tipo || '',
