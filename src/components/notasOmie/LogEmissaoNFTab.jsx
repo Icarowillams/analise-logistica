@@ -38,6 +38,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState(null);
   const [preenchimentoFeito, setPreenchimentoFeito] = useState(false);
+  const [reconsultaFeita, setReconsultaFeita] = useState(false);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -49,6 +50,13 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
   const autorizadosSemNF = useMemo(
     () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
+    [logs]
+  );
+
+  // Códigos de pedido dos logs PENDENTES — para reconsultar ao vivo no Omie e sincronizar
+  // os que já foram autorizados (etapa 60) mas continuam marcados como "pendente" aqui.
+  const codigosPendentes = useMemo(
+    () => [...new Set(logs.filter(l => l.status === 'pendente' && l.codigo_pedido).map(l => String(l.codigo_pedido)))],
     [logs]
   );
 
@@ -130,6 +138,30 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
       };
     });
   }, [logs, clientePorId, pedidoPorNumero, pedidoPorCodigoOmie]);
+
+  // Reconsulta AUTOMÁTICA dos pendentes (sem botão e sem automação): ao abrir a aba, consulta
+  // o Omie ao vivo em lotes de 4 e sincroniza os logs que já foram autorizados/rejeitados.
+  // Roda uma única vez por carregamento; só leitura (reprocessar=false), nunca reemite.
+  useEffect(() => {
+    if (!ativa || codigosPendentes.length === 0 || reconsultaFeita) return;
+    setReconsultaFeita(true);
+    (async () => {
+      let mudou = false;
+      for (let i = 0; i < codigosPendentes.length; i += 4) {
+        const lote = codigosPendentes.slice(i, i + 4);
+        try {
+          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote });
+          const r = resp?.data || {};
+          if ((r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0) mudou = true;
+          // Omie bloqueado/rate limit: para o restante e tenta no próximo refresh.
+          if (r.abortado || r.resultados?.some(x => x.abortado)) break;
+        } catch {
+          break;
+        }
+      }
+      if (mudou) await refetch();
+    })();
+  }, [ativa, codigosPendentes, reconsultaFeita, refetch]);
 
   useEffect(() => {
     if (cargaFiltro?.numero_carga) {
