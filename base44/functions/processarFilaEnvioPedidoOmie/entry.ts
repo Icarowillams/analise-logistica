@@ -6,6 +6,40 @@ const MAX_TENTATIVAS_LEITURA = 5;       // teto de retries por falha transitóri
 const INTERVALO_ENTRE_PEDIDOS_MS = 450; // ~2 req/s — margem segura abaixo do limite Omie (4 req/s)
 const MAX_PEDIDOS_POR_RODADA = 30;      // tamanho de cada busca interna de pendentes
 const TETO_EXECUCAO_MS = 150000;        // 150s — abaixo do timeout (180s); drena a fila numa execução
+const CHAVE_WORKER_ENVIO = 'worker_envio_pedido'; // chave dedicada do lock de auto-encadeamento (não colide com worker de webhooks)
+const LOCK_TTL_MS = 2 * 60 * 1000;      // TTL curto do lock — auto-release se a função morrer
+
+// ============================================================
+// LOCK DE AUTO-ENCADEAMENTO — garante 1 cadeia por vez.
+// Usa um registro dedicado (chave='worker_envio_pedido') com worker_rodando +
+// worker_lock_ate. TTL curto evita travamento permanente se a função morrer.
+// ============================================================
+async function adquirirLockEncadeamento(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave: CHAVE_WORKER_ENVIO }, '-updated_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  const agora = Date.now();
+  const lockAtivo = reg?.worker_rodando && reg?.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora;
+  if (lockAtivo) return { adquirido: false };
+  const dados = {
+    chave: CHAVE_WORKER_ENVIO,
+    worker_rodando: true,
+    worker_lock_ate: new Date(agora + LOCK_TTL_MS).toISOString(),
+    atualizado_em: new Date().toISOString()
+  };
+  if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, dados).catch(() => {});
+  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(dados).catch(() => {});
+  return { adquirido: true, id: reg?.id };
+}
+
+async function liberarLockEncadeamento(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave: CHAVE_WORKER_ENVIO }, '-updated_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, {
+    worker_rodando: false, worker_lock_ate: null, atualizado_em: new Date().toISOString()
+  }).catch(() => {});
+}
 
 // ============================================================
 // LEITURA SEGURA DO PEDIDO — distingue "não existe" de "falha ao ler".
@@ -758,8 +792,35 @@ Deno.serve(async (req) => {
     const sucessos = resultadosGlobais.filter(r => r.sucesso).length;
     const erros = resultadosGlobais.filter(r => !r.sucesso).length;
 
+    // ============================================================
+    // AUTO-ENCADEAMENTO — mata o atraso de 5min entre lotes.
+    // Se ainda há pendente na fila E o circuit breaker está liberado,
+    // re-invoca a si mesma (fire-and-forget) protegido por lock dedicado
+    // (1 cadeia por vez). Fila vazia / breaker aberto → não encadeia.
+    // ============================================================
+    let encadeou = false;
+    if (!cbAtivadoGlobal) {
+      const restantes = await base44.asServiceRole.entities.FilaEnvioPedidoOmie
+        .filter({ status: 'pendente' }, 'created_date', 1).catch(() => []);
+      if (restantes.length > 0) {
+        const breaker = await checkCircuitBreaker(base44);
+        if (!breaker.blocked) {
+          const lock = await adquirirLockEncadeamento(base44);
+          if (lock.adquirido) {
+            // fire-and-forget: não aguarda a resposta para não somar latência
+            base44.asServiceRole.functions.invoke('processarFilaEnvioPedidoOmie', {}).catch(() => {});
+            encadeou = true;
+            console.log('[processarFila] Auto-encadeamento disparado — fila ainda tem pendentes.');
+          }
+        }
+      }
+    }
+
+    // Libera o lock SEMPRE no fim (a próxima cadeia adquire o seu próprio).
+    await liberarLockEncadeamento(base44);
+
     if (resultadosGlobais.length === 0) {
-      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0 });
+      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido na fila', processados: 0, encadeou });
     }
 
     console.log(`[PERF] Execução concluída: ${rodadas} rodada(s), ${resultadosGlobais.length} pedidos em ${Date.now() - inicioExecucao}ms. Sucessos: ${sucessos}. Erros: ${erros}.`);
@@ -770,11 +831,17 @@ Deno.serve(async (req) => {
       processados: resultadosGlobais.length,
       sucessos, erros,
       circuit_breaker_ativado: cbAtivadoGlobal,
+      encadeou,
       duracao_ms: Date.now() - inicioExecucao,
       resultados: resultadosGlobais
     });
   } catch (error) {
     console.error('[processarFila] Erro fatal:', error.message);
+    // Garante liberação do lock mesmo em falha fatal — não trava a cadeia.
+    try {
+      const base44err = createClientFromRequest(req);
+      await liberarLockEncadeamento(base44err);
+    } catch (_) { /* nada a fazer */ }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
