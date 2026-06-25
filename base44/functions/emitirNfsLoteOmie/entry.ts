@@ -303,16 +303,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // A emissão é processada INSTANTANEAMENTE pela automação de entidade que dispara no CREATE
+    // desta fila (processarEmissaoNFLote: emite + confirma na SEFAZ + grava número/erro no log).
+    // O frontend acompanha o resultado real via polling da fila a cada 3s. O watchdog de 5 min
+    // continua apenas como rede de segurança para lotes que eventualmente travem.
     return Response.json({
       sucesso: true,
-      assincrono: true,
       fila_id: fila.id,
       lote_id: loteId,
       status: 'processando',
       total: codigosValidos.length,
       ignorados: errosDuplicidade.length,
       erros: errosDuplicidade,
-      mensagem: 'Faturamento iniciado em background. Acompanhe o progresso na tela.'
+      mensagem: 'Emitindo... o resultado aparecerá na tela em instantes.'
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
