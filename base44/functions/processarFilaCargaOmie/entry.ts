@@ -156,7 +156,11 @@ async function liberarLockEncadeamento(base44) {
 // "Consumo redundante" não é uma falha real: o Omie só libera o mesmo id após ~60s.
 // Re-agendamos a janela e só desistimos após muitas janelas reais (praticamente nunca acontece).
 const MAX_TENTATIVAS_REDUNDANTE = 5;
-const LOTE = 50;
+// LOTE PEQUENO de propósito: cada pedido leva ~1.5s (delay + 2 calls Omie + reconsulta de 600ms).
+// Com lote de 50, uma rodada passava de 1min e a plataforma MATAVA a função no meio — deixando
+// o item em andamento "órfão" (preso em processando). Com lote de 8, cada rodada termina em ~12s,
+// muito abaixo do timeout de execução, e o auto-encadeamento toca o resto da fila em rodadas curtas.
+const LOTE = 8;
 const DELAY_ENTRE_PEDIDOS_MS = 700;
 
 
