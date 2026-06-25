@@ -25,7 +25,7 @@ const CONCORRENCIA = 2; // downloads de DANFE simultâneos
  */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo = 'individual' }) {
+export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo = 'individual', numeroCarga }) {
   const [tipoLoading, setTipoLoading] = useState(null);
   const [progresso, setProgresso] = useState({ atual: 0, total: 0 });
 
@@ -158,7 +158,7 @@ export default function NfsImpressaoDialog({ open, onOpenChange, nfs = [], modo 
           setTipoLoading(null); return; 
         }
         const out = await merged.save();
-        baixarBlob(`nfes-agrupadas-${ok}.pdf`, new Blob([out], { type: 'application/pdf' }));
+        baixarBlob(`nfes-carga-${numeroCarga || ok}.pdf`, new Blob([out], { type: 'application/pdf' }));
         toast.success(`PDF agrupado com ${ok} de ${total} NF(s) gerado`);
         if (falhasSefaz.length > 0) toast.warning(`${falhasSefaz.length} NF(s) aguardando SEFAZ (tente novamente em minutos): ${falhasSefaz.join(', ')}`, { duration: 8000 });
         if (falhas.length > 0) toast.warning(`${falhas.length} NF(s) ignoradas: ${falhas.join(', ')}`);

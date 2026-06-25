@@ -202,7 +202,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         // RECONCILIAÇÃO SILENCIOSA (best-effort): regrava numero_nf em pedidos_omie a
         // partir do LogEmissaoNF autorizado. Recarrega a carga para pegar os dados frescos.
         try {
-          await base44.functions.invoke('reconciliarNumeroNfCarga', { carga_id: cargaParaFiltrar.id });
+          await base44.functions.invoke('reconciliarEspelhoCargaCompleto', { numero_carga: cargaParaFiltrar.numero_carga });
           const recarregada = await base44.entities.Carga.filter({ id: cargaParaFiltrar.id });
           if (recarregada?.[0]) cargaParaFiltrar = recarregada[0];
         } catch (_) { /* reconciliação é best-effort; nunca bloqueia a listagem */ }
@@ -584,6 +584,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         onOpenChange={setImpressaoOpen}
         nfs={nfsParaImprimir}
         modo={impressaoModo}
+        numeroCarga={cargaFiltro?.numero_carga || cargasPorNf[String(nfsParaImprimir[0]?.cNumero || '').replace(/\D/g, '')] || ''}
       />
     </div>
   );
