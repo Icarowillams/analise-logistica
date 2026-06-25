@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Search, Loader2, FileSignature, Send, AlertCircle, CheckCircle2, RefreshCw, Pause, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
@@ -120,7 +120,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
 
   const filaAtiva = useMemo(() => {
     if (loteAtivoId) return filasEmissao.find(f => f.id === loteAtivoId) || null;
-    return filasEmissao.find(f => ['processando', 'executando'].includes(f.status)) || null;
+    return filasEmissao.find(f => ['processando', 'executando', 'pausado'].includes(f.status)) || null;
   }, [filasEmissao, loteAtivoId]);
 
   useEffect(() => {
@@ -233,6 +233,38 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
   const emitirIndividual = (codigo) => emitirSelecionados([codigo]);
   const emitirLote = () => emitirSelecionados(Array.from(selecionados));
 
+  // Pausa o lote em andamento: a fila vira 'pausado'. O worker para de forma limpa no próximo
+  // checkpoint (salvando o progresso) e não é retomado pelo watchdog enquanto estiver pausado.
+  const pausarEmissao = async (filaId) => {
+    try {
+      await base44.entities.FilaEmissaoNF.update(filaId, {
+        status: 'pausado',
+        mensagem: 'Pausa solicitada — concluindo o pedido atual...',
+        atualizado_em: new Date().toISOString()
+      });
+      toast.info('Emissão será pausada após concluir o pedido atual. Você pode retomar quando quiser.');
+    } catch (e) {
+      toast.error('Erro ao pausar: ' + e.message);
+    }
+  };
+
+  // Retoma um lote pausado de onde parou: volta para 'processando' e re-dispara o worker.
+  const retomarEmissao = async (filaId) => {
+    try {
+      await base44.entities.FilaEmissaoNF.update(filaId, {
+        status: 'processando',
+        mensagem: 'Retomando emissão...',
+        atualizado_em: new Date().toISOString()
+      });
+      setLoteAtivoId(filaId);
+      setLoteNotificado(null);
+      await base44.functions.invoke('processarEmissaoNFLote', { fila_id: filaId });
+      toast.success('Emissão retomada de onde parou.');
+    } catch (e) {
+      toast.error('Erro ao retomar: ' + e.message);
+    }
+  };
+
   // Sincroniza o espelho local APENAS dos pedidos da carga filtrada (consulta cada um no Omie).
   // Útil quando o webhook não atualizou e os pedidos da carga não aparecem na lista.
   const sincronizarEspelhoCarga = async () => {
@@ -296,7 +328,28 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
       {filaAtiva && (
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-blue-900">Progresso da emissão</CardTitle>
+            <CardTitle className="text-base text-blue-900 flex items-center justify-between gap-2">
+              <span>Progresso da emissão</span>
+              {['processando', 'executando'].includes(filaAtiva.status) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={() => pausarEmissao(filaAtiva.id)}
+                >
+                  <Pause className="w-4 h-4 mr-1" /> Cancelar emissão
+                </Button>
+              )}
+              {filaAtiva.status === 'pausado' && (
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => retomarEmissao(filaAtiva.id)}
+                >
+                  <Play className="w-4 h-4 mr-1" /> Retomar de onde parou
+                </Button>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {(() => {
@@ -307,7 +360,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-blue-900">
-                      {filaAtiva.status === 'concluido' ? 'Lote concluído' : filaAtiva.status === 'erro' ? 'Lote com erro' : `Emitindo NF ${Math.min(processados + 1, total)} de ${total}...`}
+                      {filaAtiva.status === 'concluido' ? 'Lote concluído' : filaAtiva.status === 'erro' ? 'Lote com erro' : filaAtiva.status === 'pausado' ? `Pausado em ${processados} de ${total}` : `Emitindo NF ${Math.min(processados + 1, total)} de ${total}...`}
                     </span>
                     <span className="text-blue-700">{processados}/{total}</span>
                   </div>
