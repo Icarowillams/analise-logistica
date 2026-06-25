@@ -15,6 +15,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 //   origem?: 'frontend' | 'backend' | 'automation' | 'webhook'
 // }
 
+// ── LGPD: mascara CPF (11 díg) e CNPJ (14 díg) em qualquer texto de log ──
+// Mantém 3 primeiros e 2 últimos dígitos para rastreabilidade, oculta o miolo.
+function mascararPII(texto) {
+  if (!texto || typeof texto !== 'string') return texto;
+  return texto
+    .replace(/\b(\d{2})\.?\d{3}\.?\d{3}\/?\d{4}-?(\d{2})\b/g, '$1.***.***/****-$2')
+    .replace(/\b(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})\b/g, '$1.***.***-$2');
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -23,6 +32,12 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
+    const alteracoesMasc = (Array.isArray(body.alteracoes) ? body.alteracoes.slice(0, 100) : []).map((a) => ({
+      ...a,
+      valor_anterior: mascararPII(a?.valor_anterior),
+      valor_novo: mascararPII(a?.valor_novo)
+    }));
+
     const registro = {
       tipo_acao: body.tipo_acao || 'outro',
       entidade_tipo: body.entidade_tipo || 'Desconhecida',
@@ -30,14 +45,14 @@ Deno.serve(async (req) => {
       pedido_id: body.pedido_id || null,
       carga_id: body.carga_id || null,
       cliente_id: body.cliente_id || null,
-      entidade_descricao: body.entidade_descricao || '',
+      entidade_descricao: mascararPII(body.entidade_descricao || ''),
       usuario_email: user.email,
       usuario_nome: user.full_name || user.email,
-      descricao: body.descricao || '',
-      alteracoes: Array.isArray(body.alteracoes) ? body.alteracoes.slice(0, 100) : [],
-      dados_json: body.dados_json || '',
+      descricao: mascararPII(body.descricao || ''),
+      alteracoes: alteracoesMasc,
+      dados_json: mascararPII(body.dados_json || ''),
       origem: body.origem || 'frontend',
-      observacao: body.observacao || ''
+      observacao: mascararPII(body.observacao || '')
     };
 
     const saved = await base44.asServiceRole.entities.LogGerencial.create(registro);

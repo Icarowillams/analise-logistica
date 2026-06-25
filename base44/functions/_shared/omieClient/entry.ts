@@ -193,6 +193,18 @@ async function setCircuitBreakerBlocked(base44: Base44Client, errorMessage: stri
     .catch((err) => { console.error('[omieClient] Falha ao atualizar circuit breaker:', err?.message); });
 }
 
+// ── LGPD: mascara CPF (11 díg) e CNPJ (14 díg) em qualquer texto de log ──
+// Mantém os 3 primeiros e 2 últimos dígitos para rastreabilidade, oculta o miolo.
+// Cobre tanto a forma só-dígitos quanto a formatada (com . - /).
+function mascararPII(texto: string): string {
+  if (!texto) return texto;
+  return texto
+    // CNPJ formatado: 00.000.000/0000-00
+    .replace(/\b(\d{2})\.?\d{3}\.?\d{3}\/?\d{4}-?(\d{2})\b/g, '$1.***.***/****-$2')
+    // CPF formatado: 000.000.000-00
+    .replace(/\b(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})\b/g, '$1.***.***-$2');
+}
+
 async function writeLog(base44: Base44Client, data: Record<string, unknown>): Promise<void> {
   await base44.asServiceRole.entities.LogIntegracaoOmie.create({
     endpoint: String(data.endpoint || ''),
@@ -203,9 +215,9 @@ async function writeLog(base44: Base44Client, data: Record<string, unknown>): Pr
     status: String(data.status || 'sucesso'),
     codigo_erro: data.codigo_erro ? String(data.codigo_erro) : undefined,
     mensagem_erro: data.mensagem_erro ? String(data.mensagem_erro).slice(0, 1000) : undefined,
-    erro_detalhado: data.erro_detalhado ? String(data.erro_detalhado).slice(0, 3000) : undefined,
-    payload_enviado: data.payload_enviado ? String(data.payload_enviado).slice(0, 3000) : undefined,
-    payload_resposta: data.payload_resposta ? String(data.payload_resposta).slice(0, 3000) : undefined,
+    erro_detalhado: data.erro_detalhado ? mascararPII(String(data.erro_detalhado)).slice(0, 3000) : undefined,
+    payload_enviado: data.payload_enviado ? mascararPII(String(data.payload_enviado)).slice(0, 3000) : undefined,
+    payload_resposta: data.payload_resposta ? mascararPII(String(data.payload_resposta)).slice(0, 3000) : undefined,
     duracao_ms: Number(data.duracao_ms || 0),
     tentativas: Number(data.tentativas || 1)
   }).catch(() => null);
