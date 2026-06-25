@@ -203,6 +203,12 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     const fim = dataFim ? new Date(dataFim + 'T23:59:59') : null;
 
     return logsEnriquecidos.filter(l => {
+      // Não exibir logs "pendente" na lista: o pedido só deve aparecer na sua conclusão real
+      // (autorizada ou rejeitada/erro). A reconsulta automática em background continua rodando
+      // e o pendente surge na tabela assim que vira autorizada/rejeitada. Exceção: se o usuário
+      // filtrar explicitamente por "pendente", aí mostramos.
+      if (l.status === 'pendente' && filtroStatus !== 'pendente') return false;
+
       if (filtroStatus !== 'todos' && l.status !== filtroStatus) return false;
 
       if (cargaT && !String(l.numero_carga || '').toLowerCase().includes(cargaT)) return false;
