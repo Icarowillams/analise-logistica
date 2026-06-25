@@ -352,19 +352,40 @@ async function buscarContextoPedido(base44, codigoPedido) {
 }
 
 async function gravarLogEmissao(base44, fila, codigoPedido, status, mensagem, extra = {}) {
-  // CORREÇÃO: evitar duplicatas — se já existe log "pendente" para este pedido, atualiza em vez de criar novo
-  if (status === 'pendente') {
-    const existentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
-      { codigo_pedido: String(codigoPedido), status: 'pendente' }, '-created_date', 1
-    ).catch(() => []);
-    if (existentes?.[0]) {
-      await base44.asServiceRole.entities.LogEmissaoNF.update(existentes[0].id, {
-        lote_id: fila.lote_id,
-        mensagem,
-        usuario_email: fila.usuario_email || ''
-      }).catch(() => {});
+  // UPSERT POR PEDIDO: uma única linha de log por codigo_pedido. Se já existe (qualquer status),
+  // ATUALIZA em vez de criar nova — evita empilhar erro+pendente+autorizada e NFs duplicadas
+  // quando o mesmo pedido é reprocessado em vários lotes.
+  const existentes = await base44.asServiceRole.entities.LogEmissaoNF.filter(
+    { codigo_pedido: String(codigoPedido) }, '-created_date', 50
+  ).catch(() => []);
+
+  if (existentes?.[0]) {
+    // PROTEÇÃO: já existe uma linha autorizada com NF → não rebaixar para erro/pendente.
+    const jaAutorizada = existentes.find(l => l.status === 'autorizada' && l.numero_nf);
+    if (jaAutorizada && status !== 'autorizada') {
+      // Remove duplicatas excedentes, mantendo só a autorizada.
+      for (const dup of existentes) {
+        if (dup.id !== jaAutorizada.id) await base44.asServiceRole.entities.LogEmissaoNF.delete(dup.id).catch(() => {});
+      }
       return;
     }
+    // Mantém a 1ª linha (mais recente) como a oficial e apaga as demais duplicatas.
+    const principal = existentes[0];
+    for (const dup of existentes.slice(1)) {
+      await base44.asServiceRole.entities.LogEmissaoNF.delete(dup.id).catch(() => {});
+    }
+    await base44.asServiceRole.entities.LogEmissaoNF.update(principal.id, {
+      lote_id: fila.lote_id,
+      status,
+      mensagem,
+      faultstring: extra.faultstring || '',
+      faultcode: extra.faultcode || '',
+      erro_tipo: extra.erro_tipo || '',
+      payload_enviado: extra.payload_enviado || '',
+      payload_resposta: extra.payload_resposta || '',
+      usuario_email: fila.usuario_email || ''
+    }).catch(() => {});
+    return;
   }
 
   const ctx = await buscarContextoPedido(base44, codigoPedido);
