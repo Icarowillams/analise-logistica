@@ -240,14 +240,6 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       // Quando filtra por CARGA, a lista é montada 100% LOCAL (LogEmissaoNF autorizado),
       // SEM tocar no Omie. A impressão resolve o ID interno via ConsultarNF só no clique.
       if (cargaParaFiltrar) {
-        // RECONCILIAÇÃO SILENCIOSA (best-effort): regrava numero_nf em pedidos_omie a
-        // partir do LogEmissaoNF autorizado. Recarrega a carga para pegar os dados frescos.
-        try {
-          await base44.functions.invoke('reconciliarEspelhoCargaCompleto', { numero_carga: cargaParaFiltrar.numero_carga });
-          const recarregada = await base44.entities.Carga.filter({ id: cargaParaFiltrar.id });
-          if (recarregada?.[0]) cargaParaFiltrar = recarregada[0];
-        } catch (_) { /* reconciliação é best-effort; nunca bloqueia a listagem */ }
-
         // FONTE DA LISTA: LogEmissaoNF da carga (por numero_carga; fallback carga_id).
         // Inclui NFs autorizadas E as que foram canceladas/rejeitadas DEPOIS de emitidas
         // (têm numero_nf) — assim elas continuam na lista com o badge real correto.
@@ -305,6 +297,12 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         // o status real (cancelada/rejeitada) vem da ETAPA do pedido (igual à tela de
         // Operação). Consulta sem travar a tela e atualiza os badges quando responder.
         atualizarStatusRealCarga(logs);
+
+        // RECONCILIAÇÃO SILENCIOSA EM BACKGROUND (best-effort): regrava numero_nf em
+        // pedidos_omie a partir do LogEmissaoNF autorizado. Rodava ANTES de exibir e
+        // travava a tela por muitos segundos — agora roda depois, sem bloquear a lista
+        // (a lista já vem 100% do banco local). Não precisamos do resultado para exibir.
+        base44.functions.invoke('reconciliarEspelhoCargaCompleto', { numero_carga: numCarga }).catch(() => {});
 
         // PRÉ-AQUECIMENTO em background: se há NFs sem nIdNF cacheado, resolve por baixo
         // (não trava a UI). A lista já está na tela. Quando terminar, recarrega os
