@@ -83,6 +83,41 @@ async function omieCall(base44, endpoint, param, call) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function fmtData(d) {
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}/${d.getFullYear()}`;
+}
+
+// Constrói um mapa código_pedido(nIdPedido) → { nNF, cChave } varrendo as NFs dos últimos 15 dias
+// via ListarNF (que NÃO aceita filtro por pedido — cruzamos pelo compl.nIdPedido de cada NF).
+// Uma única varredura por execução, reaproveitada para todos os pedidos do lote.
+async function construirMapaNfsRecentes(base44) {
+  const mapa = new Map();
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - 15 * 24 * 60 * 60 * 1000);
+  const dEmiInicial = fmtData(inicio);
+  const dEmiFinal = fmtData(hoje);
+  let pg = 1, totalPaginas = 1;
+  const MAX_PAGINAS = 30;
+  do {
+    const d = await omieCall(base44, 'produtos/nfconsultar/', {
+      pagina: pg, registros_por_pagina: 100, dEmiInicial, dEmiFinal
+    }, 'ListarNF').catch(() => null);
+    if (!d) break;
+    totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
+    (d.nfCadastro || []).forEach((nf) => {
+      const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
+      const nNF = nf.ide?.nNF || nf.cNumero || '';
+      const cChave = nf.compl?.cChaveNFe || nf.cChaveNFe || '';
+      if (idPed && nNF) mapa.set(idPed, { nNF: String(nNF), cChave: String(cChave || '') });
+    });
+    pg++;
+    await sleep(400);
+  } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
+  return mapa;
+}
+
 // CAMADA 3 — REDE DE SEGURANÇA (não fluxo principal).
 // Processa SOMENTE pedidos nf_aguardando_autorizacao=true, em lotes pequenos com pausa.
 // Lê a etapa real via ConsultarPedido: 60 = puxa nNF e grava; 50 = ainda processando (mantém flag).
@@ -115,6 +150,11 @@ Deno.serve(async (req) => {
     let preenchidos = 0, aindaAguardando = 0, semCodigo = 0, terminais = 0;
     const resultados = [];
 
+    // Mapa nIdPedido(código do pedido Omie) → { nNF, cChave } construído UMA vez via ListarNF
+    // por faixa de datas. O ListarNF NÃO aceita filtro por pedido — cada NF traz compl.nIdPedido,
+    // então varremos a janela recente e cruzamos localmente (mesmo padrão do listarNfsOmie).
+    const mapaNfPorPedido = await construirMapaNfsRecentes(base44).catch(() => new Map());
+
     for (const pedido of aguardando) {
       if (!pedido.omie_codigo_pedido) {
         // Sem código Omie → não há como consultar. Limpa a flag para não ficar preso.
@@ -125,28 +165,56 @@ Deno.serve(async (req) => {
 
       try {
         const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(pedido.omie_codigo_pedido) }, 'ConsultarPedido');
-        const cab = data?.pedido_venda_produto?.cabecalho;
+        const pv = data?.pedido_venda_produto || {};
+        const cab = pv.cabecalho;
+        const infoCad = pv.infoCadastro || pv.info_cadastro || {};
         const etapa = String(cab?.etapa || '');
-        const infoNfe = data?.pedido_venda_produto?.infoNfe || data?.pedido_venda_produto?.info_nf || null;
-        const nNF = infoNfe?.nNF || infoNfe?.numero_nf || cab?.numero_nfe || null;
-        const cChave = infoNfe?.cChaveNFe || infoNfe?.chave_nfe || null;
+        const faturado = String(infoCad.faturado || '').toUpperCase() === 'S';
+        const autorizado = String(infoCad.autorizado || '').toUpperCase() === 'S';
+        const infoNfe = pv.infoNfe || pv.info_nf || null;
+        let nNF = infoNfe?.nNF || infoNfe?.numero_nf || cab?.numero_nfe || null;
+        let cChave = infoNfe?.cChaveNFe || infoNfe?.chave_nfe || null;
 
-        if (etapa === '60' && nNF) {
-          // NF autorizada — grava número e limpa flag.
+        // FATURADO de verdade: etapa 60 + faturado=S no Omie. O ConsultarPedido NÃO traz o número
+        // da NF — busca via ListarNF por código de pedido. Mas mesmo sem o número, o pedido JÁ está
+        // faturado → marca como faturado e destrava a flag (o número é cosmético, vem depois).
+        if (etapa === '60' && (faturado || autorizado)) {
+          if (!nNF) {
+            // Cruza pelo código do pedido no mapa de NFs recentes (ListarNF por data).
+            const achada = mapaNfPorPedido.get(String(pedido.omie_codigo_pedido));
+            if (achada) {
+              nNF = achada.nNF || nNF;
+              cChave = achada.cChave || cChave;
+            }
+          }
           const upd = {
-            numero_nota_fiscal: String(nNF).padStart(6, '0'),
             faturado: true,
             status: 'faturado',
             status_faturamento: 'faturado',
-            data_faturamento: pedido.data_faturamento || infoNfe?.dEmiNFe || new Date().toISOString(),
-            nf_aguardando_autorizacao: false
+            data_faturamento: pedido.data_faturamento || new Date().toISOString(),
+            nf_aguardando_autorizacao: false,
+            pendente_emissao: false
           };
+          if (nNF) upd.numero_nota_fiscal = String(nNF).padStart(6, '0');
           if (cChave) upd.chave_nfe = String(cChave);
           await base44.asServiceRole.entities.Pedido.update(pedido.id, upd);
+          // Atualiza também o log de emissão para "autorizada" (deixa de ficar "pendente").
+          try {
+            const logs = await base44.asServiceRole.entities.LogEmissaoNF.filter({ codigo_pedido: String(pedido.omie_codigo_pedido) }, '-created_date', 5).catch(() => []);
+            const log = logs?.[0];
+            if (log && log.status !== 'autorizada') {
+              await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, {
+                status: 'autorizada', codigo_sefaz: '100',
+                numero_nf: upd.numero_nota_fiscal || log.numero_nf || '',
+                chave_nfe: upd.chave_nfe || log.chave_nfe || '',
+                mensagem: `NF confirmada no Omie (etapa 60, faturado)${upd.numero_nota_fiscal ? ` — nº ${upd.numero_nota_fiscal}` : ''}.`
+              }).catch(() => {});
+            }
+          } catch { /* ignore */ }
           preenchidos++;
-          resultados.push({ pedido: pedido.numero_pedido, numero_nf: upd.numero_nota_fiscal });
+          resultados.push({ pedido: pedido.numero_pedido, numero_nf: upd.numero_nota_fiscal || '(faturado, nº pendente)' });
         } else {
-          // Etapa 50 (ou 60 sem nNF ainda) — SEFAZ não autorizou ainda. Mantém a flag.
+          // Etapa 50 — SEFAZ não autorizou ainda. Mantém a flag.
           aindaAguardando++;
         }
       } catch (e) {
