@@ -257,9 +257,13 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
 // CHAVE: "sucesso" do FaturarPedidoVenda só significa que o Omie ACEITOU o pedido — NÃO que
 // a NF saiu. A NF só está realmente emitida quando faturada=S / etapa 60 / ListaNfe com nNF.
 // StatusPedido aceita codigo_pedido (ListarNF não). Retorna o estado real classificado.
-const TENTATIVAS_CONFIRMA = 4;          // re-consultas do StatusPedido após faturar
-const ESPERA_CONFIRMA_MIN_MS = 8000;    // 8s
-const ESPERA_CONFIRMA_MAX_MS = 12000;   // 12s — janela generosa pra SEFAZ responder
+// Confirmação SÍNCRONA e rápida: esperamos a NF real de cada pedido, mas com backoff CURTO e
+// crescente em vez de ritmo fixo lento. A maioria das NFs autoriza em 2-4s; checar cedo e parar
+// no instante em que confirmar economiza o tempo ocioso, sem deixar de esperar a NF de verdade.
+// A precisão é a mesma (só resolve com NF confirmada); apenas não desperdiça espera à toa.
+const TENTATIVAS_CONFIRMA = 6;          // re-consultas do StatusPedido após faturar (cobre SEFAZ lenta)
+// Backoff crescente por tentativa (ms): 3s, 4s, 5s, 6s, 8s, 10s — total ~36s só se a SEFAZ demorar muito.
+const ESPERAS_CONFIRMA_MS = [3000, 4000, 5000, 6000, 8000, 10000];
 // Espaçamento entre pedidos = 0. O throttle global atômico (omieCall) já serializa as chamadas
 // em ~1,5s; um delay fixo extra aqui só dobra a lentidão (ex.: 42s perdidos em 14 pedidos) sem
 // proteger nada. O circuit breaker continua cobrindo rajada/rate limit.
@@ -547,9 +551,10 @@ Deno.serve(async (req) => {
             usuario_email: fila.usuario_email || ''
           }).catch(() => {});
 
-          // (3) Confirma em laço espaçado: "sucesso" do faturar ≠ NF emitida.
+          // (3) Confirma em laço de backoff CURTO: "sucesso" do faturar ≠ NF emitida.
+          // Para no INSTANTE em que a NF confirma — não espera o teto à toa.
           for (let c = 0; c < TENTATIVAS_CONFIRMA; c++) {
-            const espera = ESPERA_CONFIRMA_MIN_MS + Math.round(Math.random() * (ESPERA_CONFIRMA_MAX_MS - ESPERA_CONFIRMA_MIN_MS));
+            const espera = ESPERAS_CONFIRMA_MS[c] ?? ESPERAS_CONFIRMA_MS[ESPERAS_CONFIRMA_MS.length - 1];
             await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
               mensagem: `Confirmando NF do pedido ${i + 1}/${pedidos.length} (tentativa ${c + 1}/${TENTATIVAS_CONFIRMA})...`,
               atualizado_em: new Date().toISOString()
