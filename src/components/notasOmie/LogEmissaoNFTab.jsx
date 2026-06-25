@@ -171,6 +171,9 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
         // Omie bloqueado/rate limit em qualquer lote da onda: para o restante; próximo refresh tenta de novo.
         if (respostas.some(r => r.abortado || r.resultados?.some(x => x.abortado))) abortar = true;
       }
+      // Recarrega sempre ao final para o card "Pendentes" refletir o estado real do banco
+      // (evita contagem fantasma de pendentes que já viraram autorizada/rejeitada).
+      await refetch();
     })();
   }, [ativa, codigosPendentes, reconsultaFeita, refetch]);
 
