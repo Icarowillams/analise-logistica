@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
 
     // ═══ PASSO 0: TIMEOUT — Limpar itens travados em "processando" há mais de 3 minutos ═══
     // DEVE rodar ANTES da checagem de concorrência, senão itens travados bloqueiam a fila indefinidamente.
-    const TIMEOUT_MS = 3 * 60 * 1000;
+    const TIMEOUT_MS = 8 * 60 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
       const updatedAt = new Date(item.updated_date).getTime();
@@ -347,7 +347,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
           status: novoStatus,
           tentativas,
-          erro_log: `Timeout: travado em "processando" por mais de 3 minutos (tentativa ${tentativas})`
+          erro_log: `Timeout: travado em "processando" por mais de 8 minutos (tentativa ${tentativas})`
         }).catch(() => {});
         console.log(`[FILA TIMEOUT] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) resetado para "${novoStatus}" (tentativa ${tentativas})`);
       }
