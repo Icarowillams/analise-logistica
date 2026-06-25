@@ -157,7 +157,7 @@ async function liberarLockEncadeamento(base44) {
 // Re-agendamos a janela e só desistimos após muitas janelas reais (praticamente nunca acontece).
 const MAX_TENTATIVAS_REDUNDANTE = 5;
 const LOTE = 50;
-const DELAY_ENTRE_PEDIDOS_MS = 2000;
+const DELAY_ENTRE_PEDIDOS_MS = 700;
 
 
 // Idempotência: consulta a etapa atual do pedido no Omie. Se já está na etapa destino
@@ -219,7 +219,7 @@ async function processarFaturar(base44, item) {
     await omieCall(base44, 'produtos/pedido/', {
       cabecalho: { ...idParam, data_previsao: dataOmie }
     }, { call: 'AlterarPedidoVenda' });
-    await sleep(300);
+    await sleep(150);
   }
 
   // 2) Trocar etapa para destino (50)
@@ -227,7 +227,7 @@ async function processarFaturar(base44, item) {
 
   // 3) VALIDAÇÃO OBRIGATÓRIA — reconsulta a etapa real. Sem isso, "Consumo redundante"
   // ou respostas estranhas eram marcadas como concluído mesmo com o pedido preso em 20.
-  await sleep(1500); // dá tempo do Omie consolidar a troca antes de reconsultar
+  await sleep(600); // dá tempo do Omie consolidar a troca antes de reconsultar
   const etapaReal = await consultarEtapaOmie(base44, item);
   if (etapaReal === null) {
     // Não conseguimos confirmar — trata como falha transitória para reprocessar (não engole).
