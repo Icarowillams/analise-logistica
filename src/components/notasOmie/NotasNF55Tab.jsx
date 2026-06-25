@@ -179,6 +179,33 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     return mapa;
   };
 
+  // Consulta a ETAPA/status real no Omie dos pedidos da carga e atualiza o badge
+  // de status de cada linha (autorizada → cancelada/rejeitada quando for o caso).
+  // O ListarNF por data esconde canceladas; ConsultarPedido (etapa) traz a verdade.
+  const atualizarStatusRealCarga = async (logs) => {
+    try {
+      const codigos = [...new Set((logs || []).map(l => String(l.codigo_pedido || '')).filter(Boolean))];
+      // Limite do backend: 40 pedidos por consulta (1,5s entre chamadas). Acima disso a
+      // verificação ficaria lenta demais — mantém o status autorizado da emissão.
+      if (codigos.length === 0 || codigos.length > 40) return;
+      const { data } = await base44.functions.invoke('consultarEtapaPedidosOmie', { codigos_pedido: codigos });
+      const resultados = data?.resultados || {};
+      // codigo_pedido → status real do Omie
+      const statusPorCod = {};
+      Object.entries(resultados).forEach(([cod, info]) => {
+        if (info?.status) statusPorCod[String(cod)] = info.status; // 'cancelada' | 'autorizada' | ...
+      });
+      if (Object.keys(statusPorCod).length === 0) return;
+      setResultado(prev => prev ? {
+        ...prev,
+        nfs: prev.nfs.map(nf => {
+          const real = statusPorCod[String(nf.nIdPedido || '')];
+          return real ? { ...nf, cStatus: real } : nf;
+        })
+      } : prev);
+    } catch (_) { /* status real é best-effort; nunca quebra a listagem */ }
+  };
+
   const buscar = async (pg = 1, carga = cargaFiltro, filtrosBusca = filtros) => {
     setLoading(true);
     setSelecionadas(new Set());
@@ -255,6 +282,11 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         setCargasPorNf(mapaCargas);
         setResultado({ nfs: nfsFiltradas, total_de_registros: nfsFiltradas.length, total_de_paginas: 1 });
         setPagina(1);
+
+        // STATUS REAL EM BACKGROUND: o ListarNF do Omie esconde NFs canceladas, então
+        // o status real (cancelada/rejeitada) vem da ETAPA do pedido (igual à tela de
+        // Operação). Consulta sem travar a tela e atualiza os badges quando responder.
+        atualizarStatusRealCarga(logs);
 
         // PRÉ-AQUECIMENTO em background: se há NFs sem nIdNF cacheado, resolve por baixo
         // (não trava a UI). A lista já está na tela. Quando terminar, recarrega os
