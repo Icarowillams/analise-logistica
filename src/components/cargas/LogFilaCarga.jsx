@@ -15,7 +15,7 @@ const STATUS_CONFIG = {
   erro:        { label: 'Erro',        bg: 'bg-red-100 text-red-800',      icon: XCircle },
 };
 
-const fmt = (d) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+const fmt = (d) => d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
 export default function LogFilaCarga() {
   const [itens, setItens] = useState([]);
