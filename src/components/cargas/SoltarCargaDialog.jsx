@@ -170,41 +170,46 @@ export default function SoltarCargaDialog({ open, onOpenChange, carga, onSolto }
             Cancelar
           </Button>
 
-          <Button
-            onClick={() => executarSoltura(selecionados)}
-            disabled={soltando || selecionados.length === 0}
-            className="bg-amber-500 hover:bg-amber-600 text-white"
-          >
-            {soltando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Soltar selecionados ({selecionados.length})
-          </Button>
-
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={soltando || totalPedidos === 0}>
-                Soltar carga toda
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Soltar a carga inteira?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Todos os <strong>{totalPedidos}</strong> pedido(s) da carga {carga.numero_carga} voltarão para a Montagem e a carga será zerada.
-                  {jaFaturada && ' Esta carga está faturada — a NF não será cancelada automaticamente.'}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={soltando}>Voltar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => executarSoltura(null)}
-                  className="bg-red-600 hover:bg-red-700"
-                >
-                  {soltando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Sim, soltar tudo
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {/* Com pedidos selecionados → SÓ o botão de soltar os selecionados.
+              O "Soltar carga toda" fica oculto para impedir clique acidental que zera a carga. */}
+          {selecionados.length > 0 ? (
+            <Button
+              onClick={() => executarSoltura(selecionados)}
+              disabled={soltando}
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {soltando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Soltar {selecionados.length} selecionado{selecionados.length > 1 ? 's' : ''}
+            </Button>
+          ) : (
+            /* Nada selecionado → única opção é soltar a carga toda, com confirmação. */
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={soltando || totalPedidos === 0}>
+                  Soltar carga toda
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Soltar a carga inteira?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Todos os <strong>{totalPedidos}</strong> pedido(s) da carga {carga.numero_carga} voltarão para a Montagem e a carga será zerada.
+                    {jaFaturada && ' Esta carga está faturada — a NF não será cancelada automaticamente.'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={soltando}>Voltar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => executarSoltura(null)}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {soltando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Sim, soltar tudo
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

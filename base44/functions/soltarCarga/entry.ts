@@ -88,6 +88,14 @@ Deno.serve(async (req) => {
     const internoSoltar = pedidosInternos.filter(deveSoltarInterno);
     const trocaSoltar = pedidosTroca.filter(deveSoltarTroca);
 
+    // BLINDAGEM: soltura parcial (com pedidos_ids) que não casou com NENHUM pedido da carga
+    // NÃO pode cair no fluxo de "zerar carga toda". Aborta com erro claro.
+    if (parcial && omieSoltar.length === 0 && internoSoltar.length === 0 && trocaSoltar.length === 0) {
+      return Response.json({
+        error: 'Nenhum dos pedidos selecionados foi encontrado nesta carga. Nada foi alterado.'
+      }, { status: 400 });
+    }
+
     // BLINDAGEM FISCAL: pedido solto volta para Montagem (etapa 'montagem') com solto_manualmente=true.
     const LIBERADO = {
       carga_id: null, numero_carga: null, status: 'liberado', status_logistico: 'aguardando',
