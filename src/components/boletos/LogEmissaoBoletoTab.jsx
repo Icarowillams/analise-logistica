@@ -111,6 +111,7 @@ export default function LogEmissaoBoletoTab() {
         onOpenChange={setImprimirOpen}
         titulos={titulosSelecionados}
         modo={modoImpressao}
+        numeroCarga={titulosSelecionados.find(t => t.numero_carga)?.numero_carga}
       />
 
       <Card>

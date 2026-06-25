@@ -177,7 +177,7 @@ export default function FiltrosBoletos({ onResultado }) {
       } else {
         setOcultosNaoBoleto(0);
       }
-      onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor);
+      onResultado(titulosFiltrados, filtrosBusca.filtrarPor || filtrarPor, carga?.numero_carga || '');
       // Só avisa "Omie limitou" se REALMENTE faltar boleto: pedidos de venda com NF E
       // modalidade Boleto Bancário (à vista não gera boleto). Se houve falha mas todos os
       // pedidos-boleto já foram resolvidos (local+Omie), não assusta.
@@ -214,7 +214,7 @@ export default function FiltrosBoletos({ onResultado }) {
             locais = locais.filter(t => String(t.numero_documento || '').replace(/\D/g, '').includes(nfBusca));
           }
           if (apenasClientesBoleto) locais = locais.filter(isClienteBoleto);
-          onResultado(locais, filtrarPor);
+          onResultado(locais, filtrarPor, carga?.numero_carga || '');
           toast.warning(`Omie indisponível agora — exibindo ${locais.length} boleto(s) do cache local. Alguns títulos podem não ter sido verificados; tente Buscar novamente.`);
         } catch {
           toast.error('Não foi possível carregar os boletos. Tente novamente.');

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 export default function BoletosConsultaTab() {
   const [titulos, setTitulos] = useState([]);
   const [filtradoPor, setFiltradoPor] = useState('E');
+  const [numeroCarga, setNumeroCarga] = useState('');
   const [selecionados, setSelecionados] = useState([]);
   const [imprimirOpen, setImprimirOpen] = useState(false);
   const [modoImpressao, setModoImpressao] = useState('individual');
@@ -45,9 +46,10 @@ export default function BoletosConsultaTab() {
         onOpenChange={setImprimirOpen}
         titulos={titulosComBoleto}
         modo={modoImpressao}
+        numeroCarga={numeroCarga}
       />
 
-      <FiltrosBoletos onResultado={(t, fp) => { setTitulos(t); setFiltradoPor(fp || 'E'); setSelecionados([]); }} />
+      <FiltrosBoletos onResultado={(t, fp, nc) => { setTitulos(t); setFiltradoPor(fp || 'E'); setNumeroCarga(nc || ''); setSelecionados([]); }} />
 
       {titulos.length > 0 && (
         <TabelaBoletos titulos={titulos} selecionados={selecionados} setSelecionados={setSelecionados} filtradoPor={filtradoPor} />

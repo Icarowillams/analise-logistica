@@ -140,10 +140,16 @@ export async function buscarTitulosCarga(carga) {
   const numerosPedido = [...new Set(pedidos.map(p => numLimpo(p.numero_pedido)).filter(Boolean))];
   const mapaCliente = new Map();
   if (numerosPedido.length > 0) {
-    const pedidosLocais = await base44.entities.Pedido.filter({}, '-created_date', 2000).catch(() => []);
+    // Busca só os Pedidos desta carga (por numero_pedido), com projeção de campos —
+    // evita carregar 2000 pedidos inteiros a cada abertura de carga.
+    const codigosCarga = [...new Set(pedidos.map(p => String(p.numero_pedido || '').trim()).filter(Boolean))];
+    const pedidosLocais = await base44.entities.Pedido.filter(
+      { numero_pedido: { $in: codigosCarga } }, '-created_date', codigosCarga.length || 1,
+      ['numero_pedido', 'cliente_nome', 'cliente_nome_fantasia', 'cliente_id', 'numero_nota_fiscal']
+    ).catch(() => []);
     for (const pl of pedidosLocais) {
       const k = numLimpo(pl.numero_pedido);
-      if (k && numerosPedido.includes(k) && (pl.cliente_nome || pl.numero_nota_fiscal)) {
+      if (k && (pl.cliente_nome || pl.numero_nota_fiscal)) {
         if (!mapaCliente.has(k)) mapaCliente.set(k, { nome: pl.cliente_nome || '', fantasia: pl.cliente_nome_fantasia || '', id: pl.cliente_id || '', nf: pl.numero_nota_fiscal || '' });
       }
     }

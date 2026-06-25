@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
-const BOLETO_BANCARIO_ID_FALLBACK = '69ff70445fbcb49b659710df';
 const normalizar = (v) => String(v || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const somenteNumeros = (v) => String(v || '').replace(/\D/g, '');
 
@@ -58,11 +57,18 @@ export function useModalidadeBoleto({ cnpjs = [], codigos = [] } = {}) {
   });
 
   const modalidadeBoletoIds = useMemo(() => {
-    const ids = new Set([BOLETO_BANCARIO_ID_FALLBACK]);
+    // Identifica a(s) modalidade(s) de Boleto Bancário pelo NOME, sem amarrar a um ID fixo
+    // do banco. Fallback secundário: qualquer modalidade que contenha "BOLETO".
+    const ids = new Set();
     modalidades.forEach(m => {
       const nome = normalizar(m.nome);
       if (nome.includes('BOLETO') && nome.includes('BANCARIO')) ids.add(m.id);
     });
+    if (ids.size === 0) {
+      modalidades.forEach(m => {
+        if (normalizar(m.nome).includes('BOLETO')) ids.add(m.id);
+      });
+    }
     return ids;
   }, [modalidades]);
 
