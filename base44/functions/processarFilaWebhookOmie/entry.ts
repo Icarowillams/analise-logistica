@@ -32,7 +32,7 @@ const TEMPO_MAX_MS = 80000; // 80s
 // Doc Omie: 240 req/min (4 req/s) e 4 simultâneas por IP+AppKey+Método com registros
 // DIFERENTES. Com 320ms entre lotes de 2 → ~6 req/s de pico, mas espaçados → bem abaixo
 // dos 4/s sustentados (~3 req/s reais). NUNCA descer abaixo de 300ms (respiro p/ picos).
-const INTERVALO_ENTRE_PEDIDOS_MS = 320;
+const INTERVALO_ENTRE_PEDIDOS_MS = 500;
 // Paralelismo conservador: 2 pedidos de CÓDIGOS DIFERENTES por lote (o Omie permite 4
 // simultâneas com registros distintos; usamos 2 por segurança).
 const PARALELISMO = 2;
@@ -44,11 +44,14 @@ const CACHE_CONSULTA_MS = 60000;
 let _credsCache = null;
 async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  // FONTE DE VERDADE = Secrets do backend (o app_secret NÃO fica mais no banco).
+  // O app_key pode vir do banco como conveniência, mas o secret é sempre do Secret.
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  if (!appKey) {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    appKey = rows?.[0]?.app_key || '';
+  }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }
