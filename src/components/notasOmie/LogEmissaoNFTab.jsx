@@ -146,18 +146,27 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     if (!ativa || codigosPendentes.length === 0 || reconsultaFeita) return;
     setReconsultaFeita(true);
     (async () => {
-      for (let i = 0; i < codigosPendentes.length; i += 4) {
-        const lote = codigosPendentes.slice(i, i + 4);
-        try {
-          const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote });
-          const r = resp?.data || {};
-          // Atualiza a tela a cada lote, para os autorizados irem aparecendo aos poucos.
-          if ((r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0) await refetch();
-          // Omie bloqueado/rate limit: para o restante e tenta no próximo refresh.
-          if (r.abortado || r.resultados?.some(x => x.abortado)) break;
-        } catch {
-          break;
-        }
+      // Divide os pendentes em lotes de 4 (teto da função) e dispara 3 lotes EM PARALELO por onda.
+      // Cada código resolve em 1 chamada rápida (ConsultarNF), então o paralelismo corta o tempo
+      // total drasticamente sem estourar o Omie (a função ainda espaça 4s entre os 4 de cada lote).
+      const lotes = [];
+      for (let i = 0; i < codigosPendentes.length; i += 4) lotes.push(codigosPendentes.slice(i, i + 4));
+
+      const PARALELO = 3;
+      let abortar = false;
+      for (let i = 0; i < lotes.length && !abortar; i += PARALELO) {
+        const onda = lotes.slice(i, i + PARALELO);
+        const respostas = await Promise.all(
+          onda.map(lote =>
+            base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote })
+              .then(resp => resp?.data || {})
+              .catch(() => ({ _falhou: true }))
+          )
+        );
+        const houveMudanca = respostas.some(r => (r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0);
+        if (houveMudanca) await refetch();
+        // Omie bloqueado/rate limit em qualquer lote da onda: para o restante; próximo refresh tenta de novo.
+        if (respostas.some(r => r.abortado || r.resultados?.some(x => x.abortado))) abortar = true;
       }
     })();
   }, [ativa, codigosPendentes, reconsultaFeita, refetch]);
