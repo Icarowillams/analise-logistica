@@ -62,6 +62,19 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     refetchOnWindowFocus: false
   });
 
+  // Pedidos que JÁ têm NF autorizada no log — usados para esconder da lista de "prontos para emissão"
+  // mesmo quando o espelho local ainda não foi atualizado (etapa 50 / sem numero_nf).
+  const { data: codigosComNf = new Set() } = useQuery({
+    queryKey: ['codigosComNfAutorizada'],
+    queryFn: async () => {
+      const logs = await base44.entities.LogEmissaoNF.filter({ status: 'autorizada' }, '-created_date', 1000);
+      return new Set(logs.filter(l => l.numero_nf).map(l => String(l.codigo_pedido)));
+    },
+    enabled: ativa && carregamentoIniciado,
+    staleTime: 30000,
+    refetchOnWindowFocus: false
+  });
+
   const { data: cargasRelacionadas = [] } = useQuery({
     queryKey: ['cargasParaEmissaoNfe', espelho.map(p => p.codigo_pedido).join(',')],
     queryFn: () => base44.entities.Carga.list('-created_date', 500),
@@ -125,6 +138,8 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
     const termo = busca.trim().toLowerCase();
     const cargaTermo = filtroCarga.trim();
     return espelho.filter(p => {
+      // Esconde pedidos que já têm NF autorizada no log (espelho pode estar desatualizado).
+      if (codigosComNf.has(String(p.codigo_pedido))) return false;
       const numCarga = cargaPorPedido.get(String(p.codigo_pedido))?.carga?.numero_carga || '';
       if (cargaTermo && !String(numCarga).includes(cargaTermo)) return false;
       if (!termo) return true;
@@ -135,7 +150,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         String(p.codigo_pedido || '').toLowerCase().includes(termo)
       );
     });
-  }, [espelho, busca, filtroCarga, cargaPorPedido]);
+  }, [espelho, busca, filtroCarga, cargaPorPedido, codigosComNf]);
 
   const podeSelecionar = (pedido) => !pedido.ja_faturado && !pedido.numero_nf;
 
