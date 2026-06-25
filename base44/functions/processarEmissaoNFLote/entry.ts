@@ -6,14 +6,12 @@ let _credsCache: { appKey: string; appSecret: string; at: number } | null = null
 
 async function getOmieCredentials(base44: any, tentativa = 1) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = cfg?.app_key || '';
-  let appSecret = cfg?.app_secret || '';
-  // Fallback para variáveis de ambiente
-  if (!appKey || !appSecret) {
-    appKey = Deno.env.get('OMIE_APP_KEY') || '';
-    appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  // FONTE DE VERDADE = Secrets do backend (o app_secret não fica mais no banco).
+  let appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  if (!appKey) {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    appKey = rows?.[0]?.app_key || '';
   }
   // Retry: se ainda sem credenciais e é a primeira tentativa, espera 2s e tenta de novo
   if ((!appKey || !appSecret) && tentativa < 3) {
@@ -308,7 +306,7 @@ async function aplicarResultadoConfirmado(base44, codigoPedido, real) {
     if (p?.id) {
       await base44.asServiceRole.entities.Pedido.update(p.id, {
         status: 'faturado', status_faturamento: 'faturado', faturado: true,
-        pendente_emissao: false, motivo_pendencia_emissao: '', omie_erro: '',
+        pendente_emissao: false, nf_aguardando_autorizacao: false, motivo_pendencia_emissao: '', omie_erro: '',
         ...(p.data_faturamento ? {} : { data_faturamento: new Date().toISOString() }),
         ...(real.numero_nf ? { numero_nota_fiscal: real.numero_nf } : {})
       }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido faturado:', e?.message || e); });
@@ -622,6 +620,10 @@ Deno.serve(async (req) => {
         if (pedPend?.id) await base44.asServiceRole.entities.Pedido.update(pedPend.id, {
           status_faturamento: 'processando',
           pendente_emissao: true,
+          // FLAG da rede de segurança: reconciliarNfAguardandoAutorizacao filtra por este campo.
+          // Sem isto, o pedido faturado no Omie (etapa 50→60 assíncrono) ficava órfão e o
+          // número da NF nunca era capturado pelo app — causa do "0 confirmadas / N aguardando".
+          nf_aguardando_autorizacao: true,
           motivo_pendencia_emissao: mensagemPedido
         }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido pendente de emissão:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'pendente', mensagem: mensagemPedido });

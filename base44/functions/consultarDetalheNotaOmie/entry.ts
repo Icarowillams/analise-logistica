@@ -6,11 +6,13 @@ let _credsCache: { appKey: string; appSecret: string; at: number } | null = null
 
 async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = String(cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '').trim();
-  let appSecret = String(cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '').trim();
-  if (!appKey || !appSecret) { appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim(); appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim(); }
+  // FONTE DE VERDADE = Secrets do backend (o app_secret não fica mais no banco).
+  const appSecret = String(Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  let appKey = String(Deno.env.get('OMIE_APP_KEY') || '').trim();
+  if (!appKey) {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    appKey = String(rows?.[0]?.app_key || '').trim();
+  }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }
@@ -106,10 +108,13 @@ async function resolverNCodNfPorNumero(base44: any, nNF: any) {
 }
 
 async function getCredenciais(base44) {
-  const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  if (configs?.[0]?.app_key && configs?.[0]?.app_secret) return { app_key: String(configs[0].app_key).trim(), app_secret: String(configs[0].app_secret).trim() };
-  const key = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  // FONTE DE VERDADE = Secrets do backend.
   const secret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  let key = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  if (!key) {
+    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    key = String(configs?.[0]?.app_key || '').trim();
+  }
   if (key && secret) return { app_key: key, app_secret: secret };
   throw new Error('Credenciais Omie não configuradas');
 }

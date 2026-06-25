@@ -9,10 +9,13 @@ function formatDatePt(value) {
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 
 async function getOmieCreds(base44) {
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  // FONTE DE VERDADE = Secrets do backend (o app_secret não fica mais no banco).
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  if (!appKey) {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    appKey = rows?.[0]?.app_key || '';
+  }
   return { appKey, appSecret };
 }
 
@@ -228,7 +231,7 @@ Deno.serve(async (req) => {
     }
 
     // Circuit breaker: não enfileira emissão se a API Omie estiver bloqueada por consumo indevido (425).
-    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: '6a1e06a9aa62ceab7b3b6d97' }, '-updated_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
       return Response.json({

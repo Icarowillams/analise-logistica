@@ -7,11 +7,13 @@ let _credsCache = null;
 
 async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  // FONTE DE VERDADE = Secrets do backend (o app_secret não fica mais no banco).
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = Deno.env.get('OMIE_APP_KEY') || '';
+  if (!appKey) {
+    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+    appKey = rows?.[0]?.app_key || '';
+  }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }
