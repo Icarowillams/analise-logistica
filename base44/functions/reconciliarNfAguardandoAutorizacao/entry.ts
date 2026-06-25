@@ -92,8 +92,11 @@ function fmtData(d) {
 // Constrói um mapa código_pedido(nIdPedido) → { nNF, cChave } varrendo as NFs dos últimos 15 dias
 // via ListarNF (que NÃO aceita filtro por pedido — cruzamos pelo compl.nIdPedido de cada NF).
 // Uma única varredura por execução, reaproveitada para todos os pedidos do lote.
-async function construirMapaNfsRecentes(base44) {
+// PARA CEDO assim que encontra todos os códigos do lote (alvos) — economiza chamadas e evita o 425.
+async function construirMapaNfsRecentes(base44, alvos) {
   const mapa = new Map();
+  const restantes = new Set(alvos);
+  if (restantes.size === 0) return mapa;
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - 15 * 24 * 60 * 60 * 1000);
   const dEmiInicial = fmtData(inicio);
@@ -103,15 +106,18 @@ async function construirMapaNfsRecentes(base44) {
   do {
     const d = await omieCall(base44, 'produtos/nfconsultar/', {
       pagina: pg, registros_por_pagina: 100, dEmiInicial, dEmiFinal
-    }, 'ListarNF').catch(() => null);
-    if (!d) break;
+    }, 'ListarNF');
     totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
     (d.nfCadastro || []).forEach((nf) => {
       const idPed = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
       const nNF = nf.ide?.nNF || nf.cNumero || '';
       const cChave = nf.compl?.cChaveNFe || nf.cChaveNFe || '';
-      if (idPed && nNF) mapa.set(idPed, { nNF: String(nNF), cChave: String(cChave || '') });
+      if (idPed && nNF && restantes.has(idPed)) {
+        mapa.set(idPed, { nNF: String(nNF), cChave: String(cChave || '') });
+        restantes.delete(idPed);
+      }
     });
+    if (restantes.size === 0) break; // achou todas as NFs do lote
     pg++;
     await sleep(400);
   } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
@@ -153,7 +159,9 @@ Deno.serve(async (req) => {
     // Mapa nIdPedido(código do pedido Omie) → { nNF, cChave } construído UMA vez via ListarNF
     // por faixa de datas. O ListarNF NÃO aceita filtro por pedido — cada NF traz compl.nIdPedido,
     // então varremos a janela recente e cruzamos localmente (mesmo padrão do listarNfsOmie).
-    const mapaNfPorPedido = await construirMapaNfsRecentes(base44).catch(() => new Map());
+    // Só busca os códigos do lote (para cedo quando acha todos) → economiza chamadas/evita 425.
+    const alvosCodigos = aguardando.map(p => String(p.omie_codigo_pedido || '')).filter(Boolean);
+    const mapaNfPorPedido = await construirMapaNfsRecentes(base44, alvosCodigos).catch(() => new Map());
 
     for (const pedido of aguardando) {
       if (!pedido.omie_codigo_pedido) {
