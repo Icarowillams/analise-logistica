@@ -19,20 +19,24 @@ Deno.serve(async (req) => {
     const appKey = String(body.app_key || '').trim();
     const appSecret = String(body.app_secret || '').trim();
 
+    // SEGURANÇA: o app_secret NÃO é mais persistido em texto plano no banco.
+    // A fonte de verdade do secret são os Secrets do backend (OMIE_APP_SECRET).
+    // Aqui gravamos apenas app_key + uma máscara dos últimos 4 dígitos do secret.
+    const secretMascara = appSecret ? `...${appSecret.slice(-4)}` : '';
+
     const registros = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
     const ativo = registros?.[0];
 
     if (ativo?.id) {
-      const patch = { nome, ativo: true };
-      if (appKey) patch.app_key = appKey;       // em branco = mantém o atual
-      if (appSecret) patch.app_secret = appSecret; // em branco = mantém o atual
+      const patch = { nome, ativo: true, secret_em_secrets: true };
+      if (appKey) patch.app_key = appKey;                  // em branco = mantém o atual
+      if (secretMascara) patch.app_secret_mascara = secretMascara;
       await base44.asServiceRole.entities.ConfiguracaoOmie.update(ativo.id, patch);
     } else {
-      // Criação inicial exige ambos os campos.
-      if (!appKey || !appSecret) {
-        return Response.json({ error: 'Para criar a configuração inicial, informe App Key e App Secret.' }, { status: 400 });
+      if (!appKey) {
+        return Response.json({ error: 'Para criar a configuração inicial, informe o App Key. O App Secret deve ser cadastrado nos Secrets do app (OMIE_APP_SECRET).' }, { status: 400 });
       }
-      await base44.asServiceRole.entities.ConfiguracaoOmie.create({ nome, app_key: appKey, app_secret: appSecret, ativo: true });
+      await base44.asServiceRole.entities.ConfiguracaoOmie.create({ nome, app_key: appKey, app_secret_mascara: secretMascara, secret_em_secrets: true, ativo: true });
     }
 
     const atualizado = (await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []))?.[0];
@@ -40,7 +44,8 @@ Deno.serve(async (req) => {
       sucesso: true,
       nome: atualizado?.nome || nome,
       appKeyMascarada: atualizado?.app_key ? `...${String(atualizado.app_key).slice(-4)}` : null,
-      appSecretMascarada: atualizado?.app_secret ? `...${String(atualizado.app_secret).slice(-4)}` : null
+      appSecretMascarada: atualizado?.app_secret_mascara || (atualizado?.app_secret ? `...${String(atualizado.app_secret).slice(-4)}` : null),
+      fonte_secret: 'secrets_backend'
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

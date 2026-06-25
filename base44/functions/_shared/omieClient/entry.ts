@@ -286,21 +286,25 @@ const CREDS_CACHE_TTL_MS = 30_000;
 
 /**
  * Resolve as credenciais Omie ativas.
- * Prioriza a entidade ConfiguracaoOmie (registro ativo); cai para os Secrets se não houver.
+ * Fonte primária: Secrets do backend (OMIE_APP_KEY/OMIE_APP_SECRET) — o app_secret
+ * NUNCA é lido do banco em texto plano. Só cai na entidade ConfiguracaoOmie quando
+ * algum Secret estiver ausente (compatibilidade).
  */
 export async function getOmieCredentials(base44: Base44Client): Promise<{ appKey: string; appSecret: string }> {
   if (_credsCache && Date.now() - _credsCache.at < CREDS_CACHE_TTL_MS) {
     return { appKey: _credsCache.appKey, appSecret: _credsCache.appSecret };
   }
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) {
+    _credsCache = { appKey: envKey, appSecret: envSecret, at: Date.now() };
+    return { appKey: envKey, appSecret: envSecret };
+  }
+  console.warn('[omieClient] Secrets OMIE_APP_KEY/OMIE_APP_SECRET ausentes — caindo no banco ConfiguracaoOmie.');
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { appKey: String(ativo.app_key).trim(), appSecret: String(ativo.app_secret).trim(), at: Date.now() };
-    return { appKey: _credsCache.appKey, appSecret: _credsCache.appSecret };
-  }
-  const appKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
-  const appSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
-  console.warn('[omieClient] Nenhuma ConfiguracaoOmie ativa — usando fallback dos Secrets.');
+  const appKey = envKey || String(ativo?.app_key || '').trim();
+  const appSecret = envSecret || String(ativo?.app_secret || '').trim();
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }
