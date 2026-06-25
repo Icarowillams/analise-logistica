@@ -15,8 +15,13 @@ async function getOmieCredentials(base44: any) {
   return { appKey, appSecret };
 }
 
+// ID fixo do ÚNICO registro de circuit breaker — mesma fonte da verdade do _shared/omieClient.
+// (Antes lia por chave:'principal', um registro que NINGUÉM bloqueia → breaker cego que
+//  continuava chamando o Omie mesmo bloqueado e reabastecia o "consumo indevido".)
+const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
+
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_FIXED_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {

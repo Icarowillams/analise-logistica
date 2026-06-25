@@ -7,8 +7,12 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    // ID fixo do ÚNICO registro de circuit breaker — mesma fonte da verdade do _shared/omieClient.
+    // (Antes lia por chave:'principal', registro que ninguém bloqueia → painel mostrava "liberado"
+    //  mesmo com o breaker real bloqueado.)
+    const CB_FIXED_ID = '6a1e06a9aa62ceab7b3b6d97';
     const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter(
-      { chave: 'principal' }, 'created_date', 1
+      { id: CB_FIXED_ID }, '-created_date', 1
     ).catch(() => []);
     const ctrl = rows?.[0];
 
