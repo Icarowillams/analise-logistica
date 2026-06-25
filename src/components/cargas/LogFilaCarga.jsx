@@ -74,6 +74,26 @@ export default function LogFilaCarga() {
 
   useEffect(() => { carregar(); }, []);
 
+  // MARCA-PASSO (sem automação): enquanto a tela está aberta, se houver pendentes e
+  // NINGUÉM processando, cutuca a fila a cada 8s. Retomada instantânea — sem esperar os
+  // 5min da automação. Se uma cadeia morrer, este watchdog a reinicia em segundos.
+  useEffect(() => {
+    let disparando = false;
+    const tick = async () => {
+      if (disparando) return;
+      const temPendente = itens.some(i => i.status === 'pendente');
+      const temProcessando = itens.some(i => i.status === 'processando');
+      if (!temPendente || temProcessando) return;
+      disparando = true;
+      try {
+        await base44.functions.invoke('processarFilaCargaOmie', {});
+      } catch { /* silencioso — próximo tick tenta de novo */ }
+      finally { disparando = false; }
+    };
+    const id = setInterval(tick, 8000);
+    return () => clearInterval(id);
+  }, [itens]);
+
   // Tempo real via subscribe
   useEffect(() => {
     const unsub = base44.entities.FilaCargaOmie.subscribe((ev) => {
