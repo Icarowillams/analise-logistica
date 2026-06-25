@@ -268,19 +268,19 @@ export default function useDadosMontagem() {
 
       const vendasEnriquecidas = vendasSemCarga.map(e => {
         const venda = montarVendaOmie(e);
-        // FALLBACK: espelho de VENDA sem rota → derivar do cliente do pedido (mesma lógica do D1/troca)
-        if (!venda.rota_id || venda.rota_nome === 'Sem Rota') {
-          const pedidoLocal = venda.pedido_id ? pedidosLocaisMap.get(String(venda.pedido_id)) : null;
-          const clienteIdFallback = venda.cliente_id || pedidoLocal?.cliente_id;
-          const cliente = clienteIdFallback ? clientesMapGlobal.get(clienteIdFallback) : null;
-          if (cliente?.rota_id) {
-            const nomeRota = rotasMap.get(cliente.rota_id);
-            if (nomeRota) {
-              venda.rota_id = cliente.rota_id;
-              venda.rota_nome = nomeRota;
-              venda.rota_cliente = nomeRota;
-            }
-          }
+        // Resolver rota SEMPRE pelo cadastro atual (via rota_id), nunca pelo rota_nome
+        // congelado no pedido. Assim, ao renomear uma rota, todos os pedidos passam a
+        // agrupar sob o nome novo — sem aparecer "duas rotas 08" (nome antigo x novo).
+        // 1) tenta o rota_id do próprio pedido; 2) fallback: rota_id do cliente.
+        const pedidoLocal = venda.pedido_id ? pedidosLocaisMap.get(String(venda.pedido_id)) : null;
+        const clienteIdFallback = venda.cliente_id || pedidoLocal?.cliente_id;
+        const cliente = clienteIdFallback ? clientesMapGlobal.get(clienteIdFallback) : null;
+        const rotaIdResolvido = venda.rota_id || cliente?.rota_id;
+        const nomeRotaAtual = rotaIdResolvido ? rotasMap.get(rotaIdResolvido) : null;
+        if (nomeRotaAtual) {
+          venda.rota_id = rotaIdResolvido;
+          venda.rota_nome = nomeRotaAtual;
+          venda.rota_cliente = nomeRotaAtual;
         }
         return venda;
       });
