@@ -427,7 +427,9 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
                     <td className="p-2 font-medium">{formatNumeroPedido(l.numero_pedido) || l.codigo_pedido}</td>
                     <td className="p-2">
                       {l.numero_nf
-                        ? <Badge className="bg-green-100 text-green-800 border-green-300">{l.numero_nf}</Badge>
+                        ? ['cancelada', 'rejeitada', 'denegada'].includes(l.status)
+                          ? <Badge className="bg-red-100 text-red-800 border-red-300 line-through">{l.numero_nf}</Badge>
+                          : <Badge className="bg-green-100 text-green-800 border-green-300">{l.numero_nf}</Badge>
                         : <span className="text-slate-400">—</span>
                       }
                       {l.boleto_gerado && <div className="text-xs text-blue-600 mt-0.5">+ boleto</div>}
