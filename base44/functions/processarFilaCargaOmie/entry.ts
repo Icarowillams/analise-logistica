@@ -333,8 +333,24 @@ Deno.serve(async (req) => {
     // segurança se a função morrer. Cadeia ativa (worker_rodando + lock futuro) → skipped.
     const lock = await adquirirLockEncadeamento(base44);
     if (!lock.adquirido) {
-      console.log('[FILA CARGA] Lock ativo — outra cadeia já está processando. Skipped.');
-      return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', processados: 0 });
+      // Lock ativo (TTL ainda válido) = cadeia real rodando. Reagendamos UMA chamada para
+      // logo após o lock expirar — se a cadeia dona morrer sem encadear, esta retomada
+      // reassume o lock vencido e empurra a fila. Sem isto, a fila ficava parada para sempre.
+      const restantesLock = await base44.asServiceRole.entities.FilaCargaOmie
+        .filter({ status: 'pendente' }, 'created_date', 1).catch(() => []);
+      let reagendou = false;
+      if (restantesLock.length > 0) {
+        const lockRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+          .filter({ chave: CHAVE_WORKER_CARGA }, '-updated_date', 1).catch(() => []);
+        const lockAteMs = lockRows?.[0]?.worker_lock_ate ? new Date(lockRows[0].worker_lock_ate).getTime() : Date.now();
+        const esperaMs = (lockAteMs - Date.now()) + 3000;
+        setTimeout(() => {
+          base44.asServiceRole.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
+        }, Math.min(Math.max(esperaMs, 3000), 130000));
+        reagendou = true;
+      }
+      console.log('[FILA CARGA] Lock ativo — outra cadeia já está processando. Retomada reagendada:', reagendou);
+      return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', reagendou, processados: 0 });
     }
 
     try {
@@ -406,7 +422,24 @@ Deno.serve(async (req) => {
       // Só considera "outra instância ativa" enquanto o item estiver dentro da janela de resgate.
       // Passou de 3min sem concluir = órfão (PASSO 0 já o resgatou acima), não bloqueia a fila.
       if (age < TIMEOUT_MS) {
-        return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Outra instância já está processando a fila. Status das cargas concluídas foi atualizado.' });
+        // AUTO-CURA: existe item em processamento recente (outra instância ativa OU órfão
+        // que ainda não venceu os 90s). Em vez de simplesmente desistir — o que quebrava a
+        // cadeia quando a instância dona morria sem encadear —, reagendamos UMA chamada para
+        // logo após a janela de timeout. Quando ela chegar, ou a instância anterior já
+        // terminou (e encadeou) ou o item virou órfão e o PASSO 0 o resgata. Assim a fila
+        // nunca fica parada sem ninguém para empurrá-la, sem depender de automação.
+        const restantesAgora = await base44.asServiceRole.entities.FilaCargaOmie
+          .filter({ status: 'pendente' }, 'created_date', 1).catch(() => []);
+        let reagendou = false;
+        if (restantesAgora.length > 0) {
+          const esperaMs = (TIMEOUT_MS - age) + 3000; // só dispara depois do item vencer o timeout
+          setTimeout(() => {
+            base44.asServiceRole.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
+          }, Math.min(Math.max(esperaMs, 3000), 95000));
+          reagendou = true;
+          console.log(`[FILA CARGA] Outra instância ativa — reagendando retomada em ~${Math.round(esperaMs/1000)}s para não quebrar a cadeia.`);
+        }
+        return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', reagendou, cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Outra instância já está processando a fila. Retomada reagendada.' });
       }
     }
 
