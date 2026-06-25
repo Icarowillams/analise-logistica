@@ -39,18 +39,18 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [preenchendoNF, setPreenchendoNF] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState(null);
 
-  // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
-  const autorizadosSemNF = useMemo(
-    () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
-    [logs]
-  );
-
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
     queryFn: () => base44.entities.LogEmissaoNF.list('-created_date', 500),
     enabled: ativa,
     staleTime: 15000
   });
+
+  // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
+  const autorizadosSemNF = useMemo(
+    () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
+    [logs]
+  );
 
   // Carrega SÓ os clientes referenciados pelos logs (por cliente_id) para enriquecer
   // com codigo_interno e nome_fantasia — não a base inteira.
