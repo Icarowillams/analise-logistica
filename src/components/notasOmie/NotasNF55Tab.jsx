@@ -203,6 +203,20 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           return real ? { ...nf, cStatus: real } : nf;
         })
       } : prev);
+
+      // PERSISTE o status real divergente no LogEmissaoNF — assim a próxima abertura
+      // da carga já mostra "Cancelada/Rejeitada" na hora, sem reconsultar o Omie.
+      const STATUS_LOG_VALIDOS = ['autorizada', 'rejeitada', 'cancelada', 'pendente', 'erro'];
+      const atualizacoes = (logs || [])
+        .map(l => {
+          const real = statusPorCod[String(l.codigo_pedido || '')];
+          if (!real || real === l.status || !STATUS_LOG_VALIDOS.includes(real)) return null;
+          return { id: l.id, status: real };
+        })
+        .filter(Boolean);
+      await Promise.all(atualizacoes.map(u =>
+        base44.entities.LogEmissaoNF.update(u.id, { status: u.status }).catch(() => {})
+      ));
     } catch (_) { /* status real é best-effort; nunca quebra a listagem */ }
   };
 
@@ -234,11 +248,15 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
           if (recarregada?.[0]) cargaParaFiltrar = recarregada[0];
         } catch (_) { /* reconciliação é best-effort; nunca bloqueia a listagem */ }
 
-        // FONTE DA LISTA: LogEmissaoNF autorizado da carga (por numero_carga; fallback carga_id).
+        // FONTE DA LISTA: LogEmissaoNF da carga (por numero_carga; fallback carga_id).
+        // Inclui NFs autorizadas E as que foram canceladas/rejeitadas DEPOIS de emitidas
+        // (têm numero_nf) — assim elas continuam na lista com o badge real correto.
         const numCarga = cargaParaFiltrar.numero_carga;
         let logs = [];
-        if (numCarga) logs = await base44.entities.LogEmissaoNF.filter({ numero_carga: String(numCarga), status: 'autorizada' });
-        if (logs.length === 0) logs = await base44.entities.LogEmissaoNF.filter({ carga_id: cargaParaFiltrar.id, status: 'autorizada' });
+        if (numCarga) logs = await base44.entities.LogEmissaoNF.filter({ numero_carga: String(numCarga) });
+        if (logs.length === 0) logs = await base44.entities.LogEmissaoNF.filter({ carga_id: cargaParaFiltrar.id });
+        // Mantém apenas linhas com NF efetivamente emitida (numero_nf preenchido).
+        logs = logs.filter(l => String(l.numero_nf || '').replace(/\D/g, ''));
 
         if (logs.length === 0) {
           toast.warning('Nenhuma NF autorizada registrada para esta carga.');
@@ -275,7 +293,7 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
             cNomeFantasia: ped.nome_fantasia || '',
             cCPFCNPJDest: ped.cnpj_cpf_cliente || '',
             nValorNF: ped.valor_total_pedido || 0,
-            cStatus: 'autorizada'
+            cStatus: log.status || 'autorizada'
           });
         });
 
