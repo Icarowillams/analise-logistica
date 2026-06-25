@@ -441,10 +441,18 @@ export default function useDadosMontagem() {
         let itensPedido = {};
         let itensTroca = {};
 
-        // Incluir pedido_ids dos D1 + NF55 locais (ambos usam PedidoItem)
+        // Pedidos de venda vindos do espelho Omie que chegaram SEM produtos[] (espelho
+        // ainda não preenchido pelo webhook) — precisam ter os itens locais buscados,
+        // senão a coluna "Pacotes" fica zerada mesmo o pedido tendo itens no banco.
+        const vendasOmieSemProdutos = vendasEnriquecidas.filter(
+          p => p.pedido_id && (!p.produtos || p.produtos.length === 0)
+        );
+
+        // Incluir pedido_ids dos D1 + NF55 locais + vendas Omie sem produtos (todos usam PedidoItem)
         const todosIdsPedidos = [
           ...d1SemItens.map(p => p.pedido_id),
-          ...vendasLocais.map(p => p.pedido_id)
+          ...vendasLocais.map(p => p.pedido_id),
+          ...vendasOmieSemProdutos.map(p => p.pedido_id)
         ].filter(Boolean);
 
         try {
@@ -469,12 +477,19 @@ export default function useDadosMontagem() {
         });
 
         // Enriquecer vendas Omie com bairro/endereço do cliente
+        // E, quando o espelho veio SEM produtos[], preencher os pacotes com os itens
+        // locais do pedido (buscados acima) — corrige a coluna "Pacotes" zerada.
         const vendasOmieEnriquecidas = vendasEnriquecidas.map(p => {
           const cliente = p.cliente_id ? clientesMap.get(p.cliente_id) : null;
+          const semProdutos = !p.produtos || p.produtos.length === 0;
+          const itensLocais = (semProdutos && p.pedido_id) ? (itensPedido[p.pedido_id] || []) : [];
           return {
             ...p,
             bairro: cliente?.bairro || '',
-            endereco: cliente?.endereco || ''
+            endereco: cliente?.endereco || '',
+            produtos: itensLocais.length > 0
+              ? itensLocais.map(i => montarItemProduto(i, 'pedido'))
+              : p.produtos
           };
         });
 
