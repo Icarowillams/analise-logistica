@@ -36,7 +36,14 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
+  const [preenchendoNF, setPreenchendoNF] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState(null);
+
+  // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
+  const autorizadosSemNF = useMemo(
+    () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
+    [logs]
+  );
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -224,6 +231,30 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     setBuscandoNoOmie(false);
   };
 
+  // Preenche Nº NF / cStat / chave dos logs autorizados que ficaram em branco (etapa 60 sem NF real).
+  const preencherDadosNF = async () => {
+    setPreenchendoNF(true);
+    try {
+      toast.info('Buscando os números de NF reais no Omie...');
+      const resp = await base44.functions.invoke('preencherDadosNFLogs', { dias: 30 });
+      const r = resp?.data || {};
+      if (r?.sucesso) {
+        if (r.preenchidos > 0) {
+          toast.success(`✅ ${r.preenchidos} NF(s) preenchida(s) com número, cStat e chave.`);
+        } else {
+          toast.info('Nenhuma NF pendente encontrada para preencher.');
+        }
+        if (r.circuit_breaker) toast.warning('Omie bloqueou parte da consulta — tente novamente em alguns minutos.');
+        await refetch();
+      } else {
+        toast.error('Erro: ' + (r?.error || r?.motivo || 'falha desconhecida'));
+      }
+    } catch (e) {
+      toast.error('Falha ao preencher NFs: ' + (e?.response?.data?.error || e.message));
+    }
+    setPreenchendoNF(false);
+  };
+
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
@@ -266,6 +297,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
           <CardTitle className="text-base flex items-center justify-between">
             <span>Histórico de emissões ({logsFiltrados.length})</span>
             <div className="flex gap-2">
+              {autorizadosSemNF > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                  onClick={preencherDadosNF}
+                  disabled={preenchendoNF}
+                  title="Busca no Omie o número/cStat/chave das NFs autorizadas que ficaram sem número e preenche as colunas"
+                >
+                  {preenchendoNF ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                  Preencher {autorizadosSemNF} NF{autorizadosSemNF > 1 ? 's' : ''} sem número
+                </Button>
+              )}
               {filtroCarga.trim() && (
                 <Button
                   size="sm"
