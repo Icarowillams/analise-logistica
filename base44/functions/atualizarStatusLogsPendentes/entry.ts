@@ -110,10 +110,12 @@ function classificarNF(nfEncontrada, codigoPedido) {
   const numNf = nfEncontrada.ide?.nNF || nfEncontrada.cNumero || '';
   const xMotivo = nfEncontrada.ide?.xMotivo || nfEncontrada.cMotivo || '';
 
-  if (cStat === '100' || cStat === '150') {
+  if (cStat === '100' || cStat === '150' || cStat === '135') {
+    // 100/150 = autorizada; 135 = evento de AUTORIZAÇÃO confirmado. NUNCA tratar 135 como
+    // cancelamento — só o cStat 101 representa cancelamento homologado de NF-e.
     return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} autorizada` };
   }
-  if (cStat === '101' || cStat === '135') {
+  if (cStat === '101') {
     return { status_real: 'cancelada', numero_nf: String(numNf), codigo_sefaz: cStat, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
   }
   if (['110', '301', '302', '205'].includes(cStat)) {
@@ -534,6 +536,12 @@ Deno.serve(async (req) => {
         if (real.erro) {
           await registrarCooldownConsulta(base44, codPed, { erro: real.erro });
           for (const l of logsDoPedido) {
+            // 🛡️ BLINDAGEM: um ERRO DE COMUNICAÇÃO com o Omie (timeout/rate limit) NUNCA rebaixa
+            // uma NF já autorizada. O fato fiscal continua válido — só anexamos a mensagem.
+            if (l.status === 'autorizada' && l.numero_nf) {
+              console.warn(`[atualizarStatusLogsPendentes] Erro de consulta ignorado para NF autorizada ${l.numero_nf} (pedido ${codPed}): ${real.erro}`);
+              continue;
+            }
             await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, { status: 'erro', mensagem: real.erro });
           }
           resultados.push({ codigo_pedido: codPed, sucesso: false, novo_status: 'erro', mensagem: real.erro });
@@ -609,6 +617,17 @@ Deno.serve(async (req) => {
 
         let primeiroLog = true;
         for (const l of logsDoPedido) {
+          // 🛡️ BLINDAGEM FISCAL (regra de ouro): um log que JÁ está autorizado, com número de NF
+          // e chave NFe, é um fato consumado da SEFAZ. Ele só pode ser rebaixado quando o Omie
+          // devolve cStat 101 EXPLÍCITO (cancelamento homologado). Qualquer leitura ambígua
+          // ('rejeitada'/'erro'/'pendente') é IGNORADA para não corromper o registro fiscal.
+          const jaAutorizada = l.status === 'autorizada' && l.numero_nf && l.chave_nfe;
+          const cancelamentoComprovado = real.status_real === 'cancelada' && String(real.codigo_sefaz) === '101';
+          if (jaAutorizada && novoStatus !== 'autorizada' && !cancelamentoComprovado) {
+            console.warn(`[atualizarStatusLogsPendentes] IGNORADO rebaixamento da NF ${l.numero_nf} (pedido ${codPed}): leitura ambígua "${real.status_real}" não rebaixa NF autorizada.`);
+            primeiroLog = false;
+            continue;
+          }
           await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, {
             status: novoStatus,
             numero_nf: real.numero_nf || l.numero_nf || '',

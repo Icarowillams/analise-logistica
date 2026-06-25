@@ -89,8 +89,9 @@ async function omieCall(base44, endpoint, param, options = {}) {
 
 function classificarNF(cStat, numNf, xMotivo) {
   const c = String(cStat || '');
-  if (c === '100' || c === '150') return { status_real: 'emitida', numero_nf: String(numNf || ''), codigo_sefaz: c, mensagem: `NF ${numNf} autorizada` };
-  if (c === '101' || c === '135') return { status_real: 'cancelada', numero_nf: String(numNf || ''), codigo_sefaz: c, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
+  // 135 = evento de AUTORIZAÇÃO confirmado → autorizada. Só 101 = cancelamento homologado.
+  if (c === '100' || c === '150' || c === '135') return { status_real: 'emitida', numero_nf: String(numNf || ''), codigo_sefaz: c, mensagem: `NF ${numNf} autorizada` };
+  if (c === '101') return { status_real: 'cancelada', numero_nf: String(numNf || ''), codigo_sefaz: c, mensagem: `NF ${numNf} cancelada${xMotivo ? ' — ' + xMotivo : ''}` };
   if (['110', '301', '302', '205'].includes(c)) return { status_real: 'denegada', codigo_sefaz: c, mensagem: `NF denegada (${c})${xMotivo ? ' — ' + xMotivo : ''}` };
   if (c && Number(c) >= 200) return { status_real: 'rejeitada', codigo_sefaz: c, mensagem: `NF rejeitada [SEFAZ ${c}]${xMotivo ? ' — ' + xMotivo : ''}` };
   if (numNf) return { status_real: 'emitida', numero_nf: String(numNf), codigo_sefaz: c || '100', mensagem: `NF ${numNf}` };
@@ -350,6 +351,15 @@ Deno.serve(async (req) => {
 
       let primeiro = true;
       for (const l of logsDoPedido) {
+        // 🛡️ BLINDAGEM FISCAL: NF já autorizada (com número + chave) só é rebaixada com cStat 101
+        // EXPLÍCITO. Qualquer leitura ambígua é ignorada para não corromper o registro fiscal.
+        const jaAutorizada = l.status === 'autorizada' && l.numero_nf && l.chave_nfe;
+        const cancelamentoComprovado = real.status_real === 'cancelada' && String(real.codigo_sefaz) === '101';
+        if (jaAutorizada && novoStatus !== 'autorizada' && !cancelamentoComprovado) {
+          console.warn(`[reconsultarStatusNFsPendentes] IGNORADO rebaixamento da NF ${l.numero_nf} (pedido ${codPed}): leitura "${real.status_real}" não rebaixa NF autorizada.`);
+          primeiro = false;
+          continue;
+        }
         await base44.asServiceRole.entities.LogEmissaoNF.update(l.id, {
           status: novoStatus,
           numero_nf: real.numero_nf || l.numero_nf || '',

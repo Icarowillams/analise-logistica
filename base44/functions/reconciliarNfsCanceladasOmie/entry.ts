@@ -91,7 +91,10 @@ const APP_KEY = Deno.env.get('OMIE_APP_KEY');
 const APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
 
 
-// Deriva status SEFAZ da NF do Omie (mesma lógica do listarNfsOmie)
+// Deriva status SEFAZ da NF do Omie.
+// BLINDAGEM FISCAL: esta função só pode retornar 'cancelada'/'denegada'/'inutilizada'
+// quando há PROVA EXPLÍCITA do estado. Na dúvida, NUNCA retorna um estado terminal
+// que faça uma NF autorizada ser rebaixada — retorna 'indeterminado' e o chamador ignora.
 function derivarStatus(nf) {
   const ide = nf.ide || {};
   const compl = nf.compl || {};
@@ -102,12 +105,16 @@ function derivarStatus(nf) {
     if (cStat === '102') return 'inutilizada';
     if (cStat === '110' || cStat === '301' || cStat === '302') return 'denegada';
     if (cStat === '100' || cStat === '135') return 'autorizada';
-    return 'rejeitada';
+    // cStat presente mas não mapeado: NÃO assumir 'rejeitada' — pode ser código de
+    // processamento. Só é rejeitada de verdade quando há cStat >= 200 explícito.
+    if (/^\d+$/.test(cStat) && Number(cStat) >= 200) return 'rejeitada';
+    return 'indeterminado';
   }
+  // Sem cStat: só declarar estado terminal com flag/data EXPLÍCITA. Caso contrário 'indeterminado'.
   if (ide.dCan && String(ide.dCan).trim()) return 'cancelada';
   if (ide.cDeneg === 'S' || ide.cDeneg === 'D') return 'denegada';
   if (ide.dInut && String(ide.dInut).trim()) return 'inutilizada';
-  return 'pendente';
+  return 'indeterminado';
 }
 
 /**
@@ -157,6 +164,8 @@ Deno.serve(async (req) => {
       const nfs = data.nfCadastro || [];
       for (const nf of nfs) {
         const status = derivarStatus(nf);
+        // BLINDAGEM: só reconcilia estados TERMINAIS COMPROVADOS. 'indeterminado'/'autorizada'/'pendente'
+        // jamais entram na fila de cancelamento — uma NF autorizada nunca é rebaixada sem prova.
         if (status === 'cancelada' || status === 'denegada' || status === 'inutilizada') {
           canceladas.push({
             status,
