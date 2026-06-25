@@ -656,7 +656,7 @@ Deno.serve(async (req) => {
         const pedRej = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
         if (pedRej?.id) await base44.asServiceRole.entities.Pedido.update(pedRej.id, { status_faturamento: 'rejeitado', omie_erro: mensagemPedido }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido rejeitado:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'rejeitada', mensagem: mensagemPedido });
-        erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
+        erros.push({ codigo_pedido: codigoPedido, numero_pedido: pedRej?.numero_pedido || '', mensagem: mensagemPedido });
         await gravarLogEmissao(base44, fila, codigoPedido, 'rejeitada', mensagemPedido, {
           faultcode: realConfirmado?.codigo_sefaz || '', erro_tipo: 'sefaz'
         });
@@ -664,7 +664,7 @@ Deno.serve(async (req) => {
         const pedErr = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
         if (pedErr?.id) await base44.asServiceRole.entities.Pedido.update(pedErr.id, { status_faturamento: 'erro', omie_erro: mensagemPedido }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido com erro de faturamento:', e?.message || e); });
         resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'erro', mensagem: mensagemPedido });
-        erros.push({ codigo_pedido: codigoPedido, mensagem: mensagemPedido });
+        erros.push({ codigo_pedido: codigoPedido, numero_pedido: pedErr?.numero_pedido || '', mensagem: mensagemPedido });
         await base44.asServiceRole.entities.LogIntegracaoOmie.create({
           endpoint: 'produtos/pedidovendafat', call: 'FaturarPedidoVenda', operacao: 'emitir_nf_lote_background',
           status: erroPedido?.faultstring ? 'erro_omie' : 'erro', codigo_erro: erroPedido?.faultcode || '',

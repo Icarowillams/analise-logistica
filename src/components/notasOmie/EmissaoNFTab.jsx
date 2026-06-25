@@ -279,13 +279,52 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
                     <span className="text-blue-700">{processados}/{total}</span>
                   </div>
                   <Progress value={pct} className="h-2" />
-                  {filaAtiva.erros?.length > 0 && (
-                    <div className="rounded-lg border border-red-200 bg-white p-2 text-xs text-red-700">
-                      {filaAtiva.erros.map((e, idx) => (
-                        <p key={idx}>Pedido {e.codigo_pedido}: {e.mensagem}</p>
-                      ))}
-                    </div>
-                  )}
+
+                  {/* Resumo final formatado: ao concluir, mostra quantas emitiram e detalha as que falharam */}
+                  {(filaAtiva.status === 'concluido' || filaAtiva.status === 'erro') && (() => {
+                    const resultados = filaAtiva.resultados || [];
+                    const okCount = resultados.filter(r => r.status === 'autorizada' || r.status === 'ja_emitida').length;
+                    const pendCount = resultados.filter(r => r.status === 'pendente').length;
+                    const falhas = (filaAtiva.erros || []);
+                    return (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className="bg-green-100 text-green-800 border-green-300">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> {okCount} emitida{okCount !== 1 ? 's' : ''}
+                          </Badge>
+                          {pendCount > 0 && (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300">
+                              Aguardando SEFAZ: {pendCount}
+                            </Badge>
+                          )}
+                          {falhas.length > 0 && (
+                            <Badge className="bg-red-100 text-red-800 border-red-300">
+                              <AlertCircle className="w-3 h-3 mr-1" /> {falhas.length} não emitida{falhas.length !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {falhas.length > 0 && (
+                          <div className="rounded-lg border border-red-200 bg-white overflow-hidden">
+                            <div className="bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 flex items-center gap-2 border-b border-red-200">
+                              <AlertCircle className="w-4 h-4" />
+                              Pedidos que não foram emitidos
+                            </div>
+                            <ul className="divide-y divide-red-100">
+                              {falhas.map((e, idx) => (
+                                <li key={idx} className="px-3 py-2 text-sm flex gap-3">
+                                  <span className="font-semibold text-slate-800 whitespace-nowrap">
+                                    Pedido {formatarNumeroPedido(e.numero_pedido) || e.codigo_pedido}
+                                  </span>
+                                  <span className="text-red-700">{e.mensagem}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
