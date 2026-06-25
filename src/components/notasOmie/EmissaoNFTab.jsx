@@ -45,6 +45,7 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
         .filter(p => !p.numero_nf)
         .map(p => ({
           codigo_pedido: String(p.codigo_pedido),
+          pedido_id: p.pedido_id || '',
           numero_pedido: p.numero_pedido,
           valor_total_pedido: p.valor_total_pedido || 0,
           quantidade_itens: p.quantidade_itens || 0,
@@ -84,12 +85,26 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
 
   const cargaPorPedido = useMemo(() => {
     const codigos = new Set(espelho.map(p => String(p.codigo_pedido)));
+    // Mapa de pedido_id -> codigo_pedido, para casar vínculos internos/troca que usam pedido_id local.
+    const pedidoIdParaCodigo = new Map();
+    espelho.forEach(p => { if (p.pedido_id) pedidoIdParaCodigo.set(String(p.pedido_id), String(p.codigo_pedido)); });
+
     const map = new Map();
+    const registrar = (codigo, carga, pedidoCarga) => {
+      if (codigo && codigos.has(codigo) && !map.has(codigo)) {
+        map.set(codigo, { carga, pedidoCarga });
+      }
+    };
 
     cargasRelacionadas.forEach(c => {
-      (c.pedidos_omie || []).forEach(p => {
-        const codigo = String(p.codigo_pedido || '');
-        if (codigos.has(codigo)) map.set(codigo, { carga: c, pedidoCarga: p });
+      (c.pedidos_omie || []).forEach(p => registrar(String(p.codigo_pedido || ''), c, p));
+      (c.pedidos_internos || []).forEach(p => {
+        const cod = String(p.codigo_pedido || '') || pedidoIdParaCodigo.get(String(p.pedido_id || '')) || '';
+        registrar(cod, c, p);
+      });
+      (c.pedidos_troca || []).forEach(p => {
+        const cod = String(p.codigo_pedido || '') || pedidoIdParaCodigo.get(String(p.pedido_troca_id || p.pedido_id || '')) || '';
+        registrar(cod, c, p);
       });
     });
 
