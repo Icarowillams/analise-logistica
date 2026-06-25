@@ -196,6 +196,19 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Teto de espera ao aguardar uma janela de bloqueio/rate limit do circuit breaker no início do lote.
 const TETO_ESPERA_MS = 90 * 1000;
 
+// Orçamento de tempo POR INVOCAÇÃO. Cada pedido leva ~15-40s (faturar + confirmar SEFAZ + slot 5s).
+// Uma única execução não dá conta de 79 pedidos antes do timeout do runtime — então processamos
+// dentro deste budget e, ao atingi-lo, devolvemos a fila para 'processando' e RE-DISPARAMOS a
+// própria função na hora (sem esperar o watchdog de 5 min). O loop já é resumível (i = processados).
+const BUDGET_MS = 4 * 60 * 1000; // 4 min de trabalho efetivo por invocação
+
+// Re-invoca esta mesma função para continuar o lote de onde parou, sem aguardar o resultado.
+async function reinvocarParaContinuar(base44, filaId) {
+  try {
+    base44.asServiceRole.functions.invoke('processarEmissaoNFLote', { fila_id: filaId }).catch(() => {});
+  } catch { /* nunca bloqueia */ }
+}
+
 // Identifica erro TRANSITÓRIO (vale retry: rate limit, bloqueio temporário, timeout, HTTP 5xx).
 // NÃO é dado inválido — esses devem ser reprocessados, não descartados.
 function isTransitorio(error) {
@@ -497,9 +510,29 @@ Deno.serve(async (req) => {
       atualizado_em: new Date().toISOString()
     });
 
+    const inicioInvocacao = Date.now();
+
     for (let i = processados; i < pedidos.length; i++) {
       const codigoPedido = pedidos[i];
       const t0 = Date.now();
+
+      // ── CHECKPOINT DE BUDGET ──
+      // Se já gastamos o orçamento desta invocação e ainda há pedidos, devolve a fila para
+      // 'processando', re-dispara a continuação imediatamente e encerra esta execução limpa.
+      // Sem isto, lotes grandes (ex.: 79) eram mortos pelo runtime no meio e só retomavam a
+      // cada 5 min pelo watchdog — parecendo "travado em 0/79".
+      if (Date.now() - inicioInvocacao > BUDGET_MS) {
+        await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+          status: 'processando',
+          processados,
+          resultados,
+          erros,
+          mensagem: `Emitindo NF ${processados + 1} de ${pedidos.length}... (retomando)`,
+          atualizado_em: new Date().toISOString()
+        }).catch(() => {});
+        await reinvocarParaContinuar(base44, fila.id);
+        return Response.json({ sucesso: true, fila_id: fila.id, status: 'processando', processados, continua: true });
+      }
 
       // Valida o código ANTES de chamar a Omie. Pedido fake/não numérico é pulado com log.
       if (!codigoPedidoValido(codigoPedido)) {
