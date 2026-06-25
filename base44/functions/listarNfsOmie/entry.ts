@@ -249,7 +249,13 @@ Deno.serve(async (req) => {
     // consulta lentíssima. Agora 1 página = 1 chamada. A navegação entre páginas
     // refaz a busca apenas da página pedida.
     // ─────────────────────────────────────────────────────────────────────────
-    const paramBase = { registros_por_pagina: Math.min(Number(registros_por_pagina) || 50, 100) };
+    const paramBase = {
+      registros_por_pagina: Math.min(Number(registros_por_pagina) || 50, 100),
+      // Pede ao Omie a ordem DECRESCENTE por número da NF (que cresce com o tempo) →
+      // página 1 já vem com as NFs mais RECENTES. Sem isso, a pág. 1 trazia as mais antigas.
+      ordenar_por: 'NUMERO',
+      ordem_decrescente: 'S'
+    };
     if (data_inicial) paramBase.dEmiInicial = data_inicial;
     if (data_final) paramBase.dEmiFinal = data_final;
     if (nome_cliente) paramBase.cRazao = nome_cliente;
@@ -267,13 +273,11 @@ Deno.serve(async (req) => {
       nfsPagina.push(mapped);
     });
 
-    // Ordena a página por data de emissão DESC (mais recentes primeiro). DD/MM/AAAA.
-    const paraTime = (nf) => {
-      const [dd, mm, aaaa] = String(nf.dEmiNF || '').split('/');
-      if (!aaaa) return 0;
-      return new Date(`${aaaa}-${mm}-${dd}T${(nf.hEmiNF || '00:00:00')}`).getTime() || 0;
-    };
-    nfsPagina.sort((a, b) => paraTime(b) - paraTime(a));
+    // Garantia local: ordena a página por nº da NF DESC (mais recentes primeiro),
+    // caso o Omie ignore o ordenar_por.
+    nfsPagina.sort((a, b) =>
+      Number(String(b.cNumero || '').replace(/\D/g, '')) - Number(String(a.cNumero || '').replace(/\D/g, ''))
+    );
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/nfconsultar',

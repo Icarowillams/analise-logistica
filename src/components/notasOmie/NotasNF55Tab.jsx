@@ -273,10 +273,14 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
         });
         if (data?.sucesso) {
           const apenasAutorizadas = data.nfs || [];
-          const mapaCargas = await buscarCargasDasNfs(apenasAutorizadas);
-          setCargasPorNf(mapaCargas);
+          // Mostra a lista IMEDIATAMENTE. O nº da carga é resolvido em BACKGROUND
+          // (monta índice de pedidos/cargas) — não trava a exibição das NFs.
+          setCargasPorNf({});
           setResultado({ ...data, nfs: apenasAutorizadas, paginacaoServidor: true });
           setPagina(data.pagina || pg);
+          buscarCargasDasNfs(apenasAutorizadas)
+            .then(setCargasPorNf)
+            .catch(() => {});
         } else {
           toast.error(data?.error || 'Erro ao consultar NFs');
         }
