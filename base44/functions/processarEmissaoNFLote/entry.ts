@@ -618,7 +618,9 @@ Deno.serve(async (req) => {
         // "NF nº X já cadastrada para o pedido"). NÃO é erro — a nota existe. Consulta o pedido
         // para capturar o número real e marca como AUTORIZADA, sem re-emitir.
         const txtErro = String(error?.faultstring || error?.message || '').toLowerCase();
-        if (txtErro.includes('já cadastrada') || txtErro.includes('ja cadastrada') || String(error?.faultcode || '').toLowerCase().includes('client-107')) {
+        // Client-107 / "NF já cadastrada" pode vir como faultstring OU embutido no corpo de um HTTP 500
+        // ("HTTP 500 Omie: {...Client-107...}"). Detecta nas duas formas.
+        if (txtErro.includes('já cadastrada') || txtErro.includes('ja cadastrada') || txtErro.includes('client-107') || String(error?.faultcode || '').toLowerCase().includes('client-107')) {
           const real = await consultarStatusPedido(base44, codigoPedido).catch(() => null);
           if (real && !real.erro && real.status_real === 'emitida') {
             statusFinalPedido = 'autorizada';
