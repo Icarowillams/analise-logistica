@@ -258,6 +258,8 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
     if (status === 'rejeitada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Rejeitada</Badge>;
+    if (status === 'cancelada') return <Badge className="bg-red-100 text-red-800 border-red-300"><XCircle className="w-3 h-3 mr-1" /> Cancelada</Badge>;
+    if (status === 'denegada') return <Badge className="bg-orange-100 text-orange-800 border-orange-300"><XCircle className="w-3 h-3 mr-1" /> Denegada</Badge>;
     if (status === 'pendente') return <Badge className="bg-amber-100 text-amber-800 border-amber-300"><AlertCircle className="w-3 h-3 mr-1" /> Pendente</Badge>;
     return <Badge className="bg-gray-200 text-gray-800 border-gray-400"><XCircle className="w-3 h-3 mr-1" /> Erro</Badge>;
   };
@@ -446,12 +448,14 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
                     <td className="p-2 text-center font-mono text-xs">{l.codigo_sefaz || '-'}</td>
                     <td className="p-2 text-xs max-w-md">
                       <div
-                        className={l.status === 'rejeitada' || l.status === 'erro' ? 'text-red-700' : 'text-slate-600'}
+                        className={['rejeitada', 'erro', 'cancelada', 'denegada'].includes(l.status) ? 'text-red-700' : 'text-slate-600'}
                         title={l.faultstring || l.mensagem || ''}
                       >
                         {l.status === 'autorizada'
                           ? `Autorizada${l.numero_nf ? ` — NF ${l.numero_nf}` : ''}`
-                          : (l.faultstring || l.mensagem || '-')}
+                          : l.status === 'cancelada'
+                            ? `NF ${l.numero_nf || ''} cancelada no Omie`.trim()
+                            : (l.faultstring || l.mensagem || '-')}
                       </div>
                       {(l.faultstring || l.payload_resposta || l.payload_enviado) && (
                         <Button size="sm" variant="link" className="h-auto p-0 text-xs text-blue-700" onClick={() => setErroDetalhe(l)}>
