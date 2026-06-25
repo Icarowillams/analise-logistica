@@ -340,9 +340,10 @@ Deno.serve(async (req) => {
     // Um item fica órfão quando a execução morre DEPOIS de marcá-lo "processando" e ANTES de concluí-lo
     // (plataforma matou a função, rede pendurou a chamada Omie...). Usamos processando_em (timestamp
     // dedicado, gravado só na entrada do processamento) em vez de updated_date — que muda por qualquer
-    // update e poderia mascarar o tempo real de travamento. 3 min é folgado: o pior caso real de
-    // processarFaturar (2 calls + retries + reconsulta) fica em ~30s.
-    const TIMEOUT_MS = 3 * 60 * 1000;
+    // update e poderia mascarar o tempo real de travamento. 90s cobre folgadamente o pior caso real de
+    // processarFaturar (2 calls + retries + reconsulta ~30s, mais margem para janelas de rate limit),
+    // sem reprocessar por engano um item que AINDA está em andamento (risco de faturamento duplicado).
+    const TIMEOUT_MS = 90 * 1000;
     const travados = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, 'updated_date', 50).catch(() => []);
     for (const item of travados) {
       // Fallback para updated_date em itens antigos que ainda não têm processando_em.
