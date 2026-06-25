@@ -72,9 +72,32 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Apenas administradores' }, { status: 403 });
     }
 
+    // ── PASSO LOCAL (sem Omie): preenche numero_pedido / cliente / carga nos logs que ficaram crus. ──
+    // Casa o log pelo omie_codigo_pedido no Pedido local e grava os campos que faltam. Roda na hora,
+    // independente do circuit breaker, e cobre logs de QUALQUER status (autorizada, rejeitada, erro).
+    let dadosLocaisPreenchidos = 0;
+    const logsRecentes = await base44.asServiceRole.entities.LogEmissaoNF.list('-created_date', 500).catch(() => []);
+    const crus = logsRecentes.filter(l => l.codigo_pedido && (!l.cliente_id || !l.numero_pedido || !l.cliente_nome || !l.numero_carga));
+    for (const log of crus) {
+      const peds = await base44.asServiceRole.entities.Pedido.filter(
+        { omie_codigo_pedido: String(log.codigo_pedido) }, '-created_date', 1
+      ).catch(() => []);
+      const ped = peds[0];
+      if (!ped) continue;
+      const upd = {};
+      if (!log.numero_pedido && ped.numero_pedido) upd.numero_pedido = ped.numero_pedido;
+      if (!log.cliente_id && ped.cliente_id) upd.cliente_id = ped.cliente_id;
+      if (!log.cliente_nome && (ped.cliente_nome || ped.cliente_nome_fantasia)) upd.cliente_nome = ped.cliente_nome || ped.cliente_nome_fantasia;
+      if (!log.numero_carga && ped.numero_carga) upd.numero_carga = ped.numero_carga;
+      if (Object.keys(upd).length > 0) {
+        await base44.asServiceRole.entities.LogEmissaoNF.update(log.id, upd).catch(() => {});
+        dadosLocaisPreenchidos++;
+      }
+    }
+
     const cb = await checkCircuitBreaker(base44);
     if (cb.blocked) {
-      return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cb.blockedUntil, preenchidos: 0 });
+      return Response.json({ sucesso: true, motivo: 'circuit_breaker_ativo', bloqueado_ate: cb.blockedUntil, preenchidos: 0, dados_locais_preenchidos: dadosLocaisPreenchidos });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -88,7 +111,7 @@ Deno.serve(async (req) => {
       .filter(l => (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido);
 
     if (pendentes.length === 0) {
-      return Response.json({ sucesso: true, mensagem: 'Nenhum log autorizado sem número de NF', preenchidos: 0 });
+      return Response.json({ sucesso: true, mensagem: 'Nenhum log autorizado sem número de NF', preenchidos: 0, dados_locais_preenchidos: dadosLocaisPreenchidos });
     }
 
     // Índice dos logs pendentes por nIdPedido (codigo_pedido sem não-dígitos).
@@ -158,6 +181,7 @@ Deno.serve(async (req) => {
       total_pendentes: pendentes.length,
       nfs_encontradas: Object.keys(nfsPorPedido).length,
       preenchidos,
+      dados_locais_preenchidos: dadosLocaisPreenchidos,
       circuit_breaker: bloqueado,
       resultados
     });

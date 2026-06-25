@@ -53,6 +53,13 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     [logs]
   );
 
+  // Logs "crus" — gravados sem numero_pedido / cliente / carga (qualquer status). Precisam do
+  // preenchimento local (sem Omie) que casa pelo omie_codigo_pedido. Dispara o mesmo enriquecimento.
+  const logsCrus = useMemo(
+    () => logs.filter(l => l.codigo_pedido && (!l.cliente_id || !l.numero_pedido || !l.cliente_nome || !l.numero_carga)).length,
+    [logs]
+  );
+
   // Códigos de pedido dos logs PENDENTES — para reconsultar ao vivo no Omie e sincronizar
   // os que já foram autorizados (etapa 60) mas continuam marcados como "pendente" aqui.
   const codigosPendentes = useMemo(
@@ -287,20 +294,20 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Roda AUTOMATICAMENTE (sem botão e sem automação): ao detectar logs autorizados sem número,
   // busca os dados reais no Omie em background, uma única vez por carregamento da aba.
   useEffect(() => {
-    if (!ativa || autorizadosSemNF === 0 || preenchimentoFeito) return;
+    if (!ativa || (autorizadosSemNF === 0 && logsCrus === 0) || preenchimentoFeito) return;
     setPreenchimentoFeito(true);
     (async () => {
       try {
         const resp = await base44.functions.invoke('preencherDadosNFLogs', { dias: 30 });
         const r = resp?.data || {};
-        if (r?.sucesso && r.preenchidos > 0) {
+        if (r?.sucesso && ((r.preenchidos > 0) || (r.dados_locais_preenchidos > 0))) {
           await refetch();
         }
       } catch {
         // Silencioso — é um enriquecimento de fundo; o usuário não disparou nada manualmente.
       }
     })();
-  }, [ativa, autorizadosSemNF, preenchimentoFeito, refetch]);
+  }, [ativa, autorizadosSemNF, logsCrus, preenchimentoFeito, refetch]);
 
   const StatusBadge = ({ status }) => {
     if (status === 'autorizada') return <Badge className="bg-green-100 text-green-800 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" /> Autorizada</Badge>;
