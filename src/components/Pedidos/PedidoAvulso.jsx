@@ -44,8 +44,9 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   const { data: todosClientes = [] } = useQuery({
     queryKey: ['avulso-todos-clientes'],
     queryFn: () => listarTudo(base44.entities.Cliente, { status: 'ativo' }, 'razao_social'),
-    staleTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // Filtro LOCAL (em memória) — instantâneo, parcial (contém), case-insensitive,

@@ -14,8 +14,8 @@ export default function MeusRoteiros({ vendedor }) {
   const [busca, setBusca] = useState('');
   const [clienteAtivo, setClienteAtivo] = useState(null);
 
-  const { data: roteiros = [] } = useQuery({ queryKey: ['roteirosVendedor', vendedor?.id], queryFn: () => base44.entities.Roteiro.filter({ vendedor_id: vendedor?.id }, '-updated_date', 200), enabled: !!vendedor?.id });
-  const { data: visitas = [] } = useQuery({ queryKey: ['visitasVendedor', vendedor?.id], queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedor?.id }, '-updated_date', 1000), enabled: !!vendedor?.id });
+  const { data: roteiros = [] } = useQuery({ queryKey: ['roteirosVendedor', vendedor?.id], queryFn: () => base44.entities.Roteiro.filter({ vendedor_id: vendedor?.id }, '-updated_date', 200), enabled: !!vendedor?.id, staleTime: 60 * 1000, refetchOnMount: 'always', refetchOnWindowFocus: true });
+  const { data: visitas = [] } = useQuery({ queryKey: ['visitasVendedor', vendedor?.id], queryFn: () => base44.entities.VisitaRoteiro.filter({ vendedor_id: vendedor?.id }, '-updated_date', 1000), enabled: !!vendedor?.id, staleTime: 60 * 1000, refetchOnMount: 'always', refetchOnWindowFocus: true });
 
   useEffect(() => {
     if (!vendedor?.id) return;
