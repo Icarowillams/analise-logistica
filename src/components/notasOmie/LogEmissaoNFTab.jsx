@@ -94,8 +94,10 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // write-through do LogEmissaoNF nem precisar sair/voltar da aba. Cruzamento 100% local.
   const { data: pedidos = [] } = useQuery({
     queryKey: ['pedidosParaLogNF'],
+    // Inclui pedidos recentes em geral (não só faturado: true) — pedidos REJEITADOS ficam faturado:false
+    // e precisam ser casados pelo código Omie para o log não aparecer sem cliente/carga.
     queryFn: () => base44.entities.Pedido.filter(
-      { faturado: true }, '-data_faturamento', 500,
+      { omie_codigo_pedido: { $exists: true } }, '-created_date', 800,
       ['numero_pedido', 'numero_nota_fiscal', 'cliente_nome', 'cliente_nome_fantasia', 'numero_carga', 'omie_codigo_pedido']
     ),
     enabled: ativa,
@@ -130,6 +132,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
         || (chavePed ? pedidoPorNumero.get(chavePed) : null);
       return {
         ...l,
+        numero_pedido: l.numero_pedido || ped?.numero_pedido || '',
         numero_nf: l.numero_nf || ped?.numero_nota_fiscal || '',
         numero_carga: l.numero_carga || ped?.numero_carga || '',
         cliente_nome: l.cliente_nome || ped?.cliente_nome || ped?.cliente_nome_fantasia || '',
