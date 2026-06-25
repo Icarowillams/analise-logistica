@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { listarTudo } from '@/lib/omieHelpers';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ShoppingCart, MapPin, Filter } from 'lucide-react';
+import { Search, ShoppingCart, MapPin, Filter, Loader2 } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 import BuscarClienteModal from './BuscarClienteModal';
+import useBuscaClientes from '@/components/hooks/useBuscaClientes';
 
 export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onClearEdit, permissaoCenariosFiscais }) {
   const [selectedCliente, setSelectedCliente] = useState(null);
@@ -39,28 +39,12 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
     }
   }, [editingPedido, editingPedidoId]);
 
-  // Carrega TODOS os clientes ativos UMA vez, enxutos, com cache longo (10 min).
-  // Sem filtro por vendedor: todo cliente ativo aparece para qualquer vendedor.
-  const { data: todosClientes = [] } = useQuery({
-    queryKey: ['avulso-todos-clientes'],
-    queryFn: () => listarTudo(base44.entities.Cliente, { status: 'ativo' }, 'razao_social'),
-    staleTime: 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-  });
-
-  // Filtro LOCAL (em memória) — instantâneo, parcial (contém), case-insensitive,
-  // cobrindo código interno, código integração, razão social e nome fantasia.
-  const termo = (searchCodigo || searchFantasia).trim().toLowerCase();
-  const clientesFiltrados = useMemo(() => {
-    if (termo.length < 2) return [];
-    return todosClientes.filter(c =>
-      (c.codigo_interno || '').toLowerCase().includes(termo) ||
-      (c.codigo_integracao || '').toLowerCase().includes(termo) ||
-      (c.razao_social || '').toLowerCase().includes(termo) ||
-      (c.nome_fantasia || '').toLowerCase().includes(termo)
-    ).slice(0, 50);
-  }, [todosClientes, termo]);
+  // BUSCA SERVER-SIDE (na digitação) — não depende mais de baixar a base inteira de
+  // clientes no navegador antes de pesquisar (isso falhava silenciosamente em conexões
+  // lentas/celular, deixando a busca "sem resultados"). A partir de 2 caracteres, consulta
+  // o servidor por código, razão social e nome fantasia.
+  const termo = (searchCodigo || searchFantasia).trim();
+  const { clientes: clientesFiltrados, isFetching: buscando, termoAtivo } = useBuscaClientes(termo, { minChars: 2, limite: 50 });
 
   // Ao selecionar, garante o registro completo (se vier enxuto) antes de abrir o form.
   const handleSelectCliente = async (cli) => {
@@ -140,7 +124,14 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             </div>
           )}
 
-          {termo.length >= 2 && clientesFiltrados.length === 0 && (
+          {termoAtivo && buscando && (
+            <div className="text-center text-slate-500 py-12">
+              <Loader2 className="w-8 h-8 mx-auto mb-3 text-amber-500 animate-spin" />
+              <p>Buscando clientes...</p>
+            </div>
+          )}
+
+          {termoAtivo && !buscando && clientesFiltrados.length === 0 && (
             <div className="text-center text-slate-500 py-12">
               <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
               <p>Nenhum cliente encontrado</p>
