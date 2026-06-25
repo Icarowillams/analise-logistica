@@ -146,20 +146,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     if (!ativa || codigosPendentes.length === 0 || reconsultaFeita) return;
     setReconsultaFeita(true);
     (async () => {
-      let mudou = false;
       for (let i = 0; i < codigosPendentes.length; i += 4) {
         const lote = codigosPendentes.slice(i, i + 4);
         try {
           const resp = await base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote });
           const r = resp?.data || {};
-          if ((r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0) mudou = true;
+          // Atualiza a tela a cada lote, para os autorizados irem aparecendo aos poucos.
+          if ((r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0) await refetch();
           // Omie bloqueado/rate limit: para o restante e tenta no próximo refresh.
           if (r.abortado || r.resultados?.some(x => x.abortado)) break;
         } catch {
           break;
         }
       }
-      if (mudou) await refetch();
     })();
   }, [ativa, codigosPendentes, reconsultaFeita, refetch]);
 
