@@ -168,11 +168,14 @@ export default function EmissaoNFTab({ cargaFiltro, ativa = true, onEmissionComp
       if (!vinculo) return false;
       if (cargaTermo && !String(numCarga).includes(cargaTermo)) return false;
       if (!termo) return true;
+      // Número do pedido normalizado (sem zeros à esquerda) — é o que o usuário vê e digita.
+      // Casamos pelo número EXIBIDO, não pelo codigo_pedido interno do Omie (que pode conter
+      // o termo buscado por coincidência e trazer o pedido errado, ex: buscar "2557" trazia o 2435).
+      const numeroExibido = formatarNumeroPedido(p.numero_pedido || '').toLowerCase();
       return (
-        String(p.numero_pedido || '').toLowerCase().includes(termo) ||
+        numeroExibido.includes(termo) ||
         String(p.nome_cliente || '').toLowerCase().includes(termo) ||
-        String(p.nome_fantasia || '').toLowerCase().includes(termo) ||
-        String(p.codigo_pedido || '').toLowerCase().includes(termo)
+        String(p.nome_fantasia || '').toLowerCase().includes(termo)
       );
     });
   }, [espelho, busca, filtroCarga, cargaPorPedido, codigosComNf]);
