@@ -119,6 +119,40 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TENTATIVAS = 3;
+const CHAVE_WORKER_CARGA = 'worker_carga'; // chave DEDICADA do lock de auto-encadeamento da fila de carga
+const LOCK_TTL_MS = 2 * 60 * 1000;         // TTL curto do lock — auto-release se a função morrer
+
+// ============================================================
+// LOCK DE AUTO-ENCADEAMENTO — garante 1 cadeia por vez.
+// Registro dedicado (chave='worker_carga') com worker_rodando + worker_lock_ate.
+// TTL curto evita travamento permanente se a função morrer.
+// ============================================================
+async function adquirirLockEncadeamento(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave: CHAVE_WORKER_CARGA }, '-updated_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  const agora = Date.now();
+  const lockAtivo = reg?.worker_rodando && reg?.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora;
+  if (lockAtivo) return { adquirido: false };
+  const dados = {
+    chave: CHAVE_WORKER_CARGA,
+    worker_rodando: true,
+    worker_lock_ate: new Date(agora + LOCK_TTL_MS).toISOString(),
+    atualizado_em: new Date().toISOString()
+  };
+  if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, dados).catch(() => {});
+  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(dados).catch(() => {});
+  return { adquirido: true, id: reg?.id };
+}
+
+async function liberarLockEncadeamento(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave: CHAVE_WORKER_CARGA }, '-updated_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, {
+    worker_rodando: false, worker_lock_ate: null, atualizado_em: new Date().toISOString()
+  }).catch(() => {});
+}
 // "Consumo redundante" não é uma falha real: o Omie só libera o mesmo id após ~60s.
 // Re-agendamos a janela e só desistimos após muitas janelas reais (praticamente nunca acontece).
 const MAX_TENTATIVAS_REDUNDANTE = 5;
@@ -289,6 +323,17 @@ Deno.serve(async (req) => {
     if (breaker.blocked) {
       return Response.json({ sucesso: false, abortado: true, motivo: 'circuit_breaker', bloqueado_ate: breaker.blockedUntil });
     }
+
+    // ═══ LOCK "1 CADEIA POR VEZ" — adquirido no INÍCIO, segurado por TODO o
+    // processamento e liberado no fim (try/finally). TTL ~2min é a rede de
+    // segurança se a função morrer. Cadeia ativa (worker_rodando + lock futuro) → skipped.
+    const lock = await adquirirLockEncadeamento(base44);
+    if (!lock.adquirido) {
+      console.log('[FILA CARGA] Lock ativo — outra cadeia já está processando. Skipped.');
+      return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', processados: 0 });
+    }
+
+    try {
 
     // ═══ PASSO 0: TIMEOUT — Limpar itens travados em "processando" há mais de 3 minutos ═══
     // DEVE rodar ANTES da checagem de concorrência, senão itens travados bloqueiam a fila indefinidamente.
@@ -518,11 +563,37 @@ Deno.serve(async (req) => {
     }
 
     // ═══ PASSO FINAL: Atualizar status das cargas tocadas NESTE ciclo ═══
+    // Roda ANTES do auto-encadeamento — intacto.
     for (const carga_id of cargasAfetadas) {
       await atualizarStatusCarga(base44, carga_id);
     }
 
-    return Response.json({ sucesso: true, processados, interrompido, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
+    // ═══ AUTO-ENCADEAMENTO — mata o atraso de 5min entre lotes.
+    // O lock JÁ é nosso (adquirido no início). Se ainda há pendente, o breaker
+    // está liberado e NÃO fomos interrompidos → re-invoca fire-and-forget e só
+    // depois (no finally) libera o lock — sem janela sem dono. Fila vazia /
+    // breaker aberto / interrompido → não encadeia.
+    let encadeou = false;
+    if (!interrompido) {
+      const restantes = await base44.asServiceRole.entities.FilaCargaOmie
+        .filter({ status: 'pendente' }, 'created_date', 1).catch(() => []);
+      if (restantes.length > 0) {
+        const breakerFim = await checkCircuitBreaker(base44);
+        if (!breakerFim.blocked) {
+          base44.asServiceRole.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
+          encadeou = true;
+          console.log('[FILA CARGA] Auto-encadeamento disparado — fila ainda tem pendentes.');
+        }
+      }
+    }
+
+    return Response.json({ sucesso: true, processados, interrompido, encadeou, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
+
+    } finally {
+      // Libera o lock SEMPRE ao fim (sucesso, retorno antecipado ou exceção).
+      // A re-invocação encadeada adquire o seu próprio lock em seguida.
+      await liberarLockEncadeamento(base44).catch(() => {});
+    }
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
