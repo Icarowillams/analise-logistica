@@ -145,12 +145,29 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const LIMITE = Math.min(body.limite || 15, 30); // lote pequeno por execução
 
+    // ── CORREÇÃO LOCAL (sem Omie): pedidos JÁ faturados que ficaram com status="montagem" preso. ──
+    // Caso clássico: passaram pelo ramo "pendente" antes do código gravar status='faturado', a flag
+    // nf_aguardando_autorizacao já foi zerada e nenhuma rotina os alcança mais. Aqui alinhamos o
+    // status principal só com base no estado local já comprovado (faturado=true / status_faturamento=faturado).
+    // Puro: não chama a Omie, roda toda execução, em lote re-executável.
+    let statusCorrigidos = 0;
+    const presosMontagem = await base44.asServiceRole.entities.Pedido.filter(
+      { faturado: true, status: 'montagem' }, '-data_faturamento', 200
+    ).catch(() => []);
+    for (const p of presosMontagem) {
+      // Só corrige quem NÃO está cancelado e realmente está faturado (status_faturamento confirma).
+      if (p.status_faturamento === 'faturado' && !p.cancelado_no_omie) {
+        await base44.asServiceRole.entities.Pedido.update(p.id, { status: 'faturado' }).catch(() => {});
+        statusCorrigidos++;
+      }
+    }
+
     const aguardando = await base44.asServiceRole.entities.Pedido.filter(
       { nf_aguardando_autorizacao: true }, '-data_faturamento', LIMITE
     ).catch(() => []);
 
     if (aguardando.length === 0) {
-      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido aguardando autorização de NF', processados: 0 });
+      return Response.json({ sucesso: true, mensagem: 'Nenhum pedido aguardando autorização de NF', processados: 0, status_corrigidos: statusCorrigidos });
     }
 
     let preenchidos = 0, aindaAguardando = 0, semCodigo = 0, terminais = 0;
@@ -253,6 +270,7 @@ Deno.serve(async (req) => {
       ainda_aguardando: aindaAguardando,
       sem_codigo: semCodigo,
       terminais,
+      status_corrigidos: statusCorrigidos,
       resultados
     });
   } catch (error) {
