@@ -563,10 +563,13 @@ export default function GerenciarPedidos({ onEditPedido }) {
         (p.numero_carga || '').toLowerCase().includes(s)
       );
     }
-    // Período — SEMPRE pela DATA DE CRIAÇÃO do pedido (created_date), que é imutável e não muda
-    // com reprocessamento de webhook. Garante que só apareçam pedidos criados dentro da janela.
+    // Período — pela DATA DO EVENTO do pedido (envio/liberação/faturamento/cancelamento conforme
+    // o status), não pela data de criação. Assim "hoje" mostra os pedidos ENVIADOS hoje, mesmo
+    // que tenham sido criados em dias anteriores. Fallback para created_date quando não há data de evento.
+    const statusEventoPeriodo = statusFilters.length === 1 ? statusFilters[0] : null;
     const dentroDoPeriodo = (p) => {
-      const dataLocal = getLocalDateFromIso(p.created_date);
+      const dataEvento = getDataPeriodoPedido(p, statusEventoPeriodo) || p.created_date;
+      const dataLocal = getLocalDateFromIso(dataEvento);
       if (envioInicio && !(dataLocal && dataLocal >= envioInicio)) return false;
       if (envioFim && !(dataLocal && dataLocal <= envioFim)) return false;
       return true;
