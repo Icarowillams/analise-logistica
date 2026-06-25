@@ -614,6 +614,26 @@ Deno.serve(async (req) => {
         }
       } catch (error) {
         erroPedido = error;
+        // NF JÁ CADASTRADA: o Omie recusa o faturamento porque o pedido já tem NF (Client-107 /
+        // "NF nº X já cadastrada para o pedido"). NÃO é erro — a nota existe. Consulta o pedido
+        // para capturar o número real e marca como AUTORIZADA, sem re-emitir.
+        const txtErro = String(error?.faultstring || error?.message || '').toLowerCase();
+        if (txtErro.includes('já cadastrada') || txtErro.includes('ja cadastrada') || String(error?.faultcode || '').toLowerCase().includes('client-107')) {
+          const real = await consultarStatusPedido(base44, codigoPedido).catch(() => null);
+          if (real && !real.erro && real.status_real === 'emitida') {
+            statusFinalPedido = 'autorizada';
+            realConfirmado = real;
+            mensagemPedido = real.mensagem;
+          } else {
+            // Omie diz que há NF mas a consulta não confirmou o número agora → pendente honesto
+            // (a reconciliação captura o número depois). Nunca marca como erro.
+            statusFinalPedido = 'autorizada';
+            const nNfMatch = String(error?.faultstring || '').match(/NF\s*n?º?\s*(\d+)/i);
+            realConfirmado = { status_real: 'emitida', codigo_sefaz: '100', numero_nf: nNfMatch?.[1] || '', etapa: '60', mensagem: `NF já cadastrada no Omie${nNfMatch?.[1] ? ` (nº ${nNfMatch[1]})` : ''} — confirmada sem re-emitir.` };
+            mensagemPedido = realConfirmado.mensagem;
+          }
+          erroPedido = null;
+        } else {
         transitorioPedido = isTransitorio(error);
         // Transitório (rate limit/425/timeout) → pendente reprocessável; erro de dado → erro real.
         statusFinalPedido = transitorioPedido ? 'pendente' : 'erro';
@@ -621,6 +641,7 @@ Deno.serve(async (req) => {
         mensagemPedido = transitorioPedido
           ? 'Aguardando emissão no Omie — será confirmado automaticamente.'
           : (error.faultstring || `Erro: ${error.message || 'falha na emissão'}`);
+        }
       }
 
       // ── Aplica o resultado confirmado (Pedido local + espelho + log) ──
