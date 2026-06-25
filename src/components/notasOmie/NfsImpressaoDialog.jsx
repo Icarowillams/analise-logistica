@@ -7,7 +7,10 @@ import { base44 } from '@/api/base44Client';
 import { PDFDocument } from 'pdf-lib';
 import { runPool } from '@/lib/concurrentPool';
 
-const CONCORRENCIA = 5; // downloads de DANFE simultâneos (ObterDanfe = leitura, pode paralelizar)
+// Concorrência modesta: o servidor já serializa as chamadas Omie via slot atômico
+// global (throttleGlobal em baixarPdfDanfeOmie). Manter 2 evita abrir rajada de
+// requisições que só ficariam esperando slot — e respeita o rate limit do Omie.
+const CONCORRENCIA = 2; // downloads de DANFE simultâneos
 
 /**
  * Modal de "tipo de impressão" para 1 ou N NF-es selecionadas.

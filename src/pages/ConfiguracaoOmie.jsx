@@ -14,6 +14,7 @@ export default function ConfiguracaoOmie() {
   const [config, setConfig] = useState(null);
   const [appKey, setAppKey] = useState('');
   const [appSecret, setAppSecret] = useState('');
+  const [secretMascarado, setSecretMascarado] = useState(null); // só leitura de status; nunca o secret completo
   const [nome, setNome] = useState('Produção');
   const [showSecret, setShowSecret] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -25,14 +26,22 @@ export default function ConfiguracaoOmie() {
     const me = await base44.auth.me().catch(() => null);
     setUser(me);
     if (me?.role === 'admin') {
-      const rows = await base44.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-      const ativo = rows?.[0];
-      if (ativo) {
-        setConfig(ativo);
-        setAppKey(ativo.app_key || '');
-        setAppSecret(ativo.app_secret || '');
-        setNome(ativo.nome || 'Produção');
+      // SEGURANÇA/LGPD: a tela NUNCA lê o app_secret completo do banco.
+      // Usa getOmieCredentials (action get) que valida admin no servidor e devolve
+      // apenas o secret MASCARADO ("...últimos4"). O campo de secret é write-only.
+      const res = await base44.functions.invoke('getOmieCredentials', { action: 'get' }).catch(() => null);
+      const data = res?.data || null;
+      if (data) {
+        setSecretMascarado(data.appSecretMascarada || null);
+        // App Key não é segredo — exibe normalmente (mascarada se vier do backend).
+        setAppKey(data.appKeyMascarada || '');
+        if (data.nome) setNome(data.nome);
+        if (data.id || data.atualizado_em) {
+          setConfig({ id: data.id, updated_date: data.atualizado_em });
+        }
       }
+      // app_secret começa SEMPRE vazio — nunca recebe o valor real.
+      setAppSecret('');
     }
     setLoading(false);
   };
@@ -40,33 +49,31 @@ export default function ConfiguracaoOmie() {
   useEffect(() => { carregar(); }, []);
 
   const salvar = async () => {
-    if (!appKey.trim() || !appSecret.trim()) {
-      toast.error('Preencha App Key e App Secret.');
+    // Write-only: App Key e App Secret em branco mantêm o valor atual do banco.
+    // Só bloqueia quando NÃO há config ainda (criação inicial exige ambos).
+    const keyDigitada = appKey.trim();
+    const secretDigitado = appSecret.trim();
+    // App Key vem mascarada do backend ("...1234"); não enviar valor mascarado de volta.
+    const keyParaEnviar = keyDigitada && !keyDigitada.startsWith('...') ? keyDigitada : '';
+    if (!config?.id && (!keyParaEnviar || !secretDigitado)) {
+      toast.error('Para criar a configuração inicial, informe App Key e App Secret.');
       return;
     }
     setSaving(true);
     try {
-      if (config?.id) {
-        await base44.entities.ConfiguracaoOmie.update(config.id, {
-          nome: nome.trim() || 'Produção',
-          app_key: appKey.trim(),
-          app_secret: appSecret.trim(),
-          ativo: true
-        });
-      } else {
-        const novo = await base44.entities.ConfiguracaoOmie.create({
-          nome: nome.trim() || 'Produção',
-          app_key: appKey.trim(),
-          app_secret: appSecret.trim(),
-          ativo: true
-        });
-        setConfig(novo);
-      }
-      toast.success('Credenciais salvas no banco com sucesso!');
+      const res = await base44.functions.invoke('salvarCredenciaisOmie', {
+        nome: nome.trim() || 'Produção',
+        app_key: keyParaEnviar,        // em branco = mantém a atual
+        app_secret: secretDigitado     // em branco = mantém o atual
+      });
+      const data = res?.data || {};
+      if (data.error) throw new Error(data.error);
+      toast.success('Credenciais salvas com sucesso!');
       setTestResult(null);
+      setAppSecret(''); // limpa o campo após salvar — nunca retém o secret
       await carregar();
     } catch (e) {
-      toast.error('Erro ao salvar: ' + e.message);
+      toast.error('Erro ao salvar: ' + (e?.response?.data?.error || e.message));
     } finally {
       setSaving(false);
     }
@@ -137,6 +144,7 @@ export default function ConfiguracaoOmie() {
           <div className="space-y-2">
             <Label>App Key</Label>
             <Input value={appKey} onChange={(e) => setAppKey(e.target.value)} placeholder="OMIE_APP_KEY" />
+            <p className="text-xs text-slate-400">Mostrada mascarada. Digite uma nova App Key apenas se quiser substituir a atual.</p>
           </div>
           <div className="space-y-2">
             <Label>App Secret</Label>
@@ -145,7 +153,7 @@ export default function ConfiguracaoOmie() {
                 type={showSecret ? 'text' : 'password'}
                 value={appSecret}
                 onChange={(e) => setAppSecret(e.target.value)}
-                placeholder="OMIE_APP_SECRET"
+                placeholder={secretMascarado ? 'Deixe em branco para manter o atual' : 'OMIE_APP_SECRET'}
                 className="pr-10"
               />
               <button
@@ -156,6 +164,11 @@ export default function ConfiguracaoOmie() {
                 {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="text-xs text-slate-400">
+              {secretMascarado
+                ? <>App Secret configurado: <span className="font-mono text-slate-500">••••••{String(secretMascarado).slice(-4)}</span> — por segurança, não é exibido. Deixe em branco para mantê-lo.</>
+                : 'Nenhum App Secret configurado ainda.'}
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-3 pt-2">

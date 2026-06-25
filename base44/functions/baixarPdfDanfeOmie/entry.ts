@@ -20,6 +20,63 @@ async function getOmieCredentials(base44: any) {
 
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
+// ── Throttle global por SLOT ATÔMICO (espelha _shared/omieClient) ──
+// A impressão baixa DANFEs sob concorrência (até 5 em paralelo). Sem espaçamento,
+// dispara rajadas que estouram o rate limit Omie ("consumo redundante"). Aqui cada
+// chamada reserva o PRÓXIMO slot no registro 'rate_limit_global' e dorme até ele,
+// serializando as chamadas em ~1 a cada 1,5s globalmente — entre processos.
+const GLOBAL_RATE_KEY = 'rate_limit_global';
+const GLOBAL_MIN_INTERVAL_MS = 1500;
+const SLOT_LOCK_MS = 4000;
+const SLOT_WAIT_CAP_MS = 30000;
+const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function getSlotRow(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 50).catch(() => []);
+  if (!rows?.[0]?.id) {
+    const created = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: GLOBAL_RATE_KEY, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return created?.id ? created : null;
+  }
+  for (const extra of rows.slice(1)) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+  }
+  return rows[0];
+}
+
+async function throttleGlobal(base44: any) {
+  try {
+    const row = await getSlotRow(base44);
+    if (!row?.id) return;
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let gotLock = false;
+    for (let i = 0; i < 12; i++) {
+      const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+      const cur = fresh?.[0];
+      const lockedUntil = cur?.worker_lock_ate ? new Date(cur.worker_lock_ate).getTime() : 0;
+      if (!lockedUntil || lockedUntil <= Date.now()) {
+        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+          worker_lock_ate: new Date(Date.now() + SLOT_LOCK_MS).toISOString(),
+          ultimo_erro: lockId
+        }).catch(() => null);
+        const confirm = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+        if (confirm?.[0]?.ultimo_erro === lockId) { gotLock = true; break; }
+      }
+      await _sleep(200 + Math.floor(Math.random() * 200));
+    }
+    const fresh = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: row.id }, '-created_date', 1).catch(() => []);
+    const cur = fresh?.[0] || row;
+    const proximoSlot = cur?.atualizado_em ? new Date(cur.atualizado_em).getTime() : 0;
+    const now = Date.now();
+    const meuSlot = Math.max(now, proximoSlot);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(row.id, {
+      atualizado_em: new Date(meuSlot + GLOBAL_MIN_INTERVAL_MS).toISOString(),
+      ...(gotLock ? { worker_lock_ate: null } : {})
+    }).catch(() => null);
+    const espera = Math.min(meuSlot - now, SLOT_WAIT_CAP_MS);
+    if (espera > 0) await _sleep(espera);
+  } catch { /* nunca bloqueia a chamada por falha no throttle */ }
+}
+
 async function checkCircuitBreaker(base44: any) {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
@@ -38,6 +95,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   if (!call) throw new Error('Informe options.call com o método Omie.');
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  // Espaçamento global ATÔMICO — serializa as chamadas mesmo sob concorrência da impressão.
+  await throttleGlobal(base44);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
   // SEM retries automáticos para impressão de PDF — cada retry gasta cota e agrava o rate limit.
   // Se falhar, retorna erro imediato e o frontend tenta de novo com delay adequado.
