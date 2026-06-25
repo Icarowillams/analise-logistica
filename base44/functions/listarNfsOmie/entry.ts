@@ -57,7 +57,8 @@ Deno.serve(async (req) => {
       cnpj_cliente,
       numeros_nf,
       codigos_pedido,
-      incluir_raw = false
+      incluir_raw = false,
+      apenas_autorizadas = false
     } = body;
 
     const derivarStatus = (nf) => {
@@ -242,17 +243,42 @@ Deno.serve(async (req) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CAMINHO PADRÃO: busca paginada por data / nome / CNPJ.
+    // CAMINHO PADRÃO: busca por data / nome / CNPJ.
+    // Varre TODAS as páginas do período (o Omie pagina de 100 em 100) e devolve
+    // tudo de uma vez, ordenado das mais RECENTES para as mais antigas. Antes só a
+    // página 1 era buscada (~49 NFs visíveis) e a ordem vinha crescente (antigas no topo).
     // ─────────────────────────────────────────────────────────────────────────
-    const param = { pagina, registros_por_pagina: Math.min(registros_por_pagina, 100) };
-    if (data_inicial) param.dEmiInicial = data_inicial;
-    if (data_final) param.dEmiFinal = data_final;
-    if (nome_cliente) param.cRazao = nome_cliente;
-    if (cnpj_cliente) param.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
+    const paramBase = { registros_por_pagina: 100 };
+    if (data_inicial) paramBase.dEmiInicial = data_inicial;
+    if (data_final) paramBase.dEmiFinal = data_final;
+    if (nome_cliente) paramBase.cRazao = nome_cliente;
+    if (cnpj_cliente) paramBase.cCPFCNPJDest = cnpj_cliente.replace(/\D/g, '');
 
     const t0 = Date.now();
-    const data = await omieCall(base44, 'ListarNF', param);
+    const todasNfs = [];
+    let pg = 1;
+    let totalPaginas = 1;
+    const MAX_PAGINAS = 50; // teto de segurança (até 5000 NFs)
+    do {
+      const d = await omieCall(base44, 'ListarNF', { ...paramBase, pagina: pg });
+      totalPaginas = d.nTotPaginas || d.total_de_paginas || 1;
+      (d.nfCadastro || []).forEach((nf) => {
+        const mapped = mapNf(nf);
+        // Quando a tela só mostra autorizadas, filtra já aqui — corta o payload bastante.
+        if (apenas_autorizadas && mapped.cStatus !== 'autorizada') return;
+        todasNfs.push(mapped);
+      });
+      pg++;
+    } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
     const duracao = Date.now() - t0;
+
+    // Ordena por data de emissão DESC (mais recentes primeiro). dEmiNF vem como DD/MM/AAAA.
+    const paraTime = (nf) => {
+      const [dd, mm, aaaa] = String(nf.dEmiNF || '').split('/');
+      if (!aaaa) return 0;
+      return new Date(`${aaaa}-${mm}-${dd}T${(nf.hEmiNF || '00:00:00')}`).getTime() || 0;
+    };
+    todasNfs.sort((a, b) => paraTime(b) - paraTime(a));
 
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/nfconsultar',
@@ -263,14 +289,12 @@ Deno.serve(async (req) => {
       usuario_email: user.email
     }).catch(() => {});
 
-    const nfs = (data.nfCadastro || []).map(mapNf);
-
     return Response.json({
       sucesso: true,
-      nfs,
-      pagina: data.nPagina || data.pagina,
-      total_de_paginas: data.nTotPaginas || data.total_de_paginas,
-      total_de_registros: data.nRegistros || data.total_de_registros
+      nfs: todasNfs,
+      pagina: 1,
+      total_de_paginas: 1,
+      total_de_registros: todasNfs.length
     });
   } catch (error) {
     // Loga o erro real no LogIntegracaoOmie (antes só sucessos eram registrados) para rastrear.

@@ -266,15 +266,15 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
       } else {
         const { data } = await base44.functions.invoke('listarNfsOmie', {
           ...filtrosBusca,
-          pagina: pg,
-          registros_por_pagina: 50
+          apenas_autorizadas: true
         });
         if (data?.sucesso) {
-          const apenasAutorizadas = (data.nfs || []).filter(nf => nf.cStatus === 'autorizada');
+          // Backend já varre todas as páginas, filtra autorizadas e ordena por emissão DESC.
+          const apenasAutorizadas = data.nfs || [];
           const mapaCargas = await buscarCargasDasNfs(apenasAutorizadas);
           setCargasPorNf(mapaCargas);
           setResultado({ ...data, nfs: apenasAutorizadas, total_de_registros: apenasAutorizadas.length });
-          setPagina(pg);
+          setPagina(1);
         } else {
           toast.error(data?.error || 'Erro ao consultar NFs');
         }
