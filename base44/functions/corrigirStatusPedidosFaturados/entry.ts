@@ -2,10 +2,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 
+// FONTE DE VERDADE (definida pelo operador): FATURADO = etapa 60 OU NF emitida.
+// Etapa 50 = conferência/faturar (ainda NÃO faturado) → mapeia para 'montagem'.
+// Só etapa 60 é 'faturado'.
 const ETAPA_STATUS = {
   '10': 'pendente',
   '20': 'enviado',
-  '50': 'faturado',
+  '50': 'montagem',
   '60': 'faturado',
   '70': 'entregue',
   '80': 'cancelado'
@@ -109,7 +112,7 @@ Deno.serve(async (req) => {
 
           if (!simular) {
             const updates = { status: statusNovo, omie_erro: null };
-            if (['50', '60'].includes(etapa)) {
+            if (etapa === '60') {
               updates.faturado = true;
               updates.status_faturamento = 'faturado';
               updates.data_faturamento = pedido.data_faturamento || new Date().toISOString();

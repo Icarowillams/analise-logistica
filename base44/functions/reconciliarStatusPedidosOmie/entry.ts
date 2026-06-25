@@ -273,24 +273,47 @@ Deno.serve(async (req) => {
           });
         }
 
-        // Avanço de etapa: pedido avançou no Omie mas o webhook foi perdido/descartado
+        // Avanço de etapa: pedido avançou no Omie mas o webhook foi perdido/descartado.
+        // FONTE DE VERDADE (definida pelo operador): FATURADO = etapa 60 OU NF emitida.
+        // Etapa 20 = liberado. Etapa 50 = conferência/faturar (NÃO é montagem nem faturado) —
+        // nesse estado o status local NÃO é alterado; só vira faturado ao chegar na 60 / ter NF.
         if (!cancelado) {
+          const etapaNum = Number(etapaOmie) || 0;
           let novoStatus = null;
-          if (etapaOmie === '20' && pedido.status === 'pendente') novoStatus = 'liberado';
-          else if (etapaOmie === '50' && (pedido.status === 'pendente' || pedido.status === 'liberado')) novoStatus = 'montagem';
+          let nfDetectada = null;
+
+          if (etapaNum >= 60) {
+            // Etapa 60 = faturado. Busca a NF para gravar o número junto (quando disponível).
+            if (!['faturado', 'cancelado', 'cancelado_pos_faturamento'].includes(pedido.status)) {
+              novoStatus = 'faturado';
+              nfDetectada = await consultarNfDoPedido(base44, pedido.omie_codigo_pedido).catch(() => null);
+              await sleep(DELAY_ENTRE_CONSULTAS_MS);
+            }
+          } else if (etapaOmie === '20' && pedido.status === 'pendente') {
+            novoStatus = 'liberado';
+          }
 
           if (novoStatus) {
             console.log(`[RECONCILIAÇÃO] Pedido ${pedido.numero_pedido} está em etapa ${etapaOmie} no Omie mas local está '${pedido.status}' — sincronizando para '${novoStatus}'`);
             const updateAvanco: any = { status: novoStatus };
             if (novoStatus === 'liberado') updateAvanco.data_liberacao = new Date().toISOString();
+            if (novoStatus === 'faturado') {
+              updateAvanco.faturado = true;
+              updateAvanco.status_faturamento = 'faturado';
+              if (!pedido.data_faturamento) updateAvanco.data_faturamento = new Date().toISOString();
+              if (nfDetectada?.numero_nf) {
+                updateAvanco.numero_nota_fiscal = nfDetectada.numero_nf;
+                if (nfDetectada.chave_nfe) updateAvanco.chave_nfe = nfDetectada.chave_nfe;
+              }
+            }
             await base44.asServiceRole.entities.Pedido.update(pedido.id, updateAvanco);
             await base44.asServiceRole.entities.LogIntegracaoOmie.create({
               endpoint: 'reconciliacao', call: 'avanco_etapa', operacao: 'reconciliar_status',
               entidade_tipo: 'Pedido', entidade_id: pedido.id, status: 'sucesso',
               mensagem_erro: `Reconciliação: etapa avançada para ${etapaOmie} (${novoStatus}) — webhook perdido`,
-              payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, etapa_omie: etapaOmie, status_anterior: pedido.status }).slice(0, 2000)
+              payload_resposta: JSON.stringify({ numero_pedido: pedido.numero_pedido, etapa_omie: etapaOmie, status_anterior: pedido.status, numero_nf: nfDetectada?.numero_nf || '' }).slice(0, 2000)
             }).catch(() => {});
-            detalhes.push({ pedido_id: pedido.id, numero_pedido: pedido.numero_pedido, tipo: pedido.tipo, acao: `avancado_${novoStatus}`, etapa_omie: etapaOmie });
+            detalhes.push({ pedido_id: pedido.id, numero_pedido: pedido.numero_pedido, tipo: pedido.tipo, acao: `avancado_${novoStatus}`, etapa_omie: etapaOmie, numero_nf: nfDetectada?.numero_nf || '' });
           }
 
           // Corrigir espelho PedidoLiberadoOmie se etapa está desatualizada.
