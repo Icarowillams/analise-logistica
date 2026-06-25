@@ -62,8 +62,23 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
 
   // Códigos de pedido dos logs PENDENTES — para reconsultar ao vivo no Omie e sincronizar
   // os que já foram autorizados (etapa 60) mas continuam marcados como "pendente" aqui.
+  //
+  // Inclui também os logs REJEITADOS por CLIENTE BLOQUEADO no cadastro: esses pedidos são
+  // resolvidos manualmente no Omie (operador desbloqueia o cliente e emite a NF lá). Quando
+  // isso acontece, a reconsulta ao vivo detecta a NF autorizada e atualiza o log sozinho —
+  // sem precisar de ação manual aqui. Demais rejeições (SEFAZ, estrutura) NÃO entram, pois
+  // não viram NF só por reconsultar.
   const codigosPendentes = useMemo(
-    () => [...new Set(logs.filter(l => l.status === 'pendente' && l.codigo_pedido).map(l => String(l.codigo_pedido)))],
+    () => [...new Set(
+      logs
+        .filter(l =>
+          l.codigo_pedido && (
+            l.status === 'pendente' ||
+            (l.status === 'rejeitada' && /cadastro|bloquead/i.test(l.mensagem || l.faultstring || ''))
+          )
+        )
+        .map(l => String(l.codigo_pedido))
+    )],
     [logs]
   );
 
