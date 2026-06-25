@@ -15,7 +15,14 @@ const STATUS_CONFIG = {
   erro:        { label: 'Erro',        bg: 'bg-red-100 text-red-800',      icon: XCircle },
 };
 
-const fmt = (d) => d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+// O backend grava datas em UTC, mas algumas vêm sem o sufixo "Z" (ex: created_date = "2026-06-25T18:50:26.740000").
+// Sem o "Z", o JS interpreta como horário LOCAL e não converte. Forçamos UTC adicionando "Z" quando ausente.
+const paraUTC = (d) => {
+  const s = String(d);
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return s; // já tem fuso explícito
+  return s.replace(' ', 'T') + 'Z';
+};
+const fmt = (d) => d ? new Date(paraUTC(d)).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
 export default function LogFilaCarga() {
   const [itens, setItens] = useState([]);
