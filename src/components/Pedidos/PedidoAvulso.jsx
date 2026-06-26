@@ -54,11 +54,14 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   // Todos os vendedores veem TODOS os clientes ativos no Pedido Avulso (sem filtro por carteira).
   const { data: clientesIniciais = [], isFetching: carregandoIniciais } = useQuery({
     queryKey: ['clientes-iniciais-avulso'],
-    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 500),
-    // Só carrega a lista inicial quando NÃO há termo digitado. Assim que o usuário
-    // começa a pesquisar, esta query é desabilitada e a conexão fica livre para a
-    // busca — sem precisar esperar os 500 clientes iniciais terminarem de baixar.
-    enabled: activeTab === 'avulso' && !selectedCliente && semBusca && termo.length === 0,
+    // 50 registros (não 500) e SEM ordenação por razao_social no servidor — a ordenação de
+    // 500 registros era o que mais pesava e fazia a lista demorar/voltar vazia. 50 já dá uma
+    // amostra instantânea; quem procura um cliente específico usa a busca por texto/código.
+    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, '-created_date', 50),
+    // Carrega assim que a aba existe (sem depender de activeTab === 'avulso', que no 1º render
+    // podia estar 'digitar' e deixava a query sem disparar — causa do "sair e voltar").
+    // A aba fica oculta via display:none, então pré-carregar aqui não atrapalha as outras abas.
+    enabled: !selectedCliente && semBusca && termo.length === 0,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
