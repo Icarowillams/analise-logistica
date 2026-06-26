@@ -38,7 +38,6 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   const [buscandoNoOmie, setBuscandoNoOmie] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState(null);
   const [preenchimentoFeito, setPreenchimentoFeito] = useState(false);
-  const [reconsultaFeita, setReconsultaFeita] = useState(false);
 
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['logEmissaoNF'],
@@ -177,40 +176,51 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     });
   }, [logs, clientePorId, pedidoPorNumero, pedidoPorCodigoOmie]);
 
-  // Reconsulta AUTOMÁTICA dos pendentes (sem botão e sem automação): ao abrir a aba, consulta
-  // o Omie ao vivo em lotes de 4 e sincroniza os logs que já foram autorizados/rejeitados.
-  // Roda uma única vez por carregamento; só leitura (reprocessar=false), nunca reemite.
+  // Reconsulta AUTOMÁTICA dos pendentes EM CICLO (sem botão e sem automação no servidor):
+  // enquanto a aba estiver aberta E houver pendentes, consulta o Omie ao vivo a cada 30s e
+  // sincroniza os logs que já foram autorizados/rejeitados. Assim uma NF autorizada no Omie
+  // aparece como "Autorizada" aqui em até ~30s, sem precisar sair/voltar nem clicar em Recarregar.
+  // Só leitura (reprocessar=false), nunca reemite. Guard anti-sobreposição evita ciclos paralelos.
   useEffect(() => {
-    if (!ativa || codigosPendentes.length === 0 || reconsultaFeita) return;
-    setReconsultaFeita(true);
-    (async () => {
-      // Divide os pendentes em lotes de 4 (teto da função) e dispara 3 lotes EM PARALELO por onda.
-      // Cada código resolve em 1 chamada rápida (ConsultarNF), então o paralelismo corta o tempo
-      // total drasticamente sem estourar o Omie (a função ainda espaça 4s entre os 4 de cada lote).
-      const lotes = [];
-      for (let i = 0; i < codigosPendentes.length; i += 4) lotes.push(codigosPendentes.slice(i, i + 4));
+    if (!ativa) return;
+    let cancelado = false;
+    let rodando = false;
+    let timer = null;
 
-      const PARALELO = 3;
-      let abortar = false;
-      for (let i = 0; i < lotes.length && !abortar; i += PARALELO) {
-        const onda = lotes.slice(i, i + PARALELO);
-        const respostas = await Promise.all(
-          onda.map(lote =>
-            base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote })
-              .then(resp => resp?.data || {})
-              .catch(() => ({ _falhou: true }))
-          )
-        );
-        const houveMudanca = respostas.some(r => (r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0);
-        if (houveMudanca) await refetch();
-        // Omie bloqueado/rate limit em qualquer lote da onda: para o restante; próximo refresh tenta de novo.
-        if (respostas.some(r => r.abortado || r.resultados?.some(x => x.abortado))) abortar = true;
+    const rodarReconsulta = async () => {
+      if (rodando || cancelado) return;
+      // Lê os pendentes do estado mais recente via filtro local (codigosPendentes é recalculado a cada logs).
+      if (codigosPendentes.length === 0) return;
+      rodando = true;
+      try {
+        const lotes = [];
+        for (let i = 0; i < codigosPendentes.length; i += 4) lotes.push(codigosPendentes.slice(i, i + 4));
+        const PARALELO = 3;
+        let abortar = false;
+        for (let i = 0; i < lotes.length && !abortar && !cancelado; i += PARALELO) {
+          const onda = lotes.slice(i, i + PARALELO);
+          const respostas = await Promise.all(
+            onda.map(lote =>
+              base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote })
+                .then(resp => resp?.data || {})
+                .catch(() => ({ _falhou: true }))
+            )
+          );
+          const houveMudanca = respostas.some(r => (r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0);
+          if (houveMudanca && !cancelado) await refetch();
+          if (respostas.some(r => r.abortado || r.resultados?.some(x => x.abortado))) abortar = true;
+        }
+        if (!cancelado) await refetch();
+      } finally {
+        rodando = false;
       }
-      // Recarrega sempre ao final para o card "Pendentes" refletir o estado real do banco
-      // (evita contagem fantasma de pendentes que já viraram autorizada/rejeitada).
-      await refetch();
-    })();
-  }, [ativa, codigosPendentes, reconsultaFeita, refetch]);
+    };
+
+    // Dispara imediatamente ao montar/ter pendentes e repete a cada 30s.
+    rodarReconsulta();
+    timer = setInterval(rodarReconsulta, 30000);
+    return () => { cancelado = true; clearInterval(timer); };
+  }, [ativa, codigosPendentes, refetch]);
 
   useEffect(() => {
     if (cargaFiltro?.numero_carga) {
