@@ -12,6 +12,7 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProdutoCardList from './ProdutoCardList';
 import { registrarGeoPedido } from '@/lib/registrarGeoPedido';
+import { listarTudo } from '@/lib/omieHelpers';
 
 // Regra de prioridade de preço (escopo Omie):
 // 1. AcaoPromocional ativa (status=ativa, dentro do período, vinculada ao cliente OU à tabela do cliente)
@@ -126,7 +127,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // Cache persistente: do 2º pedido em diante vêm do cache instantâneo.
   const { data: produtos = [] } = useQuery({
     queryKey: ['produtos'],
-    queryFn: () => base44.entities.Produto.filter({ status: 'ativo' }),
+    // Paginação COMPLETA — o .filter() simples trunca no limite padrão da SDK,
+    // o que fazia a lista de produtos vir parcial/vazia (causa do "0 produtos disponíveis").
+    queryFn: () => listarTudo(base44.entities.Produto, { status: 'ativo' }),
     staleTime: 10 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
     retry: 3,
@@ -142,7 +145,9 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   // registros no total) — mantém a aba "Pedido" instantânea.
   const { data: precosAll = [] } = useQuery({
     queryKey: ['precosProduto', tabelaPrecoIdEfetivo],
-    queryFn: () => tabelaPrecoIdEfetivo ? base44.entities.PrecoProduto.filter({ tabela_id: tabelaPrecoIdEfetivo }) : [],
+    // Paginação COMPLETA — uma tabela de preço pode ter centenas/milhares de itens.
+    // O .filter() simples truncava a lista, zerando os produtos com preço (causa do "0 produtos").
+    queryFn: () => tabelaPrecoIdEfetivo ? listarTudo(base44.entities.PrecoProduto, { tabela_id: tabelaPrecoIdEfetivo }) : [],
     enabled: !!tabelaPrecoIdEfetivo && activeTab === 'produto',
     staleTime: 5 * 60 * 1000,
   });
