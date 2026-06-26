@@ -43,7 +43,7 @@ const formatCurrency = (v) => {
 };
 
 const ETAPA_OMIE_LABELS = {
-  '10': { label: 'Pedido', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
+  '10': { label: 'Pendente', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
   '20': { label: 'Liberados', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
   '50': { label: 'Conferência', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
   '60': { label: 'Faturado', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
