@@ -489,8 +489,17 @@ async function handlePedido(base44, topic, evt) {
     }
   } else if (topic === 'VendaProduto.EtapaAlterada') {
     const etapaEvento = evt?.etapa;
-    const novoStatus = mapEtapaParaStatus(etapaEvento);
-    if (novoStatus) updates.status = novoStatus;
+    // ⚠️ BLINDAGEM FISCAL: EtapaAlterada NUNCA cancela um pedido por número de etapa.
+    // Etapa 70/80 no Omie NÃO significa cancelamento (70 = concluído/pós-faturamento).
+    // Cancelamento só vem dos topics dedicados (Cancelada/Excluida/Devolvida), que checam
+    // NF autorizada antes. Aqui só aplicamos AVANÇO de fluxo seguro (10/20/50/60); qualquer
+    // outra etapa (70/80/etc.) não altera o status local — evita "cancelado" fantasma
+    // gravado sem rastro em pedidos faturados.
+    const etapaStr = String(etapaEvento || '');
+    const novoStatus = ['10', '20', '50', '60'].includes(etapaStr) ? mapEtapaParaStatus(etapaEvento) : null;
+    // Nunca rebaixar um pedido já faturado por um evento de etapa anterior fora de ordem.
+    const jaFaturadoLocal = pedido.status === 'faturado' || pedido.faturado === true || !!pedido.numero_nota_fiscal;
+    if (novoStatus && !(jaFaturadoLocal && novoStatus !== 'faturado')) updates.status = novoStatus;
     if (String(etapaEvento || '') === '60') {
       updates.faturado = true; updates.status_faturamento = 'faturado'; updates.data_faturamento = updates.data_faturamento || new Date().toISOString();
       if (evt?.numero_nf || evt?.numero_nota) { updates.numero_nota_fiscal = String(evt.numero_nf || evt.numero_nota); dadosCarga.numero_nf = updates.numero_nota_fiscal; }
