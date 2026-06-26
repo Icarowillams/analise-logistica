@@ -15,13 +15,15 @@ function getUserCacheKey() {
   } catch { return 'anon'; }
 }
 
+// Retorna { data, fresco } — fresco=true se dentro do TTL.
+// IMPORTANTE: NÃO removemos mais o cache expirado. Servimos o snapshot velho na hora
+// (stale-while-revalidate) para a tela abrir instantânea, e revalidamos em background.
 function getCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY + '_' + getUserCacheKey());
     if (!raw) return null;
     const { data, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp < CACHE_TTL) return data;
-    localStorage.removeItem(CACHE_KEY + '_' + getUserCacheKey());
+    return { data, fresco: Date.now() - timestamp < CACHE_TTL };
   } catch {}
   return null;
 }
@@ -138,16 +140,19 @@ export default function useDadosMontagem() {
   const retryTimerRef = useRef(null);
 
   const carregar = useCallback(async (isRetry = false) => {
-    // Cache: mostrar dados imediatos
+    // Cache stale-while-revalidate: serve o último snapshot IMEDIATAMENTE (mesmo expirado),
+    // para a tela abrir sem spinner. Se ainda estiver fresco (<TTL), nem revalida agora.
     if (!isRetry) {
       const cached = getCache();
-      if (cached && cached.pedidos?.length > 0) {
-        setPedidos(cached.pedidos);
-        setMotoristas(cached.motoristas || []);
-        setVeiculos(cached.veiculos || []);
-        setCargas(cached.cargas || []);
+      if (cached?.data?.pedidos?.length > 0) {
+        setPedidos(cached.data.pedidos);
+        setMotoristas(cached.data.motoristas || []);
+        setVeiculos(cached.data.veiculos || []);
+        setCargas(cached.data.cargas || []);
         setLoading(false);
-        // continua para atualizar em background
+        // Cache ainda fresco → não busca de novo agora (o auto-refresh de 60s cuida disso).
+        if (cached.fresco) return;
+        // Expirado → segue para revalidar em background, sem tirar os dados da tela.
       }
     }
 
@@ -579,11 +584,11 @@ export default function useDadosMontagem() {
       if (/rate.?limit|too many requests|429/i.test(msg)) {
         console.warn('[MontagemCarga] Rate limit após retries, retry em 5s...');
         const cached = getCache();
-        if (cached && cached.pedidos?.length > 0) {
-          setPedidos(cached.pedidos);
-          setMotoristas(cached.motoristas || []);
-          setVeiculos(cached.veiculos || []);
-          setCargas(cached.cargas || []);
+        if (cached?.data?.pedidos?.length > 0) {
+          setPedidos(cached.data.pedidos);
+          setMotoristas(cached.data.motoristas || []);
+          setVeiculos(cached.data.veiculos || []);
+          setCargas(cached.data.cargas || []);
           setLoading(false);
         }
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
