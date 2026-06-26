@@ -45,7 +45,7 @@ const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 // usando o mesmo mecanismo de reserva de slot do rate_limit_global, mas em chave separada — assim
 // não desacelera as demais chamadas (que seguem 1,5s).
 const FAT_SLOT_KEY = 'rate_limit_faturamento';
-const FAT_SLOT_INTERVAL_MS = 5000;   // 5s entre faturamentos
+const FAT_SLOT_INTERVAL_MS = 3000;   // 3s entre faturamentos (era 5s) — acelera o lote mantendo a defesa contra "consumo redundante"
 const FAT_SLOT_LOCK_MS = 8000;       // validade do mutex curto (auto-release)
 const FAT_SLOT_WAIT_CAP_MS = 60000;  // teto de espera por slot
 const FAT_METHODS = new Set(['FaturarPedidoVenda', 'EmitirNFS', 'EmitirNF']);
@@ -274,9 +274,12 @@ function criarErroOmie(data, fallback = 'Erro Omie') {
 // crescente em vez de ritmo fixo lento. A maioria das NFs autoriza em 2-4s; checar cedo e parar
 // no instante em que confirmar economiza o tempo ocioso, sem deixar de esperar a NF de verdade.
 // A precisão é a mesma (só resolve com NF confirmada); apenas não desperdiça espera à toa.
-const TENTATIVAS_CONFIRMA = 6;          // re-consultas do StatusPedido após faturar (cobre SEFAZ lenta)
-// Backoff crescente por tentativa (ms): 3s, 4s, 5s, 6s, 8s, 10s — total ~36s só se a SEFAZ demorar muito.
-const ESPERAS_CONFIRMA_MS = [3000, 4000, 5000, 6000, 8000, 10000];
+// Confirmação síncrona ENXUTA por pedido: a maioria das NFs autoriza em 1-3s. Tentamos rápido e,
+// se não confirmar logo, NÃO prendemos o pedido — marcamos "aguardando" e fechamos o número na
+// rodada final de confirmação em lote (varreConfirmacaoFinal). Mantém a confirmação, sem travar o lote.
+const TENTATIVAS_CONFIRMA = 3;          // re-consultas rápidas logo após faturar (era 6)
+// Backoff curto: 1,5s, 2,5s, 4s — total ~8s no pior caso (era ~36s). O resto fica para a rodada final.
+const ESPERAS_CONFIRMA_MS = [1500, 2500, 4000];
 // Espaçamento entre pedidos = 0. O throttle global atômico (omieCall) já serializa as chamadas
 // em ~1,5s; um delay fixo extra aqui só dobra a lentidão (ex.: 42s perdidos em 14 pedidos) sem
 // proteger nada. O circuit breaker continua cobrindo rajada/rate limit.
@@ -466,6 +469,50 @@ async function verificarCircuitBreaker(base44) {
   return { bloqueado: false };
 }
 
+// ── RODADA FINAL DE CONFIRMAÇÃO EM LOTE ──
+// Depois de faturar todos rápido, alguns ficam "pendente" porque a SEFAZ ainda processava.
+// Em vez de prender cada pedido por ~36s no laço, varremos AQUI os pendentes de uma vez,
+// com 2 passadas espaçadas, e promovemos a "autorizada" os que já têm número. Mantém a
+// confirmação do número sem travar o lote inteiro. Best-effort: o que não confirmar continua
+// pendente honesto e a reconciliação assíncrona fecha depois.
+async function varreConfirmacaoFinal(base44, fila, pedidos, resultados, erros) {
+  const pendentes = resultados
+    .map((r, idx) => ({ r, idx }))
+    .filter(({ r }) => !r.sucesso && r.status === 'pendente' && codigoPedidoValido(r.codigo_pedido));
+  if (pendentes.length === 0) return;
+
+  const PASSADAS = [4000, 8000]; // espera entre varreduras; total ~12s para o lote todo
+  for (let passada = 0; passada < PASSADAS.length; passada++) {
+    const aindaPendentes = pendentes.filter(({ idx }) => resultados[idx]?.status === 'pendente');
+    if (aindaPendentes.length === 0) break;
+    await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, {
+      mensagem: `Confirmando ${aindaPendentes.length} NF(s) na SEFAZ (rodada ${passada + 1}/${PASSADAS.length})...`,
+      atualizado_em: new Date().toISOString()
+    }).catch(() => {});
+    await sleep(PASSADAS[passada]);
+
+    for (const { r, idx } of aindaPendentes) {
+      const cod = r.codigo_pedido;
+      let conf;
+      try {
+        conf = await consultarStatusPedido(base44, cod);
+      } catch { continue; } // rate limit/bloqueio → tenta na próxima passada
+      if (!conf || conf.erro) continue;
+      if (conf.status_real === 'emitida') {
+        await aplicarResultadoConfirmado(base44, cod, conf);
+        await gravarLogEmissao(base44, fila, cod, 'autorizada', conf.mensagem, { faultstring: '', faultcode: conf.codigo_sefaz || '100' });
+        resultados[idx] = { codigo_pedido: cod, sucesso: true, status: 'autorizada', numero_nf: conf.numero_nf || '', mensagem: conf.mensagem };
+      } else if (conf.status_real === 'rejeitada') {
+        await aplicarResultadoConfirmado(base44, cod, conf);
+        await gravarLogEmissao(base44, fila, cod, 'rejeitada', conf.mensagem, { faultcode: conf.codigo_sefaz || '', erro_tipo: 'sefaz' });
+        resultados[idx] = { codigo_pedido: cod, sucesso: false, status: 'rejeitada', mensagem: conf.mensagem };
+        erros.push({ codigo_pedido: cod, mensagem: conf.mensagem });
+      }
+    }
+    await base44.asServiceRole.entities.FilaEmissaoNF.update(fila.id, { resultados, erros, atualizado_em: new Date().toISOString() }).catch(() => {});
+  }
+}
+
 // Valida se o código de pedido é numérico e maior que zero (evita pedidos fake/teste).
 function codigoPedidoValido(codigo) {
   const n = Number(codigo);
@@ -595,23 +642,10 @@ Deno.serve(async (req) => {
       let transitorioPedido = false;
 
       try {
-        // (1) Estado real ANTES de faturar — não refatura quem já tem NF.
-        let real = await consultarStatusPedido(base44, codigoPedido);
-
-        if (real?.erro) {
-          // Falha de consulta (não é rate limit): mantém pendente honesto, mensagem limpa.
-          statusFinalPedido = 'pendente';
-          mensagemPedido = 'Aguardando emissão no Omie — será confirmado automaticamente.';
-        } else if (real.status_real === 'emitida') {
-          // Já estava emitida (etapa 60 / faturada=S) — anti-dup: só grava autorizada.
-          statusFinalPedido = 'autorizada';
-          realConfirmado = real;
-          mensagemPedido = real.mensagem;
-        } else if (real.status_real === 'rejeitada') {
-          statusFinalPedido = 'rejeitada';
-          realConfirmado = real;
-          mensagemPedido = real.mensagem;
-        } else {
+        // OTIMIZAÇÃO: a checagem de idempotência (jaPossuiNf, leitura LOCAL) logo acima já garante
+        // que não refaturamos quem tem NF. Removida a consulta Omie "olhar antes de faturar" — era
+        // 1 chamada extra por pedido (gargalo). Vai direto ao faturamento; a confirmação vem depois.
+        {
           // (2) Etapa 50 sem NF → aciona a emissão.
           let respFat = null;
           if (body.mock_omie_response) {
@@ -763,6 +797,10 @@ Deno.serve(async (req) => {
       // Espaçamento GENEROSO entre pedidos — emite lento de propósito (confirma cada um).
       if (i < pedidos.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
     }
+
+    // RODADA FINAL: fecha o número das NFs que ficaram "aguardando SEFAZ" durante o lote.
+    // Faturamos rápido (sem prender cada pedido); aqui confirmamos os pendentes de uma vez.
+    await varreConfirmacaoFinal(base44, fila, pedidos, resultados, erros);
 
     // Conta resultados confirmados: autorizadas, pendentes honestos (SEFAZ ainda processando).
     const autorizadas = resultados.filter(r => r.status === 'autorizada' || r.status === 'ja_emitida').length;
