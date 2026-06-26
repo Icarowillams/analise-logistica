@@ -187,7 +187,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // verdade (mesma função do botão Atualizar), espaçada o bastante para não estourar o rate limit.
   // Falha de sync (bloqueio/rate limit) é silenciosa: cai pra releitura local e tenta no próximo ciclo.
   const recarregarLocal = useCallback(async () => {
-    await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos_auto' })
+    await base44.functions.invoke('reconciliarEtapasAbertasOmie', { etapas_abertas: ['10', '20'] })
       .catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
@@ -688,17 +688,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return list;
   }, [pedidosComVendedorCliente, statusFilters, cenarioFiscalFilter, search, sortField, sortDir, envioInicio, envioFim, vendedorSearch, vendedorIds, produtoSearch, produtoIds, pedidoIdsComProduto, clienteCodigo, redeFilter, segmentoFilter, rotaFilter, cidadeSearch, pedidoItems]);
 
-  // Atualizar: sincroniza espelho com Omie e recarrega dados locais
+  // Atualizar: RECONCILIAÇÃO DIRIGIDA e LEVE. Em vez de varrer centenas de pedidos
+  // (etapas 10/20/50/60 via ListarPedidos → rate limit + timeout), consulta individualmente
+  // só os pedidos do espelho que estão EM ABERTO (etapa 10/20) — os únicos candidatos a furo
+  // de webhook (ex: 2698/2700 que viraram 20 no Omie mas o espelho ficou em 10). Corrige a
+  // etapa real direto no espelho. Rápido, sem REDUNDANT.
   const syncEAtualizar = async () => {
     setSyncLoading(true);
     const timeoutId = setTimeout(() => {
       setSyncLoading(false);
-      toast.info('A sincronização está demorando mais que o esperado. Os dados serão atualizados automaticamente em breve.');
-    }, 25000);
+      toast.info('A reconciliação está demorando mais que o esperado. Os dados serão atualizados automaticamente em breve.');
+    }, 130000);
     try {
-      // Sincroniza o espelho PedidoLiberadoOmie com o Omie para pegar etapas atualizadas
-      const res = await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos', forcar_sem_cache: true }).catch(e => {
-        console.warn('[GerenciarPedidos] sync espelho falhou:', e?.message);
+      const res = await base44.functions.invoke('reconciliarEtapasAbertasOmie', { etapas_abertas: ['10', '20'] }).catch(e => {
+        console.warn('[GerenciarPedidos] reconciliação falhou:', e?.message);
         return null;
       });
       await Promise.all([
@@ -706,18 +709,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
         queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
         queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
       ]);
-      if (res?.data?.em_andamento) {
-        toast.success('Dados recarregados! Sincronização com Omie já em andamento em segundo plano.');
-      } else if (res?.data?.bloqueado) {
+      if (res?.data?.bloqueado) {
         toast.warning('API Omie temporariamente bloqueada — dados locais recarregados. Tente novamente em alguns minutos.');
       } else if (res?.data?.sucesso) {
-        const { criados = 0, atualizados = 0 } = res.data;
-        toast.success(`Sincronizado: ${atualizados} atualizados, ${criados} novos`);
+        const { atualizados = 0, candidatos = 0 } = res.data;
+        if (atualizados > 0) {
+          toast.success(`Reconciliado: ${atualizados} etapa(s) corrigida(s) de ${candidatos} verificada(s).`);
+        } else {
+          toast.success(`Tudo sincronizado — ${candidatos} pedido(s) em aberto conferido(s), nenhuma divergência.`);
+        }
       } else if (!res) {
         toast.warning('Sem resposta do servidor — dados locais recarregados.');
       } else {
         const motivo = res?.data?.error || 'erro desconhecido';
-        toast.warning(`Sincronização falhou: ${motivo}`);
+        toast.warning(`Reconciliação falhou: ${motivo}`);
       }
     } finally {
       clearTimeout(timeoutId);
