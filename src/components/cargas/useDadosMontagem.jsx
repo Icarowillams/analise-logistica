@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 // v5: invalida snapshots antigos que guardavam pedidos com produtos[] vazio (pacotes
 // zerados). Após o preenchimento dos espelhos, o cache velho ainda servia os zeros —
 // subir a versão descarta esses snapshots e força uma carga fresca já correta.
-const CACHE_KEY = 'montagem_carga_v5';
+const CACHE_KEY = 'montagem_carga_v6';
 const CACHE_TTL = 60 * 1000;
 
 function getUserCacheKey() {
@@ -436,13 +436,13 @@ export default function useDadosMontagem() {
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
       console.log(`[DEBUG CONTAGEM] FASE 1 → vendas: ${todasVendas.length} | d1SemItens: ${d1SemItens.length} | trocasSemItens: ${trocasSemItens.length} | total Fase 1: ${pedidosFase1.length}`);
-      // ANTI-FLICKER: a Fase 1 traz produtos[] vazios (pacotes = 0). Só repintamos a tela
-      // com ela se ainda NÃO houver pedidos exibidos (primeira carga / tela vazia). No
-      // auto-refresh de 60s, mantemos a lista atual (com pacotes) e deixamos a Fase 2
-      // substituir de uma vez — assim os pacotes não caem a 0 e voltam.
-      if (!temPedidosRef.current) {
-        setPedidos(pedidosFase1);
-      }
+      // CORREÇÃO PACOTES ZERADOS: as vendas Omie do espelho JÁ vêm com produtos[] preenchido
+      // (os pacotes corretos). Só D1/Trocas/NF55-local chegam sem produtos e dependem da Fase 2.
+      // Por isso pintamos a Fase 1 SEMPRE — assim os pacotes das vendas aparecem na hora e NÃO
+      // dependem da Fase 2 (que pode falhar por 429). Antes, o anti-flicker segurava a repintura
+      // no auto-refresh esperando a Fase 2, e quando ela falhava os pacotes ficavam zerados.
+      setPedidos(pedidosFase1);
+      temPedidosRef.current = pedidosFase1.length > 0;
       setMotoristas(motoristasAtivos);
       setVeiculos(veiculosAtivos);
       setCargas(carP);
