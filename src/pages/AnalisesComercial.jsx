@@ -60,7 +60,7 @@ export default function AnalisesComercial() {
         icon={BarChart3}
       />
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="flex flex-wrap gap-1 h-auto mb-6 bg-slate-100 p-1 rounded-lg w-full">
+        <TabsList className="flex flex-nowrap sm:flex-wrap gap-1 h-auto mb-6 bg-slate-100 p-1 rounded-lg w-full overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0 sm:[&>button]:shrink">
           <TabsTrigger value="painel" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <Target className="w-3.5 h-3.5" />Painel de Metas
           </TabsTrigger>

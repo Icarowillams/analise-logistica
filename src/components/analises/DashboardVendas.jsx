@@ -330,8 +330,8 @@ export default function DashboardVendas() {
       {/* Tabela detalhada */}
       <Card>
         <CardHeader><CardTitle className="text-base">Pedidos detalhados</CardTitle></CardHeader>
-        <CardContent className="overflow-auto">
-          <table className="w-full text-sm">
+        <CardContent className="overflow-auto [-webkit-overflow-scrolling:touch]">
+          <table className="w-full min-w-[820px] text-sm">
             <thead className="bg-slate-50 sticky top-0">
               <tr>
                 <th className="p-2 text-left">Faturamento</th>
