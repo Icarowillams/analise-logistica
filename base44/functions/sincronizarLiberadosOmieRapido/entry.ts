@@ -170,7 +170,10 @@ function montarRegistroEspelho(pedidoOmie, indices, mapaRota, mapaVendedor, pedi
     codigo_pedido: String(pedidoOmie.codigo_pedido),
     codigo_pedido_integracao: pedidoOmie.codigo_pedido_integracao || '',
     numero_pedido: String(pedidoOmie.numero_pedido || ''),
-    etapa: String(pedidoOmie.etapa || '20'),
+    // NUNCA assume '20' (Liberados) como fallback — isso marcava como liberado pedidos que no
+    // Omie estão na etapa 10 (Pedido de Venda / Aguardando faturamento). O objeto pedidoOmie já
+    // traz a etapa REAL (lida de cab.etapa, com fallback para a etapa do loop). Mantém como veio.
+    etapa: String(pedidoOmie.etapa || ''),
     status_real: pedidoOmie.status_real || null,
     status_label: pedidoOmie.status_label || null,
     numero_nf: pedidoOmie.numero_nf || '',
