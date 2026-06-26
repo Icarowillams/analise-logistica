@@ -638,26 +638,63 @@ function codigoPedidoDoLog(log) {
   return String(evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || evt?.codIntPedido || '');
 }
 
-// 🛡️ PRIORIDADE DE CONSOLIDAÇÃO: quando vários eventos do MESMO pedido chegam na
-// mesma rajada, NÃO basta manter o mais recente — um 'Alterada' que chega 2s depois
-// de um 'EtapaAlterada→60' não carrega a etapa, então a transição de etapa se perderia
-// (causa real do espelho preso em 50 enquanto o Omie já está em 60).
-// Regra: eventos que carregam transição de etapa/faturamento têm prioridade sobre os
-// que não carregam. Empate de prioridade → vence o mais recente (ordem da fila).
-function prioridadeEvento(log) {
-  const topic = log.webhook_topic || log.call || '';
-  let body;
-  try { body = JSON.parse(log.payload_resposta || '{}'); } catch { body = {}; }
-  const evt = body.event || body;
-  const temEtapa = !!String(evt?.etapa || '').trim();
-  // 3 = Faturada (estado final mais forte)
-  if (topic === 'VendaProduto.Faturada') return 3;
-  // 2 = EtapaAlterada com etapa no payload (carrega a transição 50→60 etc.)
-  if (topic === 'VendaProduto.EtapaAlterada' && temEtapa) return 2;
-  // 1 = qualquer outro com etapa explícita
-  if (temEtapa) return 1;
-  // 0 = Alterada/Incluida sem etapa — NÃO deve sobrepor um evento de etapa
-  return 0;
+// ─── REDE DE SEGURANÇA: reconciliação espelho ↔ status local ─────────────────
+// CÓDIGO PURO (sem automação). Roda no fim de cada execução do worker. Garante que
+// o status local do Pedido NUNCA fique divergente da etapa real do espelho, mesmo
+// que algum webhook tenha falhado ou se perdido. Mapa etapa→status:
+//   20 → liberado | 50 → montagem | 60 → faturado
+// Só toca em pedidos ativos, não cancelados e não soltos manualmente (blindagem fiscal).
+const ETAPA_STATUS_LOCAL = { '20': 'liberado', '50': 'montagem', '60': 'faturado' };
+
+async function reconciliarStatusLocalComEspelho(base44) {
+  // Espelhos recém-sincronizados (a janela onde divergências aparecem).
+  const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+    {}, '-sincronizado_em', 300
+  ).catch(() => []);
+  if (!espelhos.length) return { reconciliados: 0 };
+
+  // etapa esperada por código de pedido (espelho mais recente vence).
+  const etapaPorCodigo = new Map();
+  for (const e of espelhos) {
+    const k = e.codigo_pedido ? String(e.codigo_pedido).trim() : null;
+    if (k && !etapaPorCodigo.has(k)) etapaPorCodigo.set(k, e);
+  }
+
+  // ⚡ POUCAS QUERIES: em vez de 1 filter por espelho (estoura o rate limit do Base44),
+  // carrega os pedidos ativos em lotes por status e cruza em memória.
+  const statusAtivos = ['pendente', 'enviado', 'liberado', 'montagem'];
+  const pedidosAtivos = [];
+  for (const st of statusAtivos) {
+    let sk = 0;
+    while (true) {
+      const lote = await base44.asServiceRole.entities.Pedido.filter({ status: st }, '-created_date', 500, sk).catch(() => []);
+      pedidosAtivos.push(...lote);
+      if (lote.length < 500) break;
+      sk += 500;
+    }
+  }
+
+  const updates = [];
+  const nowIso = new Date().toISOString();
+  for (const p of pedidosAtivos) {
+    if (!p.omie_codigo_pedido || p.solto_manualmente || p.data_cancelamento || p.cancelado_no_omie) continue;
+    const esp = etapaPorCodigo.get(String(p.omie_codigo_pedido).trim());
+    if (!esp) continue;
+    const esperado = ETAPA_STATUS_LOCAL[String(esp.etapa || '')];
+    if (!esperado || p.status === esperado) continue;
+
+    const upd = { id: p.id, status: esperado };
+    if (esperado === 'liberado' && !p.data_liberacao) upd.data_liberacao = nowIso;
+    if (esperado === 'faturado') {
+      upd.faturado = true; upd.status_faturamento = 'faturado';
+      if (!p.data_faturamento) upd.data_faturamento = esp.data_faturamento || nowIso;
+      if (!p.numero_nota_fiscal && esp.numero_nf) upd.numero_nota_fiscal = String(esp.numero_nf);
+    }
+    updates.push(upd);
+  }
+
+  if (updates.length > 0) await base44.asServiceRole.entities.Pedido.bulkUpdate(updates);
+  return { reconciliados: updates.length };
 }
 
 // ─── Lock de instância única ────────────────────────────────────────────────
@@ -722,44 +759,19 @@ Deno.serve(async (req) => {
         return Response.json({ sucesso: true, processados: 0, motivo: 'fila vazia' });
       }
 
-      // DEDUPE INTELIGENTE POR PEDIDO: numa rajada chegam vários eventos do mesmo
-      // codigo_pedido. Mantemos só o MAIS RECENTE de cada pedido para processar agora
-      // (a fila vem ordenada por created_date asc, então o último da lista por pedido é o
-      // mais novo). Os anteriores do mesmo pedido viram 'ignorado' — evita N ConsultarPedido
-      // redundantes e garante que a etapa mais nova prevaleça sobre a antiga.
-      const maisRecentePorPedido = new Map(); // codigo_pedido -> log
-      const semPedido = []; // logs sem codigo_pedido identificável (processados normalmente)
-      const aIgnorar = [];
-      for (const log of pendentes) {
-        const cod = codigoPedidoDoLog(log);
-        if (!cod) { semPedido.push(log); continue; }
-        const anterior = maisRecentePorPedido.get(cod);
-        if (!anterior) {
-          maisRecentePorPedido.set(cod, log);
-          continue;
-        }
-        // 🛡️ Vence quem tem MAIOR prioridade de etapa; empate → o mais recente (log atual,
-        // pois a fila vem ordenada por created_date asc). O perdedor é consolidado/ignorado.
-        if (prioridadeEvento(log) >= prioridadeEvento(anterior)) {
-          aIgnorar.push(anterior);
-          maisRecentePorPedido.set(cod, log);
-        } else {
-          aIgnorar.push(log);
-        }
-      }
-      for (const log of aIgnorar) {
-        await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
-          status: 'ignorado', mensagem_erro: 'Consolidado (evento mais recente do mesmo pedido será processado)', webhook_processado_em: new Date().toISOString()
-        }).catch(() => {});
-      }
-
-      // Ordem de chegada preservada: processa na ordem original, já sem os consolidados.
-      const idsConsolidados = new Set(aIgnorar.map(l => l.id));
-      const aProcessar = pendentes.filter(l => !idsConsolidados.has(l.id));
+      // ⚠️ SEM CONSOLIDAÇÃO QUE DESCARTA ETAPAS:
+      // A versão anterior mantinha apenas 1 evento por pedido na rajada e descartava o resto.
+      // Isso perdia transições de etapa permanentemente (ex: o evento "vencedor" 60→faturado
+      // falhava por rate limit e o "perdedor" 20→liberado já tinha sido descartado → status
+      // local nunca atualizava). REGRA NOVA: NUNCA descartar um evento de etapa.
+      // Processamos TODOS os eventos em ordem cronológica (created_date asc, como vêm da fila).
+      // O único descarte seguro é o de eventos EXATAMENTE iguais (mesmo topic+id+etapa),
+      // feito logo abaixo via chaveDedupe — esse não perde nenhuma transição.
+      const aProcessar = pendentes;
 
       const vistos = new Set();
       let processados = 0;
-      let ignoradosDup = aIgnorar.length;
+      let ignoradosDup = 0;
       let pausadoPorBloqueio = false;
       const inicioMs = Date.now();
 
@@ -843,6 +855,7 @@ Deno.serve(async (req) => {
       // SELF-CHAINING: se ainda há pendentes e não pausou por bloqueio, libera o lock e
       // re-dispara o worker para esvaziar a fila sem esperar o scheduler de 5min.
       let reagendado = false;
+      let reconciliados = 0;
       if (!pausadoPorBloqueio) {
         const aindaPendentes = await base44.asServiceRole.entities.LogIntegracaoOmie.filter(
           { endpoint: 'webhook', status: 'pendente' }, 'created_date', 1
@@ -852,10 +865,16 @@ Deno.serve(async (req) => {
           base44.asServiceRole.functions.invoke('processarFilaWebhookOmie', { origem: 'self_chain' })
             .catch((e) => console.error('[processarFilaWebhookOmie] self-chain falhou:', e?.message));
           reagendado = true;
+        } else {
+          // FILA VAZIA → rede de segurança: alinha status local ao espelho (código puro).
+          // Só roda quando não há mais nada pendente, garantindo que toda transição já
+          // processada esteja refletida no Pedido.status antes de encerrar.
+          const rec = await reconciliarStatusLocalComEspelho(base44).catch(() => ({ reconciliados: 0 }));
+          reconciliados = rec.reconciliados || 0;
         }
       }
 
-      return Response.json({ sucesso: true, processados, ignorados_duplicados: ignoradosDup, pausado_por_bloqueio: pausadoPorBloqueio, reagendado });
+      return Response.json({ sucesso: true, processados, ignorados_duplicados: ignoradosDup, reconciliados, pausado_por_bloqueio: pausadoPorBloqueio, reagendado });
     } finally {
       // Libera o lock sempre (se o self-chain já liberou, este update é inócuo).
       await liberarLock(base44);
