@@ -16,9 +16,15 @@ export const dentroPeriodo = (dataStr, inicio, fim) => {
   return true;
 };
 
-export const formatarMoeda = (v) => `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Arredonda para 2 casas eliminando lixo de ponto flutuante (ex: 237.40000000000003 -> 237.4)
+export const arredondar2 = (v) => Math.round(((Number(v) || 0) + Number.EPSILON) * 100) / 100;
+
+export const formatarMoeda = (v) => `R$ ${arredondar2(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const formatarNumero = (v) => (Number(v) || 0).toLocaleString('pt-BR');
+
+// Valor numérico para CSV no padrão brasileiro: 2 casas, vírgula decimal, sem separador de milhar
+export const valorCSV = (v) => arredondar2(v).toFixed(2).replace('.', ',');
 
 export const exportarCSV = (nome, headers, linhas) => {
   const csv = [headers.join(';'), ...linhas.map(l => l.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');

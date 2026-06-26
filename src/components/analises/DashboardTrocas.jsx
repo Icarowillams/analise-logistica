@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey, arredondar2, valorCSV } from './utilsAnalises';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const CORES = ['#dc2626', '#f59e0b', '#0891b2', '#7c3aed', '#16a34a', '#f97316', '#64748b'];
@@ -116,8 +116,8 @@ export default function DashboardTrocas() {
   }), [trocasVisita, filtros]);
 
   const totais = useMemo(() => {
-    const valor = filtradas.reduce((a, t) => a + (t.valor_total || 0), 0);
-    const ticket = filtradas.length ? valor / filtradas.length : 0;
+    const valor = arredondar2(filtradas.reduce((a, t) => a + arredondar2(t.valor_total), 0));
+    const ticket = filtradas.length ? arredondar2(valor / filtradas.length) : 0;
     const pacotes = filtradas.reduce((a, t) => a + (t.qtd_pacotes || 0), 0);
     const qtdVisita = trocasVisitaFiltradas.length;
     // Qtd de itens trocados via visita
@@ -155,7 +155,7 @@ export default function DashboardTrocas() {
     filtradas.forEach(t => {
       const k = t.vendedor_nome || '-';
       if (!v[k]) v[k] = { nome: k, qtd: 0, valor: 0 };
-      v[k].qtd++; v[k].valor += t.valor_total || 0;
+      v[k].qtd++; v[k].valor = arredondar2(v[k].valor + arredondar2(t.valor_total));
     });
     return Object.values(v).sort((a, b) => b.valor - a.valor).slice(0, 10);
   }, [filtradas]);
@@ -179,7 +179,7 @@ export default function DashboardTrocas() {
       const k = mesKey(t.data_faturamento || t.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), valor: 0, qtd: 0 };
-      grupo[k].valor += t.valor_total || 0;
+      grupo[k].valor = arredondar2(grupo[k].valor + arredondar2(t.valor_total));
       grupo[k].qtd++;
     });
     return Object.values(grupo).sort((a, b) => a.mes.localeCompare(b.mes)).slice(-12);
@@ -191,7 +191,7 @@ export default function DashboardTrocas() {
       if (!filtros.inicio && !filtros.fim) return true;
       return dentroPeriodo(c.created_date, filtros.inicio, filtros.fim);
     });
-    const valorCortado = cf.reduce((a, c) => a + (c.valor_cortado || 0), 0);
+    const valorCortado = arredondar2(cf.reduce((a, c) => a + arredondar2(c.valor_cortado), 0));
     return { total: cf.length, valorCortado };
   }, [cortes, filtros]);
 
@@ -200,7 +200,7 @@ export default function DashboardTrocas() {
     filtradas.map(t => [
       (t.data_faturamento || t.created_date)?.slice(0,10),
       formatarNumeroPedido(t), t.cliente_nome, t.vendedor_nome, t.rota_nome,
-      t.motivo_troca_descricao, t.qtd_pacotes || 0, t.valor_total, t.status
+      t.motivo_troca_descricao, t.qtd_pacotes || 0, valorCSV(t.valor_total), t.status
     ])
   );
 

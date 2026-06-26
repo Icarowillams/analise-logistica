@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, UserCheck, UserX, DollarSign, Target, Loader2, Filter, RefreshCw, Search, Printer, MapPin, User, Route as RouteIcon } from 'lucide-react';
 import KpiCard from './KpiCard';
-import { formatarMoeda, formatarNumero, exportarCSV } from './utilsAnalises';
+import { formatarMoeda, formatarNumero, exportarCSV, valorCSV } from './utilsAnalises';
 
 const hoje = new Date().toISOString().slice(0, 10);
 const inicioMes = hoje.slice(0, 8) + '01';

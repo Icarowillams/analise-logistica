@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey, arredondar2, valorCSV } from './utilsAnalises';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -91,11 +91,11 @@ export default function DashboardVendas() {
 
   // KPIs principais
   const totais = useMemo(() => {
-    const valor = filtrados.reduce((a, p) => a + (p.valor_total || 0), 0);
+    const valor = arredondar2(filtrados.reduce((a, p) => a + arredondar2(p.valor_total), 0));
     const itens = filtrados.reduce((a, p) => a + (p.total_itens || 0), 0);
     const clientesUnicos = new Set(filtrados.map(p => p.cliente_id)).size;
-    const ticket = filtrados.length ? valor / filtrados.length : 0;
-    const valorBonif = pedidosBonif.reduce((a, p) => a + (p.valor_total || 0), 0);
+    const ticket = filtrados.length ? arredondar2(valor / filtrados.length) : 0;
+    const valorBonif = arredondar2(pedidosBonif.reduce((a, p) => a + arredondar2(p.valor_total), 0));
     const percBonif = valor > 0 ? ((valorBonif / valor) * 100).toFixed(1) : '0';
     return { total: filtrados.length, valor, itens, clientes: clientesUnicos, ticket, percBonif };
   }, [filtrados, pedidosBonif]);
@@ -107,14 +107,14 @@ export default function DashboardVendas() {
       const k = mesKey(p.data_faturamento || p.created_date);
       if (!k || k.length < 7) return;
       if (!grupo[k]) grupo[k] = { mes: k, label: formatMes(k), valor: 0, qtd: 0, clientes: new Set() };
-      grupo[k].valor += p.valor_total || 0;
+      grupo[k].valor = arredondar2(grupo[k].valor + arredondar2(p.valor_total));
       grupo[k].qtd++;
       grupo[k].clientes.add(p.cliente_id);
     });
     return Object.values(grupo)
       .sort((a, b) => a.mes.localeCompare(b.mes))
       .slice(-12)
-      .map(g => ({ ...g, clientes: g.clientes.size, ticket: g.qtd ? g.valor / g.qtd : 0 }));
+      .map(g => ({ ...g, clientes: g.clientes.size, ticket: g.qtd ? arredondar2(g.valor / g.qtd) : 0 }));
   }, [filtrados]);
 
   // Ranking de vendedores com % da meta
@@ -124,7 +124,7 @@ export default function DashboardVendas() {
       const k = p.vendedor_id || 'sem_vendedor';
       const nome = p.vendedor_nome || '-';
       if (!v[k]) v[k] = { id: k, nome, valor: 0, qtd: 0, clientes: new Set() };
-      v[k].valor += p.valor_total || 0;
+      v[k].valor = arredondar2(v[k].valor + arredondar2(p.valor_total));
       v[k].qtd++;
       v[k].clientes.add(p.cliente_id);
     });
@@ -149,7 +149,7 @@ export default function DashboardVendas() {
     filtrados.forEach(p => {
       const k = p.cliente_id || p.cliente_nome;
       if (!c[k]) c[k] = { nome: p.cliente_nome || '-', valor: 0, qtd: 0 };
-      c[k].valor += p.valor_total || 0;
+      c[k].valor = arredondar2(c[k].valor + arredondar2(p.valor_total));
       c[k].qtd++;
     });
     return Object.values(c).sort((a, b) => b.valor - a.valor).slice(0, 10);
@@ -161,7 +161,7 @@ export default function DashboardVendas() {
       if (!filtros.inicio && !filtros.fim) return true;
       return dentroPeriodo(c.created_date, filtros.inicio, filtros.fim);
     });
-    const valorCortado = cortesFiltrados.reduce((a, c) => a + (c.valor_cortado || 0), 0);
+    const valorCortado = arredondar2(cortesFiltrados.reduce((a, c) => a + arredondar2(c.valor_cortado), 0));
     return { total: cortesFiltrados.length, valorCortado };
   }, [cortes, filtros]);
 
@@ -171,7 +171,7 @@ export default function DashboardVendas() {
     filtrados.forEach(p => {
       const k = p.rota_nome || 'Sem rota';
       if (!r[k]) r[k] = { nome: k, valor: 0, qtd: 0 };
-      r[k].valor += p.valor_total || 0;
+      r[k].valor = arredondar2(r[k].valor + arredondar2(p.valor_total));
       r[k].qtd++;
     });
     return Object.values(r).sort((a, b) => b.valor - a.valor).slice(0, 8);
@@ -182,7 +182,7 @@ export default function DashboardVendas() {
     filtrados.map(p => [
       (p.data_faturamento || p.created_date)?.slice(0, 10),
       formatarNumeroPedido(p), p.cliente_nome, p.vendedor_nome, p.rota_nome,
-      p.modelo_nota, p.origem, p.total_itens, p.valor_total, p.status
+      p.modelo_nota, p.origem, p.total_itens, valorCSV(p.valor_total), p.status
     ])
   );
 

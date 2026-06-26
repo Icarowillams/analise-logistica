@@ -16,7 +16,7 @@ import {
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
 import useVisitasAnalise from './useVisitasAnalise';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, arredondar2 } from './utilsAnalises';
 
 const CORES = ['#0891b2', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#f97316', '#64748b', '#0ea5e9'];
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -84,8 +84,8 @@ export default function DashboardClientes() {
     const comPendencia = clientesFiltrados.filter(c => c.pendencia_financeira).length;
     // Clientes que compraram no período
     const clientesAtivos = new Set(pedidosFiltrados.map(p => p.cliente_id)).size;
-    const faturamentoTotal = pedidosFiltrados.reduce((a, p) => a + (p.valor_total || 0), 0);
-    const ticketMedio = clientesAtivos > 0 ? faturamentoTotal / clientesAtivos : 0;
+    const faturamentoTotal = arredondar2(pedidosFiltrados.reduce((a, p) => a + arredondar2(p.valor_total), 0));
+    const ticketMedio = clientesAtivos > 0 ? arredondar2(faturamentoTotal / clientesAtivos) : 0;
     // Clientes sem compra no período (inativos comercialmente)
     const clientesSemCompra = clientesFiltrados.filter(c => c.status === 'ativo' && !new Set(pedidosFiltrados.map(p => p.cliente_id)).has(c.id)).length;
     return { total: clientesFiltrados.length, ativos, inativos, bloqueados, comPendencia, clientesAtivos, faturamentoTotal, ticketMedio, clientesSemCompra };
@@ -104,7 +104,7 @@ export default function DashboardClientes() {
       const cli = clientes.find(c => c.id === p.cliente_id);
       if (!cli) return;
       const k = nomeSeg.get(cli.segmento_id) || 'Sem segmento';
-      if (s[k]) s[k].faturamento += p.valor_total || 0;
+      if (s[k]) s[k].faturamento = arredondar2(s[k].faturamento + arredondar2(p.valor_total));
     });
     return Object.values(s).sort((a, b) => b.faturamento - a.faturamento).slice(0, 8);
   }, [clientesFiltrados, pedidosFiltrados, clientes, segmentos]);
@@ -123,7 +123,7 @@ export default function DashboardClientes() {
       const cli = clientes.find(c => c.id === p.cliente_id);
       if (!cli || !cli.rede_id) return;
       const k = nomeRede.get(cli.rede_id) || 'Sem rede';
-      if (r[k]) r[k].faturamento += p.valor_total || 0;
+      if (r[k]) r[k].faturamento = arredondar2(r[k].faturamento + arredondar2(p.valor_total));
     });
     return Object.values(r).sort((a, b) => b.faturamento - a.faturamento).slice(0, 8);
   }, [clientesFiltrados, pedidosFiltrados, clientes, redes]);
@@ -139,7 +139,7 @@ export default function DashboardClientes() {
     pedidosFiltrados.forEach(p => {
       const estado = p.cliente_estado || clientes.find(c => c.id === p.cliente_id)?.estado || 'N/I';
       if (!e[estado]) e[estado] = { estado, clientes: 0, faturamento: 0 };
-      e[estado].faturamento += p.valor_total || 0;
+      e[estado].faturamento = arredondar2(e[estado].faturamento + arredondar2(p.valor_total));
     });
     return Object.values(e).sort((a, b) => b.faturamento - a.faturamento).slice(0, 10);
   }, [clientesFiltrados, pedidosFiltrados, clientes]);
@@ -162,7 +162,7 @@ export default function DashboardClientes() {
     pedidosFiltrados.forEach(p => {
       const k = p.cliente_id;
       if (!c[k]) c[k] = { nome: p.cliente_nome || '-', valor: 0, qtd: 0 };
-      c[k].valor += p.valor_total || 0;
+      c[k].valor = arredondar2(c[k].valor + arredondar2(p.valor_total));
       c[k].qtd++;
     });
     return Object.values(c).sort((a, b) => b.valor - a.valor).slice(0, 10);
