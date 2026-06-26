@@ -82,13 +82,13 @@ export default function TabelaBoletos({ titulos, selecionados, setSelecionados, 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base flex items-center justify-between gap-2">
+        <CardTitle className="text-base flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <span>{filtrados.length} títulos | {selecionados.length} selecionados | R$ {totalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-          <Input className="max-w-xs" placeholder="Filtrar cliente/documento..." value={filtro} onChange={(e) => setFiltro(e.target.value)} />
+          <Input className="w-full sm:max-w-xs" placeholder="Filtrar cliente/documento..." value={filtro} onChange={(e) => setFiltro(e.target.value)} />
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0 max-h-[60vh] overflow-auto">
-        <table className="w-full text-sm">
+      <CardContent className="p-0 max-h-[60vh] overflow-auto [-webkit-overflow-scrolling:touch]">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-slate-50 sticky top-0">
             <tr>
               <th className="p-2 w-10">

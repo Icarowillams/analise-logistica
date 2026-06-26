@@ -634,15 +634,15 @@ export default function Cargas() {
 
   return (
     <div className="space-y-4 w-full">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Truck className="w-8 h-8 text-amber-500" />
+          <Truck className="w-7 h-7 sm:w-8 sm:h-8 text-amber-500 shrink-0" />
           <div>
-            <h1 className="text-2xl font-bold">Cargas</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Cargas</h1>
             <p className="text-sm text-slate-500">Dados do espelho local</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto">
           {temPendentesNaFila && (
             <Button
               onClick={processarFilaAgora}
@@ -724,7 +724,7 @@ export default function Cargas() {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] sm:flex-wrap [&>button]:shrink-0">
         <Button
           variant={abaAtiva === 'montagem' ? 'default' : 'outline'}
           onClick={() => setAbaAtiva('montagem')}
@@ -796,7 +796,7 @@ export default function Cargas() {
             {isLoading ? (
               <div className="py-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
             ) : (
-              <div className="text-sm [&_th]:px-2 [&_td]:px-2 [&_td]:py-2 [&_.relative.w-full.overflow-auto]:overflow-x-hidden">
+              <div className="text-sm [&_th]:px-2 [&_td]:px-2 [&_td]:py-2">
                 <DataTable data={cargas} columns={columns} searchable={false} pageSize={200} emptyMessage="Nenhuma carga criada ainda" />
               </div>
             )}

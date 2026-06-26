@@ -64,7 +64,7 @@ export default function DataTable({
   return (
     <div className="space-y-4">
       {searchable && (
-        <div className="relative max-w-sm">
+        <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Buscar..."
@@ -78,7 +78,9 @@ export default function DataTable({
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+      {/* Rolagem horizontal controlada: em telas estreitas a tabela rola lateralmente
+          em vez de espremer/cortar as colunas. -webkit-overflow-scrolling dá inércia no mobile. */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto shadow-sm [-webkit-overflow-scrolling:touch]">
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50/80">
@@ -168,7 +170,7 @@ export default function DataTable({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <p className="text-sm text-slate-500">
             Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, sortedData.length)} de {sortedData.length}
           </p>

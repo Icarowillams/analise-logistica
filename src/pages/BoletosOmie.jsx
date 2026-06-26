@@ -22,23 +22,23 @@ export default function BoletosOmie() {
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
       <div className="flex items-center gap-3 flex-wrap">
-        <Receipt className="w-8 h-8 text-amber-500" />
+        <Receipt className="w-7 h-7 sm:w-8 sm:h-8 text-amber-500 shrink-0" />
         <div>
-          <h1 className="text-2xl font-bold">Boletos Omie</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Boletos Omie</h1>
           <p className="text-sm text-slate-500">Emissão de boletos por carga e consulta/impressão (2ª via)</p>
         </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 max-w-xl">
-          <TabsTrigger value="emissao" className="flex items-center gap-2">
-            <FileSignature className="w-4 h-4" /> Emissão
+          <TabsTrigger value="emissao" className="flex items-center gap-1.5 px-1.5">
+            <FileSignature className="w-4 h-4 shrink-0" /> Emissão
           </TabsTrigger>
-          <TabsTrigger value="historico" className="flex items-center gap-2">
-            <History className="w-4 h-4" /> Histórico
+          <TabsTrigger value="historico" className="flex items-center gap-1.5 px-1.5">
+            <History className="w-4 h-4 shrink-0" /> Histórico
           </TabsTrigger>
-          <TabsTrigger value="impressao" className="flex items-center gap-2">
-            <Printer className="w-4 h-4" /> Consulta / Impressão
+          <TabsTrigger value="impressao" className="flex items-center gap-1.5 px-1.5">
+            <Printer className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Consulta / </span>Impressão
           </TabsTrigger>
         </TabsList>
 

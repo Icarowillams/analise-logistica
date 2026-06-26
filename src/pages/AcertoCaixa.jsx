@@ -209,15 +209,15 @@ export default function AcertoCaixa() {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3 justify-between flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <div className="flex items-center gap-3">
-          <Wallet className="w-8 h-8 text-emerald-500" />
+          <Wallet className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-500 shrink-0" />
           <div>
-            <h1 className="text-2xl font-bold">Acerto de Caixa</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Acerto de Caixa</h1>
             <p className="text-sm text-slate-500">Acerto de notas e recebimentos por carga</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">
           <RelatorioAnaliticoCarregamentoPdf />
           <Button onClick={sincronizarStatus} disabled={sincronizando} variant="outline" className="gap-2">
             {sincronizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -227,7 +227,7 @@ export default function AcertoCaixa() {
       </div>
 
       <Card>
-        <CardContent className="pt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div><Label>Saída de</Label><Input type="date" value={filtroIni} onChange={(e) => setFiltroIni(e.target.value)} /></div>
           <div><Label>Saída até</Label><Input type="date" value={filtroFim} onChange={(e) => setFiltroFim(e.target.value)} /></div>
           <div><Label>Data específica</Label><Input type="date" value={filtroData} onChange={(e) => setFiltroData(e.target.value)} /></div>
@@ -252,7 +252,7 @@ export default function AcertoCaixa() {
                 const totalOmie = pedidosOmie.length;
                 const nfFaltando = totalOmie > 0 && comNf < totalOmie;
                 return (
-                  <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
+                  <div key={c.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg hover:bg-slate-50">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="font-semibold">Carga {c.numero_carga} • {c.data_carga}</div>
@@ -269,9 +269,9 @@ export default function AcertoCaixa() {
                         {c.motorista_nome || '-'} • {c.rota_nome || '-'} • {c.quantidade_pedidos || 0} pedidos • {fmt(c.valor_total)}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {a && <Badge className="bg-amber-100 text-amber-800">em andamento</Badge>}
-                      <Button onClick={() => iniciarAcerto(c)} disabled={iniciando === c.id} className="bg-emerald-600 hover:bg-emerald-700">
+                      <Button onClick={() => iniciarAcerto(c)} disabled={iniciando === c.id} className="bg-emerald-600 hover:bg-emerald-700 flex-1 sm:flex-none">
                         {iniciando === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Play className="w-4 h-4 mr-1" /> {a ? 'Continuar' : 'Iniciar'}</>}
                       </Button>
                     </div>
@@ -291,14 +291,14 @@ export default function AcertoCaixa() {
           ) : (
             <div className="space-y-2">
               {acertosFinalizados.map(a => (
-                <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
+                <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg hover:bg-slate-50">
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold">Carga {a.numero_carga} • {a.data_saida_carga}</div>
                     <div className="text-xs text-slate-500">
                       {a.motorista_nome || '-'} • {(a.notas || []).length} notas • Recebido {fmt(a.valor_total_recebido)} • Dif. <span className={Number(a.valor_total_diferenca) < 0 ? 'text-red-600 font-semibold' : ''}>{fmt(a.valor_total_diferenca)}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 shrink-0 [&>button]:flex-1 sm:[&>button]:flex-none">
                     <Button variant="outline" size="sm" onClick={() => navigate(`/AcertoCaixaEditar?id=${a.id}`)}>
                       Ver
                     </Button>
