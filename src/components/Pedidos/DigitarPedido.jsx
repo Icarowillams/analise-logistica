@@ -116,6 +116,25 @@ export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, on
   // Ao selecionar: garante o Cliente COMPLETO. Se o item do roteiro veio parcial
   // (sem match na lista do vendedor), busca o registro completo por id/código.
   const [carregandoCliente, setCarregandoCliente] = useState(false);
+
+  // Retry com backoff curto para "Rate limit exceeded" — em rede móvel/instável a
+  // SDK pode estourar o limite momentaneamente. Reexecuta a chamada até 3x antes de desistir.
+  const filtrarComRetry = async (query, tentativas = 3) => {
+    for (let i = 0; i < tentativas; i++) {
+      try {
+        return await base44.entities.Cliente.filter(query, '-created_date', 1);
+      } catch (err) {
+        const rateLimit = /rate limit/i.test(err?.message || '');
+        if (rateLimit && i < tentativas - 1) {
+          await new Promise(res => setTimeout(res, 800 * (i + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    return [];
+  };
+
   const selecionarCliente = async (cli) => {
     const completo = clientes.find(c => c.id === cli.id);
     if (completo) { setSelectedCliente(completo); return; }
@@ -123,14 +142,19 @@ export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, on
     try {
       let achado = null;
       if (cli.id) {
-        const r = await base44.entities.Cliente.filter({ id: cli.id }, '-created_date', 1);
+        const r = await filtrarComRetry({ id: cli.id });
         achado = r[0];
       }
       if (!achado && cli.codigo_interno) {
-        const r = await base44.entities.Cliente.filter({ codigo_interno: cli.codigo_interno }, '-created_date', 1);
+        const r = await filtrarComRetry({ codigo_interno: cli.codigo_interno });
         achado = r[0];
       }
+      // Fallback final: se nem id nem código resolveram (rede ruim), abre com os
+      // dados parciais do roteiro em vez de travar a seleção.
       setSelectedCliente(achado || cli);
+    } catch (err) {
+      // Mesmo com rate limit persistente, não bloqueia o vendedor: usa o registro parcial.
+      setSelectedCliente(cli);
     } finally {
       setCarregandoCliente(false);
     }
