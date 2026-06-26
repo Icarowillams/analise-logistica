@@ -98,7 +98,17 @@ export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, on
     return m;
   }, [roteiros, clientes]);
 
-  const clientesFiltrados = clientesDoDia.filter(c => {
+  // Vendedor sem roteiro montado em NENHUM dia → cai para a carteira completa dele,
+  // senão a aba Roteiro fica vazia e ele não consegue emitir pedido nenhum.
+  const semRoteiroAlgum = useMemo(
+    () => roteiros.every(r => !(r.clientes_detalhes && r.clientes_detalhes.length > 0)),
+    [roteiros]
+  );
+
+  // Lista exibida: clientes do roteiro do dia; se não houver roteiro nenhum, a carteira do vendedor.
+  const clientesBase = (semRoteiroAlgum && clientesDoDia.length === 0) ? clientes : clientesDoDia;
+
+  const clientesFiltrados = clientesBase.filter(c => {
     const s = searchCliente.toLowerCase();
     return !s || c.razao_social?.toLowerCase().includes(s) || c.nome_fantasia?.toLowerCase().includes(s) || c.codigo_interno?.toLowerCase().includes(s);
   });
@@ -179,7 +189,7 @@ export default function DigitarPedido({ vendedor, activeTab, editingPedidoId, on
         {clientesFiltrados.length === 0 ? (
           <div className="text-center text-slate-500 py-12">
             <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p>Nenhum cliente encontrado para este dia</p>
+            <p>{semRoteiroAlgum ? 'Nenhum cliente vinculado a você' : 'Nenhum cliente encontrado para este dia'}</p>
           </div>
         ) : (
           <div className="space-y-2">
