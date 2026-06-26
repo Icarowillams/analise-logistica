@@ -303,6 +303,13 @@ export default function useDadosMontagem() {
           venda.rota_nome = nomeRotaAtual;
           venda.rota_cliente = nomeRotaAtual;
         }
+        // Bairro/endereço preenchidos JÁ na Fase 1 (o cliente já está em mãos aqui).
+        // Antes só vinham na Fase 2 — se ela atrasasse/desse 429, a maioria dos pedidos
+        // ficava sem bairro/endereço na tela.
+        if (cliente) {
+          venda.bairro = cliente.bairro || '';
+          venda.endereco = cliente.endereco || '';
+        }
         return venda;
       });
 
@@ -509,8 +516,9 @@ export default function useDadosMontagem() {
           const itensLocais = (semProdutos && p.pedido_id) ? (itensPedido[p.pedido_id] || []) : [];
           return {
             ...p,
-            bairro: cliente?.bairro || '',
-            endereco: cliente?.endereco || '',
+            // Preserva o que a Fase 1 já preencheu; só completa se ainda estiver vazio.
+            bairro: p.bairro || cliente?.bairro || '',
+            endereco: p.endereco || cliente?.endereco || '',
             produtos: itensLocais.length > 0
               ? itensLocais.map(i => montarItemProduto(i, 'pedido'))
               : p.produtos
