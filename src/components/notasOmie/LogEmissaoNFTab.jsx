@@ -177,9 +177,9 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   }, [logs, clientePorId, pedidoPorNumero, pedidoPorCodigoOmie]);
 
   // Reconsulta AUTOMÁTICA dos pendentes EM CICLO (sem botão e sem automação no servidor):
-  // enquanto a aba estiver aberta E houver pendentes, consulta o Omie ao vivo a cada 30s e
+  // enquanto a aba estiver aberta E houver pendentes, consulta o Omie ao vivo a cada 15s e
   // sincroniza os logs que já foram autorizados/rejeitados. Assim uma NF autorizada no Omie
-  // aparece como "Autorizada" aqui em até ~30s, sem precisar sair/voltar nem clicar em Recarregar.
+  // aparece como "Autorizada" aqui em até ~15s, sem precisar sair/voltar nem clicar em Recarregar.
   // Só leitura (reprocessar=false), nunca reemite. Guard anti-sobreposição evita ciclos paralelos.
   useEffect(() => {
     if (!ativa) return;
@@ -218,7 +218,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
 
     // Dispara imediatamente ao montar/ter pendentes e repete a cada 30s.
     rodarReconsulta();
-    timer = setInterval(rodarReconsulta, 30000);
+    timer = setInterval(rodarReconsulta, 15000);
     return () => { cancelado = true; clearInterval(timer); };
   }, [ativa, codigosPendentes, refetch]);
 
