@@ -84,10 +84,13 @@ export default function PedidoCellRenderer({ col, p }) {
       if (isD1 || isTroca) {
         return <span className="block truncate text-slate-300 text-[10px]">{isD1 ? 'D1' : 'Troca'}</span>;
       }
-      return <span className="block truncate text-slate-300 text-[10px]">—</span>;
+      // Venda 55 ainda PENDENTE (nunca enviada ao Omie) → não é "Sem espelho" (erro),
+      // é simplesmente um pedido que ainda não foi liberado/enviado. Mostra estado claro.
+      return <Badge className="bg-slate-100 text-slate-500 border-slate-200 border text-[10px]" title="Pedido ainda não enviado ao Omie. O espelho aparece assim que ele for liberado/enviado.">Não enviado</Badge>;
     }
     if (!p.omie_codigo_pedido) {
-      return <span className="block truncate text-slate-300 text-[10px]">—</span>;
+      // Marcado como enviado mas sem código Omie ainda (envio em andamento na fila).
+      return <Badge className="bg-amber-50 text-amber-700 border-amber-200 border text-[10px]" title="Envio ao Omie em andamento. O espelho aparece em instantes.">Enviando…</Badge>;
     }
     // Fonte PRIMÁRIA: etapa do espelho (omie_etapa_real, vindo de PedidoLiberadoOmie).
     // Fallback: Pedido.etapa_omie (se existir). Só "Sem espelho" quando nenhum dos dois tem valor.
