@@ -444,6 +444,64 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
   }
   await base44.asServiceRole.entities.Pedido.update(pedido_id, updateData);
 
+  // ============================================================
+  // ESPELHO IMEDIATO (PedidoLiberadoOmie) — mesmo upsert do enviarPedidoOmie.
+  // Sem isto, o pedido recebia o código Omie mas continuava "Sem espelho" na tela
+  // por minutos, até uma sincronização periódica rodar. Cria/atualiza a linha na hora.
+  // ============================================================
+  if (codigoOmie) {
+    try {
+      const cli = clienteBase44 || {};
+      const registroEspelho = {
+        codigo_pedido: String(codigoOmie),
+        codigo_pedido_integracao: pedido.id,
+        numero_pedido: numeroPedidoOmie ? String(numeroPedidoOmie) : '',
+        etapa: '20',
+        status_real: null,
+        status_label: 'Liberado',
+        numero_nf: '',
+        codigo_cliente: String(cli.codigo_omie || ''),
+        codigo_cliente_integracao: cli.codigo_integracao || cli.codigo || pedido.cliente_codigo || '',
+        codigo_cliente_cod: String(cli.codigo_interno || cli.codigo || pedido.cliente_codigo || ''),
+        cnpj_cpf_cliente: cli.cnpj_cpf || pedido.cliente_cpf_cnpj || '',
+        cliente_id: cli.id || pedido.cliente_id || null,
+        nome_cliente: cli.razao_social || pedido.cliente_nome || '',
+        nome_fantasia: cli.nome_fantasia || pedido.cliente_nome_fantasia || '',
+        cidade: cli.cidade || pedido.cliente_cidade || '',
+        tipo_nota: cli.tipo_nota || '55',
+        rota_id: cli.rota_id || pedido.rota_id || null,
+        rota_nome: pedido.rota_nome || 'Sem Rota',
+        vendedor_id: cli.vendedor_id || pedido.vendedor_id || null,
+        vendedor_nome: pedido.vendedor_nome || '',
+        data_previsao: pedido.data_previsao_entrega || '',
+        quantidade_itens: items.length,
+        valor_total_pedido: pedido.valor_total || 0,
+        pedido_id: pedido.id,
+        sincronizado_em: new Date().toISOString(),
+        origem_sync: 'webhook'
+      };
+      // UPSERT IDEMPOTENTE por codigo_pedido — nunca INSERT cego. Preserva produtos já existentes.
+      const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie
+        .filter({ codigo_pedido: String(codigoOmie) }, '-sincronizado_em', 50).catch(() => []);
+      if (existentes.length) {
+        const peso = (r) => ((r.produtos || []).length > 0 ? 1e15 : 0) + new Date(r.sincronizado_em || 0).getTime();
+        existentes.sort((a, b) => peso(b) - peso(a));
+        const principal = existentes[0];
+        const dadosUpsert = { ...registroEspelho };
+        if ((!registroEspelho.produtos || registroEspelho.produtos.length === 0) && (principal.produtos || []).length > 0) {
+          delete dadosUpsert.produtos;
+          if (!registroEspelho.quantidade_itens) delete dadosUpsert.quantidade_itens;
+        }
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.update(principal.id, dadosUpsert).catch(() => {});
+        for (const dup of existentes.slice(1)) {
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(dup.id).catch(() => {});
+        }
+      } else {
+        await base44.asServiceRole.entities.PedidoLiberadoOmie.create(registroEspelho);
+      }
+    } catch (e) { console.error('[fila] reconciliar espelho:', e.message); }
+  }
+
   console.log(`[PERF] Pedido ${pedido_id}: ${Date.now() - t0}ms | sucesso: true`);
   return { sucesso: true, pedido_id, codigo_pedido_omie: codigoOmie, numero_pedido_omie: numeroPedidoOmie, duracao_ms: Date.now() - t0 };
 }
