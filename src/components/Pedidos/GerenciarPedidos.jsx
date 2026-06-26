@@ -187,7 +187,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // verdade (mesma função do botão Atualizar), espaçada o bastante para não estourar o rate limit.
   // Falha de sync (bloqueio/rate limit) é silenciosa: cai pra releitura local e tenta no próximo ciclo.
   const recarregarLocal = useCallback(async () => {
-    await base44.functions.invoke('reconciliarEtapasAbertasOmie', { etapas_abertas: ['10', '20'] })
+    await base44.functions.invoke('reconciliarEtapasAbertasOmie', { modo: 'auto' })
       .catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
@@ -700,7 +700,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       toast.info('A reconciliação está demorando mais que o esperado. Os dados serão atualizados automaticamente em breve.');
     }, 130000);
     try {
-      const res = await base44.functions.invoke('reconciliarEtapasAbertasOmie', { etapas_abertas: ['10', '20'] }).catch(e => {
+      const res = await base44.functions.invoke('reconciliarEtapasAbertasOmie', { modo: 'manual' }).catch(e => {
         console.warn('[GerenciarPedidos] reconciliação falhou:', e?.message);
         return null;
       });
@@ -711,12 +711,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
       ]);
       if (res?.data?.bloqueado) {
         toast.warning('API Omie temporariamente bloqueada — dados locais recarregados. Tente novamente em alguns minutos.');
+      } else if (res?.data?.skipped === 'lock') {
+        toast.info('Reconciliação automática já em andamento — dados recarregados.');
       } else if (res?.data?.sucesso) {
-        const { atualizados = 0, candidatos = 0 } = res.data;
-        if (atualizados > 0) {
-          toast.success(`Reconciliado: ${atualizados} etapa(s) corrigida(s) de ${candidatos} verificada(s).`);
+        const { atualizados = 0, cancelados = 0, candidatos = 0 } = res.data;
+        const corrigidos = atualizados + cancelados;
+        if (corrigidos > 0) {
+          toast.success(`Reconciliado: ${corrigidos} etapa(s) corrigida(s) de ${candidatos} verificada(s).`);
         } else {
-          toast.success(`Tudo sincronizado — ${candidatos} pedido(s) em aberto conferido(s), nenhuma divergência.`);
+          toast.success(`Tudo sincronizado — ${candidatos} pedido(s) conferido(s), nenhuma divergência.`);
         }
       } else if (!res) {
         toast.warning('Sem resposta do servidor — dados locais recarregados.');

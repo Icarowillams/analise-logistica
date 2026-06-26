@@ -2,8 +2,12 @@
 // A tela é o espelho em tempo real do Omie: o Status deriva da ETAPA do espelho
 // (PedidoLiberadoOmie.etapa), NÃO de status/status_faturamento do Pedido.
 //
-// Mapa de etapas Omie:
-//   10 = Pendente · 20 = Liberado · 50 = Faturar · 60 = Faturado · 99 = Cancelado
+// Mapa de etapas Omie (CONFIRMADO Paulo):
+//   10 = Pendente · 20 = Liberado · 50 = Faturar · 60 = Faturado · 70 = Entregue · 80 = Cancelado
+//
+// ⚠️ 99 NÃO é status oficial do Omie — é DADO DEFASADO/INCONSISTENTE no espelho.
+// NÃO mapear 99 como cancelado: deixa cair no status local (a reconciliar). A reconciliação
+// dirigida (ConsultarPedido) corrige esses registros para a etapa real do Omie.
 //
 // O MESMO helper é usado pela coluna Status (PedidoCellRenderer) e pelo filtro de status,
 // garantindo que coluna e filtro SEMPRE concordem.
@@ -15,7 +19,7 @@ const ETAPA_PARA_STATUS = {
   '50': 'faturar',
   '60': 'faturado',
   '70': 'faturado',
-  '99': 'cancelado',
+  '80': 'cancelado',
 };
 
 // Resolve o status efetivo do pedido a partir da etapa do espelho.

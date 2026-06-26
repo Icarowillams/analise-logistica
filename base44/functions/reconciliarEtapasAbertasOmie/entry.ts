@@ -1,19 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// reconciliarEtapasAbertasOmie — REDE DE SEGURANÇA LEVE e DIRIGIDA.
+// reconciliarEtapasAbertasOmie — REDE DE SEGURANÇA LEVE, DIRIGIDA e ROTATIVA.
 //
-// Problema: o Omie não dispara webhook EtapaAlterada para 100% das transições.
-// Ex: 2698/2700 já estão em etapa 20 no Omie mas o espelho ainda diz 10, e nenhum
-// webhook chegou. Filtrar "Pendente" mostra 14 em vez de 12.
+// O Omie não dispara webhook EtapaAlterada para 100% das transições. Esta função
+// é a malha de segurança: consulta pedidos individualmente (ConsultarPedido) e
+// corrige a etapa real no espelho (PedidoLiberadoOmie). LEITURA pura — nunca fatura.
 //
-// Estratégia (LEITURA pura + update de etapa, nada além):
-//   1. Pega os PedidoLiberadoOmie locais com etapa EM ABERTO (default ['10','20']).
-//      Etapas 50/60/99 são finais/conferência — não reconciliar.
-//   2. ConsultarPedido individual no Omie (1 chamada por candidato, throttle 1,5s).
-//   3. Se a etapa real divergir, atualiza SÓ a etapa (e status_real quando faturado).
+// ESCOPO (Correção A):
+//   ATIVAS (transicionam): 10, 20, 50, 70 → reconciliadas com prioridade, em LOTE
+//     rotativo ordenado por sincronizado_em ASC (pega os mais "velhos de checagem" primeiro).
+//     Em 2-3 rodadas cobre todos os ativos girando a fila.
+//   FINAIS (raramente mudam): 60, 80 → só uma fatia pequena por rodada (incluir_finais),
+//     ou TODAS no modo manual.
+//   99 = etapa DESFASADA/INCONSISTENTE → entra como candidato a reconciliar (vira ativa).
 //
-// NÃO mexe: webhook, ListarPedidos, dedup, throttle/breaker. Só corrige os furos.
+// LOCK (Correção B): chave dedicada em ControleCircuitBreakerOmie. Se já rodando e lock
+//   no futuro → { skipped: 'lock' }. Segura via try/finally, TTL ~3min. Respeita o
+//   circuit breaker global do Omie (se bloqueado, não consulta).
+//
+// HTTP 500 "pedido não cadastrado" = pedido REALMENTE excluído/cancelado no Omie →
+//   marca etapa 80 (cancelado) no espelho. NÃO é erro fatal.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
@@ -54,6 +61,7 @@ async function registrarErroBreaker(base44, faultstring) {
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, p).catch(() => null);
 }
 
+// Resultado: { data } | { naoCadastrado: true } (HTTP 500/não encontrado = excluído no Omie)
 async function consultarPedidoOmie(base44, codigoPedido) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const controller = new AbortController();
@@ -66,15 +74,26 @@ async function consultarPedidoOmie(base44, codigoPedido) {
       signal: controller.signal
     });
     clearTimeout(tid);
-    if (res.status === 425 || res.status === 429 || res.status >= 500) {
+    if (res.status === 425 || res.status === 429) {
       const corpo = await res.text().catch(() => '');
       throw new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 120) : ''}`);
+    }
+    // HTTP 500 frequentemente é "pedido não cadastrado" (excluído no Omie). Inspeciona o corpo.
+    // O corpo vem como JSON com unicode escapado (n\u00e3o) — parseia para decodificar antes do regex.
+    if (res.status >= 500) {
+      const corpo = await res.text().catch(() => '');
+      let fault = corpo;
+      try { fault = JSON.parse(corpo)?.faultstring || corpo; } catch { /* corpo não-JSON: usa cru */ }
+      if (/n[ãa]o cadastrad|n[ãa]o encontrad|n[ãa]o localizad|inexistente/i.test(fault)) {
+        return { naoCadastrado: true };
+      }
+      throw new Error(`HTTP ${res.status} Omie${fault ? ': ' + fault.slice(0, 120) : ''}`);
     }
     const data = await res.json();
     if (data.faultstring) {
       const msg = String(data.faultstring).toLowerCase();
-      if (msg.includes('não encontrado') || msg.includes('nao encontrado') || msg.includes('não localizado') || msg.includes('nao localizado')) {
-        return { naoEncontrado: true };
+      if (msg.includes('não cadastrad') || msg.includes('nao cadastrad') || msg.includes('não encontrad') || msg.includes('nao encontrad') || msg.includes('não localizad') || msg.includes('nao localizad') || msg.includes('inexistente')) {
+        return { naoCadastrado: true };
       }
       throw new Error(data.faultstring);
     }
@@ -86,14 +105,51 @@ async function consultarPedidoOmie(base44, codigoPedido) {
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ── LOCK dedicado (mesmo padrão das filas) ──
+const LOCK_ID = '6a1e06a9aa62ceab7b3b6d97'; // reusa o registro único do breaker p/ campos de lock
+const LOCK_TTL_MS = 3 * 60_000;
+
+async function adquirirLock(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: LOCK_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  const agora = Date.now();
+  const lockAte = c?.reconcilia_lock_ate ? new Date(c.reconcilia_lock_ate).getTime() : 0;
+  if (c?.reconcilia_rodando && lockAte > agora) {
+    return false; // já rodando, lock no futuro → pula
+  }
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(LOCK_ID, {
+    reconcilia_rodando: true,
+    reconcilia_lock_ate: new Date(agora + LOCK_TTL_MS).toISOString()
+  }).catch(() => null);
+  return true;
+}
+
+async function liberarLock(base44) {
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(LOCK_ID, {
+    reconcilia_rodando: false,
+    reconcilia_lock_ate: new Date(0).toISOString()
+  }).catch(() => null);
+}
+
+const ETAPAS_ATIVAS = ['10', '20', '50', '70', '99']; // 99 = defasado → reconciliar
+const ETAPAS_FINAIS = ['60', '80'];
+
 Deno.serve(async (req) => {
+  let lockAdquirido = false;
+  let base44;
   try {
-    const base44 = createClientFromRequest(req);
+    base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { etapas_abertas = ['10', '20'], max_candidatos = 80, throttle_ms = 1500 } = body;
+    const {
+      modo = 'auto',                 // 'auto' (automação, com lote) | 'manual' (botão, todos os ativos)
+      max_lote = 50,                 // teto de consultas por rodada na automação (cabe em ~2 min)
+      fatia_finais = 8,              // quantos finais (60/80) incluir por rodada auto
+      incluir_finais = true,         // automação inclui pequena fatia de finais
+      throttle_ms = 1500
+    } = body;
     const t0 = Date.now();
 
     const { appKey, appSecret } = await getOmieCredentials(base44);
@@ -101,52 +157,99 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, error: 'Credenciais Omie não configuradas.' }, { status: 500 });
     }
 
-    // Aborta cedo se o circuit breaker estiver ativo — não renova bloqueio.
+    // Circuit breaker global — se bloqueado, não consulta.
     const cb = await checkCircuitBreaker(base44);
     if (cb.blocked) {
       return Response.json({ sucesso: false, bloqueado: true, bloqueado_ate: cb.blockedUntil, error: `API Omie bloqueada até ${cb.blockedUntil}.` }, { status: 200 });
     }
 
-    // 1. Candidatos: registros do espelho com etapa em aberto (paginado).
-    const candidatos = [];
-    const etapasSet = new Set(etapas_abertas.map(String));
+    // LOCK: a cada 2 min não pode sobrepor.
+    lockAdquirido = await adquirirLock(base44);
+    if (!lockAdquirido) {
+      return Response.json({ sucesso: true, skipped: 'lock', mensagem: 'Reconciliação já em andamento — rodada pulada.' });
+    }
+
+    // 1. Carrega TODO o espelho (paginado), ordenado por sincronizado_em ASC
+    //    para o lote rotativo pegar SEMPRE os mais desatualizados de checagem primeiro.
+    const espelho = [];
     let skip = 0;
     const LIMITE = 500;
-    while (candidatos.length < max_candidatos) {
-      const lote = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-sincronizado_em', LIMITE, skip).catch(() => []);
+    while (true) {
+      const lote = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('sincronizado_em', LIMITE, skip).catch(() => []);
       if (!lote || lote.length === 0) break;
-      for (const e of lote) {
-        if (etapasSet.has(String(e.etapa)) && e.codigo_pedido) candidatos.push(e);
-        if (candidatos.length >= max_candidatos) break;
-      }
+      espelho.push(...lote);
       if (lote.length < LIMITE) break;
       skip += LIMITE;
-      await delay(400);
+      await delay(300);
+    }
+
+    // 2. Monta a fila de candidatos conforme o modo.
+    const ativos = espelho.filter(e => e.codigo_pedido && ETAPAS_ATIVAS.includes(String(e.etapa)));
+    const finais = espelho.filter(e => e.codigo_pedido && ETAPAS_FINAIS.includes(String(e.etapa)));
+
+    let candidatos;
+    if (modo === 'manual') {
+      // Botão: TODOS os ativos visíveis na hora (force refresh). Finais só se pedido explícito.
+      candidatos = incluir_finais ? [...ativos, ...finais.slice(0, fatia_finais)] : ativos;
+    } else {
+      // Automação: lote rotativo dos ativos + fatia pequena de finais.
+      const lotaAtivos = ativos.slice(0, max_lote);
+      const lotaFinais = incluir_finais ? finais.slice(0, fatia_finais) : [];
+      candidatos = [...lotaAtivos, ...lotaFinais];
     }
 
     if (candidatos.length === 0) {
-      return Response.json({ sucesso: true, candidatos: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, duracao_ms: Date.now() - t0, motivo: 'nenhum_candidato_etapa_aberta' });
+      await liberarLock(base44);
+      lockAdquirido = false;
+      return Response.json({ sucesso: true, candidatos: 0, atualizados: 0, sem_mudanca: 0, cancelados: 0, duracao_ms: Date.now() - t0, motivo: 'nenhum_candidato' });
     }
 
-    // 2. Consulta individual + 3. update de etapa quando divergir.
+    // 3. Consulta individual + update de etapa quando divergir.
     let atualizados = 0;
     let semMudanca = 0;
-    let naoEncontrados = 0;
+    let cancelados = 0;
     let erros = 0;
     const mudancas = [];
+    const errosDetalhe = [];
 
     for (let i = 0; i < candidatos.length; i++) {
       const esp = candidatos[i];
       try {
         const r = await consultarPedidoOmie(base44, esp.codigo_pedido);
-        if (r.naoEncontrado) { naoEncontrados += 1; continue; }
+
+        // Pedido excluído/cancelado no Omie → marca etapa 80 (cancelado).
+        if (r.naoCadastrado) {
+          if (String(esp.etapa) !== '80') {
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+              etapa: '80',
+              status_real: 'cancelada',
+              status_label: 'Cancelado no Omie',
+              sincronizado_em: new Date().toISOString(),
+              origem_sync: 'reconciliacao_dirigida'
+            });
+            cancelados += 1;
+            mudancas.push({ numero_pedido: esp.numero_pedido, codigo_pedido: esp.codigo_pedido, de: String(esp.etapa), para: '80' });
+          } else {
+            // Já estava 80 — só carimba o sincronizado_em para sair da frente da fila.
+            await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, { sincronizado_em: new Date().toISOString() }).catch(() => {});
+            semMudanca += 1;
+          }
+          if (i < candidatos.length - 1) await delay(throttle_ms);
+          continue;
+        }
+
         const cab = r.data?.pedido_venda_produto?.cabecalho || r.data?.cabecalho || {};
         const etapaReal = String(cab.etapa || '');
-        if (!etapaReal) { semMudanca += 1; continue; }
+        if (!etapaReal) {
+          // Sem etapa legível — só carimba para girar a fila.
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, { sincronizado_em: new Date().toISOString() }).catch(() => {});
+          semMudanca += 1;
+          if (i < candidatos.length - 1) await delay(throttle_ms);
+          continue;
+        }
 
         if (etapaReal !== String(esp.etapa)) {
           const patch = { etapa: etapaReal, sincronizado_em: new Date().toISOString(), origem_sync: 'reconciliacao_dirigida' };
-          // Faturado (60): grava status para a coluna refletir corretamente.
           if (etapaReal === '60') {
             const infoNfe = r.data?.pedido_venda_produto?.infoNfe || r.data?.infoNfe || null;
             patch.status_real = 'emitida';
@@ -159,18 +262,19 @@ Deno.serve(async (req) => {
           atualizados += 1;
           mudancas.push({ numero_pedido: esp.numero_pedido, codigo_pedido: esp.codigo_pedido, de: String(esp.etapa), para: etapaReal });
         } else {
+          // Etapa igual — carimba sincronizado_em para o lote rotativo girar.
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, { sincronizado_em: new Date().toISOString() }).catch(() => {});
           semMudanca += 1;
         }
       } catch (e) {
         erros += 1;
         const msg = String(e.message || '');
-        if (/425|429|5\d\d|consumo|bloquead|redundante|cota|limite/i.test(msg)) {
+        if (errosDetalhe.length < 5) errosDetalhe.push(`${esp.codigo_pedido}: ${msg.slice(0, 120)}`);
+        if (/425|429|consumo|bloquead|redundante|cota|limite/i.test(msg)) {
           await registrarErroBreaker(base44, msg);
-          // Para o loop ao primeiro sinal de rate limit — não insiste para não renovar bloqueio.
-          break;
+          break; // rate limit → para imediatamente, não renova o bloqueio
         }
       }
-      // Throttle entre consultas (respeita ~1,5s do Omie).
       if (i < candidatos.length - 1) await delay(throttle_ms);
     }
 
@@ -178,23 +282,31 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.LogIntegracaoOmie.create({
       endpoint: 'produtos/pedido',
       call: 'ConsultarPedido',
-      operacao: 'reconciliar_etapas_abertas',
-      status: erros > 0 && atualizados === 0 ? 'warning' : 'sucesso',
+      operacao: 'reconciliar_etapas_dirigida',
+      status: erros > 0 && atualizados === 0 && cancelados === 0 ? 'warning' : 'sucesso',
       duracao_ms: duracao,
-      payload_resposta: JSON.stringify({ candidatos: candidatos.length, atualizados, semMudanca, naoEncontrados, erros, mudancas }).slice(0, 2000)
+      payload_resposta: JSON.stringify({ modo, candidatos: candidatos.length, ativos: ativos.length, finais: finais.length, atualizados, semMudanca, cancelados, erros, mudancas }).slice(0, 2000)
     }).catch(() => {});
+
+    await liberarLock(base44);
+    lockAdquirido = false;
 
     return Response.json({
       sucesso: true,
+      modo,
+      total_ativos: ativos.length,
+      total_finais: finais.length,
       candidatos: candidatos.length,
       atualizados,
       sem_mudanca: semMudanca,
-      nao_encontrados: naoEncontrados,
+      cancelados,
       erros,
+      erros_detalhe: errosDetalhe,
       mudancas,
       duracao_ms: duracao
     });
   } catch (error) {
+    if (lockAdquirido && base44) await liberarLock(base44).catch(() => {});
     return Response.json({ sucesso: false, error: error.message }, { status: 500 });
   }
 });
