@@ -149,7 +149,7 @@ export default function UnidadesMedida() {
           subtitle="Gerencie unidades de medida e tipos de produto"
           icon={Scale}
         />
-        <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+        <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white w-full sm:w-auto">
           Nova {activeMainTab === 'medida' ? 'Unidade de Medida' : 'Unidade de Produto'}
         </Button>
       </div>

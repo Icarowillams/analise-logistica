@@ -48,7 +48,7 @@ export default function TabelasPreco() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[750px] grid-cols-5 mb-6">
+        <TabsList className="flex flex-nowrap sm:grid w-full max-w-[750px] sm:grid-cols-5 mb-6 overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0">
           <TabsTrigger value="tabelas">Tabelas</TabsTrigger>
           <TabsTrigger value="precos">Preços</TabsTrigger>
           <TabsTrigger value="acoes">Ações</TabsTrigger>
@@ -297,10 +297,10 @@ function GerenciarTabelas({ podeOmie }) {
         {/* Filtros de Categoria/Subcategoria */}
         <div className="p-4 border-b border-slate-200 bg-slate-50">
           <div className="flex flex-wrap gap-4 items-end">
-            <div>
+            <div className="w-full sm:w-auto">
               <Label className="text-xs text-slate-500 mb-1 block">Categoria</Label>
               <Select value={filtroCategoria} onValueChange={(v) => { setFiltroCategoria(v); setFiltroSubCategoria('all'); }}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
@@ -311,10 +311,10 @@ function GerenciarTabelas({ podeOmie }) {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <Label className="text-xs text-slate-500 mb-1 block">Subcategoria</Label>
               <Select value={filtroSubCategoria} onValueChange={setFiltroSubCategoria}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>

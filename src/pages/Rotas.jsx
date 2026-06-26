@@ -110,8 +110,8 @@ export default function Rotas() {
           subtitle="Rotas de visita"
           icon={Route}
         />
-        <div className="flex gap-2">
-          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Rota</Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white w-full sm:w-auto">Nova Rota</Button>
         </div>
       </div>
 

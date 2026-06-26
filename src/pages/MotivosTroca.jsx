@@ -209,17 +209,17 @@ export default function MotivosTroca() {
           subtitle="Gerenciamento de motivos para trocas, não pedidos e não atendimentos"
           icon={AlertCircle}
         />
-        <div className="flex gap-2">
-          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 w-full sm:w-auto justify-center">
             <Upload className="w-4 h-4 mr-2" />Importar em Massa
           </Button>
-          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Registro</Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white w-full sm:w-auto">Novo Registro</Button>
         </div>
       </div>
 
       {/* Abas principais */}
       <Tabs value={mainTab} onValueChange={handleMainTabChange} className="w-full mb-6">
-        <TabsList className="grid w-full max-w-[800px] grid-cols-4">
+        <TabsList className="flex flex-nowrap sm:grid w-full max-w-[800px] sm:grid-cols-4 overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0">
           <TabsTrigger value="troca" className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4" />
             Troca

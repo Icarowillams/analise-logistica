@@ -277,12 +277,12 @@ export default function Funcionarios() {
           subtitle="Gerencie sua equipe"
           icon={Users}
         />
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {podeOmie && (
             <Button
               onClick={() => setExportarOmieOpen(true)}
               variant="outline"
-              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50 w-full sm:w-auto justify-center"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Sincronizar com Omie
@@ -290,7 +290,7 @@ export default function Funcionarios() {
           )}
           <Button
             onClick={handleNew}
-            className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
+            className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
           >
             Novo Funcionário
           </Button>

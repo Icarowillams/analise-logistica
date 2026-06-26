@@ -122,15 +122,15 @@ export default function PlanosPagamento() {
           subtitle="Condições comerciais"
           icon={CreditCard}
         />
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           {activeTab !== 'modalidade' && (
-            <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Novo Plano de Pagamento</Button>
+            <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white w-full sm:w-auto">Novo Plano de Pagamento</Button>
           )}
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[620px] grid-cols-3 mb-6">
+        <TabsList className="flex flex-nowrap sm:grid w-full max-w-[620px] sm:grid-cols-3 mb-6 overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0">
           <TabsTrigger value="cadastro" className="flex items-center gap-2">
             <CreditCard className="w-4 h-4" />
             Plano de Pagamento

@@ -144,11 +144,11 @@ export default function Redes() {
           subtitle="Grupos empresariais"
           icon={Network}
         />
-        <div className="flex gap-2">
-          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 w-full sm:w-auto justify-center">
             <Upload className="w-4 h-4 mr-2" />Importar em Massa
           </Button>
-          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">Nova Rede</Button>
+          <Button onClick={handleNew} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white w-full sm:w-auto">Nova Rede</Button>
         </div>
       </div>
 

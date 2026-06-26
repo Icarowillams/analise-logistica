@@ -54,21 +54,21 @@ export default function CenariosFiscais() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
-            <FileText className="h-6 w-6 text-neutral-900" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shrink-0">
+            <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-neutral-900" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-neutral-900">Cenários Fiscais</h1>
-            <p className="text-sm text-neutral-500">Espelho somente leitura do Omie — Naturezas e Etapas</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">Cenários Fiscais</h1>
+            <p className="text-xs sm:text-sm text-neutral-500">Espelho somente leitura do Omie — Naturezas e Etapas</p>
           </div>
         </div>
         <Button
           onClick={sincronizar}
           disabled={sincronizando}
           variant="outline"
-          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          className="border-blue-300 text-blue-700 hover:bg-blue-50 w-full sm:w-auto justify-center"
         >
           {sincronizando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
           Importar do Omie
@@ -76,7 +76,7 @@ export default function CenariosFiscais() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="flex flex-nowrap max-w-full overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0">
           <TabsTrigger value="locais">Cenários Locais</TabsTrigger>
           <TabsTrigger value="naturezas">Naturezas Omie ({naturezas.length})</TabsTrigger>
           <TabsTrigger value="etapas">Etapas Omie ({etapas.length})</TabsTrigger>
