@@ -49,47 +49,30 @@ export default function LogEmissaoBoletoTab() {
     [logsBrutos]
   );
 
-  const { data: cargas = [] } = useQuery({
-    queryKey: ['cargasParaLogBoleto', cargasRef.join(',')],
-    queryFn: () => base44.entities.Carga.filter(
-      { numero_carga: { $in: cargasRef } }, '-created_date', 500,
-      ['numero_carga', 'pedidos_omie']
-    ),
+  // Índice via BACKEND (service-role) — Carga.filter no frontend volta vazio por RLS.
+  const { data: indiceRef = {} } = useQuery({
+    queryKey: ['dadosClienteNfBoletos', cargasRef.join(',')],
+    queryFn: async () => {
+      const { data } = await base44.functions.invoke('dadosClienteNfBoletos', { numeros_carga: cargasRef });
+      return data?.indice || {};
+    },
     enabled: cargasRef.length > 0,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
-  // Índice "numero_carga|numero_pedido(sem zeros)" → { nome, nf } a partir de pedidos_omie.
-  const pedidoPorCargaNumero = useMemo(() => {
-    const m = new Map();
-    const limpo = (v) => String(v || '').trim().replace(/^0+/, '');
-    cargas.forEach(c => {
-      (c.pedidos_omie || []).forEach(p => {
-        const chave = `${String(c.numero_carga || '').trim()}|${limpo(p.numero_pedido)}`;
-        if (chave && !m.has(chave)) {
-          m.set(chave, {
-            nome: p.nome_cliente || p.nome_fantasia || '',
-            nf: String(p.numero_nf || '').replace(/^0+/, '')
-          });
-        }
-      });
-    });
-    return m;
-  }, [cargas]);
-
   // Resolve Cliente e Nº NF na renderização, sem depender de releitura/write-through.
   const logs = useMemo(() => {
     const limpo = (v) => String(v || '').trim().replace(/^0+/, '');
     return logsBrutos.map(l => {
-      const ref = pedidoPorCargaNumero.get(`${String(l.numero_carga || '').trim()}|${limpo(l.numero_pedido)}`);
+      const ref = indiceRef[`${String(l.numero_carga || '').trim()}|${limpo(l.numero_pedido)}`];
       return {
         ...l,
         cliente_nome: l.cliente_nome || ref?.nome || '',
         numero_nf: l.numero_nf || ref?.nf || ''
       };
     });
-  }, [logsBrutos, pedidoPorCargaNumero]);
+  }, [logsBrutos, indiceRef]);
 
   const filtrados = useMemo(() => {
     const termo = filtroTexto.trim().toLowerCase();
