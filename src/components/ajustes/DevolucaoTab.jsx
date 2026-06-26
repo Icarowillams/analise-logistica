@@ -19,13 +19,13 @@ export default function DevolucaoTab() {
   const [salvando, setSalvando] = useState(false);
 
   const onPedidoCarregado = (p) => {
-    setPedido(p);
     const obj = {};
-    (p.det || []).forEach(item => {
+    (p?.det || []).forEach(item => {
       const cod = item.produto?.codigo_produto;
-      obj[cod] = { quantidade: 0, motivo: '' };
+      if (cod != null) obj[cod] = { quantidade: 0, motivo: '' };
     });
     setProdutos(obj);
+    setPedido(p);
   };
 
   const devolver = async () => {

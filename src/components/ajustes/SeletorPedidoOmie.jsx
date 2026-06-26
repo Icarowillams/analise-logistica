@@ -113,9 +113,10 @@ export default function SeletorPedidoOmie({ onPedidoCarregado, etapas = ['10', '
         toast.error(data?.error || 'Pedido não encontrado');
       }
     } catch (e) {
-      toast.error(e.message);
+      toast.error(e?.response?.data?.error || e.message || 'Erro ao carregar pedido');
+    } finally {
+      setCarregandoId(null);
     }
-    setCarregandoId(null);
   };
 
   const handleRefresh = () => {
