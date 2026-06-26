@@ -512,9 +512,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   // Filter and sort
   const filtered = useMemo(() => {
-    // Gerenciar Pedidos: mostra todos os pedidos já enviados, independente do status atual.
-    // Apenas pedidos ainda não enviados (status "pendente") ficam fora desta tela.
-    let list = pedidosComVendedorCliente.filter(p => p.data_envio || p.status !== 'pendente');
+    // Gerenciar Pedidos: mostra todos os pedidos, incluindo os ainda em "pendente"
+    // (ex: D1/troca que nascem com status 'pendente' e sem data_envio). Antes esses
+    // pedidos eram descartados aqui, causando divergência entre "Todos Status" e o filtro "Pendente".
+    let list = [...pedidosComVendedorCliente];
 
     // 👻 FILTRO ANTI-FANTASMA: pedidos cancelados/excluídos/devolvidos no Omie
     // (data_cancelamento gravada ou cancelado_no_omie) NÃO aparecem nas visões operacionais —
