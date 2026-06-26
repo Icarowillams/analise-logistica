@@ -195,15 +195,16 @@ export default function useDadosMontagem() {
       (todosPedidosLocais || []).forEach(p => { if (p.cliente_id) clienteIdsRef.add(p.cliente_id); });
       (trocasAprovadas || []).forEach(t => { if (t.cliente_id) clienteIdsRef.add(t.cliente_id); });
 
-      // Busca SÓ os clientes referenciados, em lotes (evita payload gigante / list total)
+      // Busca SÓ os clientes referenciados, em lotes PARALELOS (evita payload gigante / list total).
+      // Antes os lotes rodavam em série (um await por vez); agora disparam juntos via Promise.all.
       const idsArr = [...clienteIdsRef];
       const LOTE_CLI = 200;
-      const clientesRef = [];
-      for (let i = 0; i < idsArr.length; i += LOTE_CLI) {
-        const lote = idsArr.slice(i, i + LOTE_CLI);
-        const r = await fetchWithRetry(() => base44.entities.Cliente.filter({ id: { $in: lote } }));
-        clientesRef.push(...(r || []));
-      }
+      const lotesIds = [];
+      for (let i = 0; i < idsArr.length; i += LOTE_CLI) lotesIds.push(idsArr.slice(i, i + LOTE_CLI));
+      const resultadosLotes = await Promise.all(
+        lotesIds.map(lote => fetchWithRetry(() => base44.entities.Cliente.filter({ id: { $in: lote } })))
+      );
+      const clientesRef = resultadosLotes.flat().filter(Boolean);
       // Mapa global de clientes — evita N chamadas individuais depois
       const clientesMapGlobal = new Map(clientesRef.map(c => [c.id, c]));
 
@@ -437,7 +438,6 @@ export default function useDadosMontagem() {
         const clientesMap = clientesMapGlobal;
 
         // Buscar TODOS os itens em 1 única chamada backend
-        await sleep(300);
         let itensPedido = {};
         let itensTroca = {};
 
