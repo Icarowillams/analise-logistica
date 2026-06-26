@@ -204,6 +204,32 @@ Deno.serve(async (req) => {
 
         console.log(`[liberarPedidoOmie] Pedido ${codigoPedidoOmie} movido para ${etapaLabel} no Omie com sucesso!`);
 
+        // CONFIRMAÇÃO: o Omie responde "Etapa alterada com sucesso!" mas pode REVERTER o pedido
+        // para a etapa 10 quando há bloqueio de estoque/trava. Sem confirmar a etapa real,
+        // o sistema marca como "liberado" enquanto o Omie continua na 10.
+        // Por isso reconsultamos a etapa real e só prosseguimos se ela realmente avançou.
+        if (etapaOmie === "20") {
+          await sleep(1500); // dá tempo do Omie processar/reverter antes de consultar
+          let etapaReal = null;
+          try {
+            const consulta = await omieCall(base44, "ConsultarPedido", { codigo_pedido: codigoPedidoOmie });
+            etapaReal = String(consulta?.pedido_venda_produto?.cabecalho?.etapa || consulta?.cabecalho?.etapa || '');
+            console.log(`[liberarPedidoOmie] Etapa REAL após troca: ${etapaReal}`);
+          } catch (e) {
+            console.warn('[liberarPedidoOmie] Falha ao confirmar etapa real:', e.message);
+          }
+
+          // Se a etapa real continua na 10 (ou abaixo de 20), o Omie reverteu — NÃO marcar como liberado.
+          if (etapaReal && etapaReal !== '' && Number(etapaReal) < 20) {
+            console.error(`[liberarPedidoOmie] Omie REVERTEU o pedido ${codigoPedidoOmie} para etapa ${etapaReal}.`);
+            return Response.json({
+              sucesso: false,
+              etapa_revertida: true,
+              erro: `O Omie aceitou o comando mas reverteu o pedido para a etapa ${etapaReal} (provável bloqueio de estoque ou trava na etapa "Separar Estoque"). O pedido NÃO foi liberado.`
+            });
+          }
+        }
+
         // Atualiza o Pedido local para refletir a etapa no Omie (não depende do frontend)
         if (etapaOmie === "20") {
           await base44.asServiceRole.entities.Pedido.update(pedido_id, {
