@@ -65,19 +65,12 @@ const getErroFiscal = (p) => {
   return null;
 };
 
-// Status EFETIVO: se o Omie já avançou a etapa (20=Liberado, 50=Conferência/Montagem,
-// 60+=Faturado), o status local "pendente/enviado" está atrasado — o efetivo é o do Omie.
-// Garante que "Liberado no Omie" => "Liberado no status", sem esperar reconciliação.
-const getStatusEfetivo = (p) => {
-  const etapa = p.omie_etapa_real || p.etapa_omie;
-  const local = p.status;
-  if ((local === 'pendente' || local === 'enviado') && etapa) {
-    if (etapa === '20') return 'liberado';
-    if (etapa === '50') return 'montagem';
-    if (etapa === '60' || etapa === '70') return 'faturado';
-  }
-  return local;
-};
+// O Status reflete SEMPRE o status local real do pedido (p.status), nada de "promover" pela
+// etapa do Omie. A etapa 20 do Omie é "Aguardando faturamento" — NÃO significa que o pedido
+// foi liberado no sistema. Promover pendente→liberado pela etapa 20 fazia a coluna Status dizer
+// "Liberado" enquanto o filtro "Pendente" (que usa p.status real) ainda o trazia: contradição.
+// A etapa real do Omie continua visível na sua própria coluna "Etapa Omie".
+const getStatusEfetivo = (p) => p.status;
 
 export default function PedidoCellRenderer({ col, p }) {
   if (col.id === 'status') {
