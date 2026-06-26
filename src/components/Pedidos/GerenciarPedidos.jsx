@@ -366,34 +366,6 @@ export default function GerenciarPedidos({ onEditPedido }) {
       .catch(() => { autoEspelhoRef.current = false; });
   }, [pedidos, omieMap, queryClient]);
 
-  // 🔄 CONVERGÊNCIA STATUS ↔ ETAPA OMIE: se o Omie já liberou (etapa 20) mas o status local
-  // continua pendente/enviado, grava 'liberado' no banco — "liberado no Omie = liberado no status".
-  // Roda 1x por brecha detectada, em lote, sem consultar o Omie (usa o omieMap já carregado).
-  const convergStatusRef = React.useRef(false);
-  useEffect(() => {
-    if (convergStatusRef.current) return;
-    if (!pedidosComVendedorCliente.length) return;
-    const aLiberar = pedidosComVendedorCliente.filter(p =>
-      (p.status === 'pendente' || p.status === 'enviado')
-      && p.omie_etapa_real === '20'
-      && !p.data_cancelamento && !p.cancelado_no_omie
-    );
-    if (aLiberar.length === 0) return;
-    convergStatusRef.current = true;
-    (async () => {
-      const LOTE = 20;
-      for (let i = 0; i < aLiberar.length; i += LOTE) {
-        const lote = aLiberar.slice(i, i + LOTE);
-        await Promise.all(lote.map(p => base44.entities.Pedido.update(p.id, {
-          status: 'liberado',
-          data_liberacao: p.data_liberacao || new Date().toISOString()
-        }))).catch(() => {});
-        if (i + LOTE < aLiberar.length) await new Promise(r => setTimeout(r, 200));
-      }
-      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-    })();
-  }, [pedidosComVendedorCliente, queryClient]);
-
   // Itens carregados SOB DEMANDA: só quando o usuário usa o filtro de produto.
   // No load inicial NÃO baixa os ~5.700 itens (era o vilão de 18s).
   const filtroProdutoAtivo = produtoIds.length > 0 || !!produtoSearch.trim();
@@ -525,6 +497,34 @@ export default function GerenciarPedidos({ onEditPedido }) {
       };
     });
   }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
+
+  // 🔄 CONVERGÊNCIA STATUS ↔ ETAPA OMIE: se o Omie já liberou (etapa 20) mas o status local
+  // continua pendente/enviado, grava 'liberado' no banco — "liberado no Omie = liberado no status".
+  // Roda 1x por brecha detectada, em lote, sem consultar o Omie (usa o omieMap já carregado).
+  const convergStatusRef = React.useRef(false);
+  useEffect(() => {
+    if (convergStatusRef.current) return;
+    if (!pedidosComVendedorCliente.length) return;
+    const aLiberar = pedidosComVendedorCliente.filter(p =>
+      (p.status === 'pendente' || p.status === 'enviado')
+      && p.omie_etapa_real === '20'
+      && !p.data_cancelamento && !p.cancelado_no_omie
+    );
+    if (aLiberar.length === 0) return;
+    convergStatusRef.current = true;
+    (async () => {
+      const LOTE = 20;
+      for (let i = 0; i < aLiberar.length; i += LOTE) {
+        const lote = aLiberar.slice(i, i + LOTE);
+        await Promise.all(lote.map(p => base44.entities.Pedido.update(p.id, {
+          status: 'liberado',
+          data_liberacao: p.data_liberacao || new Date().toISOString()
+        }))).catch(() => {});
+        if (i + LOTE < aLiberar.length) await new Promise(r => setTimeout(r, 200));
+      }
+      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
+    })();
+  }, [pedidosComVendedorCliente, queryClient]);
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
