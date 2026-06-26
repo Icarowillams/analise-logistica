@@ -59,7 +59,9 @@ async function fetchWithRetry(fn, retries = 3, delay = 1500) {
       return await fn();
     } catch (err) {
       const msg = err?.response?.data?.error || err?.message || '';
-      if (/rate.?limit|too many requests|429/i.test(msg) && i < retries - 1) {
+      const status = err?.response?.status || err?.status;
+      const ehRateLimit = status === 429 || /rate.?limit|too many requests|429/i.test(msg);
+      if (ehRateLimit && i < retries - 1) {
         console.warn(`[MontagemCarga] Rate limit, retry ${i + 1}/${retries} em ${delay}ms...`);
         await sleep(delay);
         delay *= 2;
@@ -472,10 +474,13 @@ export default function useDadosMontagem() {
         ].filter(Boolean);
 
         try {
-          const resp = await base44.functions.invoke('getItensPedidosLote', {
+          // COM RETRY: a busca de itens é o que preenche os PACOTES. Um único 429 (rate
+          // limit do Base44) aqui deixava DEZENAS de pedidos com produtos[] vazio = pacotes
+          // zerados de forma persistente. fetchWithRetry repete com backoff exponencial.
+          const resp = await fetchWithRetry(() => base44.functions.invoke('getItensPedidosLote', {
             pedido_ids: todosIdsPedidos.length > 0 ? todosIdsPedidos : [],
             troca_ids: temTrocas ? trocasSemItens.map(t => t.pedido_troca_id) : []
-          });
+          }));
           itensPedido = resp.data?.itens_pedido || {};
           itensTroca = resp.data?.itens_troca || {};
         } catch (err) {
@@ -647,12 +652,16 @@ export default function useDadosMontagem() {
     };
   }, [carregar]);
 
-  // Auto-refresh leve: a cada 60s relê as entidades locais (sem Omie) para que
+  // Auto-refresh leve: a cada 3 min relê as entidades locais (sem Omie) para que
   // pedidos liberados entrem na lista sozinhos, sem o logístico clicar em Atualizar.
+  // Intervalo aumentado de 60s → 180s: a releitura recarrega o banco inteiro (espelho +
+  // pedidos + clientes + cargas) e, repetida a cada minuto junto com outras telas, estourava
+  // o rate limit (429) do Base44 — o que fazia a Fase 2 falhar e os pacotes zerarem. O botão
+  // "Atualizar" continua disponível para forçar a atualização imediata quando necessário.
   useEffect(() => {
     const intervalo = setInterval(() => {
       recarregarLocal();
-    }, 60000);
+    }, 180000);
     return () => clearInterval(intervalo);
   }, [recarregarLocal]);
 
