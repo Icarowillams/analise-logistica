@@ -34,7 +34,9 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const RETRIES = [1000, 2000, 4000];
+  // Esperas longas: "consumo redundante" do Omie pede ~40-55s. Retries curtos (1-2-4s)
+  // re-batiam dentro da janela e reiniciavam o contador → loop infinito. Agora respeitamos.
+  const RETRIES = [55000, 55000];
   let lastErr = '';
   for (let i = 0; i <= RETRIES.length; i++) {
     try {
@@ -46,6 +48,12 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (res.status >= 500 || res.status === 429 || res.status === 425) {
         const corpo = await res.text().catch(() => '');
         lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        // "Consumo redundante" volta como HTTP 500 com corpo JSON — é transitório.
+        // Espera a janela longa (~55s) e tenta de novo, sem abrir o circuit breaker.
+        if (res.status === 500 && /redundante/i.test(corpo)) {
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+          throw new Error(lastErr);
+        }
         if (res.status === 425) {
           const _cbId = '6a1e06a9aa62ceab7b3b6d97';
           const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
@@ -65,7 +73,12 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           { const _cbId = '6a1e06a9aa62ceab7b3b6d97'; const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []); const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3; const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() }; if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); } await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => null); }
           throw new Error(data.faultstring);
         }
-        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error') || msg.includes('chave de acesso') || msg.includes('chave inválid') || msg.includes('chave invalid') || msg.includes('acesso está inválid') || msg.includes('acesso esta invalid')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error') || msg.includes('chave de acesso') || msg.includes('chave inválid') || msg.includes('chave invalid') || msg.includes('acesso está inválid') || msg.includes('acesso esta invalid')) {
+          lastErr = data.faultstring;
+          // "Consumo redundante" é transitório (mesma chamada repetida) — NÃO abre o circuit
+          // breaker local; apenas espera a janela e tenta de novo. Só "consumo indevido" bloqueia.
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        }
         throw new Error(data.faultstring);
       }
       if (!options.skipLog) {
