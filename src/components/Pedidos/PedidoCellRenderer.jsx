@@ -65,10 +65,25 @@ const getErroFiscal = (p) => {
   return null;
 };
 
+// Status EFETIVO: se o Omie já avançou a etapa (20=Liberado, 50=Conferência/Montagem,
+// 60+=Faturado), o status local "pendente/enviado" está atrasado — o efetivo é o do Omie.
+// Garante que "Liberado no Omie" => "Liberado no status", sem esperar reconciliação.
+const getStatusEfetivo = (p) => {
+  const etapa = p.omie_etapa_real || p.etapa_omie;
+  const local = p.status;
+  if ((local === 'pendente' || local === 'enviado') && etapa) {
+    if (etapa === '20') return 'liberado';
+    if (etapa === '50') return 'montagem';
+    if (etapa === '60' || etapa === '70') return 'faturado';
+  }
+  return local;
+};
+
 export default function PedidoCellRenderer({ col, p }) {
   if (col.id === 'status') {
-    const label = STATUS_LABELS[p.status] || p.status;
-    const colors = STATUS_COLORS[p.status] || STATUS_COLORS.pendente;
+    const statusEfetivo = getStatusEfetivo(p);
+    const label = STATUS_LABELS[statusEfetivo] || statusEfetivo;
+    const colors = STATUS_COLORS[statusEfetivo] || STATUS_COLORS.pendente;
     return (
       <Badge className={`${colors.bg} ${colors.text} ${colors.border} border text-[10px]`}>
         {label}
