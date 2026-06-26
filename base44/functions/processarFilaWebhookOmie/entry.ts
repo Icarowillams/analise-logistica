@@ -411,10 +411,15 @@ async function handlePedido(base44, topic, evt) {
       await upsertEspelho(base44, codigoPedido); espelhoAcao = 'upsert';
     }
   } else if (topic === 'VendaProduto.EtapaAlterada' || topic === 'VendaProduto.Alterada') {
+    // ⚡ CAUSA RAIZ DO "CONSUMO INDEVIDO": antes, etapas 50/60 caíam no upsertEspelho →
+    // ConsultarPedido. Numa rajada de faturamento isso disparava dezenas de chamadas ao
+    // Omie de volta → rate limit → circuit breaker. A etapa JÁ vem no payload, então
+    // atualizamos o espelho direto (sem chamar o Omie) para 10/20/50/60.
     const etapaEvtEspelho = String(evt?.etapa || '');
-    if (etapaEvtEspelho === '10' || etapaEvtEspelho === '20') {
+    const LABELS_ETAPA = { '10': 'Pedido Pendente', '20': 'Pedido Liberado', '50': 'Em Montagem', '60': 'Faturado' };
+    if (['10', '20', '50', '60'].includes(etapaEvtEspelho)) {
       const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: String(codigoPedido) }, '-sincronizado_em', 1);
-      const novoStatusEspelho = etapaEvtEspelho === '20' ? 'Pedido Liberado' : 'Pedido Pendente';
+      const novoStatusEspelho = LABELS_ETAPA[etapaEvtEspelho];
       if (espelhos?.[0]) {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, { etapa: etapaEvtEspelho, status_label: novoStatusEspelho, sincronizado_em: new Date().toISOString(), origem_sync: 'webhook' });
       } else {
