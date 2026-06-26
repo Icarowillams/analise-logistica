@@ -214,21 +214,21 @@ export default function Produtos() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
-            <Package className="h-6 w-6 text-neutral-900" />
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0">
+            <Package className="h-5 w-5 sm:h-6 sm:w-6 text-neutral-900" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Produtos</h1>
-            <p className="text-neutral-500 mt-0.5">Catálogo de produtos</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight">Produtos</h1>
+            <p className="text-xs sm:text-sm text-neutral-500 mt-0.5">Catálogo de produtos</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {podeOmie && (
             <Button
               onClick={() => setExportOmieOpen(true)}
               variant="outline"
-              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50 w-full sm:w-auto justify-center"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Sincronizar com Omie
@@ -236,7 +236,7 @@ export default function Produtos() {
           )}
           <Button
             onClick={handleNew}
-            className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
+            className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30"
           >
             Novo Produto
           </Button>
