@@ -898,7 +898,8 @@ export default function GerenciarPedidos({ onEditPedido }) {
     await queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
   };
 
-  const handleCancelConfirm = async (pedidoOuPedidos, motivo) => {
+  const handleCancelConfirm = async (pedidoOuPedidos, motivo, opcoes = {}) => {
+    const { confirmarMassa = false } = opcoes;
     const pedidosParaCancelar = Array.isArray(pedidoOuPedidos) ? pedidoOuPedidos : [pedidoOuPedidos].filter(Boolean);
     let cancelados = 0;
     let erros = 0;
@@ -909,10 +910,24 @@ export default function GerenciarPedidos({ onEditPedido }) {
         if (pedido.omie_enviado && pedido.omie_codigo_pedido) {
           let res;
           try {
-            res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo });
+            res = await base44.functions.invoke('cancelarPedidoOmie', { pedido_id: pedido.id, motivo, confirmar_massa: confirmarMassa });
           } catch (invokeErr) {
+            // 🛡️ Proteção anti-massa do backend (HTTP 429): PARA o loop na hora e sobe o sinal
+            // para o modal exibir o botão "Confirmar cancelamento em massa". NUNCA reenviar sozinho.
+            const respData = invokeErr?.response?.data;
+            if (respData?.bloqueado_massa) {
+              if (cancelados > 0) {
+                await recarregarAbaAposAcao({
+                  title: 'Cancelamento pausado',
+                  items: [{ color: 'green', text: `${cancelados} pedido(s) cancelado(s) antes da pausa` }]
+                });
+              }
+              const massaErr = new Error(respData.error || 'Cancelamento pausado pela proteção de segurança.');
+              massaErr.bloqueado_massa = true;
+              throw massaErr;
+            }
             // Extrair mensagem real do backend (axios wraps em response.data)
-            const backendMsg = invokeErr?.response?.data?.error || invokeErr?.message || 'Erro ao cancelar pedido no Omie';
+            const backendMsg = respData?.error || invokeErr?.message || 'Erro ao cancelar pedido no Omie';
             throw new Error(backendMsg);
           }
           if (!res.data?.sucesso) {
@@ -929,6 +944,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
         }
         cancelados++;
       } catch (e) {
+        // 🛡️ Proteção anti-massa: NÃO acumula como erro comum — para o loop e sobe pro modal
+        // exibir o botão "Confirmar cancelamento em massa".
+        if (e?.bloqueado_massa) throw e;
         erros++;
         detalhesErro.push(`Pedido ${pedido.numero_pedido || pedido.id}: ${e.message}`);
       }

@@ -41,9 +41,37 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { pedido_id, motivo } = await req.json();
+    const { pedido_id, motivo, confirmar_massa } = await req.json();
     if (!pedido_id) return Response.json({ error: 'pedido_id é obrigatório' }, { status: 400 });
     if (!motivo || !motivo.trim()) return Response.json({ error: 'Motivo do cancelamento é obrigatório' }, { status: 400 });
+
+    // 🛡️ TRAVA ANTI-MASSA: conta quantos pedidos o MESMO usuário cancelou nos últimos 2 minutos.
+    // Se >= 12 e o request não trouxer confirmar_massa:true, pausa para evitar exclusão acidental em massa.
+    // Em qualquer erro aqui, apenas loga e prossegue — não pode quebrar um cancelamento legítimo.
+    if (!confirmar_massa) {
+      try {
+        const LIMITE_MASSA = 12;
+        const JANELA_MS = 2 * 60 * 1000;
+        const recentes = await base44.asServiceRole.entities.Pedido.filter(
+          { status: 'cancelado', cancelado_por: user.email }, '-data_cancelamento', 50
+        );
+        const corte = Date.now() - JANELA_MS;
+        const canceladosRecentes = (recentes || []).filter(p =>
+          p.data_cancelamento && new Date(p.data_cancelamento).getTime() >= corte
+        ).length;
+
+        if (canceladosRecentes >= LIMITE_MASSA) {
+          return Response.json({
+            sucesso: false,
+            bloqueado_massa: true,
+            cancelados_recentes: canceladosRecentes,
+            error: `Proteção de segurança: você cancelou ${canceladosRecentes} pedidos nos últimos 2 minutos. Cancelamento pausado para evitar engano em massa. Se for intencional, confirme novamente.`
+          }, { status: 429 });
+        }
+      } catch (travaErr) {
+        console.warn('[cancelarPedidoOmie] Trava anti-massa falhou (prosseguindo):', travaErr?.message);
+      }
+    }
 
     const pedido = await base44.asServiceRole.entities.Pedido.get(pedido_id);
     if (!pedido) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
