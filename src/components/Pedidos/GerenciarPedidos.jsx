@@ -504,39 +504,10 @@ export default function GerenciarPedidos({ onEditPedido }) {
     });
   }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
 
-  // 🔄 CONVERGÊNCIA STATUS ↔ ETAPA OMIE: se o Omie já liberou (etapa 20) mas o status local
-  // continua pendente/enviado, sincroniza o status local para 'liberado'.
-  //
-  // ⚠️ NÃO confia no espelho (omieMap) como verdade: o espelho pode estar ADIANTADO — gravado
-  // como etapa 20 sem o Omie ter efetivado a troca (causa raiz dos pedidos "liberados no sistema
-  // mas etapa 10 no Omie"). Por isso, em vez de só gravar status no banco, chamamos
-  // liberarPedidoOmie, que EFETIVA a etapa 20 no Omie de verdade (idempotente: se já está em 20,
-  // só confirma) e só então grava local — garantindo que sistema e Omie nunca divergem.
-  const convergStatusRef = React.useRef(false);
-  useEffect(() => {
-    if (convergStatusRef.current) return;
-    if (!pedidosComVendedorCliente.length) return;
-    const aLiberar = pedidosComVendedorCliente.filter(p =>
-      (p.status === 'pendente' || p.status === 'enviado')
-      && p.omie_etapa_real === '20'
-      && p.omie_enviado && p.omie_codigo_pedido
-      && p.tipo !== 'troca' && p.modelo_nota !== 'd1'
-      && !p.data_cancelamento && !p.cancelado_no_omie
-    );
-    if (aLiberar.length === 0) return;
-    convergStatusRef.current = true;
-    (async () => {
-      // Sequencial com pausa — liberarPedidoOmie chama a API do Omie; evita rate limit.
-      for (const p of aLiberar) {
-        try {
-          await base44.functions.invoke('liberarPedidoOmie', { pedido_id: p.id, etapa: '20' });
-        } catch { /* mantém pendente; reprocessa no próximo ciclo */ }
-        await new Promise(r => setTimeout(r, 1200));
-      }
-      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] });
-      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] });
-    })();
-  }, [pedidosComVendedorCliente, queryClient]);
+  // ⚠️ A liberação de pedidos pendentes é SEMPRE manual, pelo botão "Liberar".
+  // A convergência automática (que liberava pedidos sozinha quando o espelho do Omie marcava
+  // etapa 20) foi REMOVIDA: o espelho pode estar adiantado/incorreto, e isso estava liberando
+  // pedidos que deveriam aguardar liberação manual. Agora nada muda o status sem ação humana.
 
   // Pedido IDs que contêm os produtos selecionados
   const pedidoIdsComProduto = useMemo(() => {
