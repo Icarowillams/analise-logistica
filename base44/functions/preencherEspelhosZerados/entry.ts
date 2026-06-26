@@ -33,12 +33,14 @@ Deno.serve(async (req) => {
     // limite_lote: quantos espelhos preencher por execução (re-executável). delay_ms: pausa entre updates.
     const { dry_run = false, limite_lote = 80, delay_ms = 200 } = body;
 
-    // Espelhos zerados: sem produtos E quantidade_itens 0, que NÃO sejam cancelados, e que tenham pedido_id
+    // Espelhos zerados: lista de PRODUTOS vazia, que NÃO sejam cancelados, e que tenham pedido_id
     // (os itens locais existem no PedidoItem — preenchemos sem tocar no Omie).
+    // IMPORTANTE: o critério é APENAS produtos vazio. Não exigir quantidade_itens===0 — há
+    // espelhos com quantidade_itens preenchido (ex: 8) mas produtos[] vazio, e eram justamente
+    // esses que ficavam com a coluna "Pacotes" zerada na Montagem por não terem a lista de itens.
     const todos = await base44.asServiceRole.entities.PedidoLiberadoOmie.list('-sincronizado_em', 5000);
     const zeradosTotal = (todos || []).filter(e =>
       (!e.produtos || e.produtos.length === 0) &&
-      Number(e.quantidade_itens || 0) === 0 &&
       e.status_real !== 'cancelada' &&
       e.etapa !== '99' &&
       e.pedido_id
