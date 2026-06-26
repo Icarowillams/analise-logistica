@@ -3,7 +3,10 @@ import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
 // ─── CACHE localStorage (60s TTL — montagem é operação em tempo real) ───
-const CACHE_KEY = 'montagem_carga_v4';
+// v5: invalida snapshots antigos que guardavam pedidos com produtos[] vazio (pacotes
+// zerados). Após o preenchimento dos espelhos, o cache velho ainda servia os zeros —
+// subir a versão descarta esses snapshots e força uma carga fresca já correta.
+const CACHE_KEY = 'montagem_carga_v5';
 const CACHE_TTL = 60 * 1000;
 
 function getUserCacheKey() {
