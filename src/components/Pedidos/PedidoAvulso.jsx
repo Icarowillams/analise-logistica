@@ -53,7 +53,10 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   const { data: clientesIniciais = [], isFetching: carregandoIniciais } = useQuery({
     queryKey: ['clientes-iniciais-avulso'],
     queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 500),
-    enabled: activeTab === 'avulso' && !selectedCliente && semBusca,
+    // Só carrega a lista inicial quando NÃO há termo digitado. Assim que o usuário
+    // começa a pesquisar, esta query é desabilitada e a conexão fica livre para a
+    // busca — sem precisar esperar os 500 clientes iniciais terminarem de baixar.
+    enabled: activeTab === 'avulso' && !selectedCliente && semBusca && termo.length === 0,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
