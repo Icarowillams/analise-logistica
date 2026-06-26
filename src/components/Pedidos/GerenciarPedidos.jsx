@@ -34,6 +34,7 @@ import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 import { listarTudo } from '@/lib/omieHelpers';
 import { Switch } from '@/components/ui/switch';
 import useAutoRefreshPedidos from './useAutoRefreshPedidos.jsx';
+import { getStatusEfetivoPedido, FILTRO_PARA_STATUS_EFETIVO } from '@/lib/etapaOmieStatus';
 
 const LOCAL_TIMEZONE = 'America/Fortaleza';
 
@@ -271,7 +272,25 @@ export default function GerenciarPedidos({ onEditPedido }) {
       ? [...pedidosAtivos, ...pedidosEncerrados]
       : [...pedidosAtivos, ...pedidosFaturadosRecentes];
     fonte.forEach(p => { if (p?.id) mapa.set(p.id, p); });
-    return Array.from(mapa.values());
+    let lista = Array.from(mapa.values());
+
+    // CORREÇÃO B — dedup do espelho: o mesmo pedido Omie pode ter virado 2+ registros locais
+    // (mesmo omie_codigo_pedido/numero_pedido). Mantém apenas o MAIS RECENTE por chave
+    // (updated_date/created_date), evitando exibir o mesmo pedido 2×.
+    const porChave = new Map();
+    const maisRecente = (a, b) => {
+      const da = new Date(a.updated_date || a.created_date || 0).getTime();
+      const db = new Date(b.updated_date || b.created_date || 0).getTime();
+      return db > da ? b : a;
+    };
+    for (const p of lista) {
+      const chave = p.omie_codigo_pedido
+        ? `omie:${String(p.omie_codigo_pedido).trim()}`
+        : (p.numero_pedido ? `np:${String(p.numero_pedido).trim()}` : `id:${p.id}`);
+      const existente = porChave.get(chave);
+      porChave.set(chave, existente ? maisRecente(existente, p) : p);
+    }
+    return Array.from(porChave.values());
   }, [pedidosAtivos, pedidosEncerrados, pedidosFaturadosRecentes, statusExtras]);
 
   const { data: vendedores = [] } = useQuery({
@@ -563,24 +582,17 @@ export default function GerenciarPedidos({ onEditPedido }) {
       );
     }
 
-    // Status — MULTI-SELEÇÃO: OR entre os status marcados (união). Lista vazia = Todos Status.
-    const STATUS_REAL = {
-      'analise_pendente': 'enviado',
-      'analise_liberado': 'liberado',
-      'analise_montagem': 'montagem',
-      'analise_faturado': 'faturado',
-      'analise_cancelado': 'cancelado',
-    };
+    // CORREÇÃO A — Status: filtro usa a MESMA fonte da coluna (etapa do espelho via
+    // getStatusEfetivoPedido). Lista vazia = Todos Status. Multi-seleção = OR (união).
+    // Assim filtrar "Pendente" retorna TODOS os de etapa 10 — idênticos aos pintados na coluna.
     if (statusFilters.length > 0) {
-      const statusReais = statusFilters.map(s => STATUS_REAL[s]).filter(Boolean);
-      // "Pendente" abrange tanto 'enviado' quanto 'pendente' (pedidos ainda não enviados ao Omie,
-      // ex: D1/troca que nascem com status 'pendente').
-      if (statusReais.includes('enviado')) statusReais.push('pendente');
-      // "Cancelado" abrange também os cancelados pós-faturamento (rastreabilidade).
-      if (statusReais.includes('cancelado')) statusReais.push('cancelado_pos_faturamento');
+      const statusEfetivosAceitos = new Set();
+      statusFilters.forEach(s => {
+        (FILTRO_PARA_STATUS_EFETIVO[s] || []).forEach(st => statusEfetivosAceitos.add(st));
+      });
       const incluiSemOmie = statusFilters.includes('sem_omie');
       list = list.filter(p =>
-        statusReais.includes(p.status) ||
+        statusEfetivosAceitos.has(getStatusEfetivoPedido(p)) ||
         (incluiSemOmie && (!p.omie_enviado || !p.omie_codigo_pedido))
       );
     }
@@ -787,10 +799,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
     setSelectedIds
   );
 
-  // Helper: resolve o status de análise do pedido (agora 100% local)
+  // Helper: resolve o status de análise do pedido — usa a MESMA fonte da coluna/filtro
+  // (etapa do espelho via getStatusEfetivoPedido), garantindo coerência nas ações em lote.
   const getAnaliseStatus = (p) => {
-    const localMap = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado' };
-    return localMap[p.status] || p.status;
+    const efetivo = getStatusEfetivoPedido(p);
+    const map = { pendente: 'Pendente', enviado: 'Pendente', liberado: 'Liberados', faturar: 'Faturar', montagem: 'Montagem', faturado: 'Faturado', cancelado: 'Cancelado', cancelado_pos_faturamento: 'Cancelado' };
+    return map[efetivo] || efetivo;
   };
 
   // P1 (16/05): consulta bloqueio financeiro do cliente direto no Omie.

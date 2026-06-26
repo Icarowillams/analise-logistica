@@ -1,12 +1,14 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { getStatusEfetivoPedido } from '@/lib/etapaOmieStatus';
 
 const STATUS_COLORS = {
   pendente: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
   enviado: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
   liberado: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
   montagem: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
+  faturar: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' },
   faturado: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' },
   cancelado: { bg: 'bg-gray-700', text: 'text-white', border: 'border-gray-700' },
 };
@@ -16,6 +18,7 @@ const STATUS_LABELS = {
   enviado: 'Pendente',
   liberado: 'Liberado',
   montagem: 'Montagem',
+  faturar: 'Faturar',
   faturado: 'Faturado',
   cancelado: 'Cancelado',
 };
@@ -66,22 +69,11 @@ const getErroFiscal = (p) => {
 };
 
 // O Status converge com a ETAPA REAL do Omie (espelho), que é a fonte de verdade.
-// Mapa direto etapa→status: 10=pendente, 20=liberado, 50=montagem, 60/70=faturado.
-// Assim a coluna Status fica sempre coerente com a coluna "Etapa Omie" — um pedido que
-// está na etapa 10 no Omie aparece como "Pendente" mesmo que o status local esteja
-// desatualizado como "liberado". Quando não há etapa do espelho, usa o status local.
-const ETAPA_PARA_STATUS = { '10': 'pendente', '20': 'liberado', '50': 'montagem', '60': 'faturado', '70': 'faturado' };
-const getStatusEfetivo = (p) => {
-  // Estados finais locais que não devem ser sobrescritos pela etapa do espelho
-  if (p.status === 'cancelado' || p.status === 'cancelado_pos_faturamento') return p.status;
-  const etapa = p.omie_etapa_real || p.etapa_omie;
-  if (etapa && ETAPA_PARA_STATUS[etapa]) return ETAPA_PARA_STATUS[etapa];
-  return p.status;
-};
-
+// Usa o helper compartilhado getStatusEfetivoPedido (lib/etapaOmieStatus) — a MESMA fonte
+// usada pelo filtro de status, garantindo que coluna e filtro sempre concordem.
 export default function PedidoCellRenderer({ col, p }) {
   if (col.id === 'status') {
-    const statusEfetivo = getStatusEfetivo(p);
+    const statusEfetivo = getStatusEfetivoPedido(p);
     const label = STATUS_LABELS[statusEfetivo] || statusEfetivo;
     const colors = STATUS_COLORS[statusEfetivo] || STATUS_COLORS.pendente;
     return (

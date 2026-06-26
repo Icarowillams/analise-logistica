@@ -394,7 +394,28 @@ Deno.serve(async (req) => {
     const pedidoLocalPorOmie = new Map();
     (pedidosLocais || []).forEach((p) => { if (p.omie_codigo_pedido) pedidoLocalPorOmie.set(String(p.omie_codigo_pedido), p); });
 
-    const espelhoPorCodigo = new Map((espelhoAtual || []).map((e) => [String(e.codigo_pedido), e]));
+    // UPSERT por codigo_pedido — robusto a duplicados pré-existentes no espelho:
+    // se houver 2+ registros com o mesmo codigo_pedido, mantém o MAIS RECENTE como canônico
+    // (para update) e marca os demais para remoção, eliminando duplicados na origem.
+    const espelhoPorCodigo = new Map();
+    const espelhoDuplicados = [];
+    const maisRecenteEspelho = (a, b) => {
+      const da = new Date(a.updated_date || a.created_date || 0).getTime();
+      const db = new Date(b.updated_date || b.created_date || 0).getTime();
+      return db > da ? b : a;
+    };
+    (espelhoAtual || []).forEach((e) => {
+      const cod = String(e.codigo_pedido);
+      const existente = espelhoPorCodigo.get(cod);
+      if (!existente) {
+        espelhoPorCodigo.set(cod, e);
+      } else {
+        const canonico = maisRecenteEspelho(existente, e);
+        const obsoleto = canonico === existente ? e : existente;
+        espelhoPorCodigo.set(cod, canonico);
+        espelhoDuplicados.push(obsoleto);
+      }
+    });
     const codigosOmieAtuais = new Set(todosOmie.map((p) => String(p.codigo_pedido)));
 
     const codigosClienteFaltantes = new Set();
@@ -461,9 +482,17 @@ Deno.serve(async (req) => {
     }
 
     let removidos = 0;
+    let duplicadosRemovidos = 0;
+    // Remove SEMPRE os duplicados por codigo_pedido (o canônico já foi atualizado acima).
+    // Isso é seguro independente de leitura completa — não apaga pedidos, só cópias redundantes.
+    for (let i = 0; i < espelhoDuplicados.length; i++) {
+      await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(espelhoDuplicados[i].id).catch(() => {});
+      duplicadosRemovidos += 1;
+      if ((i + 1) % LOTE_ESCRITA === 0) await delay(500);
+    }
     if (leituraCompleta) {
       // Só remove espelhos que sumiram do Omie quando TODAS as páginas foram lidas
-      const paraRemover = (espelhoAtual || []).filter(e => !codigosOmieAtuais.has(String(e.codigo_pedido)));
+      const paraRemover = Array.from(espelhoPorCodigo.values()).filter(e => !codigosOmieAtuais.has(String(e.codigo_pedido)));
       for (let i = 0; i < paraRemover.length; i++) {
         await base44.asServiceRole.entities.PedidoLiberadoOmie.delete(paraRemover[i].id);
         removidos += 1;
@@ -480,11 +509,11 @@ Deno.serve(async (req) => {
       operacao: origem === 'reconciliacao' ? 'reconciliar_espelho_pedidos' : 'bootstrap_espelho_pedidos',
       status: 'sucesso',
       duracao_ms: duracao,
-      payload_resposta: JSON.stringify({ total_omie: todosOmie.length, criados, atualizados, removidos }).slice(0, 2000)
+      payload_resposta: JSON.stringify({ total_omie: todosOmie.length, criados, atualizados, removidos, duplicadosRemovidos }).slice(0, 2000)
     }).catch(() => {});
 
     await liberarLock();
-    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, pulados, removidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
+    return Response.json({ sucesso: true, total_omie: todosOmie.length, total: todosOmie.length, criados, atualizados, pulados, removidos, duplicados_removidos: duplicadosRemovidos, consultas_fallback_cliente: consultasFallback, duracao_ms: duracao, leitura_completa: leituraCompleta });
   } catch (error) {
     // Libera o lock em caso de erro para não travar a próxima sincronização
     try {
