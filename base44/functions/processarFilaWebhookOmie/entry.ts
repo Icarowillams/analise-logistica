@@ -638,6 +638,28 @@ function codigoPedidoDoLog(log) {
   return String(evt?.idPedido || evt?.id_pedido || evt?.codigo_pedido || evt?.nCodPed || evt?.codIntPedido || '');
 }
 
+// 🛡️ PRIORIDADE DE CONSOLIDAÇÃO: quando vários eventos do MESMO pedido chegam na
+// mesma rajada, NÃO basta manter o mais recente — um 'Alterada' que chega 2s depois
+// de um 'EtapaAlterada→60' não carrega a etapa, então a transição de etapa se perderia
+// (causa real do espelho preso em 50 enquanto o Omie já está em 60).
+// Regra: eventos que carregam transição de etapa/faturamento têm prioridade sobre os
+// que não carregam. Empate de prioridade → vence o mais recente (ordem da fila).
+function prioridadeEvento(log) {
+  const topic = log.webhook_topic || log.call || '';
+  let body;
+  try { body = JSON.parse(log.payload_resposta || '{}'); } catch { body = {}; }
+  const evt = body.event || body;
+  const temEtapa = !!String(evt?.etapa || '').trim();
+  // 3 = Faturada (estado final mais forte)
+  if (topic === 'VendaProduto.Faturada') return 3;
+  // 2 = EtapaAlterada com etapa no payload (carrega a transição 50→60 etc.)
+  if (topic === 'VendaProduto.EtapaAlterada' && temEtapa) return 2;
+  // 1 = qualquer outro com etapa explícita
+  if (temEtapa) return 1;
+  // 0 = Alterada/Incluida sem etapa — NÃO deve sobrepor um evento de etapa
+  return 0;
+}
+
 // ─── Lock de instância única ────────────────────────────────────────────────
 // Garante que só UM worker processe a fila por vez. Sem isto, o disparo por
 // webhook (1 invocação por evento recebido) recriaria o problema: N workers
@@ -712,8 +734,18 @@ Deno.serve(async (req) => {
         const cod = codigoPedidoDoLog(log);
         if (!cod) { semPedido.push(log); continue; }
         const anterior = maisRecentePorPedido.get(cod);
-        if (anterior) aIgnorar.push(anterior); // o anterior (mais antigo) é descartado
-        maisRecentePorPedido.set(cod, log);
+        if (!anterior) {
+          maisRecentePorPedido.set(cod, log);
+          continue;
+        }
+        // 🛡️ Vence quem tem MAIOR prioridade de etapa; empate → o mais recente (log atual,
+        // pois a fila vem ordenada por created_date asc). O perdedor é consolidado/ignorado.
+        if (prioridadeEvento(log) >= prioridadeEvento(anterior)) {
+          aIgnorar.push(anterior);
+          maisRecentePorPedido.set(cod, log);
+        } else {
+          aIgnorar.push(log);
+        }
       }
       for (const log of aIgnorar) {
         await base44.asServiceRole.entities.LogIntegracaoOmie.update(log.id, {
