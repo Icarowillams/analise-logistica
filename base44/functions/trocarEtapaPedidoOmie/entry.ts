@@ -1,20 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// Ordem da régua real Omie — usada para nunca retroceder etapa.
-const ORDEM_ETAPA = { '10': 1, '20': 2, '50': 3, '60': 4, '70': 5, '80': 6 };
-
-// Busca a etapa ATUAL do pedido preferindo estado LOCAL (espelho PedidoLiberadoOmie).
-// Retorna string da etapa ou null se não encontrado localmente.
-async function getEtapaAtualLocal(base44, pedido) {
-  const cod = String(pedido.codigo_pedido || '');
-  if (!cod) return null;
-  try {
-    const rows = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ codigo_pedido: cod }, '-sincronizado_em', 1);
-    if (rows?.[0]?.etapa) return String(rows[0].etapa);
-  } catch (_) { /* ignore */ }
-  return null;
-}
-
 async function trocarUmPedido(base44, pedido, etapaDestino) {
   const etapa = String(pedido.etapa || etapaDestino || '');
   if (!etapa) return { sucesso: false, mensagem: 'etapa obrigatória', ...pedido };
@@ -22,21 +7,11 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
     return { sucesso: false, mensagem: 'Informe codigo_pedido ou codigo_pedido_integracao', ...pedido };
   }
 
-  // Guarda de idempotência anti-retrocesso: se a etapa de destino já foi alcançada (≤ etapa atual local),
-  // PULA a chamada e trata como sucesso idempotente — etapa não retrocede.
-  const etapaAtual = await getEtapaAtualLocal(base44, pedido);
-  if (etapaAtual && ORDEM_ETAPA[etapa] && ORDEM_ETAPA[etapaAtual] && ORDEM_ETAPA[etapa] <= ORDEM_ETAPA[etapaAtual]) {
-    return {
-      codigo_pedido: pedido.codigo_pedido,
-      codigo_pedido_integracao: pedido.codigo_pedido_integracao,
-      numero_pedido: pedido.numero_pedido,
-      etapa,
-      sucesso: true,
-      ignorado: true,
-      mensagem: `Etapa não retrocede (atual ${etapaAtual} ≥ destino ${etapa}) — ignorado`
-    };
-  }
-
+  // NÃO usar guarda anti-retrocesso por espelho LOCAL: o espelho PedidoLiberadoOmie pode estar
+  // adiantado (gravado como etapa maior sem que o Omie tenha efetivado a troca) e isso fazia a
+  // troca ser ignorada — pedido ficava liberado no app e preso na etapa anterior no Omie.
+  // A própria régua do Omie já rejeita retrocesso real via codigo_status "6" (tratado abaixo),
+  // que é a única fonte de verdade confiável.
   const param = { etapa };
   if (pedido.codigo_pedido) param.codigo_pedido = Number(pedido.codigo_pedido);
   if (pedido.codigo_pedido_integracao) param.codigo_pedido_integracao = String(pedido.codigo_pedido_integracao);
