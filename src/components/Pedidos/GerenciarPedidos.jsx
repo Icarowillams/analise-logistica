@@ -233,7 +233,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
       );
       return listas.flat();
     },
-    staleTime: 30000,
+    staleTime: 0,
   });
 
   // Faturados/cancelados — carrega TODOS os status encerrados marcados (uma query por status),
@@ -254,7 +254,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const { data: pedidosFaturadosRecentes = [] } = useQuery({
     queryKey: ['pedidos-gerenciar-faturados-recentes'],
     queryFn: () => listarTudo(base44.entities.Pedido, { status: 'faturado' }),
-    staleTime: 30000,
+    staleTime: 0,
   });
 
   const pedidos = useMemo(() => {
