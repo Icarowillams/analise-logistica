@@ -45,6 +45,13 @@ export default function DashboardTrocas() {
     queryKey: ['pedidos_troca_faturados'],
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
   });
+  // Itens das trocas faturadas — é AQUI que ficam a quantidade (pacotes) e o motivo por item.
+  // O cabeçalho do Pedido só traz valor_total; sem os itens não há quantidade nem motivo.
+  const { data: itensTroca = [] } = useQuery({
+    queryKey: ['pedido_itens_troca'],
+    queryFn: () => base44.entities.PedidoItem.filter({}, '-created_date', 20000),
+    staleTime: 5 * 60 * 1000
+  });
   // Trocas de visita (registradas pelo app do vendedor em campo)
   const { data: trocasVisita = [], isLoading: loadingTV } = useQuery({
     queryKey: ['trocas_visita'],
@@ -67,10 +74,30 @@ export default function DashboardTrocas() {
     return map;
   }, [clientes, vendedores, rotas]);
 
+  // Agrega os itens por pedido: soma de quantidade (pacotes) e motivo (do item).
+  // O motivo costuma vir nos itens da troca, não no cabeçalho do pedido.
+  const resumoItensPorPedido = useMemo(() => {
+    const map = new Map();
+    const nomeMotivo = new Map(motivosTroca.map(m => [m.id, m.descricao || m.nome]));
+    itensTroca.forEach(it => {
+      if (!it.pedido_id) return;
+      if (!map.has(it.pedido_id)) map.set(it.pedido_id, { quantidade: 0, motivos: new Set() });
+      const r = map.get(it.pedido_id);
+      r.quantidade += Number(it.quantidade || 0);
+      const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '';
+      if (mot) r.motivos.add(mot);
+    });
+    return map;
+  }, [itensTroca, motivosTroca]);
+
   const trocasEnriquecidas = useMemo(() => trocasPedido.map(t => {
     const v = vendedorPorCliente.get(t.cliente_id);
-    return { ...t, vendedor_id: v?.id || t.vendedor_id, vendedor_nome: v?.nome || t.vendedor_nome, rota_id: v?.rota_id || t.rota_id, rota_nome: v?.rota_nome || t.rota_nome };
-  }), [trocasPedido, vendedorPorCliente]);
+    const resItens = resumoItensPorPedido.get(t.id);
+    const qtdPacotes = resItens?.quantidade ?? Number(t.qtd_total_itens || t.total_itens || 0);
+    const motivosItens = resItens && resItens.motivos.size ? Array.from(resItens.motivos).join(', ') : '';
+    const motivoFinal = t.motivo_troca_descricao || motivosItens || '';
+    return { ...t, vendedor_id: v?.id || t.vendedor_id, vendedor_nome: v?.nome || t.vendedor_nome, rota_id: v?.rota_id || t.rota_id, rota_nome: v?.rota_nome || t.rota_nome, qtd_pacotes: qtdPacotes, motivo_troca_descricao: motivoFinal };
+  }), [trocasPedido, vendedorPorCliente, resumoItensPorPedido]);
 
   const filtradas = useMemo(() => trocasEnriquecidas.filter(t => {
     if (filtros.vendedor_id && t.vendedor_id !== filtros.vendedor_id) return false;
@@ -91,20 +118,23 @@ export default function DashboardTrocas() {
   const totais = useMemo(() => {
     const valor = filtradas.reduce((a, t) => a + (t.valor_total || 0), 0);
     const ticket = filtradas.length ? valor / filtradas.length : 0;
+    const pacotes = filtradas.reduce((a, t) => a + (t.qtd_pacotes || 0), 0);
     const qtdVisita = trocasVisitaFiltradas.length;
     // Qtd de itens trocados via visita
     const itensTrocadosVisita = trocasVisitaFiltradas.reduce((a, t) => a + (t.quantidade || 0), 0);
-    return { total: filtradas.length, valor, ticket, qtdVisita, itensTrocadosVisita };
+    return { total: filtradas.length, valor, ticket, pacotes, qtdVisita, itensTrocadosVisita };
   }, [filtradas, trocasVisitaFiltradas]);
 
-  // Por motivo (pedido)
+  // Por motivo (pedido) — agrega quantidade de PACOTES por motivo (não só nº de pedidos)
   const porMotivo = useMemo(() => {
     const m = {};
     filtradas.forEach(t => {
       const k = t.motivo_troca_descricao || motivosTroca.find(x => x.id === t.motivo_troca_id)?.descricao || 'Sem motivo';
-      m[k] = (m[k] || 0) + 1;
+      if (!m[k]) m[k] = { qtd: 0, pacotes: 0 };
+      m[k].qtd += 1;
+      m[k].pacotes += Number(t.qtd_pacotes || 0);
     });
-    return Object.entries(m).map(([motivo, qtd]) => ({ motivo, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 7);
+    return Object.entries(m).map(([motivo, v]) => ({ motivo, qtd: v.qtd, pacotes: v.pacotes })).sort((a, b) => b.qtd - a.qtd).slice(0, 7);
   }, [filtradas, motivosTroca]);
 
   // Motivos de troca via visita
@@ -166,11 +196,11 @@ export default function DashboardTrocas() {
   }, [cortes, filtros]);
 
   const exportar = () => exportarCSV('dashboard_trocas',
-    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Valor', 'Status'],
+    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Qtd (pacotes)', 'Valor', 'Status'],
     filtradas.map(t => [
       (t.data_faturamento || t.created_date)?.slice(0,10),
       formatarNumeroPedido(t), t.cliente_nome, t.vendedor_nome, t.rota_nome,
-      t.motivo_troca_descricao, t.valor_total, t.status
+      t.motivo_troca_descricao, t.qtd_pacotes || 0, t.valor_total, t.status
     ])
   );
 
@@ -202,8 +232,9 @@ export default function DashboardTrocas() {
       </FiltrosBase>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard titulo="Trocas (faturadas)" valor={formatarNumero(totais.total)} icon={ArrowLeftRight} cor="red" />
+        <KpiCard titulo="Pacotes trocados" valor={formatarNumero(totais.pacotes)} icon={Package} cor="orange" />
         <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} icon={DollarSign} cor="amber" />
         <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} icon={AlertTriangle} cor="indigo" />
         <KpiCard titulo="Trocas visita" valor={formatarNumero(totais.qtdVisita)} sub={`${formatarNumero(totais.itensTrocadosVisita)} itens`} icon={Package} cor="cyan" />
@@ -223,7 +254,7 @@ export default function DashboardTrocas() {
                   <Pie data={porMotivo} dataKey="qtd" nameKey="motivo" outerRadius={90} label={({ motivo, percent }) => `${motivo.slice(0,15)} ${(percent*100).toFixed(0)}%`}>
                     {porMotivo.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip formatter={(v, n, item) => [`${v} troca(s) • ${formatarNumero(item?.payload?.pacotes || 0)} pacotes`, item?.payload?.motivo]} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -331,6 +362,7 @@ export default function DashboardTrocas() {
                 <th className="p-2 text-left">Vendedor</th>
                 <th className="p-2 text-left">Rota</th>
                 <th className="p-2 text-left">Motivo</th>
+                <th className="p-2 text-right">Qtd (pacotes)</th>
                 <th className="p-2 text-right">Valor</th>
                 <th className="p-2 text-left">Status</th>
               </tr>
@@ -344,6 +376,7 @@ export default function DashboardTrocas() {
                   <td className="p-2 max-w-[120px] truncate">{t.vendedor_nome || '-'}</td>
                   <td className="p-2 text-xs text-slate-600">{t.rota_nome || '-'}</td>
                   <td className="p-2 text-xs text-slate-600 max-w-[140px] truncate">{t.motivo_troca_descricao || '-'}</td>
+                  <td className="p-2 text-right font-medium">{formatarNumero(t.qtd_pacotes || 0)}</td>
                   <td className="p-2 text-right font-medium">{formatarMoeda(t.valor_total)}</td>
                   <td className="p-2"><Badge>{t.status}</Badge></td>
                 </tr>
