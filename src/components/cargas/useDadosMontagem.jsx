@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 // v5: invalida snapshots antigos que guardavam pedidos com produtos[] vazio (pacotes
 // zerados). Após o preenchimento dos espelhos, o cache velho ainda servia os zeros —
 // subir a versão descarta esses snapshots e força uma carga fresca já correta.
-const CACHE_KEY = 'montagem_carga_v6';
+const CACHE_KEY = 'montagem_carga_v7';
 const CACHE_TTL = 60 * 1000;
 
 function getUserCacheKey() {
@@ -335,7 +335,9 @@ export default function useDadosMontagem() {
                !codigosEmCarga.has(String(p.omie_codigo_pedido));
       });
 
-      const vendasLocais = pedidosNf55Locais.map(p => ({
+      const vendasLocais = pedidosNf55Locais.map(p => {
+        const cli = p.cliente_id ? clientesMapGlobal.get(p.cliente_id) : null;
+        return {
         codigo_pedido: String(p.omie_codigo_pedido),
         codigo_pedido_integracao: p.id,
         numero_pedido: p.numero_pedido || '',
@@ -347,7 +349,9 @@ export default function useDadosMontagem() {
         pedido_id: p.id,
         nome_cliente: p.cliente_nome || '',
         nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
-        cidade: p.cliente_cidade || '',
+        cidade: p.cliente_cidade || cli?.cidade || '',
+        bairro: cli?.bairro || p.cliente_bairro || '',
+        endereco: cli?.endereco || p.cliente_endereco || '',
         tipo_nota: '55',
         tags_cliente: [],
         motorista_padrao_id: null,
@@ -363,7 +367,8 @@ export default function useDadosMontagem() {
         produtos: [],
         tipo: 'venda',
         tipo_operacao: p.cenario_local_tipo || 'venda'
-      }));
+      };
+      });
 
       // ─── DEDUPLICAÇÃO (exibição) ───
       // O mesmo pedido pode chegar pelo espelho Omie (codigo_pedido "limpo", ex: 1999)
@@ -401,12 +406,14 @@ export default function useDadosMontagem() {
       // Montar D1s e Trocas sem itens (produtos vazio, quantidade 0)
       const d1SemItens = d1Disponiveis.map(p => {
         const rotaNomeD1 = (p.rota_id && rotasMap.get(p.rota_id)) || p.rota_nome || 'Sem Rota';
+        const cliD1 = p.cliente_id ? clientesMapGlobal.get(p.cliente_id) : null;
         return {
           codigo_pedido: `D1-${p.id}`, pedido_id: p.id, numero_pedido: p.numero_pedido,
           codigo_cliente: p.cliente_id, codigo_cliente_cod: p.cliente_codigo || '',
           cliente_id: p.cliente_id,
           nome_cliente: p.cliente_nome || '', nome_fantasia: p.cliente_nome_fantasia || p.cliente_nome || '',
-          cidade: p.cliente_cidade || '',
+          cidade: p.cliente_cidade || cliD1?.cidade || '',
+          bairro: cliD1?.bairro || '', endereco: cliD1?.endereco || '',
           rota_nome: rotaNomeD1, rota_cliente: rotaNomeD1,
           quantidade_itens: 0, valor_total_pedido: p.valor_total || 0,
           vendedor_nome: p.vendedor_nome || '', observacoes: p.observacoes || '',
@@ -426,6 +433,7 @@ export default function useDadosMontagem() {
           nome_cliente: t.cliente_nome || cliente?.razao_social || '',
           nome_fantasia: cliente?.nome_fantasia || t.cliente_nome || cliente?.razao_social || '',
           cidade: cliente?.cidade || '',
+          bairro: cliente?.bairro || '', endereco: cliente?.endereco || '',
           rota_nome: rotaNome, rota_cliente: rotaNome,
           quantidade_itens: 0, valor_total_pedido: t.valor_total || 0,
           vendedor_nome: t.vendedor_nome || '', observacoes: t.observacoes || '',
@@ -433,9 +441,57 @@ export default function useDadosMontagem() {
         };
       });
 
+      // ─── BUSCAR ITENS (PACOTES) JÁ NA FASE 1 ───
+      // Antes os pacotes/itens só eram preenchidos na Fase 2 (chamada extra que falhava por
+      // 429 → pacotes 0). Como o PedidoItem é local e barato, buscamos aqui em UMA chamada
+      // com retry e preenchemos os pacotes de todos os caminhos (NF55-local, D1, Troca e
+      // vendas Omie cujo espelho veio sem produtos). Assim a coluna "Pacotes" nunca zera.
+      const vendasOmieSemProdutos = vendasEnriquecidas.filter(
+        p => p.pedido_id && (!p.produtos || p.produtos.length === 0)
+      );
+      const idsPedidosFase1 = [
+        ...d1SemItens.map(p => p.pedido_id),
+        ...vendasLocais.map(p => p.pedido_id),
+        ...vendasOmieSemProdutos.map(p => p.pedido_id)
+      ].filter(Boolean);
+      const idsTrocasFase1 = trocasSemItens.map(t => t.pedido_troca_id).filter(Boolean);
+
+      let itensPedidoFase1 = {};
+      let itensTrocaFase1 = {};
+      if (idsPedidosFase1.length > 0 || idsTrocasFase1.length > 0) {
+        try {
+          const respItens = await fetchWithRetry(() => base44.functions.invoke('getItensPedidosLote', {
+            pedido_ids: idsPedidosFase1,
+            troca_ids: idsTrocasFase1
+          }));
+          itensPedidoFase1 = respItens.data?.itens_pedido || {};
+          itensTrocaFase1 = respItens.data?.itens_troca || {};
+        } catch (errItens) {
+          console.warn('[MontagemCarga] Falha ao buscar itens na Fase 1 (pacotes podem ficar vazios neste ciclo):', errItens?.message);
+        }
+      }
+
+      // Preencher produtos[] em cada caminho usando os itens locais buscados
+      const vendasComPacotes = todasVendas.map(p => {
+        if (p.produtos && p.produtos.length > 0) return p; // espelho já trouxe os pacotes
+        const itens = p.pedido_id ? (itensPedidoFase1[p.pedido_id] || []) : [];
+        if (itens.length === 0) return p;
+        return { ...p, quantidade_itens: itens.length, produtos: itens.map(i => montarItemProduto(i, 'pedido')) };
+      });
+      const d1ComPacotes = d1SemItens.map(p => {
+        const itens = itensPedidoFase1[p.pedido_id] || [];
+        if (itens.length === 0) return p;
+        return { ...p, quantidade_itens: itens.length, produtos: itens.map(i => montarItemProduto(i, 'pedido')) };
+      });
+      const trocasComPacotes = trocasSemItens.map(t => {
+        const itens = itensTrocaFase1[t.pedido_troca_id] || [];
+        if (itens.length === 0) return t;
+        return { ...t, quantidade_itens: itens.length, produtos: itens.map(i => montarItemProduto(i, 'troca')) };
+      });
+
       // ─── LIBERAR TELA IMEDIATAMENTE ───
-      const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
-      console.log(`[DEBUG CONTAGEM] FASE 1 → vendas: ${todasVendas.length} | d1SemItens: ${d1SemItens.length} | trocasSemItens: ${trocasSemItens.length} | total Fase 1: ${pedidosFase1.length}`);
+      const pedidosFase1 = [...vendasComPacotes, ...d1ComPacotes, ...trocasComPacotes];
+      console.log(`[DEBUG CONTAGEM] FASE 1 → vendas: ${vendasComPacotes.length} | d1: ${d1ComPacotes.length} | trocas: ${trocasComPacotes.length} | total Fase 1: ${pedidosFase1.length}`);
       // CORREÇÃO PACOTES ZERADOS: as vendas Omie do espelho JÁ vêm com produtos[] preenchido
       // (os pacotes corretos). Só D1/Trocas/NF55-local chegam sem produtos e dependem da Fase 2.
       // Por isso pintamos a Fase 1 SEMPRE — assim os pacotes das vendas aparecem na hora e NÃO
@@ -447,172 +503,16 @@ export default function useDadosMontagem() {
       setVeiculos(veiculosAtivos);
       setCargas(carP);
       setLoading(false);
+      setCarregandoItens(false);
 
-      // ═══════════════════════════════════════
-      // FASE 2: Buscar itens D1/Trocas/NF55locais via backend (1 requisição)
-      // ═══════════════════════════════════════
-      const temD1 = d1SemItens.length > 0;
-      const temTrocas = trocasSemItens.length > 0;
-      const temNf55Local = vendasLocais.length > 0;
-
-      if (temD1 || temTrocas || temNf55Local || vendasEnriquecidas.length > 0) {
-        setCarregandoItens(true);
-
-        // BLINDAGEM: toda a Fase 2 fica dentro de um try/catch. Se QUALQUER coisa falhar
-        // (timeout, erro no backend, erro no enriquecimento), os pedidos da Fase 1 — que já
-        // incluem os D1 SEM itens — permanecem na tela. Nenhum D1 some por falha na Fase 2.
-        try {
-        // Usar mapa global de clientes (já carregado no Batch 1 — sem chamadas individuais)
-        const clientesMap = clientesMapGlobal;
-
-        // Buscar TODOS os itens em 1 única chamada backend
-        let itensPedido = {};
-        let itensTroca = {};
-
-        // Pedidos de venda vindos do espelho Omie que chegaram SEM produtos[] (espelho
-        // ainda não preenchido pelo webhook) — precisam ter os itens locais buscados,
-        // senão a coluna "Pacotes" fica zerada mesmo o pedido tendo itens no banco.
-        const vendasOmieSemProdutos = vendasEnriquecidas.filter(
-          p => p.pedido_id && (!p.produtos || p.produtos.length === 0)
-        );
-
-        // Incluir pedido_ids dos D1 + NF55 locais + vendas Omie sem produtos (todos usam PedidoItem)
-        const todosIdsPedidos = [
-          ...d1SemItens.map(p => p.pedido_id),
-          ...vendasLocais.map(p => p.pedido_id),
-          ...vendasOmieSemProdutos.map(p => p.pedido_id)
-        ].filter(Boolean);
-
-        try {
-          // COM RETRY: a busca de itens é o que preenche os PACOTES. Um único 429 (rate
-          // limit do Base44) aqui deixava DEZENAS de pedidos com produtos[] vazio = pacotes
-          // zerados de forma persistente. fetchWithRetry repete com backoff exponencial.
-          const resp = await fetchWithRetry(() => base44.functions.invoke('getItensPedidosLote', {
-            pedido_ids: todosIdsPedidos.length > 0 ? todosIdsPedidos : [],
-            troca_ids: temTrocas ? trocasSemItens.map(t => t.pedido_troca_id) : []
-          }));
-          itensPedido = resp.data?.itens_pedido || {};
-          itensTroca = resp.data?.itens_troca || {};
-        } catch (err) {
-          console.warn('[MontagemCarga] Erro ao buscar itens em lote, itens ficarão vazios:', err?.message);
-        }
-
-        // Enriquecer vendas locais NF55 com itens
-        const vendasLocaisComItens = vendasLocais.map(p => {
-          const itens = itensPedido[p.pedido_id] || [];
-          return {
-            ...p,
-            quantidade_itens: itens.length > 0 ? itens.length : p.quantidade_itens,
-            produtos: itens.length > 0 ? itens.map(i => montarItemProduto(i, 'pedido')) : p.produtos
-          };
-        });
-
-        // Enriquecer vendas Omie com bairro/endereço do cliente
-        // E, quando o espelho veio SEM produtos[], preencher os pacotes com os itens
-        // locais do pedido (buscados acima) — corrige a coluna "Pacotes" zerada.
-        const vendasOmieEnriquecidas = vendasEnriquecidas.map(p => {
-          const cliente = p.cliente_id ? clientesMap.get(p.cliente_id) : null;
-          const semProdutos = !p.produtos || p.produtos.length === 0;
-          const itensLocais = (semProdutos && p.pedido_id) ? (itensPedido[p.pedido_id] || []) : [];
-          return {
-            ...p,
-            // Preserva o que a Fase 1 já preencheu; só completa se ainda estiver vazio.
-            bairro: p.bairro || cliente?.bairro || '',
-            endereco: p.endereco || cliente?.endereco || '',
-            produtos: itensLocais.length > 0
-              ? itensLocais.map(i => montarItemProduto(i, 'pedido'))
-              : p.produtos
-          };
-        });
-
-        // Mesma deduplicação da Fase 1 (espelho Omie tem prioridade sobre o NF55 local)
-        const dedupVendasItensMap = new Map();
-        [...vendasOmieEnriquecidas, ...(temNf55Local ? vendasLocaisComItens : vendasLocais)].forEach(p => {
-          const k = chaveVenda(p);
-          if (!dedupVendasItensMap.has(k)) dedupVendasItensMap.set(k, p);
-        });
-        const todasVendasComItens = Array.from(dedupVendasItensMap.values());
-
-        // Montar D1 completos com itens
-        const d1Completos = d1SemItens.map(p => {
-          const itens = itensPedido[p.pedido_id] || [];
-          const cliente = clientesMap.get(p.cliente_id);
-          const rotaNomeD1 = (p.rota_nome && p.rota_nome !== 'Sem Rota')
-            ? p.rota_nome
-            : (cliente?.rota_id ? (rotasMap.get(cliente.rota_id) || 'Sem Rota') : 'Sem Rota');
-          return {
-            ...p,
-            codigo_cliente_cod: p.codigo_cliente_cod || cliente?.codigo_interno || cliente?.codigo_integracao || '',
-            nome_cliente: p.nome_cliente || cliente?.razao_social || '',
-            nome_fantasia: p.nome_fantasia || cliente?.nome_fantasia || p.nome_cliente || cliente?.razao_social || '',
-            cidade: p.cidade || cliente?.cidade || '',
-            bairro: cliente?.bairro || '',
-            endereco: cliente?.endereco || '',
-            rota_nome: rotaNomeD1, rota_cliente: rotaNomeD1,
-            quantidade_itens: itens.length,
-            produtos: itens.map(i => montarItemProduto(i, 'pedido'))
-          };
-        });
-
-        // Montar Trocas completas com itens
-        const trocasCompletas = trocasSemItens.map(t => {
-          const itens = itensTroca[t.pedido_troca_id] || [];
-          const cliente = clientesMap.get(t.cliente_id);
-          const rotaNome = cliente?.rota_id ? (rotasMap.get(cliente.rota_id) || 'Sem Rota') : 'Sem Rota';
-          return {
-            ...t,
-            nome_fantasia: cliente?.nome_fantasia || cliente?.razao_social || t.nome_cliente || '',
-            cidade: cliente?.cidade || '',
-            bairro: cliente?.bairro || '',
-            endereco: cliente?.endereco || '',
-            rota_nome: rotaNome, rota_cliente: rotaNome,
-            quantidade_itens: itens.length,
-            produtos: itens.map(i => montarItemProduto(i, 'troca'))
-          };
-        });
-
-        // Atualizar pedidos com itens completos
-        const pedidosFinal = [...todasVendasComItens, ...d1Completos, ...trocasCompletas];
-        console.log(`[DEBUG CONTAGEM] FASE 2 → vendasComItens: ${todasVendasComItens.length} | d1Completos: ${d1Completos.length} | trocasCompletas: ${trocasCompletas.length} | total Fase 2: ${pedidosFinal.length}`);
-        setPedidos(pedidosFinal);
-        temPedidosRef.current = pedidosFinal.length > 0;
-        setCarregandoItens(false);
-
-        // Cachear dados completos
-        setCache({
-          pedidos: pedidosFinal,
-          motoristas: motoristasAtivos,
-          veiculos: veiculosAtivos,
-          cargas: carP
-        });
-        } catch (fase2Err) {
-          // Fase 2 falhou — manter os pedidos da Fase 1 (já com os D1 sem itens). Nunca somem.
-          console.warn('[MontagemCarga] Fase 2 falhou, mantendo lista da Fase 1 (D1 preservados):', fase2Err?.message);
-          setCarregandoItens(false);
-          // Cachear a Fase 1 para que o próximo load não sirva um snapshot antigo sem os D1.
-          setCache({
-            pedidos: pedidosFase1,
-            motoristas: motoristasAtivos,
-            veiculos: veiculosAtivos,
-            cargas: carP
-          });
-        }
-      } else {
-        // Sem D1/Trocas/NF55local — a lista final É a Fase 1. Se a tela estava com dados
-        // antigos (auto-refresh) e a Fase 1 não foi pintada acima, aplicá-la agora de uma
-        // vez (já é a versão definitiva neste caminho, sem etapa de itens pendente).
-        if (temPedidosRef.current) {
-          setPedidos(pedidosFase1);
-        }
-        temPedidosRef.current = pedidosFase1.length > 0;
-        // Sem D1/Trocas/NF55local — cachear direto
-        setCache({
-          pedidos: pedidosFase1,
-          motoristas: motoristasAtivos,
-          veiculos: veiculosAtivos,
-          cargas: carP
-        });
-      }
+      // Pacotes, bairro e endereço já vêm completos da Fase 1 (itens buscados acima).
+      // Não há mais Fase 2 — a tela é pintada uma única vez com tudo preenchido.
+      setCache({
+        pedidos: pedidosFase1,
+        motoristas: motoristasAtivos,
+        veiculos: veiculosAtivos,
+        cargas: carP
+      });
 
     } catch (e) {
       const msg = e?.response?.data?.error || e.message || '';
