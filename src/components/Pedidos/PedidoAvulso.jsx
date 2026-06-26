@@ -46,6 +46,20 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   const termo = (searchCodigo || searchFantasia).trim();
   const { clientes: clientesFiltrados, isFetching: buscando, termoAtivo } = useBuscaClientes(termo, { minChars: 2, limite: 50 });
 
+  // Lista inicial: clientes ativos já exibidos ao abrir a aba (sem precisar pesquisar).
+  // Só carrega quando a aba está ativa e não há nenhum termo de busca digitado.
+  const semBusca = termo.length < 2;
+  const { data: clientesIniciais = [], isFetching: carregandoIniciais } = useQuery({
+    queryKey: ['clientes-iniciais-avulso'],
+    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 300),
+    enabled: activeTab === 'avulso' && !selectedCliente && semBusca,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // O que a lista exibe: resultados da busca (com termo) ou a lista inicial (sem termo).
+  const clientesExibidos = semBusca ? clientesIniciais : clientesFiltrados;
+
   // Ao selecionar, garante o registro completo (se vier enxuto) antes de abrir o form.
   const handleSelectCliente = async (cli) => {
     let completo = cli;
@@ -116,22 +130,14 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             </Button>
           </div>
 
-          {termo.length < 2 && (
-            <div className="text-center text-slate-500 py-16">
-              <Search className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p className="font-medium">Digite para buscar um cliente</p>
-              <p className="text-xs mt-1">A partir de 2 caracteres no código, razão social ou nome fantasia — ou use Pesquisar para filtros detalhados</p>
-            </div>
-          )}
-
-          {termoAtivo && buscando && (
+          {((termoAtivo && buscando) || (semBusca && carregandoIniciais)) && (
             <div className="text-center text-slate-500 py-12">
               <Loader2 className="w-8 h-8 mx-auto mb-3 text-amber-500 animate-spin" />
-              <p>Buscando clientes...</p>
+              <p>Carregando clientes...</p>
             </div>
           )}
 
-          {termoAtivo && !buscando && clientesFiltrados.length === 0 && (
+          {!buscando && !carregandoIniciais && clientesExibidos.length === 0 && (
             <div className="text-center text-slate-500 py-12">
               <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
               <p>Nenhum cliente encontrado</p>
@@ -139,10 +145,12 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             </div>
           )}
 
-          {clientesFiltrados.length > 0 && (
+          {clientesExibidos.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-slate-500">{clientesFiltrados.length} cliente(s) encontrado(s)</p>
-              {clientesFiltrados.map(cli => (
+              <p className="text-xs text-slate-500">
+                {semBusca ? `${clientesExibidos.length} cliente(s) ativo(s)` : `${clientesExibidos.length} cliente(s) encontrado(s)`}
+              </p>
+              {clientesExibidos.map(cli => (
                 <Card
                   key={cli.id}
                   className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors"
