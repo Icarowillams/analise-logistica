@@ -539,6 +539,9 @@ export default function GerenciarPedidos({ onEditPedido }) {
     };
     if (statusFilters.length > 0) {
       const statusReais = statusFilters.map(s => STATUS_REAL[s]).filter(Boolean);
+      // "Pendente" abrange tanto 'enviado' quanto 'pendente' (pedidos ainda não enviados ao Omie,
+      // ex: D1/troca que nascem com status 'pendente').
+      if (statusReais.includes('enviado')) statusReais.push('pendente');
       // "Cancelado" abrange também os cancelados pós-faturamento (rastreabilidade).
       if (statusReais.includes('cancelado')) statusReais.push('cancelado_pos_faturamento');
       const incluiSemOmie = statusFilters.includes('sem_omie');
