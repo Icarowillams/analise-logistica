@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ShoppingCart, MapPin, Filter, Loader2 } from 'lucide-react';
+import { Search, ShoppingCart, MapPin, Filter, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import PedidoFormulario from './PedidoFormulario';
 import BuscarClienteModal from './BuscarClienteModal';
 import useBuscaClientes from '@/components/hooks/useBuscaClientes';
@@ -16,6 +16,8 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   const [searchCodigo, setSearchCodigo] = useState('');
   const [searchFantasia, setSearchFantasia] = useState('');
   const [modalBuscaOpen, setModalBuscaOpen] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 20;
 
   const getCodigo = (c) => c?.codigo_interno || c?.codigo_integracao || c?.codigo || c?.codigo_omie || '';
 
@@ -63,6 +65,14 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
 
   // O que a lista exibe: resultados da busca (com termo) ou a lista inicial (sem termo).
   const clientesExibidos = semBusca ? clientesIniciais : clientesFiltrados;
+
+  // Paginação local da lista exibida
+  const totalPaginas = Math.max(1, Math.ceil(clientesExibidos.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const clientesPagina = clientesExibidos.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
+
+  // Volta para a página 1 sempre que o termo de busca muda
+  useEffect(() => { setPagina(1); }, [termo, clientesExibidos.length]);
 
   // Ao selecionar, garante o registro completo (se vier enxuto) antes de abrir o form.
   const handleSelectCliente = async (cli) => {
@@ -153,8 +163,9 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
             <div className="space-y-2">
               <p className="text-xs text-slate-500">
                 {semBusca ? `${clientesExibidos.length} cliente(s) ativo(s)` : `${clientesExibidos.length} cliente(s) encontrado(s)`}
+                {totalPaginas > 1 && ` — página ${paginaAtual} de ${totalPaginas}`}
               </p>
-              {clientesExibidos.map(cli => (
+              {clientesPagina.map(cli => (
                 <Card
                   key={cli.id}
                   className="cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors"
@@ -183,6 +194,34 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
                   </CardContent>
                 </Card>
               ))}
+
+              {totalPaginas > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagina(p => Math.max(1, p - 1))}
+                    disabled={paginaAtual === 1}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-slate-600 px-2">
+                    {paginaAtual} / {totalPaginas}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+                    disabled={paginaAtual === totalPaginas}
+                    className="gap-1"
+                  >
+                    Próximo
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
