@@ -346,6 +346,26 @@ export default function GerenciarPedidos({ onEditPedido }) {
     return () => unsubscribe();
   }, [queryClient]);
 
+  // 🪞 ESPELHO SEMPRE NA HORA: se há pedidos já enviados ao Omie (têm omie_codigo_pedido) mas
+  // SEM espelho no omieMap, cria os espelhos faltantes a partir dos dados LOCAIS — instantâneo,
+  // sem consultar o Omie (zero risco de bloqueio). Roda 1x quando a brecha é detectada.
+  const autoEspelhoRef = React.useRef(false);
+  useEffect(() => {
+    if (autoEspelhoRef.current) return;
+    if (!pedidos.length || omieMap == null) return;
+    const faltando = pedidos.some(p => {
+      if (!p.omie_codigo_pedido) return false;
+      const raw = String(p.omie_codigo_pedido).trim();
+      const asInt = String(parseInt(raw, 10));
+      return !omieMap[raw] && !omieMap[asInt] && (!p.numero_pedido || !omieMap[`np:${String(p.numero_pedido).trim()}`]);
+    });
+    if (!faltando) return;
+    autoEspelhoRef.current = true;
+    base44.functions.invoke('criarEspelhosPedidosSemEspelho', { limite_lote: 200, delay_ms: 80 })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }))
+      .catch(() => { autoEspelhoRef.current = false; });
+  }, [pedidos, omieMap, queryClient]);
+
   // Itens carregados SOB DEMANDA: só quando o usuário usa o filtro de produto.
   // No load inicial NÃO baixa os ~5.700 itens (era o vilão de 18s).
   const filtroProdutoAtivo = produtoIds.length > 0 || !!produtoSearch.trim();
