@@ -64,30 +64,30 @@ export default function PainelCobertura() {
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        <Input placeholder="Buscar cliente ou responsável..." value={busca} onChange={(e) => setBusca(e.target.value)} className="max-w-xs" />
+        <Input placeholder="Buscar cliente ou responsável..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full sm:max-w-xs" />
         <Select value={filtroPapel} onValueChange={setFiltroPapel}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os papéis</SelectItem>
             {Object.entries(PAPEL_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os status</SelectItem>
             {Object.entries(STATUS_COBERTURA).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={recalcular} disabled={recalculando} className="ml-auto gap-2">
+        <Button onClick={recalcular} disabled={recalculando} className="w-full sm:w-auto sm:ml-auto gap-2">
           {recalculando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           Recalcular cobertura
         </Button>
       </div>
 
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="text-left p-3">Cliente</th>

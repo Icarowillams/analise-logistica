@@ -22,7 +22,7 @@ export default function CoberturaInteligente() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1 bg-slate-100 p-1">
+        <TabsList className="flex flex-nowrap sm:flex-wrap h-auto gap-1 bg-slate-100 p-1 w-full overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0 sm:[&>button]:shrink">
           <TabsTrigger value="painel" className="gap-2"><LayoutDashboard className="w-4 h-4" /> Painel</TabsTrigger>
           <TabsTrigger value="alertas" className="gap-2"><Bell className="w-4 h-4" /> Alertas</TabsTrigger>
           <TabsTrigger value="agenda" className="gap-2"><CalendarDays className="w-4 h-4" /> Agenda Mensal</TabsTrigger>

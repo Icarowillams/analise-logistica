@@ -166,18 +166,18 @@ export default function GestaoRoteiros() {
     <div>
       <PageHeader title="Gestão de Roteiros" subtitle="Planejamento de visitas e rotas de vendedores" icon={Route} />
 
-      <div className="flex justify-between items-center mb-6">
-        <Button onClick={handleExport} variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-50">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6">
+        <Button onClick={handleExport} variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-50 w-full sm:w-auto">
           <Download className="w-4 h-4 mr-2" />Exportar Roteiros ({roteiros.length})
         </Button>
         <Button onClick={() => { setSelected(null); setIsEditing(true); setCreateModalOpen(true); }}
-          className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30">
+          className="bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-neutral-900 font-semibold shadow-lg shadow-amber-500/30 w-full sm:w-auto">
           Novo Roteiro
         </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-[1100px] grid-cols-6 mb-6">
+        <TabsList className="flex flex-nowrap sm:grid w-full max-w-[1100px] sm:grid-cols-6 mb-6 overflow-x-auto [-webkit-overflow-scrolling:touch] justify-start [&>button]:shrink-0 sm:[&>button]:shrink-0">
           <TabsTrigger value="busca">Busca de Roteiros</TabsTrigger>
           <TabsTrigger value="importar">Criação em Massa</TabsTrigger>
           <TabsTrigger value="atualizacao">Atualização em Massa</TabsTrigger>
