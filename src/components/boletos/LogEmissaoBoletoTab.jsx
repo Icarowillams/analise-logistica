@@ -11,7 +11,6 @@ import { Search, RefreshCw, Printer, Layers, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import BoletosImpressaoDialog from '@/components/boletos/BoletosImpressaoDialog';
 import { formatarNumeroBoleto } from '@/lib/formatarNumeroBoleto';
-import { formatNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const STATUS_BADGE = {
   gerado: 'bg-green-100 text-green-800 border-green-300',
@@ -42,38 +41,55 @@ export default function LogEmissaoBoletoTab() {
     refetchOnWindowFocus: false
   });
 
-  // Pedidos recentes para FALLBACK instantâneo de Cliente e Nº NF (cruzamento local).
-  const { data: pedidos = [] } = useQuery({
-    queryKey: ['pedidosParaLogBoleto'],
-    queryFn: () => base44.entities.Pedido.filter(
-      { faturado: true }, '-data_faturamento', 500,
-      ['numero_pedido', 'numero_nota_fiscal', 'cliente_nome', 'cliente_nome_fantasia']
+  // FALLBACK de Cliente e Nº NF: muitos LogEmissaoBoleto vêm sem cliente_nome/numero_nf.
+  // A fonte rica é a própria Carga — pedidos_omie traz nome_cliente + numero_nf por pedido.
+  // Carrega só as cargas referenciadas nos logs e cruza por (numero_carga | numero_pedido).
+  const cargasRef = useMemo(
+    () => [...new Set(logsBrutos.map(l => String(l.numero_carga || '').trim()).filter(Boolean))],
+    [logsBrutos]
+  );
+
+  const { data: cargas = [] } = useQuery({
+    queryKey: ['cargasParaLogBoleto', cargasRef.join(',')],
+    queryFn: () => base44.entities.Carga.filter(
+      { numero_carga: { $in: cargasRef } }, '-created_date', 500,
+      ['numero_carga', 'pedidos_omie']
     ),
-    staleTime: 2 * 60 * 1000,
+    enabled: cargasRef.length > 0,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false
   });
 
-  const pedidoPorNumero = useMemo(() => {
+  // Índice "numero_carga|numero_pedido(sem zeros)" → { nome, nf } a partir de pedidos_omie.
+  const pedidoPorCargaNumero = useMemo(() => {
     const m = new Map();
-    pedidos.forEach(p => {
-      const chave = formatNumeroPedido(p.numero_pedido || '');
-      if (chave) m.set(chave, p);
+    const limpo = (v) => String(v || '').trim().replace(/^0+/, '');
+    cargas.forEach(c => {
+      (c.pedidos_omie || []).forEach(p => {
+        const chave = `${String(c.numero_carga || '').trim()}|${limpo(p.numero_pedido)}`;
+        if (chave && !m.has(chave)) {
+          m.set(chave, {
+            nome: p.nome_cliente || p.nome_fantasia || '',
+            nf: String(p.numero_nf || '').replace(/^0+/, '')
+          });
+        }
+      });
     });
     return m;
-  }, [pedidos]);
+  }, [cargas]);
 
   // Resolve Cliente e Nº NF na renderização, sem depender de releitura/write-through.
   const logs = useMemo(() => {
+    const limpo = (v) => String(v || '').trim().replace(/^0+/, '');
     return logsBrutos.map(l => {
-      const chave = formatNumeroPedido(l.numero_pedido || '');
-      const ped = chave ? pedidoPorNumero.get(chave) : null;
+      const ref = pedidoPorCargaNumero.get(`${String(l.numero_carga || '').trim()}|${limpo(l.numero_pedido)}`);
       return {
         ...l,
-        cliente_nome: l.cliente_nome || ped?.cliente_nome || ped?.cliente_nome_fantasia || '',
-        numero_nf: l.numero_nf || ped?.numero_nota_fiscal || ''
+        cliente_nome: l.cliente_nome || ref?.nome || '',
+        numero_nf: l.numero_nf || ref?.nf || ''
       };
     });
-  }, [logsBrutos, pedidoPorNumero]);
+  }, [logsBrutos, pedidoPorCargaNumero]);
 
   const filtrados = useMemo(() => {
     const termo = filtroTexto.trim().toLowerCase();
