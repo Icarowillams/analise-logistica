@@ -50,15 +50,28 @@ export default function LogEmissaoBoletoTab() {
   );
 
   // Índice via BACKEND (service-role) — Carga.filter no frontend volta vazio por RLS.
+  // CACHE localStorage: o índice cliente/NF é estável, então o servimos como dado inicial
+  // para a tabela já abrir COM os nomes (sem o "pisca" de "—" → nome em 1-2s). Em background
+  // ele revalida e atualiza o cache.
+  const CACHE_KEY_IDX = 'boletos_indice_clientes_v1';
   const { data: indiceRef = {} } = useQuery({
     queryKey: ['dadosClienteNfBoletos', cargasRef.join(',')],
     queryFn: async () => {
       const { data } = await base44.functions.invoke('dadosClienteNfBoletos', { numeros_carga: cargasRef });
-      return data?.indice || {};
+      const indice = data?.indice || {};
+      try { localStorage.setItem(CACHE_KEY_IDX, JSON.stringify(indice)); } catch {}
+      return indice;
     },
     enabled: cargasRef.length > 0,
     staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    initialData: () => {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY_IDX);
+        return raw ? JSON.parse(raw) : undefined;
+      } catch { return undefined; }
+    },
+    initialDataUpdatedAt: 0 // marca o cache como stale → revalida em background imediatamente
   });
 
   // Resolve Cliente e Nº NF na renderização, sem depender de releitura/write-through.
