@@ -180,8 +180,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  // Releitura SOMENTE local (sem chamar Omie) — usada pelo auto-refresh.
+  // Auto-refresh: sincroniza o espelho com o Omie AO VIVO e depois relê o local.
+  // Antes só relia o local (dependia do webhook do Omie chegar) — por isso a etapa Omie
+  // ficava congelada quando o webhook atrasava/falhava. Agora o ciclo consulta o Omie de
+  // verdade (mesma função do botão Atualizar), espaçada o bastante para não estourar o rate limit.
+  // Falha de sync (bloqueio/rate limit) é silenciosa: cai pra releitura local e tenta no próximo ciclo.
   const recarregarLocal = useCallback(async () => {
+    await base44.functions.invoke('sincronizarLiberadosOmieRapido', { origem: 'gerenciar_pedidos_auto' })
+      .catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
       queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
