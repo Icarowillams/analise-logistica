@@ -49,9 +49,13 @@ export default function PedidoAvulso({ vendedor, activeTab, editingPedidoId, onC
   // Lista inicial: clientes ativos já exibidos ao abrir a aba (sem precisar pesquisar).
   // Só carrega quando a aba está ativa e não há nenhum termo de busca digitado.
   const semBusca = termo.length < 2;
+  // Admin (sem vendedor.id) vê todos os clientes ativos; cada vendedor vê a própria carteira.
+  const filtroIniciais = vendedor?.id
+    ? { status: 'ativo', vendedor_id: vendedor.id }
+    : { status: 'ativo' };
   const { data: clientesIniciais = [], isFetching: carregandoIniciais } = useQuery({
-    queryKey: ['clientes-iniciais-avulso'],
-    queryFn: () => base44.entities.Cliente.filter({ status: 'ativo' }, 'razao_social', 300),
+    queryKey: ['clientes-iniciais-avulso', vendedor?.id || 'todos'],
+    queryFn: () => base44.entities.Cliente.filter(filtroIniciais, 'razao_social', 500),
     enabled: activeTab === 'avulso' && !selectedCliente && semBusca,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
