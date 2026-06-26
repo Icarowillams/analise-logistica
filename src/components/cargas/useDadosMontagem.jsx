@@ -135,7 +135,7 @@ function montarItemProduto(i, tipo) {
   };
 }
 
-export default function useDadosMontagem() {
+export default function useDadosMontagem(ativo = true) {
   const [loading, setLoading] = useState(true);
   const [pedidos, setPedidos] = useState([]);
   const [motoristas, setMotoristas] = useState([]);
@@ -147,6 +147,19 @@ export default function useDadosMontagem() {
   // já tem dados. Quando já tem, NÃO repintamos com a Fase 1 (produtos[] ainda vazios) —
   // evita o "pacotes zerando e voltando" a cada auto-refresh de 60s.
   const temPedidosRef = useRef(false);
+
+  // Carga LEVE: busca apenas as cargas (para a aba "Cargas em Montagem"), sem o espelho
+  // Omie / pedidos / clientes / itens. Usada quando o hook está inativo (aba pesada fechada).
+  const carregarSomenteCargas = useCallback(async () => {
+    try {
+      const carP = await fetchWithRetry(() => base44.entities.Carga.list('-created_date', 1000));
+      setCargas(carP || []);
+    } catch (e) {
+      console.warn('[useDadosMontagem] Falha ao carregar cargas (modo leve):', e?.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const carregar = useCallback(async (isRetry = false) => {
     // Cache stale-while-revalidate: serve o último snapshot IMEDIATAMENTE (mesmo expirado),
@@ -537,6 +550,12 @@ export default function useDadosMontagem() {
   }, []);
 
   const recarregar = useCallback(async () => {
+    // Aba "Cargas em Montagem" (hook inativo): recarrega só as cargas, sem custo de Omie.
+    if (!ativo) {
+      setLoading(true);
+      await carregarSomenteCargas();
+      return;
+    }
     localStorage.removeItem(CACHE_KEY + '_' + getUserCacheKey());
     setLoading(true);
     // Aguardar reconciliação do espelho ANTES de carregar dados,
@@ -547,7 +566,7 @@ export default function useDadosMontagem() {
       console.warn('[useDadosMontagem] sync Omie falhou:', e?.message);
     }
     await carregar();
-  }, [carregar]);
+  }, [carregar, carregarSomenteCargas, ativo]);
 
   // Re-fetch LOCAL: limpa cache e relê as entidades do Base44, SEM chamar o Omie.
   // Usado no auto-refresh para trazer pedidos recém-liberados sem custo de API externa.
@@ -557,11 +576,18 @@ export default function useDadosMontagem() {
   }, [carregar]);
 
   useEffect(() => {
-    carregar();
+    // Carga sob demanda: a parte pesada (espelho Omie + pedidos + clientes + itens) só roda
+    // quando o hook está ATIVO (aba "Nova Carga" aberta). Inativo → busca apenas as cargas,
+    // que é o necessário para a aba "Cargas em Montagem" abrir instantânea, sem travar.
+    if (ativo) {
+      carregar();
+    } else {
+      carregarSomenteCargas();
+    }
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [carregar]);
+  }, [carregar, carregarSomenteCargas, ativo]);
 
   // Auto-refresh leve: a cada 3 min relê as entidades locais (sem Omie) para que
   // pedidos liberados entrem na lista sozinhos, sem o logístico clicar em Atualizar.
@@ -571,10 +597,11 @@ export default function useDadosMontagem() {
   // "Atualizar" continua disponível para forçar a atualização imediata quando necessário.
   useEffect(() => {
     const intervalo = setInterval(() => {
-      recarregarLocal();
+      if (ativo) recarregarLocal();
+      else carregarSomenteCargas();
     }, 180000);
     return () => clearInterval(intervalo);
-  }, [recarregarLocal]);
+  }, [recarregarLocal, carregarSomenteCargas, ativo]);
 
   return { loading, pedidos, motoristas, veiculos, cargas, recarregar, carregandoItens };
 }

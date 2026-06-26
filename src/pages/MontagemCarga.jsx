@@ -12,7 +12,10 @@ import CargasEmMontagem from '@/components/cargas/CargasEmMontagem';
 import { filtrarPedidosMontagem, getOpcoesMontagem } from '@/components/cargas/montagemUtils';
 
 export default function MontagemCarga() {
-  const { loading, pedidos, motoristas, veiculos, cargas, recarregar, carregandoItens } = useDadosMontagem();
+  const [abaAtiva, setAbaAtiva] = useState('montagem');
+  // A carga pesada (espelho Omie + pedidos + clientes + itens) só dispara quando a aba
+  // "Nova Carga" é aberta. A aba "Cargas em Montagem" carrega só as cargas (leve e rápida).
+  const { loading, pedidos, motoristas, veiculos, cargas, recarregar, carregandoItens } = useDadosMontagem(abaAtiva === 'nova');
   const [selecionados, setSelecionados] = useState([]);
   const [filtros, setFiltros] = useState(filtrosIniciaisMontagem);
 
@@ -36,7 +39,7 @@ export default function MontagemCarga() {
       <div className="space-y-3 w-full max-w-none mx-auto">
         <MontagemHeader loading={loading} onRefresh={recarregar} />
 
-        <Tabs defaultValue="montagem" className="w-full">
+        <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
           <TabsList>
             <TabsTrigger value="montagem">Cargas em Montagem</TabsTrigger>
             <TabsTrigger value="nova">Nova Carga</TabsTrigger>
