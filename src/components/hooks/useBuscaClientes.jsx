@@ -24,7 +24,7 @@ export default function useBuscaClientes(termo, { minChars = 2, limite = 30, ext
       // resultado vazio por 60s, que fazia o cliente "sumir" mesmo existindo.
       let falhas = 0;
       const tentar = async (p) => { try { return await p; } catch { falhas++; return []; } };
-      const [porFantasia, porRazao, porCodigoExato, porCodigoParcial, porCodigoInteg, porCodigoOmie, porCodOmieExato] = await Promise.all([
+      const [porFantasia, porRazao, porCodigoExato, porCodigoParcial, porCodigoInteg, porCodigoOmie, porCodOmieExato, porCodGenericoExato, porCodGenericoParcial] = await Promise.all([
         tentar(base44.entities.Cliente.filter({ ...base, nome_fantasia: { $regex: termoDebounced, $options: 'i' } }, '-created_date', limite)),
         tentar(base44.entities.Cliente.filter({ ...base, razao_social: { $regex: termoDebounced, $options: 'i' } }, '-created_date', limite)),
         tentar(base44.entities.Cliente.filter({ ...base, codigo_interno: termoDebounced }, '-created_date', 5)),
@@ -32,11 +32,13 @@ export default function useBuscaClientes(termo, { minChars = 2, limite = 30, ext
         tentar(base44.entities.Cliente.filter({ ...base, codigo_integracao: { $regex: termoDebounced, $options: 'i' } }, '-created_date', limite)),
         tentar(base44.entities.Cliente.filter({ ...base, codigo_omie: { $regex: termoDebounced, $options: 'i' } }, '-created_date', limite)),
         tentar(base44.entities.Cliente.filter({ ...base, codigo_omie: termoDebounced }, '-created_date', 5)),
+        tentar(base44.entities.Cliente.filter({ ...base, codigo: termoDebounced }, '-created_date', 5)),
+        tentar(base44.entities.Cliente.filter({ ...base, codigo: { $regex: termoDebounced, $options: 'i' } }, '-created_date', limite)),
       ]);
-      // Se TODAS as 7 sub-buscas falharam, é falha de rede — propaga para refazer (não cacheia vazio).
-      if (falhas === 7) throw new Error('Falha ao buscar clientes — tentando novamente');
+      // Se TODAS as sub-buscas falharam, é falha de rede — propaga para refazer (não cacheia vazio).
+      if (falhas === 9) throw new Error('Falha ao buscar clientes — tentando novamente');
       const mapa = new Map();
-      [...porCodigoExato, ...porCodOmieExato, ...porCodigoParcial, ...porCodigoInteg, ...porCodigoOmie, ...porFantasia, ...porRazao].forEach(c => { if (c && !mapa.has(c.id)) mapa.set(c.id, c); });
+      [...porCodigoExato, ...porCodOmieExato, ...porCodGenericoExato, ...porCodigoParcial, ...porCodigoInteg, ...porCodigoOmie, ...porCodGenericoParcial, ...porFantasia, ...porRazao].forEach(c => { if (c && !mapa.has(c.id)) mapa.set(c.id, c); });
       return Array.from(mapa.values()).slice(0, limite);
     },
     enabled: ativo,
