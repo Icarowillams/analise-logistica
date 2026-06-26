@@ -138,6 +138,10 @@ export default function useDadosMontagem() {
   const [cargas, setCargas] = useState([]);
   const [carregandoItens, setCarregandoItens] = useState(false);
   const retryTimerRef = useRef(null);
+  // Espelha o tamanho atual da lista para a revalidação em background saber se a tela
+  // já tem dados. Quando já tem, NÃO repintamos com a Fase 1 (produtos[] ainda vazios) —
+  // evita o "pacotes zerando e voltando" a cada auto-refresh de 60s.
+  const temPedidosRef = useRef(false);
 
   const carregar = useCallback(async (isRetry = false) => {
     // Cache stale-while-revalidate: serve o último snapshot IMEDIATAMENTE (mesmo expirado),
@@ -146,6 +150,7 @@ export default function useDadosMontagem() {
       const cached = getCache();
       if (cached?.data?.pedidos?.length > 0) {
         setPedidos(cached.data.pedidos);
+        temPedidosRef.current = true;
         setMotoristas(cached.data.motoristas || []);
         setVeiculos(cached.data.veiculos || []);
         setCargas(cached.data.cargas || []);
@@ -419,7 +424,13 @@ export default function useDadosMontagem() {
       // ─── LIBERAR TELA IMEDIATAMENTE ───
       const pedidosFase1 = [...todasVendas, ...d1SemItens, ...trocasSemItens];
       console.log(`[DEBUG CONTAGEM] FASE 1 → vendas: ${todasVendas.length} | d1SemItens: ${d1SemItens.length} | trocasSemItens: ${trocasSemItens.length} | total Fase 1: ${pedidosFase1.length}`);
-      setPedidos(pedidosFase1);
+      // ANTI-FLICKER: a Fase 1 traz produtos[] vazios (pacotes = 0). Só repintamos a tela
+      // com ela se ainda NÃO houver pedidos exibidos (primeira carga / tela vazia). No
+      // auto-refresh de 60s, mantemos a lista atual (com pacotes) e deixamos a Fase 2
+      // substituir de uma vez — assim os pacotes não caem a 0 e voltam.
+      if (!temPedidosRef.current) {
+        setPedidos(pedidosFase1);
+      }
       setMotoristas(motoristasAtivos);
       setVeiculos(veiculosAtivos);
       setCargas(carP);
@@ -548,6 +559,7 @@ export default function useDadosMontagem() {
         const pedidosFinal = [...todasVendasComItens, ...d1Completos, ...trocasCompletas];
         console.log(`[DEBUG CONTAGEM] FASE 2 → vendasComItens: ${todasVendasComItens.length} | d1Completos: ${d1Completos.length} | trocasCompletas: ${trocasCompletas.length} | total Fase 2: ${pedidosFinal.length}`);
         setPedidos(pedidosFinal);
+        temPedidosRef.current = pedidosFinal.length > 0;
         setCarregandoItens(false);
 
         // Cachear dados completos
@@ -570,6 +582,13 @@ export default function useDadosMontagem() {
           });
         }
       } else {
+        // Sem D1/Trocas/NF55local — a lista final É a Fase 1. Se a tela estava com dados
+        // antigos (auto-refresh) e a Fase 1 não foi pintada acima, aplicá-la agora de uma
+        // vez (já é a versão definitiva neste caminho, sem etapa de itens pendente).
+        if (temPedidosRef.current) {
+          setPedidos(pedidosFase1);
+        }
+        temPedidosRef.current = pedidosFase1.length > 0;
         // Sem D1/Trocas/NF55local — cachear direto
         setCache({
           pedidos: pedidosFase1,
@@ -586,6 +605,7 @@ export default function useDadosMontagem() {
         const cached = getCache();
         if (cached?.data?.pedidos?.length > 0) {
           setPedidos(cached.data.pedidos);
+          temPedidosRef.current = true;
           setMotoristas(cached.data.motoristas || []);
           setVeiculos(cached.data.veiculos || []);
           setCargas(cached.data.cargas || []);
