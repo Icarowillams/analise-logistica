@@ -47,6 +47,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     staleTime: 15000
   });
 
+  // TEMPO REAL: assim que o backend grava/atualiza uma NF (emissão em lote ou reconciliação),
+  // a lista atualiza sozinha — número da NF e "Autorizada" aparecem na hora, sem clicar em Recarregar.
+  // Debounce de 600ms para agrupar rajadas de updates de um lote inteiro num único refetch.
+  useEffect(() => {
+    if (!ativa) return;
+    let timer = null;
+    const unsubscribe = base44.entities.LogEmissaoNF.subscribe(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => refetch(), 600);
+    });
+    return () => { clearTimeout(timer); unsubscribe?.(); };
+  }, [ativa, refetch]);
+
   // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
   const autorizadosSemNF = useMemo(
     () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
