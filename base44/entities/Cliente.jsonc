@@ -270,5 +270,13 @@
   "required": [
     "razao_social",
     "cnpj_cpf"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
