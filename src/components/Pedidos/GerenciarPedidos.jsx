@@ -181,14 +181,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  // Auto-refresh: sincroniza o espelho com o Omie AO VIVO e depois relê o local.
-  // Antes só relia o local (dependia do webhook do Omie chegar) — por isso a etapa Omie
-  // ficava congelada quando o webhook atrasava/falhava. Agora o ciclo consulta o Omie de
-  // verdade (mesma função do botão Atualizar), espaçada o bastante para não estourar o rate limit.
-  // Falha de sync (bloqueio/rate limit) é silenciosa: cai pra releitura local e tenta no próximo ciclo.
+  // Auto-refresh: RELÊ APENAS OS DADOS LOCAIS — NÃO toca o Omie.
+  // ⚠️ CAUSA RAIZ DO RATE LIMIT (corrigida): antes este ciclo chamava
+  // reconciliarEtapasAbertasOmie({ modo: 'auto' }) a cada poucos minutos, enquanto QUALQUER
+  // usuário tivesse a tela aberta com o "Auto" ligado → ConsultarPedido em lote a cada ~2min
+  // martelando o Omie → "consumo indevido" / chave inválida. O webhook já mantém o espelho em
+  // tempo real; a releitura local abaixo é suficiente. A reconciliação dirigida (que consulta o
+  // Omie) agora roda SOMENTE sob clique humano no botão "Atualizar" (syncEAtualizar → modo manual).
   const recarregarLocal = useCallback(async () => {
-    await base44.functions.invoke('reconciliarEtapasAbertasOmie', { modo: 'auto' })
-      .catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
       queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
