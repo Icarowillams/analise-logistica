@@ -2,21 +2,21 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
+// Environment-First SEM cache: Deno.env é atômico e sem TTL — nunca serve chave velha durante
+// troca de credencial. ConfiguracaoOmie é só fallback.
 async function getOmieCredentials(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
@@ -68,8 +68,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-const OMIE_APP_KEY = Deno.env.get("OMIE_APP_KEY");
-const OMIE_APP_SECRET = Deno.env.get("OMIE_APP_SECRET");
 const produtoCache = new Map();
 const configCache = { value: false, expiresAt: 0 };
 
@@ -95,7 +93,7 @@ function setProdutoCached(codigo, data, modoEconomico) {
 
 // Verifica circuit breaker — lança OMIE_425 se a API estiver bloqueada
 async function checarBloqueio(base44) {
-    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, '-updated_date', 1).catch(() => []);
+    const cb = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
     const controle = cb?.[0];
     if (controle?.bloqueado && controle.bloqueado_ate && new Date(controle.bloqueado_ate) > new Date()) {
         const err = new Error(`API Omie temporariamente bloqueada por consumo indevido. Desbloqueio previsto: ${new Date(controle.bloqueado_ate).toLocaleString('pt-BR')}.`);
@@ -104,30 +102,6 @@ async function checarBloqueio(base44) {
         throw err;
     }
     return controle;
-}
-
-// Trata erro 425 → abre circuit breaker (30min), grava log explícito e lança OMIE_425
-async function tratar425(base44, controle, call, param, res, data) {
-    const msg = String(data.faultstring || '').toLowerCase();
-    if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloquead') || msg.includes('bloqueio')) {
-        const _cbId = '6a1e06a9aa62ceab7b3b6d97';
-        const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: _cbId }, '-created_date', 1).catch(() => []);
-        const _cb = _cbRows?.[0];
-        const _erros = (_cb?.erros_consecutivos || 0) + 1;
-        const _thresh = _cb?.threshold_erros ?? 3;
-        const _p: any = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
-        if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
-        await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(_cbId, _p).catch(() => {});
-        await base44.asServiceRole.entities.LogIntegracaoOmie.create({
-            endpoint: 'geral/produtos/', call, operacao: call, status: 'erro', codigo_erro: '425',
-            mensagem_erro: data.faultstring || 'HTTP 425 — consumo indevido',
-            payload_enviado: JSON.stringify(param || {}).slice(0, 2000),
-            payload_resposta: JSON.stringify(data || {}).slice(0, 2000)
-        }).catch(() => {});
-        const err = new Error(`API Omie bloqueada por consumo indevido (HTTP 425). Erro: ${String(data.faultstring).slice(0, 200)}`);
-        err.code = 'OMIE_425';
-        throw err;
-    }
 }
 
 Deno.serve(async (req) => {
@@ -148,8 +122,8 @@ Deno.serve(async (req) => {
         const resultados = {};
         const modoEconomico = await getModoEconomico(base44);
 
-        // Circuit breaker — aborta antes de qualquer chamada
-        const controle = await checarBloqueio(base44);
+        // Circuit breaker — aborta antes de qualquer chamada (omieCall também reverifica por chamada)
+        await checarBloqueio(base44);
 
         // Deduplicação por código — evita chamadas redundantes ao Omie no mesmo lote
         const codigosUnicos = [...new Set(codigos.map(c => String(c)))];
@@ -161,41 +135,20 @@ Deno.serve(async (req) => {
                 continue;
             }
 
-            // Chamada com retry/backoff para HTTP 500/429 (instabilidade Omie); 425 → circuit breaker
-            const RETRIES = [1000, 2000, 4000];
+            // Chamada via gateway canônico — retry/backoff + circuit breaker (425) embutidos
             let data = null;
-            for (let tentativa = 0; tentativa <= RETRIES.length; tentativa++) {
-                const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        call: "ConsultarProduto",
-                        app_key: OMIE_APP_KEY,
-                        app_secret: OMIE_APP_SECRET,
-                        param: [{ codigo }]
-                    })
-                });
-
-                // Tratar status HTTP ANTES de .json() — num 5xx/429 o corpo não costuma ser JSON
-                if (response.status >= 500 || response.status === 429 || response.status === 425) {
-                    const corpo = await response.text().catch(() => '');
-                    if (response.status === 425) {
-                        await tratar425(base44, controle, 'ConsultarProduto', { codigo }, response, { faultstring: corpo || 'HTTP 425' });
-                    }
-                    if (tentativa < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[tentativa])); continue; }
-                    data = { faultstring: `HTTP ${response.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}` };
-                    break;
+            try {
+                data = await omieCall(base44, 'geral/produtos/', { codigo }, { call: 'ConsultarProduto', skipLog: true });
+            } catch (e: any) {
+                if (e?.message && /bloquead|consumo indevido|425/i.test(e.message)) {
+                    const err = new Error(e.message); err.code = 'OMIE_425'; throw err;
                 }
-
-                data = await response.json();
-                break;
+                resultados[codigo] = { erro: e.message };
+                await new Promise(r => setTimeout(r, 600));
+                continue;
             }
 
-            if (data.faultstring) {
-                // tratar425 só inspeciona data.faultstring quando não há status 425 explícito (response já tratado no loop acima)
-                await tratar425(base44, controle, 'ConsultarProduto', { codigo }, { status: 200 }, data);
-                resultados[codigo] = { erro: data.faultstring };
-            } else {
+            {
                 resultados[codigo] = {
                     codigo: data.codigo,
                     codigo_produto: data.codigo_produto,
