@@ -89,9 +89,30 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const apenasListar = body?.apenas_listar === true;
-    const maxAlteracoes = Number(body?.max_alteracoes || 60);
+    // Lista de códigos a alterar passada direto no payload (modo alteração sem re-listar).
+    const codigos: number[] = Array.isArray(body?.codigos) ? body.codigos : [];
 
-    // ─── 1) Listar TODOS os clientes do Omie (paginado) e coletar os bloqueados ───
+    // ─── MODO ALTERAÇÃO: recebe os códigos e só chama AlterarCliente (sem re-listar) ───
+    if (!apenasListar && codigos.length > 0) {
+      const resultados: any[] = [];
+      let okCount = 0;
+      for (const cod of codigos) {
+        try {
+          await omieCall(base44, 'geral/clientes/', {
+            codigo_cliente_omie: cod,
+            bloquear_faturamento: 'N'
+          }, { call: 'AlterarCliente', operation: 'desbloquear_faturamento', entityType: 'Cliente', skipLog: true });
+          okCount += 1;
+          resultados.push({ codigo: cod, ok: true });
+        } catch (err: any) {
+          resultados.push({ codigo: cod, ok: false, erro: String(err?.message || '').slice(0, 160) });
+        }
+        await sleep(400);
+      }
+      return Response.json({ sucesso: true, desbloqueados_nesta_execucao: okCount, total: codigos.length, resultados });
+    }
+
+    // ─── MODO LISTAGEM: pagina todos os clientes do Omie e coleta os bloqueados ───
     const bloqueados: any[] = [];
     let pagina = 1;
     let totalPaginas = 1;
@@ -116,35 +137,11 @@ Deno.serve(async (req) => {
       pagina += 1;
     } while (pagina <= totalPaginas);
 
-    if (apenasListar) {
-      return Response.json({ sucesso: true, total_bloqueados: bloqueados.length, clientes: bloqueados.slice(0, 200) });
-    }
-
-    // ─── 2) Desbloquear (AlterarCliente) em fatias ───
-    const alvos = bloqueados.slice(0, maxAlteracoes);
-    const resultados: any[] = [];
-    let okCount = 0;
-
-    for (const alvo of alvos) {
-      try {
-        await omieCall(base44, 'geral/clientes/', {
-          codigo_cliente_omie: alvo.codigo_cliente_omie,
-          bloquear_faturamento: 'N'
-        }, { call: 'AlterarCliente', operation: 'desbloquear_faturamento', entityType: 'Cliente' });
-        okCount += 1;
-        resultados.push({ nome: alvo.nome, ok: true });
-      } catch (err: any) {
-        resultados.push({ nome: alvo.nome, ok: false, erro: String(err?.message || '').slice(0, 160) });
-      }
-      await sleep(600);
-    }
-
     return Response.json({
       sucesso: true,
       total_bloqueados: bloqueados.length,
-      desbloqueados_nesta_execucao: okCount,
-      restantes: Math.max(bloqueados.length - alvos.length, 0),
-      resultados
+      codigos: bloqueados.map((b) => b.codigo_cliente_omie),
+      clientes: bloqueados
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });
