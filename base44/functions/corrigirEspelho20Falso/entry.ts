@@ -3,14 +3,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // ═══════════════════════════════════════════════════════════════════════════
 // corrigirEspelho20Falso — ROTINA PONTUAL, SOB CLIQUE (admin-only). NÃO é automação.
 //
-// Reconsulta no Omie os pedidos do espelho (PedidoLiberadoOmie) gravados em etapa 20
-// via webhook (gravação otimista antiga) e, onde o Omie REAL disser etapa 10 (ou outra
-// diferente de 20), corrige o espelho para a etapa real. Resolve o "falso liberado".
+// Reconsulta no Omie os pedidos do espelho (PedidoLiberadoOmie) cuja etapa DIVERGE do
+// status interno do Pedido (não só etapa 20→10) e corrige o espelho para a etapa REAL
+// que o Omie confirmar. Cobre TODAS as divergências:
+//   - espelho 10 mas Pedido liberado → Omie pode dizer 10 ou 20 (reconsulta resolve)
+//   - espelho 20 mas Pedido faturado → Omie deveria dizer 60
+//   - espelho 80 mas Pedido montagem → confirma cancelamento ou corrige
+// Se o Omie disser 80 (cancelado) OU o pedido não existir mais ("não cadastrado"),
+// marca o espelho como 80 E o status interno do Pedido como cancelado.
 //
-// SEGURO: sequencial, com delay entre chamadas, respeita o circuit breaker (se bloqueado,
-// aborta na hora — não martela). Idempotente (rodar de novo não causa dano).
+// SEGURO: 1 chamada por vez, espaçada (1,5s), respeita o circuit breaker e o PORTÃO GLOBAL
+// (se bloqueado/ocupado, aborta na hora — não martela). Idempotente.
 // LEITURA pura no Omie (ConsultarPedido) — nunca fatura nem altera nada no Omie.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Mapa etapa Omie → status interno do Pedido (mesma régua confirmada pelo Paulo).
+const ETAPA_PARA_STATUS_PEDIDO = { '10': 'pendente', '20': 'liberado', '50': 'montagem', '60': 'faturado', '70': 'faturado', '80': 'cancelado' };
+const STATUS_LABEL_ETAPA = { '10': 'Pedido Pendente', '20': 'Pedido Liberado', '50': 'Faturar', '60': 'Faturado', '70': 'Entregue', '80': 'Cancelado' };
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
@@ -88,7 +97,10 @@ async function registrarErroBreaker(base44, faultstring) {
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, p).catch(() => null);
 }
 
-// Consulta a etapa real do pedido no Omie. Retorna string da etapa, ou null.
+// Consulta a etapa real do pedido no Omie.
+// Retorna { etapa } com a etapa real, ou { naoCadastrado: true } se o Omie disser que o
+// pedido não existe mais (tratado como cancelado/80), ou { etapa: null } se indefinido.
+// Lança erro com .rateLimit=true em bloqueio/425/429 para o chamador abortar.
 async function consultarEtapaReal(base44, codigoPedido) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
   const controller = new AbortController();
@@ -115,10 +127,14 @@ async function consultarEtapaReal(base44, codigoPedido) {
         err.rateLimit = true;
         throw err;
       }
-      // pedido não encontrado / outro fault — devolve null (sem etapa)
-      return null;
+      // Pedido não cadastrado/não encontrado no Omie → foi excluído/cancelado. Tratar como 80.
+      if (/n[ãa]o cadastrad|n[ãa]o encontrad|inexistente|n[ãa]o existe/.test(msg)) {
+        return { naoCadastrado: true };
+      }
+      // Outro fault — etapa indefinida.
+      return { etapa: null };
     }
-    return String(data?.pedido_venda_produto?.cabecalho?.etapa || data?.cabecalho?.etapa || '') || null;
+    return { etapa: String(data?.pedido_venda_produto?.cabecalho?.etapa || data?.cabecalho?.etapa || '') || null };
   } finally {
     clearTimeout(tid);
   }
@@ -150,44 +166,112 @@ Deno.serve(async (req) => {
     }
 
     try {
-    // Carrega TODO o espelho em etapa 20 gravado via webhook (os suspeitos de "falso liberado").
-    const candidatos = [];
+    // ── Monta os CANDIDATOS DIVERGENTES ──
+    // Carrega todo o espelho e, para cada registro, compara a etapa do espelho com o status
+    // interno do Pedido. Só entram na fila de reconsulta os que DIVERGEM (espelho não bate
+    // com o status que o Pedido carrega) — não martela o Omie com pedidos já coerentes.
+    const espelhos = [];
     let skip = 0;
     while (true) {
-      const lote = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({ etapa: '20', origem_sync: 'webhook' }, '-sincronizado_em', 500, skip).catch(() => []);
+      const lote = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({}, '-sincronizado_em', 500, skip).catch(() => []);
       if (!lote || lote.length === 0) break;
-      candidatos.push(...lote);
+      espelhos.push(...lote);
       if (lote.length < 500) break;
       skip += 500;
     }
 
+    // Indexa o status interno dos Pedidos por omie_codigo_pedido (1 passada, sem N consultas).
+    const pedidoStatusPorCodigo = new Map();
+    let skipP = 0;
+    while (true) {
+      const lote = await base44.asServiceRole.entities.Pedido.filter({ omie_enviado: true }, '-updated_date', 500, skipP).catch(() => []);
+      if (!lote || lote.length === 0) break;
+      for (const p of lote) {
+        if (p.omie_codigo_pedido) pedidoStatusPorCodigo.set(String(p.omie_codigo_pedido).trim(), p);
+      }
+      if (lote.length < 500) break;
+      skipP += 500;
+    }
+
+    // Divergência = etapa do espelho mapeia para um status interno diferente do status real do Pedido.
+    const candidatos = espelhos.filter((esp) => {
+      if (!esp.codigo_pedido) return false;
+      const pedido = pedidoStatusPorCodigo.get(String(esp.codigo_pedido).trim());
+      if (!pedido) return false;
+      const statusEsperado = ETAPA_PARA_STATUS_PEDIDO[String(esp.etapa)];
+      if (!statusEsperado) return false; // etapa fora da régua → deixa para reconciliação
+      const statusReal = pedido.status;
+      // Estados que consideramos equivalentes para não gerar falso-divergente:
+      // 'enviado' ~ 'pendente'; 'cancelado_pos_faturamento' ~ 'cancelado'.
+      const norm = (s) => (s === 'enviado' ? 'pendente' : s === 'cancelado_pos_faturamento' ? 'cancelado' : s);
+      return norm(statusReal) !== norm(statusEsperado);
+    });
+
     let corrigidos = 0;
-    let confirmados20 = 0;
+    let confirmados = 0;
+    let cancelados = 0;
     let semEtapa = 0;
     let abortado = false;
     const correcoes = [];
 
     for (let i = 0; i < candidatos.length; i++) {
       const esp = candidatos[i];
-      if (!esp.codigo_pedido) { semEtapa++; continue; }
       try {
-        const etapaReal = await consultarEtapaReal(base44, esp.codigo_pedido);
+        const resultado = await consultarEtapaReal(base44, esp.codigo_pedido);
+
+        // Omie diz que o pedido não existe mais → cancelado (80) no espelho E no Pedido.
+        if (resultado.naoCadastrado) {
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+            etapa: '80', status_label: STATUS_LABEL_ETAPA['80'],
+            sincronizado_em: new Date().toISOString(), origem_sync: 'correcao_pontual'
+          }).catch(() => {});
+          const pedido = pedidoStatusPorCodigo.get(String(esp.codigo_pedido).trim());
+          if (pedido && pedido.status !== 'cancelado' && pedido.status !== 'cancelado_pos_faturamento') {
+            await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+              status: pedido.faturado || pedido.numero_nota_fiscal ? 'cancelado_pos_faturamento' : 'cancelado',
+              cancelado_no_omie: true,
+              data_cancelamento: pedido.data_cancelamento || new Date().toISOString(),
+              motivo_cancelamento: pedido.motivo_cancelamento || 'Pedido não cadastrado no Omie (correção de espelho)'
+            }).catch(() => {});
+          }
+          cancelados++;
+          correcoes.push({ numero_pedido: esp.numero_pedido, codigo_pedido: esp.codigo_pedido, de: String(esp.etapa), para: '80', motivo: 'nao_cadastrado' });
+          if (i < candidatos.length - 1) await sleep(DELAY_MS);
+          continue;
+        }
+
+        const etapaReal = resultado.etapa;
         if (!etapaReal) {
           semEtapa++;
-        } else if (etapaReal === '20') {
-          // Confirmado: realmente está liberado. Só carimba sincronizado_em.
-          confirmados20++;
-          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, { sincronizado_em: new Date().toISOString(), origem_sync: 'correcao_pontual' }).catch(() => {});
-        } else {
-          // Divergente (ex: Omie real = 10) — corrige o espelho para a etapa real.
+        } else if (String(etapaReal) === String(esp.etapa)) {
+          // Omie confirma a etapa que já estava no espelho — divergência era só no status interno.
+          confirmados++;
           await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
-            etapa: etapaReal,
-            status_label: etapaReal === '10' ? 'Pedido Pendente' : `Etapa ${etapaReal}`,
+            sincronizado_em: new Date().toISOString(), origem_sync: 'correcao_pontual'
+          }).catch(() => {});
+        } else {
+          // Etapa real diverge do espelho → corrige o espelho para a etapa REAL do Omie.
+          await base44.asServiceRole.entities.PedidoLiberadoOmie.update(esp.id, {
+            etapa: String(etapaReal),
+            status_label: STATUS_LABEL_ETAPA[String(etapaReal)] || `Etapa ${etapaReal}`,
             sincronizado_em: new Date().toISOString(),
             origem_sync: 'correcao_pontual'
           });
           corrigidos++;
-          correcoes.push({ numero_pedido: esp.numero_pedido, codigo_pedido: esp.codigo_pedido, de: '20', para: etapaReal });
+          // Se o Omie disser 80 (cancelado), reflete também no status interno do Pedido.
+          if (String(etapaReal) === '80') {
+            const pedido = pedidoStatusPorCodigo.get(String(esp.codigo_pedido).trim());
+            if (pedido && pedido.status !== 'cancelado' && pedido.status !== 'cancelado_pos_faturamento') {
+              await base44.asServiceRole.entities.Pedido.update(pedido.id, {
+                status: pedido.faturado || pedido.numero_nota_fiscal ? 'cancelado_pos_faturamento' : 'cancelado',
+                cancelado_no_omie: true,
+                data_cancelamento: pedido.data_cancelamento || new Date().toISOString(),
+                motivo_cancelamento: pedido.motivo_cancelamento || 'Cancelado no Omie (correção de espelho)'
+              }).catch(() => {});
+            }
+            cancelados++;
+          }
+          correcoes.push({ numero_pedido: esp.numero_pedido, codigo_pedido: esp.codigo_pedido, de: String(esp.etapa), para: String(etapaReal) });
         }
       } catch (e) {
         if (e.rateLimit) {
@@ -202,9 +286,11 @@ Deno.serve(async (req) => {
 
     return Response.json({
       sucesso: true,
+      total_espelhos: espelhos.length,
       total_candidatos: candidatos.length,
       corrigidos,
-      confirmados_20: confirmados20,
+      confirmados,
+      cancelados,
       sem_etapa: semEtapa,
       abortado_por_rate_limit: abortado,
       correcoes

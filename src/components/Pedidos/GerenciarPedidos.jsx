@@ -353,7 +353,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // Etapas Omie — mapa montado no BACKEND (mapaEtapasOmie, asServiceRole), entregando só os
   // campos necessários (~165KB vs ~2MB do espelho completo). Mesmo formato do antigo buildOmieMap:
   // chaves codigo raw, codigo como int e np:<numero_pedido>.
-  const { data: omieMap = {} } = useQuery({
+  const { data: omieMap, isLoading: omieMapLoading, isFetched: omieMapFetched } = useQuery({
     queryKey: ['gerenciar-pedidos-omie-etapas'],
     queryFn: async () => {
       const res = await base44.functions.invoke('mapaEtapasOmie', {});
@@ -362,6 +362,12 @@ export default function GerenciarPedidos({ onEditPedido }) {
     staleTime: 30000,
     refetchOnWindowFocus: false
   });
+
+  // FIX "Sem espelho" piscando: o badge de etapa só pode dizer "Sem espelho" DEPOIS que o
+  // mapa de espelhos terminou de carregar. Enquanto carrega (ou ainda não buscou), mostramos
+  // um estado de carregando (—) no lugar do badge, nunca "Sem espelho".
+  const espelhoCarregando = omieMapLoading || !omieMapFetched;
+  const omieMapResolvido = omieMap || {};
 
   // Subscription em tempo real: atualiza o omieMap instantaneamente quando o espelho muda
   useEffect(() => {
@@ -377,19 +383,20 @@ export default function GerenciarPedidos({ onEditPedido }) {
   const autoEspelhoRef = React.useRef(false);
   useEffect(() => {
     if (autoEspelhoRef.current) return;
-    if (!pedidos.length || omieMap == null) return;
+    // Só procura brechas DEPOIS do mapa carregar — antes disso, todos parecem "faltando".
+    if (!pedidos.length || espelhoCarregando) return;
     const faltando = pedidos.some(p => {
       if (!p.omie_codigo_pedido) return false;
       const raw = String(p.omie_codigo_pedido).trim();
       const asInt = String(parseInt(raw, 10));
-      return !omieMap[raw] && !omieMap[asInt] && (!p.numero_pedido || !omieMap[`np:${String(p.numero_pedido).trim()}`]);
+      return !omieMapResolvido[raw] && !omieMapResolvido[asInt] && (!p.numero_pedido || !omieMapResolvido[`np:${String(p.numero_pedido).trim()}`]);
     });
     if (!faltando) return;
     autoEspelhoRef.current = true;
     base44.functions.invoke('criarEspelhosPedidosSemEspelho', { limite_lote: 200, delay_ms: 80 })
       .then(() => queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }))
       .catch(() => { autoEspelhoRef.current = false; });
-  }, [pedidos, omieMap, queryClient]);
+  }, [pedidos, omieMapResolvido, espelhoCarregando, queryClient]);
 
   // Itens carregados SOB DEMANDA: só quando o usuário usa o filtro de produto.
   // No load inicial NÃO baixa os ~5.700 itens (era o vilão de 18s).
@@ -488,15 +495,15 @@ export default function GerenciarPedidos({ onEditPedido }) {
       let omieInfo = null;
       if (pedido.omie_codigo_pedido) {
         const rawCode = String(pedido.omie_codigo_pedido).trim();
-        omieInfo = omieMap[rawCode];
+        omieInfo = omieMapResolvido[rawCode];
         // Fallback: tentar como inteiro puro (ex: "123456.0" → "123456")
         if (!omieInfo) {
           const asInt = String(parseInt(rawCode, 10));
-          if (asInt !== 'NaN') omieInfo = omieMap[asInt];
+          if (asInt !== 'NaN') omieInfo = omieMapResolvido[asInt];
         }
       }
       if (!omieInfo && pedido.numero_pedido) {
-        omieInfo = omieMap[`np:${String(pedido.numero_pedido).trim()}`];
+        omieInfo = omieMapResolvido[`np:${String(pedido.numero_pedido).trim()}`];
       }
 
       return {
@@ -521,7 +528,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
         qtd_total_itens: pedido.qtd_total_itens || pedido.total_itens || 0,
       };
     });
-  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMap]);
+  }, [pedidos, clientesLookup, vendedoresMap, vendedores, omieMapResolvido]);
 
   // ⚠️ A liberação de pedidos pendentes é SEMPRE manual, pelo botão "Liberar".
   // A convergência automática (que liberava pedidos sozinha quando o espelho do Omie marcava
@@ -1328,7 +1335,7 @@ export default function GerenciarPedidos({ onEditPedido }) {
                     </td>
                     {columns.map(col => (
                       <td key={col.id} className="px-1 py-0 border-r border-slate-100 overflow-hidden whitespace-nowrap text-ellipsis" style={{ width: colWidths[col.id] || 100, minWidth: 40, maxWidth: colWidths[col.id] || 100 }}>
-                        <PedidoCellRenderer col={col} p={p} />
+                        <PedidoCellRenderer col={col} p={p} espelhoCarregando={espelhoCarregando} />
                       </td>
                     ))}
                     <td className="px-1 py-0" style={{ width: 70, minWidth: 70 }}>

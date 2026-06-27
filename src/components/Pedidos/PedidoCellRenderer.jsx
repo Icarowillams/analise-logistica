@@ -71,7 +71,7 @@ const getErroFiscal = (p) => {
 // O Status converge com a ETAPA REAL do Omie (espelho), que é a fonte de verdade.
 // Usa o helper compartilhado getStatusEfetivoPedido (lib/etapaOmieStatus) — a MESMA fonte
 // usada pelo filtro de status, garantindo que coluna e filtro sempre concordem.
-export default function PedidoCellRenderer({ col, p }) {
+export default function PedidoCellRenderer({ col, p, espelhoCarregando = false }) {
   if (col.id === 'status') {
     const statusEfetivo = getStatusEfetivoPedido(p);
     const label = STATUS_LABELS[statusEfetivo] || statusEfetivo;
@@ -103,6 +103,12 @@ export default function PedidoCellRenderer({ col, p }) {
     // Fallback: Pedido.etapa_omie (se existir). Só "Sem espelho" quando nenhum dos dois tem valor.
     const etapaExibir = p.omie_etapa_real || p.etapa_omie;
     if (!etapaExibir) {
+      // FIX race condition: enquanto o mapa de espelhos ainda está carregando, NÃO mostrar
+      // "Sem espelho" (falso negativo). Mostra um estado neutro de carregando. "Sem espelho"
+      // só aparece quando o mapa já carregou completo e o pedido realmente não tem espelho.
+      if (espelhoCarregando) {
+        return <span className="block text-slate-300 text-[10px] animate-pulse" title="Carregando etapa do espelho…">—</span>;
+      }
       return <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-[10px]" title="Pedido não encontrado no espelho. Clique Atualizar para sincronizar.">Sem espelho</Badge>;
     }
     const e = ETAPA_OMIE_LABELS[etapaExibir];
