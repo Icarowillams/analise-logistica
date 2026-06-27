@@ -2,17 +2,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
 
+// FONTE DE VERDADE: Secrets do backend (OMIE_APP_KEY/OMIE_APP_SECRET) — SEMPRE primeiro.
+// Sem cache em memória: o Deno.env é atômico e não tem TTL, então nunca serve um app_key
+// velho. A entidade ConfiguracaoOmie só é fallback quando o Secret estiver vazio (e pode
+// conter um app_key/secret ANTIGO — por isso nunca tem prioridade).
 async function getOmieCredentials(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 async function checkCircuitBreaker(base44: any) {
