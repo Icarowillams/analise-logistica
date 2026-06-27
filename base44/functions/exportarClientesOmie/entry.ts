@@ -2,25 +2,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient inline (auto-contido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
+// Environment-First SEM cache: Deno.env é atômico e sem TTL — nunca serve chave velha durante
+// troca de credencial. ConfiguracaoOmie é só fallback.
 async function getOmieCredentials(base44: any) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 async function checkCircuitBreaker(base44: any) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: 'principal' }, 'created_date', 1).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
   const c = rows?.[0];
   if (!c?.bloqueado) return { blocked: false };
   if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
     return { blocked: false };
   }
   return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
@@ -84,10 +84,6 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 }
 // ═══ fim omieClient inline ═══
 
-// ✅ ITEM 7
-const OMIE_APP_KEY = Deno.env.get('OMIE_APP_KEY');
-const OMIE_APP_SECRET = Deno.env.get('OMIE_APP_SECRET');
-const OMIE_URL = 'https://app.omie.com.br/api/v1/geral/clientes/';
 const TAMANHO_LOTE_OMIE = 50;
 
 
