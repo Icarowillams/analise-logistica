@@ -42,8 +42,8 @@ Deno.serve(async (req) => {
       // ── Regra 1 e 2: desbloqueio preciso por tempo ──
       if (c.bloqueado) {
         const ate = c.bloqueado_ate ? new Date(c.bloqueado_ate).getTime() : null;
-        // Bloqueio sem prazo: libera após 10 min parado (usa atualizado_em como referência).
-        const SEM_PRAZO_TIMEOUT_MS = 10 * 60 * 1000;
+        // Bloqueio sem prazo: libera após 1 min parado (usa atualizado_em como referência).
+        const SEM_PRAZO_TIMEOUT_MS = 1 * 60 * 1000;
         const refSemPrazo = c.atualizado_em ? new Date(c.atualizado_em).getTime() : null;
         const semPrazoExpirado = !ate && refSemPrazo && (agora - refSemPrazo) >= SEM_PRAZO_TIMEOUT_MS;
 
