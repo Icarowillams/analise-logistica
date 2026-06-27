@@ -198,6 +198,30 @@ export default function GerenciarPedidos({ onEditPedido }) {
 
   const { enabled: autoRefresh, setEnabled: setAutoRefresh, textoUltima } = useAutoRefreshPedidos(recarregarLocal);
 
+  // 🔄 CONSULTA OMIE EM TEMPO REAL — a cada 3 minutos consulta o Omie (reconciliação dirigida
+  // em modo 'auto': lote rotativo seguro que respeita o circuit breaker e o throttle, nunca
+  // martela a API). Só roda com o "Auto" ligado e a aba visível. Depois relê os dados locais
+  // para refletir as etapas corrigidas. É o mesmo motor seguro da automação de 15min, mas puxado
+  // para 3min enquanto a tela está aberta — sem disparar bloqueio do Omie.
+  const omieRealtimeRef = React.useRef(false);
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const consultarOmie = async () => {
+      if (document.visibilityState !== 'visible' || omieRealtimeRef.current) return;
+      omieRealtimeRef.current = true;
+      try {
+        await base44.functions.invoke('reconciliarEtapasAbertasOmie', {
+          modo: 'auto', max_lote: 10, incluir_finais: false, throttle_ms: 2500
+        }).catch(() => null);
+        await recarregarLocal();
+      } finally {
+        omieRealtimeRef.current = false;
+      }
+    };
+    const id = setInterval(consultarOmie, 180000); // 3 minutos
+    return () => clearInterval(id);
+  }, [autoRefresh, recarregarLocal]);
+
   const recarregarAbaAposAcao = async (resultado = null) => {
     setSelectedIds([]);
     if (resultado) setBatchResult(resultado);
