@@ -174,6 +174,7 @@ export default function Layout({ children, currentPageName }) {
         submenu: [
           { title: 'Permissões', path: 'Permissoes' },
           { title: 'Log Gerencial', path: 'LogGerencial' },
+          { title: 'Auditoria de Cancelados', path: 'AuditoriaCancelados' },
           { title: 'Credenciais Omie', path: 'ConfiguracaoOmie' },
           { title: 'Sincronizar Clientes CSV', path: 'sincronizarclientescsv' },
           { title: 'Sincronizar Clientes Omie', path: 'SincronizarClienteOmie' },
