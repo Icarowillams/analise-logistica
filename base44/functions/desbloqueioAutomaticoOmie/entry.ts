@@ -42,16 +42,21 @@ Deno.serve(async (req) => {
       // ── Regra 1 e 2: desbloqueio preciso por tempo ──
       if (c.bloqueado) {
         const ate = c.bloqueado_ate ? new Date(c.bloqueado_ate).getTime() : null;
-        if (ate && ate <= agora) {
-          // Cooldown do Omie terminou → seguro desbloquear.
+        // Bloqueio sem prazo: libera após 10 min parado (usa atualizado_em como referência).
+        const SEM_PRAZO_TIMEOUT_MS = 10 * 60 * 1000;
+        const refSemPrazo = c.atualizado_em ? new Date(c.atualizado_em).getTime() : null;
+        const semPrazoExpirado = !ate && refSemPrazo && (agora - refSemPrazo) >= SEM_PRAZO_TIMEOUT_MS;
+
+        if ((ate && ate <= agora) || semPrazoExpirado) {
+          // Cooldown do Omie terminou (ou bloqueio sem prazo parado há 10+ min) → seguro desbloquear.
           updates.bloqueado = false;
           updates.bloqueado_ate = null;
           updates.erros_consecutivos = 0;
           updates.ultimo_erro = null;
-          desbloqueados.push({ id: c.id, chave: c.chave, expirou_em: c.bloqueado_ate });
+          desbloqueados.push({ id: c.id, chave: c.chave, expirou_em: c.bloqueado_ate || `sem_prazo (>${SEM_PRAZO_TIMEOUT_MS / 60000}min)` });
         } else {
-          // Ainda dentro da janela (ate futuro) OU bloqueio sem prazo (ate null) →
-          // NÃO desbloqueia (precisão: nunca liberar durante o cooldown nem cegamente).
+          // Ainda dentro da janela (ate futuro) OU bloqueio sem prazo recente →
+          // NÃO desbloqueia ainda (precisão: nunca liberar durante o cooldown).
           aindaBloqueados.push({ id: c.id, chave: c.chave, bloqueado_ate: c.bloqueado_ate || 'sem_prazo' });
         }
       }
