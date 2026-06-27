@@ -1,551 +1,458 @@
-# 📐 Documentação Técnica & Arquitetural — Sistema de Gestão Comercial, Logística e Faturamento (Pão & Mel + Omie)
+# 🏗️ Documentação Técnica & Arquitetural — ERP Pão & Mel + Omie
 
-> **Documento mestre de arquitetura.** Cobre absolutamente todos os escopos técnicos do projeto: visão geral, modelo de dados, integração Omie, mecanismos de resiliência, filas assíncronas, fluxos de negócio fim-a-fim, frontend, automações e segurança. Use este arquivo como fonte de verdade arquitetural.
-
-**Stack:** React + Vite + TailwindCSS + shadcn/ui · Base44 BaaS (entidades, funções Deno, automações) · Integração Omie ERP · Conector GitHub.
-**Idioma de domínio:** Português (BR) · **Timezone:** America/Fortaleza.
+> **Documento mestre de arquitetura (Technical Paper).**
+> Descreve o funcionamento completo, a lógica e **todos os escopos técnicos** do projeto: integração Omie, filas assíncronas, controle de concorrência, entidades, funções de backend, automações, páginas e invariantes fiscais.
+> Mantenha este arquivo atualizado a cada mudança estrutural. Em caso de conflito, a régua de etapas Omie (§3) e as Invariantes (§13) prevalecem.
 
 ---
 
 ## 📑 Índice
 
-1. [Visão Geral do Sistema](#1-visão-geral-do-sistema)
-2. [Princípios Arquiteturais](#2-princípios-arquiteturais)
-3. [Camadas da Aplicação](#3-camadas-da-aplicação)
-4. [Modelo de Dados (Entidades)](#4-modelo-de-dados-entidades)
-5. [Integração Omie — A Espinha Dorsal](#5-integração-omie--a-espinha-dorsal)
-6. [Mecanismos de Resiliência](#6-mecanismos-de-resiliência)
-7. [Camada de Credenciais (Hardening)](#7-camada-de-credenciais-hardening)
-8. [Filas Assíncronas](#8-filas-assíncronas)
-9. [Fluxos de Negócio Fim-a-Fim](#9-fluxos-de-negócio-fim-a-fim)
-10. [Catálogo de Funções Backend](#10-catálogo-de-funções-backend)
-11. [Webhooks Omie](#11-webhooks-omie)
-12. [Frontend — Páginas e Navegação](#12-frontend--páginas-e-navegação)
-13. [Módulo de Cobertura Inteligente](#13-módulo-de-cobertura-inteligente)
-14. [Módulo Comercial & Comissionamento](#14-módulo-comercial--comissionamento)
-15. [Auditoria, Logs e Rastreabilidade](#15-auditoria-logs-e-rastreabilidade)
-16. [Segurança e Permissões](#16-segurança-e-permissões)
-17. [Glossário de Etapas Omie](#17-glossário-de-etapas-omie)
-18. [Convenções de Código](#18-convenções-de-código)
+1. [Visão geral do produto](#1-visão-geral-do-produto)
+2. [Stack & topologia](#2-stack--topologia)
+3. [Régua de etapas Omie (espinha dorsal)](#3-régua-de-etapas-omie-espinha-dorsal)
+4. [Integração Omie — cliente central & resiliência](#4-integração-omie--cliente-central--resiliência)
+5. [Controle de concorrência — breaker, rate limit & portão único](#5-controle-de-concorrência--breaker-rate-limit--portão-único)
+6. [Credenciais & Secrets](#6-credenciais--secrets)
+7. [Modelo de dados (entidades)](#7-modelo-de-dados-entidades)
+8. [Filas assíncronas (workers)](#8-filas-assíncronas-workers)
+9. [Webhooks Omie](#9-webhooks-omie)
+10. [Funções de backend (catálogo)](#10-funções-de-backend-catálogo)
+11. [Automações (scheduled / entity)](#11-automações-scheduled--entity)
+12. [Frontend — páginas, layout & roteamento](#12-frontend--páginas-layout--roteamento)
+13. [Invariantes & regras que não podem quebrar](#13-invariantes--regras-que-não-podem-quebrar)
+14. [Fluxo end-to-end](#14-fluxo-end-to-end)
+15. [Lições aprendidas (produção)](#15-lições-aprendidas-produção)
+16. [Glossário](#16-glossário)
 
 ---
 
-## 1. Visão Geral do Sistema
+## 1. Visão geral do produto
 
-O sistema é um **ERP operacional de distribuição** que orquestra o ciclo comercial completo de uma distribuidora de bebidas/alimentos, espelhando e comandando o **Omie** (ERP fiscal/financeiro de origem) sem nunca perder a soberania da operação local.
+ERP operacional da **Pão & Mel** integrado 100% ao **Omie ERP (API v1)**. Cobre o ciclo comercial e logístico de ponta a ponta:
 
-### Domínios funcionais
+- **Comercial:** cadastro de clientes/produtos/tabelas, criação e liberação de pedidos, metas, comissionamento, cobertura inteligente de visitas.
+- **Logística / Faturamento:** montagem de cargas, faturamento, emissão de NF-e, boletos, romaneios, acerto de caixa (prestação de contas).
+- **Integração:** sincronização bidirecional com o Omie (clientes, produtos, pedidos, NF-e, contas a receber/boletos) com forte controle de rate limit.
 
-| Domínio | Responsabilidade |
-|---|---|
-| **Comercial** | Pedidos de venda, trocas, devoluções, bonificações; tabelas de preço; planos de pagamento; cenários fiscais. |
-| **Logística** | Montagem de cargas, roteirização, faturamento em lote, emissão de NF-e, boletos, acerto de caixa, retornos. |
-| **Faturamento Fiscal** | Sincronização bidirecional com Omie: envio de pedidos, troca de etapas, emissão de NF, espelho de status. |
-| **Cobertura Inteligente** | Agenda de visitas por papel (gerência→coordenador→supervisor→vendedor→promotor), check-in/out GPS, alertas em cascata. |
-| **Gestão & Análise** | Metas em cascata hierárquica, comissionamento, scorecard, dashboards comerciais. |
-| **Governança** | Log gerencial, auditoria de cancelados, permissões por aba, credenciais Omie. |
-
-### O conceito central: **Espelho (Mirror)**
-
-O Omie é a fonte de verdade **fiscal**, mas a **operação acontece localmente**. Para isso o sistema mantém entidades-espelho (`PedidoLiberadoOmie`, `LogEmissaoNF`, etc.) que refletem o estado real do Omie, reconciliadas continuamente. A operação local nunca espera o Omie de forma síncrona — ela enfileira e reconcilia.
+**Princípio mestre:** *faturar é um fluxo de estados assíncrono, nunca um clique atômico.* Tudo o que toca o Omie passa por **filas**, **circuit breaker** e um **portão único (mutex global)** para não estourar o limite da API.
 
 ---
 
-## 2. Princípios Arquiteturais
+## 2. Stack & topologia
 
-1. **Operação local soberana, Omie como sistema fiscal.** A UI nunca trava esperando o Omie; tudo crítico passa por fila assíncrona + reconciliação.
-2. **Idempotência em todo lugar.** Webhooks usam `messageId`; filas usam locks; reprocessamentos são seguros.
-3. **Resiliência antes de throughput.** Circuit breaker + portão global + rate limit protegem a cota Omie acima de qualquer pressa.
-4. **`Deno.env` é a única fonte de verdade de secrets** (ver §7). Banco só é fallback.
-5. **Blindagem fiscal.** Pedidos soltos manualmente nunca são faturados por rotina automática (`solto_manualmente`).
-6. **Rastreabilidade total.** `LogGerencial` + `LogIntegracaoOmie` + `LogEmissaoNF` cobrem quem/quando/o quê.
-7. **Cascata hierárquica** como padrão de modelagem (metas, cobertura, alertas).
+| Camada | Tecnologia |
+|--------|-----------|
+| Frontend | React 18 + Vite, Tailwind CSS, shadcn/ui, lucide-react |
+| Estado/dados | @tanstack/react-query, SDK Base44 (`@/api/base44Client`) |
+| Backend (functions) | Deno (Base44 functions), `createClientFromRequest(req)` |
+| Banco | Entidades Base44 (JSON Schema) — **compartilhado** entre módulos |
+| Integração externa | Omie ERP API v1 (`https://app.omie.com.br/api/v1/`) via App Key/Secret |
+| Auth | Plataforma Base44 (sem login custom); papéis `admin` / `user` + entidade `Permissao` |
+| Roteamento | `react-router-dom` em `App.jsx` (loop `pagesConfig` + rotas explícitas) |
 
----
-
-## 3. Camadas da Aplicação
+**Topologia de execução:**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  FRONTEND (React + Vite)                                      │
-│  pages/ · components/ · lib/ · hooks/                         │
-│  - SDK: base44.entities / base44.functions.invoke            │
-│  - React Query (cache), shadcn/ui, Tailwind tokens           │
-└───────────────────────────┬─────────────────────────────────┘
-                            │  base44.functions.invoke(...)
-┌───────────────────────────▼─────────────────────────────────┐
-│  BACKEND FUNCTIONS (Deno Serve)                              │
-│  functions/  — 150+ handlers                                 │
-│  - _shared/omieClient   (cliente resiliente)                 │
-│  - _shared/portaoOmie   (mutex global)                       │
-│  - _shared/constantes   (etapas, mapas)                      │
-└───────────────────────────┬─────────────────────────────────┘
-              ┌─────────────┴──────────────┐
-┌─────────────▼─────────────┐   ┌───────────▼──────────────────┐
-│  BASE44 ENTITIES (DB)     │   │  OMIE ERP API (externa)       │
-│  ~90 entidades JSON       │   │  produtos/pedido, geral/...   │
-│  + entidades-espelho      │   │  REST POST + app_key/secret   │
-└───────────────────────────┘   └──────────────────────────────┘
-              │
-┌─────────────▼─────────────┐
-│  AUTOMATIONS (scheduled/   │
-│  entity/connector/webhook) │
-└────────────────────────────┘
+[Browser/UI React] ──SDK──> [Functions Deno] ──omieCall──> [Omie API v1]
+        │                          │  ▲                          │
+        │                          │  └── ControleCircuitBreakerOmie (breaker/rate/portão)
+        │                          │
+        └── entidades Base44 <─────┘ (leitura/escrita direta + filas)
+                                   ▲
+[Omie] ──webhook──> receberWebhookOmie ── enfileira ──> processarFilaWebhookOmie
 ```
 
 ---
 
-## 4. Modelo de Dados (Entidades)
+## 3. Régua de etapas Omie (espinha dorsal)
 
-> Atributos built-in em toda entidade: `id`, `created_date`, `updated_date`, `created_by_id`.
+Confirmada pelo suporte Omie em **19/06**. Definida em `functions/_shared/constantes`:
 
-### 4.1 Núcleo Comercial
+| Etapa | Significado | Quem move |
+|-------|-------------|-----------|
+| `10` | Pedido de Venda | Comercial (criação) |
+| `20` | Pedidos Liberados | Liberação / envio ao Omie |
+| `50` | Faturar (A Faturar) | Faturar carga (`FilaCargaOmie`) |
+| `60` | Faturado | Emissão de NF-e |
+| `70` | Entrega / Entregue | Acerto de Caixa |
+| `80` | Cancelado | Cancelamento / exclusão |
+
+Constantes-chave: `ETAPA_FATURADO = '60'`, `ETAPA_ENTREGUE = '70'`, `CONTA_CORRENTE_PADRAO = 11464371392`, `STATUS_ABERTOS_BOLETOS = ['ABERTO','ABERTA','A_RECEBER']`, `DELAY_PADRAO_RETRY = 2500`.
+
+**Regras de ouro:**
+- "Faturar carga" **NÃO emite NF** e **NÃO troca etapa no Omie** num primeiro momento — marca o pedido como pronto para emissão. A troca para etapa 50 + previsão é feita pela `FilaCargaOmie`.
+- Etapa **60** só ao emitir NF (`pedidovendafat` → `FaturarPedidoVenda`).
+- Etapa **70** só pelo Acerto de Caixa.
+- `modelo_nota='d1'` / `tipo_nota='D1'` = venda interna / troca **SEM NF** — nunca vai ao Omie para emissão.
+
+---
+
+## 4. Integração Omie — cliente central & resiliência
+
+> **`functions/_shared/omieClient.ts`** — toda chamada ao Omie DEVE passar por `omieCall(base44, endpoint, param, { call })`. Nunca chamar `fetch` direto ao Omie fora dele.
+
+### 4.1. Endpoints usados
+
+Base: `https://app.omie.com.br/api/v1/`
+
+| Domínio | Endpoint | Métodos (`call`) |
+|---------|----------|------------------|
+| Pedido | `produtos/pedido/` | `ConsultarPedido`, `IncluirPedido`, `AlterarPedidoVenda`, `TrocarEtapaPedido`, `ExcluirPedido` |
+| Faturamento | `produtos/pedidovendafat/` | `FaturarPedidoVenda`, `ValidarPedidoVenda` |
+| NF-e | `produtos/nfconsultar/` | `ConsultarNF`, `ObterNfe` (DANFE PDF), `ListarNF` |
+| Contas a receber | `financas/contareceber/` | `ListarContasReceber` |
+| Boleto | `financas/contareceberboleto/` | `GerarBoleto` |
+| Clientes | `geral/clientes/` | `UpsertCliente`, `IncluirCliente`, `AlterarCliente`, `ExcluirCliente`, `ListarClientes` |
+| Produtos | `geral/produtos/` | `UpsertProduto`, `ExcluirProduto` |
+
+Payload padrão:
+```json
+{ "call": "ConsultarPedido", "app_key": "...", "app_secret": "...", "param": [ { /* ... */ } ] }
+```
+
+### 4.2. O que o `omieCall` implementa
+
+1. **Resolução de credenciais** (Secret → fallback banco), cache de 30s por isolate.
+2. **Circuit breaker** persistente (entidade `ControleCircuitBreakerOmie`, registro fixo `6a1e06a9aa62ceab7b3b6d97`) — aborta cedo se bloqueado.
+3. **Throttle global atômico** (reserva de slot, ~1 chamada / 1,5s para TODO o app).
+4. **Throttle por método** (~3 req/s, `THROTTLE_MIN_INTERVAL_MS = 334`) — margem da regra Omie de 240 req/min.
+5. **Fila sequencial** para métodos críticos de escrita (`FaturarPedidoVenda`, `IncluirPedido`, `EmitirNF/NFS`, `CancelarNF`, `CancelarPedido(Venda)`, `UpsertCliente`) — Omie rejeita paralelismo.
+6. **Retry exponencial** (1s/2s/4s) para HTTP 429.
+7. **Tratamento de erros específicos do Omie:**
+   - **CÓDIGO 6** — "Consumo redundante, aguarde X s": retry com o tempo exato informado, até 4 tentativas.
+   - **MISUSE_API_PROCESS** / "consumo indevido" / HTTP 425 → bloqueio imediato de 30 min, sem retry.
+   - **Chave de acesso inválida/bloqueada** (anti-flood severo): retry com espera até 3 vezes → breaker.
+   - Genéricos (cota, limite, suspenso, 403, 425) → abre breaker.
+8. **Cache** (memória + entidade `CacheOmieConsulta`) **só para leitura** — escrita nunca é cacheada.
+9. **Log automático** em `LogIntegracaoOmie` com **mascaramento de CPF/CNPJ (LGPD)**.
+
+> ⚠️ **Status HTTP antes de `res.json()`**: em 5xx/429/425 o corpo geralmente NÃO é JSON. Sempre checar `res.status` antes de parsear.
+
+---
+
+## 5. Controle de concorrência — breaker, rate limit & portão único
+
+A entidade `ControleCircuitBreakerOmie` cumpre **3 papéis distintos** (por `chave`):
+
+### 5.1. Circuit breaker (`chave='principal'`, ID fixo `6a1e06a9aa62ceab7b3b6d97`)
+Campos: `bloqueado`, `bloqueado_ate`, `erros_consecutivos`, `threshold_erros` (default 3). Abre após N erros 425/MISUSE; **auto-desbloqueia** quando `bloqueado_ate` expira. Tempo extraído da própria mensagem Omie ("aguarde X segundos", cap 30 min).
+
+### 5.2. Rate limit global (`chave='rate_limit_global'`)
+Reserva de slot **atômica** por marca-e-confirma: `atualizado_em` guarda o *próximo slot reservado* (timestamp futuro). Cada instância adquire mutex curto (`worker_lock_ate`, TTL 4s), reserva `slot = max(agora, próximo_slot)`, grava `próximo_slot + 1,5s` e dorme até o seu slot. Garante que 2 instâncias **não disparem juntas**.
+
+### 5.3. Portão único / mutex global (`chave='portao_global_omie'`) — `functions/_shared/portaoOmie`
+- `adquirirPortao(base44, nome)` → mutex **marca-e-confirma** (grava `donoId` em `ultimo_erro`, relê, só assume se persistiu). TTL 5 min auto-release.
+- `liberarPortao(base44, donoId)` → só libera se ainda for o dono.
+- `temTrabalhoOperacaoPendente(base44)` → rotinas de **leitura/limpeza cedem a vez** quando há `FilaEnvioPedidoOmie` ou `FilaCargaOmie` pendente.
+
+**Ordem de prioridade ao tocar o Omie:**
+1. Verifica **circuit breaker** → se bloqueado, aborta cedo (sem tocar Omie).
+2. **Operação** (Fila Envio, Fila Carga) adquire o portão direto.
+3. **Leitura/limpeza** (reconciliações, correção de espelho) cede a vez se houver operação pendente.
+
+> **Por que existe o portão:** antes, cada worker tinha seu próprio lock; os três podiam acordar no mesmo minuto (quando o breaker liberava) e bater no Omie **em paralelo** → rajada → re-bloqueio. O portão é um lock único que **todos** compartilham — só uma operação por vez toca o Omie.
+
+---
+
+## 6. Credenciais & Secrets
+
+| Secret | Uso |
+|--------|-----|
+| `OMIE_APP_KEY` | App Key da Omie (fonte de verdade). |
+| `OMIE_APP_SECRET` | App Secret da Omie. **Nunca** lido do banco em texto plano. |
+| `OMIE_WEBHOOK_TOKEN` | Token na query string do webhook (`?token=...`). Valida origem. |
+| `FATURAMENTO_API_KEY` | Chave de endpoints internos de faturamento. |
+| `WEBHOOK_INDICADORES_TOKEN` | Token de webhooks de indicadores comerciais. |
+
+### Política de resolução de credenciais (padronizada em TODAS as funções)
+**Environment-First, sem cache venenoso:**
+```js
+const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
+// fallback: entidade ConfiguracaoOmie SÓ se o Secret estiver vazio
+```
+- `Deno.env` é lido **atomicamente** a cada chamada → nunca serve uma chave velha.
+- A entidade `ConfiguracaoOmie` é **apenas fallback** (pode conter app_key/secret antigos — por isso nunca tem prioridade).
+- Removido o antigo `_credsCache` de 30s do banco, que causava key mismatch e re-bloqueio durante jobs de alta frequência.
+
+> O `omieClient.ts` central mantém um cache de 30s **somente do Secret de ambiente** (atômico e seguro). As demais funções diretas leem env a cada chamada.
+
+---
+
+## 7. Modelo de dados (entidades)
+
+Built-in em toda entidade (não declarar): `id`, `created_date`, `updated_date`, `created_by_id`.
+
+### 7.1. Núcleo logístico/fiscal
 
 | Entidade | Papel | Campos-chave |
-|---|---|---|
-| **Cliente** | Cadastro central de clientes | `codigo_omie`, `codigo_cliente_omie`, `cnpj_cpf`, `tipo_nota` (55/D1), `bloquear_faturamento`, `pendencia_financeira`, `modalidade_pagamento_id`, `rota_id`, `responsavel_id`, `dias_visita[]`, geo `latitude/longitude` |
-| **Produto** | Catálogo (comercial + logística) | `codigo`, `codigo_omie`, `ncm`, `cest`, `fator_caixa`, `multiplo_carga`, `volume_m3`, `peso`, `tipo_embalagem`, `galeia_id`, `retornavel` |
-| **Pedido** | Pedido de venda/troca/bonif./devolução | `status`, `status_faturamento`, `status_logistico`, `etapa`, `omie_codigo_pedido`, `chave_nfe`, `omie_id_nf`, `solto_manualmente`, `pendente_emissao`, `carga_faturamento_numero`, geo |
-| **PedidoItem** | Itens do pedido | produto, qtd, valor unit/total |
-| **TabelaPreco / PrecoProduto** | Preços por tabela | preços, ações promocionais |
-| **PlanoPagamento / ModalidadePagamento** | Condições financeiras | parcelas, boleto/pix/dinheiro |
-| **CenarioFiscal / CenarioFiscalLocal** | Natureza de operação | código Omie, tipo |
+|----------|-------|--------------|
+| **Carga** | Container da expedição | `numero_carga`, `data_carga`, `pedidos_omie[]`, `pedidos_internos[]`, `pedidos_troca[]`, `status_carga` (`montagem\|faturada\|entregue`), `processamento_omie_status`, `checkin_saida`, `pdf_romaneio_url` |
+| **Pedido** | Documento mestre | `status`, `status_faturamento`, `etapa`, `modelo_nota` (`55\|nfce\|d1`), `omie_codigo_pedido`, `numero_nota_fiscal`, `chave_nfe`, `omie_id_nf`, `nf_aguardando_autorizacao`, `solto_manualmente`, `pendente_emissao`, `carga_faturamento_numero` (imutável) |
+| **PedidoItem** | Itens do pedido | produtos, quantidades, valores |
+| **PedidoLiberadoOmie** | Espelho local das etapas Omie | `codigo_pedido`, `etapa`, `status_label`, `sincronizado_em`, `origem_sync` |
+| **Retorno** | Devolução/troca/recusa pós-entrega | `tipo_retorno`, `produtos[]`, `valor_total_retorno`, `status` |
+| **AcertoCaixa** | Prestação de contas pós-entrega | valores entregues/devolvidos/recebidos, divergências |
 
-### 4.2 Logística & Faturamento
+### 7.2. Filas (todas com `status`, `tentativas`, `erro_log`)
 
-| Entidade | Papel |
-|---|---|
-| **Carga** | Agrupa pedidos Omie + internos (D1) + trocas por motorista/veículo. `status_carga` (montagem/faturada/entregue), `processamento_omie_status`, `pedidos_omie[]`, `produtos_resumo[]`, `checkin_saida` GPS |
-| **FilaCargaOmie** | Fila assíncrona de fechamento de carga (1 registro/pedido) — troca etapa 50 + previsão. Estados: pendente→processando→concluido/erro/`aguardando_acao_humana` |
-| **FilaEnvioPedidoOmie** | Fila de envio de pedidos novos ao Omie |
-| **FilaEmissaoNF / FilaBoletoOmie** | Filas de emissão de NF e geração de boletos |
-| **LogEmissaoNF** | Histórico persistente de cada emissão de NF-e (status SEFAZ real, `nid_nf`, `chave_nfe`, `bloqueado_cliente`) |
-| **LogEmissaoBoleto** | Histórico de boletos |
-| **PedidoLiberadoOmie** | **Espelho** dos pedidos no Omie (etapa real, status_label) |
-| **Retorno** | Produtos retornados (devolução/troca/recusa/avaria) |
-| **AcertoCaixa** | Acerto financeiro pós-entrega |
-| **Veiculo / Motorista / Rota** | Recursos de roteirização |
+| Entidade | Fila de | Detalhe |
+|----------|---------|---------|
+| **FilaEnvioPedidoOmie** | Envio de pedido local → Omie (`IncluirPedido`) | Operação **prioritária** no portão. Dispara worker on-create. |
+| **FilaCargaOmie** | Faturamento de carga (troca etapa 50 + previsão) | `operacao` (`faturar\|emitir_nf\|ambos`), `tentativas_redundante`, `tentativas_revalidacao`, `status=aguardando_acao_humana` |
+| **FilaEmissaoNF** | Emissão de NF em lote | `lote_id`, retomada por watchdog |
+| **FilaBoletoOmie** | Geração de boletos | baixa prioridade, espaçada |
 
-### 4.3 Integração & Controle
+> `aguardando_acao_humana` (FilaCargaOmie) = pedido em etapa < 50 que não avançou após N revalidações → **sai do loop automático** (não martela o Omie); volta só por ação humana ou webhook. **Não é erro vermelho.**
+
+### 7.3. Auditoria & cache
 
 | Entidade | Papel |
-|---|---|
-| **ConfiguracaoOmie** | `app_key` + máscara do secret (secret real vive em `OMIE_APP_SECRET`). Fallback apenas. |
-| **LogIntegracaoOmie** | Auditoria de TODA chamada à API Omie (endpoint, call, payloads, duração, `webhook_message_id`) |
-| **ControleCircuitBreakerOmie** | Circuit breaker persistente + mutex do portão global (`worker_rodando`, `worker_lock_ate`) |
-| **CacheOmieConsulta** | Cache persistente de consultas read-only |
-| **RateLimitWebhook** | Throttle de webhooks |
-| **JobAuditoriaOmie** | Estado de jobs de auditoria de clientes |
+|----------|-------|
+| **LogIntegracaoOmie** | Auditoria de TODA chamada Omie + **fila de webhooks** (`status='pendente'`). Campos de webhook: `webhook_topic`, `webhook_message_id`, `webhook_processado_em`. |
+| **LogEmissaoNF** | 1 linha por emissão de NF: `status` (`autorizada\|rejeitada\|pendente\|erro\|bloqueado_cliente`), `codigo_sefaz` (cStat), `nid_nf`, `chave_nfe`, `faultstring/faultcode`. |
+| **LogEmissaoBoleto** | 1 linha por `codigo_lancamento` (write-through, cache de boletos). |
+| **CacheOmieConsulta** | Cache persistente de leituras (`chave`, `valor`, `expira_em`). |
+| **ControleCircuitBreakerOmie** | Concorrência (breaker + rate limit + portão). **RLS: admin only.** |
+| **ConfiguracaoOmie** | Config / fallback de credenciais (`app_key`, `app_secret_mascara`, `secret_em_secrets`). |
+| **LogGerencial** | Auditoria de ações sensíveis (envio, exclusão, faturamento, liberação forçada...). |
+| **RateLimitWebhook** | Controle de flood de webhooks. |
 
-### 4.4 Cobertura Inteligente
+### 7.4. Comercial / cobertura (resumo)
+`Cliente`, `Produto`, `Vendedor`, `Veiculo`, `Motorista`, `Rota`, `TabelaPreco`, `PrecoProduto`, `PlanoPagamento`, `ModalidadePagamento`, `Meta`, `MetaComissao`, `ScorecardApuracao`, `Visita`, `AgendaComercial`, `CoberturaStatus`, `Alerta`, `ParametroCobertura`, `EstoqueVisitaItem`, `GeolocalizacaoPedido`, `Roteiro`, `Permissao`, `Cargo`, `Funcao`, `Departamento`, `Segmento`, `Rede`, `CenarioFiscal`, `CenarioFiscalLocal`, `MotivoTroca`, `MotivoCorte`.
 
-| Entidade | Papel |
-|---|---|
-| **AgendaComercial** | Agenda mensal de visitas por usuário/papel/periodicidade |
-| **Visita** | Check-in/out GPS, finalidade (venda/reposição), distância do cadastro |
-| **CoberturaStatus** | Status por cliente/papel (falhas consecutivas → em_dia/atenção/atrasado/crítico) |
-| **Alerta** | Alertas em cascata (agenda não cumprida, checkout pendente, fora do raio) |
-| **ParametroCobertura** | Raio GPS, timeout checkout, periodicidade por papel (registro único) |
-| **EstoqueVisitaItem** | Leitura de estoque (venda) ou reposição (promotor) |
-| **GeolocalizacaoPedido** | Geo capturada no lançamento de cada pedido |
-| **Roteiro / VisitaRoteiro / RotaSupervisor** | Roteiros de campo |
-
-### 4.5 Gestão Comercial
-
-| Entidade | Papel |
-|---|---|
-| **Meta** | Metas em cascata gerente→supervisor→vendedor (`meta_pai_id`) |
-| **MetaComissao / ScorecardApuracao / RegimeExperimental** | Comissionamento e gamificação |
-| **Vendedor** | Funcionário central (papéis múltiplos: vendedor/motorista/supervisor/promotor...) |
-| **Permissao** | Abas visíveis por funcionário |
-| **LogGerencial** | Auditoria de TODA ação relevante (quem/quando/valor antigo→novo) |
+### 7.5. Entidade `User` (built-in)
+Read-only: `id`, `full_name`, `email`. Editável: `role` (`admin`/`user`). Permissões granulares de UI via entidade `Permissao` (`vendedor_id`, `abas_visiveis[]`). Admin vê tudo; demais veem só as abas liberadas.
 
 ---
 
-## 5. Integração Omie — A Espinha Dorsal
+## 8. Filas assíncronas (workers)
 
-### 5.1 Padrão de chamada
+Padrão de todo worker: **verifica breaker → adquire portão → processa N itens espaçados → libera portão**. Itens órfãos (execução morreu no meio) são resgatados por `processando_em` + timeout.
 
-Todas as chamadas seguem o contrato REST do Omie:
-
-```js
-POST https://app.omie.com.br/api/v1/<recurso>/
-{
-  "call": "ConsultarPedido",        // método Omie
-  "app_key": "<OMIE_APP_KEY>",
-  "app_secret": "<OMIE_APP_SECRET>",
-  "param": [ { ... } ]
-}
-```
-
-Recursos usados: `produtos/pedido/`, `geral/clientes/`, `geral/produtos/`, `produtos/nfconsultar/`, `financas/contareceber/`, `geral/etapasfaturamento/`, entre outros.
-
-### 5.2 Cliente centralizado — `_shared/omieClient`
-
-Pipeline completo de cada request:
-
-```
-resolver credenciais (env-primeiro)
-   → checar circuit breaker (persistente)
-   → adquirir slot de rate limit (global + por método)
-   → [write crítico] serializar via portão global
-   → checar cache (read-only)
-   → fetch com timeout + AbortController
-   → classificar resposta (faultstring / HTTP 425/429)
-   → retry com backoff OU abrir breaker
-   → logar em LogIntegracaoOmie (com PII mascarada)
-```
-
-### 5.3 Classificação de erros Omie
-
-| Sinal | Significado | Ação |
-|---|---|---|
-| HTTP **425 / 429** | Rate limit / consumo indevido | Aborta lote, marca `rateLimit=true`, alimenta breaker |
-| `faultstring` "Consumo redundante" | Janela de ~60s do Omie | Reagenda item (`proxima_tentativa_em`), não conta como erro definitivo |
-| `faultstring` "bloqueado/cota/limite" | Bloqueio de consumo | Abre circuit breaker |
-| "não cadastrado/inexistente" | Pedido excluído no Omie | Trata como etapa 80 (cancelado) |
-| `cStat 100` | NF autorizada SEFAZ | Grava número/chave |
-| `cStat 200+` | NF rejeitada | Log `rejeitada` |
+| Worker | Fila | Disparo | Lógica |
+|--------|------|---------|--------|
+| `processarFilaEnvioPedidoOmie` | FilaEnvioPedidoOmie | on-create + scheduled 10min | Envia até 10 pedidos, 500ms entre eles, `IncluirPedido` → etapa 20. |
+| `processarFilaCargaOmie` | FilaCargaOmie | scheduled 10min | `TrocarEtapaPedido` 50 + previsão; anti-órfão, auto-encadeamento; respeita revalidações. |
+| `processarEmissaoNFLote` | FilaEmissaoNF | on-create | Emite 1 NF por vez, delay 3s, `lote_id`; watchdog `retomarEmissaoNFLotePendente`. |
+| `processarFilaBoletoOmie` | FilaBoletoOmie | scheduled 5min | Gera boletos espaçados, baixa prioridade (cede a webhooks/NF). |
+| `processarFilaWebhookOmie` | LogIntegracaoOmie (pendente) | scheduled 10min | Consome webhooks **sequencial**, delay 2,5s, dedup por `messageId`. |
 
 ---
 
-## 6. Mecanismos de Resiliência
+## 9. Webhooks Omie
 
-Quatro camadas independentes protegem a cota Omie e a consistência:
+### 9.1. Receiver — `functions/receberWebhookOmie`
+URL cadastrada no painel Omie:
+```
+https://app.base44.com/api/apps/<APP_ID>/functions/receberWebhookOmie?token=<OMIE_WEBHOOK_TOKEN>
+```
+- **Ultra leve (<200ms):** valida token + app_key, sanitiza payload (JSON, ≤50KB), responde 200 rápido.
+- **Ping de validação:** payload sem `topic` → `{ ping: 'success' }` (Omie exige no cadastro).
+- **Idempotência:** dedup por `messageId` (consulta `LogIntegracaoOmie.webhook_message_id`).
+- **Só enfileira:** grava log `pendente` e dispara `processarFilaWebhookOmie` (fire-and-forget). Tópicos irrelevantes entram já como `ignorado`.
 
-### 6.1 Circuit Breaker (`ControleCircuitBreakerOmie`)
+### 9.2. Tópicos tratados — `functions/processarWebhookOmie`
 
-- Persistente no banco (sobrevive a reinício de função).
-- `erros_consecutivos` incrementa a cada falha, zera no sucesso.
-- Ao atingir `threshold_erros` **e** detectar tempo de bloqueio na mensagem → abre (`bloqueado=true`, `bloqueado_ate`).
-- Toda função verifica `checkCircuitBreaker` antes de tocar o Omie; se aberto, **aborta na hora**.
-- Auto-release quando `bloqueado_ate` expira.
+| Tópico | Ação |
+|--------|------|
+| `VendaProduto.EtapaAlterada` | Atualiza etapa do espelho/pedido local |
+| `VendaProduto.Faturada` | Marca faturado, grava nº NF / chave |
+| `VendaProduto.Cancelada` | Marca cancelado (`cancelado` / `_pos_faturamento`) |
+| `NFe.NotaAutorizada` | Grava número/chave quando autorização é assíncrona |
+| `NFe.NotaDenegada/Rejeitada` | Marca rejeição |
 
-### 6.2 Portão Global (`_shared/portaoOmie`)
-
-- **Mutex distribuído** (mark-and-verify) com chave `portao_global_omie`.
-- Garante que **apenas um worker** toca o Omie por vez em operações sensíveis.
-- TTL de 5 min (`worker_lock_ate`) → auto-release contra deadlock.
-- Estratégia "mark, then verify owner" resolve corrida entre instâncias concorrentes.
-
-### 6.3 Rate Limit (global + por método)
-
-- Reserva atômica de slots no `omieClient`.
-- Write crítico é **serializado** (rejeita concorrência).
-- Espaçamento mínimo entre chamadas (ex.: `DELAY_MS = 1500ms`).
-
-### 6.4 Prioridade Operação > Leitura
-
-Rotinas de **leitura/limpeza** (ex.: correção de espelho) checam `temTrabalhoOperacaoPendente` e **cedem a vez** quando há pendências em `FilaEnvioPedidoOmie` ou `FilaCargaOmie`. Operação na frente, limpeza atrás.
+> **Blindagem fiscal:** o worker nunca sobrescreve status verificado nem apaga `numero_nf`.
 
 ---
 
-## 7. Camada de Credenciais (Hardening)
+## 10. Funções de backend (catálogo)
 
-> **Decisão arquitetural crítica.** Auditadas e corrigidas **54 funções** para o padrão "env-primeiro".
+### 10.1. Compartilhadas (`_shared/`)
+`omieClient.ts` (cliente Omie central), `portaoOmie` (mutex global + prioridade), `constantes` (etapas, conta corrente, delays).
 
-### Regra única
+### 10.2. Faturamento & emissão de NF
+`faturarCargaOmie`, `faturarPedidoOmie`, `emitirNfPedidoOmie`, `emitirNfsLoteOmie`, `processarEmissaoNFLote`, `retomarEmissaoNFLotePendente`, `reemitirNfPresasEtapa50`, `trocarEtapaPedidoOmie`, `alterarPrevisaoFaturamentoOmie`, `liberarPedidoOmie`, `enviarPedidoOmie`.
 
-```js
-async function getOmieCredentials(base44) {
-  const envKey    = (Deno.env.get('OMIE_APP_KEY')    || '').trim();
-  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
-  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
-  // Fallback APENAS se o Secret estiver vazio
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie
-    .filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const cfg = rows?.[0];
-  return { appKey: envKey || String(cfg?.app_key || '').trim(),
-           appSecret: envSecret || String(cfg?.app_secret || '').trim() };
-}
-```
+### 10.3. Boletos
+`gerarBoletosOmie`, `gerarBoletosFaltantesPrazo`, `processarFilaBoletoOmie`, `baixarPdfBoletoOmie`, `listarContasReceberOmie`, `dadosClienteNfBoletos`, `salvarBoletosLocais`, `diagnosticoBoletosCarga`.
 
-### O que foi eliminado (anti-padrões "venenosos")
+### 10.4. NF — consulta / PDF / reconciliação
+`consultarDetalheNotaOmie`, `listarNfsOmie`, `baixarPdfDanfeOmie`, `reconsultarStatusNFsPendentes`, `reconciliarNfAguardandoAutorizacao`, `reconciliarNfsCanceladasOmie`, `preencherDadosNFLogs`, `prepararNidNfCarga`, `cancelarNfOmie`, `cancelarNfAcerto`, `consultarStatusFaturamentoOmie`.
 
-- ❌ `cfg?.app_key || Deno.env...` — priorizava banco potencialmente desatualizado.
-- ❌ `_credsCache` (cache em memória com TTL de 30s) — servia credenciais velhas após rotação. **Removido das 54 funções.**
+### 10.5. Pedidos — ajustes / exceção
+`soltarCarga`, `transferirPedidoCarga`, `cortarPedidoOmie`, `devolverPedidoOmie`, `cancelarPedidoOmie`, `editarPedidoOmie`, `duplicarPedidoOmie`, `consultarPedidoOmie`, `buscarPedidosOmie`, `importarPedidoOmie`.
 
-### Por que `Deno.env` primeiro
+### 10.6. Cargas — reconciliação / reparo
+`revalidarCargaOmie`, `reconciliarEspelhoCargaCompleto`, `enriquecerPedidosCarga`, `repararProdutosCarga`, `indiceCargasPorPedido`, `sincronizarStatusCargasOmie`, `corrigirStatusCargas`, `prepararNidNfCarga`.
 
-`Deno.env.get` é atômico, sem TTL, e reflete a rotação de secret imediatamente. O banco (`ConfiguracaoOmie`) pode conter um `app_key` antigo, por isso **nunca tem prioridade** — é só rede de segurança quando o Secret está vazio.
+### 10.7. Espelho / reconciliação de status (rede de segurança)
+`sincronizarLiberadosOmieRapido`, `reconciliarEtapasAbertasOmie`, `reconciliarStatusPedidosOmie`, `sincronizarStatusPedidosOmie`, `corrigirEspelho20Falso`, `corrigirEspelhoDia`, `corrigirEspelhoManual`, `corrigirEspelhoFaturados`, `criarEspelhosPedidosSemEspelho`, `limparEspelhoCanceladosOmie`, `limparDuplicadosEspelho`, `preencherEspelhosZerados`, `atualizarEspelhoPedidosOmie`.
 
----
+### 10.8. Clientes / produtos / vendedores (sincronização Omie)
+`enviarClienteOmie`, `enviarProdutoOmie`, `enviarVendedorOmieAuto`, `excluirClienteOmie`, `excluirProdutoOmie`, `excluirVendedorOmie`, `consultarClientesOmie`, `importarClientesOmie`, `importarClientePontalOmie`, `auditoriaClientesOmieJob`, `auditarClientesOmie`, `desbloquearFaturamentoClientesOmie`, `workerDesbloquearClientesOmie`, `consultarBloqueioFinanceiroOmie`, `consultarProdutoOmie`, `exportarProdutosOmie`, `exportarVendedoresOmie`.
 
-## 8. Filas Assíncronas
+### 10.9. Saúde / infraestrutura / webhook
+`receberWebhookOmie`, `processarWebhookOmie`, `processarFilaWebhookOmie`, `limparBacklogWebhooksOmie`, `limparWebhooksNfTravados`, `desbloqueioAutomaticoOmie`, `limparCacheExpiradoOmie`, `statusCircuitBreakerOmie`, `testarConexaoOmie`, `salvarCredenciaisOmie`, `getOmieCredentials`.
 
-O sistema usa filas-entidade processadas por workers idempotentes em background.
+### 10.10. Relatórios / exportações / comercial
+`relatorioAnaliticoCarregamento`, `exportarFaturamentoDia`, `exportarVendasItemDia`, `sincronizarAcertoOmie`, `agregadosVendedorComercial`, `agregadosClientesComercial`, `calcularScorecard`, `metasTrocaVencido`, `recalcularCobertura`, `gerarAgendaMensal`, `encerrarCheckinsEsquecidos`.
 
-### 8.1 `FilaCargaOmie` — Fechamento de carga
-
-```
-Estados: pendente → processando → concluido
-                              ↘ erro
-                              ↘ aguardando_acao_humana
-```
-
-- 1 registro por pedido da carga.
-- Operação: trocar etapa para **50** + alterar previsão de faturamento.
-- **Resgate de órfãos** (PASSO 0): itens presos em `processando` além do timeout são detectados via `processando_em` e re-enfileirados.
-- **Revalidação:** se o pedido segue em etapa <50 após N revalidações (`tentativas_revalidacao`), sai do loop → `aguardando_acao_humana` (não martela o Omie; só volta por ação humana ou webhook).
-- **Consumo redundante:** janela de espera via `proxima_tentativa_em` + `tentativas_redundante` (vira erro só após o limite).
-
-### 8.2 `FilaEnvioPedidoOmie` — Envio de pedidos novos
-
-Worker `processarFilaEnvioPedidoOmie` envia pedidos pendentes ao Omie sequencialmente, respeitando breaker + portão.
-
-### 8.3 `FilaEmissaoNF` / `processarEmissaoNFLote`
-
-Emissão de NF-e em lote com retomada (`retomarEmissaoNFLotePendente`) quando o lote aborta por rate limit; pedidos presos em etapa 50 ficam marcados `pendente_emissao`.
-
-### 8.4 `FilaBoletoOmie` / `processarFilaBoletoOmie`
-
-Geração de boletos pós-faturamento conforme `modalidade_pagamento_id` do cliente.
-
-### 8.5 `processarFilaWebhookOmie`
-
-Consome webhooks recebidos em background com lock (`worker_rodando`).
+> ⚠️ **Toda função que chama o Omie segue a política Environment-First de credenciais (§6) e usa breaker/portão.** Funções admin-only validam `user.role === 'admin'` e retornam 403 caso contrário.
 
 ---
 
-## 9. Fluxos de Negócio Fim-a-Fim
+## 11. Automações (scheduled / entity)
 
-### 9.1 Pedido de Venda → NF Autorizada
+### 11.1. Workers de fila & infraestrutura (ATIVAS)
 
-```
-[Vendedor lança pedido] (app/web, captura geo)
-   → Pedido (status=pendente, etapa=comercial)
-   → [Liberação] consulta bloqueio financeiro (consultarBloqueioFinanceiroOmie)
-        ├─ bloqueado → BloqueioLiberarModal (liberação forçada c/ motivo + log)
-        └─ ok → status=liberado
-   → [Envio Omie] FilaEnvioPedidoOmie → enviarPedidoOmie → omie_codigo_pedido, etapa 10/20
-   → [Montagem de Carga] pedido entra em Carga (status_carga=montagem)
-   → [Fechar Carga] FilaCargaOmie → troca etapa 50 + previsão (faturarCargaOmie)
-   → [Emissão NF] processarEmissaoNFLote → emitirNfPedidoOmie → etapa 60
-        → SEFAZ autoriza (cStat 100) → LogEmissaoNF(autorizada), chave_nfe, nº NF
-   → [Boletos] FilaBoletoOmie → gerarBoletosOmie (se modalidade=boleto)
-   → [Entrega] roteirização → AcertoCaixa → status_carga=entregue
-```
+| Automação | Tipo | Frequência | Função |
+|-----------|------|-----------|--------|
+| Processar Fila Carga Omie | scheduled | 10 min | `processarFilaCargaOmie` |
+| Processar Fila Envio Pedidos Omie | scheduled | 10 min | `processarFilaEnvioPedidoOmie` |
+| Disparar Envio ao Enfileirar Pedido | entity (create) | — | `processarFilaEnvioPedidoOmie` |
+| Processar Fila Webhooks Omie | scheduled | 10 min | `processarFilaWebhookOmie` |
+| Worker Fila de Boletos Omie | scheduled | 5 min | `processarFilaBoletoOmie` |
+| ProcessarEmissaoNFLote | entity (create) | — | `processarEmissaoNFLote` |
+| Retomar Emissão NF Lote Travado | scheduled | 5 min | `retomarEmissaoNFLotePendente` |
+| Desbloqueio Automático Omie (preciso) | scheduled | 5 min | `desbloqueioAutomaticoOmie` |
+| Desbloqueio Faturamento Clientes (worker) | scheduled | 10 min | `workerDesbloquearClientesOmie` |
+| Limpeza Cache e Logs Omie | scheduled | 1 h | `limparCacheExpiradoOmie` |
+| Limpar Backlog Webhooks Omie | scheduled | 1 h | `limparBacklogWebhooksOmie` |
+| Limpeza Fila Envio Concluídos | scheduled | 6 h | `limparFilaEnvioConcluidos` |
+| Limpar espelho de pedidos cancelados | scheduled | 30 min | `limparEspelhoCanceladosOmie` |
+| Criar Espelhos Faltantes (rede segurança) | scheduled | 30 min | `criarEspelhosPedidosSemEspelho` |
+| Reconciliar NF aguardando autorização | scheduled | 15 min | `reconciliarNfAguardandoAutorizacao` |
+| Preencher Nº NF nos Logs Autorizados | scheduled | 10 min | `preencherDadosNFLogs` |
 
-### 9.2 Reconciliação contínua (espelho)
+### 11.2. Sincronização Omie (entity create/update/delete)
 
-```
-Webhook Omie / Scheduled job
-   → sincronizarLiberadosOmieRapido (espelho rápido de etapas)
-   → reconciliarStatusPedidosOmie / reconciliarEtapasAbertasOmie
-   → corrigirEspelho20Falso / corrigirEspelhoDia (divergências)
-   → reconciliarNfAguardandoAutorizacao (NF assíncrona SEFAZ)
-   → reconciliarNfsCanceladasOmie (cancelamentos)
-```
+| Automação | Entidade / Evento | Função |
+|-----------|-------------------|--------|
+| Enviar Cliente ao Omie | Cliente / create+update | `enviarClienteOmie` (ignora `tipo_nota=D1`) |
+| Enviar Produto ao Omie | Produto / create+update | `enviarProdutoOmie` (ignora `bonificacao`) |
+| Excluir Cliente do Omie | Cliente / delete | `excluirClienteOmie` |
+| Excluir Produto do Omie | Produto / delete | `excluirProdutoOmie` |
 
-### 9.3 Troca / Devolução
+### 11.3. Comercial / cobertura
 
-```
-Visita → Retorno (produtos devolvidos)
-   → devolverPedidoOmie / cancelarNfOmie
-   → PedidoTroca (modelo D1, sem NF)
-   → reconciliarTrocasCargas
-```
+| Automação | Frequência | Função |
+|-----------|-----------|--------|
+| Recalcular Cobertura | diário 06:00 | `recalcularCobertura` |
+| Encerrar check-ins esquecidos | diário 06:30 | `encerrarCheckinsEsquecidos` |
 
-### 9.4 Blindagem fiscal — Soltar pedido
+### 11.4. Redes de segurança em standby (arquivadas/inativas)
+`reconciliarEtapasAbertasOmie`, `sincronizarLiberadosOmieRapido`, `reconciliarEspelhoCargaCompleto`, `reconciliarStatusPedidosOmie`, `sincronizarStatusCargasOmie`, `sincronizarStatusPedidosOmie`, `reconciliarNfsCanceladasOmie`, `atualizarStatusLogsPendentes`, `processarWebhookOmie` (entity), `reemitirNfPresasEtapa50`.
 
-```
-Operador solta pedido da carga (soltarCarga)
-   → Pedido.solto_manualmente = true, volta para Montagem
-   → NENHUMA rotina automática fatura/emite NF deste pedido
-   → Zerado só quando re-adicionado a carga por ação humana
-```
+> Várias destas foram **pausadas por falhas consecutivas** (rate limit Omie). Reativar só com o breaker estável e validando que respeitam o portão único — senão geram rajadas e re-bloqueio.
 
 ---
 
-## 10. Catálogo de Funções Backend
+## 12. Frontend — páginas, layout & roteamento
 
-> ~150 funções Deno. Agrupadas por domínio. Toda função que toca o Omie segue: auth → breaker → portão/rate → credenciais env-primeiro → log.
+### 12.1. Roteamento
+`App.jsx` renderiza um loop sobre `pagesConfig.Pages` **+ rotas explícitas** (atalhos, aliases case-insensitive e redirecionamentos). Página inicial: `Home` (`/`). Cada página é envolvida por `LayoutWrapper`.
 
-### 10.1 Pedidos — CRUD Omie
-`enviarPedidoOmie` · `editarPedidoOmie` · `importarPedidoOmie` · `cancelarPedidoOmie` · `cortarPedidoOmie` · `devolverPedidoOmie` · `duplicarPedidoOmie` · `liberarPedidoOmie` · `trocarEtapaPedidoOmie` · `consultarPedidoOmie` · `buscarPedidosOmie` · `consultarPedidosDia` · `analisarPedidosOmie` · `diagEstruturaPedido`
+> ⚠️ **`pages.config.js` NÃO é mais auto-gerado.** Toda página nova precisa de `<Route>` explícito em `App.jsx`, aplicando o mesmo `LayoutWrapper`.
 
-### 10.2 Faturamento & NF
-`faturarPedidoOmie` · `faturarCargaOmie` · `emitirNfPedidoOmie` · `emitirNfsLoteOmie` · `processarEmissaoNFLote` · `retomarEmissaoNFLotePendente` · `reemitirNfPresasEtapa50` · `cancelarNfOmie` · `cancelarNfAcerto` · `consultarStatusFaturamentoOmie` · `consultarDetalheNotaOmie` · `listarNfsOmie` · `baixarPdfDanfeOmie` · `alterarPrevisaoFaturamentoOmie`
+### 12.2. Layout (`Layout.jsx`)
+Sidebar com permissões por papel (admin vê tudo; demais via entidade `Permissao.abas_visiveis`). Indicador global `StatusOmieIndicator` (breaker bloqueado/livre + fila pendente). Grupos de menu:
 
-### 10.3 Espelho & Reconciliação
-`sincronizarLiberadosOmieRapido` · `atualizarEspelhoPedidosOmie` · `reconciliarStatusPedidosOmie` · `reconciliarEtapasAbertasOmie` · `reconciliarEspelhoCargaCompleto` · `reconciliarNfAguardandoAutorizacao` · `reconciliarNfsCanceladasOmie` · `reconciliarTrocasCargas` · `corrigirEspelho20Falso` · `corrigirEspelhoDia` · `corrigirEspelhoFaturados` · `corrigirEspelhoManual` · `criarEspelhosPedidosSemEspelho` · `preencherEspelhosZerados` · `limparEspelhoCanceladosOmie` · `limparDuplicadosEspelho` · `consultarEtapaPedidosOmie` · `consultarStatusPedidosOmie` · `mapaEtapasOmie` · `listarEtapasOmie`
+- **Cadastros** (Hub) · **Pedidos** · **Análises Comercial** · **Relatórios Visitas** · **Roteiros de Campo** · **Cobertura Inteligente** · **Logística** · **Gerenciamento** (admin) · **Integração Omie** (admin) · **Commits GitHub** (admin).
 
-### 10.4 Cargas
-`processarFilaCargaOmie` · `revalidarCargaOmie` · `reenviarItemFilaCarga` · `reenfileirarPedidosOrfaos` · `soltarCarga` · `transferirPedidoCarga` · `enriquecerPedidosCarga` · `repararProdutosCarga` · `sincronizarStatusCargasOmie` · `corrigirStatusCargas` · `prepararNidNfCarga` · `relatorioAnaliticoCarregamento` · `indiceCargasPorPedido` · `investigarDivergenciaMontagem`
+### 12.3. Páginas por domínio
 
-### 10.5 Boletos & Financeiro
-`gerarBoletosOmie` · `gerarBoletosFaltantesPrazo` · `processarFilaBoletoOmie` · `baixarPdfBoletoOmie` · `salvarBoletosLocais` · `diagnosticoBoletosCarga` · `dadosClienteNfBoletos` · `listarContasReceberOmie` · `consultarBloqueioFinanceiroOmie` · `sincronizarAcertoOmie`
+| Domínio | Páginas |
+|---------|---------|
+| **Logística/Faturamento** | `MontagemCarga`, `Cargas`, `NotasOmie`, `BoletosOmie`, `EmissaoBoletos`, `AcertoCaixa` (+`AcertoCaixaEditar`,`AcertoResumoPDF`), `RelatorioCarregamento`, `Operacao` |
+| **Pedidos** | `Pedidos`, `EmissaoPedidos`, `GerenciarPedidosPage`, `AjustesPedidos` (corte/cancelamento/transferência/devolução), `ControlePedidosVenda`, `ControlePedidosTroca`, `EnviarRotasOmie` |
+| **Comercial / análises** | `AnalisesComercial`, `Metas`, `GestaoMetas`, `Comissionamento`, `Dashboard` |
+| **Roteiros / cobertura** | `MeusRoteiros`, `RotaSupervisores`, `GestaoRoteiros`, `Roteiros`, `CoberturaInteligente`, `RelatoriosVisitas` |
+| **Cadastros** | `CadastrosHub`, `Clientes`, `Produtos`, `Vendedores`, `Funcionarios`, `Funcoes`, `Veiculos`, `Motoristas`, `Rotas`, `Redes`, `Segmentos`, `TabelasPreco`, `PlanosPagamento`, `Categorias`, `UnidadesMedida`, `Empresa`, `MotivosTroca`, `CenariosFiscais`, `CenariosFiscaisLocais` |
+| **Integração / admin** | `IntegracaoOmieDashboard`, `ConfiguracaoOmie`, `LogGerencial`, `AuditoriaCancelados`, `Permissoes`, `SincronizarClienteOmie`, `SincronizarClientesCSVPage`, `SupervisaoFilaEnvio`, `CommitsGithub`, `TestesOmie`, `CorrigirEspelho20`, `CorrigirPlanosPlanilha`, `ComparacaoPedidosOmie`, `CorrecaoManual` |
 
-### 10.6 Clientes
-`enviarClienteOmie` · `importarClientesOmie` · `importarClientePontalOmie` · `consultarClientesOmie` · `exportarClientesOmie` · `exportarClientesFaltantesLote` · `excluirClienteOmie` · `excluirClientesLote` · `desbloquearFaturamentoClientesOmie` · `workerDesbloquearClientesOmie` · `desbloqueioAutomaticoOmie` · `auditarClientesOmie` · `auditoriaClientesOmieJob` · `auditarReferenciasClientes` · `bulkUpdateClientes` · `atualizarNomesClientesComCodigo` · `sincronizarClientesOmie` · `sincronizarClientesCSV` · `compararCSVComBase44` · `revincularReferenciasCSV` · `atualizarRotasClientesCSV`
+### 12.4. Componentes de documento (PDF)
+`components/cargas/documentos/`: `DocumentosCargaModal`, `RomaneioEntregaPdf`, `ListaCarregamentoPdf`, `NotaD1Pdf`, `printHelper`. Impressão NF/boleto: `NfsImpressaoDialog`, `NfCompletaDialog`, `BoletosImpressaoDialog`. Bibliotecas: `jspdf`, `pdf-lib`, `html2canvas`.
 
-### 10.7 Produtos / Vendedores / Tabelas
-`enviarProdutoOmie` · `consultarProdutoOmie` · `corrigirProdutoOmie` · `excluirProdutoOmie` · `exportarProdutosOmie` · `enviarVendedorOmieAuto` · `excluirVendedorOmie` · `exportarVendedoresOmie` · `sincronizarTabelasOmie` · `tratarTabelasPreco` · `atualizarPrecosMassaExcel` · `ajustarPrecosOriginaisOmie` · `diagnosticarCorrigirPrecosTabela` · `listarCategoriasOmie` · `importarCenariosFiscaisOmie` · `listarCenariosOmie`
-
-### 10.8 Saneamento & Auditoria
-`sanearPedidosTravados` · `auditarItensPedidoVsOmie` · `auditarPedidoLiberadoOmie` · `auditarStatusRealPedidos` · `auditarCancelamentosIndevidos` · `auditarMotivosTroca` · `diagnosticarPedidosCanceladosOmie` · `sincronizarPedidosCancelados` · `recalcularStatusFaturamentoPedidos` · `corrigirStatusPedidosFaturados` · `alterarStatusPedidosFaturado` · `atualizarStatusLogsPendentes` · `reconsultarStatusNFsPendentes` · `preencherDadosNFLogs` · `sincronizarLogEmissaoCarga` · `compararPedidoOmie` · `compararPedidosOmieLocal`
-
-### 10.9 Webhooks & Infra Omie
-`receberWebhookOmie` · `processarWebhookOmie` · `processarFilaWebhookOmie` · `limparBacklogWebhooksOmie` · `limparWebhooksNfTravados` · `limparFilaEnvioConcluidos` · `limparCacheExpiradoOmie` · `statusCircuitBreakerOmie` · `testarConexaoOmie` · `salvarCredenciaisOmie` · `getOmieCredentials` · `importarTudoDoOmie` · `espelharBase44Omie` · `enviarRotasCaractOmie` · `processarFilaEnvioPedidoOmie`
-
-### 10.10 Comercial / Cobertura / Roteiros
-`agregadosClientesComercial` · `agregadosVendedorComercial` · `exportarPainelComercial` · `exportarIndicadoresComercial` · `exportarFaturamentoDia` · `exportarVendasItemDia` · `calcularScorecard` · `metasTrocaVencido` · `iniciarRegimeExperimental` · `recalcularCobertura` · `gerarAgendaMensal` · `encerrarCheckinsEsquecidos` · `adicionarClientesRoteiroDias` · `vincularClientesRoteiro` · `bulkImportRoteiros` · `reconstruirRoteirosGessica`
-
-### 10.11 GitHub & Misc
-`listarCommitsGithub` · `listarArquivosGithub` · `lerArquivoGithub` · `analisarRepositorioGithub` · `registrarLogGerencial` · `getItensPedidosLote` · `liberarPedidosRecriados2606`
+### 12.5. Sistema de testes interno (`TestesOmie`)
+Suítes em `components/testes/suites/` (entidades, lógica pura, fluxos de usuário, integração Omie, paridade de montagem, cargas/transferência, ajustes/acerto, permissões/UI, E2E). Orquestradas por `lib/testRunner.js`.
 
 ---
 
-## 11. Webhooks Omie
+## 13. Invariantes & regras que não podem quebrar
+
+1. `numero_nf` preenchido **NUNCA** é apagado.
+2. `carga_faturamento_numero` é **imutável** após gravado (preserva a carga que gerou a NF mesmo após transferência).
+3. `solto_manualmente=true` → nenhuma rotina automática fatura/emite aquele pedido.
+4. D1 (`modelo_nota='d1'`/`tipo_nota='D1'`) → nunca emite NF no Omie.
+5. Reemissão bloqueada se o pedido já tem `numero_nota_fiscal` / `faturado` / `status_faturamento='faturado'`.
+6. **Toda** chamada Omie passa por `omieCall` ou helper com breaker/throttle/log. Nunca `fetch` direto fora dele.
+7. Erros de escrita Omie nunca são `try/catch` silenciosos — sempre logam em `LogIntegracaoOmie` / `LogEmissaoNF`.
+8. **Idempotência:** por `omie_codigo_pedido` (pedido), `messageId` (webhook), `codigo_lancamento` (boleto), `nid_nf` (NF).
+9. **Credenciais Environment-First** (§6) — sem cache de banco que sirva chave velha.
+10. **Concorrência:** só uma operação por vez toca o Omie (portão único); leitura cede a vez para operação.
+11. `bloqueado_cliente` (LogEmissaoNF) é erro **terminal** — não retentar até desbloquear o cadastro no Omie.
+12. Funções admin-only validam `user.role === 'admin'` (403 caso contrário).
+
+---
+
+## 14. Fluxo end-to-end
 
 ```
-Omie dispara → receberWebhookOmie (valida OMIE_WEBHOOK_TOKEN)
-   → idempotência via webhook_message_id (LogIntegracaoOmie)
-   → enfileira → processarFilaWebhookOmie (lock worker_rodando)
-   → processarWebhookOmie (roteia por topic)
-        ├─ VendaProduto.Faturada → grava NF/chave, etapa 60
-        ├─ VendaProduto.Cancelada → cancelado_no_omie
-        └─ ... → atualiza espelho
+[Comercial cria pedido] → etapa 10
+        ↓ liberação / envio
+[FilaEnvioPedidoOmie] → IncluirPedido → etapa 20 (Liberado)   ← espelho PedidoLiberadoOmie
+        ↓ MONTAGEM DE CARGA
+[Carga: montagem] → pedidos_omie / internos / troca
+        ↓ FATURAR CARGA (faturarCargaOmie — local)
+status_carga=faturada; Pedido.status=montagem, status_faturamento=pendente
+[FilaCargaOmie] (worker) → TrocarEtapaPedido 50 + previsão → etapa 50
+        ↓ EMISSÃO NF (NotasOmie → emitirNfPedidoOmie)
+FaturarPedidoVenda → etapa 60 (Faturado) + nNF/chave/nIdNF → LogEmissaoNF=autorizada
+   (autorização assíncrona? nf_aguardando_autorizacao=true → webhook NFe.NotaAutorizada grava nº)
+        ↓ BOLETOS (gerarBoletosOmie)
+ListarContasReceber → GerarBoleto → LogEmissaoBoleto (write-through)
+        ↓ ROMANEIO / LISTA DE CARREGAMENTO (PDFs)
+        ↓ ENTREGA + ACERTO DE CAIXA
+Acerto → etapa 70 (Entregue); Retorno[] para devoluções/trocas/recusas
 ```
 
-Tópicos tratados refletem no `Pedido` e no espelho `PedidoLiberadoOmie`. Backlog é limpo por `limparBacklogWebhooksOmie`.
+**Webhooks** atualizam etapas/NF em paralelo a tudo isso (rede de segurança + tempo real). As automações de reconciliação são a **segunda rede** caso um webhook se perca.
 
 ---
 
-## 12. Frontend — Páginas e Navegação
+## 15. Lições aprendidas (produção)
 
-### 12.1 Roteamento
-
-`App.jsx` combina um **loop `pagesConfig`** (páginas antigas) com **`<Route>` explícitos** (páginas novas). Cada rota é envolvida por `LayoutWrapper` (sidebar + auth). `pages.config.js` **não é mais auto-gerado** — toda página nova exige `<Route>` explícito.
-
-### 12.2 Layout
-
-`components/Layout` (`layout`): sidebar gradiente (Pão & Mel + Omie), menu por permissões (`canViewPage`), `StatusOmieIndicator`, geolocalização, anti-tradução automática, logout. Menus filtrados por `Permissao.abas_visiveis` (admin vê tudo).
-
-### 12.3 Mapa de páginas (por módulo)
-
-| Módulo | Páginas |
-|---|---|
-| **Cadastros** | `CadastrosHub`, `Clientes`, `Produtos`, `Funcionarios`, `Funcoes`, `Veiculos`, `Motoristas`, `Rotas`, `Redes`, `Segmentos`, `Categorias`, `UnidadesMedida`, `TabelasPreco`, `PlanosPagamento`, `Empresa`, `CenariosFiscais`, `CenariosFiscaisLocais` |
-| **Pedidos** | `Pedidos`, `EmissaoPedidos`, `GerenciarPedidosPage`, `EnviarRotasOmie`, `ControlePedidosVenda`, `ControlePedidosTroca` |
-| **Logística** | `NotasOmie`, `MontagemCarga`, `Cargas`, `AjustesPedidos`, `BoletosOmie`, `AcertoCaixa`, `MontarRota`, `RelatorioCarregamento` |
-| **Análises** | `Comissionamento`, `GestaoMetas`, `Metas`, `AnalisesComercial` (Dashboards Vendedor/Trocas/Vendas/Clientes, Mapa/Análise Visitas) |
-| **Roteiros/Visitas** | `MeusRoteiros`, `RotaSupervisores`, `PainelRoteiros`, `RelatoriosVisitas`, `CoberturaInteligente` |
-| **Gerenciamento (admin)** | `Permissoes`, `LogGerencial`, `AuditoriaCancelados`, `ConfiguracaoOmie`, `SupervisaoFilaEnvio`, `IntegracaoOmieDashboard`, `CommitsGithub`, `TestesOmie`, `CorrigirEspelho20`, `CorrecaoManual`, `ComparacaoPedidosOmie` |
-
-### 12.4 Padrões de UI
-
-- **React Query** para cache (staleTime alto, sem refetch no foco).
-- **shadcn/ui** + Tailwind tokens (`bg-primary`, etc.; cores dinâmicas no `safelist`).
-- Componentes focados e pequenos (`components/<modulo>/...`).
-- Indicador de saúde Omie sempre visível (`StatusOmieIndicator`).
+1. **`ListarNF` NÃO filtra por pedido** — só aceita `nNF`, faixa de datas (`dEmiInicial/dEmiFinal`), `cRazao`, `cCPFCNPJDest`, paginação. Para achar NFs de uma carga: buscar por faixa de datas e **cruzar client-side por `nf.compl.nIdPedido`**. Quando a carga já tem `numero_nf`, buscar direto por `nNF` em lotes de ~6.
+2. **`ListarNF` não ordena cronologicamente** — sempre restringir por faixa de datas, nunca "ir para a última página".
+3. **Payload pesado estoura serialização (500)** — na listagem retornar só resumo (`qtd_itens`); detalhe de uma nota sob demanda (`consultarDetalheNotaOmie`).
+4. **Latência espelho local vs Omie** — uma carga pode estar "faturada" localmente com pedidos ainda em etapa 20 no espelho, já estando em 60 no Omie. Confirmar na Omie em decisões fiscais.
+5. **Status HTTP antes de `res.json()`** — 5xx/429/425 não retornam JSON. 425 = consumo redundante → não retentar imediatamente.
+6. **Cache de credenciais do banco era veneno** — servia app_key velho durante jobs de alta frequência → key mismatch → re-bloqueio. Solução: Environment-First sem cache de banco.
+7. **Locks dedicados por worker causavam rajadas** — três workers acordavam juntos ao liberar o breaker. Solução: **portão único** compartilhado.
 
 ---
 
-## 13. Módulo de Cobertura Inteligente
+## 16. Glossário
 
-### Hierarquia e periodicidade
-
-```
-Gerência (mensal) → Coordenador (quinzenal) → Supervisor (semanal)
-   → Vendedor (semanal) → Promotor (semanal)
-```
-
-### Fluxo
-
-```
-gerarAgendaMensal → AgendaComercial (por papel/periodicidade)
-   → Visita (check-in GPS) → valida raio (ParametroCobertura.raio_geo_metros)
-        ├─ fora do raio → Alerta(geolocalizacao_fora_raio)
-        └─ checkout → duracao_minutos
-   → encerrarCheckinsEsquecidos (timeout) → Alerta(checkout_pendente)
-   → recalcularCobertura → CoberturaStatus (falhas_consecutivas)
-        └─ N falhas → Alerta em cascata (atenção→alerta→crítico, escala destinatário)
-```
-
-Falhas são contadas por **agendas consecutivas não cumpridas**, não por dias de atraso. Zera quando há visita REALIZADA.
+| Termo | Significado |
+|-------|-------------|
+| **Etapa** | Estágio do pedido no Omie (10/20/50/60/70/80). |
+| **Espelho** | `PedidoLiberadoOmie` — cópia local da etapa Omie para consulta rápida. |
+| **Breaker** | Circuit breaker persistente que bloqueia chamadas após erros de rate limit. |
+| **Portão** | Mutex global; só uma operação por vez toca o Omie. |
+| **Slot** | Janela de tempo reservada atomicamente pelo rate limiter global (~1,5s). |
+| **CÓDIGO 6** | Erro Omie "consumo redundante, aguarde X s". |
+| **MISUSE_API_PROCESS** | Erro Omie "consumo indevido" (425) → bloqueio 30 min. |
+| **nCodPed** | Código do pedido no Omie (`omie_codigo_pedido`). |
+| **nIdNF** | ID interno da NF no Omie (`omie_id_nf` / `nid_nf`). |
+| **cStat** | Código de status SEFAZ (100 = autorizada). |
+| **D1** | Venda interna / troca SEM nota fiscal (nunca emite no Omie). |
+| **Write-through** | Gravar no local ao escrever no Omie, para leitura futura sem consultar a API. |
+| **aguardando_acao_humana** | Item de fila que saiu do retry automático e só volta por ação humana/webhook. |
 
 ---
 
-## 14. Módulo Comercial & Comissionamento
-
-### Metas em cascata
-
-```
-Meta (nivel=gerente, meta_pai_id=null)
-   → Meta (supervisor, meta_pai_id=gerente)
-      → Meta (vendedor, meta_pai_id=supervisor)
-```
-
-`percentual_atingido` calculado de `valor_realizado` vs `valor_meta` / `volume_pacotes`.
-
-### Comissionamento
-
-`calcularScorecard` → `ScorecardApuracao`; `MetaComissao`; `RegimeExperimental` (período de teste); gamificação com ranking de equipe e confetti.
-
-### Dashboards
-
-`agregadosVendedorComercial` / `agregadosClientesComercial` alimentam Dashboards de Vendas, Clientes, Trocas, Visitas e Atingimento Diário.
-
----
-
-## 15. Auditoria, Logs e Rastreabilidade
-
-| Camada | Entidade | O que registra |
-|---|---|---|
-| **Negócio** | `LogGerencial` | Toda ação relevante: tipo, entidade, usuário, valor antigo→novo, origem (frontend/backend/automation/webhook) |
-| **Integração** | `LogIntegracaoOmie` | Toda chamada Omie: endpoint, call, payloads (truncados, PII mascarada), duração, status, webhook_message_id |
-| **Fiscal** | `LogEmissaoNF` | Cada emissão de NF: status SEFAZ real, cStat, chave, faultstring/faultcode |
-| **Financeiro** | `LogEmissaoBoleto` | Cada boleto gerado |
-| **Cancelamentos** | `auditarCancelamentosIndevidos` + `AuditoriaCancelados` | Detecta cancelamentos indevidos |
-
-Funções dedicadas: `registrarLogGerencial`, e auditorias (`auditar*`).
-
----
-
-## 16. Segurança e Permissões
-
-- **Auth:** plataforma Base44 (`base44.auth.me()`). Funções admin verificam `user.role === 'admin'` → 403.
-- **RLS:** `ControleCircuitBreakerOmie` restrito a admin (CRUD). `Cliente` com RLS aberta de leitura/escrita.
-- **Permissões de UI:** `Permissao.abas_visiveis[]` por funcionário; admin vê tudo.
-- **Webhooks:** validam `OMIE_WEBHOOK_TOKEN` antes do service-role.
-- **Secrets:** `OMIE_APP_KEY`, `OMIE_APP_SECRET`, `OMIE_WEBHOOK_TOKEN`, `FATURAMENTO_API_KEY`, `WEBHOOK_INDICADORES_TOKEN` — nunca em texto plano no banco.
-- **Conector GitHub:** scopes `repo`, `read:org` (somente leitura de repositório).
-
----
-
-## 17. Glossário de Etapas Omie
-
-| Etapa | Significado | Status interno Pedido |
-|---|---|---|
-| **10** | Pedido Pendente | `pendente` |
-| **20** | Pedido Liberado | `liberado` |
-| **50** | Faturar (pronto p/ NF) | `montagem` |
-| **60** | Faturado (NF emitida) | `faturado` |
-| **70** | Entregue | `faturado` |
-| **80** | Cancelado | `cancelado` |
-
-> Régua oficial em `_shared/constantes` / `lib/etapaOmieStatus.js`. Estados equivalentes: `enviado`~`pendente`, `cancelado_pos_faturamento`~`cancelado`.
-
----
-
-## 18. Convenções de Código
-
-### Backend (Deno)
-- Tudo dentro de `Deno.serve(async (req) => { ... })`; retornar `Response`.
-- SDK: `createClientFromRequest(req)`; `await` em toda chamada.
-- `base44.entities` (user-scoped) vs `base44.asServiceRole` (admin).
-- Sem imports locais entre funções — compartilhar via `_shared/*` (inline) ou `base44.functions.invoke`.
-- `npm:`/`jsr:` com versão; SDK `npm:@base44/sdk@0.8.31`.
-- Credenciais sempre **env-primeiro** (§7).
-
-### Frontend (React)
-- `base44.functions.invoke('fn', payload)` → resposta em `response.data`.
-- `<Link to="/path">` com rotas de `App.jsx`.
-- Componentes pequenos e focados; um arquivo por componente.
-- Tailwind com classes literais (dinâmicas no `safelist`).
-- Erros borbulham (sem try/catch desnecessário); exceto fluxos de formulário/auth.
-
----
-
-> **Fim do documento.** Esta arquitetura prioriza, em ordem: integridade fiscal > consistência do espelho > resiliência da cota Omie > throughput. Toda evolução deve preservar a blindagem fiscal, a idempotência e o padrão de credenciais env-primeiro.
+> **Resumo em uma frase:** ERP comercial + logístico totalmente integrado ao Omie, onde *faturar é um fluxo de estados assíncrono* — pedidos passam por filas (envio → carga → NF → boleto → acerto), serializados por um **portão único** com **circuit breaker** e **rate limit global**, com webhooks e automações de reconciliação como redes de segurança, e invariantes fiscais que blindam número de NF, cargas de faturamento e pedidos soltos manualmente.
