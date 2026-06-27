@@ -7,37 +7,43 @@ function formatDatePt(value) {
 
 // ═══ omieClient mínimo inline (somente leitura: ConsultarNF / ConsultarPedido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
 async function getOmieCreds(base44) {
-  // FONTE DE VERDADE = Secrets do backend (o app_secret não fica mais no banco).
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
-  let appKey = Deno.env.get('OMIE_APP_KEY') || '';
-  if (!appKey) {
-    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-    appKey = rows?.[0]?.app_key || '';
-  }
-  return { appKey, appSecret };
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = rows?.[0];
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
-// Chamada Omie de leitura com retry leve para concorrência (CÓDIGO 6 / 8020 / redundante / aguarde).
-async function omieRead(base44, endpoint, call, param) {
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) return { blocked: false };
+  return { blocked: true, blockedUntil: c.bloqueado_ate };
+}
+
+// omieCall canônico (canal único ao Omie). Auto-contido. Retry leve (3s) para concorrência
+// (CÓDIGO 6 / 8020 / redundante / aguarde). Preserva err.faultstring para o chamador.
+async function omieCall(base44, endpoint, param, options = {}) {
   const { appKey, appSecret } = await getOmieCreds(base44);
+  const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
-  const url = OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) { const e = new Error(`API Omie bloqueada até ${cb.blockedUntil}`); e.faultstring = e.message; throw e; }
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
   let tentativa = 0;
   while (tentativa < 2) {
     const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 15000);
+    const tid = setTimeout(() => controller.abort(), options.timeoutMs || 15000);
     let data;
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
-        signal: controller.signal
-      });
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
       clearTimeout(tid);
-      // Erro HTTP do Omie (5xx/429/425): corpo não costuma ser JSON. Trata como concorrência e tenta de novo.
       if (res.status >= 500 || res.status === 429 || res.status === 425) {
         const corpo = await res.text().catch(() => '');
         if (tentativa === 0) { await new Promise(r => setTimeout(r, 3000)); tentativa++; continue; }
@@ -63,6 +69,11 @@ async function omieRead(base44, endpoint, call, param) {
     return data;
   }
   return null;
+}
+
+// Wrapper de compatibilidade — mantém a assinatura antiga omieRead(base44, endpoint, call, param).
+async function omieRead(base44, endpoint, call, param) {
+  return omieCall(base44, endpoint, param, { call, skipLog: true });
 }
 
 // Verifica no Omie, em tempo real, se o pedido JÁ possui NF de verdade.

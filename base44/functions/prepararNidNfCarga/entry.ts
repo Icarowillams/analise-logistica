@@ -5,55 +5,63 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-const NF_URL = OMIE_BASE_URL + 'produtos/nfconsultar/';
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
-let _credsCache = null;
 async function getOmieCredentials(base44) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return _credsCache;
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
+}
+
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) return { blocked: false };
+  return { blocked: true, blockedUntil: c.bloqueado_ate };
 }
 
 async function circuitBloqueado(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
-  const c = rows?.[0];
-  if (!c?.bloqueado) return false;
-  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) return false;
-  return true;
+  return (await checkCircuitBreaker(base44)).blocked;
+}
+
+// omieCall canônico (canal único ao Omie). Auto-contido. Propaga flag .rateLimited em 425/429/5xx
+// e em faultstrings de consumo/redundante/bloqueio — o chamador para e retoma depois.
+async function omieCall(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) { const e = new Error(`API Omie bloqueada até ${cb.blockedUntil}`); e.rateLimited = true; throw e; }
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), options.timeoutMs || 20000);
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+    clearTimeout(tid);
+    if (res.status === 425 || res.status === 429 || res.status >= 500) {
+      const e = new Error(`HTTP ${res.status} Omie`); e.rateLimited = true; throw e;
+    }
+    const d = await res.json();
+    if (d?.faultstring) {
+      const msg = String(d.faultstring).toLowerCase();
+      if (msg.includes('consumo') || msg.includes('redundante') || msg.includes('cota') || msg.includes('aguarde') || msg.includes('bloque')) {
+        const e = new Error(d.faultstring); e.rateLimited = true; throw e;
+      }
+      throw new Error(d.faultstring);
+    }
+    return d;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 async function consultarNf(base44, nNF) {
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas');
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 20000);
-  const res = await fetch(NF_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call: 'ConsultarNF', app_key: appKey, app_secret: appSecret, param: [{ nNF: Number(nNF) }] }),
-    signal: controller.signal
-  });
-  clearTimeout(tid);
-  if (res.status === 425 || res.status === 429 || res.status >= 500) {
-    const e = new Error(`HTTP ${res.status} Omie`);
-    e.rateLimited = true;
-    throw e;
-  }
-  const d = await res.json();
-  if (d?.faultstring) {
-    const msg = String(d.faultstring).toLowerCase();
-    if (msg.includes('consumo') || msg.includes('redundante') || msg.includes('cota') || msg.includes('aguarde') || msg.includes('bloque')) {
-      const e = new Error(d.faultstring);
-      e.rateLimited = true;
-      throw e;
-    }
-    throw new Error(d.faultstring);
-  }
+  const d = await omieCall(base44, 'produtos/nfconsultar/', { nNF: Number(nNF) }, { call: 'ConsultarNF', skipLog: true });
   return {
     nId: d?.compl?.nIdNF || d?.nIdNF || d?.nCodNF || null,
     chave: d?.compl?.cChaveNFe || d?.nfDestInt?.cChaveNFe || d?.cChaveNFe || ''

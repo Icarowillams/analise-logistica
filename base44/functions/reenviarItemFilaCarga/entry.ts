@@ -2,38 +2,59 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // ═══ omieClient mínimo p/ checagem de idempotência (ConsultarPedido) ═══
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
 async function getOmieCredentials(base44) {
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
+}
+
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) return { blocked: false };
+  return { blocked: true, blockedUntil: c.bloqueado_ate };
+}
+
+// omieCall canônico (canal único ao Omie). Auto-contido; usado só para leitura de idempotência.
+async function omieCall(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), options.timeoutMs || 15000);
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+    clearTimeout(tid);
+    if (res.status >= 500 || res.status === 429 || res.status === 425) throw new Error(`HTTP ${res.status} Omie`);
+    const data = await res.json();
+    if (data.faultstring) throw new Error(data.faultstring);
+    return data;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 // Consulta a etapa atual do pedido no Omie. Retorna a etapa (string) ou null se não der pra consultar.
 async function consultarEtapaOmie(base44, item) {
   try {
-    const { appKey, appSecret } = await getOmieCredentials(base44);
-    if (!appKey || !appSecret) return null;
     const param = {};
     if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
     else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
     else return null;
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(OMIE_BASE_URL + 'produtos/pedido/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarPedido', app_key: appKey, app_secret: appSecret, param: [param] }),
-      signal: controller.signal
-    });
-    clearTimeout(tid);
-    const data = await res.json();
-    if (data.faultstring) return null; // qualquer erro de consulta → processa normalmente
+    const data = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
     return String(data?.pedido_venda_produto?.cabecalho?.etapa || data?.cabecalho?.etapa || '');
   } catch {
-    return null;
+    return null; // qualquer erro de consulta → processa normalmente
   }
 }
 

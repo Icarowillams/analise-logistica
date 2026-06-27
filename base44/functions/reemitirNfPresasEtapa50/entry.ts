@@ -24,59 +24,82 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 //   - Idempotente: só reemite quem está confirmadamente em etapa 50.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const OMIE_CONSULTA_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function getCredenciais(base44) {
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
+}
+
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return { blocked: false };
+  }
+  return { blocked: true, blockedUntil: c.bloqueado_ate };
 }
 
 async function circuitBloqueado(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
-  const c = rows?.[0];
-  if (!c?.bloqueado) return false;
-  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
-    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
-    return false;
+  return (await checkCircuitBreaker(base44)).blocked;
+}
+
+// omieCall canônico (canal único ao Omie). Auto-contido. Recebe base44; lê credenciais e
+// circuit breaker internamente. Throw na faultstring — os wrappers abaixo classificam.
+async function omieCall(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getCredenciais(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), options.timeoutMs || 20000);
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+    clearTimeout(tid);
+    const d = await res.json().catch(() => ({}));
+    if (d?.faultstring) throw new Error(d.faultstring);
+    return d;
+  } finally {
+    clearTimeout(tid);
   }
-  return true;
 }
 
-async function consultarEtapa(appKey, appSecret, codigo) {
-  const resp = await fetch(OMIE_CONSULTA_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call: 'ConsultarPedido', app_key: appKey, app_secret: appSecret, param: [{ codigo_pedido: Number(codigo) }] })
-  });
-  const d = await resp.json().catch(() => ({}));
-  if (d?.faultstring) return { etapa: null, erro: d.faultstring };
-  const pv = d?.pedido_venda_produto || d;
-  return { etapa: pv?.cabecalho?.etapa || null };
+// Mantêm a mesma assinatura (appKey, appSecret) já usada no handler — agora roteando pelo omieCall.
+// base44 é capturado por closure no handler (definido antes da chamada).
+async function consultarEtapa(base44, codigo) {
+  try {
+    const d = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigo) }, { call: 'ConsultarPedido', skipLog: true });
+    const pv = d?.pedido_venda_produto || d;
+    return { etapa: pv?.cabecalho?.etapa || null };
+  } catch (e) {
+    return { etapa: null, erro: e.message };
+  }
 }
 
-async function emitirNf(appKey, appSecret, codigo, tentativa = 1) {
-  const resp = await fetch(OMIE_FAT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call: 'FaturarPedidoVenda', app_key: appKey, app_secret: appSecret, param: [{ nCodPed: Number(codigo) }] })
-  });
-  const d = await resp.json().catch(() => ({}));
-  if (d?.faultstring) {
-    const fs = String(d.faultstring);
+async function emitirNf(base44, codigo, tentativa = 1) {
+  try {
+    const d = await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigo) }, { call: 'FaturarPedidoVenda', skipLog: true });
+    return { ok: true, status: d?.cCodStatus, msg: d?.cDesStatus };
+  } catch (e) {
+    const fs = String(e.message);
     // Concorrência / consumo redundante: aguarda janela do Omie e tenta de novo (até 3x)
     if (/redundante|concorr|425/i.test(fs) && tentativa < 3) {
       await sleep(60000);
-      return emitirNf(appKey, appSecret, codigo, tentativa + 1);
+      return emitirNf(base44, codigo, tentativa + 1);
     }
     return { ok: false, msg: fs };
   }
-  return { ok: true, status: d?.cCodStatus, msg: d?.cDesStatus };
 }
 
 Deno.serve(async (req) => {
@@ -119,7 +142,7 @@ Deno.serve(async (req) => {
     //   • etapa 50 → faturado sem NF: aciona FaturarPedidoVenda (com retry anti-concorrência).
     //   • outras etapas → não mexe.
     if (codigoUnico) {
-      const { etapa, erro } = await consultarEtapa(appKey, appSecret, codigoUnico);
+      const { etapa, erro } = await consultarEtapa(base44, codigoUnico);
       if (erro) {
         return Response.json({ sucesso: false, codigo_pedido: codigoUnico, acao: 'erro_consulta', mensagem: erro }, { status: 200 });
       }
@@ -148,7 +171,7 @@ Deno.serve(async (req) => {
       }
 
       if (String(etapa) === '50') {
-        const r = await emitirNf(appKey, appSecret, codigoUnico);
+        const r = await emitirNf(base44, codigoUnico);
         if (r.ok) {
           if (pedidoLocal?.id) {
             await base44.asServiceRole.entities.Pedido.update(pedidoLocal.id, {
@@ -279,7 +302,7 @@ Deno.serve(async (req) => {
       if (await circuitBloqueado(base44)) break;
 
       const cod = p.omie_codigo_pedido;
-      const { etapa, erro } = await consultarEtapa(appKey, appSecret, cod);
+      const { etapa, erro } = await consultarEtapa(base44, cod);
       await sleep(800);
 
       if (erro) {
@@ -308,7 +331,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const r = await emitirNf(appKey, appSecret, cod);
+        const r = await emitirNf(base44, cod);
         if (r.ok) {
           reemitidos++;
           await base44.asServiceRole.entities.Pedido.update(p.id, {

@@ -1,35 +1,81 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
 
 async function getOmieCredentials(base44) {
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
-// Chamada simples ao Omie: sem retry, timeout curto
-async function omieCallSimples(base44, endpoint, call, param) {
+async function checkCircuitBreaker(base44) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) return { blocked: false };
+  return { blocked: true, blockedUntil: c.bloqueado_ate };
+}
+
+// omieCall canônico (canal único ao Omie). Auto-contido. Espera longa (~55s) em "consumo
+// redundante"; bloqueio abre o circuit breaker. Mantém o comportamento "sem retry" curto:
+// o chamador espera throw na faultstring (tratado no catch do handler com mensagens amigáveis).
+async function omieCall(base44, endpoint, param, options = {}) {
   const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
-
-  const url = OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 10000);
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }),
-    signal: controller.signal
-  });
-  clearTimeout(tid);
-
-  const data = await res.json();
-  if (data.faultstring) throw new Error(data.faultstring);
-  return data;
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [55000, 55000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || 10000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      clearTimeout(tid);
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 500 && /redundante/i.test(corpo)) {
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        }
+        if (res.status === 425) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+        }
+        throw new Error(lastErr);
+      }
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+        }
+        throw new Error(data.faultstring);
+      }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
+      return data;
+    } catch (e) {
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length && /redundante/i.test(lastErr) && !lastErr.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
 }
 
 const ETAPAS_CANCELAVEIS = ['10', '20'];
@@ -106,9 +152,7 @@ Deno.serve(async (req) => {
       // Se não está cancelado, usar ExcluirPedido (método correto para cancelar pedidos nas etapas 10/20)
       if (!omieCancelado) {
         console.log(`[cancelarPedidoOmie] Excluindo pedido ${codigoPedido} no Omie via ExcluirPedido...`);
-        await omieCallSimples(base44, 'produtos/pedido/', 'ExcluirPedido', {
-          codigo_pedido: codigoPedido
-        });
+        await omieCall(base44, 'produtos/pedido/', { codigo_pedido: codigoPedido }, { call: 'ExcluirPedido' });
         omieCancelado = true;
         console.log('[cancelarPedidoOmie] Pedido excluído/cancelado com sucesso no Omie.');
       }

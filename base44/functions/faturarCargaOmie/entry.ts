@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const OMIE_URL = 'https://app.omie.com.br/api/v1/produtos/pedido/';
-const OMIE_FAT_URL = 'https://app.omie.com.br/api/v1/produtos/pedidovendafat/';
+// NOTA: faturarCargaOmie é uma operação 100% LOCAL — não faz nenhuma chamada à API Omie
+// (apenas marca a carga/pedidos como faturados localmente). Por isso não roteia pelo omieCall.
 
 // Verifica circuit breaker — bloqueia faturamento se a API Omie estiver indisponível por consumo indevido (425).
 // Esta function não chama a API diretamente, mas cria a fila de emissão; abortar cedo evita enfileirar com a API bloqueada.
