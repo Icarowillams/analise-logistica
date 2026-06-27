@@ -156,6 +156,11 @@ async function liberarLockEncadeamento(base44) {
 // "Consumo redundante" não é uma falha real: o Omie só libera o mesmo id após ~60s.
 // Re-agendamos a janela e só desistimos após muitas janelas reais (praticamente nunca acontece).
 const MAX_TENTATIVAS_REDUNDANTE = 5;
+// REVALIDAÇÃO "etapa < 50": NÃO é erro nem terminal — o pedido só ainda não foi liberado/faturado
+// (etapa 10/20 = estado normal do fluxo). Após este nº de revalidações sem o pedido avançar, o item
+// SAI do loop de retry automático (status aguardando_acao_humana) e só volta por ação humana ou
+// aviso de webhook. Sem isto, o worker reconsultava o mesmo pedido eternamente, martelando o Omie.
+const MAX_TENTATIVAS_REVALIDACAO = 4;
 // LOTE PEQUENO de propósito: cada pedido leva ~1.5s (delay + 2 calls Omie + reconsulta de 600ms).
 // Com lote de 50, uma rodada passava de 1min e a plataforma MATAVA a função no meio — deixando
 // o item em andamento "órfão" (preso em processando). Com lote de 8, cada rodada termina em ~12s,
@@ -577,6 +582,39 @@ Deno.serve(async (req) => {
             }).catch(() => {});
           }
           // Não interrompe o lote: segue para os próximos itens (de outros pedidos).
+          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
+          continue;
+        }
+
+        // ETAPA < 50 NÃO AVANÇOU: o pedido foi reconsultado e continua em etapa < destino (ex: 10/20).
+        // Isso NÃO é erro nem rate limit — é estado NORMAL do fluxo: o pedido ainda não foi
+        // liberado/faturado por ação humana. Em vez de reenfileirar em loop infinito (martelando o
+        // Omie, como aconteceu nas cargas 411/413), conta as revalidações e, após o limite, TIRA da
+        // fila ativa para "aguardando_acao_humana". O pedido só volta quando alguém liberar/faturar
+        // pela tela ou o webhook avisar que a etapa mudou. NÃO vira erro vermelho.
+        if (e.etapaNaoAvancou || e.naoConfirmado) {
+          const revalidacoes = Number(item.tentativas_revalidacao || 0) + 1;
+          const etapaMatch = String(e.message).match(/etapa (\d+)/i);
+          const etapaAtual = etapaMatch ? etapaMatch[1] : '<50';
+          if (revalidacoes >= MAX_TENTATIVAS_REVALIDACAO) {
+            await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+              status: 'aguardando_acao_humana',
+              tentativas_revalidacao: revalidacoes,
+              proxima_tentativa_em: null,
+              processando_em: null,
+              erro_log: `Pedido em etapa ${etapaAtual} (< 50) — ainda não liberado/faturado. Saiu da fila automática após ${revalidacoes} revalidações; aguardando ação humana (liberar/faturar) ou aviso do webhook.`
+            }).catch(() => {});
+            console.log(`[FILA REVALIDACAO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}) → aguardando_acao_humana após ${revalidacoes} revalidações em etapa ${etapaAtual}.`);
+          } else {
+            await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+              status: 'pendente',
+              tentativas_revalidacao: revalidacoes,
+              // Espaça a próxima revalidação para NÃO reentrar imediatamente (evita martelar o Omie).
+              proxima_tentativa_em: new Date(Date.now() + 60 * 1000).toISOString(),
+              processando_em: null,
+              erro_log: `Revalidação: etapa real ${etapaAtual} < 50 — reenfileirado (revalidação ${revalidacoes}/${MAX_TENTATIVAS_REVALIDACAO}).`
+            }).catch(() => {});
+          }
           if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
           continue;
         }

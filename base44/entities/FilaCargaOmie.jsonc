@@ -52,10 +52,11 @@
         "pendente",
         "processando",
         "concluido",
-        "erro"
+        "erro",
+        "aguardando_acao_humana"
       ],
       "default": "pendente",
-      "description": "Status do processamento na fila"
+      "description": "Status do processamento na fila. aguardando_acao_humana = o pedido est\u00e1 em etapa < 50 (ainda n\u00e3o liberado/faturado no fluxo) e n\u00e3o avan\u00e7ou ap\u00f3s v\u00e1rias revalida\u00e7\u00f5es \u2014 SAIU do loop de retry autom\u00e1tico e s\u00f3 volta \u00e0 fila por a\u00e7\u00e3o humana (liberar/faturar pela tela) ou aviso de webhook. N\u00c3O \u00e9 erro vermelho."
     },
     "tentativas": {
       "type": "number",
@@ -66,6 +67,11 @@
       "type": "number",
       "default": 0,
       "description": "Quantidade de janelas de espera por 'Consumo redundante' j\u00e1 aguardadas. S\u00f3 vira erro definitivo ap\u00f3s o limite (ex: 5)."
+    },
+    "tentativas_revalidacao": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de revalida\u00e7\u00f5es em que o pedido foi reconsultado e ainda estava em etapa < 50 (n\u00e3o avan\u00e7ou). Ap\u00f3s o limite (ex: 4), o item sai do loop para status aguardando_acao_humana \u2014 para de reenfileirar sozinho e parar de martelar o Omie."
     },
     "proxima_tentativa_em": {
       "type": "string",
