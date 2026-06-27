@@ -93,6 +93,19 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
           destErr.destinoInvalido = true;
           throw destErr;
         }
+        // JÁ FATURADO/AUTORIZADO: o Omie recusa porque o pedido já tem NF. NÃO é erro — é sucesso.
+        // Propaga flag para o worker concluir o item sem retry (em vez de re-alimentar consumo indevido).
+        if (/j[áa] (foi )?(autorizad|faturad)|j[áa] possui nf|nf.*j[áa] cadastrada/.test(msg)) {
+          const jfErr: any = new Error(data.faultstring);
+          jfErr.jaFaturado = true;
+          throw jfErr;
+        }
+        // CLIENTE BLOQUEADO PARA FATURAR: erro TERMINAL — sai da fila, não retenta (só por ação humana).
+        if (/cadastro bloqueado para faturar|cliente.*bloquead/.test(msg)) {
+          const cbErr: any = new Error(data.faultstring);
+          cbErr.clienteBloqueado = true;
+          throw cbErr;
+        }
         // Outros rate limits temporários (aguarde, cota, limite, timeout) — retry rápido
         if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) { lastErr = data.faultstring; if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; } }
         throw new Error(data.faultstring);
@@ -107,6 +120,8 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
       if (e.redundante) throw e;
       // Destino de etapa inválido (regra Omie) — propaga sem retry, é erro definitivo.
       if (e.destinoInvalido) throw e;
+      // Já faturado (= sucesso) e cliente bloqueado (= terminal) — propagam sem retry.
+      if (e.jaFaturado || e.clienteBloqueado) throw e;
       lastErr = e.message;
       if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
       if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
@@ -201,6 +216,24 @@ async function consultarEtapaOmie(base44, item) {
   return etapa ? Number(etapa) : null;
 }
 
+// Consulta o estado fiscal completo do pedido: etapa, se está faturado (etapa 60 / faturado=S)
+// e o número da NF. Usado para classificar "já faturado" (= sucesso) sem re-tentar faturar.
+async function consultarEstadoFaturamento(base44, item) {
+  const param = {};
+  if (item.codigo_pedido_omie) param.codigo_pedido = Number(item.codigo_pedido_omie);
+  else if (item.codigo_pedido_integracao) param.codigo_pedido_integracao = String(item.codigo_pedido_integracao);
+  else return null;
+  const resp = await omieCall(base44, 'produtos/pedido/', param, { call: 'ConsultarPedido', skipLog: true });
+  const ped = resp?.pedido_venda_produto || resp || {};
+  const cab = ped.cabecalho || {};
+  const infoCad = ped.infoCadastro || ped.info_cadastro || {};
+  const infoNfe = ped.infoNfe || ped.info_nf || ped.informacoes_nfe || {};
+  const etapa = Number(String(cab.etapa || '')) || null;
+  const faturado = String(infoCad.faturado || infoNfe.faturado || '').toUpperCase() === 'S';
+  const numeroNf = String(infoNfe.nNF || infoNfe.numero_nf || cab.numero_nfe || cab.numero_nf || infoCad.nNumeroNFe || '');
+  return { etapa, faturado, numeroNf, jaFaturado: (etapa != null && etapa >= 60) || faturado };
+}
+
 // Executa a operação 'faturar': altera previsão + troca etapa para 50.
 // CRÍTICO: após TrocarEtapaPedido, RECONSULTA a etapa real e só retorna sucesso
 // se etapa >= destino. Se o Omie engoliu a troca (respondeu redundante/erro sem
@@ -216,6 +249,20 @@ async function processarFaturar(base44, item) {
   // Se vier etapa_destino 60 (legado), faz clamp para 50.
   let destino = Number(item.etapa_destino || 50);
   if (destino >= 60) destino = 50;
+
+  // 0) JÁ FATURADO (etapa 60 / faturado=S): o pedido JÁ TEM NF no Omie. Não há o que faturar —
+  // isto É SUCESSO. Verifica ANTES de qualquer chamada de alteração, evitando a recusa
+  // "já foi autorizado" que re-alimenta o consumo indevido. Lança jaFaturado com o número da NF.
+  {
+    const estado = await consultarEstadoFaturamento(base44, item);
+    if (estado?.jaFaturado) {
+      const okErr = new Error(`Pedido já faturado no Omie (etapa ${estado.etapa || 60}${estado.numeroNf ? `, NF ${estado.numeroNf}` : ''}).`);
+      okErr.jaFaturado = true;
+      okErr.numeroNf = estado.numeroNf || '';
+      okErr.etapaReal = estado.etapa || 60;
+      throw okErr;
+    }
+  }
 
   // 1) Alterar previsão de faturamento (se houver data)
   if (item.data_previsao) {
@@ -498,6 +545,8 @@ Deno.serve(async (req) => {
     const cargasAfetadas = new Set();
     let processados = 0;
     let interrompido = false;
+    let jaFaturadoCount = 0;
+    let clienteBloqueadoCount = 0;
 
     // Processa SEQUENCIALMENTE (1 por vez, nunca em paralelo).
     for (let i = 0; i < pendentes.length; i++) {
@@ -560,6 +609,50 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.error(`[FILA ERRO] Pedido ${item.numero_pedido} (carga ${item.numero_carga}):`, e.message);
+
+        // JÁ FATURADO (etapa 60 / faturado=S / "já autorizado"): o pedido JÁ TEM NF — isto é SUCESSO.
+        // Marca concluído, captura o número da NF no espelho e SAI da fila. Nunca reenfileira.
+        if (e.jaFaturado) {
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+            status: 'concluido',
+            processado_em: new Date().toISOString(),
+            proxima_tentativa_em: null,
+            processando_em: null,
+            erro_log: String(e.message).slice(0, 500)
+          }).catch(() => {});
+          // Atualiza espelho: etapa 60 + número da NF (se veio na consulta).
+          if (item.codigo_pedido_omie) {
+            const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter(
+              { codigo_pedido: String(item.codigo_pedido_omie) }, '-created_date', 1
+            ).catch(() => []);
+            if (espelhos?.[0]) {
+              await base44.asServiceRole.entities.PedidoLiberadoOmie.update(espelhos[0].id, {
+                etapa: '60',
+                ...(e.numeroNf ? { numero_nf: e.numeroNf } : {}),
+                sincronizado_em: new Date().toISOString()
+              }).catch(() => {});
+            }
+          }
+          jaFaturadoCount++;
+          processados++;
+          await atualizarStatusCarga(base44, item.carga_id).catch(() => {});
+          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
+          continue;
+        }
+
+        // CLIENTE BLOQUEADO PARA FATURAR: erro TERMINAL. Sai da fila ativa, NÃO retenta —
+        // fica visível como erro para a equipe desbloquear o cadastro do cliente no Omie.
+        if (e.clienteBloqueado) {
+          await base44.asServiceRole.entities.FilaCargaOmie.update(item.id, {
+            status: 'erro',
+            proxima_tentativa_em: null,
+            processando_em: null,
+            erro_log: `Cliente bloqueado para faturar no Omie (erro terminal — desbloquear o cadastro no Omie): ${String(e.message).slice(0, 600)}`
+          }).catch(() => {});
+          clienteBloqueadoCount++;
+          if (i < pendentes.length - 1) await sleep(DELAY_ENTRE_PEDIDOS_MS);
+          continue;
+        }
 
         // CONSUMO REDUNDANTE: o Omie exige aguardar ~60s antes de repetir o mesmo id.
         // Re-enfileira mantendo pendente, agenda a próxima tentativa para depois da janela
@@ -674,7 +767,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ sucesso: true, processados, interrompido, encadeou, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
+    return Response.json({ sucesso: true, processados, ja_faturado: jaFaturadoCount, cliente_bloqueado: clienteBloqueadoCount, interrompido, encadeou, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
 
     } finally {
       // Libera o lock SEMPRE ao fim (sucesso, retorno antecipado ou exceção).
