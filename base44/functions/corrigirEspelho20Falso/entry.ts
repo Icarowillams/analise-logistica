@@ -94,47 +94,76 @@ async function registrarErroBreaker(base44, faultstring) {
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, p).catch(() => null);
 }
 
+// omieCall canônico (canal único ao Omie). Auto-contido — reusa getOmieCredentials/checkCircuitBreaker
+// já definidos acima. Lança erro com .rateLimit=true em bloqueio/425/429 para o chamador abortar.
+async function omieCall(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) { const e = new Error(`API Omie bloqueada até ${cb.blockedUntil}`); e.rateLimit = true; throw e; }
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [55000, 55000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      clearTimeout(tid);
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 500 && /redundante/i.test(corpo)) {
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+          throw new Error(lastErr);
+        }
+        if (res.status === 425 || res.status === 429) {
+          const e = new Error(lastErr); e.rateLimit = true; throw e;
+        }
+        if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        throw new Error(lastErr);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (/consumo indevido|bloquead|425|cota|limite|redundante/.test(msg)) {
+          const e = new Error(data.faultstring); e.rateLimit = true; throw e;
+        }
+        const fault = new Error(data.faultstring); fault.faultData = data; throw fault;
+      }
+      return data;
+    } catch (e) {
+      if (e.rateLimit) throw e;
+      if (e.faultData) throw e;
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
+}
+
 // Consulta a etapa real do pedido no Omie.
 // Retorna { etapa } com a etapa real, ou { naoCadastrado: true } se o Omie disser que o
 // pedido não existe mais (tratado como cancelado/80), ou { etapa: null } se indefinido.
 // Lança erro com .rateLimit=true em bloqueio/425/429 para o chamador abortar.
 async function consultarEtapaReal(base44, codigoPedido) {
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 15000);
+  let data;
   try {
-    const res = await fetch(OMIE_BASE_URL + 'produtos/pedido/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarPedido', app_key: appKey, app_secret: appSecret, param: [{ codigo_pedido: Number(codigoPedido) }] }),
-      signal: controller.signal
-    });
-    clearTimeout(tid);
-    if (res.status === 425 || res.status === 429) {
-      const corpo = await res.text().catch(() => '');
-      const err = new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 120) : ''}`);
-      err.rateLimit = true;
-      throw err;
+    data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido', skipLog: true });
+  } catch (e) {
+    if (e.rateLimit) throw e;
+    // Fault não-rate-limit: pode ser "não cadastrado" → cancelado/80; senão, etapa indefinida.
+    const msg = String(e.message || '').toLowerCase();
+    if (/n[ãa]o cadastrad|n[ãa]o encontrad|inexistente|n[ãa]o existe/.test(msg)) {
+      return { naoCadastrado: true };
     }
-    const data = await res.json().catch(() => ({}));
-    if (data.faultstring) {
-      const msg = String(data.faultstring).toLowerCase();
-      if (/consumo indevido|bloquead|425|cota|limite|redundante/.test(msg)) {
-        const err = new Error(data.faultstring);
-        err.rateLimit = true;
-        throw err;
-      }
-      // Pedido não cadastrado/não encontrado no Omie → foi excluído/cancelado. Tratar como 80.
-      if (/n[ãa]o cadastrad|n[ãa]o encontrad|inexistente|n[ãa]o existe/.test(msg)) {
-        return { naoCadastrado: true };
-      }
-      // Outro fault — etapa indefinida.
-      return { etapa: null };
-    }
-    return { etapa: String(data?.pedido_venda_produto?.cabecalho?.etapa || data?.cabecalho?.etapa || '') || null };
-  } finally {
-    clearTimeout(tid);
+    return { etapa: null };
   }
+  return { etapa: String(data?.pedido_venda_produto?.cabecalho?.etapa || data?.cabecalho?.etapa || '') || null };
 }
 
 Deno.serve(async (req) => {

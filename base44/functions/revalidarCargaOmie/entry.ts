@@ -24,45 +24,79 @@ async function checkCircuitBreaker(base44) {
   return { blocked: true, blockedUntil: c.bloqueado_ate };
 }
 
-// Consulta a etapa atual do pedido no Omie. Retorna número (20/50/60) ou null.
-// Retry leve no redundante/aguarde (1 reespera de 3s).
-async function consultarEtapa(base44, codigoPedidoOmie) {
+// omieCall canônico (canal único ao Omie). Auto-contido — reusa getOmieCreds/checkCircuitBreaker
+// já definidos acima. Espera longa (~55s) em "consumo redundante"; bloqueio abre o circuit breaker.
+async function omieCall(base44, endpoint, param, options = {}) {
   const { appKey, appSecret } = await getOmieCreds(base44);
+  const call = options.call || '';
   if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
-  const url = OMIE_BASE_URL + 'produtos/pedido/';
-  let tentativa = 0;
-  while (tentativa < 2) {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 15000);
-    let data;
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [55000, 55000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call: 'ConsultarPedido', app_key: appKey, app_secret: appSecret, param: [{ codigo_pedido: Number(codigoPedidoOmie) }] }),
-        signal: controller.signal
-      });
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
       clearTimeout(tid);
       if (res.status >= 500 || res.status === 429 || res.status === 425) {
-        if (tentativa === 0) { await sleep(3000); tentativa++; continue; }
-        throw new Error(`HTTP ${res.status} Omie`);
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 500 && /redundante/i.test(corpo)) {
+          if (i < RETRIES.length) { await sleep(RETRIES[i]); continue; }
+          throw new Error(lastErr);
+        }
+        if (res.status === 425) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+          throw new Error(lastErr);
+        }
+        if (i < RETRIES.length) { await sleep(RETRIES[i]); continue; }
+        throw new Error(lastErr);
       }
-      data = await res.json();
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+          throw new Error(data.faultstring);
+        }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+          lastErr = data.faultstring;
+          if (i < RETRIES.length) { await sleep(RETRIES[i]); continue; }
+        }
+        throw new Error(data.faultstring);
+      }
+      if (!options.skipLog) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1 }).catch(() => null);
+      }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
+      return data;
     } catch (e) {
-      clearTimeout(tid);
-      throw new Error(e.name === 'AbortError' ? 'Timeout na chamada Omie' : e.message);
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await sleep(RETRIES[i]); continue; }
+      throw new Error(lastErr);
     }
-    if (data.faultstring) {
-      const msg = String(data.faultstring).toLowerCase();
-      if ((msg.includes('redundante') || msg.includes('aguarde')) && tentativa === 0) {
-        await sleep(3000); tentativa++; continue;
-      }
-      throw new Error(data.faultstring);
-    }
-    const etapa = String(data?.pedido_venda_produto?.cabecalho?.etapa || '');
-    return etapa ? Number(etapa) : null;
   }
-  return null;
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
+}
+
+// Consulta a etapa atual do pedido no Omie. Retorna número (20/50/60) ou null.
+async function consultarEtapa(base44, codigoPedidoOmie) {
+  const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedidoOmie) }, { call: 'ConsultarPedido', skipLog: true });
+  const etapa = String(data?.pedido_venda_produto?.cabecalho?.etapa || '');
+  return etapa ? Number(etapa) : null;
 }
 
 // 🔎 REVALIDA uma carga consultando a ETAPA REAL no Omie de cada pedido modelo 55,

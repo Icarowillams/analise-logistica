@@ -62,45 +62,93 @@ async function registrarErroBreaker(base44, faultstring) {
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, p).catch(() => null);
 }
 
+// omieCall canônico (canal único ao Omie). Auto-contido — reusa getOmieCredentials/checkCircuitBreaker
+// já definidos acima. Espera longa (~55s) em "consumo redundante"; bloqueio abre o circuit breaker.
+async function omieCall(base44, endpoint, param, options = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [55000, 55000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || options.timeout || 15000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      clearTimeout(tid);
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        // HTTP 500 "não cadastrado" = pedido excluído no Omie. Propaga flag para o chamador.
+        if (res.status >= 500) {
+          let fault = corpo;
+          try { fault = JSON.parse(corpo)?.faultstring || corpo; } catch { /* corpo não-JSON */ }
+          if (/n[ãa]o cadastrad|n[ãa]o encontrad|n[ãa]o localizad|inexistente/i.test(fault)) {
+            const e = new Error(fault); e.naoCadastrado = true; throw e;
+          }
+          if (/redundante/i.test(corpo)) {
+            if (i < RETRIES.length) { await delay(RETRIES[i]); continue; }
+          }
+        }
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (res.status === 425) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: lastErr.slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+          throw new Error(lastErr);
+        }
+        if (i < RETRIES.length) { await delay(RETRIES[i]); continue; }
+        throw new Error(lastErr);
+      }
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (msg.includes('não cadastrad') || msg.includes('nao cadastrad') || msg.includes('não encontrad') || msg.includes('nao encontrad') || msg.includes('não localizad') || msg.includes('nao localizad') || msg.includes('inexistente')) {
+          const e = new Error(data.faultstring); e.naoCadastrado = true; throw e;
+        }
+        if (res.status === 425 || msg.includes('consumo indevido') || msg.includes('bloqueada') || msg.includes('bloqueio')) {
+          const _cbRows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
+          const _cb = _cbRows?.[0]; const _erros = (_cb?.erros_consecutivos || 0) + 1; const _thresh = _cb?.threshold_erros ?? 3;
+          const _p = { erros_consecutivos: _erros, ultimo_erro: String(data.faultstring).slice(0, 500), atualizado_em: new Date().toISOString() };
+          if (_erros >= _thresh) { _p.bloqueado = true; _p.bloqueado_ate = new Date(Date.now() + 3 * 60000).toISOString(); }
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, _p).catch(() => null);
+          throw new Error(data.faultstring);
+        }
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite') || msg.includes('timeout') || msg.includes('internal error')) {
+          lastErr = data.faultstring;
+          if (i < RETRIES.length) { await delay(RETRIES[i]); continue; }
+        }
+        throw new Error(data.faultstring);
+      }
+      if (!options.skipLog) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1 }).catch(() => null);
+      }
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(CB_ID, { erros_consecutivos: 0, atualizado_em: new Date().toISOString() }).catch(() => null);
+      return data;
+    } catch (e) {
+      if (e.naoCadastrado) throw e;
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await delay(RETRIES[i]); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
+}
+
 // Resultado: { data } | { naoCadastrado: true } (HTTP 500/não encontrado = excluído no Omie)
 async function consultarPedidoOmie(base44, codigoPedido) {
-  const { appKey, appSecret } = await getOmieCredentials(base44);
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetch(OMIE_BASE_URL + 'produtos/pedido/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call: 'ConsultarPedido', app_key: appKey, app_secret: appSecret, param: [{ codigo_pedido: Number(codigoPedido) }] }),
-      signal: controller.signal
-    });
-    clearTimeout(tid);
-    if (res.status === 425 || res.status === 429) {
-      const corpo = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 120) : ''}`);
-    }
-    // HTTP 500 frequentemente é "pedido não cadastrado" (excluído no Omie). Inspeciona o corpo.
-    // O corpo vem como JSON com unicode escapado (n\u00e3o) — parseia para decodificar antes do regex.
-    if (res.status >= 500) {
-      const corpo = await res.text().catch(() => '');
-      let fault = corpo;
-      try { fault = JSON.parse(corpo)?.faultstring || corpo; } catch { /* corpo não-JSON: usa cru */ }
-      if (/n[ãa]o cadastrad|n[ãa]o encontrad|n[ãa]o localizad|inexistente/i.test(fault)) {
-        return { naoCadastrado: true };
-      }
-      throw new Error(`HTTP ${res.status} Omie${fault ? ': ' + fault.slice(0, 120) : ''}`);
-    }
-    const data = await res.json();
-    if (data.faultstring) {
-      const msg = String(data.faultstring).toLowerCase();
-      if (msg.includes('não cadastrad') || msg.includes('nao cadastrad') || msg.includes('não encontrad') || msg.includes('nao encontrad') || msg.includes('não localizad') || msg.includes('nao localizad') || msg.includes('inexistente')) {
-        return { naoCadastrado: true };
-      }
-      throw new Error(data.faultstring);
-    }
+    const data = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido', skipLog: true });
     return { data };
-  } finally {
-    clearTimeout(tid);
+  } catch (e) {
+    if (e.naoCadastrado) return { naoCadastrado: true };
+    throw e;
   }
 }
 
