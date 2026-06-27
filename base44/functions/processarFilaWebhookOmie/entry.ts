@@ -738,6 +738,30 @@ async function liberarLock(base44) {
   }).catch(() => null);
 }
 
+// ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
+const CHAVE_PORTAO = 'portao_global_omie';
+const PORTAO_TTL_MS = 5 * 60 * 1000;
+async function adquirirPortaoGlobal(base44, nome) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 5).catch(() => []);
+  let reg = rows?.[0];
+  if (!reg?.id) reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  if (!reg?.id) return { adquirido: false };
+  const agora = Date.now();
+  if (reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora) return { adquirido: false, ocupadoPor: reg.ultimo_erro };
+  const donoId = `${nome}-${agora}-${Math.random().toString(36).slice(2, 8)}`;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: true, worker_lock_ate: new Date(agora + PORTAO_TTL_MS).toISOString(), ultimo_erro: donoId, atualizado_em: new Date().toISOString() }).catch(() => null);
+  const conf = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: reg.id }, '-created_date', 1).catch(() => []);
+  if (conf?.[0]?.ultimo_erro !== donoId) return { adquirido: false, ocupadoPor: conf?.[0]?.ultimo_erro };
+  return { adquirido: true, donoId, regId: reg.id };
+}
+async function liberarPortaoGlobal(base44, donoId) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (!reg?.id) return;
+  if (donoId && reg.ultimo_erro && reg.ultimo_erro !== donoId) return;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: false, worker_lock_ate: null, ultimo_erro: null, atualizado_em: new Date().toISOString() }).catch(() => null);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -757,11 +781,21 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, processados: 0, motivo: 'worker_ja_rodando' });
     }
 
+    let portao = { adquirido: false };
     try {
       // Circuit breaker: se a Omie está bloqueando, nem começa (evita acumular erro).
       const cb = await checkCircuitBreaker(base44);
       if (cb.blocked) {
         return Response.json({ sucesso: false, motivo: 'circuit_breaker_ativo', bloqueado_ate: cb.blockedUntil, processados: 0 });
+      }
+
+      // ── PORTÃO ÚNICO GLOBAL: só UMA operação toca o Omie por vez (entre TODOS os workers).
+      // Se outra operação já o detém, libera o lock de instância e aborta cedo — o scheduler
+      // de 5min reprocessa a fila depois. Sem tocar o Omie.
+      portao = await adquirirPortaoGlobal(base44, 'webhook');
+      if (!portao.adquirido) {
+        await liberarLock(base44).catch(() => {});
+        return Response.json({ sucesso: true, processados: 0, motivo: 'portao_global_ocupado', ocupado_por: portao.ocupadoPor });
       }
 
       // Busca webhooks pendentes (mais antigos primeiro) — filter por chave, nunca list total.
@@ -875,6 +909,8 @@ Deno.serve(async (req) => {
           { endpoint: 'webhook', status: 'pendente' }, 'created_date', 1
         ).catch(() => []);
         if (aindaPendentes.length > 0) {
+          // Libera o portão ANTES do self-chain para a próxima execução conseguir adquiri-lo.
+          await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
           await liberarLock(base44);
           base44.asServiceRole.functions.invoke('processarFilaWebhookOmie', { origem: 'self_chain' })
             .catch((e) => console.error('[processarFilaWebhookOmie] self-chain falhou:', e?.message));
@@ -890,7 +926,9 @@ Deno.serve(async (req) => {
 
       return Response.json({ sucesso: true, processados, ignorados_duplicados: ignoradosDup, reconciliados, pausado_por_bloqueio: pausadoPorBloqueio, reagendado });
     } finally {
-      // Libera o lock sempre (se o self-chain já liberou, este update é inócuo).
+      // Libera o portão global e o lock de instância sempre (se o self-chain já liberou,
+      // estes updates são inócuos).
+      if (portao.adquirido) await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
       await liberarLock(base44);
     }
   } catch (error) {

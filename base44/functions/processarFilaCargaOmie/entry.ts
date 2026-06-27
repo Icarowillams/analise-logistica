@@ -141,6 +141,30 @@ const MAX_TENTATIVAS = 3;
 const CHAVE_WORKER_CARGA = 'worker_carga'; // chave DEDICADA do lock de auto-encadeamento da fila de carga
 const LOCK_TTL_MS = 2 * 60 * 1000;         // TTL curto do lock — auto-release se a função morrer
 
+// ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
+const CHAVE_PORTAO = 'portao_global_omie';
+const PORTAO_TTL_MS = 5 * 60 * 1000;
+async function adquirirPortaoGlobal(base44, nome) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 5).catch(() => []);
+  let reg = rows?.[0];
+  if (!reg?.id) reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  if (!reg?.id) return { adquirido: false };
+  const agora = Date.now();
+  if (reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora) return { adquirido: false, ocupadoPor: reg.ultimo_erro };
+  const donoId = `${nome}-${agora}-${Math.random().toString(36).slice(2, 8)}`;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: true, worker_lock_ate: new Date(agora + PORTAO_TTL_MS).toISOString(), ultimo_erro: donoId, atualizado_em: new Date().toISOString() }).catch(() => null);
+  const conf = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: reg.id }, '-created_date', 1).catch(() => []);
+  if (conf?.[0]?.ultimo_erro !== donoId) return { adquirido: false, ocupadoPor: conf?.[0]?.ultimo_erro };
+  return { adquirido: true, donoId, regId: reg.id };
+}
+async function liberarPortaoGlobal(base44, donoId) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (!reg?.id) return;
+  if (donoId && reg.ultimo_erro && reg.ultimo_erro !== donoId) return;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: false, worker_lock_ate: null, ultimo_erro: null, atualizado_em: new Date().toISOString() }).catch(() => null);
+}
+
 // ============================================================
 // LOCK DE AUTO-ENCADEAMENTO — garante 1 cadeia por vez.
 // Registro dedicado (chave='worker_carga') com worker_rodando + worker_lock_ate.
@@ -409,6 +433,7 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', reagendou, processados: 0 });
     }
 
+    let portao = { adquirido: false };
     try {
 
     // ═══ PASSO 0: TIMEOUT — Resgatar itens órfãos travados em "processando" ═══
@@ -466,6 +491,15 @@ Deno.serve(async (req) => {
         console.log(`[STATUS] Recalculando ${cargasParaAtualizar.length} cargas em paralelo`);
         await Promise.all(cargasParaAtualizar.map(c => atualizarStatusCarga(base44, c.id)));
       }
+    }
+
+    // ── PORTÃO ÚNICO GLOBAL: adquirido AQUI (após o PASSO 1 de status local, que é zero Omie)
+    // e ANTES de qualquer chamada ao Omie. Se outro worker já o detém, aborta cedo sem tocar
+    // o Omie — o status local já foi atualizado acima. Tenta de novo no próximo ciclo.
+    portao = await adquirirPortaoGlobal(base44, 'carga');
+    if (!portao.adquirido) {
+      console.log('[FILA CARGA] Portão global ocupado por', portao.ocupadoPor, '— abortando sem tocar o Omie (status local já atualizado).');
+      return Response.json({ sucesso: true, mensagem: 'Portão global ocupado (outra operação no Omie)', skipped: 'portao', cargas_pre_atualizadas: cargasPreAtualizadasCount, processados: 0 });
     }
 
     // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
@@ -774,8 +808,9 @@ Deno.serve(async (req) => {
     return Response.json({ sucesso: true, processados, ja_faturado: jaFaturadoCount, cliente_bloqueado: clienteBloqueadoCount, interrompido, encadeou, total_lote: pendentes.length, cargas_pre_atualizadas: cargasPreAtualizadasCount, cargas_ciclo_atualizadas: cargasAfetadas.size });
 
     } finally {
-      // Libera o lock SEMPRE ao fim (sucesso, retorno antecipado ou exceção).
-      // A re-invocação encadeada adquire o seu próprio lock em seguida.
+      // Libera o portão global PRIMEIRO (se chegamos a adquiri-lo), depois o lock de
+      // encadeamento. Sempre ao fim (sucesso, retorno antecipado ou exceção).
+      if (portao.adquirido) await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
       await liberarLockEncadeamento(base44).catch(() => {});
     }
   } catch (error) {

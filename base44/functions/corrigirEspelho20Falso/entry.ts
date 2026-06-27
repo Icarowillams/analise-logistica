@@ -44,6 +44,39 @@ async function checkCircuitBreaker(base44) {
   return { blocked: true, blockedUntil: c.bloqueado_ate };
 }
 
+// ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
+const CHAVE_PORTAO = 'portao_global_omie';
+const PORTAO_TTL_MS = 5 * 60 * 1000;
+async function adquirirPortaoGlobal(base44, nome) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 5).catch(() => []);
+  let reg = rows?.[0];
+  if (!reg?.id) reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  if (!reg?.id) return { adquirido: false };
+  const agora = Date.now();
+  if (reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora) return { adquirido: false, ocupadoPor: reg.ultimo_erro };
+  const donoId = `${nome}-${agora}-${Math.random().toString(36).slice(2, 8)}`;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: true, worker_lock_ate: new Date(agora + PORTAO_TTL_MS).toISOString(), ultimo_erro: donoId, atualizado_em: new Date().toISOString() }).catch(() => null);
+  const conf = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: reg.id }, '-created_date', 1).catch(() => []);
+  if (conf?.[0]?.ultimo_erro !== donoId) return { adquirido: false, ocupadoPor: conf?.[0]?.ultimo_erro };
+  return { adquirido: true, donoId, regId: reg.id };
+}
+async function liberarPortaoGlobal(base44, donoId) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (!reg?.id) return;
+  if (donoId && reg.ultimo_erro && reg.ultimo_erro !== donoId) return;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: false, worker_lock_ate: null, ultimo_erro: null, atualizado_em: new Date().toISOString() }).catch(() => null);
+}
+// PRIORIDADE: há trabalho de OPERAÇÃO pendente (Fila Envio/Carga)? Se sim, esta rotina de
+// LEITURA cede a vez (operação na frente, limpeza atrás).
+async function temTrabalhoOperacaoPendente(base44) {
+  const [envio, carga] = await Promise.all([
+    base44.asServiceRole.entities.FilaEnvioPedidoOmie.filter({ status: 'pendente' }, 'created_date', 1).catch(() => []),
+    base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'pendente' }, 'created_date', 1).catch(() => [])
+  ]);
+  return (envio?.length > 0) || (carga?.length > 0);
+}
+
 async function registrarErroBreaker(base44, faultstring) {
   const segs = (() => { const m = String(faultstring).match(/(\d+)\s*segundo/i); return m ? Math.min(Number(m[1]), 1800) : 0; })();
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: CB_ID }, '-created_date', 1).catch(() => []);
@@ -104,6 +137,19 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: false, bloqueado: true, bloqueado_ate: cb.blockedUntil, mensagem: `API Omie bloqueada até ${cb.blockedUntil}. Tente novamente quando liberar.` });
     }
 
+    // PRIORIDADE: rotina de LEITURA cede a vez quando há trabalho de OPERAÇÃO pendente
+    // (Fila de Envio / Fila de Carga). Operação na frente; limpeza de espelho atrás.
+    if (await temTrabalhoOperacaoPendente(base44)) {
+      return Response.json({ sucesso: false, cedeu_prioridade: true, mensagem: 'Há pedidos pendentes na Fila de Envio/Carga. A correção de espelho roda quando a operação terminar. Tente novamente em alguns minutos.' });
+    }
+
+    // PORTÃO ÚNICO GLOBAL: só toca o Omie se nenhum outro worker estiver tocando agora.
+    const portao = await adquirirPortaoGlobal(base44, 'corrige_espelho');
+    if (!portao.adquirido) {
+      return Response.json({ sucesso: false, portao_ocupado: true, mensagem: 'Outra operação está usando o Omie agora. Tente novamente em alguns instantes.' });
+    }
+
+    try {
     // Carrega TODO o espelho em etapa 20 gravado via webhook (os suspeitos de "falso liberado").
     const candidatos = [];
     let skip = 0;
@@ -163,6 +209,10 @@ Deno.serve(async (req) => {
       abortado_por_rate_limit: abortado,
       correcoes
     });
+    } finally {
+      // Libera o portão global sempre ao fim (sucesso ou exceção).
+      await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
+    }
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

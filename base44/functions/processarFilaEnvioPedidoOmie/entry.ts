@@ -9,6 +9,30 @@ const TETO_EXECUCAO_MS = 150000;        // 150s — abaixo do timeout (180s); dr
 const CHAVE_WORKER_ENVIO = 'worker_envio_pedido'; // chave dedicada do lock de auto-encadeamento (não colide com worker de webhooks)
 const LOCK_TTL_MS = 2 * 60 * 1000;      // TTL curto do lock — auto-release se a função morrer
 
+// ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
+const CHAVE_PORTAO = 'portao_global_omie';
+const PORTAO_TTL_MS = 5 * 60 * 1000;
+async function adquirirPortaoGlobal(base44, nome) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 5).catch(() => []);
+  let reg = rows?.[0];
+  if (!reg?.id) reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  if (!reg?.id) return { adquirido: false };
+  const agora = Date.now();
+  if (reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora) return { adquirido: false, ocupadoPor: reg.ultimo_erro };
+  const donoId = `${nome}-${agora}-${Math.random().toString(36).slice(2, 8)}`;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: true, worker_lock_ate: new Date(agora + PORTAO_TTL_MS).toISOString(), ultimo_erro: donoId, atualizado_em: new Date().toISOString() }).catch(() => null);
+  const conf = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: reg.id }, '-created_date', 1).catch(() => []);
+  if (conf?.[0]?.ultimo_erro !== donoId) return { adquirido: false, ocupadoPor: conf?.[0]?.ultimo_erro };
+  return { adquirido: true, donoId, regId: reg.id };
+}
+async function liberarPortaoGlobal(base44, donoId) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 1).catch(() => []);
+  const reg = rows?.[0];
+  if (!reg?.id) return;
+  if (donoId && reg.ultimo_erro && reg.ultimo_erro !== donoId) return;
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: false, worker_lock_ate: null, ultimo_erro: null, atualizado_em: new Date().toISOString() }).catch(() => null);
+}
+
 // ============================================================
 // LOCK DE AUTO-ENCADEAMENTO — garante 1 cadeia por vez.
 // Usa um registro dedicado (chave='worker_envio_pedido') com worker_rodando +
@@ -549,6 +573,16 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, mensagem: 'Lock ativo (1 cadeia por vez)', skipped: 'lock', processados: 0 });
     }
 
+    // ── PORTÃO ÚNICO GLOBAL: só UMA operação toca o Omie por vez (entre TODOS os workers).
+    // Fila de Envio tem PRIORIDADE — adquire o portão direto. Se outro worker já o detém,
+    // libera o lock de encadeamento e aborta cedo (sem tocar o Omie); tenta no próximo ciclo.
+    const portao = await adquirirPortaoGlobal(base44, 'envio');
+    if (!portao.adquirido) {
+      await liberarLockEncadeamento(base44).catch(() => {});
+      console.log('[processarFila] Portão global ocupado por', portao.ocupadoPor, '— abortando sem tocar o Omie.');
+      return Response.json({ sucesso: true, mensagem: 'Portão global ocupado (outra operação no Omie)', skipped: 'portao', processados: 0 });
+    }
+
     const inicioExecucao = Date.now();
     const resultadosGlobais = [];
     let cbAtivadoGlobal = false;
@@ -906,8 +940,9 @@ Deno.serve(async (req) => {
     });
 
     } finally {
-      // Libera o lock SEMPRE ao fim do processamento (sucesso, retorno antecipado
-      // ou exceção). A re-invocação encadeada adquire o seu próprio lock em seguida.
+      // Libera o portão global PRIMEIRO (para a próxima operação poder tocar o Omie),
+      // depois o lock de encadeamento. A re-invocação encadeada adquire ambos de novo.
+      await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
       await liberarLockEncadeamento(base44).catch(() => {});
     }
   } catch (error) {
