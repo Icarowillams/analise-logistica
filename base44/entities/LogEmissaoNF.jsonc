@@ -44,9 +44,10 @@
         "autorizada",
         "rejeitada",
         "pendente",
-        "erro"
+        "erro",
+        "bloqueado_cliente"
       ],
-      "description": "Resultado final da emiss\u00e3o"
+      "description": "Resultado final da emiss\u00e3o. bloqueado_cliente = erro TERMINAL: cliente bloqueado para faturar no Omie \u2014 n\u00e3o retentar at\u00e9 desbloquear o cadastro do cliente no Omie."
     },
     "codigo_sefaz": {
       "type": "string",

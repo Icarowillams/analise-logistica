@@ -513,6 +513,19 @@ async function varreConfirmacaoFinal(base44, fila, pedidos, resultados, erros) {
   }
 }
 
+// Classifica a RECUSA do FaturarPedidoVenda (HTTP 200 com cCodStatus != "0") em uma de três:
+//  - 'ja_faturado': "já foi autorizado / já faturado / já possui NF" → o pedido JÁ TEM NF.
+//    NÃO é erro: confirmar via ConsultarPedido e marcar autorizada (sai da fila, nunca reentra).
+//  - 'cliente_bloqueado': "cliente com o cadastro bloqueado para faturar" → erro TERMINAL.
+//    Sai da fila, NÃO retenta (só volta por ação humana após desbloquear o cliente no Omie).
+//  - 'rejeitada': demais recusas reais (inadimplência, dados, etc.) → rejeitada, como antes.
+function classificarRecusaFaturamento(cDesc) {
+  const t = String(cDesc || '').toLowerCase();
+  if (/j[áa] (foi )?(autorizad|faturad)|j[áa] possui nf|nf.*j[áa] cadastrada/.test(t)) return 'ja_faturado';
+  if (/cadastro bloqueado para faturar|cliente.*bloquead/.test(t)) return 'cliente_bloqueado';
+  return 'rejeitada';
+}
+
 // Valida se o código de pedido é numérico e maior que zero (evita pedidos fake/teste).
 function codigoPedidoValido(codigo) {
   const n = Number(codigo);
@@ -654,21 +667,40 @@ Deno.serve(async (req) => {
             respFat = await omieCall(base44, 'produtos/pedidovendafat/', { nCodPed: Number(codigoPedido) }, { call: 'FaturarPedidoVenda' });
           }
 
-          // RECUSA DO OMIE no faturamento: HTTP 200 com cCodStatus != "0" e mensagem de bloqueio
-          // (ex: "Cliente com o cadastro bloqueado para faturar"). NÃO é NF — é rejeição.
-          // Marca como rejeitada (motivo real) e o loop segue para o PRÓXIMO pedido.
+          // RECUSA DO OMIE no faturamento: HTTP 200 com cCodStatus != "0" e mensagem de bloqueio.
+          // Classifica em 3: já faturado (= sucesso), cliente bloqueado (= erro terminal), ou rejeição real.
           {
             const cCod = String(respFat?.cCodStatus ?? '').trim();
             const cDesc = String(respFat?.cDescStatus ?? '');
             const temNf = respFat?.nNF || respFat?.numero_nf || respFat?.cChaveNFe || respFat?.chave_nfe;
-            if (!temNf && cCod && cCod !== '0' && /n[ãa]o foi poss[íi]vel|bloquead|bloqueio|recusad|n[ãa]o.*faturar|inadimpl/i.test(cDesc)) {
-              statusFinalPedido = 'rejeitada';
-              realConfirmado = { status_real: 'rejeitada', codigo_sefaz: cCod, numero_nf: '', mensagem: cDesc };
-              mensagemPedido = cDesc;
+            if (!temNf && cCod && cCod !== '0' && /n[ãa]o foi poss[íi]vel|bloquead|bloqueio|recusad|n[ãa]o.*faturar|inadimpl|j[áa].*(autorizad|faturad)/i.test(cDesc)) {
+              const classe = classificarRecusaFaturamento(cDesc);
+              if (classe === 'ja_faturado') {
+                // O pedido JÁ TEM NF no Omie. Confirma o número real e marca AUTORIZADA (nunca reentra na fila).
+                const real = await consultarStatusPedido(base44, codigoPedido).catch(() => null);
+                if (real && !real.erro && real.status_real === 'emitida') {
+                  statusFinalPedido = 'autorizada';
+                  realConfirmado = real;
+                  mensagemPedido = real.mensagem;
+                } else {
+                  statusFinalPedido = 'autorizada';
+                  realConfirmado = { status_real: 'emitida', codigo_sefaz: '100', numero_nf: '', etapa: '60', mensagem: 'Pedido já estava faturado no Omie — confirmado sem re-emitir.' };
+                  mensagemPedido = realConfirmado.mensagem;
+                }
+              } else if (classe === 'cliente_bloqueado') {
+                // ERRO TERMINAL: cliente bloqueado para faturar. Sai da fila, NÃO retenta.
+                statusFinalPedido = 'bloqueado_cliente';
+                realConfirmado = { status_real: 'rejeitada', codigo_sefaz: cCod, numero_nf: '', mensagem: cDesc };
+                mensagemPedido = cDesc;
+              } else {
+                statusFinalPedido = 'rejeitada';
+                realConfirmado = { status_real: 'rejeitada', codigo_sefaz: cCod, numero_nf: '', mensagem: cDesc };
+                mensagemPedido = cDesc;
+              }
             }
           }
-          if (statusFinalPedido === 'rejeitada') {
-            // pula a confirmação — já sabemos que foi recusado
+          if (statusFinalPedido === 'rejeitada' || statusFinalPedido === 'autorizada' || statusFinalPedido === 'bloqueado_cliente') {
+            // pula a confirmação — já classificado acima
           } else {
           await base44.asServiceRole.entities.LogIntegracaoOmie.create({
             endpoint: 'produtos/pedidovendafat', call: 'FaturarPedidoVenda',
@@ -740,6 +772,14 @@ Deno.serve(async (req) => {
         await gravarLogEmissao(base44, fila, codigoPedido, 'autorizada', mensagemPedido, {
           faultstring: '', faultcode: realConfirmado?.codigo_sefaz || '100'
         });
+      } else if (statusFinalPedido === 'bloqueado_cliente') {
+        // ERRO TERMINAL — cliente bloqueado para faturar no Omie. Marca o pedido, grava log
+        // 'bloqueado_cliente' (lista de pendências da equipe) e NÃO reentra na fila.
+        const pedBloq = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
+        if (pedBloq?.id) await base44.asServiceRole.entities.Pedido.update(pedBloq.id, { status_faturamento: 'erro', omie_erro: mensagemPedido }).catch((e) => { console.error('[processarEmissaoNFLote] falha ao marcar pedido bloqueado_cliente:', e?.message || e); });
+        resultados.push({ codigo_pedido: codigoPedido, sucesso: false, status: 'bloqueado_cliente', mensagem: mensagemPedido });
+        erros.push({ codigo_pedido: codigoPedido, numero_pedido: pedBloq?.numero_pedido || '', mensagem: mensagemPedido });
+        await gravarLogEmissao(base44, fila, codigoPedido, 'bloqueado_cliente', mensagemPedido, { erro_tipo: 'omie' });
       } else if (statusFinalPedido === 'rejeitada') {
         if (realConfirmado) await aplicarResultadoConfirmado(base44, codigoPedido, realConfirmado);
         const pedRej = (await base44.asServiceRole.entities.Pedido.filter({ omie_codigo_pedido: String(codigoPedido) }, '-updated_date', 1).catch(() => []))?.[0];
