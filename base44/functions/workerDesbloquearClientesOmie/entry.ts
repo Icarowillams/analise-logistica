@@ -66,7 +66,7 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 const PROGRESSO_ID_KEY = 'desbloqueio_clientes_omie';
-const LOTE = 8; // clientes por execução — mantém a função rápida e dentro do limite de tempo
+const LOTE = 4; // clientes/execução — cada um faz consultar+alterar (2 chamadas), então mantemos o lote pequeno
 
 /**
  * Worker incremental: desbloqueia faturamento dos clientes pendentes em lotes pequenos.
@@ -100,7 +100,22 @@ Deno.serve(async (req) => {
 
     for (const cod of lote) {
       try {
-        await omieCall(base44, 'geral/clientes/', { codigo_cliente_omie: cod, bloquear_faturamento: 'N' }, { call: 'AlterarCliente' });
+        // O Omie valida o registro inteiro no AlterarCliente — precisamos reenviar o
+        // endereço (Estado é obrigatório). Buscamos o cadastro atual e preservamos os campos.
+        const atual: any = await omieCall(base44, 'geral/clientes/', { codigo_cliente_omie: cod }, { call: 'ConsultarCliente', timeoutMs: 20000 });
+        await sleep(1200);
+        await omieCall(base44, 'geral/clientes/', {
+          codigo_cliente_omie: cod,
+          razao_social: atual?.razao_social,
+          cnpj_cpf: atual?.cnpj_cpf,
+          endereco: atual?.endereco,
+          endereco_numero: atual?.endereco_numero,
+          bairro: atual?.bairro,
+          cidade: atual?.cidade,
+          estado: atual?.estado,
+          cep: atual?.cep,
+          bloquear_faturamento: 'N'
+        }, { call: 'AlterarCliente' });
         okCount += 1;
         resultados.push({ codigo: cod, ok: true });
       } catch (err: any) {
