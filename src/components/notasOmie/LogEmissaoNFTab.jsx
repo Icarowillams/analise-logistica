@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem
-} from '@/components/ui/select';
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from
+'@/components/ui/select';
 import { RefreshCw, Loader2, CheckCircle2, XCircle, AlertCircle, ScrollText, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -56,19 +56,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
       clearTimeout(timer);
       timer = setTimeout(() => refetch(), 600);
     });
-    return () => { clearTimeout(timer); unsubscribe?.(); };
+    return () => {clearTimeout(timer);unsubscribe?.();};
   }, [ativa, refetch]);
 
   // Logs autorizados que ficaram SEM número de NF (marcados só por etapa 60).
   const autorizadosSemNF = useMemo(
-    () => logs.filter(l => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
+    () => logs.filter((l) => l.status === 'autorizada' && (!l.numero_nf || String(l.numero_nf).trim() === '') && l.codigo_pedido).length,
     [logs]
   );
 
   // Logs "crus" — gravados sem numero_pedido / cliente / carga (qualquer status). Precisam do
   // preenchimento local (sem Omie) que casa pelo omie_codigo_pedido. Dispara o mesmo enriquecimento.
   const logsCrus = useMemo(
-    () => logs.filter(l => l.codigo_pedido && (!l.cliente_id || !l.numero_pedido || !l.cliente_nome || !l.numero_carga)).length,
+    () => logs.filter((l) => l.codigo_pedido && (!l.cliente_id || !l.numero_pedido || !l.cliente_nome || !l.numero_carga)).length,
     [logs]
   );
 
@@ -82,14 +82,14 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // não viram NF só por reconsultar.
   const codigosPendentes = useMemo(
     () => [...new Set(
-      logs
-        .filter(l =>
-          l.codigo_pedido && (
-            l.status === 'pendente' ||
-            (l.status === 'rejeitada' && /cadastro|bloquead/i.test(l.mensagem || l.faultstring || ''))
-          )
-        )
-        .map(l => String(l.codigo_pedido))
+      logs.
+      filter((l) =>
+      l.codigo_pedido && (
+      l.status === 'pendente' ||
+      l.status === 'rejeitada' && /cadastro|bloquead/i.test(l.mensagem || l.faultstring || ''))
+
+      ).
+      map((l) => String(l.codigo_pedido))
     )],
     [logs]
   );
@@ -97,7 +97,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Carrega SÓ os clientes referenciados pelos logs (por cliente_id) para enriquecer
   // com codigo_interno e nome_fantasia — não a base inteira.
   const clienteIdsLogs = useMemo(
-    () => [...new Set(logs.map(l => l.cliente_id).filter(Boolean))],
+    () => [...new Set(logs.map((l) => l.cliente_id).filter(Boolean))],
     [logs]
   );
   const { data: clientes = [] } = useQuery({
@@ -120,7 +120,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
 
   const clientePorId = useMemo(() => {
     const m = new Map();
-    clientes.forEach(c => m.set(c.id, c));
+    clientes.forEach((c) => m.set(c.id, c));
     return m;
   }, [clientes]);
 
@@ -140,7 +140,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
 
   const pedidoPorNumero = useMemo(() => {
     const m = new Map();
-    pedidos.forEach(p => {
+    pedidos.forEach((p) => {
       const chave = formatNumeroPedido(p.numero_pedido || '');
       if (chave) m.set(chave, p);
     });
@@ -150,7 +150,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Índice por código Omie (omie_codigo_pedido) — para casar o log pela chave mais confiável.
   const pedidoPorCodigoOmie = useMemo(() => {
     const m = new Map();
-    pedidos.forEach(p => {
+    pedidos.forEach((p) => {
       if (p.omie_codigo_pedido) m.set(String(p.omie_codigo_pedido), p);
     });
     return m;
@@ -159,11 +159,11 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Enriquece cada log com dados do cliente + FALLBACK do Pedido (Nº NF, nome e Nº Carga instantâneos).
   // Casa o Pedido por código Omie (mais confiável) e, como reforço, por número de pedido normalizado.
   const logsEnriquecidos = useMemo(() => {
-    return logs.map(l => {
+    return logs.map((l) => {
       const c = l.cliente_id ? clientePorId.get(l.cliente_id) : null;
       const chavePed = formatNumeroPedido(l.numero_pedido || l.codigo_pedido || '');
-      const ped = pedidoPorCodigoOmie.get(String(l.codigo_pedido || ''))
-        || (chavePed ? pedidoPorNumero.get(chavePed) : null);
+      const ped = pedidoPorCodigoOmie.get(String(l.codigo_pedido || '')) || (
+      chavePed ? pedidoPorNumero.get(chavePed) : null);
       return {
         ...l,
         numero_pedido: l.numero_pedido || ped?.numero_pedido || '',
@@ -200,15 +200,15 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
         for (let i = 0; i < lotes.length && !abortar && !cancelado; i += PARALELO) {
           const onda = lotes.slice(i, i + PARALELO);
           const respostas = await Promise.all(
-            onda.map(lote =>
-              base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote })
-                .then(resp => resp?.data || {})
-                .catch(() => ({ _falhou: true }))
+            onda.map((lote) =>
+            base44.functions.invoke('reconsultarStatusNFsPendentes', { codigos_pedido: lote }).
+            then((resp) => resp?.data || {}).
+            catch(() => ({ _falhou: true }))
             )
           );
-          const houveMudanca = respostas.some(r => (r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0);
+          const houveMudanca = respostas.some((r) => (r.autorizados || 0) > 0 || (r.rejeitados || 0) > 0);
           if (houveMudanca && !cancelado) await refetch();
-          if (respostas.some(r => r.abortado || r.resultados?.some(x => x.abortado))) abortar = true;
+          if (respostas.some((r) => r.abortado || r.resultados?.some((x) => x.abortado))) abortar = true;
         }
         if (!cancelado) await refetch();
       } finally {
@@ -219,7 +219,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     // Dispara imediatamente ao montar/ter pendentes e repete a cada 30s.
     rodarReconsulta();
     timer = setInterval(rodarReconsulta, 15000);
-    return () => { cancelado = true; clearInterval(timer); };
+    return () => {cancelado = true;clearInterval(timer);};
   }, [ativa, codigosPendentes, refetch]);
 
   useEffect(() => {
@@ -250,7 +250,7 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
     const ini = dataIni ? new Date(dataIni + 'T00:00:00') : null;
     const fim = dataFim ? new Date(dataFim + 'T23:59:59') : null;
 
-    return logsEnriquecidos.filter(l => {
+    return logsEnriquecidos.filter((l) => {
       // Não exibir logs "pendente" na lista: o pedido só deve aparecer na sua conclusão real
       // (autorizada ou rejeitada/erro). A reconsulta automática em background continua rodando
       // e o pendente surge na tabela assim que vira autorizada/rejeitada. Exceção: se o usuário
@@ -286,14 +286,14 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
         String(l.nome_fantasia || '').toLowerCase().includes(termo) ||
         String(l.codigo_interno || '').toLowerCase().includes(termo) ||
         String(l.numero_carga || '').toLowerCase().includes(termo) ||
-        String(l.mensagem || '').toLowerCase().includes(termo)
-      );
+        String(l.mensagem || '').toLowerCase().includes(termo));
+
     });
   }, [logsEnriquecidos, filtroStatus, busca, filtroCarga, filtroCodCliente, filtroFantasia, filtroPedido, filtroNF, dataIni, dataFim]);
 
   const stats = useMemo(() => {
     const s = { autorizada: 0, rejeitada: 0, pendente: 0, erro: 0 };
-    logs.forEach(l => { if (s[l.status] !== undefined) s[l.status]++; });
+    logs.forEach((l) => {if (s[l.status] !== undefined) s[l.status]++;});
     return s;
   }, [logs]);
 
@@ -332,19 +332,19 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
   // Roda AUTOMATICAMENTE (sem botão e sem automação): ao detectar logs autorizados sem número,
   // busca os dados reais no Omie em background, uma única vez por carregamento da aba.
   useEffect(() => {
-    if (!ativa || (autorizadosSemNF === 0 && logsCrus === 0) || preenchimentoFeito) return;
+    if (!ativa || autorizadosSemNF === 0 && logsCrus === 0 || preenchimentoFeito) return;
     setPreenchimentoFeito(true);
     (async () => {
       try {
         const resp = await base44.functions.invoke('preencherDadosNFLogs', { dias: 30 });
         const r = resp?.data || {};
-        if (r?.sucesso && ((r.preenchidos > 0) || (r.dados_locais_preenchidos > 0))) {
+        if (r?.sucesso && (r.preenchidos > 0 || r.dados_locais_preenchidos > 0)) {
           await refetch();
         }
       } catch {
+
         // Silencioso — é um enriquecimento de fundo; o usuário não disparou nada manualmente.
-      }
-    })();
+      }})();
   }, [ativa, autorizadosSemNF, logsCrus, preenchimentoFeito, refetch]);
 
   const StatusBadge = ({ status }) => {
@@ -391,26 +391,26 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
           <CardTitle className="text-base flex items-center justify-between">
             <span>Histórico de emissões ({logsFiltrados.length})</span>
             <div className="flex gap-2">
-              {filtroCarga.trim() && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-cyan-300 text-cyan-700 hover:bg-cyan-50"
-                  onClick={buscarLogsNoOmie}
-                  disabled={buscandoNoOmie}
-                  title="Busca no Omie as NFs desta carga emitidas fora do app e adiciona ao log"
-                >
+              {filtroCarga.trim() &&
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-cyan-300 text-cyan-700 hover:bg-cyan-50"
+                onClick={buscarLogsNoOmie}
+                disabled={buscandoNoOmie}
+                title="Busca no Omie as NFs desta carga emitidas fora do app e adiciona ao log">
+                
                   {buscandoNoOmie ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
                   Buscar no Omie
                 </Button>
-              )}
+              }
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => refetch()}
                 disabled={isFetching}
-                title="Recarrega o histórico"
-              >
+                title="Recarrega o histórico">
+                
                 {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                 Recarregar
               </Button>
@@ -489,38 +489,38 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
                 </tr>
               </thead>
               <tbody>
-                {isLoading ? (
-                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
+                {isLoading ?
+                <tr><td colSpan="9" className="text-center py-12 text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Carregando histórico...
-                  </td></tr>
-                ) : logsFiltrados.length === 0 ? (
-                  <tr><td colSpan="9" className="text-center py-12 text-slate-500">
+                  </td></tr> :
+                logsFiltrados.length === 0 ?
+                <tr><td colSpan="9" className="text-center py-12 text-slate-500">
                     Nenhum registro encontrado
-                  </td></tr>
-                ) : logsFiltrados.map((l) => (
-                  <tr key={l.id} className="border-t hover:bg-slate-50/50 transition-colors">
+                  </td></tr> :
+                logsFiltrados.map((l) =>
+                <tr key={l.id} className="border-t hover:bg-slate-50/50 transition-colors">
                     <td className="p-2 text-xs whitespace-nowrap">
                       {l.created_date ? format(new Date(l.created_date), 'dd/MM/yyyy HH:mm') : '-'}
                     </td>
                     <td className="p-2 font-medium">{formatNumeroPedido(l.numero_pedido) || l.codigo_pedido}</td>
                     <td className="p-2">
-                      {l.numero_nf
-                        ? ['cancelada', 'rejeitada', 'denegada'].includes(l.status)
-                          ? <Badge className="bg-red-100 text-red-800 border-red-300 line-through">{l.numero_nf}</Badge>
-                          : <Badge className="bg-green-100 text-green-800 border-green-300">{l.numero_nf}</Badge>
-                        : <span className="text-slate-400">—</span>
-                      }
+                      {l.numero_nf ?
+                    ['cancelada', 'rejeitada', 'denegada'].includes(l.status) ?
+                    <Badge className="bg-red-100 text-red-800 border-red-300 line-through">{l.numero_nf}</Badge> :
+                    <Badge className="bg-green-100 text-green-800 border-green-300">{l.numero_nf}</Badge> :
+                    <span className="text-slate-400">—</span>
+                    }
                       {l.boleto_gerado && <div className="text-xs text-blue-600 mt-0.5">+ boleto</div>}
                     </td>
                     <td className="p-2">
                       <div className="font-medium">{l.nome_fantasia || l.cliente_nome || '-'}</div>
-                      {l.nome_fantasia && l.cliente_nome && (
-                        <div className="text-xs text-slate-500">{l.cliente_nome}</div>
-                      )}
-                      {l.codigo_interno && (
-                        <div className="text-xs text-slate-400 font-mono">cód {l.codigo_interno}</div>
-                      )}
+                      {l.nome_fantasia && l.cliente_nome &&
+                    <div className="text-xs text-slate-500">{l.cliente_nome}</div>
+                    }
+                      {l.codigo_interno &&
+                    <div className="text-xs text-slate-400 font-mono">cód {l.codigo_interno}</div>
+                    }
                     </td>
                     <td className="p-2">
                       {l.numero_carga ? <Badge variant="outline">{l.numero_carga}</Badge> : <span className="text-slate-400">—</span>}
@@ -529,24 +529,24 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
                     <td className="p-2 text-center font-mono text-xs">{l.codigo_sefaz || '-'}</td>
                     <td className="p-2 text-xs max-w-md">
                       <div
-                        className={['rejeitada', 'erro', 'cancelada', 'denegada'].includes(l.status) ? 'text-red-700' : 'text-slate-600'}
-                        title={l.faultstring || l.mensagem || ''}
-                      >
-                        {l.status === 'autorizada'
-                          ? `Autorizada${l.numero_nf ? ` — NF ${l.numero_nf}` : ''}`
-                          : l.status === 'cancelada'
-                            ? `NF ${l.numero_nf || ''} cancelada no Omie`.trim()
-                            : (l.faultstring || l.mensagem || '-')}
+                      className={['rejeitada', 'erro', 'cancelada', 'denegada'].includes(l.status) ? 'text-red-700' : 'text-slate-600'}
+                      title={l.faultstring || l.mensagem || ''}>
+                      
+                        {l.status === 'autorizada' ?
+                      `Autorizada${l.numero_nf ? ` — NF ${l.numero_nf}` : ''}` :
+                      l.status === 'cancelada' ?
+                      `NF ${l.numero_nf || ''} cancelada no Omie`.trim() :
+                      l.faultstring || l.mensagem || '-'}
                       </div>
-                      {(l.faultstring || l.payload_resposta || l.payload_enviado) && (
-                        <Button size="sm" variant="link" className="h-auto p-0 text-xs text-blue-700" onClick={() => setErroDetalhe(l)}>
+                      {(l.faultstring || l.payload_resposta || l.payload_enviado) &&
+                    <Button size="sm" variant="link" className="h-auto p-0 text-xs text-blue-700 hidden" onClick={() => setErroDetalhe(l)}>
                           Ver erro completo
                         </Button>
-                      )}
+                    }
                     </td>
                     <td className="p-2 text-xs text-slate-600">{l.usuario_nome || l.usuario_email || '-'}</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -558,8 +558,8 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
           <DialogHeader>
             <DialogTitle>Erro completo da emissão</DialogTitle>
           </DialogHeader>
-          {erroDetalhe && (
-            <div className="space-y-3 text-sm">
+          {erroDetalhe &&
+          <div className="space-y-3 text-sm">
               <div><b>Data/hora:</b> {erroDetalhe.created_date ? format(new Date(erroDetalhe.created_date), 'dd/MM/yyyy HH:mm') : '-'}</div>
               <div><b>Pedido:</b> {formatNumeroPedido(erroDetalhe.numero_pedido) || erroDetalhe.codigo_pedido}</div>
               <div><b>faultcode:</b> <code>{erroDetalhe.faultcode || erroDetalhe.codigo_sefaz || '-'}</code></div>
@@ -578,9 +578,9 @@ export default function LogEmissaoNFTab({ ativa = true, cargaFiltro }) {
                 <pre className="mt-1 max-h-56 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{erroDetalhe.payload_resposta || '-'}</pre>
               </div>
             </div>
-          )}
+          }
         </DialogContent>
       </Dialog>
-    </div>
-  );
+    </div>);
+
 }
