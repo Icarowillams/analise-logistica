@@ -190,8 +190,10 @@ Deno.serve(async (req) => {
 
     let candidatos;
     if (modo === 'manual') {
-      // Botão: TODOS os ativos visíveis na hora (force refresh). Finais só se pedido explícito.
-      candidatos = incluir_finais ? [...ativos, ...finais.slice(0, fatia_finais)] : ativos;
+      // Botão: fatia controlada (max_lote) dos ativos mais desatualizados, para caber no timeout do gateway.
+      // Chamadas repetidas giram a fila via sincronizado_em ASC. Finais só se pedido explícito.
+      const lotaAtivos = ativos.slice(0, max_lote);
+      candidatos = incluir_finais ? [...lotaAtivos, ...finais.slice(0, fatia_finais)] : lotaAtivos;
     } else {
       // Automação: lote rotativo dos ativos + fatia pequena de finais.
       const lotaAtivos = ativos.slice(0, max_lote);
