@@ -49,6 +49,7 @@ import Comissionamento from './pages/Comissionamento.jsx';
 import MontarRota from './pages/MontarRota.jsx';
 import CoberturaInteligente from './pages/CoberturaInteligente.jsx';
 import AuditoriaCancelados from './pages/AuditoriaCancelados.jsx';
+import CorrigirEspelho20 from './pages/CorrigirEspelho20.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -176,6 +177,8 @@ const AuthenticatedApp = () => {
       <Route path="/coberturainteligente" element={<LayoutWrapper currentPageName="CoberturaInteligente"><CoberturaInteligente /></LayoutWrapper>} />
       <Route path="/AuditoriaCancelados" element={<LayoutWrapper currentPageName="AuditoriaCancelados"><AuditoriaCancelados /></LayoutWrapper>} />
       <Route path="/auditoriacancelados" element={<LayoutWrapper currentPageName="AuditoriaCancelados"><AuditoriaCancelados /></LayoutWrapper>} />
+      <Route path="/CorrigirEspelho20" element={<LayoutWrapper currentPageName="CorrigirEspelho20"><CorrigirEspelho20 /></LayoutWrapper>} />
+      <Route path="/corrigirespelho20" element={<LayoutWrapper currentPageName="CorrigirEspelho20"><CorrigirEspelho20 /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

@@ -633,7 +633,30 @@ async function handlePedido(base44, topic, evt) {
       // Para etapas 10 (Pendente) e 20 (Liberado) — apenas atualiza o espelho com dados locais
       // SEM chamar ConsultarPedido (evita rate limit quando muitos pedidos são liberados em lote).
       // Etapas 50 (Em Faturamento) e 60 (Faturado) ainda precisam do ConsultarPedido para NF + produtos.
-      const etapaEvtEspelho = String(evt?.etapa || '');
+      let etapaEvtEspelho = String(evt?.etapa || '');
+
+      // 🛡️ ANTI-"FALSO LIBERADO": a etapa 20 do webhook NÃO é confiável de forma otimista.
+      // O Omie dispara EtapaAlterada→20 e logo REVERTE para 10 (bloqueio de estoque / trava
+      // "Separar Estoque"); o webhook de reversão →10 pode chegar fora de ordem ou se perder,
+      // deixando o espelho preso em 20 enquanto o real é 10. Por isso, para etapa 20,
+      // RECONSULTAMOS a etapa real no Omie (1 ConsultarPedido) e gravamos só o que ele confirmar
+      // — mesmo padrão do liberarPedidoOmie. A etapa 10 continua otimista (estado inicial, sem risco).
+      if (etapaEvtEspelho === '20') {
+        try {
+          const consulta = await omieCall(base44, 'produtos/pedido/', { codigo_pedido: Number(codigoPedido) }, { call: 'ConsultarPedido', skipLog: true });
+          const etapaReal = String(consulta?.pedido_venda_produto?.cabecalho?.etapa || consulta?.cabecalho?.etapa || '');
+          if (etapaReal) {
+            console.log(`[espelho] EtapaAlterada→20 ${codigoPedido}: etapa REAL confirmada no Omie = ${etapaReal}`);
+            etapaEvtEspelho = etapaReal; // grava a etapa CONFIRMADA (pode ser 10 se o Omie reverteu)
+          }
+        } catch (e) {
+          // Se não confirmar (breaker bloqueado, timeout), NÃO grava 20 otimista — cai na rota
+          // ConsultarPedido completa (else abaixo), que também respeita o breaker e pula se bloqueado.
+          console.warn(`[espelho] EtapaAlterada→20 ${codigoPedido}: falha ao confirmar etapa real (${e.message}). Sem gravação otimista.`);
+          etapaEvtEspelho = '';
+        }
+      }
+
       if (etapaEvtEspelho === '10' || etapaEvtEspelho === '20') {
         try {
           const espelhos = await base44.asServiceRole.entities.PedidoLiberadoOmie.filter({
