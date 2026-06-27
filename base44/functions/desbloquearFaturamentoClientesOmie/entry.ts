@@ -1,0 +1,152 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// ═══ omieClient inline (auto-contido) ═══
+const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
+let _credsCache: { appKey: string; appSecret: string; at: number } | null = null;
+
+async function getOmieCredentials(base44: any) {
+  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = rows?.[0];
+  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
+  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  _credsCache = { appKey, appSecret, at: Date.now() };
+  return { appKey, appSecret };
+}
+
+async function checkCircuitBreaker(base44: any) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: '6a1e06a9aa62ceab7b3b6d97' }, '-created_date', 1).catch(() => []);
+  const c = rows?.[0];
+  if (!c?.bloqueado) return { blocked: false };
+  if (c.bloqueado_ate && new Date(c.bloqueado_ate).getTime() <= Date.now()) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(c.id, { bloqueado: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+    return { blocked: false };
+  }
+  return { blocked: true, blockedUntil: c.bloqueado_ate, lastError: c.ultimo_erro };
+}
+
+async function omieCall(base44: any, endpoint: string, param: unknown, options: any = {}) {
+  const { appKey, appSecret } = await getOmieCredentials(base44);
+  const call = options.call || '';
+  if (!appKey || !appSecret) throw new Error('Credenciais Omie não configuradas.');
+  if (!call) throw new Error('Informe options.call com o método Omie.');
+  const cb = await checkCircuitBreaker(base44);
+  if (cb.blocked) throw new Error(`API Omie bloqueada até ${cb.blockedUntil}`);
+  const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
+  const RETRIES = [1000, 2000, 4000];
+  let lastErr = '';
+  for (let i = 0; i <= RETRIES.length; i++) {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeoutMs || 15000);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call, app_key: appKey, app_secret: appSecret, param: [param] }), signal: controller.signal });
+      clearTimeout(tid);
+      if (res.status >= 500 || res.status === 429 || res.status === 425) {
+        const corpo = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status} Omie${corpo ? ': ' + corpo.slice(0, 200) : ''}`;
+        if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        throw new Error(lastErr);
+      }
+      const data = await res.json();
+      if (data.faultstring) {
+        const msg = String(data.faultstring).toLowerCase();
+        if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('redundante') || msg.includes('limite')) {
+          lastErr = data.faultstring;
+          if (i < RETRIES.length) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+        }
+        throw new Error(data.faultstring);
+      }
+      if (!options.skipLog) {
+        await base44.asServiceRole.entities.LogIntegracaoOmie.create({ endpoint: url, call, operacao: options.operation || call, status: 'sucesso', duracao_ms: 0, tentativas: i + 1, entidade_tipo: options.entityType }).catch(() => null);
+      }
+      return data;
+    } catch (e: any) {
+      lastErr = e.message;
+      if (e.name === 'AbortError') lastErr = 'Timeout na chamada Omie';
+      if (i < RETRIES.length && !e.message?.includes('bloqueada')) { await new Promise(r => setTimeout(r, RETRIES[i])); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || 'Máximo de tentativas Omie excedido');
+}
+// ═══ fim omieClient inline ═══
+
+function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+function estaBloqueado(cli: any) {
+  const info = cli?.info || {};
+  const flags = [cli?.bloquear_faturamento, info?.bloquear_faturamento, cli?.bloqueado, info?.bloqueado];
+  return flags.some((v) => String(v || '').trim().toUpperCase() === 'S');
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+    const body = await req.json().catch(() => ({}));
+    const apenasListar = body?.apenas_listar === true;
+    const maxAlteracoes = Number(body?.max_alteracoes || 60);
+
+    // ─── 1) Listar TODOS os clientes do Omie (paginado) e coletar os bloqueados ───
+    const bloqueados: any[] = [];
+    let pagina = 1;
+    let totalPaginas = 1;
+
+    do {
+      const resp: any = await omieCall(base44, 'geral/clientes/', {
+        pagina,
+        registros_por_pagina: 50,
+        apenas_importado_api: 'N'
+      }, { call: 'ListarClientes', operation: 'listar_clientes', skipLog: true });
+
+      totalPaginas = Number(resp?.total_de_paginas || 1);
+      const lista = resp?.clientes_cadastro || [];
+      for (const cli of lista) {
+        if (estaBloqueado(cli)) {
+          bloqueados.push({
+            codigo_cliente_omie: cli?.codigo_cliente_omie,
+            nome: cli?.razao_social || cli?.nome_fantasia || ''
+          });
+        }
+      }
+      pagina += 1;
+    } while (pagina <= totalPaginas);
+
+    if (apenasListar) {
+      return Response.json({ sucesso: true, total_bloqueados: bloqueados.length, clientes: bloqueados.slice(0, 200) });
+    }
+
+    // ─── 2) Desbloquear (AlterarCliente) em fatias ───
+    const alvos = bloqueados.slice(0, maxAlteracoes);
+    const resultados: any[] = [];
+    let okCount = 0;
+
+    for (const alvo of alvos) {
+      try {
+        await omieCall(base44, 'geral/clientes/', {
+          codigo_cliente_omie: alvo.codigo_cliente_omie,
+          bloquear_faturamento: 'N'
+        }, { call: 'AlterarCliente', operation: 'desbloquear_faturamento', entityType: 'Cliente' });
+        okCount += 1;
+        resultados.push({ nome: alvo.nome, ok: true });
+      } catch (err: any) {
+        resultados.push({ nome: alvo.nome, ok: false, erro: String(err?.message || '').slice(0, 160) });
+      }
+      await sleep(600);
+    }
+
+    return Response.json({
+      sucesso: true,
+      total_bloqueados: bloqueados.length,
+      desbloqueados_nesta_execucao: okCount,
+      restantes: Math.max(bloqueados.length - alvos.length, 0),
+      resultados
+    });
+  } catch (error) {
+    return Response.json({ error: (error as Error).message }, { status: 500 });
+  }
+});
