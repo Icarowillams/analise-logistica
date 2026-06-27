@@ -6,11 +6,15 @@ let _credsCache: { appKey: string; appSecret: string; at: number } | null = null
 
 async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
+  // FONTE DE VERDADE: Secrets do backend (OMIE_APP_KEY/OMIE_APP_SECRET). A entidade
+  // ConfiguracaoOmie pode conter um app_secret ANTIGO/mascarado — nunca tem prioridade.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) { _credsCache = { appKey: envKey, appSecret: envSecret, at: Date.now() }; return _credsCache; }
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
-  if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
+  const appKey = envKey || String(cfg?.app_key || '').trim();
+  const appSecret = envSecret || String(cfg?.app_secret || '').trim();
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }

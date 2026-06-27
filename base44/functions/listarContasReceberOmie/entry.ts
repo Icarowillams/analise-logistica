@@ -119,18 +119,19 @@ function diaNumOmie(s: any): number | null {
 let _credsCache: any = null;
 async function resolverCredsOmie(base44: any) {
   if (_credsCache && _credsCache.app_key && _credsCache.app_secret && Date.now() - _credsCache.at < 30000) return _credsCache;
-  // Fonte primária: registro ativo de ConfiguracaoOmie (campos app_key/app_secret — NÃO os antigos omie_*).
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret), at: Date.now() };
-    return _credsCache;
-  }
-  // Fallback (último recurso): Secrets de ambiente. NÃO cacheia se vier vazio.
+  // FONTE DE VERDADE: Secrets do backend (OMIE_APP_KEY/OMIE_APP_SECRET). A entidade
+  // ConfiguracaoOmie pode conter um app_secret ANTIGO/mascarado — nunca tem prioridade.
   const envKey = Deno.env.get('OMIE_APP_KEY') || '';
   const envSecret = Deno.env.get('OMIE_APP_SECRET') || '';
   if (envKey && envSecret) {
     _credsCache = { app_key: envKey, app_secret: envSecret, at: Date.now() };
+    return _credsCache;
+  }
+  // Fallback (último recurso): registro ativo de ConfiguracaoOmie.
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  if (ativo?.app_key && ativo?.app_secret) {
+    _credsCache = { app_key: String(ativo.app_key), app_secret: String(ativo.app_secret), at: Date.now() };
     return _credsCache;
   }
   return { app_key: '', app_secret: '', at: 0 };
