@@ -40,24 +40,22 @@ Deno.serve(async (req) => {
       const updates = {};
 
       // ── Regra 1 e 2: desbloqueio preciso por tempo ──
+      // BLINDAGEM (item 2): SÓ desbloqueia quando o prazo `bloqueado_ate` que o PRÓPRIO Omie
+      // pediu ("Tente novamente em N segundos") JÁ EXPIROU. Nunca antes — desbloquear durante
+      // o castigo faz a próxima chamada bater no 425 e reabrir (loop vicioso).
       if (c.bloqueado) {
         const ate = c.bloqueado_ate ? new Date(c.bloqueado_ate).getTime() : null;
-        // Bloqueio sem prazo: libera após 1 min parado (usa atualizado_em como referência).
-        const SEM_PRAZO_TIMEOUT_MS = 1 * 60 * 1000;
-        const refSemPrazo = c.atualizado_em ? new Date(c.atualizado_em).getTime() : null;
-        const semPrazoExpirado = !ate && refSemPrazo && (agora - refSemPrazo) >= SEM_PRAZO_TIMEOUT_MS;
-
-        if ((ate && ate <= agora) || semPrazoExpirado) {
-          // Cooldown do Omie terminou (ou bloqueio sem prazo parado há 10+ min) → seguro desbloquear.
+        if (ate && ate <= agora) {
+          // Cooldown que o Omie pediu terminou → seguro desbloquear.
           updates.bloqueado = false;
           updates.bloqueado_ate = null;
           updates.erros_consecutivos = 0;
           updates.ultimo_erro = null;
-          desbloqueados.push({ id: c.id, chave: c.chave, expirou_em: c.bloqueado_ate || `sem_prazo (>${SEM_PRAZO_TIMEOUT_MS / 60000}min)` });
+          desbloqueados.push({ id: c.id, chave: c.chave, expirou_em: c.bloqueado_ate });
         } else {
-          // Ainda dentro da janela (ate futuro) OU bloqueio sem prazo recente →
-          // NÃO desbloqueia ainda (precisão: nunca liberar durante o cooldown).
-          aindaBloqueados.push({ id: c.id, chave: c.chave, bloqueado_ate: c.bloqueado_ate || 'sem_prazo' });
+          // Ainda dentro da janela (ate futuro) OU bloqueio SEM prazo → NUNCA desbloqueia
+          // automaticamente. Sem prazo = exige ação manual (evita liberar cego no meio do castigo).
+          aindaBloqueados.push({ id: c.id, chave: c.chave, bloqueado_ate: c.bloqueado_ate || 'sem_prazo (requer desbloqueio manual)' });
         }
       }
 
