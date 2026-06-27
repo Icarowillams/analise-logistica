@@ -97,17 +97,40 @@ Deno.serve(async (req) => {
       const resultados: any[] = [];
       let okCount = 0;
       for (const cod of codigos) {
-        try {
-          await omieCall(base44, 'geral/clientes/', {
-            codigo_cliente_omie: cod,
-            bloquear_faturamento: 'N'
-          }, { call: 'AlterarCliente', operation: 'desbloquear_faturamento', entityType: 'Cliente', skipLog: true });
-          okCount += 1;
-          resultados.push({ codigo: cod, ok: true });
-        } catch (err: any) {
-          resultados.push({ codigo: cod, ok: false, erro: String(err?.message || '').slice(0, 160) });
+        let sucesso = false;
+        // Trata "consumo redundante" (código 6) com espera e retry, como o Omie exige.
+        for (let tentativa = 0; tentativa < 3 && !sucesso; tentativa++) {
+          try {
+            await omieCall(base44, 'geral/clientes/', {
+              codigo_cliente_omie: cod,
+              bloquear_faturamento: 'N'
+            }, { call: 'AlterarCliente', operation: 'desbloquear_faturamento', entityType: 'Cliente', skipLog: true });
+            okCount += 1;
+            resultados.push({ codigo: cod, ok: true });
+            sucesso = true;
+          } catch (err: any) {
+            const msg = String(err?.message || '');
+            // Bloqueio severo (MISUSE / 30 min) — não adianta continuar; aborta o lote.
+            if (/misuse|consumo indevido|bloqueada at/i.test(msg)) {
+              resultados.push({ codigo: cod, ok: false, erro: msg.slice(0, 160) });
+              return Response.json({
+                sucesso: false,
+                abortado: true,
+                motivo: 'API Omie bloqueada por consumo indevido. Aguarde ~30 min e rode novamente.',
+                desbloqueados_nesta_execucao: okCount, total: codigos.length, resultados
+              });
+            }
+            // Consumo redundante — aguarda e tenta de novo.
+            const m = msg.match(/(\d+)\s*segundo/i);
+            if (/redundante/i.test(msg) && tentativa < 2) {
+              await sleep(Math.min((m ? Number(m[1]) : 55) * 1000 + 2000, 60000));
+              continue;
+            }
+            resultados.push({ codigo: cod, ok: false, erro: msg.slice(0, 160) });
+            break;
+          }
         }
-        await sleep(400);
+        await sleep(2000);
       }
       return Response.json({ sucesso: true, desbloqueados_nesta_execucao: okCount, total: codigos.length, resultados });
     }
