@@ -34,16 +34,15 @@ function extrairNumeroNf(pedido) {
   return match?.[1] ? String(match[1]).trim() : '';
 }
 
-let _credsCache = null;
+// CREDENCIAIS: Environment-First SEM cache. Deno.env é atômico e sem TTL — nunca serve
+// uma chave velha. ConfiguracaoOmie só é fallback (pode conter chave ANTIGA → nunca prioriza).
 async function getOmieCredentials(base44) {
-  if (_credsCache && Date.now() - _credsCache.at < 60000) return _credsCache;
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  if (rows.length > 0 && rows[0].app_key && rows[0].app_secret) {
-    _credsCache = { appKey: String(rows[0].app_key), appSecret: String(rows[0].app_secret), at: Date.now() };
-    return _credsCache;
-  }
-  _credsCache = { appKey: Deno.env.get('OMIE_APP_KEY') || '', appSecret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
-  return _credsCache;
+  const cfg = rows?.[0];
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 async function omieCallSafe(base44, endpoint, param, options = {}) {

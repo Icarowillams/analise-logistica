@@ -24,21 +24,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // ═══════════════════════════════════════════════════════════════════════════
 
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
-let _credsCache = null;
 
+// CREDENCIAIS: Environment-First SEM cache. Deno.env é atômico e sem TTL — nunca serve
+// uma chave velha. ConfiguracaoOmie só é fallback (pode conter chave ANTIGA → nunca prioriza).
+// Removido o _credsCache de 30s por segurança (mesmo env-primeiro, cache pode segurar
+// uma chave durante a janela de troca de credencial).
 async function getOmieCredentials(base44) {
-  if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
-  // FONTE DE VERDADE: Secrets do backend (OMIE_APP_KEY/OMIE_APP_SECRET). A entidade
-  // ConfiguracaoOmie pode conter um app_secret ANTIGO/mascarado — nunca tem prioridade.
   const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
   const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
-  if (envKey && envSecret) { _credsCache = { appKey: envKey, appSecret: envSecret, at: Date.now() }; return _credsCache; }
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  const appKey = envKey || String(cfg?.app_key || '').trim();
-  const appSecret = envSecret || String(cfg?.app_secret || '').trim();
-  _credsCache = { appKey, appSecret, at: Date.now() };
-  return { appKey, appSecret };
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';
