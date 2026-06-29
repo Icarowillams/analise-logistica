@@ -7,13 +7,27 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
+import { classificarItemFila } from '@/lib/classificarStatusFila';
 
-const STATUS_CONFIG = {
-  pendente:    { label: 'Pendente',    bg: 'bg-yellow-100 text-yellow-800', icon: Clock },
-  processando: { label: 'Processando', bg: 'bg-blue-100 text-blue-800',    icon: Zap },
-  concluido:   { label: 'Concluído',   bg: 'bg-green-100 text-green-800',  icon: CheckCircle2 },
-  erro:        { label: 'Erro',        bg: 'bg-red-100 text-red-800',      icon: XCircle },
+// Categorias VISUAIS (derivadas de status + erro_log) — não confundir com o status bruto da entidade.
+const CAT_CONFIG = {
+  pendente:            { label: 'Pendente',            bg: 'bg-yellow-100 text-yellow-800', icon: Clock },
+  processando:         { label: 'Processando',         bg: 'bg-blue-100 text-blue-800',     icon: Zap },
+  sucesso:             { label: 'Concluído',           bg: 'bg-green-100 text-green-800',   icon: CheckCircle2 },
+  sucesso_ja_faturado: { label: 'Já faturado (60) — OK', bg: 'bg-green-100 text-green-800', icon: CheckCircle2 },
+  aguardando:          { label: 'Aguardando Omie',     bg: 'bg-amber-100 text-amber-800',   icon: Clock },
+  erro_real:           { label: 'Erro',                bg: 'bg-red-100 text-red-800',       icon: XCircle },
+  orfao:               { label: 'Carga excluída',      bg: 'bg-orange-100 text-orange-800', icon: Trash2 },
 };
+
+// Cards de contagem exibidos no topo (órfãos têm botão próprio, fora daqui).
+const CARDS = [
+  { key: 'pendente',    label: 'Pendente',         bg: 'bg-yellow-100 text-yellow-800', icon: Clock },
+  { key: 'processando', label: 'Processando',      bg: 'bg-blue-100 text-blue-800',     icon: Zap },
+  { key: 'aguardando',  label: 'Aguardando Omie',  bg: 'bg-amber-100 text-amber-800',   icon: Clock },
+  { key: 'sucesso',     label: 'Concluído',        bg: 'bg-green-100 text-green-800',   icon: CheckCircle2 },
+  { key: 'erro_real',   label: 'Erro real',        bg: 'bg-red-100 text-red-800',       icon: XCircle },
+];
 
 // O backend grava datas em UTC, mas algumas vêm sem o sufixo "Z" (ex: created_date = "2026-06-25T18:50:26.740000").
 // Sem o "Z", o JS interpreta como horário LOCAL e não converte. Forçamos UTC adicionando "Z" quando ausente.
@@ -129,17 +143,40 @@ export default function LogFilaCarga() {
     return map;
   }, [itensOrfaos]);
 
-  const contadores = useMemo(() => ({
-    pendente:    itens.filter(i => i.status === 'pendente').length,
-    processando: itens.filter(i => i.status === 'processando').length,
-    concluido:   itens.filter(i => i.status === 'concluido').length,
-    erro:        itens.filter(i => i.status === 'erro').length,
-  }), [itens]);
+  // Categoria visual pré-calculada por item (status + erro_log).
+  const catDe = useMemo(() => {
+    const m = new Map();
+    for (const i of itens) m.set(i.id, classificarItemFila(i));
+    return m;
+  }, [itens]);
+
+  // Contadores por categoria visual. "erro_real" exclui rate limit (vai p/ aguardando)
+  // e exclui órfãos de carga excluída (botão próprio).
+  const contadores = useMemo(() => {
+    const c = { pendente: 0, processando: 0, aguardando: 0, sucesso: 0, erro_real: 0 };
+    for (const i of itens) {
+      const cat = catDe.get(i.id);
+      if (cat === 'sucesso' || cat === 'sucesso_ja_faturado') c.sucesso++;
+      else if (cat === 'erro_real') c.erro_real++;
+      else if (cat === 'aguardando') c.aguardando++;
+      else if (cat === 'processando') c.processando++;
+      else if (cat === 'pendente') c.pendente++;
+    }
+    return c;
+  }, [itens, catDe]);
+
+  // Itens com ERRO REAL (terminal acionável) — base para "Reenviar N com erro".
+  const errosReais = useMemo(() => itens.filter(i => catDe.get(i.id) === 'erro_real' && i.carga_id), [itens, catDe]);
 
   const emProcessamento = useMemo(() => itens.filter(i => i.status === 'processando'), [itens]);
 
   const filtrados = useMemo(() => itens.filter(item => {
-    if (filtroStatus && item.status !== filtroStatus) return false;
+    if (filtroStatus) {
+      const cat = catDe.get(item.id);
+      const ehSucesso = cat === 'sucesso' || cat === 'sucesso_ja_faturado';
+      if (filtroStatus === 'sucesso' && !ehSucesso) return false;
+      if (filtroStatus !== 'sucesso' && cat !== filtroStatus) return false;
+    }
     if (filtroBusca.trim()) {
       const t = filtroBusca.trim().toLowerCase();
       return (
@@ -161,16 +198,16 @@ export default function LogFilaCarga() {
           <span className="text-xs text-slate-500">{online ? 'Atualização em tempo real' : 'Sem conexão'}</span>
         </div>
         <div className="flex gap-2">
-          {contadores.erro > 0 && (
+          {errosReais.length > 0 && (
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+              className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-50"
               disabled={reenviando === 'carga:todos'}
               onClick={async () => {
-                // Reenvia todos os itens com erro de todas as cargas (cada um pela sua carga)
+                // Reenvia apenas os ERROS REAIS (terminais acionáveis), cada um pela sua carga.
                 const errosPorCarga = {};
-                itens.filter(i => i.status === 'erro' && i.carga_id).forEach(i => { errosPorCarga[i.carga_id] = i.numero_carga; });
+                errosReais.forEach(i => { errosPorCarga[i.carga_id] = i.numero_carga; });
                 setReenviando('carga:todos');
                 try {
                   let total = 0;
@@ -187,7 +224,7 @@ export default function LogFilaCarga() {
               }}
             >
               <RotateCw className={`w-3 h-3 mr-1 ${reenviando === 'carga:todos' ? 'animate-spin' : ''}`} />
-              Reenviar {contadores.erro} com erro
+              Reenviar {errosReais.length} com erro
             </Button>
           )}
           {itensOrfaos.length > 0 && (
@@ -219,21 +256,21 @@ export default function LogFilaCarga() {
         </div>
       )}
 
-      {/* Contadores */}
-      <div className="grid grid-cols-4 gap-2">
-        {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
+      {/* Contadores por categoria visual */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {CARDS.map((cfg) => {
           const Icon = cfg.icon;
           return (
             <button
-              key={key}
-              onClick={() => setFiltroStatus(filtroStatus === key ? '' : key)}
-              className={`rounded-lg border px-3 py-2 text-left transition-all ${cfg.bg} ${filtroStatus === key ? 'ring-2 ring-slate-500 ring-offset-1' : 'opacity-80 hover:opacity-100'}`}
+              key={cfg.key}
+              onClick={() => setFiltroStatus(filtroStatus === cfg.key ? '' : cfg.key)}
+              className={`rounded-lg border px-3 py-2 text-left transition-all ${cfg.bg} ${filtroStatus === cfg.key ? 'ring-2 ring-slate-500 ring-offset-1' : 'opacity-80 hover:opacity-100'}`}
             >
               <div className="flex items-center gap-1.5 text-xs font-medium">
                 <Icon className="w-3.5 h-3.5" />
                 {cfg.label}
               </div>
-              <div className="text-xl font-bold mt-0.5">{contadores[key]}</div>
+              <div className="text-xl font-bold mt-0.5">{contadores[cfg.key]}</div>
             </button>
           );
         })}
@@ -253,7 +290,7 @@ export default function LogFilaCarga() {
           className="h-8 rounded-md border border-input bg-background px-2 text-sm"
         >
           <option value="">Todos os status</option>
-          {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          {CARDS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
         </select>
       </div>
 
@@ -281,12 +318,24 @@ export default function LogFilaCarga() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtrados.map(item => {
-                const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pendente;
+                const cat = catDe.get(item.id) || 'pendente';
+                const cfg = CAT_CONFIG[cat] || CAT_CONFIG.pendente;
                 const Icon = cfg.icon;
                 const isOrfao = item.carga_id && !cargaIdsExistentes.has(item.carga_id);
+                const ehSucesso = cat === 'sucesso' || cat === 'sucesso_ja_faturado';
+                const ehAguardando = cat === 'aguardando';
+                // Cor/ícone da coluna de mensagem segue a categoria, não vermelho fixo.
+                const msgCls = ehSucesso ? 'text-green-700' : ehAguardando ? 'text-amber-700' : isOrfao ? 'text-orange-600' : 'text-red-600';
+                const MsgIcon = ehSucesso ? CheckCircle2 : ehAguardando ? Clock : AlertTriangle;
+                const msgTexto = cat === 'sucesso_ja_faturado'
+                  ? 'Já faturado (etapa 60) — OK'
+                  : (item.erro_log || (ehSucesso ? 'Concluído' : ''));
+                // Reenvio manual só faz sentido para erro real ou pendente comum (não sucesso/processando/aguardando).
+                const podeReenviar = cat === 'erro_real' || cat === 'pendente';
                 return (
                   <tr key={item.id} className={
                     item.status === 'processando' ? 'bg-blue-50/60' :
+                    ehAguardando ? 'bg-amber-50/40' :
                     isOrfao ? 'bg-orange-50/50' :
                     'hover:bg-slate-50'
                   }>
@@ -304,13 +353,13 @@ export default function LogFilaCarga() {
                     <td className="px-3 py-2 text-center text-slate-600">{item.tentativas ?? 0}</td>
                     <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{fmt(item.created_date)}</td>
                     <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{fmt(item.processado_em)}</td>
-                    <td className="px-3 py-2 text-red-600 max-w-[200px]">
-                      {item.erro_log
-                        ? <span title={item.erro_log} className="truncate block max-w-[180px]"><AlertTriangle className="w-3 h-3 inline mr-1" />{item.erro_log}</span>
+                    <td className={`px-3 py-2 max-w-[200px] ${msgCls}`}>
+                      {msgTexto
+                        ? <span title={msgTexto} className="truncate block max-w-[180px]"><MsgIcon className="w-3 h-3 inline mr-1" />{msgTexto}</span>
                         : '—'}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {item.status !== 'concluido' && item.status !== 'processando' && (
+                      {podeReenviar && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -357,7 +406,7 @@ export default function LogFilaCarga() {
                 </div>
                 <div className="divide-y divide-orange-100">
                   {pedidos.map(item => {
-                    const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pendente;
+                    const cfg = CAT_CONFIG[classificarItemFila(item)] || CAT_CONFIG.pendente;
                     const Icon = cfg.icon;
                     return (
                       <div key={item.id} className="px-3 py-2 flex items-center gap-3 text-xs">

@@ -115,22 +115,44 @@ export default function Cargas() {
     });
   }, [cargasTodas, filtroNumero, filtroDataInicial, filtroDataFinal]);
 
+  // VISUAL ONLY: uma carga marcada como 'faturada' mas com processamento Omie ainda
+  // em andamento (ou com itens de fila pendentes) é mostrada na aba "Faturando…", não
+  // em "Faturadas" — elimina a contradição "Faturada + Processando 0/1". Nenhum dado
+  // é reescrito; é só o agrupamento das abas no front.
+  const faturandoAinda = useCallback((c) => {
+    if (c.status_carga !== 'faturada') return false;
+    const proc = c.processamento_omie_status;
+    if (proc === 'em_andamento' || proc === 'processando' || proc === 'nao_iniciado') {
+      const itens = filaMap[c.id] || [];
+      // só considera "faturando" se houver de fato itens pendentes/processando na fila
+      // (nao_iniciado sem fila = faturamento local concluído → continua em Faturadas)
+      if (proc === 'nao_iniciado') {
+        return itens.some(i => i.status === 'pendente' || i.status === 'processando');
+      }
+      return true;
+    }
+    return false;
+  }, [filaMap]);
+
   const contagens = useMemo(() => {
-    const c = { montagem: 0, faturada: 0, conferindo: 0, entregue: 0, cancelada: 0, outras: 0 };
+    const c = { montagem: 0, faturando: 0, faturada: 0, conferindo: 0, entregue: 0, cancelada: 0, outras: 0 };
     cargasFiltradas.forEach(cg => {
+      if (faturandoAinda(cg)) { c.faturando++; return; }
       if (STATUS_COM_ABA.includes(cg.status_carga)) c[cg.status_carga]++;
       else c.outras++;
     });
     return c;
-  }, [cargasFiltradas]);
+  }, [cargasFiltradas, faturandoAinda]);
 
   const cargas = useMemo(
-    () => cargasFiltradas.filter(c =>
-      abaAtiva === 'outras'
-        ? !STATUS_COM_ABA.includes(c.status_carga)
-        : c.status_carga === abaAtiva
-    ),
-    [cargasFiltradas, abaAtiva]
+    () => cargasFiltradas.filter(c => {
+      if (abaAtiva === 'faturando') return faturandoAinda(c);
+      // "Faturadas" exclui as que ainda estão faturando (movidas para a aba própria)
+      if (abaAtiva === 'faturada') return c.status_carga === 'faturada' && !faturandoAinda(c);
+      if (abaAtiva === 'outras') return !STATUS_COM_ABA.includes(c.status_carga) && !faturandoAinda(c);
+      return c.status_carga === abaAtiva;
+    }),
+    [cargasFiltradas, abaAtiva, faturandoAinda]
   );
 
   const limparFiltros = () => {
@@ -732,6 +754,16 @@ export default function Cargas() {
         >
           Em Montagem ({contagens.montagem})
         </Button>
+        {contagens.faturando > 0 && (
+          <Button
+            variant={abaAtiva === 'faturando' ? 'default' : 'outline'}
+            onClick={() => setAbaAtiva('faturando')}
+            className={abaAtiva === 'faturando' ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'text-amber-700 border-amber-300'}
+          >
+            <Loader2 className={`w-3.5 h-3.5 mr-1.5 ${abaAtiva === 'faturando' ? 'animate-spin' : ''}`} />
+            Faturando… ({contagens.faturando})
+          </Button>
+        )}
         <Button
           variant={abaAtiva === 'faturada' ? 'default' : 'outline'}
           onClick={() => setAbaAtiva('faturada')}
