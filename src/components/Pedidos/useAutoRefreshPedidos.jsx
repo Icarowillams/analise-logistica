@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 // Auto-refresh APENAS da releitura local (espelho PedidoLiberadoOmie / entidade Pedido).
 // NÃO chama a API do Omie — apenas invalida as queries locais para refletir as etapas
 // que já foram sincronizadas pelos webhooks em segundo plano.
-const REFRESH_INTERVAL_MS = 45000;
+const REFRESH_INTERVAL_MS = 30000;
 
 export default function useAutoRefreshPedidos(recarregarLocal) {
   const [enabled, setEnabled] = useState(true);
