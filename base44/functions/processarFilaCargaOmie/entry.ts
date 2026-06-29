@@ -177,27 +177,43 @@ async function liberarPortaoGlobal(base44, donoId) {
 // Registro dedicado (chave='worker_carga') com worker_rodando + worker_lock_ate.
 // TTL curto evita travamento permanente se a função morrer.
 // ============================================================
-async function adquirirLockEncadeamento(base44) {
+// DEDUPE NA ORIGEM (igual ao portão global): retorna o registro CANÔNICO (mais antigo) da
+// chave 'worker_carga' e apaga quaisquer extras. Sem isto, várias execuções criavam registros
+// duplicados; adquirir/liberar liam registros DIFERENTES (-updated_date) e o release nunca batia
+// no registro travado → locks zumbis acumulados → fila parada. Mantém 1 registro canônico só.
+async function getLockRowCanonico(base44) {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-    .filter({ chave: CHAVE_WORKER_CARGA }, '-updated_date', 1).catch(() => []);
-  const reg = rows?.[0];
+    .filter({ chave: CHAVE_WORKER_CARGA }, 'created_date', 50).catch(() => []);
+  let reg = rows?.[0];
+  if (reg?.id) {
+    for (const extra of rows.slice(1)) {
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+    }
+  } else {
+    reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+      .create({ chave: CHAVE_WORKER_CARGA, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  }
+  return reg;
+}
+
+async function adquirirLockEncadeamento(base44) {
+  const reg = await getLockRowCanonico(base44);
+  if (!reg?.id) return { adquirido: false };
   const agora = Date.now();
-  const lockAtivo = reg?.worker_rodando && reg?.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora;
+  const lockAtivo = reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora;
   if (lockAtivo) return { adquirido: false };
-  const dados = {
-    chave: CHAVE_WORKER_CARGA,
+  await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, {
     worker_rodando: true,
     worker_lock_ate: new Date(agora + LOCK_TTL_MS).toISOString(),
     atualizado_em: new Date().toISOString()
-  };
-  if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, dados).catch(() => {});
-  else await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create(dados).catch(() => {});
-  return { adquirido: true, id: reg?.id };
+  }).catch(() => {});
+  return { adquirido: true, id: reg.id };
 }
 
 async function liberarLockEncadeamento(base44) {
+  // Lê o canônico (mais antigo) — o MESMO registro que adquirirLockEncadeamento trava.
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-    .filter({ chave: CHAVE_WORKER_CARGA }, '-updated_date', 1).catch(() => []);
+    .filter({ chave: CHAVE_WORKER_CARGA }, 'created_date', 1).catch(() => []);
   const reg = rows?.[0];
   if (reg) await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, {
     worker_rodando: false, worker_lock_ate: null, atualizado_em: new Date().toISOString()
