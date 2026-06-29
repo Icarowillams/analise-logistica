@@ -52,6 +52,10 @@ Deno.serve(async (req) => {
     await Promise.all(pedidos.map(async (p) => {
       if (p.tipo_nota === 'D1') return;
 
+// ENRIQUECIMENTO LOCAL (sem tocar o Omie): se cnpj_cpf_cliente OU nome_cliente
+// estiverem vazios no pedido, buscar no cadastro do Cliente vinculado e preencher
+// (idempotente — só preenche o que está vazio). Assim o warning abaixo só dispara
+// quando o dado realmente NÃO existe nem no cadastro do cliente.
       if (!p.cnpj_cpf_cliente || !p.nome_cliente) {
         try {
           let cliente = null;
@@ -63,7 +67,7 @@ Deno.serve(async (req) => {
             cliente = porOmie?.[0] || null;
           }
           if (cliente) {
-            if (!p.cnpj_cpf_cliente) p.cnpj_cpf_cliente = cliente.cnpj_cpf || '';
+            if (!p.cnpj_cpf_cliente && cliente.cnpj_cpf) p.cnpj_cpf_cliente = cliente.cnpj_cpf;
             if (!p.nome_cliente) p.nome_cliente = cliente.razao_social || cliente.nome_fantasia || '';
             if (!p.nome_fantasia) p.nome_fantasia = cliente.nome_fantasia || '';
             if (!p.cliente_id) p.cliente_id = cliente.id;
