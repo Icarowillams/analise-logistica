@@ -526,20 +526,36 @@ Deno.serve(async (req) => {
       return Response.json({ sucesso: true, mensagem: 'Portão global ocupado (outra operação no Omie)', skipped: 'portao', cargas_pre_atualizadas: cargasPreAtualizadasCount, processados: 0 });
     }
 
-    // Proteção contra concorrência: se já tem itens em "processando" recentes (< 2min),
-    // outra instância está ativa — aborta o PROCESSAMENTO (chamadas Omie) para não duplicar.
-    // O Passo 1 acima (status local) já rodou, então as órfãs já foram fechadas mesmo aqui.
-    const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 1).catch(() => []);
+    // Proteção contra concorrência: se há item em "processando" DENTRO da janela de resgate,
+    // outra instância está ativa AGORA — aborta o PROCESSAMENTO (chamadas Omie) para não duplicar.
+    // CRÍTICO: como ESTA execução já detém o portão global (mutex exclusivo, adquirido acima),
+    // um item ainda em "processando" só pode ser ÓRFÃO de uma cadeia morta — nenhuma outra cadeia
+    // poderia estar tocando o Omie sem o portão. Então, em vez de ABORTAR, resgatamos o órfão na
+    // hora (reset → pendente) e seguimos. Isso elimina o deadlock em que um órfão preso em
+    // "processando" (cuja cadeia morreu por 502/timeout sem chegar ao finally) bloqueava a fila
+    // até o TTL do portão zumbi vencer. Só aborta se o item estiver MUITO recente (< 30s), janela
+    // em que uma cadeia legítima poderia tê-lo marcado milissegundos antes de pegarmos o portão.
+    const emProcessamento = await base44.asServiceRole.entities.FilaCargaOmie.filter({ status: 'processando' }, '-updated_date', 20).catch(() => []);
     if (emProcessamento.length > 0) {
-      const refProc = emProcessamento[0].processando_em || emProcessamento[0].updated_date;
-      const age = Date.now() - new Date(refProc).getTime();
-      // Só considera "outra instância ativa" enquanto o item estiver dentro da janela de resgate.
-      // Passou de 3min sem concluir = órfão (PASSO 0 já o resgatou acima), não bloqueia a fila.
-      if (age < TIMEOUT_MS) {
-        // Existe item em processamento recente = outra cadeia ativa. Apenas saímos limpo,
-        // SEM reagendar: a cadeia dona já auto-encadeia ao terminar, e o PASSO 0 resgata
-        // qualquer item que vire órfão. O setTimeout de reagendamento aqui (multiplicado
-        // pelas invocações concorrentes) era parte da tempestade que estourava o 429.
+      const JANELA_RECENTE_MS = 30 * 1000;
+      let algumRecente = false;
+      for (const it of emProcessamento) {
+        const refProc = it.processando_em || it.updated_date;
+        const age = Date.now() - new Date(refProc).getTime();
+        if (age < JANELA_RECENTE_MS) {
+          algumRecente = true;
+        } else {
+          // Órfão (>30s e detemos o portão): resgata na hora em vez de abortar a fila.
+          await base44.asServiceRole.entities.FilaCargaOmie.update(it.id, {
+            status: 'pendente',
+            processando_em: null,
+            erro_log: 'Resgate: órfão em "processando" detectado pelo dono do portão global.'
+          }).catch(() => {});
+          console.log(`[FILA RESGATE] Pedido ${it.numero_pedido} (carga ${it.numero_carga}) órfão resgatado pelo dono do portão.`);
+        }
+      }
+      // Só aborta se houver item MUITO recente (cadeia legítima a meio caminho do portão).
+      if (algumRecente) {
         return Response.json({ sucesso: false, abortado: true, motivo: 'outra_instancia_processando', cargas_pre_atualizadas: cargasPreAtualizadasCount, mensagem: 'Outra instância já está processando a fila.' });
       }
     }
