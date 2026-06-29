@@ -188,17 +188,34 @@ Deno.serve(async (req) => {
   let base44;
   try {
     base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await base44.auth.me().catch(() => null);
 
     const body = await req.json().catch(() => ({}));
     const {
-      modo = 'auto',                 // 'auto' (automação, com lote) | 'manual' (botão, todos os ativos)
+      modo = 'manual',               // 'manual' (botão, humano) — ÚNICO modo permitido. 'auto' é BLOQUEADO.
       max_lote = 50,                 // teto de consultas por rodada na automação (cabe em ~2 min)
       fatia_finais = 8,              // quantos finais (60/80) incluir por rodada auto
       incluir_finais = true,         // automação inclui pequena fatia de finais
       throttle_ms = 1500
     } = body;
+
+    // ═══ GUARD DEFINITIVO — RECONCILIAÇÃO DIRIGIDA SÓ POR CLIQUE HUMANO ═══
+    // CAUSA RAIZ do rate limit (junho/2026): esta função rodava sozinha, sem usuário,
+    // a cada ~1-2 min (operacao reconciliar_etapas_dirigida com usuário VAZIO), martelando
+    // o ConsultarPedido e fazendo o Omie throttlar (respostas de 130s+). NÃO HÁ caso de uso
+    // automático: o webhook + as redes de segurança já mantêm o espelho. A reconciliação
+    // dirigida (que consulta o Omie pedido a pedido) só pode rodar quando um humano clica
+    // "Atualizar" na tela. Qualquer disparo de SISTEMA (sem usuário humano) ou em modo != 'manual'
+    // é ABORTADO AQUI, antes de tocar o Omie. Sem usuário humano = não é clique = não roda.
+    const ehHumano = !!(user && user.email && user.id);
+    if (modo !== 'manual' || !ehHumano) {
+      return Response.json({
+        sucesso: true,
+        skipped: 'bloqueado_automatico',
+        mensagem: 'Reconciliação dirigida só roda por clique humano (modo manual). Disparo automático/sem-usuário bloqueado — o espelho é mantido por webhook + redes de segurança.'
+      });
+    }
+
     const t0 = Date.now();
 
     const { appKey, appSecret } = await getOmieCredentials(base44);
