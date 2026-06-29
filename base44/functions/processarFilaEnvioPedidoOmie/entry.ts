@@ -13,9 +13,16 @@ const LOCK_TTL_MS = 2 * 60 * 1000;      // TTL curto do lock — auto-release se
 const CHAVE_PORTAO = 'portao_global_omie';
 const PORTAO_TTL_MS = 180 * 1000; // 3 min — folgado acima do teto de 150s do envio (nunca rouba o portão do próprio envio em andamento); auto-release se o isolate morrer abruptamente (502, sem passar pelo finally).
 async function adquirirPortaoGlobal(base44, nome) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 10).catch(() => []);
+  // BLINDAGEM CONTRA REGRESSÃO DE DUPLICATA (espelha _shared/portaoOmie):
+  // distingue "filter falhou" (429/rede → NÃO cria) de "vazio de verdade" (cria 1).
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 20);
+  } catch {
+    return { adquirido: false };
+  }
   let reg = rows?.[0];
-  // DEDUPE NA ORIGEM: mantém o registro canônico (mais antigo) e apaga extras. Só cria se não existe NENHUM.
+  // DEDUPE NA ORIGEM: mantém o registro canônico (mais antigo) e apaga extras SEMPRE.
   if (reg?.id) {
     for (const extra of rows.slice(1)) {
       await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
