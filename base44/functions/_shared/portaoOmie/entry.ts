@@ -15,10 +15,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const CHAVE_PORTAO = 'portao_global_omie';
-// TTL ÚNICO para TODOS os workers (envio/carga/webhook). Antes havia 3 cópias inline com
-// TTLs divergentes (3min vs 5min) — divergência que abria janelas de "dois donos". 3 min é
-// folgado acima do teto de 150s do envio e auto-libera se o isolate morrer sem o finally.
-export const PORTAO_TTL_MS = 3 * 60 * 1000;
+// TTL ÚNICO para TODOS os workers (envio/carga/webhook). 160s = folga mínima acima do teto
+// de 150s do envio (maior teto entre os workers). Encurtado de 180s para reduzir a janela em
+// que um portão zombie (isolate morto por 502/timeout, sem passar pelo finally) trava TODOS
+// os workers. Auto-libera ao expirar.
+export const PORTAO_TTL_MS = 160 * 1000;
 
 // Chaves dos locks das filas de OPERAÇÃO (prioritárias). Usadas só para a regra de
 // prioridade (rotinas de leitura cedem a vez quando há trabalho de operação pendente).

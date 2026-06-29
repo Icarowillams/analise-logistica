@@ -143,7 +143,7 @@ const LOCK_TTL_MS = 2 * 60 * 1000;         // TTL curto do lock — auto-release
 
 // ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
 const CHAVE_PORTAO = 'portao_global_omie';
-const PORTAO_TTL_MS = 180 * 1000; // 3 min — folgado acima do teto de 150s do envio (nunca rouba o portão de um envio legítimo); auto-release se o isolate morrer abruptamente (502, sem passar pelo finally).
+const PORTAO_TTL_MS = 160 * 1000; // 160s — folga mínima acima do teto de 150s do envio. Encurtado de 180s para reduzir a janela em que um portão zombie (isolate morto por 502/timeout, sem passar pelo finally) trava TODOS os workers. Auto-release ao expirar.
 async function adquirirPortaoGlobal(base44, nome) {
   // BLINDAGEM CONTRA REGRESSÃO DE DUPLICATA (espelha _shared/portaoOmie):
   // distingue "filter falhou" (429/rede → NÃO cria) de "vazio de verdade" (cria 1).
@@ -457,6 +457,7 @@ Deno.serve(async (req) => {
     }
 
     let portao = { adquirido: false };
+    let liberadoNoEncadeamento = false;
     try {
 
     // ═══ PASSO 0: TIMEOUT — Resgatar itens órfãos travados em "processando" ═══
@@ -808,9 +809,18 @@ Deno.serve(async (req) => {
       if (restantes.length > 0) {
         const breakerFim = await checkCircuitBreaker(base44);
         if (!breakerFim.blocked) {
+          // CRÍTICO: liberar o portão E o lock ANTES de disparar a próxima invocação.
+          // Sem isto, a nova invocação encadeada batia no portão ainda detido por ESTA
+          // execução (só liberado no finally, depois do invoke) → saía com "portão ocupado"
+          // sem reencadear → a corrente morria e a fila parava (50 itens presos com 1 concluído/3min).
+          // Liberamos aqui e marcamos para o finally não liberar de novo (idempotente via donoId).
+          await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
+          await liberarLockEncadeamento(base44).catch(() => {});
+          portao = { adquirido: false }; // impede o finally de mexer no portão da próxima cadeia
+          liberadoNoEncadeamento = true; // impede o finally de liberar o lock da PRÓXIMA cadeia
           base44.asServiceRole.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
           encadeou = true;
-          console.log('[FILA CARGA] Auto-encadeamento disparado — fila ainda tem pendentes.');
+          console.log('[FILA CARGA] Auto-encadeamento disparado (portão liberado antes) — fila ainda tem pendentes.');
         }
       }
     }
@@ -820,8 +830,10 @@ Deno.serve(async (req) => {
     } finally {
       // Libera o portão global PRIMEIRO (se chegamos a adquiri-lo), depois o lock de
       // encadeamento. Sempre ao fim (sucesso, retorno antecipado ou exceção).
+      // EXCEÇÃO: se já liberamos no auto-encadeamento, NÃO liberar de novo — a próxima
+      // cadeia pode já ter adquirido o lock, e liberá-lo aqui mataria o lock dela.
       if (portao.adquirido) await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
-      await liberarLockEncadeamento(base44).catch(() => {});
+      if (!liberadoNoEncadeamento) await liberarLockEncadeamento(base44).catch(() => {});
     }
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

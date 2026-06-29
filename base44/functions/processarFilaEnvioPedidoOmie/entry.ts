@@ -11,7 +11,7 @@ const LOCK_TTL_MS = 2 * 60 * 1000;      // TTL curto do lock — auto-release se
 
 // ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
 const CHAVE_PORTAO = 'portao_global_omie';
-const PORTAO_TTL_MS = 180 * 1000; // 3 min — folgado acima do teto de 150s do envio (nunca rouba o portão do próprio envio em andamento); auto-release se o isolate morrer abruptamente (502, sem passar pelo finally).
+const PORTAO_TTL_MS = 160 * 1000; // 160s — folga mínima acima do teto de 150s do envio. Encurtado de 180s para reduzir a janela em que um portão zombie (isolate morto por 502/timeout, sem passar pelo finally) trava TODOS os workers. Auto-release ao expirar.
 async function adquirirPortaoGlobal(base44, nome) {
   // BLINDAGEM CONTRA REGRESSÃO DE DUPLICATA (espelha _shared/portaoOmie):
   // distingue "filter falhou" (429/rede → NÃO cria) de "vazio de verdade" (cria 1).
