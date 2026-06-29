@@ -15,7 +15,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const CHAVE_PORTAO = 'portao_global_omie';
-export const PORTAO_TTL_MS = 5 * 60 * 1000; // 5 min — rede de segurança se o worker morrer no meio
+// TTL ÚNICO para TODOS os workers (envio/carga/webhook). Antes havia 3 cópias inline com
+// TTLs divergentes (3min vs 5min) — divergência que abria janelas de "dois donos". 3 min é
+// folgado acima do teto de 150s do envio e auto-libera se o isolate morrer sem o finally.
+export const PORTAO_TTL_MS = 3 * 60 * 1000;
 
 // Chaves dos locks das filas de OPERAÇÃO (prioritárias). Usadas só para a regra de
 // prioridade (rotinas de leitura cedem a vez quando há trabalho de operação pendente).
@@ -26,15 +29,27 @@ function novoDonoId(nome) {
 }
 
 async function getRegistroPortao(base44) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
-    .filter({ chave: CHAVE_PORTAO }, 'created_date', 10).catch(() => []);
-  if (!rows?.[0]?.id) {
+  // BLINDAGEM CONTRA REGRESSÃO DE DUPLICATA:
+  // 1) Distingue "filter FALHOU" (rede/429) de "filter vazio de verdade". Sob 429 o filter
+  //    lançava, o .catch devolvia [] e a função CRIAVA um 2º registro → foi assim que o
+  //    órfão reapareceu. Agora: se o filter falhar, RETORNAMOS null (não criamos nada).
+  // 2) Só cria registro quando a leitura teve SUCESSO e veio realmente vazia.
+  // 3) Dedupe SEMPRE que há mais de um: mantém o CANÔNICO (mais antigo) e apaga os extras.
+  //    O canônico determinístico evita que adquirir/liberar batam em registros diferentes.
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+      .filter({ chave: CHAVE_PORTAO }, 'created_date', 20);
+  } catch {
+    return null; // leitura falhou — NUNCA cria duplicata; tenta de novo no próximo ciclo
+  }
+  if (!rows?.length) {
     const created = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
       .create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() })
       .catch(() => null);
     return created?.id ? created : null;
   }
-  // Garante registro único: remove duplicados, mantém o mais antigo.
+  // Mantém o mais antigo (canônico) e apaga TODOS os extras, sempre.
   for (const extra of rows.slice(1)) {
     await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
   }
