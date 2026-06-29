@@ -188,11 +188,16 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // martelando o Omie → "consumo indevido" / chave inválida. O webhook já mantém o espelho em
   // tempo real; a releitura local abaixo é suficiente. A reconciliação dirigida (que consulta o
   // Omie) agora roda SOMENTE sob clique humano no botão "Atualizar" (syncEAtualizar → modo manual).
+  // REFRESH SILENCIOSO (sem flash): usa refetchQueries em vez de invalidateQueries.
+  // refetch atualiza os dados POR BAIXO mantendo o data atual visível e substituindo
+  // atomicamente quando o novo chega — não reativa isLoading nem esvazia a tela.
+  // (invalidate marcava as queries como stale e fazia o mapa de espelhos "piscar" para
+  // "Sem espelho"/"—" durante o ciclo.) Continua sendo LEITURA PURA local — não toca o Omie.
   const recarregarLocal = useCallback(async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar'] }),
-      queryClient.invalidateQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
-      queryClient.invalidateQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
+      queryClient.refetchQueries({ queryKey: ['pedidos-gerenciar'] }),
+      queryClient.refetchQueries({ queryKey: ['gerenciar-pedidos-omie-etapas'] }),
+      queryClient.refetchQueries({ queryKey: ['pedidos-gerenciar-faturados-recentes'] })
     ]);
   }, [queryClient]);
 
@@ -366,7 +371,14 @@ export default function GerenciarPedidos({ onEditPedido }) {
   // FIX "Sem espelho" piscando: o badge de etapa só pode dizer "Sem espelho" DEPOIS que o
   // mapa de espelhos terminou de carregar. Enquanto carrega (ou ainda não buscou), mostramos
   // um estado de carregando (—) no lugar do badge, nunca "Sem espelho".
-  const espelhoCarregando = omieMapLoading || !omieMapFetched;
+  //
+  // ⚠️ FLASH NO AUTO-REFRESH: espelhoCarregando só vale para o carregamento INICIAL.
+  // Depois que o mapa carregou a primeira vez, travamos em false (ref) — refetches em
+  // background NUNCA mais reativam o estado de "carregando", então a coluna "Etapa Omie"
+  // não cai para "—"/"Sem espelho" durante um refresh de um pedido que já tinha espelho.
+  const espelhoJaCarregouRef = React.useRef(false);
+  if (omieMapFetched && !omieMapLoading) espelhoJaCarregouRef.current = true;
+  const espelhoCarregando = !espelhoJaCarregouRef.current && (omieMapLoading || !omieMapFetched);
   const omieMapResolvido = omieMap || {};
 
   // Subscription em tempo real: atualiza o omieMap instantaneamente quando o espelho muda
