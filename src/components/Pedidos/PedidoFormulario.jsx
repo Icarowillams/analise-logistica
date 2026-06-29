@@ -194,6 +194,14 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
   const cenarioLocalAtual = cenariosLocais.find(c => c.id === cenarioLocalId);
   const isTroca = cenarioLocalAtual?.tipo_operacao === 'troca' || tipo === 'troca';
 
+  // Trava de coerência fiscal — amarrada ao RESULTADO FINAL (modelo_nota que será salvo),
+  // não ao caminho. Cobre qualquer origem (cenário de troca por engano, edição manual,
+  // resíduo de versão antiga): cliente fiscal (55) + venda (não-troca) + nota interna D1.
+  const tipoFinalPedido = isTroca ? 'troca' : (tipo === 'troca' ? 'troca' : tipo);
+  const modeloNotaFinal = (tipoFinalPedido === 'troca' || cliente.tipo_nota === 'D1') ? 'd1' : modeloNota;
+  const riscoFiscalD1EmCliente55 =
+    cliente.tipo_nota === '55' && modeloNotaFinal === 'd1' && tipoFinalPedido !== 'troca';
+
   // Pré-selecionar cenário padrão (apenas pedidos novos)
   // Regra: sempre prioriza um cenário do tipo "venda" — independentemente do modelo (D1 ou 55) e da origem (interno ou Omie).
   // Exceção: se o pedido for explicitamente uma "troca", começa com cenário de troca.
@@ -438,6 +446,13 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
       toast.error('Adicione pelo menos um item ao pedido');
       return;
     }
+    // Trava de coerência fiscal — IMPOSSÍVEL salvar D1 num cliente 55 (venda) sem confirmar.
+    if (riscoFiscalD1EmCliente55) {
+      const ok = window.confirm(
+        '⚠️ Atenção: este cliente é cadastrado como NF Fiscal (55). Marcar D1 vai gerar uma nota INTERNA sem valor fiscal. Tem certeza?'
+      );
+      if (!ok) return;
+    }
     setSalvando(true);
 
     const planoObj = planosPagamento.find(p => p.id === planoPagamentoId);
@@ -586,6 +601,15 @@ export default function PedidoFormulario({ cliente, tipo, vendedor, editingPedid
         <TabsContent value="pedido">
           <Card>
             <CardContent className="pt-4 space-y-4">
+              {riscoFiscalD1EmCliente55 && (
+                <div className="p-3 rounded-lg border-2 border-red-400 bg-red-50 text-sm text-red-800 leading-snug">
+                  <p className="font-bold mb-1">⚠️ Atenção: cliente NF Fiscal (55) marcado como D1</p>
+                  <p>
+                    Este cliente é cadastrado como <strong>NF Fiscal (55)</strong>, mas este pedido está saindo como <strong>nota INTERNA (D1)</strong> — sem valor fiscal.
+                    Confirme se isso é intencional. Ao salvar, será pedida uma confirmação.
+                  </p>
+                </div>
+              )}
               <div>
                 <Label className="text-xs text-slate-500">Cliente</Label>
                 <p className="text-sm font-medium">{cliente.codigo_interno || cliente.codigo_integracao || cliente.codigo || '-'} - {cliente.razao_social}</p>
