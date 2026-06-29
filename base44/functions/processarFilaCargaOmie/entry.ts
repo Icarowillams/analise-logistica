@@ -143,11 +143,18 @@ const LOCK_TTL_MS = 2 * 60 * 1000;         // TTL curto do lock — auto-release
 
 // ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
 const CHAVE_PORTAO = 'portao_global_omie';
-const PORTAO_TTL_MS = 5 * 60 * 1000;
+const PORTAO_TTL_MS = 180 * 1000; // 3 min — folgado acima do teto de 150s do envio (nunca rouba o portão de um envio legítimo); auto-release se o isolate morrer abruptamente (502, sem passar pelo finally).
 async function adquirirPortaoGlobal(base44, nome) {
-  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 5).catch(() => []);
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 10).catch(() => []);
   let reg = rows?.[0];
-  if (!reg?.id) reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  // DEDUPE NA ORIGEM: mantém o registro canônico (mais antigo) e apaga extras. Só cria se não existe NENHUM.
+  if (reg?.id) {
+    for (const extra of rows.slice(1)) {
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie.delete(extra.id).catch(() => null);
+    }
+  } else {
+    reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.create({ chave: CHAVE_PORTAO, worker_rodando: false, atualizado_em: new Date().toISOString() }).catch(() => null);
+  }
   if (!reg?.id) return { adquirido: false };
   const agora = Date.now();
   if (reg.worker_rodando && reg.worker_lock_ate && new Date(reg.worker_lock_ate).getTime() > agora) return { adquirido: false, ocupadoPor: reg.ultimo_erro };
