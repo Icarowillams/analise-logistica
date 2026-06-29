@@ -257,6 +257,7 @@ export default function EmissaoBoletosTab() {
 
     const todosResultados = [];
     let totalSucessos = 0;
+    let totalRecuperados = 0;
     let totalErros = 0;
     let totalSkips = 0;
     let processados = 0;
@@ -268,6 +269,7 @@ export default function EmissaoBoletosTab() {
         if (data?.sucesso) {
           todosResultados.push(...(data.resultados || []));
           totalSucessos += data.sucessos || 0;
+          totalRecuperados += data.recuperados || 0;
           totalErros += data.erros || 0;
           totalSkips += data.skips || 0;
         } else {
@@ -288,6 +290,7 @@ export default function EmissaoBoletosTab() {
       total: codigos.length,
       processados: codigos.length,
       sucessos: totalSucessos,
+      recuperados: totalRecuperados,
       erros: totalErros,
       skips: totalSkips,
       resultados: todosResultados
@@ -295,6 +298,7 @@ export default function EmissaoBoletosTab() {
 
     setResultado(resultadoFinal);
     if (totalSucessos > 0) toast.success(`${totalSucessos} boleto(s) emitido(s) com sucesso`);
+    if (totalRecuperados > 0 && totalSucessos === 0) toast.info(`${totalRecuperados} boleto(s) já estavam gerados — prontos para impressão`);
     if (totalErros > 0) toast.error(`${totalErros} boleto(s) falharam — veja o detalhe abaixo`);
 
     if (totalSucessos > 0) {
