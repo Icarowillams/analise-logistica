@@ -11,12 +11,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function resolverCreds(base44) {
-  try {
-    const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1);
-    const cfg = configs?.[0];
-    if (cfg?.app_key && cfg?.app_secret) return { app_key: cfg.app_key, app_secret: cfg.app_secret };
-  } catch { /* fallback */ }
-  return { app_key: Deno.env.get('OMIE_APP_KEY'), app_secret: Deno.env.get('OMIE_APP_SECRET') };
+  // ENV PRIMEIRO (fonte de verdade). Banco só como fallback.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { app_key: envKey, app_secret: envSecret };
+  const configs = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = configs?.[0];
+  return { app_key: envKey || cfg?.app_key, app_secret: envSecret || cfg?.app_secret };
 }
 
 // NF autorizada de um pedido SEM chamar o Omie. ConsultarNF NÃO aceita filtrar por pedido

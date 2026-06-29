@@ -8,8 +8,8 @@ async function getOmieCredentials(base44: any) {
   if (_credsCache && Date.now() - _credsCache.at < 30_000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  let appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  let appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  let appKey = Deno.env.get('OMIE_APP_KEY') || cfg?.app_key || '';
+  let appSecret = Deno.env.get('OMIE_APP_SECRET') || cfg?.app_secret || '';
   if (!appKey || !appSecret) { appKey = Deno.env.get('OMIE_APP_KEY') || ''; appSecret = Deno.env.get('OMIE_APP_SECRET') || ''; }
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
@@ -681,9 +681,9 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
                 codigo_pedido: String(codigoOmie),
                 codigo_pedido_integracao: pedido.id,
                 numero_pedido: numeroPedidoOmie ? String(numeroPedidoOmie) : '',
-                etapa: '20',
+                etapa: '10',
                 status_real: null,
-                status_label: 'Liberado',
+                status_label: 'Pendente',
                 numero_nf: '',
                 codigo_cliente: String(cli.codigo_omie || ''),
                 codigo_cliente_integracao: cli.codigo_integracao || cli.codigo || pedido.cliente_codigo || '',
@@ -703,7 +703,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
                 valor_total_pedido: pedido.valor_total || 0,
                 pedido_id: pedido.id,
                 sincronizado_em: new Date().toISOString(),
-                origem_sync: 'webhook'
+                origem_sync: 'envio'
             };
             // 🛡️ UPSERT IDEMPOTENTE por codigo_pedido — NUNCA INSERT cego.
             // Busca TODOS os registros (não só 1). Atualiza o principal, deleta duplicatas.

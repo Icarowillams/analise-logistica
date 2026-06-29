@@ -8,8 +8,8 @@ async function getCreds(base44) {
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
   return {
-    app_key: cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '',
-    app_secret: cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || ''
+    app_key: Deno.env.get('OMIE_APP_KEY') || cfg?.app_key || '',
+    app_secret: Deno.env.get('OMIE_APP_SECRET') || cfg?.app_secret || ''
   };
 }
 

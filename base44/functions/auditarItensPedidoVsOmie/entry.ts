@@ -16,8 +16,8 @@ const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 async function getOmieCredentials(base44) {
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  const appKey = Deno.env.get('OMIE_APP_KEY') || cfg?.app_key || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || cfg?.app_secret || '';
   return { appKey, appSecret };
 }
 

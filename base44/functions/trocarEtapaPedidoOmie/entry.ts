@@ -70,13 +70,13 @@ async function trocarUmPedido(base44, pedido, etapaDestino) {
 }
 
 async function getOmieCredentials(base44: any) {
-  try {
-    const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-    if (rows.length > 0) return { appKey: rows[0].app_key, appSecret: rows[0].app_secret };
-  } catch (_) { /* ignore */ }
-  const appKey = Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = Deno.env.get('OMIE_APP_SECRET') || '';
-  return { appKey, appSecret };
+  // ENV PRIMEIRO (fonte de verdade). Banco só como fallback — o banco foi esvaziado como blindagem.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { appKey: envKey, appSecret: envSecret };
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const cfg = rows?.[0];
+  return { appKey: envKey || String(cfg?.app_key || '').trim(), appSecret: envSecret || String(cfg?.app_secret || '').trim() };
 }
 
 const CB_ID = '6a1e06a9aa62ceab7b3b6d97';

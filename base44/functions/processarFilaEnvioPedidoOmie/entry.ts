@@ -107,13 +107,16 @@ const RETRY_DELAYS_MS = [1000, 2000, 4000];
 let _credsCache = null;
 async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { appKey: String(ativo.app_key), appSecret: String(ativo.app_secret), at: Date.now() };
+  // ENV PRIMEIRO (fonte de verdade). Banco só como fallback.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) {
+    _credsCache = { appKey: envKey, appSecret: envSecret, at: Date.now() };
     return _credsCache;
   }
-  _credsCache = { appKey: Deno.env.get('OMIE_APP_KEY') || '', appSecret: Deno.env.get('OMIE_APP_SECRET') || '', at: Date.now() };
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  _credsCache = { appKey: String(ativo?.app_key || ''), appSecret: String(ativo?.app_secret || ''), at: Date.now() };
   return _credsCache;
 }
 
@@ -480,9 +483,9 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         codigo_pedido: String(codigoOmie),
         codigo_pedido_integracao: pedido.id,
         numero_pedido: numeroPedidoOmie ? String(numeroPedidoOmie) : '',
-        etapa: '20',
+        etapa: '10',
         status_real: null,
-        status_label: 'Liberado',
+        status_label: 'Pendente',
         numero_nf: '',
         codigo_cliente: String(cli.codigo_omie || ''),
         codigo_cliente_integracao: cli.codigo_integracao || cli.codigo || pedido.cliente_codigo || '',
@@ -502,7 +505,7 @@ async function enviarUmPedido(base44, pedido_id, ctx = {}) {
         valor_total_pedido: pedido.valor_total || 0,
         pedido_id: pedido.id,
         sincronizado_em: new Date().toISOString(),
-        origem_sync: 'webhook'
+        origem_sync: 'envio'
       };
       // UPSERT IDEMPOTENTE por codigo_pedido — nunca INSERT cego. Preserva produtos já existentes.
       const existentes = await base44.asServiceRole.entities.PedidoLiberadoOmie

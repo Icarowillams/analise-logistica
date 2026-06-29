@@ -24,8 +24,8 @@ async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const cfg = rows?.[0];
-  const appKey = cfg?.app_key || Deno.env.get('OMIE_APP_KEY') || '';
-  const appSecret = cfg?.app_secret || Deno.env.get('OMIE_APP_SECRET') || '';
+  const appKey = Deno.env.get('OMIE_APP_KEY') || cfg?.app_key || '';
+  const appSecret = Deno.env.get('OMIE_APP_SECRET') || cfg?.app_secret || '';
   _credsCache = { appKey, appSecret, at: Date.now() };
   return { appKey, appSecret };
 }

@@ -3,11 +3,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const OMIE_BASE_URL = 'https://app.omie.com.br/api/v1/';
 
 async function resolverCreds(base44) {
+  // ENV PRIMEIRO (fonte de verdade). Banco só como fallback.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) return { app_key: envKey, app_secret: envSecret };
   const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
   const ativo = rows?.[0];
   return {
-    app_key: ativo?.app_key || Deno.env.get('OMIE_APP_KEY'),
-    app_secret: ativo?.app_secret || Deno.env.get('OMIE_APP_SECRET')
+    app_key: envKey || ativo?.app_key,
+    app_secret: envSecret || ativo?.app_secret
   };
 }
 

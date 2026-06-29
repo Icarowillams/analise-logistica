@@ -10,13 +10,16 @@ let _testCache: { result: unknown; at: number } | null = null;
 const TEST_CACHE_TTL_MS = 30_000; // Omie exige mínimo ~20s entre chamadas idênticas
 async function getOmieCredentials(base44) {
   if (_credsCache && Date.now() - _credsCache.at < 30000) return _credsCache;
-  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
-  const ativo = rows?.[0];
-  if (ativo?.app_key && ativo?.app_secret) {
-    _credsCache = { appKey: String(ativo.app_key).trim(), appSecret: String(ativo.app_secret).trim(), at: Date.now() };
+  // ENV PRIMEIRO (fonte de verdade). Banco só como fallback.
+  const envKey = (Deno.env.get('OMIE_APP_KEY') || '').trim();
+  const envSecret = (Deno.env.get('OMIE_APP_SECRET') || '').trim();
+  if (envKey && envSecret) {
+    _credsCache = { appKey: envKey, appSecret: envSecret, at: Date.now() };
     return _credsCache;
   }
-  _credsCache = { appKey: (Deno.env.get('OMIE_APP_KEY') || '').trim(), appSecret: (Deno.env.get('OMIE_APP_SECRET') || '').trim(), at: Date.now() };
+  const rows = await base44.asServiceRole.entities.ConfiguracaoOmie.filter({ ativo: true }, '-updated_date', 1).catch(() => []);
+  const ativo = rows?.[0];
+  _credsCache = { appKey: String(ativo?.app_key || '').trim(), appSecret: String(ativo?.app_secret || '').trim(), at: Date.now() };
   return _credsCache;
 }
 
