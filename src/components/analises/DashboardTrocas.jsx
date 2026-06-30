@@ -209,12 +209,11 @@ export default function DashboardTrocas() {
         return;
       }
 
-      // Busca em lotes de 200 ids para não sobrecarregar a query
-      const LOTE = 200;
+      // Busca em lotes de 10 ids em paralelo para respeitar rate limit
+      const PARALELO = 10;
       const todosItens = [];
-      for (let i = 0; i < ids.length; i += LOTE) {
-        const lote = ids.slice(i, i + LOTE);
-        // Busca todos os itens cujo pedido_id esteja neste lote
+      for (let i = 0; i < ids.length; i += PARALELO) {
+        const lote = ids.slice(i, i + PARALELO);
         const resultados = await Promise.all(
           lote.map(pid => base44.entities.PedidoItem.filter({ pedido_id: pid }, '', 500))
         );
