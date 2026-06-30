@@ -55,17 +55,29 @@ export default function DashboardTrocas() {
   // (mesmo padrão do PDF/XLSX). Substitui a query global PedidoItem.filter({}, ..., 20000)
   // que sofria cutoff de 5.000 do SDK e perdia a maioria dos itens de troca.
   // Cacheada uma vez; filtros de tela são aplicados localmente depois.
-  const { data: resumoItensPorPedido = { porPedido: new Map(), itensUnicos: new Map() }, isLoading: loadingItens } = useQuery({
+  const { data: resumoItensPorPedido = { porPedido: new Map(), itensUnicos: new Map(), incompleto: false, lotesFalhos: 0 }, isLoading: loadingItens } = useQuery({
     queryKey: ['itens_troca_por_pedido', trocasPedido.map(t => t.id).join(','), motivosTroca.length],
     queryFn: async () => {
-      if (!trocasPedido.length) return { porPedido: new Map(), itensUnicos: new Map() };
+      if (!trocasPedido.length) return { porPedido: new Map(), itensUnicos: new Map(), incompleto: false, lotesFalhos: 0 };
       const pedido_ids = trocasPedido.map(t => t.id);
-      const LOTE = 200;
+      const LOTE = 100; // reduzido de 200 — lotes menores evitam 500/timeout
       const itensPorPedidoRaw = {};
+      let lotesFalhos = 0;
       for (let i = 0; i < pedido_ids.length; i += LOTE) {
         const chunk = pedido_ids.slice(i, i + LOTE);
-        const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids: chunk, troca_ids: [] });
-        Object.assign(itensPorPedidoRaw, resp?.data?.itens_pedido || {});
+        let sucesso = false;
+        // Retry com backoff: 3 tentativas (1s, 2s, 4s) — nunca engolir erro de lote silenciosamente
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          try {
+            const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids: chunk, troca_ids: [] });
+            Object.assign(itensPorPedidoRaw, resp?.data?.itens_pedido || {});
+            sucesso = true;
+            break;
+          } catch (err) {
+            if (tentativa < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, tentativa)));
+          }
+        }
+        if (!sucesso) lotesFalhos++;
       }
       // Dedup por id (PedidoItem tem duplicados)
       const itensUnicos = new Map();
@@ -81,11 +93,12 @@ export default function DashboardTrocas() {
         const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '';
         if (mot) r.motivos.add(mot);
       });
-      return { porPedido: map, itensUnicos };
+      return { porPedido: map, itensUnicos, incompleto: lotesFalhos > 0, lotesFalhos };
     },
     enabled: trocasPedido.length > 0,
     staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    retry: false // retry já é feito por lote internamente
   });
   // Trocas de visita (registradas pelo app do vendedor em campo)
   const { data: trocasVisita = [], isLoading: loadingTV } = useQuery({
@@ -419,10 +432,18 @@ export default function DashboardTrocas() {
       </div>
 
       {/* KPIs */}
+      {resumoItensPorPedido.incompleto && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            KPI de pacotes pode estar <strong>incompleto</strong> — {resumoItensPorPedido.lotesFalhos} lote(s) de itens falharam após retries. Número exibido é parcial (parte real, parte estimada do cabeçalho). Recarregue a página para tentar novamente.
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard titulo="Trocas faturadas" valor={formatarNumero(totais.faturadasCount)} sub="NF emitida" icon={ArrowLeftRight} cor="red" />
         <KpiCard titulo="Trocas em aberto" valor={formatarNumero(totais.emAbertoCount)} sub="não faturadas" icon={ArrowLeftRight} cor="emerald" />
-        <KpiCard titulo="Pacotes trocados" valor={loadingItens ? '...' : formatarNumero(totais.pacotes)} sub="inclui não faturadas" icon={Package} cor="orange" />
+        <KpiCard titulo="Pacotes trocados" valor={loadingItens ? '...' : formatarNumero(totais.pacotes)} sub={resumoItensPorPedido.incompleto ? '⚠ incompleto (parcial)' : 'inclui não faturadas'} icon={Package} cor="orange" />
         <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} sub="inclui não faturadas" icon={DollarSign} cor="amber" />
         <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} sub="inclui não faturadas" icon={AlertTriangle} cor="indigo" />
         <KpiCard titulo="Trocas visita" valor={formatarNumero(totais.qtdVisita)} sub={`${formatarNumero(totais.itensTrocadosVisita)} itens`} icon={Package} cor="cyan" />
