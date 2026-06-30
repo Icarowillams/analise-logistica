@@ -128,17 +128,17 @@ export default function NotasNF55Tab({ cargaFiltro, ativa = true }) {
     );
     const numerosNf = new Set(
       pedidos
-        .map(p => p.numero_nf && String(p.numero_nf).replace(/\D/g, ''))
+        .map(p => p.numero_nf && String(p.numero_nf).replace(/\D/g, '').replace(/^0+/, ''))
         .filter(Boolean)
     );
     // Ponte LogEmissaoNF: nº de NF autorizado de cada codigo_pedido da carga.
     Object.entries(mapaNfLog).forEach(([cod, num]) => {
-      if (codigosPedido.has(String(cod)) && num) numerosNf.add(String(num).replace(/\D/g, ''));
+      if (codigosPedido.has(String(cod)) && num) numerosNf.add(String(num).replace(/\D/g, '').replace(/^0+/, ''));
     });
     if (codigosPedido.size === 0 && numerosNf.size === 0) return [];
     return (nfs || []).filter(nf => {
       const idPedido = String(nf.nIdPedido || '');
-      const numNf = String(nf.cNumero || '').replace(/\D/g, '');
+      const numNf = String(nf.cNumero || '').replace(/\D/g, '').replace(/^0+/, '');
       return (idPedido && codigosPedido.has(idPedido)) ||
              (numNf && numerosNf.has(numNf));
     });
