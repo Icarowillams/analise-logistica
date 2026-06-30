@@ -219,76 +219,57 @@ export default function DashboardTrocas() {
 
       const itensSemDup = Object.values(itensPorPedidoRaw).flat();
 
-      // Indexa: pedido_id → Map(produto_nome → { qtd, motivo })
+      // Indexa: pedido_id → [{ produto, qtd, motivo }]
       const itensPorPedido = new Map();
       itensSemDup.forEach(it => {
         if (!it.pedido_id) return;
-        if (!itensPorPedido.has(it.pedido_id)) itensPorPedido.set(it.pedido_id, new Map());
-        const prods = itensPorPedido.get(it.pedido_id);
+        if (!itensPorPedido.has(it.pedido_id)) itensPorPedido.set(it.pedido_id, []);
+        const arr = itensPorPedido.get(it.pedido_id);
         const nome = it.produto_nome || it.produto_codigo || '(sem nome)';
-        const atual = prods.get(nome) || { qtd: 0, motivo: '' };
-        atual.qtd += Number(it.quantidade || 0);
-        if (!atual.motivo && it.motivo_troca_descricao) atual.motivo = it.motivo_troca_descricao;
-        prods.set(nome, atual);
+        const motivo = it.motivo_troca_descricao || '';
+        arr.push({ produto: nome, qtd: Number(it.quantidade || 0), motivo });
       });
 
-
-      // Aba Resumo: produto × motivo agregado, Qtd como número
-      const resumoMap = new Map();
+      // ABA ÚNICA agrupada por (Produto + Motivo + Vendedor + Cliente)
+      const grupos = new Map();
       filtradas.forEach(t => {
+        const vendedor = t.vendedor_nome || '-';
+        const cliente = t.cliente_nome || '-';
         const prods = itensPorPedido.get(t.id);
-        if (prods && prods.size > 0) {
-          prods.forEach(({ qtd, motivo }, nomeProd) => {
-            const motFinal = motivo || t.motivo_troca_descricao || 'Sem motivo';
-            const chave = nomeProd + '||' + motFinal;
-            const r = resumoMap.get(chave) || { produto: nomeProd, motivo: motFinal, qtd: 0 };
-            r.qtd += qtd;
-            resumoMap.set(chave, r);
-          });
-        } else {
-          const motFinal = t.motivo_troca_descricao || 'Sem motivo';
-          const chave = '(sem itens detalhados)||' + motFinal;
-          const r = resumoMap.get(chave) || { produto: '(sem itens detalhados)', motivo: motFinal, qtd: 0 };
-          r.qtd += Number(t.qtd_total_itens || t.total_itens || 0);
-          resumoMap.set(chave, r);
-        }
-      });
-      const linhasResumo = [...resumoMap.values()].sort((a, b) => b.qtd - a.qtd);
+        const linhasItem = (prods && prods.length > 0) ? prods : [{ produto: '(sem itens detalhados)', qtd: Number(t.qtd_total_itens || t.total_itens || 0), motivo: '' }];
 
-      // Aba Detalhe: uma linha por produto por troca, Qtd e Valor como número
-      const linhasDetalhe = [];
-      filtradas.forEach(t => {
-        const data = (t.data_faturamento || t.created_date)?.slice(0, 10) || '';
-        const numPed = formatarNumeroPedido(t);
-        const prods = itensPorPedido.get(t.id);
-        if (prods && prods.size > 0) {
-          prods.forEach(({ qtd, motivo }, nomeProd) => {
-            linhasDetalhe.push([data, numPed, t.cliente_nome, t.vendedor_nome, t.rota_nome,
-              motivo || t.motivo_troca_descricao, nomeProd, Number(qtd), Number(t.valor_total || 0), t.status]);
-          });
-        } else {
-          linhasDetalhe.push([data, numPed, t.cliente_nome, t.vendedor_nome, t.rota_nome,
-            t.motivo_troca_descricao, '(sem itens detalhados)',
-            Number(t.qtd_total_itens || t.total_itens || 0), Number(t.valor_total || 0), t.status]);
-        }
+        // de-dup de valor_total por pedido dentro do grupo
+        const pedidosNoGrupo = new Set();
+        linhasItem.forEach(li => {
+          const motFinal = li.motivo || t.motivo_troca_descricao || 'Sem motivo';
+          const chave = li.produto + '||' + motFinal + '||' + vendedor + '||' + cliente;
+          let g = grupos.get(chave);
+          if (!g) {
+            g = { produto: li.produto, motivo: motFinal, vendedor, cliente, qtd: 0, pedidos: new Set() };
+            grupos.set(chave, g);
+          }
+          g.qtd += li.qtd;
+          if (!g.pedidos.has(t.id)) {
+            g.pedidos.add(t.id);
+            g._valor = arredondar2((g._valor || 0) + arredondar2(Number(t.valor_total || 0)));
+          }
+        });
       });
+
+      const linhasResumo = [...grupos.values()]
+        .map(g => ({ ...g, valor: g._valor || 0 }))
+        .sort((a, b) => b.qtd - a.qtd);
 
       const wb = XLSX.utils.book_new();
       const wsResumo = XLSX.utils.aoa_to_sheet([
-        ['Produto', 'Motivo', 'Qtd Total (pacotes)'],
-        ...linhasResumo.map(r => [r.produto, r.motivo, r.qtd])
+        ['Produto', 'Motivo', 'Qtd Total (pacotes)', 'Valor Troca', 'Vendedor', 'Cliente'],
+        ...linhasResumo.map(r => [r.produto, r.motivo, r.qtd, r.valor, r.vendedor, r.cliente])
       ]);
-      const wsDetalhe = XLSX.utils.aoa_to_sheet([
-        ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Produto', 'Qtd (pacotes)', 'Valor Troca', 'Status'],
-        ...linhasDetalhe
-      ]);
-      wsResumo['!cols'] = [{wch:45},{wch:30},{wch:18}];
-      wsDetalhe['!cols'] = [{wch:14},{wch:12},{wch:32},{wch:26},{wch:14},{wch:20},{wch:40},{wch:14},{wch:14},{wch:12}];
+      wsResumo['!cols'] = [{wch:45},{wch:30},{wch:18},{wch:16},{wch:26},{wch:32}];
       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
-      XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
-      XLSX.writeFile(wb, `dashboard_trocas_detalhado_${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.writeFile(wb, `dashboard_trocas_resumo_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens=${itensSemDup.length}`);
+      console.log(`[Exportar Trocas] linhasResumo=${linhasResumo.length} | grupos=${grupos.size} | itens=${itensSemDup.length} | pedidos=${filtradas.length}`);
     } finally {
       setExportando(false);
     }
