@@ -44,10 +44,12 @@ export default function DashboardTrocas() {
     queryFn: () => base44.entities.Cliente.list('-created_date', 2000),
     staleTime: 5 * 60 * 1000
   });
-  // Trocas via Pedido tipo=troca faturados (fonte principal — integração Omie)
+  // Trocas via Pedido tipo=troca — TODAS as ativas (faturadas + em aberto), exceto canceladas
   const { data: trocasPedido = [], isLoading: loadingTP } = useQuery({
-    queryKey: ['pedidos_troca_faturados'],
-    queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
+    queryKey: ['pedidos_troca_todas'],
+    queryFn: () => base44.entities.Pedido.filter(
+      { tipo: 'troca', status: { $nin: ['cancelado', 'cancelado_pos_faturamento'] } },
+      '-created_date', 5000)
   });
   // Itens das trocas faturadas — busca DIRECIONADA por pedido_id via getItensPedidosLote
   // (mesmo padrão do PDF/XLSX). Substitui a query global PedidoItem.filter({}, ..., 20000)
@@ -133,13 +135,15 @@ export default function DashboardTrocas() {
   }), [trocasVisita, filtros]);
 
   const totais = useMemo(() => {
+    const faturadasCount = filtradas.filter(t => t.status === 'faturado').length;
+    const emAbertoCount = filtradas.length - faturadasCount;
     const valor = arredondar2(filtradas.reduce((a, t) => a + arredondar2(t.valor_total), 0));
     const ticket = filtradas.length ? arredondar2(valor / filtradas.length) : 0;
     const pacotes = filtradas.reduce((a, t) => a + (t.qtd_pacotes || 0), 0);
     const qtdVisita = trocasVisitaFiltradas.length;
     // Qtd de itens trocados via visita
     const itensTrocadosVisita = trocasVisitaFiltradas.reduce((a, t) => a + (t.quantidade || 0), 0);
-    return { total: filtradas.length, valor, ticket, pacotes, qtdVisita, itensTrocadosVisita };
+    return { total: filtradas.length, faturadasCount, emAbertoCount, valor, ticket, pacotes, qtdVisita, itensTrocadosVisita };
   }, [filtradas, trocasVisitaFiltradas]);
 
   // Por motivo (pedido) — agrega quantidade de PACOTES por motivo (não só nº de pedidos)
@@ -410,11 +414,12 @@ export default function DashboardTrocas() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard titulo="Trocas (faturadas)" valor={formatarNumero(totais.total)} icon={ArrowLeftRight} cor="red" />
-        <KpiCard titulo="Pacotes trocados" valor={loadingItens ? '...' : formatarNumero(totais.pacotes)} icon={Package} cor="orange" />
-        <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} icon={DollarSign} cor="amber" />
-        <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} icon={AlertTriangle} cor="indigo" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard titulo="Trocas faturadas" valor={formatarNumero(totais.faturadasCount)} sub="NF emitida" icon={ArrowLeftRight} cor="red" />
+        <KpiCard titulo="Trocas em aberto" valor={formatarNumero(totais.emAbertoCount)} sub="não faturadas" icon={ArrowLeftRight} cor="emerald" />
+        <KpiCard titulo="Pacotes trocados" valor={loadingItens ? '...' : formatarNumero(totais.pacotes)} sub="inclui não faturadas" icon={Package} cor="orange" />
+        <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} sub="inclui não faturadas" icon={DollarSign} cor="amber" />
+        <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} sub="inclui não faturadas" icon={AlertTriangle} cor="indigo" />
         <KpiCard titulo="Trocas visita" valor={formatarNumero(totais.qtdVisita)} sub={`${formatarNumero(totais.itensTrocadosVisita)} itens`} icon={Package} cor="cyan" />
         <KpiCard titulo="Cortes de produto" valor={formatarNumero(analiseCortes.total)} sub={formatarMoeda(analiseCortes.valorCortado)} icon={TrendingDown} cor="slate" />
       </div>
@@ -422,7 +427,7 @@ export default function DashboardTrocas() {
       {/* Motivos pedido + motivos visita */}
       <div className="grid lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Motivos de troca (pedidos faturados)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Motivos de troca</CardTitle></CardHeader>
           <CardContent>
             {porMotivo.length === 0
               ? <p className="text-sm text-slate-400 text-center py-12">Sem dados</p>
@@ -534,7 +539,7 @@ export default function DashboardTrocas() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 sticky top-0">
               <tr>
-                <th className="p-2 text-left">Faturamento</th>
+                <th className="p-2 text-left">Data</th>
                 <th className="p-2 text-left">Nº</th>
                 <th className="p-2 text-left">Cliente</th>
                 <th className="p-2 text-left">Vendedor</th>

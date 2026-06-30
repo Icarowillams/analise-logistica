@@ -8,7 +8,8 @@ export default function KpiCard({ titulo, valor, sub, icon: Icon, cor = 'cyan' }
     amber: 'from-amber-500 to-orange-600 text-amber-50',
     red: 'from-red-500 to-rose-600 text-red-50',
     indigo: 'from-indigo-500 to-purple-600 text-indigo-50',
-    slate: 'from-slate-600 to-slate-800 text-slate-50'
+    slate: 'from-slate-600 to-slate-800 text-slate-50',
+    orange: 'from-orange-500 to-amber-600 text-orange-50'
   };
   return (
     <Card className="overflow-hidden border-0 shadow-md">
