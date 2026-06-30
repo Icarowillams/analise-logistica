@@ -55,10 +55,10 @@ export default function DashboardTrocas() {
   // (mesmo padrão do PDF/XLSX). Substitui a query global PedidoItem.filter({}, ..., 20000)
   // que sofria cutoff de 5.000 do SDK e perdia a maioria dos itens de troca.
   // Cacheada uma vez; filtros de tela são aplicados localmente depois.
-  const { data: resumoItensPorPedido = new Map(), isLoading: loadingItens } = useQuery({
+  const { data: resumoItensPorPedido = { porPedido: new Map(), itensUnicos: new Map() }, isLoading: loadingItens } = useQuery({
     queryKey: ['itens_troca_por_pedido', trocasPedido.map(t => t.id).join(','), motivosTroca.length],
     queryFn: async () => {
-      if (!trocasPedido.length) return new Map();
+      if (!trocasPedido.length) return { porPedido: new Map(), itensUnicos: new Map() };
       const pedido_ids = trocasPedido.map(t => t.id);
       const LOTE = 200;
       const itensPorPedidoRaw = {};
@@ -81,7 +81,7 @@ export default function DashboardTrocas() {
         const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '';
         if (mot) r.motivos.add(mot);
       });
-      return map;
+      return { porPedido: map, itensUnicos };
     },
     enabled: trocasPedido.length > 0,
     staleTime: 5 * 60 * 1000,
@@ -111,7 +111,7 @@ export default function DashboardTrocas() {
 
   const trocasEnriquecidas = useMemo(() => trocasPedido.map(t => {
     const v = vendedorPorCliente.get(t.cliente_id);
-    const resItens = resumoItensPorPedido.get(t.id);
+    const resItens = resumoItensPorPedido.porPedido.get(t.id);
     const qtdPacotes = resItens?.quantidade ?? Number(t.qtd_total_itens || t.total_itens || 0);
     const motivosItens = resItens && resItens.motivos.size ? Array.from(resItens.motivos).join(', ') : '';
     const motivoFinal = t.motivo_troca_descricao || motivosItens || '';
@@ -146,17 +146,22 @@ export default function DashboardTrocas() {
     return { total: filtradas.length, faturadasCount, emAbertoCount, valor, ticket, pacotes, qtdVisita, itensTrocadosVisita };
   }, [filtradas, trocasVisitaFiltradas]);
 
-  // Por motivo (pedido) — agrega quantidade de PACOTES por motivo (não só nº de pedidos)
+  // Por motivo — agrega PACOTES por motivo a partir dos PedidoItem (motivo real está no item, não no cabeçalho)
   const porMotivo = useMemo(() => {
+    const itensUnicos = resumoItensPorPedido.itensUnicos;
+    if (!itensUnicos || !itensUnicos.size) return [];
+    const nomeMotivo = new Map(motivosTroca.map(m => [m.id, m.descricao || m.nome]));
+    const idsFiltradas = new Set(filtradas.map(t => t.id));
     const m = {};
-    filtradas.forEach(t => {
-      const k = t.motivo_troca_descricao || motivosTroca.find(x => x.id === t.motivo_troca_id)?.descricao || 'Sem motivo';
-      if (!m[k]) m[k] = { qtd: 0, pacotes: 0 };
-      m[k].qtd += 1;
-      m[k].pacotes += Number(t.qtd_pacotes || 0);
+    itensUnicos.forEach(it => {
+      if (!idsFiltradas.has(it.pedido_id)) return;
+      const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '(sem motivo)';
+      if (!m[mot]) m[mot] = { qtd: 0, pacotes: 0 };
+      m[mot].pacotes += Number(it.quantidade || 0);
+      m[mot].qtd += 1;
     });
-    return Object.entries(m).map(([motivo, v]) => ({ motivo, qtd: v.qtd, pacotes: v.pacotes })).sort((a, b) => b.qtd - a.qtd).slice(0, 7);
-  }, [filtradas, motivosTroca]);
+    return Object.entries(m).map(([motivo, v]) => ({ motivo, qtd: v.qtd, pacotes: v.pacotes })).sort((a, b) => b.pacotes - a.pacotes).slice(0, 7);
+  }, [filtradas, resumoItensPorPedido, motivosTroca]);
 
   // Motivos de troca via visita
   const porMotivoVisita = useMemo(() => {
@@ -434,10 +439,10 @@ export default function DashboardTrocas() {
               : (
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={porMotivo} dataKey="qtd" nameKey="motivo" outerRadius={90} label={({ motivo, percent }) => `${motivo.slice(0,15)} ${(percent*100).toFixed(0)}%`}>
+                  <Pie data={porMotivo} dataKey="pacotes" nameKey="motivo" outerRadius={90} label={({ motivo, percent }) => `${motivo.slice(0,15)} ${(percent*100).toFixed(0)}%`}>
                     {porMotivo.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v, n, item) => [`${v} troca(s) • ${formatarNumero(item?.payload?.pacotes || 0)} pacotes`, item?.payload?.motivo]} />
+                  <Tooltip formatter={(v, n, item) => [`${formatarNumero(v)} pacotes • ${item?.payload?.qtd || 0} itens`, item?.payload?.motivo]} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
