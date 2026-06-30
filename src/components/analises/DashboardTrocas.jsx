@@ -254,18 +254,104 @@ export default function DashboardTrocas() {
         });
       });
 
-      const linhasResumo = [...grupos.values()].sort((a, b) => b.qtd - a.qtd);
+      const todosGrupos = [...grupos.values()];
+
+      // ===== ABA 1: Visão Geral =====
+      // Seção A — Total por Vendedor
+      const porVendedor = new Map();
+      todosGrupos.forEach(g => {
+        let v = porVendedor.get(g.vendedor);
+        if (!v) { v = { vendedor: g.vendedor, qtd: 0, valor: 0 }; porVendedor.set(g.vendedor, v); }
+        v.qtd += g.qtd;
+        v.valor = arredondar2(v.valor + g.valor);
+      });
+      const linhasVendedor = [...porVendedor.values()].sort((a, b) => b.valor - a.valor);
+      const totalGeralQtd = linhasVendedor.reduce((a, v) => a + v.qtd, 0);
+      const totalGeralValor = arredondar2(linhasVendedor.reduce((a, v) => a + v.valor, 0));
+
+      // Seção B — Total por Cliente (com vendedor do próprio pedido)
+      const porCliente = new Map();
+      todosGrupos.forEach(g => {
+        const chave = g.cliente + '||' + g.vendedor;
+        let c = porCliente.get(chave);
+        if (!c) { c = { cliente: g.cliente, vendedor: g.vendedor, qtd: 0, valor: 0 }; porCliente.set(chave, c); }
+        c.qtd += g.qtd;
+        c.valor = arredondar2(c.valor + g.valor);
+      });
+      const linhasCliente = [...porCliente.values()].sort((a, b) => b.valor - a.valor);
+
+      const aoaVisao = [
+        ['TOTAL POR VENDEDOR'],
+        ['Vendedor', 'Qtd Total (pacotes)', 'Valor Troca'],
+        ...linhasVendedor.map(v => [v.vendedor, Number(v.qtd), Number(v.valor)]),
+        ['TOTAL GERAL', Number(totalGeralQtd), Number(totalGeralValor)],
+        [],
+        ['TOTAL POR CLIENTE'],
+        ['Cliente', 'Vendedor', 'Qtd Total (pacotes)', 'Valor Troca'],
+        ...linhasCliente.map(c => [c.cliente, c.vendedor, Number(c.qtd), Number(c.valor)])
+      ];
+      const wsVisao = XLSX.utils.aoa_to_sheet(aoaVisao);
+      wsVisao['!cols'] = [{wch:40},{wch:26},{wch:20},{wch:18}];
+
+      // ===== ABA 2: Detalhado (com subtotais) =====
+      const detalheOrdenado = [...todosGrupos].sort((a, b) =>
+        a.vendedor.localeCompare(b.vendedor, 'pt-BR') ||
+        a.cliente.localeCompare(b.cliente, 'pt-BR') ||
+        a.produto.localeCompare(b.produto, 'pt-BR')
+      );
+
+      const aoaDetalhe = [['Vendedor', 'Cliente', 'Produto', 'Motivo', 'Qtd Total (pacotes)', 'Valor Troca']];
+      // estilo de células (negrito nas linhas de subtotal/total)
+      const boldRows = []; // índices (1-based na planilha) para destacar
+      let curRow = 2; // primeira linha de dados
+      let i = 0;
+      while (i < detalheOrdenado.length) {
+        const vendedorAtual = detalheOrdenado[i].vendedor;
+        let vQtd = 0, vValor = 0;
+        let j = i;
+        while (j < detalheOrdenado.length && detalheOrdenado[j].vendedor === vendedorAtual) {
+          const clienteAtual = detalheOrdenado[j].cliente;
+          let cQtd = 0, cValor = 0;
+          while (j < detalheOrdenado.length && detalheOrdenado[j].vendedor === vendedorAtual && detalheOrdenado[j].cliente === clienteAtual) {
+            const g = detalheOrdenado[j];
+            aoaDetalhe.push([g.vendedor, g.cliente, g.produto, g.motivo, Number(g.qtd), Number(g.valor)]);
+            curRow++;
+            cQtd += g.qtd;
+            cValor = arredondar2(cValor + g.valor);
+            j++;
+          }
+          // Subtotal do cliente
+          aoaDetalhe.push(['', '', '', `>>> Subtotal ${clienteAtual}`, Number(cQtd), Number(cValor)]);
+          boldRows.push(curRow);
+          curRow++;
+          vQtd += cQtd;
+          vValor = arredondar2(vValor + cValor);
+        }
+        // Total do vendedor
+        aoaDetalhe.push(['', '', '', `>>> TOTAL ${vendedorAtual}`, Number(vQtd), Number(vValor)]);
+        boldRows.push(curRow);
+        curRow++;
+        i = j;
+      }
+
+      const wsDetalhe = XLSX.utils.aoa_to_sheet(aoaDetalhe);
+      wsDetalhe['!cols'] = [{wch:26},{wch:32},{wch:45},{wch:30},{wch:20},{wch:18}];
+      // aplica negrito nas linhas de subtotal/total
+      const range = XLSX.utils.decode_range(wsDetalhe['!ref']);
+      boldRows.forEach(r => {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = XLSX.utils.encode_cell({ r: r - 1, c });
+          if (!wsDetalhe[addr]) continue;
+          wsDetalhe[addr].s = { font: { bold: true } };
+        }
+      });
 
       const wb = XLSX.utils.book_new();
-      const wsResumo = XLSX.utils.aoa_to_sheet([
-        ['Produto', 'Motivo', 'Qtd Total (pacotes)', 'Valor Troca', 'Vendedor', 'Cliente'],
-        ...linhasResumo.map(r => [r.produto, r.motivo, Number(r.qtd), Number(r.valor), r.vendedor, r.cliente])
-      ]);
-      wsResumo['!cols'] = [{wch:45},{wch:30},{wch:18},{wch:16},{wch:26},{wch:32}];
-      XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
-      XLSX.writeFile(wb, `dashboard_trocas_resumo_${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.utils.book_append_sheet(wb, wsVisao, 'Visão Geral');
+      XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhado');
+      XLSX.writeFile(wb, `dashboard_trocas_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-      console.log(`[Exportar Trocas] linhasResumo=${linhasResumo.length} | grupos=${grupos.size} | itens=${itensSemDup.length} | pedidos=${filtradas.length}`);
+      console.log(`[Exportar Trocas] vendedores=${linhasVendedor.length} | clientes=${linhasCliente.length} | linhasDetalhe=${aoaDetalhe.length - 1} | grupos=${grupos.size} | itens=${itensSemDup.length} | pedidos=${filtradas.length}`);
     } finally {
       setExportando(false);
     }
