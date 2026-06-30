@@ -35,11 +35,50 @@ const TEMPO_MAX_MS = 80000; // 80s
 const INTERVALO_ENTRE_PEDIDOS_MS = 500;
 // Paralelismo conservador: 2 pedidos de CÓDIGOS DIFERENTES por lote (o Omie permite 4
 // simultâneas com registros distintos; usamos 2 por segurança).
-const PARALELISMO = 2;
+const PARALELISMO = 1;
 // Cache anti-redundante: se um codigo_pedido foi consultado com sucesso há menos disto,
 // pulamos a nova consulta (a doc do Omie recomenda cache no lado da aplicação para evitar
 // o erro "Consumo redundante" = mesmo registro consultado 2x em 60s).
 const CACHE_CONSULTA_MS = 60000;
+
+// ── THROTTLE GLOBAL COMPARTILHADO (réplica exata de _shared/omieClient) ──
+// Garante no mínimo GLOBAL_MIN_INTERVAL_MS entre QUALQUER chamada ao Omie,
+// compartilhando o MESMO registro 'rate_limit_global' com os outros workers.
+// SÓ toca o campo atualizado_em — nunca worker_lock_ate/ultimo_erro (esses são
+// do portão global e do circuit breaker).
+const GLOBAL_MIN_INTERVAL_MS = 1_500;
+const GLOBAL_RATE_KEY = 'rate_limit_global';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function upsertControle(base44, chave, payload) {
+  const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+    .filter({ chave }, 'created_date', 50).catch(() => []);
+  const principal = rows?.[0];
+  if (principal?.id) {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+      .update(principal.id, payload).catch(() => null);
+    for (const extra of (rows || []).slice(1)) {
+      await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+        .delete(extra.id).catch(() => null);
+    }
+  } else {
+    await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+      .create({ chave, ...payload }).catch(() => null);
+  }
+}
+
+async function throttleGlobal(base44) {
+  try {
+    const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+      .filter({ chave: GLOBAL_RATE_KEY }, 'created_date', 1).catch(() => []);
+    const row = rows?.[0];
+    const last = row?.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
+    const wait = GLOBAL_MIN_INTERVAL_MS - (Date.now() - last);
+    if (wait > 0) await sleep(wait);
+    await upsertControle(base44, GLOBAL_RATE_KEY, { atualizado_em: new Date().toISOString() });
+  } catch {}
+}
 
 let _credsCache = null;
 async function getOmieCredentials(base44) {
@@ -91,6 +130,7 @@ async function omieCall(base44, endpoint, param, options = {}) {
   if (!call) throw new Error('Informe options.call com o método Omie.');
   const cb = await checkCircuitBreaker(base44);
   if (cb.blocked) { const e = new Error(`API Omie bloqueada até ${cb.blockedUntil}`); e.code = 'OMIE_BLOQUEADA'; throw e; }
+  await throttleGlobal(base44); // ritmo global compartilhado (só atualizado_em)
   const url = /^https?:\/\//i.test(endpoint) ? endpoint : OMIE_BASE_URL + endpoint.replace(/^\/+/, '');
   const RETRIES = [1500, 3000];
   let lastErr = '';
