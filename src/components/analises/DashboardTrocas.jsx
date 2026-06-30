@@ -206,23 +206,13 @@ export default function DashboardTrocas() {
         return;
       }
 
-      // Busca TODOS os PedidoItem em páginas de 5000 (uma query por vez, sem filtro por pedido)
-      // e depois filtra em memória pelos ids das trocas filtradas — evita rate limit.
-      const idsFiltradas = new Set(filtradas.map(t => t.id));
-      const todosItensRaw = [];
-      const PAGE = 5000;
-      let skip = 0;
-      while (true) {
-        const pagina = await base44.entities.PedidoItem.list('-created_date', PAGE, skip);
-        if (!pagina || pagina.length === 0) break;
-        todosItensRaw.push(...pagina);
-        if (pagina.length < PAGE) break;
-        skip += PAGE;
-      }
+      // Usa o backend getItensPedidosLote que faz $in em lotes de 40 no servidor
+      // evita timeout do banco que ocorre com list() sem filtro em tabelas grandes
+      const pedido_ids = filtradas.map(t => t.id);
+      const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids, troca_ids: [] });
+      const itensPorPedidoRaw = resp?.data?.itens_pedido || {};
 
-      // De-dup por id e filtra só os itens das trocas filtradas
-      const itensSemDup = [...new Map(todosItensRaw.map(it => [it.id, it])).values()]
-        .filter(it => idsFiltradas.has(it.pedido_id));
+      const itensSemDup = Object.values(itensPorPedidoRaw).flat();
 
       // Indexa: pedido_id → Map(produto_nome → { qtd, motivo })
       const itensPorPedido = new Map();
@@ -236,6 +226,7 @@ export default function DashboardTrocas() {
         if (!atual.motivo && it.motivo_troca_descricao) atual.motivo = it.motivo_troca_descricao;
         prods.set(nome, atual);
       });
+
 
       // Aba Resumo: produto × motivo agregado, Qtd como número
       const resumoMap = new Map();
@@ -292,7 +283,7 @@ export default function DashboardTrocas() {
       XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
       XLSX.writeFile(wb, `dashboard_trocas_detalhado_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens brutos=${todosItensRaw.length} | itens de-dup=${itensSemDup.length}`);
+      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens=${itensSemDup.length}`);
     } finally {
       setExportando(false);
     }
