@@ -19,7 +19,7 @@ const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','N
 const formatMes = (k) => { const [a, m] = k.split('-'); return `${MESES_PT[+m-1]}/${a.slice(2)}`; };
 
 export default function DashboardVendas() {
-  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', rota_id: '', modelo_nota: '' });
+  const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', rota_id: '', modelo_nota: '', forma_pagamento: '' });
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores_analise'],
@@ -80,10 +80,18 @@ export default function DashboardVendas() {
   };
   const pedidosEnr = useMemo(() => pedidosFaturados.map(enriquecer), [pedidosFaturados, vendedorPorCliente, nomeRota]);
 
+  // Lista distinta de formas de pagamento (plano_pagamento_nome) para o filtro
+  const formasPagamento = useMemo(() => {
+    const set = new Set();
+    pedidosEnr.forEach(p => { if (p.plano_pagamento_nome) set.add(p.plano_pagamento_nome); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [pedidosEnr]);
+
   const filtrados = useMemo(() => pedidosEnr.filter(p => {
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.rota_id && p.rota_id !== filtros.rota_id) return false;
     if (filtros.modelo_nota && p.modelo_nota !== filtros.modelo_nota) return false;
+    if (filtros.forma_pagamento && (p.plano_pagamento_nome || '') !== filtros.forma_pagamento) return false;
     const dataRef = p.data_faturamento || p.created_date;
     if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
@@ -177,19 +185,31 @@ export default function DashboardVendas() {
     return Object.values(r).sort((a, b) => b.valor - a.valor).slice(0, 8);
   }, [filtrados]);
 
+  // Faturamento por forma de pagamento (plano_pagamento_nome)
+  const porFormaPagamento = useMemo(() => {
+    const f = {};
+    filtrados.forEach(p => {
+      const k = p.plano_pagamento_nome || 'Sem plano';
+      if (!f[k]) f[k] = { nome: k, valor: 0, qtd: 0 };
+      f[k].valor = arredondar2(f[k].valor + arredondar2(p.valor_total));
+      f[k].qtd++;
+    });
+    return Object.values(f).sort((a, b) => b.valor - a.valor);
+  }, [filtrados]);
+
   const exportar = () => exportarCSV('dashboard_vendas',
-    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Modelo NF', 'Origem', 'Itens', 'Valor', 'Status'],
+    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Modelo NF', 'Forma de Pagamento', 'Origem', 'Itens', 'Valor', 'Status'],
     filtrados.map(p => [
       (p.data_faturamento || p.created_date)?.slice(0, 10),
       formatarNumeroPedido(p), p.cliente_nome, p.vendedor_nome, p.rota_nome,
-      p.modelo_nota, p.origem, p.total_itens, valorCSV(p.valor_total), p.status
+      p.modelo_nota, p.plano_pagamento_nome || '-', p.origem, p.total_itens, valorCSV(p.valor_total), p.status
     ])
   );
 
   return (
     <div className="space-y-4">
       <FiltrosBase filtros={filtros} setFiltros={setFiltros} vendedores={vendedores}
-        onLimpar={() => setFiltros({ inicio: '', fim: '', vendedor_id: '', rota_id: '', modelo_nota: '' })}
+        onLimpar={() => setFiltros({ inicio: '', fim: '', vendedor_id: '', rota_id: '', modelo_nota: '', forma_pagamento: '' })}
         onExportar={exportar}>
         <div>
           <Label className="text-xs">Rota</Label>
@@ -210,6 +230,16 @@ export default function DashboardVendas() {
               <SelectItem value="55">NF-e (55)</SelectItem>
               <SelectItem value="d1">D1 (interno)</SelectItem>
               <SelectItem value="nfce">NFC-e</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Forma de Pagamento</Label>
+          <Select value={filtros.forma_pagamento || '_todos_'} onValueChange={(v) => setFiltros({ ...filtros, forma_pagamento: v === '_todos_' ? '' : v })}>
+            <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_todos_">Todas as formas</SelectItem>
+              {formasPagamento.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -306,6 +336,39 @@ export default function DashboardVendas() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Faturamento por forma de pagamento */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Faturamento por Forma de Pagamento</CardTitle></CardHeader>
+        <CardContent>
+          {porFormaPagamento.length === 0
+            ? <p className="text-sm text-slate-400 text-center py-8">Sem dados</p>
+            : (
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="p-2 text-left">Forma de Pagamento</th>
+                    <th className="p-2 text-right">Pedidos</th>
+                    <th className="p-2 text-right">Faturamento</th>
+                    <th className="p-2 text-right">% do total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porFormaPagamento.map(f => (
+                    <tr key={f.nome} className="border-t hover:bg-slate-50">
+                      <td className="p-2 font-medium">{f.nome}</td>
+                      <td className="p-2 text-right">{formatarNumero(f.qtd)}</td>
+                      <td className="p-2 text-right font-medium text-emerald-700">{formatarMoeda(f.valor)}</td>
+                      <td className="p-2 text-right text-slate-500">{totais.valor > 0 ? ((f.valor / totais.valor) * 100).toFixed(1) : '0'}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Top clientes */}
       <Card>
