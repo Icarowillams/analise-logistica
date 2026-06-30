@@ -206,11 +206,16 @@ export default function DashboardTrocas() {
         return;
       }
 
-      // Usa o backend getItensPedidosLote que faz $in em lotes de 40 no servidor
-      // evita timeout do banco que ocorre com list() sem filtro em tabelas grandes
+      // Chama getItensPedidosLote em lotes de 200 ids para evitar payload enorme / 500
       const pedido_ids = filtradas.map(t => t.id);
-      const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids, troca_ids: [] });
-      const itensPorPedidoRaw = resp?.data?.itens_pedido || {};
+      const LOTE = 200;
+      const itensPorPedidoRaw = {};
+      for (let i = 0; i < pedido_ids.length; i += LOTE) {
+        const chunk = pedido_ids.slice(i, i + LOTE);
+        const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids: chunk, troca_ids: [] });
+        const parcial = resp?.data?.itens_pedido || {};
+        Object.assign(itensPorPedidoRaw, parcial);
+      }
 
       const itensSemDup = Object.values(itensPorPedidoRaw).flat();
 
