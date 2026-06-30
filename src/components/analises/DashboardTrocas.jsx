@@ -98,7 +98,7 @@ export default function DashboardTrocas() {
     const qtdPacotes = resItens?.quantidade ?? Number(t.qtd_total_itens || t.total_itens || 0);
     const motivosItens = resItens && resItens.motivos.size ? Array.from(resItens.motivos).join(', ') : '';
     const motivoFinal = t.motivo_troca_descricao || motivosItens || '';
-    return { ...t, vendedor_id: v?.id || t.vendedor_id, vendedor_nome: v?.nome || t.vendedor_nome, rota_id: v?.rota_id || t.rota_id, rota_nome: v?.rota_nome || t.rota_nome, qtd_pacotes: qtdPacotes, motivo_troca_descricao: motivoFinal };
+    return { ...t, vendedor_id: t.vendedor_id || v?.id, vendedor_nome: t.vendedor_nome || v?.nome || '-', cliente_nome: t.cliente_nome || '-', rota_id: t.rota_id || v?.rota_id, rota_nome: t.rota_nome || v?.rota_nome || '', qtd_pacotes: qtdPacotes, motivo_troca_descricao: motivoFinal };
   }), [trocasPedido, vendedorPorCliente, resumoItensPorPedido]);
 
   const filtradas = useMemo(() => trocasEnriquecidas.filter(t => {
