@@ -12,7 +12,8 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
-import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey, arredondar2, valorCSV } from './utilsAnalises';
+import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey, arredondar2 } from './utilsAnalises';
+import * as XLSX from 'xlsx';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 
 const CORES = ['#dc2626', '#f59e0b', '#0891b2', '#7c3aed', '#16a34a', '#f97316', '#64748b'];
@@ -21,6 +22,7 @@ const formatMes = (k) => { const [a, m] = k.split('-'); return `${MESES_PT[+m-1]
 
 export default function DashboardTrocas() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', motivo_id: '', rota_id: '' });
+  const [exportando, setExportando] = useState(false);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores_analise'],
@@ -195,20 +197,88 @@ export default function DashboardTrocas() {
     return { total: cf.length, valorCortado };
   }, [cortes, filtros]);
 
-  const exportar = () => exportarCSV('dashboard_trocas',
-    ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Qtd (pacotes)', 'Valor', 'Status'],
-    filtradas.map(t => [
-      (t.data_faturamento || t.created_date)?.slice(0,10),
-      formatarNumeroPedido(t), t.cliente_nome, t.vendedor_nome, t.rota_nome,
-      t.motivo_troca_descricao, t.qtd_pacotes || 0, valorCSV(t.valor_total), t.status
-    ])
-  );
+  const exportar = async () => {
+    if (exportando) return;
+    setExportando(true);
+    try {
+      // De-dup itens por id, depois indexa por pedido_id → produto → { qtd, motivo }
+      const itensSemDup = [...new Map(itensTroca.map(it => [it.id, it])).values()];
+      const itensPorPedido = new Map();
+      itensSemDup.forEach(it => {
+        if (!it.pedido_id) return;
+        if (!itensPorPedido.has(it.pedido_id)) itensPorPedido.set(it.pedido_id, new Map());
+        const prods = itensPorPedido.get(it.pedido_id);
+        const nome = it.produto_nome || it.produto_codigo || '(sem nome)';
+        const atual = prods.get(nome) || { qtd: 0, motivo: '' };
+        atual.qtd += Number(it.quantidade || 0);
+        if (!atual.motivo && it.motivo_troca_descricao) atual.motivo = it.motivo_troca_descricao;
+        prods.set(nome, atual);
+      });
+
+      // Aba Resumo: produto × motivo agregado, Qtd como número
+      const resumoMap = new Map();
+      filtradas.forEach(t => {
+        const prods = itensPorPedido.get(t.id);
+        if (prods && prods.size > 0) {
+          prods.forEach(({ qtd, motivo }, nomeProd) => {
+            const motFinal = motivo || t.motivo_troca_descricao || 'Sem motivo';
+            const chave = nomeProd + '||' + motFinal;
+            const r = resumoMap.get(chave) || { produto: nomeProd, motivo: motFinal, qtd: 0 };
+            r.qtd += qtd;
+            resumoMap.set(chave, r);
+          });
+        } else {
+          const motFinal = t.motivo_troca_descricao || 'Sem motivo';
+          const chave = '(sem itens detalhados)||' + motFinal;
+          const r = resumoMap.get(chave) || { produto: '(sem itens detalhados)', motivo: motFinal, qtd: 0 };
+          r.qtd += Number(t.qtd_total_itens || t.total_itens || 0);
+          resumoMap.set(chave, r);
+        }
+      });
+      const linhasResumo = [...resumoMap.values()].sort((a, b) => b.qtd - a.qtd);
+
+      // Aba Detalhe: uma linha por produto por troca, Qtd e Valor como número
+      const linhasDetalhe = [];
+      filtradas.forEach(t => {
+        const data = (t.data_faturamento || t.created_date)?.slice(0, 10) || '';
+        const numPed = formatarNumeroPedido(t);
+        const prods = itensPorPedido.get(t.id);
+        if (prods && prods.size > 0) {
+          prods.forEach(({ qtd, motivo }, nomeProd) => {
+            linhasDetalhe.push([data, numPed, t.cliente_nome, t.vendedor_nome, t.rota_nome,
+              motivo || t.motivo_troca_descricao, nomeProd, Number(qtd), Number(t.valor_total || 0), t.status]);
+          });
+        } else {
+          linhasDetalhe.push([data, numPed, t.cliente_nome, t.vendedor_nome, t.rota_nome,
+            t.motivo_troca_descricao, '(sem itens detalhados)',
+            Number(t.qtd_total_itens || t.total_itens || 0), Number(t.valor_total || 0), t.status]);
+        }
+      });
+
+      const wb = XLSX.utils.book_new();
+      const wsResumo = XLSX.utils.aoa_to_sheet([
+        ['Produto', 'Motivo', 'Qtd Total (pacotes)'],
+        ...linhasResumo.map(r => [r.produto, r.motivo, r.qtd])
+      ]);
+      const wsDetalhe = XLSX.utils.aoa_to_sheet([
+        ['Data Faturamento', 'Nº Pedido', 'Cliente', 'Vendedor', 'Rota', 'Motivo', 'Produto', 'Qtd (pacotes)', 'Valor Troca', 'Status'],
+        ...linhasDetalhe
+      ]);
+      wsResumo['!cols'] = [{wch:45},{wch:30},{wch:18}];
+      wsDetalhe['!cols'] = [{wch:14},{wch:12},{wch:32},{wch:26},{wch:14},{wch:20},{wch:40},{wch:14},{wch:14},{wch:12}];
+      XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+      XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
+      XLSX.writeFile(wb, `dashboard_trocas_detalhado_${new Date().toISOString().slice(0,10)}.xlsx`);
+    } finally {
+      setExportando(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <FiltrosBase filtros={filtros} setFiltros={setFiltros} vendedores={vendedores}
         onLimpar={() => setFiltros({ inicio: '', fim: '', vendedor_id: '', motivo_id: '', rota_id: '' })}
-        onExportar={exportar}>
+        onExportar={exportar} exportandoCSV={exportando}>
         <div>
           <Label className="text-xs">Motivo</Label>
           <Select value={filtros.motivo_id || '_todos_'} onValueChange={(v) => setFiltros({ ...filtros, motivo_id: v === '_todos_' ? '' : v })}>
