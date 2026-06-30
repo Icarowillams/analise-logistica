@@ -39,7 +39,7 @@ export default function DashboardTrocas() {
   // Só precisamos do vínculo cliente→vendedor/rota: projetar campos mínimos e limitar a 1000 (base tem ~958).
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes_vinculo_vendedor'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 1000, ['id', 'vendedor_id', 'rota_id']),
+    queryFn: () => base44.entities.Cliente.list('-created_date', 2000),
     staleTime: 5 * 60 * 1000
   });
   // Trocas via Pedido tipo=troca faturados (fonte principal — integração Omie)
