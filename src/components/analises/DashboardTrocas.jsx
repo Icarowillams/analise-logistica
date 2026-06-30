@@ -201,8 +201,30 @@ export default function DashboardTrocas() {
     if (exportando) return;
     setExportando(true);
     try {
-      // De-dup itens por id, depois indexa por pedido_id → produto → { qtd, motivo }
-      const itensSemDup = [...new Map(itensTroca.map(it => [it.id, it])).values()];
+      // Busca PedidoItem de TODAS as trocas filtradas diretamente no momento da exportação
+      // (evita depender do cache em memória que pode estar incompleto)
+      const ids = filtradas.map(t => t.id);
+      if (ids.length === 0) {
+        alert('Nenhuma troca no filtro atual para exportar.');
+        return;
+      }
+
+      // Busca em lotes de 200 ids para não sobrecarregar a query
+      const LOTE = 200;
+      const todosItens = [];
+      for (let i = 0; i < ids.length; i += LOTE) {
+        const lote = ids.slice(i, i + LOTE);
+        // Busca todos os itens cujo pedido_id esteja neste lote
+        const resultados = await Promise.all(
+          lote.map(pid => base44.entities.PedidoItem.filter({ pedido_id: pid }, '', 500))
+        );
+        resultados.forEach(arr => todosItens.push(...arr));
+      }
+
+      // De-dup por id
+      const itensSemDup = [...new Map(todosItens.map(it => [it.id, it])).values()];
+
+      // Indexa: pedido_id → Map(produto_nome → { qtd, motivo })
       const itensPorPedido = new Map();
       itensSemDup.forEach(it => {
         if (!it.pedido_id) return;
@@ -269,6 +291,8 @@ export default function DashboardTrocas() {
       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
       XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
       XLSX.writeFile(wb, `dashboard_trocas_detalhado_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens brutos=${todosItens.length} | itens de-dup=${itensSemDup.length}`);
     } finally {
       setExportando(false);
     }
