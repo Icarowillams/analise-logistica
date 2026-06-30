@@ -143,7 +143,7 @@ const LOCK_TTL_MS = 2 * 60 * 1000;         // TTL curto do lock — auto-release
 
 // ── PORTÃO ÚNICO GLOBAL (mutex compartilhado entre TODOS os workers Omie) ──
 const CHAVE_PORTAO = 'portao_global_omie';
-const PORTAO_TTL_MS = 160 * 1000; // 160s — folga mínima acima do teto de 150s do envio. Encurtado de 180s para reduzir a janela em que um portão zombie (isolate morto por 502/timeout, sem passar pelo finally) trava TODOS os workers. Auto-release ao expirar.
+const PORTAO_TTL_MS = 30 * 1000; // 30s — TTL curto para reduzir janela zombie (isolate morto sem passar pelo finally). Heartbeat de 10s renova enquanto vivo.
 async function adquirirPortaoGlobal(base44, nome) {
   // BLINDAGEM CONTRA REGRESSÃO DE DUPLICATA (espelha _shared/portaoOmie):
   // distingue "filter falhou" (429/rede → NÃO cria) de "vazio de verdade" (cria 1).
@@ -171,7 +171,7 @@ async function adquirirPortaoGlobal(base44, nome) {
   await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, { worker_rodando: true, worker_lock_ate: new Date(agora + PORTAO_TTL_MS).toISOString(), ultimo_erro: donoId, atualizado_em: new Date().toISOString() }).catch(() => null);
   const conf = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ id: reg.id }, '-created_date', 1).catch(() => []);
   if (conf?.[0]?.ultimo_erro !== donoId) return { adquirido: false, ocupadoPor: conf?.[0]?.ultimo_erro };
-  return { adquirido: true, donoId, regId: reg.id };
+  return { adquirido: true, donoId, registroId: reg.id };
 }
 async function liberarPortaoGlobal(base44, donoId) {
   const rows = await base44.asServiceRole.entities.ControleCircuitBreakerOmie.filter({ chave: CHAVE_PORTAO }, 'created_date', 1).catch(() => []);
@@ -458,6 +458,7 @@ Deno.serve(async (req) => {
 
     let portao = { adquirido: false };
     let liberadoNoEncadeamento = false;
+    let heartbeatId: NodeJS.Timeout | null = null;
     try {
 
     // ═══ PASSO 0: TIMEOUT — Resgatar itens órfãos travados em "processando" ═══
@@ -525,6 +526,29 @@ Deno.serve(async (req) => {
       console.log('[FILA CARGA] Portão global ocupado por', portao.ocupadoPor, '— abortando sem tocar o Omie (status local já atualizado).');
       return Response.json({ sucesso: true, mensagem: 'Portão global ocupado (outra operação no Omie)', skipped: 'portao', cargas_pre_atualizadas: cargasPreAtualizadasCount, processados: 0 });
     }
+
+    // HEARTBEAT: renova o lock a cada 10s enquanto detém o portão. TTL=30s → heartbeat a 10s dá 2 janelas de margem antes de expirar.
+    heartbeatId = setInterval(async () => {
+      try {
+        // Usa ID EXATO do registro adquirido — NÃO re-busca por chave (imune à fragmentação do portão).
+        const reg = await base44.asServiceRole.entities.ControleCircuitBreakerOmie
+          .get(portao.registroId).catch(() => null);
+        // SÓ renova se ainda somos o dono (ultimo_erro === donoId). Se perdeu a posse, NÃO estende lock alheio.
+        if (reg && reg.ultimo_erro === portao.donoId) {
+          await base44.asServiceRole.entities.ControleCircuitBreakerOmie.update(reg.id, {
+            worker_lock_ate: new Date(Date.now() + PORTAO_TTL_MS).toISOString(),
+            atualizado_em: new Date().toISOString()
+          }).catch(() => {});
+          console.log('[FILA CARGA][HEARTBEAT] Lock renovado para', new Date(Date.now() + PORTAO_TTL_MS).toISOString());
+        } else {
+          // Perdeu a posse (ou registro sumiu) — para o heartbeat e NÃO renova.
+          console.log('[FILA CARGA][HEARTBEAT] Lock não é mais nosso (ultimo_erro=', reg?.ultimo_erro, ') — parando heartbeat.');
+          if (heartbeatId) clearInterval(heartbeatId);
+        }
+      } catch (e) {
+        console.error('[FILA CARGA][HEARTBEAT] Erro ao renovar:', e.message);
+      }
+    }, 10000); // 10s
 
     // Proteção contra concorrência: se há item em "processando" DENTRO da janela de resgate,
     // outra instância está ativa AGORA — aborta o PROCESSAMENTO (chamadas Omie) para não duplicar.
@@ -832,6 +856,7 @@ Deno.serve(async (req) => {
           // Liberamos aqui e marcamos para o finally não liberar de novo (idempotente via donoId).
           await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
           await liberarLockEncadeamento(base44).catch(() => {});
+          if (heartbeatId) clearInterval(heartbeatId);
           portao = { adquirido: false }; // impede o finally de mexer no portão da próxima cadeia
           liberadoNoEncadeamento = true; // impede o finally de liberar o lock da PRÓXIMA cadeia
           base44.asServiceRole.functions.invoke('processarFilaCargaOmie', {}).catch(() => {});
@@ -848,6 +873,7 @@ Deno.serve(async (req) => {
       // encadeamento. Sempre ao fim (sucesso, retorno antecipado ou exceção).
       // EXCEÇÃO: se já liberamos no auto-encadeamento, NÃO liberar de novo — a próxima
       // cadeia pode já ter adquirido o lock, e liberá-lo aqui mataria o lock dela.
+      if (heartbeatId) clearInterval(heartbeatId);
       if (portao.adquirido) await liberarPortaoGlobal(base44, portao.donoId).catch(() => {});
       if (!liberadoNoEncadeamento) await liberarLockEncadeamento(base44).catch(() => {});
     }
