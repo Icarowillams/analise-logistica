@@ -166,6 +166,27 @@ async function omieCall(base44: any, endpoint: string, param: unknown, options: 
         err.rateLimit = true; // transitório → "Aguardando emissão no Omie", nunca erro
         throw err;
       }
+      // "chave de acesso inválida / aplicativo suspenso": intermitente/throttling do Omie.
+      // Diagnóstico: mesmo lote/minuto/credencial, uns autorizam, outros falham com essa msg.
+      // NÃO grava circuit breaker (credencial está OK). Retry com backoff [2s, 4s, 8s].
+      if (
+        (msg.includes('chave de acesso') && msg.includes('inv')) ||
+        msg.includes('aplicativo está suspenso') ||
+        msg.includes('aplicativo suspenso')
+      ) {
+        const tentativaChave = (options._tentativaChaveInvalida || 0) + 1;
+        if (tentativaChave <= 3) {
+          const backoff = [2000, 4000, 8000][tentativaChave - 1] || 8000;
+          await sleep(backoff);
+          return await omieCall(base44, endpoint, param, { ...options, _tentativaChaveInvalida: tentativaChave });
+        }
+        const err: any = new Error(data.faultstring);
+        err.faultstring = data.faultstring;
+        err.faultcode = data.faultcode || '';
+        err.omiePayload = data;
+        err.rateLimit = true; // transitório → 'pendente', nunca erro morto
+        throw err;
+      }
       // Rate limit suave (429/cota/aguarde) — NÃO faz retry, apenas propaga erro com flag
       if (res.status === 429 || msg.includes('cota') || msg.includes('aguarde') || msg.includes('limite')) {
         const err = new Error(data.faultstring);
