@@ -49,12 +49,41 @@ export default function DashboardTrocas() {
     queryKey: ['pedidos_troca_faturados'],
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'troca', status: 'faturado' }, '-data_faturamento', 5000)
   });
-  // Itens das trocas faturadas — é AQUI que ficam a quantidade (pacotes) e o motivo por item.
-  // O cabeçalho do Pedido só traz valor_total; sem os itens não há quantidade nem motivo.
-  const { data: itensTroca = [] } = useQuery({
-    queryKey: ['pedido_itens_troca'],
-    queryFn: () => base44.entities.PedidoItem.filter({}, '-created_date', 20000),
-    staleTime: 5 * 60 * 1000
+  // Itens das trocas faturadas — busca DIRECIONADA por pedido_id via getItensPedidosLote
+  // (mesmo padrão do PDF/XLSX). Substitui a query global PedidoItem.filter({}, ..., 20000)
+  // que sofria cutoff de 5.000 do SDK e perdia a maioria dos itens de troca.
+  // Cacheada uma vez; filtros de tela são aplicados localmente depois.
+  const { data: resumoItensPorPedido = new Map(), isLoading: loadingItens } = useQuery({
+    queryKey: ['itens_troca_por_pedido', trocasPedido.map(t => t.id).join(','), motivosTroca.length],
+    queryFn: async () => {
+      if (!trocasPedido.length) return new Map();
+      const pedido_ids = trocasPedido.map(t => t.id);
+      const LOTE = 200;
+      const itensPorPedidoRaw = {};
+      for (let i = 0; i < pedido_ids.length; i += LOTE) {
+        const chunk = pedido_ids.slice(i, i + LOTE);
+        const resp = await base44.functions.invoke('getItensPedidosLote', { pedido_ids: chunk, troca_ids: [] });
+        Object.assign(itensPorPedidoRaw, resp?.data?.itens_pedido || {});
+      }
+      // Dedup por id (PedidoItem tem duplicados)
+      const itensUnicos = new Map();
+      Object.values(itensPorPedidoRaw).flat().forEach(it => { if (it.id) itensUnicos.set(it.id, it); });
+      // Agrega por pedido_id: soma quantidade + coleta motivos
+      const nomeMotivo = new Map(motivosTroca.map(m => [m.id, m.descricao || m.nome]));
+      const map = new Map();
+      itensUnicos.forEach(it => {
+        if (!it.pedido_id) return;
+        if (!map.has(it.pedido_id)) map.set(it.pedido_id, { quantidade: 0, motivos: new Set() });
+        const r = map.get(it.pedido_id);
+        r.quantidade += Number(it.quantidade || 0);
+        const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '';
+        if (mot) r.motivos.add(mot);
+      });
+      return map;
+    },
+    enabled: trocasPedido.length > 0,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false
   });
   // Trocas de visita (registradas pelo app do vendedor em campo)
   const { data: trocasVisita = [], isLoading: loadingTV } = useQuery({
@@ -77,22 +106,6 @@ export default function DashboardTrocas() {
     });
     return map;
   }, [clientes, vendedores, rotas]);
-
-  // Agrega os itens por pedido: soma de quantidade (pacotes) e motivo (do item).
-  // O motivo costuma vir nos itens da troca, não no cabeçalho do pedido.
-  const resumoItensPorPedido = useMemo(() => {
-    const map = new Map();
-    const nomeMotivo = new Map(motivosTroca.map(m => [m.id, m.descricao || m.nome]));
-    itensTroca.forEach(it => {
-      if (!it.pedido_id) return;
-      if (!map.has(it.pedido_id)) map.set(it.pedido_id, { quantidade: 0, motivos: new Set() });
-      const r = map.get(it.pedido_id);
-      r.quantidade += Number(it.quantidade || 0);
-      const mot = it.motivo_troca_descricao || nomeMotivo.get(it.motivo_troca_id) || '';
-      if (mot) r.motivos.add(mot);
-    });
-    return map;
-  }, [itensTroca, motivosTroca]);
 
   const trocasEnriquecidas = useMemo(() => trocasPedido.map(t => {
     const v = vendedorPorCliente.get(t.cliente_id);
@@ -399,7 +412,7 @@ export default function DashboardTrocas() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard titulo="Trocas (faturadas)" valor={formatarNumero(totais.total)} icon={ArrowLeftRight} cor="red" />
-        <KpiCard titulo="Pacotes trocados" valor={formatarNumero(totais.pacotes)} icon={Package} cor="orange" />
+        <KpiCard titulo="Pacotes trocados" valor={loadingItens ? '...' : formatarNumero(totais.pacotes)} icon={Package} cor="orange" />
         <KpiCard titulo="Valor total" valor={formatarMoeda(totais.valor)} icon={DollarSign} cor="amber" />
         <KpiCard titulo="Ticket médio" valor={formatarMoeda(totais.ticket)} icon={AlertTriangle} cor="indigo" />
         <KpiCard titulo="Trocas visita" valor={formatarNumero(totais.qtdVisita)} sub={`${formatarNumero(totais.itensTrocadosVisita)} itens`} icon={Package} cor="cyan" />
