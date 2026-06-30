@@ -201,27 +201,28 @@ export default function DashboardTrocas() {
     if (exportando) return;
     setExportando(true);
     try {
-      // Busca PedidoItem de TODAS as trocas filtradas diretamente no momento da exportação
-      // (evita depender do cache em memória que pode estar incompleto)
-      const ids = filtradas.map(t => t.id);
-      if (ids.length === 0) {
+      if (filtradas.length === 0) {
         alert('Nenhuma troca no filtro atual para exportar.');
         return;
       }
 
-      // Busca em lotes de 10 ids em paralelo para respeitar rate limit
-      const PARALELO = 10;
-      const todosItens = [];
-      for (let i = 0; i < ids.length; i += PARALELO) {
-        const lote = ids.slice(i, i + PARALELO);
-        const resultados = await Promise.all(
-          lote.map(pid => base44.entities.PedidoItem.filter({ pedido_id: pid }, '', 500))
-        );
-        resultados.forEach(arr => todosItens.push(...arr));
+      // Busca TODOS os PedidoItem em páginas de 5000 (uma query por vez, sem filtro por pedido)
+      // e depois filtra em memória pelos ids das trocas filtradas — evita rate limit.
+      const idsFiltradas = new Set(filtradas.map(t => t.id));
+      const todosItensRaw = [];
+      const PAGE = 5000;
+      let skip = 0;
+      while (true) {
+        const pagina = await base44.entities.PedidoItem.list('-created_date', PAGE, skip);
+        if (!pagina || pagina.length === 0) break;
+        todosItensRaw.push(...pagina);
+        if (pagina.length < PAGE) break;
+        skip += PAGE;
       }
 
-      // De-dup por id
-      const itensSemDup = [...new Map(todosItens.map(it => [it.id, it])).values()];
+      // De-dup por id e filtra só os itens das trocas filtradas
+      const itensSemDup = [...new Map(todosItensRaw.map(it => [it.id, it])).values()]
+        .filter(it => idsFiltradas.has(it.pedido_id));
 
       // Indexa: pedido_id → Map(produto_nome → { qtd, motivo })
       const itensPorPedido = new Map();
@@ -291,7 +292,7 @@ export default function DashboardTrocas() {
       XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
       XLSX.writeFile(wb, `dashboard_trocas_detalhado_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens brutos=${todosItens.length} | itens de-dup=${itensSemDup.length}`);
+      console.log(`[Exportar Trocas] linhasDetalhe=${linhasDetalhe.length} | linhasResumo=${linhasResumo.length} | itens brutos=${todosItensRaw.length} | itens de-dup=${itensSemDup.length}`);
     } finally {
       setExportando(false);
     }
