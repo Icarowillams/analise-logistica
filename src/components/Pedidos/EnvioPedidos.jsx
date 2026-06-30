@@ -173,16 +173,13 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
   const pendentesFiltrados = filtrarPedidos(pendentes);
   const enviadosFiltrados = filtrarPedidos(enviados);
 
-  // Sequência única para pedidos internos: todo não fiscal usa sufixo "D".
-  const getNextNumeroLocal = async (pedido) => {
-    const allPedidos = await base44.entities.Pedido.list();
-    const internos = allPedidos.filter(p => p.numero_pedido && /[DT]$/i.test(String(p.numero_pedido)));
-    let maxNum = 0;
-    internos.forEach(p => {
-      const num = parseInt(String(p.numero_pedido).replace(/\D/g, ''), 10);
-      if (!isNaN(num) && num > maxNum) maxNum = num;
-    });
-    return formatarNumeroPedido({ ...pedido, numero_pedido: String(maxNum + 1).padStart(5, '0') });
+  // Reserva número interno via backend (atômico, sem race condition).
+  const reservarNumeroInterno = async () => {
+    const res = await base44.functions.invoke('reservarNumeroPedidoInterno', {});
+    if (!res.data?.sucesso || !res.data?.numero) {
+      throw new Error(res.data?.erro || 'Falha ao reservar número interno. Tente novamente.');
+    }
+    return res.data.numero;
   };
 
   // Pedido é tratado internamente (sem Omie) se for troca OU se modelo da nota for D1
@@ -205,7 +202,7 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
     setEnviandoIds(prev => new Set(prev).add(pedido.id));
     try {
       if (isInterno(pedido)) {
-        const numero = await getNextNumeroLocal(pedido);
+        const numero = await reservarNumeroInterno();
         await base44.entities.Pedido.update(pedido.id, {
           status: 'enviado',
           numero_pedido: numero,
@@ -271,9 +268,9 @@ export default function EnvioPedidos({ vendedor, onEditPedido }) {
 
     let internosSucesso = 0;
 
-    // 1. Internos (rápido, local) — continua síncrono pois não vai ao Omie
+    // 1. Internos — reserva número no backend (atômico, sem race condition)
     for (const pedido of internos) {
-      const numero = await getNextNumeroLocal(pedido);
+      const numero = await reservarNumeroInterno();
       await base44.entities.Pedido.update(pedido.id, {
         status: 'enviado',
         numero_pedido: numero,

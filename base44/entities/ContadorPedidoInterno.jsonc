@@ -1,0 +1,33 @@
+{
+  "name": "ContadorPedidoInterno",
+  "type": "object",
+  "description": "Contador at\u00f4mico serializado para numera\u00e7\u00e3o de pedidos internos (trocas/D1). Um \u00fanico registro com chave='pedido_interno'.",
+  "properties": {
+    "chave": {
+      "type": "string",
+      "description": "Identificador fixo do contador. Valor \u00fanico: 'pedido_interno'."
+    },
+    "ultimo_numero": {
+      "type": "number",
+      "default": 0,
+      "description": "\u00daltimo n\u00famero reservado. O pr\u00f3ximo ser\u00e1 ultimo_numero + 1."
+    },
+    "lock_ativo": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indica que uma reserva est\u00e1 em curso. Outros chamadores aguardam."
+    },
+    "lock_ate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "TTL do lock. Se ultrapassado com lock_ativo=true, o lock \u00e9 considerado expirado e pode ser assumido."
+    },
+    "lock_token": {
+      "type": "string",
+      "description": "UUID gerado pelo processo que adquiriu o lock. Confirma\u00e7\u00e3o: re-l\u00ea e compara lock_token === meuToken. Elimina a heur\u00edstica de timestamp."
+    }
+  },
+  "required": [
+    "chave"
+  ]
+}
