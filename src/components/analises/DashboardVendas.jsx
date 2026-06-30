@@ -18,6 +18,13 @@ import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
 const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const formatMes = (k) => { const [a, m] = k.split('-'); return `${MESES_PT[+m-1]}/${a.slice(2)}`; };
 
+// Normaliza forma de pagamento APENAS para exibição/agrupamento (não altera o banco).
+// Unifica "AVISTA" (sem espaço) com "A VISTA" — erro de digitação no cadastro do Omie.
+function normalizarFormaPagamento(nome) {
+  const t = (nome || '').trim().toUpperCase();
+  return t === 'AVISTA' ? 'A VISTA' : (nome || '').trim();
+}
+
 export default function DashboardVendas() {
   const [filtros, setFiltros] = useState({ inicio: '', fim: '', vendedor_id: '', rota_id: '', modelo_nota: '', forma_pagamento: '' });
 
@@ -83,7 +90,7 @@ export default function DashboardVendas() {
   // Lista distinta de formas de pagamento (plano_pagamento_nome) para o filtro
   const formasPagamento = useMemo(() => {
     const set = new Set();
-    pedidosEnr.forEach(p => { if (p.plano_pagamento_nome) set.add(p.plano_pagamento_nome); });
+    pedidosEnr.forEach(p => { if (p.plano_pagamento_nome) set.add(normalizarFormaPagamento(p.plano_pagamento_nome)); });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [pedidosEnr]);
 
@@ -91,7 +98,7 @@ export default function DashboardVendas() {
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.rota_id && p.rota_id !== filtros.rota_id) return false;
     if (filtros.modelo_nota && p.modelo_nota !== filtros.modelo_nota) return false;
-    if (filtros.forma_pagamento && (p.plano_pagamento_nome || '') !== filtros.forma_pagamento) return false;
+    if (filtros.forma_pagamento && normalizarFormaPagamento(p.plano_pagamento_nome) !== filtros.forma_pagamento) return false;
     const dataRef = p.data_faturamento || p.created_date;
     if ((filtros.inicio || filtros.fim) && !dentroPeriodo(dataRef, filtros.inicio, filtros.fim)) return false;
     return true;
@@ -189,7 +196,7 @@ export default function DashboardVendas() {
   const porFormaPagamento = useMemo(() => {
     const f = {};
     filtrados.forEach(p => {
-      const k = p.plano_pagamento_nome || 'Sem plano';
+      const k = p.plano_pagamento_nome ? normalizarFormaPagamento(p.plano_pagamento_nome) : 'Sem plano';
       if (!f[k]) f[k] = { nome: k, valor: 0, qtd: 0 };
       f[k].valor = arredondar2(f[k].valor + arredondar2(p.valor_total));
       f[k].qtd++;
@@ -202,7 +209,7 @@ export default function DashboardVendas() {
     filtrados.map(p => [
       (p.data_faturamento || p.created_date)?.slice(0, 10),
       formatarNumeroPedido(p), p.cliente_nome, p.vendedor_nome, p.rota_nome,
-      p.modelo_nota, p.plano_pagamento_nome || '-', p.origem, p.total_itens, valorCSV(p.valor_total), p.status
+      p.modelo_nota, normalizarFormaPagamento(p.plano_pagamento_nome) || '-', p.origem, p.total_itens, valorCSV(p.valor_total), p.status
     ])
   );
 
