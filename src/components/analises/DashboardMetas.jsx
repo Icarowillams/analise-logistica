@@ -15,7 +15,9 @@ import {
   ResponsiveContainer, RadialBarChart, RadialBar, Cell, PieChart, Pie
 } from 'recharts';
 import KpiCard from './KpiCard';
-import { formatarMoeda, formatarNumero } from './utilsAnalises';
+import SyncStatusBadge from './SyncStatusBadge';
+import { useEspelhoFaturamento } from '@/hooks/useEspelhoFaturamento';
+import { formatarMoeda, formatarNumero, arredondar2 } from './utilsAnalises';
 
 const TIPO_LABEL = {
   vendas: 'Vendas (R$)',
@@ -73,11 +75,41 @@ export default function DashboardMetas() {
     queryKey: ['metas_todas'],
     queryFn: () => base44.entities.Meta.list('-periodo_inicio', 500)
   });
-  // Pedidos faturados para calcular realizado de vendas em tempo real
+  // Pedidos faturados — APENAS para pacotes/PM (o espelho não tem qtd de itens).
+  // O realizado de VENDA vem 100% do espelho (fonte Omie correta).
   const { data: pedidos = [] } = useQuery({
     queryKey: ['pedidos_venda_faturados'],
     queryFn: () => base44.entities.Pedido.filter({ tipo: 'venda', status: 'faturado' }, '-data_faturamento', 10000)
   });
+
+  // Range único cobrindo TODAS as metas exibidas (min início → max fim)
+  const minInicio = useMemo(() => {
+    const datas = metas.map(m => m.periodo_inicio).filter(Boolean).sort();
+    return datas[0] || new Date().toISOString().slice(0, 10);
+  }, [metas]);
+  const maxFim = useMemo(() => {
+    const datas = metas.map(m => m.periodo_fim).filter(Boolean).sort();
+    return datas[datas.length - 1] || new Date().toISOString().slice(0, 10);
+  }, [metas]);
+
+  // Espelho de faturamento (fonte Omie) — uma chamada paginada/de-dup cobrindo todas as metas
+  const { dados: nfsEspelho, isLoading: isLoadingEspelho, isSincronizando, ultimaSincronizacao, erroSync, sincronizarAgora } =
+    useEspelhoFaturamento(minInicio, maxFim);
+
+  // Pré-agregar venda por vendedor_id + por data (para calcular no período de cada meta)
+  const vendaPorVendedorData = useMemo(() => {
+    const mapa = {}; // vendedor_id -> { 'YYYY-MM-DD': { valor, qtd } }
+    for (const nf of nfsEspelho) {
+      if (!nf.comissionavel || !nf.vendedor_id) continue;
+      const d = (nf.data_emissao || '').slice(0, 10);
+      if (!d) continue;
+      if (!mapa[nf.vendedor_id]) mapa[nf.vendedor_id] = {};
+      if (!mapa[nf.vendedor_id][d]) mapa[nf.vendedor_id][d] = { valor: 0, qtd: 0 };
+      mapa[nf.vendedor_id][d].valor = arredondar2(mapa[nf.vendedor_id][d].valor + (nf.valor_venda || 0));
+      mapa[nf.vendedor_id][d].qtd++;
+    }
+    return mapa;
+  }, [nfsEspelho]);
   // Visitas para calcular realizado de visitas
   const { data: visitas = [] } = useQuery({
     queryKey: ['visitasRoteiro'],
@@ -109,7 +141,25 @@ export default function DashboardMetas() {
     return map;
   }, [metas]);
 
-  // Enriquecer cada meta com realizado/pacotes/PM calculados pela carteira da cascata (sem duplicar faturamento).
+  // Soma venda (valor + qtd NFs) de uma carteira de vendedor_id no período [ini, fim] usando o ESPPELHO.
+  const vendaCarteiraNoPeriodo = (carteira, ini, fim) => {
+    let valor = 0, qtdNfs = 0;
+    for (const vid of carteira) {
+      const porData = vendaPorVendedorData[vid];
+      if (!porData) continue;
+      for (const [d, v] of Object.entries(porData)) {
+        if (d >= ini && d <= fim) {
+          valor = arredondar2(valor + v.valor);
+          qtdNfs += v.qtd;
+        }
+      }
+    }
+    return { valor, qtdNfs };
+  };
+
+  // Enriquecer cada meta com realizado/pacotes/PM calculados pela carteira da cascata.
+  // VENDA e TICKET_MEDIO vêm do espelho (fonte Omie). Visitas/clientes_novos/trocas inalterados.
+  // Pacotes/PM continuam de Pedido (o espelho não tem qtd de itens).
   const metasEnriquecidas = useMemo(() => metas.map(meta => {
     let realizado = meta.valor_realizado || 0;
     let pacotes = 0;
@@ -122,27 +172,32 @@ export default function DashboardMetas() {
         const d = (data || '').slice(0, 10);
         return d >= ini && d <= fim;
       };
-      // Pedidos da carteira desta meta (vendedor / supervisor / gerente). Nunca "todos da empresa".
-      const pedVend = pedidos.filter(p => carteira.includes(p.vendedor_id) && noPeriodo(p.data_faturamento));
-      const visVend = visitas.filter(v => carteira.includes(v.vendedor_id) && noPeriodo(v.data_visita));
-      const cliVend = clientes.filter(c => carteira.includes(c.vendedor_id) && noPeriodo(c.created_date));
 
-      const totalRs = pedVend.reduce((a, p) => a + (p.valor_total || 0), 0);
-      pacotes = pedVend.reduce((a, p) => a + (p.qtd_total_itens || 0), 0);
-      pm = pacotes > 0 ? totalRs / pacotes : 0;
-
-      if (meta.tipo === 'vendas') realizado = totalRs;
-      else if (meta.tipo === 'visitas') realizado = visVend.filter(v => v.status === 'visitado').length;
-      else if (meta.tipo === 'clientes_novos') realizado = cliVend.length;
-      else if (meta.tipo === 'ticket_medio') {
-        realizado = pedVend.length > 0 ? totalRs / pedVend.length : 0;
+      if (meta.tipo === 'vendas') {
+        // VENDA: 100% do espelho (fonte Omie, só comissionável)
+        realizado = vendaCarteiraNoPeriodo(carteira, ini, fim).valor;
+        // Pacotes/PM continuam de Pedido (apenas informativo)
+        const pedVend = pedidos.filter(p => carteira.includes(p.vendedor_id) && noPeriodo(p.data_faturamento));
+        pacotes = pedVend.reduce((a, p) => a + (p.qtd_total_itens || 0), 0);
+        const totalRsPed = pedVend.reduce((a, p) => a + (p.valor_total || 0), 0);
+        pm = pacotes > 0 ? totalRsPed / pacotes : 0;
+      } else if (meta.tipo === 'ticket_medio') {
+        // TICKET_MEDIO: venda/qtd do espelho (consistente com a nova fonte)
+        const vend = vendaCarteiraNoPeriodo(carteira, ini, fim);
+        realizado = vend.qtdNfs > 0 ? arredondar2(vend.valor / vend.qtdNfs) : 0;
+      } else if (meta.tipo === 'visitas') {
+        const visVend = visitas.filter(v => carteira.includes(v.vendedor_id) && noPeriodo(v.data_visita));
+        realizado = visVend.filter(v => v.status === 'visitado').length;
+      } else if (meta.tipo === 'clientes_novos') {
+        const cliVend = clientes.filter(c => carteira.includes(c.vendedor_id) && noPeriodo(c.created_date));
+        realizado = cliVend.length;
       } else if (meta.tipo === 'trocas_max') {
         realizado = meta.valor_realizado || 0;
       }
     }
     const perc = meta.valor_meta > 0 ? Math.round((realizado / meta.valor_meta) * 100) : 0;
     return { ...meta, realizado_calc: realizado, pacotes_calc: pacotes, pm_calc: pm, perc_calc: perc };
-  }), [metas, pedidos, visitas, clientes, carteiraPorMeta]);
+  }), [metas, pedidos, visitas, clientes, carteiraPorMeta, vendaPorVendedorData]);
 
   // Filtrar
   const metasFiltradas = useMemo(() => metasEnriquecidas.filter(m => {
@@ -259,6 +314,16 @@ export default function DashboardMetas() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Selinho de sync — venda das metas vem do espelho de faturamento (fonte Omie) */}
+      <div className="flex justify-end">
+        <SyncStatusBadge
+          ultimaSincronizacao={ultimaSincronizacao}
+          isSincronizando={isSincronizando}
+          erroSync={erroSync}
+          onAtualizar={sincronizarAgora}
+        />
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
