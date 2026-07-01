@@ -378,6 +378,20 @@ Deno.serve(async (req) => {
       } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
     }
 
+    // 3.5) Desduplicar nfsProcessadas por nid_nf (o Omie pode retornar a mesma NF em páginas/blocos diferentes)
+    const seenNid = new Set();
+    const nfsUnicas = [];
+    for (const n of nfsProcessadas) {
+      if (n.nid_nf && !seenNid.has(n.nid_nf)) {
+        seenNid.add(n.nid_nf);
+        nfsUnicas.push(n);
+      } else if (!n.nid_nf) {
+        nfsUnicas.push(n);
+      }
+    }
+    nfsProcessadas.length = 0;
+    nfsProcessadas.push(...nfsUnicas);
+
     // 4) Upsert por nid_nf (idempotente) — RE-CRUZA vendedor a cada sync (campos derivados atualizados)
     //    Buscar NFs existentes do período para mapear nid_nf → id
     const existentes = await base44.asServiceRole.entities.EspelhoFaturamentoNF.filter({ data_emissao: { $gte: inicioISO, $lte: fimISO } }, '-updated_date', 5000).catch(() => []);
