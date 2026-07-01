@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, UserCheck, UserX, DollarSign, Target, Loader2, Filter, RefreshCw, Search, Printer, MapPin, User, Route as RouteIcon } from 'lucide-react';
 import KpiCard from './KpiCard';
+import RankingPaginado from './RankingPaginado';
 import { formatarMoeda, formatarNumero, exportarCSV, valorCSV } from './utilsAnalises';
 
 const hoje = new Date().toISOString().slice(0, 10);
@@ -46,6 +47,12 @@ function DistribCard({ titulo, icon: Icon, dados }) {
 export default function DashboardClientesComercial() {
   const [filtros, setFiltros] = useState({ inicio: inicioMes, fim: hoje, vendedor_id: '', cidade: '', rota_id: '' });
   const [aplicado, setAplicado] = useState({ inicio: inicioMes, fim: hoje, vendedor_id: '', cidade: '', rota_id: '' });
+
+  const RANKING_POR_PAGINA = 50;
+  const [paginaRanking, setPaginaRanking] = useState(1);
+
+  // Resetar para página 1 quando filtros/período mudarem
+  useEffect(() => { setPaginaRanking(1); }, [aplicado]);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores_dash_clientes'],
@@ -176,35 +183,7 @@ export default function DashboardClientesComercial() {
           ) : ranking.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-12">Nenhuma compra no período.</p>
           ) : (
-            <div className="overflow-x-auto -mx-2 px-2">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-slate-50">
-                  <tr className="text-slate-600">
-                    <th className="p-2 text-left w-8">#</th>
-                    <th className="p-2 text-left">Cliente</th>
-                    <th className="p-2 text-left">Cidade</th>
-                    <th className="p-2 text-left">Vendedor</th>
-                    <th className="p-2 text-right">R$</th>
-                    <th className="p-2 text-right">Nº Ped.</th>
-                    <th className="p-2 text-right">Ticket</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ranking.slice(0, 200).map((r, i) => (
-                    <tr key={r.cliente_id} className="border-t hover:bg-slate-50">
-                      <td className="p-2 text-slate-400 font-bold">{i + 1}</td>
-                      <td className="p-2 font-medium max-w-[200px] truncate" title={r.nome}>{r.nome}</td>
-                      <td className="p-2 text-slate-600 max-w-[140px] truncate" title={r.cidade}>{r.cidade}</td>
-                      <td className="p-2 text-slate-600 max-w-[160px] truncate" title={r.vendedor_nome}>{r.vendedor_nome}</td>
-                      <td className="p-2 text-right font-semibold text-emerald-700 whitespace-nowrap">{formatarMoeda(r.valor)}</td>
-                      <td className="p-2 text-right">{formatarNumero(r.pedidos)}</td>
-                      <td className="p-2 text-right text-slate-600 whitespace-nowrap">{formatarMoeda(r.ticket)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {ranking.length > 200 && <p className="text-xs text-slate-400 mt-2">Mostrando os 200 maiores. Use Exportar para a lista completa.</p>}
-            </div>
+            <RankingPaginado ranking={ranking} pagina={paginaRanking} setPagina={setPaginaRanking} porPagina={RANKING_POR_PAGINA} />
           )}
         </CardContent>
       </Card>
