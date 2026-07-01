@@ -179,7 +179,8 @@ export default function Layout({ children, currentPageName }) {
           { title: 'Sincronizar Clientes CSV', path: 'sincronizarclientescsv' },
           { title: 'Sincronizar Clientes Omie', path: 'SincronizarClienteOmie' },
           { title: 'Supervisão Fila de Envio', path: 'SupervisaoFilaEnvio' },
-          { title: 'Corrigir Planos (Planilha)', path: 'CorrigirPlanosPlanilha' }
+          { title: 'Corrigir Planos (Planilha)', path: 'CorrigirPlanosPlanilha' },
+          { title: 'Transferir Carteira', path: 'TransferirCarteira' }
         ]
       });
 

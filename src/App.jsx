@@ -51,6 +51,7 @@ import CoberturaInteligente from './pages/CoberturaInteligente.jsx';
 import AuditoriaCancelados from './pages/AuditoriaCancelados.jsx';
 import CorrigirEspelho20 from './pages/CorrigirEspelho20.jsx';
 import ExportarDados from './pages/ExportarDados.jsx';
+import TransferirCarteira from './pages/TransferirCarteira.jsx';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -181,6 +182,7 @@ const AuthenticatedApp = () => {
       <Route path="/CorrigirEspelho20" element={<LayoutWrapper currentPageName="CorrigirEspelho20"><CorrigirEspelho20 /></LayoutWrapper>} />
       <Route path="/corrigirespelho20" element={<LayoutWrapper currentPageName="CorrigirEspelho20"><CorrigirEspelho20 /></LayoutWrapper>} />
       <Route path="/ExportarDados" element={<LayoutWrapper currentPageName="ExportarDados"><ExportarDados /></LayoutWrapper>} />
+      <Route path="/TransferirCarteira" element={<LayoutWrapper currentPageName="TransferirCarteira"><TransferirCarteira /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
