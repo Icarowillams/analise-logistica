@@ -20,6 +20,21 @@ function chunk(arr, size) {
   return out;
 }
 
+// Paginação real: lote 500 + skip crescente até a página vir menor que o lote.
+async function listarTudo(entidade, query, ordem) {
+  const out = [];
+  let skip = 0;
+  const lote = 500;
+  while (true) {
+    const page = await entidade.filter(query, ordem, lote, skip);
+    out.push(...page);
+    if (page.length < lote) break;
+    skip += lote;
+    if (skip > 100000) break;
+  }
+  return out;
+}
+
 function perfilDoVendedor(v) {
   const papeis = Array.isArray(v?.papeis) ? v.papeis : [];
   if (papeis.includes('gerente') || papeis.includes('gerencia')) return 'GERENCIA';
@@ -61,6 +76,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const competencia = body.competencia || new Date().toISOString().slice(0, 7);
+    const preview = body.preview === true;
     const inicioMes = `${competencia}-01`;
     const [ano, mes] = competencia.split('-').map(Number);
     const fimMes = new Date(ano, mes, 0).toISOString().slice(0, 10); // último dia do mês
@@ -97,18 +113,76 @@ Deno.serve(async (req) => {
 
     const totalItensMix = (await db.Produto.list('', 5000)).length || 15;
 
-    const fatPorVend = new Map();      // vendedor_id -> faturamento (R$)
+    const fatPorVend = new Map();      // vendedor_id -> faturamento (R$) — FONTE: EspelhoFaturamentoNF.valor_venda
+    const fatPorNome = new Map();      // vendedor_nome -> faturamento (só quando vendedor_id ausente)
+    const fatPorVendAntigo = new Map(); // vendedor_id -> faturamento ANTIGO (Pedido.valor_total) — só p/ preview
     const pacotesVendPorVend = new Map(); // vendedor_id -> pacotes
     const idsVendaSemQtd = [];
     const vendPorPedido = new Map();
+
+    // ===== Faturamento (fonte correta): EspelhoFaturamentoNF.valor_venda =====
+    // comissionavel=true (só venda CFOP 5405/6404), cancelada=false.
+    // Paginado lote 500 sem teto, de-dup por id.
+    const queryEspelho = { cancelada: false, comissionavel: true, data_emissao: { $gte: inicioMes, $lte: fimMes } };
+    const nfsRaw = await listarTudo(db.EspelhoFaturamentoNF, queryEspelho, '-data_emissao');
+    const seenNf = new Set();
+    for (const nf of nfsRaw) {
+      if (!nf.id || seenNf.has(nf.id)) continue;
+      seenNf.add(nf.id);
+      const valor = Number(nf.valor_venda) || 0;
+      if (valor <= 0) continue;
+      const vid = nf.vendedor_id;
+      const vnome = (nf.vendedor_nome || '').trim();
+      if (vid) fatPorVend.set(vid, (fatPorVend.get(vid) || 0) + valor);
+      else if (vnome) fatPorNome.set(vnome, (fatPorNome.get(vnome) || 0) + valor);
+    }
+
+    // Vendas (Pedido) — mantido APENAS para MIX (itens distintos) e pacotes.
+    // O faturamento NÃO vem mais daqui. Em preview, calcula fat_antigo para comparativo.
     for (const p of vendas) {
       const vid = p.vendedor_id;
       if (!vid) continue;
-      fatPorVend.set(vid, (fatPorVend.get(vid) || 0) + (Number(p.valor_total) || 0));
+      if (preview) fatPorVendAntigo.set(vid, (fatPorVendAntigo.get(vid) || 0) + (Number(p.valor_total) || 0));
       vendPorPedido.set(p.id, vid);
       const q = Number(p.qtd_total_itens);
       if (q > 0) pacotesVendPorVend.set(vid, (pacotesVendPorVend.get(vid) || 0) + q);
       else idsVendaSemQtd.push(p.id);
+    }
+
+    // ===== PREVIEW: comparativo fat_antigo x fat_novo SEM persistir =====
+    if (preview) {
+      const nomeVend = new Map(vendedores.map(v => [v.id, v.nome]));
+      const todasChaves = new Set([...fatPorVend.keys(), ...fatPorVendAntigo.keys()]);
+      const comparativo = [];
+      for (const vid of todasChaves) {
+        const antigo = fatPorVendAntigo.get(vid) || 0;
+        const novo = fatPorVend.get(vid) || 0;
+        comparativo.push({
+          vendedor_id: vid,
+          vendedor_nome: nomeVend.get(vid) || '(sem match no Vendedor)',
+          fat_antigo: +antigo.toFixed(2),
+          fat_novo: +novo.toFixed(2),
+          diff: +(novo - antigo).toFixed(2),
+        });
+      }
+      comparativo.sort((a, b) => b.fat_novo - a.fat_novo);
+      const totalAntigo = comparativo.reduce((s, c) => s + c.fat_antigo, 0);
+      const totalNovo = comparativo.reduce((s, c) => s + c.fat_novo, 0);
+      const semVendedorId = Array.from(fatPorNome.entries())
+        .map(([nome, valor]) => ({ vendedor_nome: nome, fat_novo: +valor.toFixed(2) }))
+        .sort((a, b) => b.fat_novo - a.fat_novo);
+      return Response.json({
+        preview: true,
+        competencia,
+        total_antigo: +totalAntigo.toFixed(2),
+        total_novo: +totalNovo.toFixed(2),
+        diferenca: +(totalNovo - totalAntigo).toFixed(2),
+        vendedores_comparados: comparativo.length,
+        nfs_espelho_total: nfsRaw.length,
+        nfs_espelho_comissionavel: seenNf.size,
+        sem_vendedor_id: semVendedorId,
+        comparativo,
+      });
     }
 
     // Mix: itens distintos vendidos por vendedor (via PedidoItem das vendas do mês)
