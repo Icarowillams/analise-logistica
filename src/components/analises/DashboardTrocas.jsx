@@ -12,6 +12,8 @@ import {
 } from 'recharts';
 import KpiCard from './KpiCard';
 import FiltrosBase from './FiltrosBase';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import AnalisePorClienteTab from './AnalisePorClienteTab';
 import { dentroPeriodo, exportarCSV, formatarMoeda, formatarNumero, mesKey, arredondar2 } from './utilsAnalises';
 import * as XLSX from 'xlsx';
 import { formatarNumeroPedido } from '@/lib/formatarNumeroPedido';
@@ -431,6 +433,12 @@ export default function DashboardTrocas() {
         />
       </div>
 
+      <Tabs defaultValue="visao" className="w-full">
+        <TabsList>
+          <TabsTrigger value="visao">Visão Geral</TabsTrigger>
+          <TabsTrigger value="cliente">Análise por Cliente</TabsTrigger>
+        </TabsList>
+        <TabsContent value="visao" className="space-y-4">
       {/* KPIs */}
       {resumoItensPorPedido.incompleto && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
@@ -595,6 +603,18 @@ export default function DashboardTrocas() {
           {filtradas.length > 200 && <p className="text-xs text-slate-500 mt-2">Exibindo 200 de {filtradas.length}. Use Exportar para o relatório completo.</p>}
         </CardContent>
       </Card>
+        </TabsContent>
+        <TabsContent value="cliente" className="space-y-4">
+          <AnalisePorClienteTab
+            itensUnicos={resumoItensPorPedido.itensUnicos}
+            filtradas={filtradas}
+            motivosTroca={motivosTroca}
+            incompleto={resumoItensPorPedido.incompleto}
+            lotesFalhos={resumoItensPorPedido.lotesFalhos}
+            loadingItens={loadingItens}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
