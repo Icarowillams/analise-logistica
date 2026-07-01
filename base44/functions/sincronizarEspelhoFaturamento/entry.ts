@@ -174,6 +174,13 @@ function processarNF(nf, mapas) {
     }
   }
 
+  // Sempre buscar forma_pagamento no Pedido local (o espelho Omie não tem este campo).
+  // Re-buscado a cada sync pra preencher linhas já existentes quando o vínculo aparece.
+  if (!formaPagamento) {
+    const ped = pedidoByCod.get(nIdPedido) || pedidoByNum.get(cNumero);
+    if (ped) formaPagamento = ped.plano_pagamento_nome || '';
+  }
+
   // Resolver vendedor_id por nome
   if (!vendedorId && vendedorNome) {
     const vend = vendedorByNome.get(normNome(vendedorNome));
