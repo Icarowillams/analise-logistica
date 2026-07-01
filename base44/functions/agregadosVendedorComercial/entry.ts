@@ -40,7 +40,8 @@ Deno.serve(async (req) => {
     const fim = body.fim || '';
     const vendedorNomeFiltro = (body.vendedor_nome || '').trim();
 
-    // Busca os 3 tipos. Filtro por período é feito em memória (data_faturamento OU created_date).
+    // VENDA não é mais calculada aqui — vem do EspelhoFaturamentoNF (fonte Omie) no front.
+    // Apenas TROCA, BONIFICAÇÃO e MOTIVOS são tratados nesta função.
     const buscarTipo = async (tipo) => {
       const lista = await base44.asServiceRole.entities.Pedido.filter(
         { tipo }, '-data_faturamento', 20000
@@ -48,8 +49,7 @@ Deno.serve(async (req) => {
       return lista.filter(p => !STATUS_CANCELADO.includes(p.status) && dentroPeriodo(dataPedido(p), inicio, fim));
     };
 
-    const [vendas, trocas, bonificacoes] = await Promise.all([
-      buscarTipo('venda'),
+    const [trocas, bonificacoes] = await Promise.all([
       buscarTipo('troca'),
       buscarTipo('bonificacao')
     ]);
@@ -57,7 +57,6 @@ Deno.serve(async (req) => {
     const aplicarVendedor = (lista) =>
       vendedorNomeFiltro ? lista.filter(p => (p.vendedor_nome || '').trim() === vendedorNomeFiltro) : lista;
 
-    const vendasF = aplicarVendedor(vendas);
     const trocasF = aplicarVendedor(trocas);
     const bonifF = aplicarVendedor(bonificacoes);
 
@@ -76,13 +75,13 @@ Deno.serve(async (req) => {
       return mapa.get(chave);
     };
 
-    vendasF.forEach(p => { const r = garantir(p.vendedor_nome); r.venda_valor += p.valor_total || 0; r.venda_qtd += 1; });
+    // venda_valor/venda_qtd ficam zerados aqui — o front preenche com o EspelhoFaturamentoNF (fonte Omie).
     trocasF.forEach(p => { const r = garantir(p.vendedor_nome); r.troca_valor += p.valor_total || 0; r.troca_qtd += 1; });
     bonifF.forEach(p => { const r = garantir(p.vendedor_nome); r.bonif_valor += p.valor_total || 0; r.bonif_qtd += 1; });
 
     const por_vendedor = Array.from(mapa.values())
-      .map(r => ({ ...r, perc_troca_venda: r.venda_valor > 0 ? +((r.troca_valor / r.venda_valor) * 100).toFixed(1) : 0 }))
-      .sort((a, b) => b.venda_valor - a.venda_valor);
+      .map(r => ({ ...r, perc_troca_venda: 0 }))
+      .sort((a, b) => b.troca_valor - a.troca_valor);
 
     const totais = por_vendedor.reduce((acc, r) => ({
       venda_valor: acc.venda_valor + r.venda_valor, venda_qtd: acc.venda_qtd + r.venda_qtd,
@@ -146,7 +145,7 @@ Deno.serve(async (req) => {
       motivos_por_vendedor,
       total_itens_troca: totalItensTroca,
       periodo: { inicio, fim },
-      contagem: { vendas: vendasF.length, trocas: trocasF.length, bonificacoes: bonifF.length }
+      contagem: { trocas: trocasF.length, bonificacoes: bonifF.length }
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

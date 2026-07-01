@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DollarSign, ArrowLeftRight, Gift, Loader2, Filter, RefreshCw, Printer, Search } from 'lucide-react';
 import KpiCard from './KpiCard';
-import { formatarMoeda, formatarNumero, exportarCSV } from './utilsAnalises';
+import SyncStatusBadge from './SyncStatusBadge';
+import { useEspelhoFaturamento } from '@/hooks/useEspelhoFaturamento';
+import { formatarMoeda, formatarNumero, exportarCSV, arredondar2 } from './utilsAnalises';
 
-// Primeiro dia do mês atual e hoje, como padrão de período
+// Default = mês corrente (dia 1 → hoje)
 const hoje = new Date().toISOString().slice(0, 10);
-const inicioMes = hoje.slice(0, 8) + '01';
+const inicioMes = `${hoje.slice(0, 7)}-01`;
 
 export default function DashboardVendedorComercial() {
   const [filtros, setFiltros] = useState({ inicio: inicioMes, fim: hoje, vendedor_nome: '' });
@@ -23,7 +25,12 @@ export default function DashboardVendedorComercial() {
     queryFn: () => base44.entities.Vendedor.list('nome', 2000)
   });
 
-  const { data, isFetching, refetch } = useQuery({
+  // Fonte 1: ESPPELHO (venda — fonte Omie, só comissionável)
+  const { dados: dadosEspelho, isLoading: isLoadingEspelho, isSincronizando, ultimaSincronizacao, erroSync, sincronizarAgora } =
+    useEspelhoFaturamento(aplicado.inicio, aplicado.fim);
+
+  // Fonte 2: agregadosVendedorComercial (troca/bonif/motivos)
+  const { data, isFetching: isFetchingAgregados } = useQuery({
     queryKey: ['agregados_vendedor_comercial', aplicado],
     queryFn: async () => {
       const res = await base44.functions.invoke('agregadosVendedorComercial', aplicado);
@@ -31,8 +38,74 @@ export default function DashboardVendedorComercial() {
     }
   });
 
-  const porVendedor = data?.por_vendedor || [];
-  const totais = data?.totais || { venda_valor: 0, venda_qtd: 0, troca_valor: 0, troca_qtd: 0, bonif_valor: 0, bonif_qtd: 0, perc_troca_venda: 0 };
+  // Venda por vendedor (do espelho — só comissionável, de-dup por vendedor_nome)
+  const vendaPorNome = useMemo(() => {
+    const v = {};
+    dadosEspelho.filter(n => n.comissionavel).forEach(n => {
+      const k = (n.vendedor_nome || '(sem vendedor)').trim() || '(sem vendedor)';
+      if (!v[k]) v[k] = { venda_valor: 0, venda_qtd: 0 };
+      v[k].venda_valor = arredondar2(v[k].venda_valor + (n.valor_venda || 0));
+      v[k].venda_qtd++;
+    });
+    return v;
+  }, [dadosEspelho]);
+
+  // Merge das 2 fontes por vendedor_nome
+  // - Venda vem do espelho; troca/bonif vêm do agregados.
+  // - Vendedores que só têm venda (sem troca) aparecem com troca=0 e vice-versa.
+  const { porVendedor, totais } = useMemo(() => {
+    const trocaBonif = data?.por_vendedor || [];
+    const mapa = new Map();
+
+    // Inicializa com troca/bonif da função
+    for (const r of trocaBonif) {
+      mapa.set(r.vendedor_nome, {
+        vendedor_nome: r.vendedor_nome,
+        venda_valor: 0, venda_qtd: 0,
+        troca_valor: r.troca_valor || 0, troca_qtd: r.troca_qtd || 0,
+        bonif_valor: r.bonif_valor || 0, bonif_qtd: r.bonif_qtd || 0
+      });
+    }
+
+    // Sobrescreve venda com o espelho (fonte correta)
+    for (const [nome, vd] of Object.entries(vendaPorNome)) {
+      if (!mapa.has(nome)) {
+        mapa.set(nome, {
+          vendedor_nome: nome,
+          venda_valor: 0, venda_qtd: 0,
+          troca_valor: 0, troca_qtd: 0,
+          bonif_valor: 0, bonif_qtd: 0
+        });
+      }
+      const r = mapa.get(nome);
+      r.venda_valor = vd.venda_valor;
+      r.venda_qtd = vd.venda_qtd;
+    }
+
+    // Filtro por vendedor_nome (aplicado nas 2 fontes; aqui aplica no merge final)
+    let arr = Array.from(mapa.values());
+    if (aplicado.vendedor_nome) {
+      arr = arr.filter(r => r.vendedor_nome === aplicado.vendedor_nome);
+    }
+
+    // Recalcula % troca/venda com venda do espelho (denominador correto)
+    arr = arr.map(r => ({
+      ...r,
+      perc_troca_venda: r.venda_valor > 0 ? +((r.troca_valor / r.venda_valor) * 100).toFixed(1) : 0
+    })).sort((a, b) => b.venda_valor - a.venda_valor);
+
+    const t = arr.reduce((acc, r) => ({
+      venda_valor: arredondar2(acc.venda_valor + r.venda_valor),
+      venda_qtd: acc.venda_qtd + r.venda_qtd,
+      troca_valor: arredondar2(acc.troca_valor + r.troca_valor),
+      troca_qtd: acc.troca_qtd + r.troca_qtd,
+      bonif_valor: arredondar2(acc.bonif_valor + r.bonif_valor),
+      bonif_qtd: acc.bonif_qtd + r.bonif_qtd
+    }), { venda_valor: 0, venda_qtd: 0, troca_valor: 0, troca_qtd: 0, bonif_valor: 0, bonif_qtd: 0 });
+    t.perc_troca_venda = t.venda_valor > 0 ? +((t.troca_valor / t.venda_valor) * 100).toFixed(1) : 0;
+
+    return { porVendedor: arr, totais: t };
+  }, [vendaPorNome, data, aplicado.vendedor_nome]);
 
   // Ranking de motivos: geral ou do vendedor selecionado
   const motivos = useMemo(() => {
@@ -56,6 +129,8 @@ export default function DashboardVendedorComercial() {
       ['TOTAL', totais.venda_valor, totais.venda_qtd, totais.troca_valor, totais.troca_qtd, totais.bonif_valor, totais.bonif_qtd, `${totais.perc_troca_venda}%`]
     ]
   );
+
+  const carregando = (isLoadingEspelho && dadosEspelho.length === 0) || (isFetchingAgregados && !data);
 
   return (
     <div className="space-y-4">
@@ -93,17 +168,27 @@ export default function DashboardVendedorComercial() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={aplicar} disabled={isFetching} className="bg-indigo-600 hover:bg-indigo-700">
-              {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            <Button onClick={aplicar} disabled={carregando} className="bg-indigo-600 hover:bg-indigo-700">
+              {carregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               Aplicar
             </Button>
           </div>
         </CardContent>
       </Card>
 
+      {/* Selinho de sync (venda vem do espelho) */}
+      <div className="flex justify-end">
+        <SyncStatusBadge
+          ultimaSincronizacao={ultimaSincronizacao}
+          isSincronizando={isSincronizando}
+          erroSync={erroSync}
+          onAtualizar={sincronizarAgora}
+        />
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <KpiCard titulo="Vendas" valor={formatarMoeda(totais.venda_valor)} sub={`${formatarNumero(totais.venda_qtd)} pedidos`} icon={DollarSign} cor="emerald" />
+        <KpiCard titulo="Vendas" valor={formatarMoeda(totais.venda_valor)} sub={`${formatarNumero(totais.venda_qtd)} NFs`} icon={DollarSign} cor="emerald" />
         <KpiCard titulo="Trocas" valor={formatarMoeda(totais.troca_valor)} sub={`${formatarNumero(totais.troca_qtd)} pedidos · ${totais.perc_troca_venda}% das vendas`} icon={ArrowLeftRight} cor="red" />
         <KpiCard titulo="Bonificações" valor={formatarMoeda(totais.bonif_valor)} sub={`${formatarNumero(totais.bonif_qtd)} pedidos`} icon={Gift} cor="amber" />
       </div>
@@ -113,7 +198,7 @@ export default function DashboardVendedorComercial() {
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle className="text-base">Por vendedor</CardTitle></CardHeader>
           <CardContent className="overflow-auto">
-            {isFetching && porVendedor.length === 0 ? (
+            {carregando && porVendedor.length === 0 ? (
               <div className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
             ) : porVendedor.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-12">Nenhum dado no período.</p>
