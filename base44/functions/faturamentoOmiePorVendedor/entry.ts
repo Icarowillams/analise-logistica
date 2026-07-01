@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { data_inicial, data_final, resumo = false } = body;
+    const { data_inicial, data_final, resumo = false, compacto = false, pular_vendedores = 0 } = body;
 
     const t0 = Date.now();
     const creds = await resolverCreds(base44);
@@ -247,6 +247,30 @@ Deno.serve(async (req) => {
 
     const porVendedorArr = Object.values(porVendedor).map(v => ({ ...v, valor: Math.round(v.valor * 100) / 100 })).sort((a, b) => b.valor - a.valor);
     const porSupervisorArr = Object.values(porSupervisor).map(s => ({ ...s, valor: Math.round(s.valor * 100) / 100 })).sort((a, b) => b.valor - a.valor);
+
+    if (compacto) {
+      const supAgg = {};
+      for (const v of porVendedorArr) {
+        if (!v.vendedor_id || v.vendedor_id === ID_APLICATIVO) continue;
+        const sName = v.supervisor_nome || '(sem supervisor)';
+        if (!supAgg[sName]) supAgg[sName] = { valor: 0, vendedores: new Set() };
+        supAgg[sName].valor += v.valor;
+        supAgg[sName].vendedores.add(v.vendedor_nome);
+      }
+      const porSupCompacto = Object.entries(supAgg)
+        .map(([s, d]) => ({ s, v: Math.round(d.valor * 100) / 100, q: d.vendedores.size }))
+        .sort((a, b) => b.v - a.v);
+
+      return Response.json({
+        total_venda_comissionavel: Math.round(totalComissionavel * 100) / 100,
+        total_institucional_aplicativo: Math.round(totalInstitucional * 100) / 100,
+        total_bonificacao: Math.round(totalBonificacao * 100) / 100,
+        nao_identificados: { qtd: naoIdQtd, valor: Math.round(naoIdValor * 100) / 100 },
+        por_vendedor: porVendedorArr.slice(pular_vendedores).map(v => ({ n: v.vendedor_nome, v: v.valor, s: v.supervisor_nome })),
+        por_supervisor: porSupCompacto,
+        total_vendedores: porVendedorArr.length
+      });
+    }
 
     return Response.json({
       periodo: `${data_inicial} a ${data_final}`,
