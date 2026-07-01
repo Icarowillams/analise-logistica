@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, UserCheck, UserX, DollarSign, Target, Loader2, Filter, RefreshCw, Search, Printer, MapPin, User, Route as RouteIcon } from 'lucide-react';
 import KpiCard from './KpiCard';
+import SyncStatusBadge from './SyncStatusBadge';
+import { useEspelhoFaturamento } from '@/hooks/useEspelhoFaturamento';
 import { formatarMoeda, formatarNumero, exportarCSV, valorCSV } from './utilsAnalises';
 
 const hoje = new Date().toISOString().slice(0, 10);
@@ -46,6 +48,9 @@ function DistribCard({ titulo, icon: Icon, dados }) {
 export default function DashboardClientesComercial() {
   const [filtros, setFiltros] = useState({ inicio: inicioMes, fim: hoje, vendedor_id: '', cidade: '', rota_id: '' });
   const [aplicado, setAplicado] = useState({ inicio: inicioMes, fim: hoje, vendedor_id: '', cidade: '', rota_id: '' });
+
+  // Sincroniza espelho de faturamento para o período aplicado (dados frescos do Omie)
+  const { syncStatus, handleSync } = useEspelhoFaturamento(aplicado.inicio, aplicado.fim);
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores_dash_clientes'],
@@ -97,7 +102,10 @@ export default function DashboardClientesComercial() {
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-sm font-semibold flex items-center gap-2 text-slate-700"><Filter className="w-4 h-4" />Filtros</h3>
-            <Button variant="ghost" size="sm" onClick={limpar}><RefreshCw className="w-4 h-4" />Limpar</Button>
+            <div className="flex items-center gap-2">
+              <SyncStatusBadge syncStatus={syncStatus} onSync={handleSync} />
+              <Button variant="ghost" size="sm" onClick={limpar}><RefreshCw className="w-4 h-4" />Limpar</Button>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
             <div>

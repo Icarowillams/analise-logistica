@@ -9,13 +9,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // NUNCA Pedido.valor_total local.
 //
 // payload: { inicio?, fim?, vendedor_id?, cidade?, rota_id? }
-// retorna: { kpis, ranking, sem_compra, por_cidade, por_vendedor, por_rota }
+// retorna: { kpis:{ativos,positivados,sem_compra,faturamento,ticket_medio}, ranking, sem_compra, por_cidade, por_vendedor, por_rota, periodo }
 
 // Tira prefixo "[NNNNN] " do nome fantasia
 function limparNome(s) {
   return String(s || '').replace(/^\[\d+\]\s*/, '').trim();
 }
 
+// Paginação real: lote 500 + skip crescente até a página vir menor que o lote.
+// NUNCA corta silenciosamente — traz tudo.
 async function listarTudo(entidade, query, ordem) {
   const out = [];
   let skip = 0;
@@ -58,8 +60,11 @@ Deno.serve(async (req) => {
     // ESPPELHO DE FATURAMENTO (fonte Omie) — filtrado no banco por data_emissao + cancelada=false.
     // Paginação real (lote 500, skip crescente, break quando page<lote). NUNCA corta silenciosamente.
     const queryEspelho = { cancelada: false };
-    if (inicio) queryEspelho.data_emissao = { ...queryEspelho.data_emissao, $gte: inicio };
-    if (fim) queryEspelho.data_emissao = { ...queryEspelho.data_emissao, $lte: fim };
+    if (inicio || fim) {
+      queryEspelho.data_emissao = {};
+      if (inicio) queryEspelho.data_emissao.$gte = inicio;
+      if (fim) queryEspelho.data_emissao.$lte = fim;
+    }
     const nfsRaw = await listarTudo(base44.asServiceRole.entities.EspelhoFaturamentoNF, queryEspelho, '-data_emissao');
 
     // De-dup por id (segurança contra duplicação) + só comissionável (venda real do Omie)
@@ -117,8 +122,7 @@ Deno.serve(async (req) => {
       positivados: comprasPorCliente.size,
       sem_compra: sem_compra.length,
       faturamento,
-      ticket_medio: totalPedidos > 0 ? faturamento / totalPedidos : 0,
-      total_pedidos: totalPedidos
+      ticket_medio: totalPedidos > 0 ? faturamento / totalPedidos : 0
     };
 
     // Distribuição — só dos clientes que compraram, por cidade/vendedor/rota
