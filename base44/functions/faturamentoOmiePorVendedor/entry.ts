@@ -101,11 +101,14 @@ Deno.serve(async (req) => {
         if (cStat === '101' || dCan) { nfsCanceladas++; continue; }
         if (cStat && cStat !== '100' && cStat !== '135') continue;
 
+        // Filtro: apenas SAÍDA (tpNF=1). tpNF=0 = Entrada (compras, devoluções) — não é venda.
+        const tpNF = String(nf.ide?.tpNF || '');
+        if (tpNF === '0') { nfsEntrada++; continue; }
+
         const nIdPedido = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
         const cNumero = String(nf.ide?.nNF || nf.cNumero || '');
         const valor = nf.total?.ICMSTot?.vNF || nf.nValorNF || 0;
         const modelo = String(nf.ide?.modelo || nf.ide?.cModelo || nf.ide?.mod || '');
-        const tpNF = String(nf.ide?.tpNF || '');
 
         nfsValidas.push({ nIdPedido, cNumero, valor, modelo, tpNF, _rawIde: debug_raw ? nf.ide : null, _rawTipo: debug_raw ? nf.tipo_nota : null });
       }
@@ -186,6 +189,7 @@ Deno.serve(async (req) => {
       total_faturado_omie: Math.round(totalFaturado * 100) / 100,
       nfs_validas: nfsValidas.length,
       nfs_canceladas: nfsCanceladas,
+      nfs_entrada_tpNF0: nfsEntrada,
       nao_identificados: { qtd_nfs: naoIdQtd, valor: Math.round(naoIdValor * 100) / 100 },
       nao_id_sem_nIdPedido: naoIdSemNIdPedido,
       nao_id_com_nIdPedido: naoIdComNIdPedido,
