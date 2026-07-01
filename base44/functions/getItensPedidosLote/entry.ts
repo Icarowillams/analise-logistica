@@ -12,29 +12,40 @@ Deno.serve(async (req) => {
     const { pedido_ids = [], troca_ids = [] } = body;
     const result = { itens_pedido: {}, itens_troca: {} };
 
-    // Buscar itens de pedidos — filtro $in em lotes de 40, queries paralelas para reduzir tempo/timeout
+    // Buscar itens de pedidos — filtro $in em lotes de 40 (banco), dedup por id
     if (pedido_ids.length > 0) {
       const chunks = [];
       for (let i = 0; i < pedido_ids.length; i += 40) {
         chunks.push(pedido_ids.slice(i, i + 40));
       }
       const resultados = await Promise.all(
-        chunks.map(chunk => base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 2000))
+        chunks.map(chunk => base44.asServiceRole.entities.PedidoItem.filter({ pedido_id: { $in: chunk } }, '-created_date', 5000))
       );
+      const vistos = new Set();
       for (const itens of resultados) {
         for (const item of itens) {
+          if (vistos.has(item.id)) continue;
+          vistos.add(item.id);
           if (!result.itens_pedido[item.pedido_id]) result.itens_pedido[item.pedido_id] = [];
           result.itens_pedido[item.pedido_id].push(item);
         }
       }
     }
 
-    // Buscar itens de trocas
+    // Buscar itens de trocas — filtro $in em lotes de 40 (banco), dedup por id
     if (troca_ids.length > 0) {
-      const trocaIdSet = new Set(troca_ids);
-      const todosItensTroca = await base44.asServiceRole.entities.ItemPedidoTroca.list('-created_date', 5000);
-      for (const item of todosItensTroca) {
-        if (trocaIdSet.has(item.pedido_troca_id)) {
+      const chunks = [];
+      for (let i = 0; i < troca_ids.length; i += 40) {
+        chunks.push(troca_ids.slice(i, i + 40));
+      }
+      const resultados = await Promise.all(
+        chunks.map(chunk => base44.asServiceRole.entities.ItemPedidoTroca.filter({ pedido_troca_id: { $in: chunk } }, '-created_date', 5000))
+      );
+      const vistos = new Set();
+      for (const itens of resultados) {
+        for (const item of itens) {
+          if (vistos.has(item.id)) continue;
+          vistos.add(item.id);
           if (!result.itens_troca[item.pedido_troca_id]) result.itens_troca[item.pedido_troca_id] = [];
           result.itens_troca[item.pedido_troca_id].push(item);
         }
