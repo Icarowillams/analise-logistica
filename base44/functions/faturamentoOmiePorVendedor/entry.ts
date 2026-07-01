@@ -78,6 +78,12 @@ Deno.serve(async (req) => {
     }
 
     // 2) Paginar NFs do Omie no período
+    // CFOPs de VENDA (entram na comissão): 5.405 (interno) e 6.404 (interestadual)
+    // CFOPs de BONIFICAÇÃO (não entram): 5.910 e 6.910
+    const CFOP_VENDA = new Set(['5405', '6404']);
+    const CFOP_BONIFICACAO = new Set(['5910', '6910']);
+    const normCfop = (c) => String(c || '').replace(/\D/g, '');
+
     const nfsValidas = [];
     let nfsCanceladas = 0;
     let nfsEntrada = 0;  // tpNF=0 — não são vendas, não entram no faturamento
@@ -107,26 +113,60 @@ Deno.serve(async (req) => {
 
         const nIdPedido = String(nf.compl?.nIdPedido || nf.nIdPedido || '');
         const cNumero = String(nf.ide?.nNF || nf.cNumero || '');
-        const valor = nf.total?.ICMSTot?.vNF || nf.nValorNF || 0;
         const modelo = String(nf.ide?.modelo || nf.ide?.cModelo || nf.ide?.mod || '');
 
-        nfsValidas.push({ nIdPedido, cNumero, valor, modelo, tpNF, _rawIde: debug_raw ? nf.ide : null, _rawTipo: debug_raw ? nf.tipo_nota : null });
+        // Iterar itens para separar VENDA vs BONIFICAÇÃO por CFOP.
+        // Soma apenas o valor dos itens de venda (vProd) — notas com CFOP misto
+        // não incluem centavo de bonificação no total de comissão.
+        const itensRaw = nf.itens || nf.det || [];
+        const itens = Array.isArray(itensRaw) ? itensRaw : (itensRaw.item || []);
+        let valorVenda = 0;
+        let valorBonificacao = 0;
+        const cfopsEncontrados = {};
+        for (const it of itens) {
+          const prod = it.prod || it.produto || it;
+          const cfopNorm = normCfop(prod.CFOP || prod.cfop);
+          if (!cfopNorm) continue;
+          cfopsEncontrados[cfopNorm] = (cfopsEncontrados[cfopNorm] || 0) + 1;
+          const vItem = prod.vProd || prod.vTotItem || ((prod.qCom || 0) * (prod.vUnCom || 0)) || 0;
+          if (CFOP_VENDA.has(cfopNorm)) {
+            valorVenda += vItem;
+          } else if (CFOP_BONIFICACAO.has(cfopNorm)) {
+            valorBonificacao += vItem;
+          }
+        }
+
+        // Se não há itens (NF sem itens na resposta), fallback: usar total da nota
+        // como venda apenas se não houver CFOP de bonificação identificado.
+        if (itens.length === 0) {
+          valorVenda = nf.total?.ICMSTot?.vNF || nf.nValorNF || 0;
+        }
+
+        nfsValidas.push({ nIdPedido, cNumero, valorVenda, valorBonificacao, cfops: cfopsEncontrados, modelo, tpNF, _rawIde: debug_raw ? nf.ide : null, _rawTipo: debug_raw ? nf.tipo_nota : null });
       }
       pg++;
     } while (pg <= totalPaginas && pg <= MAX_PAGINAS);
 
     // 3) Matching: cruzar NFs com espelhos/pedidos para achar vendedor
+    //    Considera APENAS valor de VENDA (CFOP 5.405/6.404) para comissão.
     const porVendedor = {};
-    let naoIdQtd = 0, naoIdValor = 0, totalFaturado = 0;
+    const porSupervisor = {};
+    let naoIdQtd = 0, naoIdValor = 0;
+    let totalVenda = 0;
+    let totalBonificacao = 0;
+    let qtdNfsComVenda = 0;
     const amostraNaoIdSem = [];
     const amostraNaoIdCom = [];
-    const amostraRawIde = []; // debug: raw ide object of first few unidentified NFs
+    const amostraRawIde = [];
     let naoIdSemNIdPedido = 0;
     let naoIdComNIdPedido = 0;
-    let naoIdEntrada = 0;  // tpNF=0 (Entrada) — não são vendas
 
     for (const nf of nfsValidas) {
-      totalFaturado += nf.valor;
+      totalBonificacao += nf.valorBonificacao;
+      // Só conta no faturamento de comissão se houver valor de venda
+      if (nf.valorVenda <= 0) continue;
+      qtdNfsComVenda++;
+      totalVenda += nf.valorVenda;
 
       // Tentar match no espelho (primário) por nIdPedido ou cNumero
       let vendedorId = '', vendedorNome = '';
@@ -158,9 +198,8 @@ Deno.serve(async (req) => {
       }
 
       if (!vendedorNome) {
-        naoIdQtd++; naoIdValor += nf.valor;
-        if (nf.tpNF === '0') naoIdEntrada++;
-        const amostraItem = { nIdPedido: nf.nIdPedido || '(vazio)', cNumero: nf.cNumero, valor: nf.valor, modelo: nf.modelo || '?', tpNF: nf.tpNF || '?' };
+        naoIdQtd++; naoIdValor += nf.valorVenda;
+        const amostraItem = { nIdPedido: nf.nIdPedido || '(vazio)', cNumero: nf.cNumero, valor: Math.round(nf.valorVenda * 100) / 100, cfops: nf.cfops, modelo: nf.modelo || '?' };
         if (debug_raw && amostraRawIde.length < 3) amostraRawIde.push({ ide: nf._rawIde, tipo_nota: nf._rawTipo, cNumero: nf.cNumero, nIdPedido: nf.nIdPedido });
         if (nf.nIdPedido) {
           naoIdComNIdPedido++;
@@ -177,30 +216,40 @@ Deno.serve(async (req) => {
       if (!porVendedor[key]) {
         porVendedor[key] = { vendedor_nome: vendedorNome, supervisor_nome: supervisorNome, valor: 0, qtd_nfs: 0 };
       }
-      porVendedor[key].valor += nf.valor;
+      porVendedor[key].valor += nf.valorVenda;
       porVendedor[key].qtd_nfs++;
+
+      // Agregar por supervisor
+      const supKey = supervisorNome || '(sem supervisor definido)';
+      if (!porSupervisor[supKey]) {
+        porSupervisor[supKey] = { supervisor_nome: supKey, valor: 0, qtd_nfs: 0 };
+      }
+      porSupervisor[supKey].valor += nf.valorVenda;
+      porSupervisor[supKey].qtd_nfs++;
     }
 
-    const porVendedorArr = Object.values(porVendedor).sort((a, b) => b.valor - a.valor);
+    const porVendedorArr = Object.values(porVendedor).map(v => ({ ...v, valor: Math.round(v.valor * 100) / 100 })).sort((a, b) => b.valor - a.valor);
+    const porSupervisorArr = Object.values(porSupervisor).map(s => ({ ...s, valor: Math.round(s.valor * 100) / 100 })).sort((a, b) => b.valor - a.valor);
 
     return Response.json({
       periodo: `${data_inicial} a ${data_final}`,
-      fonte: 'OMIE (NF autorizada)',
-      total_faturado_omie: Math.round(totalFaturado * 100) / 100,
+      fonte: 'OMIE (NF autorizada, CFOP 5.405/6.404 = venda)',
+      total_venda_omie: Math.round(totalVenda * 100) / 100,
+      total_bonificacao: Math.round(totalBonificacao * 100) / 100,
+      qtd_nfs_venda: qtdNfsComVenda,
       nfs_validas: nfsValidas.length,
       nfs_canceladas: nfsCanceladas,
       nfs_entrada_tpNF0: nfsEntrada,
       nao_identificados: { qtd_nfs: naoIdQtd, valor: Math.round(naoIdValor * 100) / 100 },
       nao_id_sem_nIdPedido: naoIdSemNIdPedido,
       nao_id_com_nIdPedido: naoIdComNIdPedido,
-      nao_id_entrada_tpNF0: naoIdEntrada,
       total_paginas_omie: totalPaginas,
       paginas_processadas: pg - 1,
       duracao_ms: Date.now() - t0,
       amostra_nao_id_sem_nIdPedido: amostraNaoIdSem,
       amostra_nao_id_com_nIdPedido: amostraNaoIdCom,
       ...(debug_raw ? { debug_raw_ide: amostraRawIde } : {}),
-      ...(resumo ? {} : { por_vendedor: porVendedorArr })
+      ...(resumo ? {} : { por_vendedor: porVendedorArr, por_supervisor: porSupervisorArr })
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
