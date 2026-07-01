@@ -36,16 +36,10 @@ export default function DashboardVendas() {
     queryKey: ['rotas_analise'],
     queryFn: () => base44.entities.Rota.list()
   });
-  // Só precisamos do vínculo cliente→vendedor: projetar campos mínimos e limitar a 1000 (base tem ~958).
-  const { data: clientes = [] } = useQuery({
-    queryKey: ['clientes_vinculo_vendedor'],
-    queryFn: () => base44.entities.Cliente.list('-created_date', 1000, ['id', 'vendedor_id', 'rota_id']),
-    staleTime: 5 * 60 * 1000
-  });
-  // Pedidos de venda faturados (entregues ou com NF emitida)
+  // Pedidos de venda faturados (faturado=true inclui status faturado E entregue — necessário para comissão)
   const { data: pedidosFaturados = [], isLoading: loadingF } = useQuery({
     queryKey: ['pedidos_venda_faturados'],
-    queryFn: () => base44.entities.Pedido.filter({ tipo: 'venda', status: 'faturado' }, '-data_faturamento', 10000)
+    queryFn: () => base44.entities.Pedido.filter({ faturado: true }, '-data_faturamento', 10000)
   });
   // Pedidos de bonificação faturados (separados para análise de desconto)
   const { data: pedidosBonif = [] } = useQuery({
@@ -63,29 +57,19 @@ export default function DashboardVendas() {
     queryFn: () => base44.entities.LogCorte.list('-created_date', 5000)
   });
 
-  // Mapa cliente_id → vendedor do cadastro (fonte da verdade)
-  const vendedorPorCliente = useMemo(() => {
-    const nomesVend = new Map(vendedores.map(v => [v.id, v.nome]));
-    const map = new Map();
-    clientes.forEach(c => {
-      if (c.id && c.vendedor_id) map.set(c.id, { id: c.vendedor_id, nome: nomesVend.get(c.vendedor_id) || '-' });
-    });
-    return map;
-  }, [clientes, vendedores]);
-
+  // Mapa vendedor_id → nome (fallback quando pedido vem sem vendedor_nome)
+  const nomeVendedorById = useMemo(() => new Map(vendedores.map(v => [v.id, v.nome])), [vendedores]);
   // Mapa rota_id → nome (pedidos têm rota_id mas rota_nome vem vazio)
   const nomeRota = useMemo(() => new Map(rotas.map(r => [r.id, r.nome])), [rotas]);
 
-  const enriquecer = (p) => {
-    const v = vendedorPorCliente.get(p.cliente_id);
-    return {
-      ...p,
-      vendedor_id: v?.id || p.vendedor_id,
-      vendedor_nome: v?.nome || p.vendedor_nome,
-      rota_nome: p.rota_nome || nomeRota.get(p.rota_id) || ''
-    };
-  };
-  const pedidosEnr = useMemo(() => pedidosFaturados.map(enriquecer), [pedidosFaturados, vendedorPorCliente, nomeRota]);
+  // Enriquece apenas rota_nome + fallback de vendedor_nome pelo vendedor_id do pedido.
+  // NÃO sobrescreve o vendedor pelo cadastro do cliente — comissão é de QUEM FEZ a venda.
+  const enriquecer = (p) => ({
+    ...p,
+    vendedor_nome: p.vendedor_nome || nomeVendedorById.get(p.vendedor_id) || '-',
+    rota_nome: p.rota_nome || nomeRota.get(p.rota_id) || ''
+  });
+  const pedidosEnr = useMemo(() => pedidosFaturados.map(enriquecer), [pedidosFaturados, nomeVendedorById, nomeRota]);
 
   // Lista distinta de formas de pagamento (plano_pagamento_nome) para o filtro
   const formasPagamento = useMemo(() => {
@@ -95,6 +79,14 @@ export default function DashboardVendas() {
   }, [pedidosEnr]);
 
   const filtrados = useMemo(() => pedidosEnr.filter(p => {
+    // Só vendas (exclui troca/bonificacao/devolucao)
+    if (p.tipo !== 'venda') return false;
+    // Excluir cancelados puros (cancelado_pos_faturamento mantém rastreabilidade financeira por design)
+    if (p.status === 'cancelado') return false;
+    // MUDANÇA 4 — excluir trocas D1 do cálculo de vendas/comissão
+    if (p.tipo_nota === 'D1') return false;
+    if (p.pedido_troca_id) return false;
+    if (p.numero_pedido && p.numero_pedido.endsWith('D')) return false;
     if (filtros.vendedor_id && p.vendedor_id !== filtros.vendedor_id) return false;
     if (filtros.rota_id && p.rota_id !== filtros.rota_id) return false;
     if (filtros.modelo_nota && p.modelo_nota !== filtros.modelo_nota) return false;
@@ -154,9 +146,35 @@ export default function DashboardVendas() {
         const percMeta = meta?.valor_meta ? Math.round((vend.valor / meta.valor_meta) * 100) : null;
         return { ...vend, clientes: vend.clientes.size, meta: meta?.valor_meta || 0, percMeta };
       })
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 10);
+      .sort((a, b) => b.valor - a.valor);
   }, [filtrados, metas]);
+
+  // MUDANÇA 3 — Ranking por supervisor: consolida vendedores sob cada supervisor
+  const rankingSupervisores = useMemo(() => {
+    // vendedor_id → supervisor_id (supervisor_id principal, fallback primeiro de supervisor_ids)
+    const supDoVend = new Map();
+    vendedores.forEach(v => {
+      const supId = v.supervisor_id || (Array.isArray(v.supervisor_ids) && v.supervisor_ids.length > 0 ? v.supervisor_ids[0] : null);
+      if (supId) supDoVend.set(v.id, supId);
+    });
+    // supervisor_id → nome (o supervisor também é um registro na entidade Vendedor)
+    const nomeSupervisor = new Map(vendedores.map(v => [v.id, v.nome]));
+
+    const s = {};
+    filtrados.forEach(p => {
+      const vid = p.vendedor_id;
+      const supId = vid ? supDoVend.get(vid) : null;
+      const k = supId || '_sem_supervisor';
+      const nome = supId ? (nomeSupervisor.get(supId) || '-') : '(sem supervisor definido)';
+      if (!s[k]) s[k] = { id: k, nome, valor: 0, qtd: 0, vendedores: new Set() };
+      s[k].valor = arredondar2(s[k].valor + arredondar2(p.valor_total));
+      s[k].qtd++;
+      if (vid) s[k].vendedores.add(vid);
+    });
+    return Object.values(s)
+      .map(sup => ({ ...sup, vendedores: sup.vendedores.size }))
+      .sort((a, b) => b.valor - a.valor);
+  }, [filtrados, vendedores]);
 
   // Top clientes
   const topClientes = useMemo(() => {
@@ -294,7 +312,7 @@ export default function DashboardVendas() {
             {rankingVendedores.length === 0
               ? <p className="text-sm text-slate-400 text-center py-8">Sem dados</p>
               : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[480px] overflow-auto">
                 {rankingVendedores.map((v, i) => (
                   <div key={v.id} className="flex items-center gap-3">
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0
@@ -343,6 +361,39 @@ export default function DashboardVendas() {
           </CardContent>
         </Card>
       </div>
+
+      {/* MUDANÇA 3 — Vendas por Supervisor */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Vendas por Supervisor</CardTitle></CardHeader>
+        <CardContent>
+          {rankingSupervisores.length === 0
+            ? <p className="text-sm text-slate-400 text-center py-8">Sem dados</p>
+            : (
+            <div className="overflow-auto max-h-[420px]">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">Supervisor</th>
+                    <th className="p-2 text-right">Nº Vendedores</th>
+                    <th className="p-2 text-right">Pedidos</th>
+                    <th className="p-2 text-right">Valor Vendido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankingSupervisores.map(sup => (
+                    <tr key={sup.id} className="border-t hover:bg-slate-50">
+                      <td className="p-2 font-medium">{sup.nome}</td>
+                      <td className="p-2 text-right">{formatarNumero(sup.vendedores)}</td>
+                      <td className="p-2 text-right">{formatarNumero(sup.qtd)}</td>
+                      <td className="p-2 text-right font-medium text-emerald-700">{formatarMoeda(sup.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Faturamento por forma de pagamento */}
       <Card>
