@@ -43,8 +43,22 @@ export default function TransferirCarteira() {
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores-transferir-carteira'],
-    queryFn: () => base44.entities.Vendedor.list('-status,-nome', 5000),
+    queryFn: async () => {
+      const out = [];
+      let skip = 0;
+      while (true) {
+        const page = await base44.entities.Vendedor.filter({}, 'nome', 500, skip);
+        out.push(...page);
+        if (page.length < 500) break;
+        skip += 500;
+      }
+      return out;
+    },
+    staleTime: 5 * 60 * 1000,
   });
+
+  // Sufixo do ID para diferenciar homônimos (ex: "KAROLINE FERREIRA · 971140")
+  const idSufixo = (id) => (id ? '· ' + id.slice(-6) : '');
 
   // Ordenar: ativos primeiro, depois inativos/afastados, tudo alfabético dentro de cada grupo
   const vendedoresOrdenados = useMemo(() => {
@@ -208,7 +222,7 @@ export default function TransferirCarteira() {
                   {vendedoresOrdenados.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
                       <span className="flex items-center gap-2">
-                        {v.nome}
+                        <span>{v.nome} <span className="text-slate-400 text-xs">{idSufixo(v.id)}</span></span>
                         {v.status !== 'ativo' && (
                           <Badge variant="outline" className="text-[10px] px-1 py-0 text-red-600 border-red-300">
                             {v.status}
@@ -231,7 +245,9 @@ export default function TransferirCarteira() {
                 <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar destino..." /></SelectTrigger>
                 <SelectContent>
                   {vendedoresOrdenados.filter((v) => v.status === 'ativo').map((v) => (
-                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                    <SelectItem key={v.id} value={v.id}>
+                      <span>{v.nome} <span className="text-slate-400 text-xs">{idSufixo(v.id)}</span></span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
