@@ -9,6 +9,14 @@ const norm = (s) => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().trim();
 
+// Chave de identidade do cliente: nome com caixa alta, espaços colapsados.
+// NÃO remove acentos nem pontuação — "NOVO ATACADO LTDA" ≠ "NOVO ATACADO S.A".
+// Só junta cadastros cujo nome é IDÊNTICO após normalizar espaços/caixa.
+const chaveCliente = (nome) => String(nome || '')
+  .trim()
+  .toUpperCase()
+  .replace(/\s+/g, ' ');
+
 const isVencido = (motivo) => norm(motivo).includes('vencid');
 
 const ACENTO_VENCIDO = '#f59e0b'; // âmbar — único acento de cor da aba
@@ -23,7 +31,7 @@ export default function AnalisePorClienteTab({
   loadingItens
 }) {
   const [sortKey, setSortKey] = useState('pacotes'); // 'pacotes' | 'valor' | 'pctVencido'
-  const [clienteSelecionado, setClienteSelecionado] = useState(null); // cliente_id
+  const [clienteSelecionado, setClienteSelecionado] = useState(null); // chave de nome normalizada
 
   // Mapa motivo_troca_id → descrição (igual ao dashboard principal)
   const nomeMotivo = useMemo(
@@ -31,12 +39,13 @@ export default function AnalisePorClienteTab({
     [motivosTroca]
   );
 
-  // pedido_id → { cliente_id, cliente_nome } (resolvido das trocas filtradas)
+  // pedido_id → { chave, cliente_nome } (resolvido das trocas filtradas).
+  // A identidade do cliente é o NOME normalizado (vários cliente_id podem ter o mesmo nome/CNPJ).
   const pedidoParaCliente = useMemo(() => {
     const m = new Map();
     (filtradas || []).forEach(t => {
-      const cid = t.cliente_id || '__sem_cliente__';
-      m.set(t.id, { cliente_id: cid, cliente_nome: t.cliente_nome || '(sem cliente)' });
+      const nome = t.cliente_nome || '(sem cliente)';
+      m.set(t.id, { chave: chaveCliente(nome), cliente_nome: nome });
     });
     return m;
   }, [filtradas]);
@@ -63,17 +72,17 @@ export default function AnalisePorClienteTab({
     itensFiltrados.forEach(it => {
       const cli = pedidoParaCliente.get(it.pedido_id);
       if (!cli) return;
-      const cid = cli.cliente_id;
-      if (!map.has(cid)) {
-        map.set(cid, {
-          cliente_id: cid,
+      const chave = cli.chave;
+      if (!map.has(chave)) {
+        map.set(chave, {
+          chave,
           cliente_nome: cli.cliente_nome,
           pacotes: 0,
           valor: 0,
           pacotesVencido: 0
         });
       }
-      const r = map.get(cid);
+      const r = map.get(chave);
       const qtd = Number(it.quantidade || 0);
       const valorItem = Number(it.valor_total) > 0
         ? Number(it.valor_total)
@@ -109,7 +118,7 @@ export default function AnalisePorClienteTab({
     if (!clienteSelecionado) return null;
     const pedidosDoCliente = new Set(
       (filtradas || [])
-        .filter(t => (t.cliente_id || '__sem_cliente__') === clienteSelecionado)
+        .filter(t => chaveCliente(t.cliente_nome || '(sem cliente)') === clienteSelecionado)
         .map(t => t.id)
     );
     if (pedidosDoCliente.size === 0) return null;
@@ -212,13 +221,13 @@ export default function AnalisePorClienteTab({
                 </thead>
                 <tbody>
                   {ranking.slice(0, 50).map((r) => {
-                    const aberto = clienteSelecionado === r.cliente_id;
+                    const aberto = clienteSelecionado === r.chave;
                     const altoVenc = r.pctVencido >= 70;
                     return (
-                      <React.Fragment key={r.cliente_id}>
+                      <React.Fragment key={r.chave}>
                         <tr
                           className={`border-t cursor-pointer transition-colors ${aberto ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
-                          onClick={() => toggleCliente(r.cliente_id)}
+                          onClick={() => toggleCliente(r.chave)}
                         >
                           <td className="p-2 text-slate-400">
                             {aberto ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
