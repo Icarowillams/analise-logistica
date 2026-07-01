@@ -2,25 +2,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Agrega clientes no período: ranking de compras, positivação (compraram x sem compra)
 // e distribuição por cidade/vendedor/rota. Tudo no servidor para aguentar milhares de
-// registros. Cancelados são ignorados. "Sem compra" = cliente ATIVO sem nenhum pedido
-// de venda (não cancelado) no período.
+// registros. Cancelados são ignorados. "Sem compra" = cliente ATIVO sem nenhuma NF
+// de venda (comissionavel) no espelho de faturamento (fonte Omie) no período.
+//
+// FONTE DE VALOR: EspelhoFaturamentoNF (comissionavel=true, valor_venda real do Omie).
+// NUNCA Pedido.valor_total local.
 //
 // payload: { inicio?, fim?, vendedor_id?, cidade?, rota_id? }
 // retorna: { kpis, ranking, sem_compra, por_cidade, por_vendedor, por_rota }
-
-const STATUS_CANCELADO = ['cancelado', 'cancelado_pos_faturamento'];
-
-function dataPedido(p) { return p.data_faturamento || p.created_date || ''; }
-
-function dentroPeriodo(dataStr, inicio, fim) {
-  if (!inicio && !fim) return true;
-  if (!dataStr) return false;
-  const d = new Date(String(dataStr).slice(0, 10)).getTime();
-  if (isNaN(d)) return false;
-  if (inicio && d < new Date(inicio).getTime()) return false;
-  if (fim && d > new Date(fim).getTime() + 86400000) return false;
-  return true;
-}
 
 // Tira prefixo "[NNNNN] " do nome fantasia
 function limparNome(s) {
@@ -66,18 +55,30 @@ Deno.serve(async (req) => {
     });
     const clientesById = new Map(clientesFiltrados.map(c => [c.id, c]));
 
-    // Pedidos de venda do período (não cancelados)
-    const vendas = (await listarTudo(base44.asServiceRole.entities.Pedido, { tipo: 'venda' }, '-data_faturamento'))
-      .filter(p => !STATUS_CANCELADO.includes(p.status) && dentroPeriodo(dataPedido(p), inicio, fim));
+    // ESPPELHO DE FATURAMENTO (fonte Omie) — filtrado no banco por data_emissao + cancelada=false.
+    // Paginação real (lote 500, skip crescente, break quando page<lote). NUNCA corta silenciosamente.
+    const queryEspelho = { cancelada: false };
+    if (inicio) queryEspelho.data_emissao = { ...queryEspelho.data_emissao, $gte: inicio };
+    if (fim) queryEspelho.data_emissao = { ...queryEspelho.data_emissao, $lte: fim };
+    const nfsRaw = await listarTudo(base44.asServiceRole.entities.EspelhoFaturamentoNF, queryEspelho, '-data_emissao');
+
+    // De-dup por id (segurança contra duplicação) + só comissionável (venda real do Omie)
+    const seenNf = new Set();
+    const nfs = nfsRaw.filter(n => {
+      if (!n.id || seenNf.has(n.id)) return false;
+      seenNf.add(n.id);
+      return n.comissionavel === true;
+    });
 
     // Agrega compras por cliente (só clientes dentro do filtro de segmentação)
+    // Valor = valor_venda (real do Omie). Pedidos = qtd de NFs (unidade do espelho).
     const comprasPorCliente = new Map(); // cliente_id -> { valor, pedidos }
-    vendas.forEach(p => {
-      if (!p.cliente_id || !clientesById.has(p.cliente_id)) return;
-      const r = comprasPorCliente.get(p.cliente_id) || { valor: 0, pedidos: 0 };
-      r.valor += p.valor_total || 0;
+    nfs.forEach(n => {
+      if (!n.cliente_id || !clientesById.has(n.cliente_id)) return;
+      const r = comprasPorCliente.get(n.cliente_id) || { valor: 0, pedidos: 0 };
+      r.valor += n.valor_venda || 0;
       r.pedidos += 1;
-      comprasPorCliente.set(p.cliente_id, r);
+      comprasPorCliente.set(n.cliente_id, r);
     });
 
     const nomeCliente = (c) => limparNome(c.nome_fantasia) || c.razao_social || c.codigo_interno || c.id;
