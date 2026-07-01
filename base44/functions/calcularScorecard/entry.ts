@@ -5,13 +5,16 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // gerados pelas visitas/agendas. Faturamento e Qualidade saem OFICIAL; Cobertura e Mix saem
 // EXPERIMENTAL (shadow mode, decisões #2/#3) enquanto não há decisão da Gestão.
 //
-// payload: { competencia: 'YYYY-MM' }
+// payload: { competencia: 'YYYY-MM', bloco?: 'FATURAMENTO'|'COBERTURA'|'MIX'|'QUALIDADE', preview?: boolean }
+// - Sem bloco: processa TODOS os blocos numa única chamada (uso via backend/test).
+// - Com bloco: processa/persiste SÓ aquele bloco (chunk para evitar timeout na tela).
+// - preview: true: comparativo fat_antigo x fat_novo SEM persistir (ignora bloco).
 // Idempotente: upsert por (usuario_id, competencia, bloco).
+// Persistência atômica: bulkCreate + bulkUpdate — ou grava tudo do bloco, ou nada.
 
 const STATUS_CANCELADO = ['cancelado', 'cancelado_pos_faturamento'];
 const BLOCOS = ['FATURAMENTO', 'COBERTURA', 'MIX', 'QUALIDADE'];
 const PESO_PADRAO = { FATURAMENTO: 40, COBERTURA: 20, MIX: 20, QUALIDADE: 20 };
-// Cobertura e Mix ainda em calibração → não compõem pagamento real.
 const BLOCO_EXPERIMENTAL = { FATURAMENTO: false, QUALIDADE: false, COBERTURA: true, MIX: true };
 
 function chunk(arr, size) {
@@ -20,7 +23,6 @@ function chunk(arr, size) {
   return out;
 }
 
-// Paginação real: lote 500 + skip crescente até a página vir menor que o lote.
 async function listarTudo(entidade, query, ordem) {
   const out = [];
   let skip = 0;
@@ -43,23 +45,18 @@ function perfilDoVendedor(v) {
   return 'VENDEDOR';
 }
 
-// Resolução hierárquica de meta (4.1.1): da mais específica para a genérica, 1º match vence.
 function resolverMeta(metas, perfil, tipo) {
   const candidatas = metas.filter((m) => m.perfil === perfil && m.tipo_meta === tipo);
-  // Sem dimensões cadastradas neste módulo (curva/rota/segmento por usuário), usamos a
-  // genérica (todas as dimensões vazias) como fallback final.
   const generica = candidatas.find((m) => !m.curva_cliente && !m.regiao_rota_id && !m.segmento_cobertura);
   return generica || candidatas[0] || null;
 }
 
 function nivelPorTetoLimite(valor, teto, limite, menorMelhor) {
-  // menorMelhor (ex.: % vencido): EXCELENCIA se <= limite; PADRAO se <= teto; senão ZERADO.
   if (menorMelhor) {
     if (valor <= limite) return 'EXCELENCIA';
     if (valor <= teto) return 'PADRAO';
     return 'ZERADO';
   }
-  // maiorMelhor (ex.: % cobertura): EXCELENCIA se >= limite; PADRAO se >= teto; senão ZERADO.
   if (valor >= limite) return 'EXCELENCIA';
   if (valor >= teto) return 'PADRAO';
   return 'ZERADO';
@@ -77,24 +74,48 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const competencia = body.competencia || new Date().toISOString().slice(0, 7);
     const preview = body.preview === true;
+    const blocoParam = body.bloco || null;
     const inicioMes = `${competencia}-01`;
     const [ano, mes] = competencia.split('-').map(Number);
-    const fimMes = new Date(ano, mes, 0).toISOString().slice(0, 10); // último dia do mês
+    const fimMes = new Date(ano, mes, 0).toISOString().slice(0, 10);
 
     const db = base44.asServiceRole.entities;
 
-    const [vendedores, metas, coberturas, mapTrocas, motivos, apuracoesExistentes] = await Promise.all([
+    // Determina quais blocos processar neste chunk
+    const blocosProcessar = blocoParam ? BLOCOS.filter((b) => b === blocoParam) : BLOCOS;
+    if (blocoParam && !BLOCOS.includes(blocoParam)) {
+      return Response.json({ error: `Bloco inválido: ${blocoParam}. Válidos: ${BLOCOS.join(', ')}` }, { status: 400 });
+    }
+
+    // Flags de dependência. fatBase (EspelhoFaturamentoNF) é sempre necessário (fórmula de comissão).
+    // Em preview, só precisamos de faturamento + vendas (fat_antigo) — os demais blocos não são usados.
+    const precisaCob = !preview && blocosProcessar.includes('COBERTURA');
+    const precisaMix = !preview && blocosProcessar.includes('MIX');
+    const precisaQual = !preview && blocosProcessar.includes('QUALIDADE');
+    const precisaVendas = precisaMix || precisaQual || preview;
+    const precisaTrocas = precisaQual;
+    const precisaItensVendas = precisaMix || precisaQual;
+    const precisaItensTrocas = precisaQual;
+
+    const [vendedores, metas, apuracoesExistentes] = await Promise.all([
       db.Vendedor.list('', 2000),
       db.MetaComissao.filter({ status: { $in: ['ATIVA', 'EXPERIMENTAL'] } }, '-vigencia_inicio', 1000),
-      db.CoberturaStatus.list('', 5000),
-      db.MotivoTrocaMapeamento.filter({ ativo: true }, '', 500),
-      db.MotivoTroca.list('', 500),
       db.ScorecardApuracao.filter({ competencia }, '', 50000),
     ]);
 
+    // Fetch condicional: CoberturaStatus só se COBERTURA
+    const coberturas = precisaCob ? await db.CoberturaStatus.list('', 5000) : [];
+    // Fetch condicional: mapeamento/motivos só se QUALIDADE
+    const [mapTrocas, motivos] = precisaQual
+      ? await Promise.all([
+          db.MotivoTrocaMapeamento.filter({ ativo: true }, '', 500),
+          db.MotivoTroca.list('', 500),
+        ])
+      : [[], []];
+
     const ativos = vendedores.filter((v) => v.status !== 'inativo');
     const nomeMotivo = new Map(motivos.map((m) => [m.id, (m.descricao || '').toUpperCase()]));
-    const respMapeada = new Map(); // descricao motivo -> VENDEDOR/EMPRESA
+    const respMapeada = new Map();
     for (const mp of mapTrocas) {
       const desc = (mp.motivo_descricao || nomeMotivo.get(mp.motivo_id) || '').toUpperCase();
       if (desc) respMapeada.set(desc, mp.responsabilidade);
@@ -105,24 +126,28 @@ Deno.serve(async (req) => {
       return d >= inicioMes && d <= fimMes;
     };
 
-    // ===== Vendas do mês: faturamento, mix e pacotes vendidos por vendedor =====
-    const vendas = (await db.Pedido.filter({ tipo: 'venda' }, '-data_faturamento', 30000))
-      .filter((p) => !STATUS_CANCELADO.includes(p.status) && dentroMes(p));
-    const trocas = (await db.Pedido.filter({ tipo: 'troca' }, '-data_faturamento', 30000))
-      .filter((p) => !STATUS_CANCELADO.includes(p.status) && dentroMes(p));
+    // ===== Vendas do mês (condicional) =====
+    const vendas = precisaVendas
+      ? (await db.Pedido.filter({ tipo: 'venda' }, '-data_faturamento', 30000)).filter(
+          (p) => !STATUS_CANCELADO.includes(p.status) && dentroMes(p)
+        )
+      : [];
+    const trocas = precisaTrocas
+      ? (await db.Pedido.filter({ tipo: 'troca' }, '-data_faturamento', 30000)).filter(
+          (p) => !STATUS_CANCELADO.includes(p.status) && dentroMes(p)
+        )
+      : [];
 
-    const totalItensMix = (await db.Produto.list('', 5000)).length || 15;
+    const totalItensMix = precisaMix ? (await db.Produto.list('', 5000)).length || 15 : 0;
 
-    const fatPorVend = new Map();      // vendedor_id -> faturamento (R$) — FONTE: EspelhoFaturamentoNF.valor_venda
-    const fatPorNome = new Map();      // vendedor_nome -> faturamento (só quando vendedor_id ausente)
-    const fatPorVendAntigo = new Map(); // vendedor_id -> faturamento ANTIGO (Pedido.valor_total) — só p/ preview
-    const pacotesVendPorVend = new Map(); // vendedor_id -> pacotes
+    const fatPorVend = new Map();
+    const fatPorNome = new Map();
+    const fatPorVendAntigo = new Map();
+    const pacotesVendPorVend = new Map();
     const idsVendaSemQtd = [];
     const vendPorPedido = new Map();
 
     // ===== Faturamento (fonte correta): EspelhoFaturamentoNF.valor_venda =====
-    // comissionavel=true (só venda CFOP 5405/6404), cancelada=false.
-    // Paginado lote 500 sem teto, de-dup por id.
     const queryEspelho = { cancelada: false, comissionavel: true, data_emissao: { $gte: inicioMes, $lte: fimMes } };
     const nfsRaw = await listarTudo(db.EspelhoFaturamentoNF, queryEspelho, '-data_emissao');
     const seenNf = new Set();
@@ -137,21 +162,22 @@ Deno.serve(async (req) => {
       else if (vnome) fatPorNome.set(vnome, (fatPorNome.get(vnome) || 0) + valor);
     }
 
-    // Vendas (Pedido) — mantido APENAS para MIX (itens distintos) e pacotes.
-    // O faturamento NÃO vem mais daqui. Em preview, calcula fat_antigo para comparativo.
-    for (const p of vendas) {
-      const vid = p.vendedor_id;
-      if (!vid) continue;
-      if (preview) fatPorVendAntigo.set(vid, (fatPorVendAntigo.get(vid) || 0) + (Number(p.valor_total) || 0));
-      vendPorPedido.set(p.id, vid);
-      const q = Number(p.qtd_total_itens);
-      if (q > 0) pacotesVendPorVend.set(vid, (pacotesVendPorVend.get(vid) || 0) + q);
-      else idsVendaSemQtd.push(p.id);
+    // Vendas (Pedido) — MIX (itens distintos) e pacotes. Em preview, fat_antigo.
+    if (precisaVendas) {
+      for (const p of vendas) {
+        const vid = p.vendedor_id;
+        if (!vid) continue;
+        if (preview) fatPorVendAntigo.set(vid, (fatPorVendAntigo.get(vid) || 0) + (Number(p.valor_total) || 0));
+        vendPorPedido.set(p.id, vid);
+        const q = Number(p.qtd_total_itens);
+        if (q > 0) pacotesVendPorVend.set(vid, (pacotesVendPorVend.get(vid) || 0) + q);
+        else idsVendaSemQtd.push(p.id);
+      }
     }
 
     // ===== PREVIEW: comparativo fat_antigo x fat_novo SEM persistir =====
     if (preview) {
-      const nomeVend = new Map(vendedores.map(v => [v.id, v.nome]));
+      const nomeVend = new Map(vendedores.map((v) => [v.id, v.nome]));
       const todasChaves = new Set([...fatPorVend.keys(), ...fatPorVendAntigo.keys()]);
       const comparativo = [];
       for (const vid of todasChaves) {
@@ -185,53 +211,59 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Mix: itens distintos vendidos por vendedor (via PedidoItem das vendas do mês)
-    const mixPorVend = new Map(); // vendedor_id -> Set(item_id)
-    const idsVendas = vendas.map((p) => p.id).filter(Boolean);
-    for (const grupo of chunk(idsVendas, 100)) {
-      const itens = await db.PedidoItem.filter({ pedido_id: { $in: grupo } }, '', 50000);
-      for (const it of itens) {
-        const vid = vendPorPedido.get(it.pedido_id);
-        if (!vid) continue;
-        if (!mixPorVend.has(vid)) mixPorVend.set(vid, new Set());
-        if (it.produto_id || it.item_id) mixPorVend.get(vid).add(it.produto_id || it.item_id);
-        // completa pacotes para pedidos sem qtd_total_itens
-        if (idsVendaSemQtd.includes(it.pedido_id)) {
-          const q = Number(it.quantidade) > 0 ? Number(it.quantidade) : 0;
-          pacotesVendPorVend.set(vid, (pacotesVendPorVend.get(vid) || 0) + q);
+    // ===== Mix: itens distintos vendidos por vendedor (via PedidoItem das vendas do mês) =====
+    const mixPorVend = new Map();
+    if (precisaItensVendas) {
+      const idsVendas = vendas.map((p) => p.id).filter(Boolean);
+      for (const grupo of chunk(idsVendas, 100)) {
+        const itens = await db.PedidoItem.filter({ pedido_id: { $in: grupo } }, '', 50000);
+        for (const it of itens) {
+          const vid = vendPorPedido.get(it.pedido_id);
+          if (!vid) continue;
+          if (precisaMix) {
+            if (!mixPorVend.has(vid)) mixPorVend.set(vid, new Set());
+            if (it.produto_id || it.item_id) mixPorVend.get(vid).add(it.produto_id || it.item_id);
+          }
+          // completa pacotes para pedidos sem qtd_total_itens (necessário para QUALIDADE)
+          if (idsVendaSemQtd.includes(it.pedido_id)) {
+            const q = Number(it.quantidade) > 0 ? Number(it.quantidade) : 0;
+            pacotesVendPorVend.set(vid, (pacotesVendPorVend.get(vid) || 0) + q);
+          }
         }
       }
     }
 
     // ===== Qualidade: pacotes de VENCIDO (responsabilidade VENDEDOR) por vendedor =====
-    const vencidoPorVend = new Map(); // vendedor_id -> pacotes vencido
-    const vendPorTroca = new Map(trocas.map((p) => [p.id, p.vendedor_id]));
-    const idsTroca = trocas.map((p) => p.id).filter(Boolean);
-    for (const grupo of chunk(idsTroca, 100)) {
-      const itens = await db.PedidoItem.filter({ pedido_id: { $in: grupo } }, '', 50000);
-      for (const it of itens) {
-        const vid = vendPorTroca.get(it.pedido_id);
-        if (!vid) continue;
-        const desc = (it.motivo_troca_descricao || (it.motivo_troca_id ? nomeMotivo.get(it.motivo_troca_id) : '') || '').toUpperCase();
-        const resp = respMapeada.get(desc);
-        if (resp !== 'VENDEDOR') continue; // EMPRESA ou não classificado → fora do cálculo
-        const q = Number(it.quantidade) > 0 ? Number(it.quantidade) : 0;
-        vencidoPorVend.set(vid, (vencidoPorVend.get(vid) || 0) + q);
+    const vencidoPorVend = new Map();
+    if (precisaItensTrocas) {
+      const vendPorTroca = new Map(trocas.map((p) => [p.id, p.vendedor_id]));
+      const idsTroca = trocas.map((p) => p.id).filter(Boolean);
+      for (const grupo of chunk(idsTroca, 100)) {
+        const itens = await db.PedidoItem.filter({ pedido_id: { $in: grupo } }, '', 50000);
+        for (const it of itens) {
+          const vid = vendPorTroca.get(it.pedido_id);
+          if (!vid) continue;
+          const desc = (it.motivo_troca_descricao || (it.motivo_troca_id ? nomeMotivo.get(it.motivo_troca_id) : '') || '').toUpperCase();
+          const resp = respMapeada.get(desc);
+          if (resp !== 'VENDEDOR') continue;
+          const q = Number(it.quantidade) > 0 ? Number(it.quantidade) : 0;
+          vencidoPorVend.set(vid, (vencidoPorVend.get(vid) || 0) + q);
+        }
       }
     }
 
     // ===== Cobertura: % de clientes EM_DIA por responsável (Cobertura Inteligente) =====
-    const cobPorResp = new Map(); // responsavel_id -> { total, em_dia }
-    for (const c of coberturas) {
-      const rid = c.responsavel_id;
-      if (!rid) continue;
-      if (!cobPorResp.has(rid)) cobPorResp.set(rid, { total: 0, em_dia: 0 });
-      const o = cobPorResp.get(rid);
-      o.total++;
-      if (c.status_cobertura === 'em_dia') o.em_dia++;
+    const cobPorResp = new Map();
+    if (precisaCob) {
+      for (const c of coberturas) {
+        const rid = c.responsavel_id;
+        if (!rid) continue;
+        if (!cobPorResp.has(rid)) cobPorResp.set(rid, { total: 0, em_dia: 0 });
+        const o = cobPorResp.get(rid);
+        o.total++;
+        if (c.status_cobertura === 'em_dia') o.em_dia++;
+      }
     }
-    // Cobertura agregada da equipe do supervisor (para perfil SUPERVISOR/GERENCIA)
-    const idsAtivos = new Set(ativos.map((v) => v.id));
 
     const apuracaoPorChave = new Map();
     for (const a of apuracoesExistentes) apuracaoPorChave.set(`${a.usuario_id}|${a.bloco}`, a);
@@ -249,17 +281,18 @@ Deno.serve(async (req) => {
 
       // Cobertura: própria (vendedor/promotor) ou agregada da equipe (supervisor/gerência)
       let cobTotal = 0, cobEmDia = 0;
-      if (perfil === 'VENDEDOR' || perfil === 'PROMOTOR') {
-        const o = cobPorResp.get(v.id) || { total: 0, em_dia: 0 };
-        cobTotal = o.total; cobEmDia = o.em_dia;
-      } else {
-        // agrega cobertura dos liderados
-        for (const lid of ativos) {
-          const subord = lid.supervisor_id === v.id || (lid.supervisor_ids || []).includes(v.id);
-          const agregaTudo = perfil === 'GERENCIA';
-          if (agregaTudo || subord) {
-            const o = cobPorResp.get(lid.id);
-            if (o) { cobTotal += o.total; cobEmDia += o.em_dia; }
+      if (precisaCob) {
+        if (perfil === 'VENDEDOR' || perfil === 'PROMOTOR') {
+          const o = cobPorResp.get(v.id) || { total: 0, em_dia: 0 };
+          cobTotal = o.total; cobEmDia = o.em_dia;
+        } else {
+          for (const lid of ativos) {
+            const subord = lid.supervisor_id === v.id || (lid.supervisor_ids || []).includes(v.id);
+            const agregaTudo = perfil === 'GERENCIA';
+            if (agregaTudo || subord) {
+              const o = cobPorResp.get(lid.id);
+              if (o) { cobTotal += o.total; cobEmDia += o.em_dia; }
+            }
           }
         }
       }
@@ -274,8 +307,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Pula quem não tem nenhuma atividade no mês
-      if (fatBase <= 0 && cobTotal === 0 && pacotes === 0) continue;
+      // Pula quem não tem nenhuma atividade no mês.
+      // Em modo chunk, só avalia as métricas disponíveis neste chunk.
+      const semAtividade = fatBase <= 0
+        && (!precisaCob || cobTotal === 0)
+        && (!precisaVendas || pacotes === 0);
+      if (semAtividade) continue;
 
       // ---- Indicadores por bloco ----
       const percVencido = pacotes > 0 ? +((vencido / pacotes) * 100).toFixed(2) : 0;
@@ -283,7 +320,7 @@ Deno.serve(async (req) => {
       const percMix = totalItensMix > 0 ? +((itensMix / totalItensMix) * 100).toFixed(2) : 0;
       const valorApurado = { FATURAMENTO: fatBase, QUALIDADE: percVencido, COBERTURA: percCobertura, MIX: percMix };
 
-      for (const bloco of BLOCOS) {
+      for (const bloco of blocosProcessar) {
         const pesoMeta = resolverMeta(metas, perfil, `PESO_${bloco}`);
         const peso = pesoMeta ? Number(pesoMeta.valor) : PESO_PADRAO[bloco];
 
@@ -331,13 +368,15 @@ Deno.serve(async (req) => {
       avaliados++;
     }
 
-    // Persiste (upsert idempotente por usuario+competencia+bloco)
+    // Persistência ATÔMICA: bulkCreate em lotes + bulkUpdate numa única chamada.
+    // Ou todas as linhas do bloco são gravadas, ou nenhuma — nunca parcial.
     for (const grupo of chunk(aCriar, 100)) await db.ScorecardApuracao.bulkCreate(grupo);
-    for (const item of aAtualizar) { const { id, ...d } = item; await db.ScorecardApuracao.update(id, d); }
+    if (aAtualizar.length > 0) await db.ScorecardApuracao.bulkUpdate(aAtualizar);
 
     return Response.json({
       ok: true,
       competencia,
+      bloco: blocoParam || 'TODOS',
       vendedores_apurados: avaliados,
       linhas_criadas: aCriar.length,
       linhas_atualizadas: aAtualizar.length,

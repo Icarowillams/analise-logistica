@@ -18,6 +18,13 @@ import GerenciarMapeamentoTrocas from '@/components/comissionamento/GerenciarMap
 import RegimeExperimentalPainel from '@/components/comissionamento/RegimeExperimentalPainel';
 import { agruparPorUsuario, competenciaAtual, competenciaLabel, brl } from '@/components/comissionamento/scorecardUtils';
 
+const BLOCOS_RECALC = [
+  { id: 'FATURAMENTO', label: 'Faturamento' },
+  { id: 'COBERTURA', label: 'Cobertura' },
+  { id: 'MIX', label: 'Mix' },
+  { id: 'QUALIDADE', label: 'Qualidade' },
+];
+
 function ultimasCompetencias(n = 6) {
   const out = [];
   const d = new Date();
@@ -31,6 +38,7 @@ export default function Comissionamento() {
   const qc = useQueryClient();
   const [competencia, setCompetencia] = useState(competenciaAtual());
   const [calculando, setCalculando] = useState(false);
+  const [progressoRecalc, setProgressoRecalc] = useState(null);
   const [iniciandoRegime, setIniciandoRegime] = useState(false);
 
   const { data: currentUser } = useQuery({ queryKey: ['me-comissao'], queryFn: () => base44.auth.me() });
@@ -67,15 +75,21 @@ export default function Comissionamento() {
 
   const recalcular = async () => {
     setCalculando(true);
+    setProgressoRecalc({ atual: 0, total: BLOCOS_RECALC.length });
     try {
-      const r = await base44.functions.invoke('calcularScorecard', { competencia });
-      if (r.data?.error) throw new Error(r.data.error);
-      toast.success(`Apuração concluída: ${r.data.vendedores_apurados} avaliados`);
+      for (let i = 0; i < BLOCOS_RECALC.length; i++) {
+        const b = BLOCOS_RECALC[i];
+        setProgressoRecalc({ atual: i + 1, total: BLOCOS_RECALC.length, bloco: b.label });
+        const r = await base44.functions.invoke('calcularScorecard', { competencia, bloco: b.id });
+        if (r.data?.error) throw new Error(`[${b.label}] ${r.data.error}`);
+      }
+      toast.success('Apuração concluída: 4 blocos recalculados');
       qc.invalidateQueries({ queryKey: ['scorecard', competencia] });
     } catch (e) {
-      toast.error('Falha ao calcular: ' + e.message);
+      toast.error(`Falha no recálculo: ${e.message}. Clique em Recalcular para retomar.`);
     } finally {
       setCalculando(false);
+      setProgressoRecalc(null);
     }
   };
 
@@ -102,9 +116,11 @@ export default function Comissionamento() {
         </SelectContent>
       </Select>
       {isAdmin && (
-        <Button onClick={recalcular} disabled={calculando}>
+        <Button onClick={recalcular} disabled={calculando} className="min-w-[180px]">
           {calculando ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}
-          Recalcular
+          {calculando && progressoRecalc
+            ? `Recalculando... ${progressoRecalc.atual}/${progressoRecalc.total} ${progressoRecalc.bloco || ''}`
+            : 'Recalcular'}
         </Button>
       )}
     </div>
