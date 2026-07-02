@@ -11,11 +11,23 @@ const ENTIDADES = [
   { nome: 'Rota', label: 'Rotas' },
   { nome: 'Veiculo', label: 'Veículos' },
   { nome: 'PlanoPagamento', label: 'Planos de Pagamento' },
+  { nome: 'ModalidadePagamento', label: 'Modalidades de Pagamento' },
   { nome: 'TabelaPreco', label: 'Tabelas de Preço' },
   { nome: 'PrecoProduto', label: 'Preços de Produto' },
   { nome: 'CenarioFiscalLocal', label: 'Cenários Fiscais Locais' },
   { nome: 'Segmento', label: 'Segmentos' },
   { nome: 'Rede', label: 'Redes' },
+  { nome: 'Categoria', label: 'Categorias de Produto' },
+  { nome: 'SubCategoria', label: 'Subcategorias de Produto' },
+  { nome: 'UnidadeMedida', label: 'Unidades de Medida' },
+  { nome: 'UnidadeProduto', label: 'Unidades de Produto (Família)' },
+  { nome: 'Cargo', label: 'Cargos' },
+  { nome: 'Funcao', label: 'Funções' },
+  { nome: 'Departamento', label: 'Departamentos' },
+  { nome: 'MotivoTroca', label: 'Motivos de Troca' },
+  { nome: 'MotivoCorte', label: 'Motivos de Corte' },
+  { nome: 'Empresa', label: 'Empresas' },
+  { nome: 'AcaoPromocional', label: 'Ações Promocionais' },
   // Pedidos
   { nome: 'Pedido', label: 'Pedidos' },
   { nome: 'PedidoItem', label: 'Itens de Pedido' },
@@ -63,7 +75,7 @@ function downloadCSV(content, filename) {
 }
 
 async function buscarTodos(nomeEntidade) {
-  const PAGE = 5000;
+  const PAGE = 500;
   const todos = [];
   let skip = 0;
   while (true) {
